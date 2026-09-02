@@ -9,9 +9,9 @@ use std::{
 };
 
 use arkts_index_core::{
-    CommitReceipt, DocumentSymbols, Position, RefreshBatch, StoreError, StoreErrorKind,
-    StoreMetadata, SymbolKind, SymbolQuery, SymbolSearchResult, SymbolStore, TextRange,
-    WorkspaceSymbol, acronym_for_search, fold_for_search, rank_symbols,
+    CommitReceipt, DocumentSymbols, FullCatalogBatch, Position, RefreshBatch, StoreError,
+    StoreErrorKind, StoreMetadata, SymbolKind, SymbolQuery, SymbolSearchResult, SymbolStore,
+    TextRange, WorkspaceSymbol, acronym_for_search, fold_for_search, rank_symbols,
 };
 use rusqlite::types::Value as SqlValue;
 use rusqlite::{
@@ -42,7 +42,7 @@ pub fn workspace_cache_location(
             format!("failed to canonicalize workspace root: {error}"),
         )
     })?;
-    let workspace_identity = canonical_file_uri(&canonical_root);
+    let workspace_identity = path_to_file_uri(&canonical_root);
     let mut hasher = Sha256::new();
     hasher.update(b"arkts-index-cache\0v2\0");
     hasher.update(workspace_identity.as_bytes());
@@ -61,7 +61,7 @@ pub fn workspace_cache_location(
 }
 
 #[cfg(unix)]
-fn canonical_file_uri(path: &Path) -> String {
+pub fn path_to_file_uri(path: &Path) -> String {
     use std::os::unix::ffi::OsStrExt;
 
     format!(
@@ -71,7 +71,7 @@ fn canonical_file_uri(path: &Path) -> String {
 }
 
 #[cfg(windows)]
-fn canonical_file_uri(path: &Path) -> String {
+pub fn path_to_file_uri(path: &Path) -> String {
     let mut normalized = path.to_string_lossy().replace('\\', "/");
     if let Some(without_prefix) = normalized.strip_prefix("//?/") {
         normalized = without_prefix.to_owned();
@@ -354,6 +354,56 @@ impl SymbolStore for SqliteStore {
         })
     }
 
+    fn replace_all(&mut self, batch: FullCatalogBatch) -> Result<CommitReceipt, StoreError> {
+        let current = self.metadata()?.committed_generation;
+        if batch.generation <= current {
+            return Err(invalid_generation(batch.generation, current));
+        }
+        let generation = sqlite_generation(batch.generation)?;
+        for document in &batch.documents {
+            validate_replacement(document)?;
+        }
+
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(map_sqlite_error)?;
+        let committed_generation = read_committed_generation(&transaction)?;
+        if batch.generation <= committed_generation {
+            return Err(invalid_generation(batch.generation, committed_generation));
+        }
+
+        transaction
+            .execute("DELETE FROM documents", [])
+            .map_err(map_sqlite_error)?;
+        transaction
+            .execute("DELETE FROM rejected_documents", [])
+            .map_err(map_sqlite_error)?;
+        insert_catalog_documents(&transaction, &batch.documents, generation)?;
+        insert_symbol_documents(&transaction, &batch.documents)?;
+        for uri in &batch.rejected_uris {
+            transaction
+                .execute(
+                    "INSERT INTO rejected_documents(uri) VALUES (?1) \
+                     ON CONFLICT(uri) DO NOTHING",
+                    [uri],
+                )
+                .map_err(map_sqlite_error)?;
+        }
+        transaction
+            .execute(
+                "UPDATE metadata SET committed_generation = ?1 WHERE id = 1",
+                [generation],
+            )
+            .map_err(map_sqlite_error)?;
+        let rejected_documents = read_rejected_documents(&transaction)?;
+        transaction.commit().map_err(map_sqlite_error)?;
+        Ok(CommitReceipt {
+            committed_generation: batch.generation,
+            rejected_documents,
+        })
+    }
+
     fn search(&self, query: &SymbolQuery) -> Result<SymbolSearchResult, StoreError> {
         let transaction =
             Transaction::new_unchecked(&self.connection, TransactionBehavior::Deferred)
@@ -416,33 +466,49 @@ fn insert_document_symbols(
     transaction: &Transaction<'_>,
     replacement: &DocumentSymbols,
 ) -> Result<(), StoreError> {
+    insert_symbol_documents(transaction, std::slice::from_ref(replacement))
+}
+
+fn insert_catalog_documents(
+    transaction: &Transaction<'_>,
+    documents: &[DocumentSymbols],
+    generation: i64,
+) -> Result<(), StoreError> {
+    const DOCUMENTS_PER_INSERT: usize = 64;
+    for chunk in documents.chunks(DOCUMENTS_PER_INSERT) {
+        let mut sql = String::from("INSERT INTO documents(uri, generation) VALUES ");
+        sql.push_str(&vec!["(?,?)"; chunk.len()].join(","));
+        let mut values = Vec::with_capacity(chunk.len() * 2);
+        for document in chunk {
+            values.push(SqlValue::Text(document.uri.clone()));
+            values.push(SqlValue::Integer(generation));
+        }
+        transaction
+            .execute(&sql, params_from_iter(values.iter()))
+            .map_err(map_sqlite_error)?;
+    }
+    Ok(())
+}
+
+fn insert_symbol_documents(
+    transaction: &Transaction<'_>,
+    documents: &[DocumentSymbols],
+) -> Result<(), StoreError> {
     const SYMBOLS_PER_INSERT: usize = 256;
     const VALUES_PER_SYMBOL: usize = 11;
+    let mut values = Vec::with_capacity(SYMBOLS_PER_INSERT * VALUES_PER_SYMBOL);
+    let mut row_count = 0usize;
 
-    for (chunk_index, chunk) in replacement.symbols.chunks(SYMBOLS_PER_INSERT).enumerate() {
-        let mut sql = String::from(
-            "INSERT INTO symbols(\
-                document_uri, ordinal, name, name_folded, acronym_folded, kind, \
-                container, start_line, start_character, end_line, end_character\
-             ) VALUES ",
-        );
-        let value_group = format!("({})", ["?"; VALUES_PER_SYMBOL].join(","));
-        sql.push_str(&vec![value_group; chunk.len()].join(","));
-
-        let mut values = Vec::with_capacity(chunk.len() * VALUES_PER_SYMBOL);
-        for (offset, symbol) in chunk.iter().enumerate() {
-            let ordinal = chunk_index
-                .checked_mul(SYMBOLS_PER_INSERT)
-                .and_then(|base| base.checked_add(offset))
-                .and_then(|ordinal| i64::try_from(ordinal).ok())
-                .ok_or_else(|| {
-                    StoreError::new(
-                        StoreErrorKind::InvalidData,
-                        "symbol ordinal exceeds SQLite integer range",
-                    )
-                })?;
+    for document in documents {
+        for (ordinal, symbol) in document.symbols.iter().enumerate() {
+            let ordinal = i64::try_from(ordinal).map_err(|_| {
+                StoreError::new(
+                    StoreErrorKind::InvalidData,
+                    "symbol ordinal exceeds SQLite integer range",
+                )
+            })?;
             values.extend([
-                SqlValue::Text(replacement.uri.clone()),
+                SqlValue::Text(document.uri.clone()),
                 SqlValue::Integer(ordinal),
                 SqlValue::Text(symbol.name.clone()),
                 SqlValue::Text(fold_for_search(&symbol.name)),
@@ -457,12 +523,38 @@ fn insert_document_symbols(
                 SqlValue::Integer(i64::from(symbol.range.end.line)),
                 SqlValue::Integer(i64::from(symbol.range.end.character)),
             ]);
+            row_count += 1;
+            if row_count == SYMBOLS_PER_INSERT {
+                insert_symbol_values(transaction, row_count, &values)?;
+                values.clear();
+                row_count = 0;
+            }
         }
-        transaction
-            .execute(&sql, params_from_iter(values.iter()))
-            .map_err(map_sqlite_error)?;
+    }
+    if row_count > 0 {
+        insert_symbol_values(transaction, row_count, &values)?;
     }
     Ok(())
+}
+
+fn insert_symbol_values(
+    transaction: &Transaction<'_>,
+    row_count: usize,
+    values: &[SqlValue],
+) -> Result<(), StoreError> {
+    const VALUES_PER_SYMBOL: usize = 11;
+    let mut sql = String::from(
+        "INSERT INTO symbols(\
+            document_uri, ordinal, name, name_folded, acronym_folded, kind, \
+            container, start_line, start_character, end_line, end_character\
+         ) VALUES ",
+    );
+    let value_group = format!("({})", ["?"; VALUES_PER_SYMBOL].join(","));
+    sql.push_str(&vec![value_group; row_count].join(","));
+    transaction
+        .execute(&sql, params_from_iter(values.iter()))
+        .map(|_| ())
+        .map_err(map_sqlite_error)
 }
 
 const NAME_PREFIX_SQL: &str = "SELECT name, kind, document_uri, container, \
@@ -651,6 +743,33 @@ fn read_rejected_documents(connection: &Connection) -> Result<Vec<String>, Store
         .map_err(map_sqlite_error)?;
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(map_sqlite_error)
+}
+
+fn read_committed_generation(connection: &Connection) -> Result<u64, StoreError> {
+    let generation: i64 = connection
+        .query_row(
+            "SELECT committed_generation FROM metadata WHERE id = 1",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(map_sqlite_error)?;
+    to_u64(generation, "committed_generation")
+}
+
+fn sqlite_generation(generation: u64) -> Result<i64, StoreError> {
+    i64::try_from(generation).map_err(|_| {
+        StoreError::new(
+            StoreErrorKind::InvalidGeneration,
+            format!("generation {generation} exceeds SQLite integer range"),
+        )
+    })
+}
+
+fn invalid_generation(next: u64, current: u64) -> StoreError {
+    StoreError::new(
+        StoreErrorKind::InvalidGeneration,
+        format!("generation {next} must be newer than committed generation {current}"),
+    )
 }
 
 fn verify_workspace_identity(
