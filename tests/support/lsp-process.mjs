@@ -6,8 +6,8 @@ import { fileURLToPath } from "node:url"
 export const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 
 export class LspProcess {
-  constructor() {
-    this.child = spawn(process.execPath, ["dist/server.cjs", "--stdio"], {
+  constructor({ serverPath = "dist/server.cjs" } = {}) {
+    this.child = spawn(process.execPath, [serverPath, "--stdio"], {
       cwd: projectRoot,
       stdio: ["pipe", "pipe", "pipe"],
     })
@@ -28,11 +28,26 @@ export class LspProcess {
   response(id, timeoutMs = 2_000) {
     const queued = this.messages.findIndex((message) => message.id === id)
     if (queued >= 0) return Promise.resolve(this.messages.splice(queued, 1)[0])
+    return this.waitFor(
+      (message) => message.id === id,
+      `LSP response ${id}`,
+      timeoutMs,
+    )
+  }
+
+  notification(method, predicate = () => true, timeoutMs = 2_000) {
+    const matches = (message) => message.method === method && predicate(message)
+    const queued = this.messages.findIndex(matches)
+    if (queued >= 0) return Promise.resolve(this.messages.splice(queued, 1)[0])
+    return this.waitFor(matches, `LSP notification ${method}`, timeoutMs)
+  }
+
+  waitFor(matches, description, timeoutMs) {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
-        reject(new Error(`Timed out waiting for LSP response ${id}. stderr: ${this.stderr}`))
+        reject(new Error(`Timed out waiting for ${description}. stderr: ${this.stderr}`))
       }, timeoutMs)
-      this.waiters.push({ id, resolve, timeout })
+      this.waiters.push({ matches, resolve, timeout })
     })
   }
 
@@ -57,7 +72,7 @@ export class LspProcess {
       if (this.buffer.length < bodyStart + length) return
       const message = JSON.parse(this.buffer.subarray(bodyStart, bodyStart + length).toString("utf8"))
       this.buffer = this.buffer.subarray(bodyStart + length)
-      const waiter = this.waiters.findIndex((candidate) => candidate.id === message.id)
+      const waiter = this.waiters.findIndex((candidate) => candidate.matches(message))
       if (waiter >= 0) {
         const [{ resolve, timeout }] = this.waiters.splice(waiter, 1)
         clearTimeout(timeout)
