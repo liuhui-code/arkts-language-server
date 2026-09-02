@@ -43,8 +43,12 @@ directory or development-extension symlink.
 
 The first full quality-gate run exposed a second RED: Node ran the two public
 installer suites concurrently, so both attempted to install dependencies and
-write the same build outputs; both failed after roughly 70 seconds. The GREEN
-keeps clean-checkout installation, skips dependency installation when the
-locked toolchain is already present, and serializes the process-level Node
-integration suites. This avoids concurrent writes to `dist` and the extension
-Cargo target without weakening either public installer test.
+write the same build outputs; both failed after roughly 70 seconds.
+
+The initial GREEN skipped dependency installation when `esbuild` happened to
+exist. Review found that this could silently reuse `node_modules` after
+`pnpm-lock.yaml` changed. The hardened installer writes an atomic SHA-256 stamp
+only after `pnpm install --frozen-lockfile` succeeds, and skips installation
+only when both the required binary and matching lockfile stamp exist. The
+public fake-toolchain test proves first install, unchanged-lock skip, and
+reinstall after a lockfile change without running a real release build.

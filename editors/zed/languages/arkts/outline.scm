@@ -26,6 +26,11 @@
   "type" @context
   name: (_) @name) @item
 
+(function_declaration
+  "function" @context
+  name: (_) @name
+  parameters: (formal_parameters) @context) @item
+
 (function_signature
   name: (_) @name
   parameters: (formal_parameters) @context) @item

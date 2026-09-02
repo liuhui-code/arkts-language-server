@@ -16,6 +16,7 @@ name = "arkts-zed-query-validator"
 version = "0.0.0"
 dependencies = [
  "cc",
+ "streaming-iterator",
  "tree-sitter",
  "tree-sitter-language",
 ]

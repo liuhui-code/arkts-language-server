@@ -56,6 +56,21 @@ validated .../indents.scm
 validated .../brackets.scm
 ```
 
+The review-hardened gate no longer names those four files. It discovers every
+shipped `.scm` recursively, so a future Zed query cannot bypass compilation.
+It also runs capture-level parser tests before compiling all discovered files.
+
+The manifest parser reads `repository` and `rev` only from the exact
+`[grammars.arkts]` table. Before compilation, the cache must match that declared
+origin and revision and have no modified or untracked files. This prevents a
+matching `HEAD` from masking locally changed `parser.c` or `scanner.c` inputs.
+
+`highlights.scm` now embeds the pinned `tree-sitter-javascript` v0.23.1
+baseline plus the ArkTS delta. The real parser regression fixture asserts
+captures for comments, constants, functions, names, strings, returns, numbers,
+and ArkTS structs. The outline fixture asserts struct, top-level function, and
+method items.
+
 ## Language configuration RED → GREEN
 
 RED:
