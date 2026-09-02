@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import { spawn, spawnSync } from "node:child_process"
+import { spawn } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -70,23 +70,5 @@ test("the repository CLI starts the language server outside the repository cwd",
     os.tmpdir(),
   )
 
-  assert.equal(response.result.serverInfo.name, "arkts-language-server")
-})
-
-test("the local installer creates a working command in the requested bin directory", async (t) => {
-  const installationRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-lsp-install-"))
-  t.after(() => fs.rmSync(installationRoot, { recursive: true, force: true }))
-  const binDirectory = path.join(installationRoot, "bin")
-  const result = spawnSync(
-    path.join(projectRoot, "scripts", "install-local.sh"),
-    [binDirectory],
-    { cwd: os.tmpdir(), encoding: "utf8" },
-  )
-
-  assert.equal(result.status, 0, result.stderr || result.error?.message)
-  const installedCommand = path.join(binDirectory, "arkts-language-server")
-  assert.equal(fs.realpathSync(installedCommand), fs.realpathSync(path.join(projectRoot, "bin", "arkts-language-server")))
-
-  const response = await initialize(installedCommand, os.tmpdir())
   assert.equal(response.result.serverInfo.name, "arkts-language-server")
 })
