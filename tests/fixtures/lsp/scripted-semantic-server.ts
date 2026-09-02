@@ -61,6 +61,14 @@ class ScriptedSemanticEngine implements SemanticEnginePort {
     return { documentVersion: query.document.version, value: [] }
   }
 
+  async hover(query: SemanticQuery) {
+    return { documentVersion: query.document.version, value: null }
+  }
+
+  async signatureHelp(query: SemanticQuery) {
+    return { documentVersion: query.document.version, value: null }
+  }
+
   dispose(): void {
     process.stderr.write("SCRIPTED_DISPOSE\n")
   }

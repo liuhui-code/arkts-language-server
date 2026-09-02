@@ -10,6 +10,7 @@ import type {
   SemanticDefinitionCandidate,
   SemanticDiagnostic,
   SemanticDocumentPosition,
+  SemanticHoverInfo,
   SemanticSignatureHelp,
   SemanticUnsupportedResult,
   SemanticUsageResult,
@@ -226,6 +227,26 @@ export class TypeScriptLanguageServiceEngine {
       this.service.getSyntacticDiagnostics(filePath),
       this.service.getSemanticDiagnostics(filePath),
     )
+  }
+
+  hover(position: SemanticDocumentPosition): SemanticHoverInfo | null {
+    const filePath = path.resolve(position.path)
+    const script = this.scripts.get(filePath)
+    if (!script) return null
+    script.lastAccess = ++this.accessClock
+    const sourceOffset = lineColumnToOffset(script.sourceContent, position.line, position.column)
+    const offset = script.virtualDocument.toGeneratedOffset(sourceOffset)
+    const info = this.service.getQuickInfoAtPosition(filePath, offset)
+    if (!info) return null
+
+    return {
+      signature: ts.displayPartsToString(info.displayParts ?? []),
+      documentation: quickInfoDocumentation(info),
+      range: script.virtualDocument.generatedSpanToSourceRange(
+        info.textSpan.start,
+        info.textSpan.length,
+      ),
+    }
   }
 
   rename(
@@ -455,6 +476,15 @@ function completionKind(kind: ts.ScriptElementKind): string {
 function optionalDisplayParts(parts: ts.SymbolDisplayPart[]) {
   const value = ts.displayPartsToString(parts)
   return value || undefined
+}
+
+function quickInfoDocumentation(info: ts.QuickInfo): string | undefined {
+  const documentation = optionalDisplayParts(info.documentation ?? [])
+  const tags = (info.tags ?? []).map((tag) => {
+    const text = optionalDisplayParts(tag.text ?? [])
+    return `@${tag.name}${text ? ` ${text}` : ""}`
+  })
+  return [documentation, ...tags].filter((part): part is string => Boolean(part)).join("\n\n") || undefined
 }
 
 function safeRead(filePath: string): string | null {

@@ -20,6 +20,7 @@ import type { ProjectResolverPort } from "../contracts/project-resolver.js"
 import { SingleRootProjectResolver } from "../project/single-root-project-resolver.js"
 import { LegacySemanticEngine } from "../semantic/legacy-semantic-engine.js"
 import { RequestFreshness } from "./request-freshness.js"
+import { registerSemanticCapabilities } from "./register-semantic-capabilities.js"
 
 export interface LanguageServerServices {
   projects: ProjectResolverPort
@@ -47,6 +48,12 @@ export function runLanguageServer(services?: LanguageServerServices): void {
       throw new ResponseError(ErrorCodes.InvalidRequest, "Language server is shutting down")
     }
   }
+  const semanticCapabilities = registerSemanticCapabilities({
+    connection,
+    documents,
+    semantic,
+    snapshot: (document) => snapshot(document, projects),
+  })
 
   connection.onInitialize((params: InitializeParams) => {
     projects.configure(initialRootUris(params))
@@ -63,6 +70,7 @@ export function runLanguageServer(services?: LanguageServerServices): void {
         },
         completionProvider: { triggerCharacters: ["."] },
         definitionProvider: true,
+        ...semanticCapabilities,
       },
     }
   })

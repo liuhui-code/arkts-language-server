@@ -28,6 +28,29 @@ export interface SemanticDefinition {
   range: TextRange
 }
 
+export interface SemanticSignatureParameter {
+  label: string
+  documentation?: string
+}
+
+export interface SemanticSignature {
+  label: string
+  documentation?: string
+  parameters: SemanticSignatureParameter[]
+}
+
+export interface SemanticSignatureHelp {
+  signatures: SemanticSignature[]
+  activeSignature: number
+  activeParameter: number
+}
+
+export interface SemanticHover {
+  signature: string
+  documentation?: string
+  range: TextRange
+}
+
 export interface SemanticQuery {
   document: DocumentSnapshot
   position: TextPosition
@@ -44,5 +67,7 @@ export interface SemanticEnginePort {
   close(documentUri: DocumentUri): void
   complete(query: SemanticQuery): Promise<VersionedSemanticResult<SemanticCompletion[]>>
   define(query: SemanticQuery): Promise<VersionedSemanticResult<SemanticDefinition[]>>
+  hover(query: SemanticQuery): Promise<VersionedSemanticResult<SemanticHover | null>>
+  signatureHelp(query: SemanticQuery): Promise<VersionedSemanticResult<SemanticSignatureHelp | null>>
   dispose(): void
 }

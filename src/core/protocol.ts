@@ -126,6 +126,12 @@ export interface SemanticSignatureHelp {
   activeParameter: number
 }
 
+export interface SemanticHoverInfo {
+  signature: string
+  documentation?: string
+  range: SemanticTextRange
+}
+
 export interface SemanticDefinitionTarget {
   path: string
   line: number

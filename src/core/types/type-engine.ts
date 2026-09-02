@@ -3,6 +3,7 @@ import type {
   SemanticDefinitionCandidate,
   SemanticDiagnostic,
   SemanticDocumentPosition,
+  SemanticHoverInfo,
   SemanticSignatureHelp,
   SemanticUsageResult,
   SemanticWorkspaceEditPlan,
@@ -29,6 +30,7 @@ export interface SemanticTypeQueryContext {
   define(position: SemanticDocumentPosition): SemanticDefinitionCandidate[]
   usages(position: SemanticDocumentPosition): SemanticUsageResult[]
   diagnostics(position: SemanticDocumentPosition): SemanticDiagnostic[]
+  hover(position: SemanticDocumentPosition): SemanticHoverInfo | null
   rename(position: SemanticDocumentPosition, newName: string): SemanticWorkspaceEditPlan | SemanticUnsupportedResult
   signatureHelp(position: SemanticDocumentPosition): SemanticSignatureHelp | null
 }
@@ -61,6 +63,7 @@ export class SemanticTypeEngineRegistry {
       define: (position) => entry.engine.define(position),
       usages: (position) => entry.engine.usages(position),
       diagnostics: (position) => entry.engine.diagnostics(position),
+      hover: (position) => entry.engine.hover(position),
       rename: (position, newName) => entry.engine.rename(position, newName),
       signatureHelp: (position) => entry.engine.signatureHelp(position),
     }
