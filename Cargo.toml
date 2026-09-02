@@ -1,4 +1,8 @@
 [workspace]
-members = ["crates/index-core"]
+members = [
+    "crates/index-core",
+    "crates/index-sidecar",
+    "crates/index-sqlite",
+]
 exclude = ["editors/zed"]
 resolver = "2"

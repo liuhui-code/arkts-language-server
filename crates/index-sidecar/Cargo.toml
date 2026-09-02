@@ -1,0 +1,11 @@
+[package]
+name = "arkts-index-sidecar"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+arkts-index-core = { path = "../index-core" }
+arkts-index-sqlite = { path = "../index-sqlite" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
