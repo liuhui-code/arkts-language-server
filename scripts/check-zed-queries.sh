@@ -75,6 +75,17 @@ validated_grammar_source() {
   printf '%s\n' "$grammar_source_value"
 }
 
+normalize_repository_url() {
+  repository_url=$1
+  case $repository_url in
+    */) repository_url=${repository_url%/} ;;
+  esac
+  case $repository_url in
+    *.git) repository_url=${repository_url%.git} ;;
+  esac
+  printf '%s\n' "$repository_url"
+}
+
 verify_grammar_cache() {
   grammar_manifest=$1
   grammar_cache_to_verify=$2
@@ -88,7 +99,9 @@ verify_grammar_cache() {
     return 1
   fi
   actual_repository=$(git -C "$grammar_cache_to_verify" remote get-url origin)
-  if [ "$actual_repository" != "$grammar_repository_value" ]; then
+  normalized_actual_repository=$(normalize_repository_url "$actual_repository")
+  normalized_expected_repository=$(normalize_repository_url "$grammar_repository_value")
+  if [ "$normalized_actual_repository" != "$normalized_expected_repository" ]; then
     echo "ArkTS grammar cache origin is $actual_repository; expected $grammar_repository_value" >&2
     return 1
   fi

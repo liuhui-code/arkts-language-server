@@ -47,8 +47,10 @@ write the same build outputs; both failed after roughly 70 seconds.
 
 The initial GREEN skipped dependency installation when `esbuild` happened to
 exist. Review found that this could silently reuse `node_modules` after
-`pnpm-lock.yaml` changed. The hardened installer writes an atomic SHA-256 stamp
-only after `pnpm install --frozen-lockfile` succeeds, and skips installation
-only when both the required binary and matching lockfile stamp exist. The
-public fake-toolchain test proves first install, unchanged-lock skip, and
-reinstall after a lockfile change without running a real release build.
+`pnpm-lock.yaml` changed. The hardened installer writes an atomic dependency
+fingerprint only after `pnpm install --frozen-lockfile` succeeds. It includes
+the lockfile SHA-256, platform, architecture, Node major and module ABI, and
+pnpm version, so copied `node_modules` cannot false-hit on another toolchain.
+The public fake-toolchain test proves first install, unchanged-fingerprint
+skip, and reinstall after lockfile or pnpm changes without running a real
+release build. The same test requires the WASM build to use Cargo `--locked`.

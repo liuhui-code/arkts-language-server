@@ -19,8 +19,10 @@ Parent revision: `e5697ca`
    and discovers every shipped `.scm`.
 4. `node --test tests/local-delivery-config.test.mjs` observed zero frozen
    installs when `esbuild` existed even though no valid lockfile state was
-   recorded. The GREEN installer uses an atomic SHA-256 lockfile stamp and
-   reruns `pnpm install --frozen-lockfile` after a lockfile change.
+   recorded. The GREEN installer uses an atomic fingerprint covering lockfile
+   SHA-256, platform, architecture, Node major/module ABI, and pnpm version,
+   and reruns `pnpm install --frozen-lockfile` after any change. Its WASM build
+   is also locked and asserted through the public fake-toolchain test.
 5. The workflow contract failed because `pnpm check:fast` was absent. The GREEN
    workflow installs a pinned Node/pnpm toolchain, performs the frozen install,
    runs the Node gate, then runs real query and locked WASM gates.
@@ -29,7 +31,7 @@ Parent revision: `e5697ca`
 
 ```text
 node --test tests/zed-query-gate.test.mjs tests/local-delivery-config.test.mjs
-9 tests passed
+10 tests passed
 
 ./scripts/check-zed-queries.sh
 2 parser/capture tests passed
