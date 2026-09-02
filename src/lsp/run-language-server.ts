@@ -32,6 +32,7 @@ export function runLanguageServer(): void {
 
   connection.onInitialize((params: InitializeParams) => {
     projects.configure(initialRootUris(params))
+    semanticCapabilities.configure(params.capabilities)
     return {
       serverInfo: {
         name: "arkts-language-server",
@@ -45,7 +46,7 @@ export function runLanguageServer(): void {
         },
         completionProvider: { triggerCharacters: ["."] },
         definitionProvider: true,
-        ...semanticCapabilities,
+        ...semanticCapabilities.capabilities,
       },
     }
   })

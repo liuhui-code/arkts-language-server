@@ -132,6 +132,29 @@ export interface SemanticHoverInfo {
   range: SemanticTextRange
 }
 
+export type SemanticDocumentSymbolKind =
+  | "struct"
+  | "class"
+  | "interface"
+  | "enum"
+  | "enumMember"
+  | "function"
+  | "method"
+  | "property"
+  | "constructor"
+  | "module"
+  | "type"
+  | "variable"
+
+export interface SemanticDocumentSymbolInfo {
+  name: string
+  detail?: string
+  kind: SemanticDocumentSymbolKind
+  range: SemanticTextRange
+  selectionRange: SemanticTextRange
+  children?: SemanticDocumentSymbolInfo[]
+}
+
 export interface SemanticDefinitionTarget {
   path: string
   line: number

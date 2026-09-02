@@ -10,6 +10,8 @@ import type {
   SemanticDefinitionCandidate,
   SemanticDiagnostic,
   SemanticDocumentPosition,
+  SemanticDocumentSymbolInfo,
+  SemanticDocumentSymbolKind,
   SemanticHoverInfo,
   SemanticSignatureHelp,
   SemanticUnsupportedResult,
@@ -227,6 +229,17 @@ export class TypeScriptLanguageServiceEngine {
       this.service.getSyntacticDiagnostics(filePath),
       this.service.getSemanticDiagnostics(filePath),
     )
+  }
+
+  documentSymbols(position: SemanticDocumentPosition): SemanticDocumentSymbolInfo[] {
+    const filePath = path.resolve(position.path)
+    const script = this.scripts.get(filePath)
+    if (!script) return []
+    script.lastAccess = ++this.accessClock
+    const tree = this.service.getNavigationTree(filePath)
+    return (tree.childItems ?? [])
+      .flatMap((item) => navigationSymbol(item, script))
+      .sort(compareDocumentSymbols)
   }
 
   hover(position: SemanticDocumentPosition): SemanticHoverInfo | null {
@@ -485,6 +498,80 @@ function quickInfoDocumentation(info: ts.QuickInfo): string | undefined {
     return `@${tag.name}${text ? ` ${text}` : ""}`
   })
   return [documentation, ...tags].filter((part): part is string => Boolean(part)).join("\n\n") || undefined
+}
+
+function navigationSymbol(
+  item: ts.NavigationTree,
+  script: ScriptRecord,
+): SemanticDocumentSymbolInfo[] {
+  const span = item.spans[0]
+  if (!span) return []
+  const kind = documentSymbolKind(item, script)
+  const children = (item.childItems ?? [])
+    .flatMap((child) => navigationSymbol(child, script))
+    .sort(compareDocumentSymbols)
+  if (!kind) return children
+  const nameSpan = item.nameSpan ?? { start: span.start, length: 0 }
+  return [{
+    name: item.text,
+    kind,
+    range: script.virtualDocument.generatedSpanToSourceRange(span.start, span.length),
+    selectionRange: script.virtualDocument.generatedSpanToSourceRange(
+      nameSpan.start,
+      nameSpan.length,
+    ),
+    children: children.length > 0 ? children : undefined,
+  }]
+}
+
+function documentSymbolKind(
+  item: ts.NavigationTree,
+  script: ScriptRecord,
+): SemanticDocumentSymbolKind | null {
+  switch (item.kind) {
+    case ts.ScriptElementKind.classElement:
+    case ts.ScriptElementKind.localClassElement:
+      return isArktsStruct(item, script) ? "struct" : "class"
+    case ts.ScriptElementKind.interfaceElement: return "interface"
+    case ts.ScriptElementKind.enumElement: return "enum"
+    case ts.ScriptElementKind.enumMemberElement: return "enumMember"
+    case ts.ScriptElementKind.functionElement:
+    case ts.ScriptElementKind.localFunctionElement:
+      return "function"
+    case ts.ScriptElementKind.memberFunctionElement:
+    case ts.ScriptElementKind.memberGetAccessorElement:
+    case ts.ScriptElementKind.memberSetAccessorElement:
+      return "method"
+    case ts.ScriptElementKind.memberVariableElement:
+    case ts.ScriptElementKind.memberAccessorVariableElement:
+      return "property"
+    case ts.ScriptElementKind.constructorImplementationElement: return "constructor"
+    case ts.ScriptElementKind.moduleElement: return "module"
+    case ts.ScriptElementKind.typeElement: return "type"
+    case ts.ScriptElementKind.variableElement:
+    case ts.ScriptElementKind.localVariableElement:
+    case ts.ScriptElementKind.variableUsingElement:
+    case ts.ScriptElementKind.variableAwaitUsingElement:
+      return "variable"
+    default: return null
+  }
+}
+
+function isArktsStruct(item: ts.NavigationTree, script: ScriptRecord): boolean {
+  const span = item.spans[0]
+  const nameSpan = item.nameSpan
+  if (!span || !nameSpan) return false
+  const sourceStart = script.virtualDocument.toSourceOffset(span.start)
+  const sourceNameStart = script.virtualDocument.toSourceOffset(nameSpan.start)
+  return /\bstruct\s*$/.test(script.sourceContent.slice(sourceStart, sourceNameStart))
+}
+
+function compareDocumentSymbols(
+  left: SemanticDocumentSymbolInfo,
+  right: SemanticDocumentSymbolInfo,
+): number {
+  return left.range.startLine - right.range.startLine
+    || left.range.startColumn - right.range.startColumn
 }
 
 function safeRead(filePath: string): string | null {

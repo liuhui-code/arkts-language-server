@@ -9,6 +9,8 @@ import type { ProjectResolverPort } from "../contracts/project-resolver.js"
 import type {
   SemanticCompletion,
   SemanticCompletionKind,
+  SemanticDocumentQuery,
+  SemanticDocumentSymbol,
   SemanticEnginePort,
   SemanticHover,
   SemanticQuery,
@@ -16,7 +18,10 @@ import type {
   VersionedSemanticResult,
   SemanticDefinition,
 } from "../contracts/semantic-engine.js"
-import type { SemanticDocumentPosition } from "../core/protocol.js"
+import type {
+  SemanticDocumentPosition,
+  SemanticDocumentSymbolInfo,
+} from "../core/protocol.js"
 import { SemanticTypeEngineRegistry } from "../core/types/type-engine.js"
 import { SemanticDocumentStore } from "../core/workspace/document-store.js"
 
@@ -72,6 +77,18 @@ export class LegacySemanticEngine implements SemanticEnginePort {
       }
     })
     return { documentVersion: query.document.version, value }
+  }
+
+  async documentSymbols(
+    query: SemanticDocumentQuery,
+  ): Promise<VersionedSemanticResult<SemanticDocumentSymbol[]>> {
+    assertActive(query.signal)
+    this.sync(query.document)
+    const prepared = this.prepare(query.document, { line: 0, character: 0 })
+    return {
+      documentVersion: query.document.version,
+      value: prepared.engine.documentSymbols(prepared.position).map(toPublicDocumentSymbol),
+    }
   }
 
   async signatureHelp(
@@ -154,6 +171,17 @@ function toPublicRange(range: {
   return {
     start: { line: range.startLine - 1, character: range.startColumn - 1 },
     end: { line: range.endLine - 1, character: range.endColumn - 1 },
+  }
+}
+
+function toPublicDocumentSymbol(symbol: SemanticDocumentSymbolInfo): SemanticDocumentSymbol {
+  return {
+    name: symbol.name,
+    detail: symbol.detail,
+    kind: symbol.kind,
+    range: toPublicRange(symbol.range),
+    selectionRange: toPublicRange(symbol.selectionRange),
+    children: symbol.children?.map(toPublicDocumentSymbol),
   }
 }
 
