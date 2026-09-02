@@ -1,0 +1,35 @@
+name: Zed extension
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/zed-extension.yml"
+      - "editors/zed/**"
+      - "scripts/check-zed-queries.sh"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/zed-extension.yml"
+      - "editors/zed/**"
+      - "scripts/check-zed-queries.sh"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Install the Zed WebAssembly target
+        run: rustup target add wasm32-wasip2
+
+      - name: Compile every ArkTS query against the pinned grammar
+        run: ./scripts/check-zed-queries.sh
+
+      - name: Check and build the Zed adapter
+        working-directory: editors/zed
+        run: |
+          cargo fmt --check
+          cargo build --locked --target wasm32-wasip2 --release

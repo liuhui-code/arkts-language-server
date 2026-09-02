@@ -38,3 +38,13 @@ node --test tests/local-delivery.test.mjs
 The command only writes build outputs inside the checkout and the explicitly
 requested bin directory. It does not read or write Zed's global extensions
 directory or development-extension symlink.
+
+## Integration concurrency regression
+
+The first full quality-gate run exposed a second RED: Node ran the two public
+installer suites concurrently, so both attempted to install dependencies and
+write the same build outputs; both failed after roughly 70 seconds. The GREEN
+keeps clean-checkout installation, skips dependency installation when the
+locked toolchain is already present, and serializes the process-level Node
+integration suites. This avoids concurrent writes to `dist` and the extension
+Cargo target without weakening either public installer test.
