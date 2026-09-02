@@ -1,0 +1,23 @@
+id = "arkts"
+name = "ArkTS"
+description = "Local ArkTS support backed by the arkts-language-server spike"
+version = "0.0.1"
+schema_version = 1
+authors = ["ArkTS Language Server contributors"]
+repository = "https://github.com/liuhui-code/arkts-language-server"
+license = "MIT"
+
+[lib]
+kind = "Rust"
+version = "0.7.0"
+
+[grammars.arkts]
+repository = "https://github.com/harmony-contrib/tree-sitter-arkts"
+rev = "a16e9d2d5c63a1cd02aa5edd4c4b2309f4da16fa"
+
+[language_servers.arkts-language-server]
+name = "ArkTS Language Server"
+languages = ["ArkTS"]
+
+[language_servers.arkts-language-server.language_ids]
+"ArkTS" = "arkts"

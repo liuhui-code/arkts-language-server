@@ -1,0 +1,7 @@
+node_modules/
+dist/
+editors/zed/target/
+editors/zed/extension.wasm
+editors/zed/grammars/*.wasm
+.DS_Store
+*.log
