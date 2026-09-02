@@ -41,6 +41,7 @@ test("the local installer reruns frozen install when its dependency fingerprint 
   fs.mkdirSync(path.join(fixture, "node_modules", ".bin"), { recursive: true })
   fs.mkdirSync(fakeBin)
   fs.copyFileSync(path.join(projectRoot, "scripts", "install-local.sh"), path.join(fixture, "scripts", "install-local.sh"))
+  fs.writeFileSync(path.join(fixture, "package.json"), '{"version":"0.0.1"}\n')
   fs.writeFileSync(path.join(fixture, "pnpm-lock.yaml"), "lockfileVersion: one\n")
   fs.writeFileSync(path.join(fixture, "bin", "arkts-language-server"), "#!/bin/sh\nexit 0\n")
   fs.writeFileSync(path.join(fixture, "node_modules", ".bin", "esbuild"), "#!/bin/sh\nexit 0\n")
@@ -50,12 +51,25 @@ if [ "$1" = "--version" ]; then
   exit 0
 fi
 printf '%s\\n' "$*" >> "$ARKTS_INSTALL_TEST_LOG"
+if [ "$1" = "build" ]; then
+  mkdir -p dist
+  printf '%s\\n' 'process.stdin.resume()' > dist/server.cjs
+fi
 exit 0
 `)
   fs.writeFileSync(path.join(fakeBin, "cargo"), `#!/bin/sh
 printf 'cargo %s\\n' "$*" >> "$ARKTS_INSTALL_TEST_LOG"
-mkdir -p "$CARGO_TARGET_DIR/wasm32-wasip2/release"
-printf '\\000asm' > "$CARGO_TARGET_DIR/wasm32-wasip2/release/zed_arkts_local.wasm"
+case "$CARGO_TARGET_DIR" in
+  */editors/zed/target)
+    mkdir -p "$CARGO_TARGET_DIR/wasm32-wasip2/release"
+    printf '\\000asm' > "$CARGO_TARGET_DIR/wasm32-wasip2/release/zed_arkts_local.wasm"
+    ;;
+  *)
+    mkdir -p "$CARGO_TARGET_DIR/release"
+    printf '#!/bin/sh\\nexit 0\\n' > "$CARGO_TARGET_DIR/release/arkts-index-sidecar"
+    chmod 755 "$CARGO_TARGET_DIR/release/arkts-index-sidecar"
+    ;;
+esac
 exit 0
 `)
   for (const executable of [
@@ -116,8 +130,10 @@ exit 0
       .trim()
       .split("\n")
       .filter((command) => command.startsWith("cargo build"))
-    assert.equal(cargoBuilds.length, 4)
+    assert.equal(cargoBuilds.length, 8)
     for (const command of cargoBuilds) assert.match(command, /^cargo build --locked /)
+    assert.equal(cargoBuilds.filter((command) => command.includes("--package arkts-index-sidecar")).length, 4)
+    assert.equal(cargoBuilds.filter((command) => command.includes("--target wasm32-wasip2")).length, 4)
   } finally {
     fs.rmSync(fixture, { recursive: true, force: true })
   }

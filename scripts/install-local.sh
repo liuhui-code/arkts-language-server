@@ -12,6 +12,8 @@ project_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
 source_command=$project_root/bin/arkts-language-server
 install_dir=${1:-"${HOME}/.local/bin"}
 installed_command=$install_dir/arkts-language-server
+install_prefix=$(dirname -- "$install_dir")
+libexec_root=$install_prefix/libexec/arkts-language-server
 extension_dir=$project_root/editors/zed
 extension_target_dir=$extension_dir/target
 extension_build=$extension_target_dir/wasm32-wasip2/release/zed_arkts_local.wasm
@@ -28,10 +30,17 @@ for required_command in node pnpm cargo; do
 done
 
 if [ -e "$installed_command" ] || [ -L "$installed_command" ]; then
-  if ! { [ -L "$installed_command" ] && [ "$(readlink "$installed_command")" = "$source_command" ]; }; then
-    echo "Refusing to replace existing path: $installed_command" >&2
-    exit 1
+  existing_target=
+  if [ -L "$installed_command" ]; then
+    existing_target=$(readlink "$installed_command")
   fi
+  case $existing_target in
+    "$source_command"|"$libexec_root"/*) ;;
+    *)
+      echo "Refusing to replace existing path: $installed_command" >&2
+      exit 1
+      ;;
+  esac
 fi
 
 if [ ! -f "$lockfile" ]; then
@@ -78,12 +87,49 @@ cp "$extension_build" "$extension_tmp"
 mv "$extension_tmp" "$extension_wasm"
 trap - EXIT HUP INT TERM
 
-mkdir -p "$install_dir"
-if [ ! -L "$installed_command" ]; then
-  ln -s "$source_command" "$installed_command"
-  echo "Installed arkts-language-server at $installed_command"
-else
-  echo "Updated arkts-language-server at $installed_command"
+package_version=$(node -e '
+  const version = require(process.argv[1]).version
+  if (typeof version !== "string" || !/^[A-Za-z0-9._-]+$/.test(version)) process.exit(1)
+  process.stdout.write(version)
+' "$project_root/package.json")
+release_fingerprint=$(node -e '
+  const crypto = require("node:crypto")
+  const fs = require("node:fs")
+  const digest = crypto.createHash("sha256")
+  for (const file of process.argv.slice(1)) {
+    digest.update(fs.readFileSync(file))
+    digest.update("\0")
+  }
+  process.stdout.write(digest.digest("hex"))
+' "$source_command" "$project_root/dist/server.cjs" \
+  "$project_root/target/release/arkts-index-sidecar")
+release_id=$package_version-$release_fingerprint
+release_dir=$libexec_root/$release_id
+staging_dir=$libexec_root/.staging-$release_id-$$
+command_tmp=$installed_command.tmp.$$
+cleanup_installation() {
+  rm -rf "$staging_dir"
+  rm -f "$command_tmp"
+}
+trap cleanup_installation EXIT HUP INT TERM
+
+mkdir -p "$staging_dir/bin" "$staging_dir/dist" "$staging_dir/target/release"
+cp "$source_command" "$staging_dir/bin/arkts-language-server"
+cp "$project_root/dist/server.cjs" "$staging_dir/dist/server.cjs"
+cp "$project_root/target/release/arkts-index-sidecar" \
+  "$staging_dir/target/release/arkts-index-sidecar"
+chmod 755 "$staging_dir/bin/arkts-language-server" \
+  "$staging_dir/target/release/arkts-index-sidecar"
+
+mkdir -p "$libexec_root" "$install_dir"
+if [ ! -d "$release_dir" ]; then
+  mv "$staging_dir" "$release_dir"
 fi
+ln -s "$release_dir/bin/arkts-language-server" "$command_tmp"
+mv -f "$command_tmp" "$installed_command"
+cleanup_installation
+trap - EXIT HUP INT TERM
+
+echo "Installed arkts-language-server $release_id at $installed_command"
 echo "Built Zed extension at $extension_wasm"
 echo "Ensure $install_dir is on PATH before starting Zed."
