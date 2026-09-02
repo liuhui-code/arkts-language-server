@@ -31,7 +31,10 @@ if [ -e "$installed_command" ] || [ -L "$installed_command" ]; then
   fi
 fi
 
-(cd "$project_root" && pnpm install --frozen-lockfile && pnpm build)
+if [ ! -x "$project_root/node_modules/.bin/esbuild" ]; then
+  (cd "$project_root" && pnpm install --frozen-lockfile)
+fi
+(cd "$project_root" && pnpm build)
 CARGO_TARGET_DIR=$extension_target_dir \
   cargo build --manifest-path "$extension_dir/Cargo.toml" --target wasm32-wasip2 --release
 
