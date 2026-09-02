@@ -123,14 +123,30 @@ exit 0
   }
 })
 
-test("the Zed workflow runs the Node gate before real query and WebAssembly gates", () => {
+test("the Zed workflow covers every release input and runs the complete release gate", () => {
   const workflow = fs.readFileSync(zedWorkflowPath, "utf8")
-  const nodeGate = workflow.indexOf("pnpm check:fast")
-  const queryGate = workflow.indexOf("./scripts/check-zed-queries.sh")
-  const wasmGate = workflow.indexOf("cargo build --locked --target wasm32-wasip2 --release")
 
-  assert.ok(nodeGate >= 0, "missing pnpm check:fast")
-  assert.ok(queryGate > nodeGate, "query validation must follow the Node gate")
-  assert.ok(wasmGate > queryGate, "the locked WASM build must follow query validation")
+  for (const releaseInput of ["Cargo.toml", "Cargo.lock", "crates/**", "bin/**"]) {
+    const occurrences = workflow.split(`- "${releaseInput}"`).length - 1
+    assert.equal(occurrences, 2, `${releaseInput} must trigger pull-request and main-push validation`)
+  }
+
+  const orderedGates = [
+    "pnpm check:fast",
+    "cargo fmt --all --check",
+    "cargo clippy --locked --workspace --all-targets -- -D warnings",
+    "cargo test --locked --workspace --all-targets",
+    "cargo build --locked --workspace --release",
+    "./scripts/check-zed-queries.sh",
+    "cargo build --locked --target wasm32-wasip2 --release",
+    "pnpm check:release",
+  ]
+  let previousGate = -1
+  for (const gate of orderedGates) {
+    const gatePosition = workflow.indexOf(gate)
+    assert.ok(gatePosition > previousGate, `${gate} must follow the preceding release gate`)
+    previousGate = gatePosition
+  }
+
   assert.match(workflow, /pnpm install --frozen-lockfile/)
 })

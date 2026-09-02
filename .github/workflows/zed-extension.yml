@@ -9,6 +9,10 @@ on:
       - "scripts/install-local.sh"
       - "src/**"
       - "tests/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/**"
+      - "bin/**"
       - "package.json"
       - "pnpm-lock.yaml"
       - "tsconfig.json"
@@ -21,6 +25,10 @@ on:
       - "scripts/install-local.sh"
       - "src/**"
       - "tests/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/**"
+      - "bin/**"
       - "package.json"
       - "pnpm-lock.yaml"
       - "tsconfig.json"
@@ -49,6 +57,18 @@ jobs:
       - name: Run the fast Node quality gate
         run: pnpm check:fast
 
+      - name: Check Rust formatting
+        run: cargo fmt --all --check
+
+      - name: Lint the Rust workspace
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
+
+      - name: Test the Rust workspace
+        run: cargo test --locked --workspace --all-targets
+
+      - name: Build the production index sidecar
+        run: cargo build --locked --workspace --release
+
       - name: Install the Zed WebAssembly target
         run: rustup target add wasm32-wasip2
 
@@ -60,3 +80,6 @@ jobs:
         run: |
           cargo fmt --check
           cargo build --locked --target wasm32-wasip2 --release
+
+      - name: Run the release acceptance gate
+        run: pnpm check:release
