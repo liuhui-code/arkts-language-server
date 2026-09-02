@@ -1,5 +1,6 @@
 node_modules/
 dist/
+/target/
 editors/zed/target/
 editors/zed/extension.wasm
 editors/zed/grammars/*.wasm
