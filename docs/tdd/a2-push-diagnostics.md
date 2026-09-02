@@ -36,7 +36,7 @@ Focused result: `3/3` passed.
 The first `pnpm check:fast` attempt reached 28/29 and exposed an independent
 gate-composition defect: the newly merged clean-install acceptance test ran two
 full pnpm/Cargo builds concurrently with the fast LSP suite, causing a 2-second
-initialize timeout. The release-only build test must be separated from the
-fast semantic gate before this branch is merged; the diagnostics tests
-themselves remained GREEN in that run.
-
+initialize timeout. The release-only build test was then separated from the
+fast semantic gate; the diagnostics tests themselves remained GREEN in that
+run. After integrating the independent gate fix, `pnpm check:fast` completed
+`27/27` with all three diagnostics transcripts GREEN.
