@@ -1,9 +1,6 @@
 use zed::{LanguageServerId, Worktree};
 use zed_extension_api as zed;
 
-const NODE_PATH: &str = "/usr/local/bin/node";
-const SERVER_PATH: &str = "/Users/liuhui/Documents/code/arkts-language-server/dist/server.cjs";
-
 struct ArkTsExtension;
 
 impl zed::Extension for ArkTsExtension {
@@ -14,11 +11,16 @@ impl zed::Extension for ArkTsExtension {
     fn language_server_command(
         &mut self,
         _language_server_id: &LanguageServerId,
-        _worktree: &Worktree,
+        worktree: &Worktree,
     ) -> Result<zed::Command, String> {
+        let command = worktree.which("arkts-language-server").ok_or_else(|| {
+            "ArkTS language server was not found. Install arkts-language-server and ensure it is available on PATH."
+                .to_string()
+        })?;
+
         Ok(zed::Command {
-            command: NODE_PATH.to_string(),
-            args: vec![SERVER_PATH.to_string(), "--stdio".to_string()],
+            command,
+            args: vec!["--stdio".to_string()],
             env: Vec::new(),
         })
     }

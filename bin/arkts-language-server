@@ -1,0 +1,29 @@
+#!/bin/sh
+
+set -eu
+
+launcher_path=$0
+while [ -L "$launcher_path" ]; do
+  launcher_dir=$(CDPATH= cd -- "$(dirname -- "$launcher_path")" && pwd)
+  link_target=$(readlink "$launcher_path")
+  case $link_target in
+    /*) launcher_path=$link_target ;;
+    *) launcher_path=$launcher_dir/$link_target ;;
+  esac
+done
+
+launcher_dir=$(CDPATH= cd -- "$(dirname -- "$launcher_path")" && pwd)
+project_root=$(CDPATH= cd -- "$launcher_dir/.." && pwd)
+server_path=$project_root/dist/server.cjs
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "arkts-language-server requires Node.js 20 or newer on PATH." >&2
+  exit 127
+fi
+
+if [ ! -f "$server_path" ]; then
+  echo "arkts-language-server is not built. Run 'pnpm build' in $project_root." >&2
+  exit 1
+fi
+
+exec node "$server_path" "$@"
