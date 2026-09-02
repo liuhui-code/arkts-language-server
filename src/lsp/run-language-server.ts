@@ -32,7 +32,10 @@ export function runLanguageServer(): void {
       },
       capabilities: {
         positionEncoding: PositionEncodingKind.UTF16,
-        textDocumentSync: TextDocumentSyncKind.Full,
+        textDocumentSync: {
+          openClose: true,
+          change: TextDocumentSyncKind.Incremental,
+        },
         completionProvider: { triggerCharacters: ["."] },
         definitionProvider: true,
       },
