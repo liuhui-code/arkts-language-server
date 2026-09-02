@@ -92,6 +92,28 @@ fn ranks_prefix_symbol_matches_before_substring_matches() {
 }
 
 #[test]
+fn excludes_document_uris_before_ranking_and_limiting() {
+    let mut index = WorkspaceIndex::in_memory();
+    index
+        .refresh(
+            1,
+            [
+                Document::new("file:///workspace/A.ets", "class TwinService {}\n"),
+                Document::new("file:///workspace/B.ets", "class TwinService {}\n"),
+            ],
+            &[],
+        )
+        .expect("in-memory refresh should commit");
+
+    let excluded = index
+        .search_excluding("TwinService", 1, &["file:///workspace/A.ets".to_owned()])
+        .expect("excluded search should succeed");
+
+    assert_eq!(excluded.items.len(), 1);
+    assert_eq!(excluded.items[0].uri, "file:///workspace/B.ets");
+}
+
+#[test]
 fn finds_camel_case_symbols_by_acronym() {
     let mut index = WorkspaceIndex::in_memory();
     index

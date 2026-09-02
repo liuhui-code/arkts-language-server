@@ -130,6 +130,24 @@ pub struct DocumentSymbols {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FullCatalogBatch {
+    pub generation: u64,
+    pub documents: Vec<DocumentSymbols>,
+    pub rejected_uris: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DocumentParseError;
+
+impl fmt::Display for DocumentParseError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("document is not a balanced ArkTS/TypeScript source")
+    }
+}
+
+impl Error for DocumentParseError {}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RefreshBatch {
     pub generation: u64,
     pub replacements: Vec<DocumentSymbols>,
@@ -153,6 +171,7 @@ pub struct SymbolSearchResult {
 pub struct SymbolQuery {
     folded: String,
     limit: usize,
+    excluded_uris: BTreeSet<String>,
 }
 
 impl SymbolQuery {
@@ -160,7 +179,13 @@ impl SymbolQuery {
         Self {
             folded: query.to_lowercase(),
             limit,
+            excluded_uris: BTreeSet::new(),
         }
+    }
+
+    pub fn excluding_uris(mut self, uris: impl IntoIterator<Item = String>) -> Self {
+        self.excluded_uris.extend(uris);
+        self
     }
 
     pub fn folded(&self) -> &str {
@@ -169,6 +194,10 @@ impl SymbolQuery {
 
     pub const fn limit(&self) -> usize {
         self.limit
+    }
+
+    pub fn excludes_uri(&self, uri: &str) -> bool {
+        self.excluded_uris.contains(uri)
     }
 
     pub fn rank(&self, name: &str) -> Option<u8> {
@@ -180,6 +209,7 @@ impl SymbolQuery {
 pub trait SymbolStore {
     fn metadata(&self) -> Result<StoreMetadata, StoreError>;
     fn apply_batch(&mut self, batch: RefreshBatch) -> Result<CommitReceipt, StoreError>;
+    fn replace_all(&mut self, batch: FullCatalogBatch) -> Result<CommitReceipt, StoreError>;
     fn search(&self, query: &SymbolQuery) -> Result<SymbolSearchResult, StoreError>;
 }
 
@@ -224,6 +254,22 @@ impl SymbolStore for MemoryStore {
         })
     }
 
+    fn replace_all(&mut self, batch: FullCatalogBatch) -> Result<CommitReceipt, StoreError> {
+        ensure_newer_generation(self.committed_generation, batch.generation)?;
+        let mut documents = HashMap::new();
+        for document in batch.documents {
+            ensure_symbol_uris(&document)?;
+            documents.insert(document.uri, document.symbols);
+        }
+        self.documents = documents;
+        self.rejected_documents = batch.rejected_uris.into_iter().collect();
+        self.committed_generation = batch.generation;
+        Ok(CommitReceipt {
+            committed_generation: batch.generation,
+            rejected_documents: self.rejected_documents.iter().cloned().collect(),
+        })
+    }
+
     fn search(&self, query: &SymbolQuery) -> Result<SymbolSearchResult, StoreError> {
         Ok(SymbolSearchResult {
             items: rank_symbols(query, self.documents.values().flatten().cloned()),
@@ -252,6 +298,7 @@ pub fn rank_symbols(
 ) -> Vec<WorkspaceSymbol> {
     let mut matches: Vec<_> = symbols
         .into_iter()
+        .filter(|symbol| !query.excludes_uri(&symbol.uri))
         .filter_map(|symbol| query.rank(&symbol.name).map(|rank| (rank, symbol)))
         .collect();
     matches.sort_by(|(left_rank, left), (right_rank, right)| {
@@ -342,15 +389,12 @@ impl WorkspaceIndex {
         let mut removals: Vec<String> = removed_uris.iter().map(|uri| (*uri).to_owned()).collect();
         let mut rejected_uris = Vec::new();
         for document in changed_documents {
-            match parse_symbols(&document) {
-                Ok(symbols) => {
-                    replacements.push(DocumentSymbols {
-                        uri: document.uri,
-                        symbols,
-                    });
+            match parse_document_symbols(&document) {
+                Ok(document_symbols) => {
+                    replacements.push(document_symbols);
                     report.indexed_documents += 1;
                 }
-                Err(()) => {
+                Err(_) => {
                     rejected_uris.push(document.uri);
                 }
             }
@@ -375,8 +419,43 @@ impl WorkspaceIndex {
         Ok(report)
     }
 
+    pub fn activate_catalog(
+        &mut self,
+        generation: u64,
+        documents: Vec<DocumentSymbols>,
+        rejected_uris: Vec<String>,
+    ) -> Result<RefreshReport, StoreError> {
+        let indexed_documents = documents.len();
+        let receipt = self.store.replace_all(FullCatalogBatch {
+            generation,
+            documents,
+            rejected_uris,
+        })?;
+        let state = if receipt.rejected_documents.is_empty() {
+            IndexState::Ready
+        } else {
+            IndexState::Degraded
+        };
+        Ok(RefreshReport {
+            indexed_documents,
+            rejected_documents: receipt.rejected_documents,
+            committed_generation: receipt.committed_generation,
+            state,
+        })
+    }
+
     pub fn search(&self, query: &str, limit: usize) -> Result<SymbolSearchResult, StoreError> {
         self.store.search(&SymbolQuery::new(query, limit))
+    }
+
+    pub fn search_excluding(
+        &self,
+        query: &str,
+        limit: usize,
+        excluded_uris: &[String],
+    ) -> Result<SymbolSearchResult, StoreError> {
+        self.store
+            .search(&SymbolQuery::new(query, limit).excluding_uris(excluded_uris.iter().cloned()))
     }
 
     pub fn metadata(&self) -> Result<StoreMetadata, StoreError> {
@@ -404,8 +483,44 @@ struct Container {
     body_depth: usize,
 }
 
-fn parse_symbols(document: &Document) -> Result<Vec<WorkspaceSymbol>, ()> {
+struct LineIndex<'a> {
+    text: &'a str,
+    line_starts: Vec<usize>,
+}
+
+impl<'a> LineIndex<'a> {
+    fn new(text: &'a str) -> Self {
+        let mut line_starts = Vec::with_capacity(text.len() / 40 + 1);
+        line_starts.push(0);
+        line_starts.extend(
+            text.bytes()
+                .enumerate()
+                .filter_map(|(offset, byte)| (byte == b'\n').then_some(offset + 1)),
+        );
+        Self { text, line_starts }
+    }
+
+    fn position(&self, byte_offset: usize) -> Position {
+        let line = self
+            .line_starts
+            .partition_point(|line_start| *line_start <= byte_offset)
+            .saturating_sub(1);
+        let line_start = self.line_starts[line];
+        let character = self.text[line_start..byte_offset].encode_utf16().count();
+        Position::new(line as u32, character as u32)
+    }
+}
+
+pub fn parse_document_symbols(document: &Document) -> Result<DocumentSymbols, DocumentParseError> {
+    parse_symbols(document).map(|symbols| DocumentSymbols {
+        uri: document.uri.clone(),
+        symbols,
+    })
+}
+
+fn parse_symbols(document: &Document) -> Result<Vec<WorkspaceSymbol>, DocumentParseError> {
     let tokens = tokenize(&document.text)?;
+    let line_index = LineIndex::new(&document.text);
     let mut symbols = Vec::new();
     let mut containers: Vec<Container> = Vec::new();
     let mut pending_container: Option<String> = None;
@@ -427,7 +542,7 @@ fn parse_symbols(document: &Document) -> Result<Vec<WorkspaceSymbol>, ()> {
                 } else {
                     SymbolKind::Struct
                 };
-                symbols.push(symbol(document, name, kind, None));
+                symbols.push(symbol(document, &line_index, name, kind, None));
                 pending_container = Some(name.text.to_owned());
             }
             "function" => {
@@ -435,7 +550,13 @@ fn parse_symbols(document: &Document) -> Result<Vec<WorkspaceSymbol>, ()> {
                     .get(index + 1)
                     .filter(|next| next.kind == TokenKind::Identifier)
                 {
-                    symbols.push(symbol(document, name, SymbolKind::Function, None));
+                    symbols.push(symbol(
+                        document,
+                        &line_index,
+                        name,
+                        SymbolKind::Function,
+                        None,
+                    ));
                 }
             }
             "{" => {
@@ -449,7 +570,7 @@ fn parse_symbols(document: &Document) -> Result<Vec<WorkspaceSymbol>, ()> {
             }
             "}" => {
                 if brace_depth == 0 {
-                    return Err(());
+                    return Err(DocumentParseError);
                 }
                 if containers
                     .last()
@@ -462,14 +583,14 @@ fn parse_symbols(document: &Document) -> Result<Vec<WorkspaceSymbol>, ()> {
             "(" => parenthesis_depth += 1,
             ")" => {
                 if parenthesis_depth == 0 {
-                    return Err(());
+                    return Err(DocumentParseError);
                 }
                 parenthesis_depth -= 1;
             }
             "[" => bracket_depth += 1,
             "]" => {
                 if bracket_depth == 0 {
-                    return Err(());
+                    return Err(DocumentParseError);
                 }
                 bracket_depth -= 1;
             }
@@ -490,6 +611,7 @@ fn parse_symbols(document: &Document) -> Result<Vec<WorkspaceSymbol>, ()> {
                 }
                 symbols.push(symbol(
                     document,
+                    &line_index,
                     token,
                     SymbolKind::Method,
                     Some(container.name.clone()),
@@ -501,12 +623,13 @@ fn parse_symbols(document: &Document) -> Result<Vec<WorkspaceSymbol>, ()> {
     if brace_depth == 0 && parenthesis_depth == 0 && bracket_depth == 0 {
         Ok(symbols)
     } else {
-        Err(())
+        Err(DocumentParseError)
     }
 }
 
 fn symbol(
     document: &Document,
+    line_index: &LineIndex<'_>,
     name: &Token<'_>,
     kind: SymbolKind,
     container: Option<String>,
@@ -516,19 +639,11 @@ fn symbol(
         kind,
         uri: document.uri.clone(),
         range: TextRange::new(
-            position_at(&document.text, name.start),
-            position_at(&document.text, name.end),
+            line_index.position(name.start),
+            line_index.position(name.end),
         ),
         container,
     }
-}
-
-fn position_at(text: &str, byte_offset: usize) -> Position {
-    let prefix = &text[..byte_offset];
-    let line = prefix.bytes().filter(|byte| *byte == b'\n').count() as u32;
-    let line_start = prefix.rfind('\n').map_or(0, |offset| offset + 1);
-    let character = prefix[line_start..].encode_utf16().count() as u32;
-    Position::new(line, character)
 }
 
 fn is_non_method_keyword(identifier: &str) -> bool {
@@ -538,7 +653,7 @@ fn is_non_method_keyword(identifier: &str) -> bool {
     )
 }
 
-fn tokenize(source: &str) -> Result<Vec<Token<'_>>, ()> {
+fn tokenize(source: &str) -> Result<Vec<Token<'_>>, DocumentParseError> {
     let mut tokens = Vec::new();
     let mut offset = 0usize;
 
@@ -550,7 +665,7 @@ fn tokenize(source: &str) -> Result<Vec<Token<'_>>, ()> {
         }
         if rest.starts_with("/*") {
             let Some(end) = rest.find("*/") else {
-                return Err(());
+                return Err(DocumentParseError);
             };
             offset += end + 2;
             continue;
@@ -562,7 +677,7 @@ fn tokenize(source: &str) -> Result<Vec<Token<'_>>, ()> {
             continue;
         }
         if matches!(character, '\'' | '"' | '`') {
-            offset = skip_quoted(source, offset, character).ok_or(())?;
+            offset = skip_quoted(source, offset, character).ok_or(DocumentParseError)?;
             continue;
         }
         if is_identifier_start(character) {
