@@ -51,9 +51,37 @@ export interface SemanticHover {
   range: TextRange
 }
 
+export type SemanticDocumentSymbolKind =
+  | "struct"
+  | "class"
+  | "interface"
+  | "enum"
+  | "enumMember"
+  | "function"
+  | "method"
+  | "property"
+  | "constructor"
+  | "module"
+  | "type"
+  | "variable"
+
+export interface SemanticDocumentSymbol {
+  name: string
+  detail?: string
+  kind: SemanticDocumentSymbolKind
+  range: TextRange
+  selectionRange: TextRange
+  children?: SemanticDocumentSymbol[]
+}
+
 export interface SemanticQuery {
   document: DocumentSnapshot
   position: TextPosition
+  signal?: AbortSignal
+}
+
+export interface SemanticDocumentQuery {
+  document: DocumentSnapshot
   signal?: AbortSignal
 }
 
@@ -67,6 +95,7 @@ export interface SemanticEnginePort {
   close(documentUri: DocumentUri): void
   complete(query: SemanticQuery): Promise<VersionedSemanticResult<SemanticCompletion[]>>
   define(query: SemanticQuery): Promise<VersionedSemanticResult<SemanticDefinition[]>>
+  documentSymbols(query: SemanticDocumentQuery): Promise<VersionedSemanticResult<SemanticDocumentSymbol[]>>
   hover(query: SemanticQuery): Promise<VersionedSemanticResult<SemanticHover | null>>
   signatureHelp(query: SemanticQuery): Promise<VersionedSemanticResult<SemanticSignatureHelp | null>>
   dispose(): void

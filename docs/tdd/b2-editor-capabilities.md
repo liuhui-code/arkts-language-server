@@ -37,12 +37,33 @@ including B2.1). A final capability assertion first observed an absent
 `hoverProvider`; advertising it only after both behaviors passed made the
 focused suite GREEN (`6/6`).
 
-## Verification
+## B2.3 document symbols
+
+The first hierarchical transcript opened the on-disk fixture, incrementally
+inserted a method with `didChange`, then requested its outline. Before the
+handler existed it failed with:
+
+```text
+JSON-RPC -32601: Unhandled method textDocument/documentSymbol
+```
+
+The minimal implementation maps TypeScript navigation-tree spans back through
+the ArkTS virtual document, restores the `struct` kind, orders declarations by
+source position, and reads the synchronized overlay. That transcript passed
+with exact struct, property, inserted method, and top-level function ranges.
+
+A non-hierarchical client transcript was added next. It failed because the
+server returned `DocumentSymbol[]` unconditionally. Negotiating
+`hierarchicalDocumentSymbolSupport` and flattening children to
+`SymbolInformation[]` with container names made both response shapes GREEN.
+Only then did the capability test observe its planned RED (`undefined` instead
+of `true`) and `documentSymbolProvider` was advertised.
+
+## Final verification
 
 ```sh
 pnpm check && pnpm build && node --test tests/semantic/editor-capabilities.test.mjs
 pnpm check:fast
 ```
 
-`documentSymbol`, references, prepare-rename, and rename are not advertised by
-this slice.
+References, prepare-rename, and rename are not advertised by this slice.

@@ -137,3 +137,164 @@ test("advertises hover only after documented and empty transcripts are supported
 
   assert.equal(initialized.result.capabilities.hoverProvider, true)
 })
+
+test("returns hierarchical ArkTS document symbols from the changed overlay", async (t) => {
+  const { server, documentUri } = await openFixture(
+    t,
+    "document-symbols",
+    "Panel.ets",
+    {
+      textDocument: {
+        documentSymbol: { hierarchicalDocumentSymbolSupport: true },
+      },
+    },
+  )
+
+  server.send({
+    jsonrpc: "2.0",
+    method: "textDocument/didChange",
+    params: {
+      textDocument: { uri: documentUri, version: 2 },
+      contentChanges: [{
+        range: {
+          start: { line: 2, character: 0 },
+          end: { line: 2, character: 0 },
+        },
+        text: "  refresh(force: boolean): void {\n  }\n",
+      }],
+    },
+  })
+  server.send({
+    jsonrpc: "2.0",
+    id: 6,
+    method: "textDocument/documentSymbol",
+    params: { textDocument: { uri: documentUri } },
+  })
+
+  const response = await server.response(6)
+  assert.equal(response.error, undefined, JSON.stringify(response.error))
+  assert.deepEqual(response.result, [
+    {
+      name: "Panel",
+      kind: 23,
+      range: {
+        start: { line: 0, character: 0 },
+        end: { line: 4, character: 1 },
+      },
+      selectionRange: {
+        start: { line: 0, character: 7 },
+        end: { line: 0, character: 12 },
+      },
+      children: [
+        {
+          name: "title",
+          kind: 7,
+          range: {
+            start: { line: 1, character: 2 },
+            end: { line: 1, character: 24 },
+          },
+          selectionRange: {
+            start: { line: 1, character: 2 },
+            end: { line: 1, character: 7 },
+          },
+        },
+        {
+          name: "refresh",
+          kind: 6,
+          range: {
+            start: { line: 2, character: 2 },
+            end: { line: 3, character: 3 },
+          },
+          selectionRange: {
+            start: { line: 2, character: 2 },
+            end: { line: 2, character: 9 },
+          },
+        },
+      ],
+    },
+    {
+      name: "helper",
+      kind: 12,
+      range: {
+        start: { line: 6, character: 0 },
+        end: { line: 8, character: 1 },
+      },
+      selectionRange: {
+        start: { line: 6, character: 9 },
+        end: { line: 6, character: 15 },
+      },
+    },
+  ])
+})
+
+test("falls back to flat symbol information for non-hierarchical clients", async (t) => {
+  const { server, documentUri } = await openFixture(t, "document-symbols", "Panel.ets")
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 7,
+    method: "textDocument/documentSymbol",
+    params: { textDocument: { uri: documentUri } },
+  })
+
+  const response = await server.response(7)
+  assert.equal(response.error, undefined, JSON.stringify(response.error))
+  assert.deepEqual(response.result.map((symbol) => ({
+    name: symbol.name,
+    kind: symbol.kind,
+    containerName: symbol.containerName,
+    location: symbol.location,
+  })), [
+    {
+      name: "Panel",
+      kind: 23,
+      containerName: undefined,
+      location: {
+        uri: documentUri,
+        range: {
+          start: { line: 0, character: 0 },
+          end: { line: 2, character: 1 },
+        },
+      },
+    },
+    {
+      name: "title",
+      kind: 7,
+      containerName: "Panel",
+      location: {
+        uri: documentUri,
+        range: {
+          start: { line: 1, character: 2 },
+          end: { line: 1, character: 24 },
+        },
+      },
+    },
+    {
+      name: "helper",
+      kind: 12,
+      containerName: undefined,
+      location: {
+        uri: documentUri,
+        range: {
+          start: { line: 4, character: 0 },
+          end: { line: 6, character: 1 },
+        },
+      },
+    },
+  ])
+})
+
+test("advertises document symbols only after both client response shapes work", async (t) => {
+  const { initialized } = await openFixture(
+    t,
+    "document-symbols",
+    "Panel.ets",
+    {
+      textDocument: {
+        documentSymbol: { hierarchicalDocumentSymbolSupport: true },
+      },
+    },
+  )
+
+  assert.equal(initialized.result.capabilities.documentSymbolProvider, true)
+})
