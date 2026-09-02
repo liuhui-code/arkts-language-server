@@ -17,7 +17,10 @@ import { TextDocument } from "vscode-languageserver-textdocument"
 import type { DocumentSnapshot } from "../contracts/document.js"
 import type { SemanticCompletion, SemanticEnginePort } from "../contracts/semantic-engine.js"
 import type { ProjectResolverPort } from "../contracts/project-resolver.js"
-import type { WorkspaceSymbolServicePort } from "../contracts/workspace-symbol-service.js"
+import type {
+  WorkspaceIndexProgress,
+  WorkspaceSymbolServicePort,
+} from "../contracts/workspace-symbol-service.js"
 import { SingleRootProjectResolver } from "../project/single-root-project-resolver.js"
 import { LegacySemanticEngine } from "../semantic/legacy-semantic-engine.js"
 import { createStructuredLogger } from "../observability/logger.js"
@@ -43,10 +46,13 @@ export function runLanguageServer(services?: LanguageServerServices): void {
   const freshness = new RequestFreshness()
   let shuttingDown = false
   let disposed = false
+  let workspaceRoots: { id: string; rootUri: string }[] = []
+  let workspaceIndexAbort: AbortController | undefined
 
   const disposeOnce = (reason: "shutdown" | "exit") => {
     if (disposed) return
     disposed = true
+    workspaceIndexAbort?.abort(new Error("Language server stopped"))
     semantic.dispose()
     workspaceSymbols?.dispose()
     logger.info("server.stopped", { reason })
@@ -80,7 +86,7 @@ export function runLanguageServer(services?: LanguageServerServices): void {
   connection.onInitialize((params: InitializeParams) => {
     const rootUris = initialRootUris(params)
     projects.configure(rootUris)
-    workspaceSymbols?.start(rootUris.map((rootUri) => ({ id: rootUri, rootUri })))
+    workspaceRoots = rootUris.map((rootUri) => ({ id: rootUri, rootUri }))
     semanticCapabilities.configure(params.capabilities)
     logger.info("lsp.initialized", {
       workspaceCount: initialRootUris(params).length,
@@ -102,6 +108,58 @@ export function runLanguageServer(services?: LanguageServerServices): void {
         ...(workspaceSymbols ? { workspaceSymbolProvider: true } : {}),
         ...semanticCapabilities.capabilities,
       },
+    }
+  })
+
+  connection.onInitialized(async () => {
+    if (!workspaceSymbols || shuttingDown) return
+    const progress = await connection.window.createWorkDoneProgress()
+    if (shuttingDown) return
+    workspaceIndexAbort = new AbortController()
+    const cancellation = progress.token.onCancellationRequested(() => {
+      workspaceIndexAbort?.abort(new Error("Workspace indexing cancelled by client"))
+    })
+    let finished = false
+    let lastPercentage = 0
+    progress.begin("ArkTS workspace index", undefined, "Discovering project files", true)
+    const report = (status: WorkspaceIndexProgress) => {
+      if (finished) return
+      if (status.phase === "discovering") {
+        if (status.discoveredFiles > 0) {
+          progress.report(discoveryMessage(status))
+        }
+        return
+      }
+      if (status.phase === "indexing") {
+        const percentage = indexPercentage(status)
+        const message = indexingMessage(status)
+        if (percentage === undefined) {
+          progress.report(message)
+        } else {
+          lastPercentage = Math.max(lastPercentage, percentage)
+          progress.report(lastPercentage, message)
+        }
+        return
+      }
+      if (status.phase === "ready") {
+        progress.report(100, readyMessage(status))
+      } else {
+        progress.report(degradedMessage(status))
+      }
+      finished = true
+      cancellation.dispose()
+      progress.done()
+    }
+    try {
+      workspaceSymbols.start(workspaceRoots, report, workspaceIndexAbort.signal)
+    } catch {
+      logger.error("index.start.failed", { outcome: "degraded" })
+      report({
+        phase: "degraded",
+        discoveredFiles: 0,
+        indexedFiles: 0,
+        skippedEntries: 0,
+      })
     }
   })
 
@@ -265,4 +323,29 @@ function workspaceSymbolKind(kind: string): SymbolKind {
     case "struct": return SymbolKind.Struct
     default: return SymbolKind.Variable
   }
+}
+
+function indexPercentage(status: WorkspaceIndexProgress): number | undefined {
+  if (!status.totalFiles || status.indexedFiles <= 0) return undefined
+  return Math.min(99, Math.max(1, Math.floor(status.indexedFiles * 100 / status.totalFiles)))
+}
+
+function discoveryMessage(status: WorkspaceIndexProgress): string {
+  return `Discovered ${status.discoveredFiles} files; skipped ${status.skippedEntries} entries`
+}
+
+function indexingMessage(status: WorkspaceIndexProgress): string {
+  const total = status.totalFiles === undefined ? "?" : String(status.totalFiles)
+  return `Indexing ${status.indexedFiles}/${total} files; skipped ${status.skippedEntries} entries`
+}
+
+function readyMessage(status: WorkspaceIndexProgress): string {
+  const total = status.totalFiles ?? status.discoveredFiles
+  return total === 0
+    ? `No ArkTS files found; skipped ${status.skippedEntries} entries`
+    : `Indexed ${status.indexedFiles}/${total} files; skipped ${status.skippedEntries} entries`
+}
+
+function degradedMessage(status: WorkspaceIndexProgress): string {
+  return `Indexing degraded after ${status.indexedFiles} files; skipped ${status.skippedEntries} entries`
 }

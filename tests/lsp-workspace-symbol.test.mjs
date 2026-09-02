@@ -73,6 +73,46 @@ test("maps workspace symbol cancellation and rejects requests after shutdown", a
   assert.equal((await server.response(12)).error.code, -32600)
 })
 
+test("reports discovery without fake zero percent and completes monotonic indexing progress", async (t) => {
+  const server = new LspProcess({ serverPath: scriptedServerPath })
+  t.after(() => server.close())
+  server.send({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: {
+      processId: process.pid,
+      rootUri: pathToFileURL(projectRoot).href,
+      capabilities: { window: { workDoneProgress: true } },
+    },
+  })
+  await server.response(1)
+  server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
+
+  const create = await server.notification("window/workDoneProgress/create")
+  server.send({ jsonrpc: "2.0", id: create.id, result: null })
+  const begin = await server.notification("$/progress", (message) => message.params.value.kind === "begin")
+  assert.equal(begin.params.value.message, "Discovering project files")
+  assert.equal("percentage" in begin.params.value, false)
+
+  const reports = []
+  while (reports.length < 3) {
+    reports.push(await server.notification(
+      "$/progress",
+      (message) => message.params.value.kind === "report",
+    ))
+  }
+  const percentages = reports
+    .map((message) => message.params.value.percentage)
+    .filter((value) => value !== undefined)
+  assert.deepEqual(percentages, [33, 100])
+  assert.ok(percentages.every((value, index) => index === 0 || value >= percentages[index - 1]))
+  assert.ok(reports.some((message) => /1\/3 files/.test(message.params.value.message)))
+
+  const end = await server.notification("$/progress", (message) => message.params.value.kind === "end")
+  assert.equal(end.params.value.kind, "end")
+})
+
 function zeroRange() {
   return {
     start: { line: 0, character: 0 },

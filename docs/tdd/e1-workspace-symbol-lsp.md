@@ -21,3 +21,15 @@ editor-neutral workspace-symbol service boundary. The LSP adapter now:
 - implements latest-wins, client cancellation, shutdown rejection, bounded
   result count, and source-free request logging;
 - disposes the service exactly once with the semantic engine.
+
+## Progress slice
+
+RED: the third transcript timed out waiting for
+`window/workDoneProgress/create`; indexing started during initialize and had no
+protocol-native status channel.
+
+GREEN: indexing starts only after `initialized`. Unknown discovery totals use
+an indeterminate begin event with no `percentage`; a known 1/3 update reports
+33, ready reports 100, and the task ends. Percentages never decrease, a client
+cancel signal reaches the editor-neutral service, and degraded/empty scans also
+terminate instead of leaving a permanent 0% task.

@@ -108,7 +108,45 @@ class ScriptedSemanticEngine implements SemanticEnginePort {
 class ScriptedWorkspaceSymbols {
   private readonly documents = new Map<string, DocumentSnapshot>()
 
-  start(_workspaces: readonly { id: string; rootUri: string }[]): void {}
+  start(
+    _workspaces: readonly { id: string; rootUri: string }[],
+    report?: (progress: {
+      phase: string
+      discoveredFiles: number
+      indexedFiles: number
+      skippedEntries: number
+      totalFiles?: number
+    }) => void,
+  ): void {
+    if (!report) return
+    report({
+      phase: "discovering",
+      discoveredFiles: 0,
+      indexedFiles: 0,
+      skippedEntries: 0,
+    })
+    report({
+      phase: "indexing",
+      discoveredFiles: 3,
+      indexedFiles: 0,
+      skippedEntries: 2,
+      totalFiles: 3,
+    })
+    report({
+      phase: "indexing",
+      discoveredFiles: 3,
+      indexedFiles: 1,
+      skippedEntries: 2,
+      totalFiles: 3,
+    })
+    report({
+      phase: "ready",
+      discoveredFiles: 3,
+      indexedFiles: 3,
+      skippedEntries: 2,
+      totalFiles: 3,
+    })
+  }
 
   sync(document: DocumentSnapshot): void {
     this.documents.set(document.uri, document)
