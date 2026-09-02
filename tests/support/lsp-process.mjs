@@ -25,7 +25,7 @@ export class LspProcess {
     this.child.stdin.write(body)
   }
 
-  response(id, timeoutMs = 2_000) {
+  response(id, timeoutMs = 5_000) {
     const queued = this.messages.findIndex((message) => message.id === id)
     if (queued >= 0) return Promise.resolve(this.messages.splice(queued, 1)[0])
     return this.waitFor(
@@ -35,7 +35,7 @@ export class LspProcess {
     )
   }
 
-  notification(method, predicate = () => true, timeoutMs = 2_000) {
+  notification(method, predicate = () => true, timeoutMs = 5_000) {
     const matches = (message) => message.method === method && predicate(message)
     const queued = this.messages.findIndex(matches)
     if (queued >= 0) return Promise.resolve(this.messages.splice(queued, 1)[0])

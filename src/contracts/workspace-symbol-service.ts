@@ -1,7 +1,12 @@
 import type { DocumentSnapshot, DocumentUri, WorkspaceDescriptor } from "./document.js"
 import type { WorkspaceSymbolSearchResult } from "./workspace-index.js"
 
-export type WorkspaceIndexPhase = "discovering" | "indexing" | "ready" | "degraded"
+export type WorkspaceIndexPhase =
+  | "discovering"
+  | "indexing"
+  | "ready"
+  | "degraded"
+  | "cancelled"
 
 export interface WorkspaceIndexProgress {
   phase: WorkspaceIndexPhase

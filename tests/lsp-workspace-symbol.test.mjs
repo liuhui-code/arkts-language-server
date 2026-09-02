@@ -10,7 +10,7 @@ import { LspProcess, projectRoot } from "./support/lsp-process.mjs"
 
 buildScriptedSemanticServer()
 
-test("advertises workspace symbols and returns the unsaved document overlay without status rows", async (t) => {
+test("search stays live during catalog work and returns the unsaved overlay without status rows", async (t) => {
   const server = new LspProcess({ serverPath: scriptedServerPath })
   t.after(() => server.close())
   const rootUri = pathToFileURL(projectRoot).href
@@ -37,6 +37,7 @@ test("advertises workspace symbols and returns the unsaved document overlay with
       },
     },
   })
+  const searchStartedAt = performance.now()
   server.send({
     jsonrpc: "2.0",
     id: 2,
@@ -44,6 +45,7 @@ test("advertises workspace symbols and returns the unsaved document overlay with
     params: { query: "UnsavedWorkspaceType" },
   })
   const response = await server.response(2)
+  assert.ok(performance.now() - searchStartedAt < 400, "workspace search waited for catalog completion")
   assert.deepEqual(response.result, [{
     name: "UnsavedWorkspaceType",
     kind: 23,
@@ -71,6 +73,34 @@ test("maps workspace symbol cancellation and rejects requests after shutdown", a
   await server.response(11)
   server.send({ jsonrpc: "2.0", id: 12, method: "workspace/symbol", params: { query: "Anything" } })
   assert.equal((await server.response(12)).error.code, -32600)
+})
+
+test("matches an open ArkTS symbol by uppercase acronym without treating digits as capitals", async (t) => {
+  const server = new LspProcess({ serverPath: scriptedServerPath })
+  t.after(() => server.close())
+  const uri = pathToFileURL(`${projectRoot}/fixtures/AcronymWorkspaceSymbol.ets`).href
+  server.send({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: { processId: process.pid, rootUri: pathToFileURL(projectRoot).href, capabilities: {} },
+  })
+  await server.response(1)
+  server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
+  server.send({
+    jsonrpc: "2.0",
+    method: "textDocument/didOpen",
+    params: {
+      textDocument: {
+        uri,
+        languageId: "arkts",
+        version: 1,
+        text: "struct Chat2BaseViewModel {}",
+      },
+    },
+  })
+  server.send({ jsonrpc: "2.0", id: 20, method: "workspace/symbol", params: { query: "CBVM" } })
+  assert.equal((await server.response(20)).result[0].name, "Chat2BaseViewModel")
 })
 
 test("reports discovery without fake zero percent and completes monotonic indexing progress", async (t) => {

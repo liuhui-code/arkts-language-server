@@ -14,6 +14,7 @@ import type {
 } from "../../../src/contracts/semantic-engine.js"
 import { runLanguageServer } from "../../../src/lsp/run-language-server.js"
 import { SingleRootProjectResolver } from "../../../src/project/single-root-project-resolver.js"
+import { DefaultWorkspaceSymbolService } from "../../../src/workspace/default-workspace-symbol-service.js"
 
 class ScriptedSemanticEngine implements SemanticEnginePort {
   private completionCount = 0
@@ -92,9 +93,10 @@ class ScriptedSemanticEngine implements SemanticEnginePort {
   async documentSymbols(
     query: SemanticDocumentQuery,
   ): Promise<VersionedSemanticResult<SemanticDocumentSymbol[]>> {
+    const declaration = /\b(struct|class)\s+([A-Za-z_$][\w$]*)/.exec(query.document.text)
     return scriptedSemanticResult(query, [{
-      name: "Scripted",
-      kind: "struct",
+      name: declaration?.[2] ?? "Scripted",
+      kind: declaration?.[1] === "class" ? "class" : "struct",
       range: zeroRange(),
       selectionRange: zeroRange(),
     }])
@@ -105,20 +107,51 @@ class ScriptedSemanticEngine implements SemanticEnginePort {
   }
 }
 
-class ScriptedWorkspaceSymbols {
-  private readonly documents = new Map<string, DocumentSnapshot>()
+class ScriptedWorkspaceIndex {
+  async open() {
+    return { state: "warming" as const, committedGeneration: 7 }
+  }
 
-  start(
-    _workspaces: readonly { id: string; rootUri: string }[],
-    report?: (progress: {
-      phase: string
+  async refresh() {
+    return { state: "ready" as const, committedGeneration: 8 }
+  }
+
+  async searchSymbols(_workspaceId: string, query: string, _limit: number, signal?: AbortSignal) {
+    if (query === "WAIT_CANCEL") return waitForAbortWorkspaceSymbols(signal)
+    const uri = pathToFileURL(`${process.cwd()}/fixtures/UnsavedWorkspaceSymbol.ets`).href
+    return {
+      items: query === "UnsavedWorkspaceType" ? [{
+        name: "StalePersistedType",
+        kind: "class",
+        uri,
+        range: {
+          start: { line: 99, character: 0 },
+          end: { line: 99, character: 1 },
+        },
+      }] : [],
+      servedGeneration: 7,
+      completeness: "stale" as const,
+    }
+  }
+
+  async status() {
+    return { state: "ready" as const, committedGeneration: 7 }
+  }
+
+  async close(): Promise<void> {}
+}
+
+class ScriptedWorkspaceCatalog {
+  async start(
+    _workspace: { id: string; rootUri: string },
+    report: (progress: {
+      phase: "discovering" | "indexing" | "ready" | "degraded"
       discoveredFiles: number
       indexedFiles: number
       skippedEntries: number
       totalFiles?: number
     }) => void,
-  ): void {
-    if (!report) return
+  ): Promise<void> {
     report({
       phase: "discovering",
       discoveredFiles: 0,
@@ -139,6 +172,7 @@ class ScriptedWorkspaceSymbols {
       skippedEntries: 2,
       totalFiles: 3,
     })
+    await new Promise((resolve) => setTimeout(resolve, 750))
     report({
       phase: "ready",
       discoveredFiles: 3,
@@ -146,31 +180,6 @@ class ScriptedWorkspaceSymbols {
       skippedEntries: 2,
       totalFiles: 3,
     })
-  }
-
-  sync(document: DocumentSnapshot): void {
-    this.documents.set(document.uri, document)
-  }
-
-  closeDocument(documentUri: string): void {
-    this.documents.delete(documentUri)
-  }
-
-  async searchSymbols(query: string, _limit: number, signal?: AbortSignal) {
-    if (query === "WAIT_CANCEL") return waitForAbortWorkspaceSymbols(signal)
-    const items = [...this.documents.values()]
-      .filter((document) => document.text.includes(query))
-      .map((document) => ({
-        name: query,
-        kind: "struct",
-        uri: document.uri,
-        range: zeroRange(),
-      }))
-    return { items, servedGeneration: 7, completeness: "partial" as const }
-  }
-
-  dispose(): void {
-    process.stderr.write("SCRIPTED_WORKSPACE_DISPOSE\n")
   }
 }
 
@@ -240,8 +249,14 @@ function abortError(): Error {
 }
 
 const projects = new SingleRootProjectResolver(pathToFileURL(process.cwd()).href)
+const semantic = new ScriptedSemanticEngine()
 runLanguageServer({
   projects,
-  semantic: new ScriptedSemanticEngine(),
-  workspaceSymbols: new ScriptedWorkspaceSymbols(),
+  semantic,
+  workspaceSymbols: new DefaultWorkspaceSymbolService({
+    index: new ScriptedWorkspaceIndex(),
+    catalog: new ScriptedWorkspaceCatalog(),
+    semantic,
+    cacheDirectory: process.cwd(),
+  }),
 })

@@ -143,8 +143,10 @@ export function runLanguageServer(services?: LanguageServerServices): void {
       }
       if (status.phase === "ready") {
         progress.report(100, readyMessage(status))
-      } else {
+      } else if (status.phase === "degraded") {
         progress.report(degradedMessage(status))
+      } else {
+        progress.report(cancelledMessage(status))
       }
       finished = true
       cancellation.dispose()
@@ -348,4 +350,8 @@ function readyMessage(status: WorkspaceIndexProgress): string {
 
 function degradedMessage(status: WorkspaceIndexProgress): string {
   return `Indexing degraded after ${status.indexedFiles} files; skipped ${status.skippedEntries} entries`
+}
+
+function cancelledMessage(status: WorkspaceIndexProgress): string {
+  return `Indexing cancelled after ${status.indexedFiles} files; skipped ${status.skippedEntries} entries`
 }
