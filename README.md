@@ -77,4 +77,5 @@ open `fixtures/basic/Main.ets` and go to definition on `displayName`.
 - This private spike is not ready for publication or redistribution.
 
 See [docs/spike-evidence.md](docs/spike-evidence.md) for the TDD record and
-[PROVENANCE.md](PROVENANCE.md) for copied-code provenance.
+[PROVENANCE.md](PROVENANCE.md) for copied-code provenance. Module boundaries
+and parallel ownership are defined in [docs/architecture.md](docs/architecture.md).

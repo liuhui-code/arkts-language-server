@@ -55,3 +55,13 @@ definition behavior is covered by the byte-level stdio contracts.
 The local standalone LSP architecture is feasible. This result does not yet
 prove extraction of ArkLine's persistent Rust index; that remains a separate
 go/no-go tracer bullet for `workspace/symbol`.
+
+## PR-0 contract freeze
+
+Parent revision: `d5fdfb7e96b9a74421c84f5d92cdf7d8169aa847`
+
+This was a behavior-preserving refactor protected by the existing real-process
+LSP characterization suite. `pnpm test` passed 5/5 before the refactor and
+`pnpm check:fast` passed 5/5 after extracting contracts, project resolution,
+the legacy semantic adapter, LSP composition, and the shared transcript
+harness.
