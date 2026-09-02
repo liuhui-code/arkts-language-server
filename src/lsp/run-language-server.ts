@@ -16,15 +16,22 @@ import type { SemanticCompletion, SemanticEnginePort } from "../contracts/semant
 import type { ProjectResolverPort } from "../contracts/project-resolver.js"
 import { SingleRootProjectResolver } from "../project/single-root-project-resolver.js"
 import { LegacySemanticEngine } from "../semantic/legacy-semantic-engine.js"
+import { createStructuredLogger } from "../observability/logger.js"
 
 export function runLanguageServer(): void {
+  const logger = createStructuredLogger()
   const connection = createConnection(ProposedFeatures.all)
   const documents = new TextDocuments(TextDocument)
   const projects = new SingleRootProjectResolver(pathToFileURL(process.cwd()).href)
   const semantic = new LegacySemanticEngine(projects)
+  logger.info("server.started", { transport: "stdio" })
 
   connection.onInitialize((params: InitializeParams) => {
     projects.configure(initialRootUris(params))
+    logger.info("lsp.initialized", {
+      workspaceCount: initialRootUris(params).length,
+      positionEncoding: "utf-16",
+    })
     return {
       serverInfo: {
         name: "arkts-language-server",
@@ -47,13 +54,25 @@ export function runLanguageServer(): void {
   documents.onDidClose(({ document }) => semantic.close(document.uri))
 
   connection.onCompletion(async (params) => {
+    const startedAt = performance.now()
     const document = documents.get(params.textDocument.uri)
-    if (!document || !document.uri.startsWith("file:")) return []
-    const result = await semantic.complete({
-      document: snapshot(document, projects),
-      position: params.position,
-    })
-    return result.value.map(toLspCompletionItem)
+    let outcome = "document-unavailable"
+    try {
+      if (!document || !document.uri.startsWith("file:")) return []
+      outcome = "error"
+      const result = await semantic.complete({
+        document: snapshot(document, projects),
+        position: params.position,
+      })
+      outcome = "ok"
+      return result.value.map(toLspCompletionItem)
+    } finally {
+      logger.info("request.completed", {
+        method: "textDocument/completion",
+        durationMs: Math.round((performance.now() - startedAt) * 100) / 100,
+        outcome,
+      })
+    }
   })
 
   connection.onDefinition(async (params) => {
@@ -68,6 +87,7 @@ export function runLanguageServer(): void {
 
   connection.onShutdown(() => {
     semantic.dispose()
+    logger.info("server.stopped", { reason: "shutdown" })
   })
 
   documents.listen(connection)
