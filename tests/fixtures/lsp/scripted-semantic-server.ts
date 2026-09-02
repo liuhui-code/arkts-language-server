@@ -2,8 +2,12 @@ import { pathToFileURL } from "node:url"
 
 import type { DocumentSnapshot } from "../../../src/contracts/document.js"
 import type {
+  SemanticDocumentQuery,
+  SemanticDocumentSymbol,
   SemanticEnginePort,
+  SemanticHover,
   SemanticQuery,
+  SemanticSignatureHelp,
   VersionedSemanticResult,
   SemanticCompletion,
   SemanticDefinition,
@@ -58,23 +62,83 @@ class ScriptedSemanticEngine implements SemanticEnginePort {
   async define(
     query: SemanticQuery,
   ): Promise<VersionedSemanticResult<SemanticDefinition[]>> {
-    return { documentVersion: query.document.version, value: [] }
+    return scriptedSemanticResult(query, [{
+      uri: query.document.uri,
+      range: zeroRange(),
+    }])
   }
 
   async diagnose(query: { document: DocumentSnapshot }) {
     return { documentVersion: query.document.version, value: [] }
   }
 
-  async hover(query: SemanticQuery) {
-    return { documentVersion: query.document.version, value: null }
+  async hover(query: SemanticQuery): Promise<VersionedSemanticResult<SemanticHover | null>> {
+    return scriptedSemanticResult(query, {
+      signature: "struct Scripted",
+      range: zeroRange(),
+    })
   }
 
-  async signatureHelp(query: SemanticQuery) {
-    return { documentVersion: query.document.version, value: null }
+  async signatureHelp(
+    query: SemanticQuery,
+  ): Promise<VersionedSemanticResult<SemanticSignatureHelp | null>> {
+    return scriptedSemanticResult(query, {
+      signatures: [{ label: "scripted(value: string)", parameters: [{ label: "value" }] }],
+      activeSignature: 0,
+      activeParameter: 0,
+    })
+  }
+
+  async documentSymbols(
+    query: SemanticDocumentQuery,
+  ): Promise<VersionedSemanticResult<SemanticDocumentSymbol[]>> {
+    return scriptedSemanticResult(query, [{
+      name: "Scripted",
+      kind: "struct",
+      range: zeroRange(),
+      selectionRange: zeroRange(),
+    }])
   }
 
   dispose(): void {
     process.stderr.write("SCRIPTED_DISPOSE\n")
+  }
+}
+
+async function scriptedSemanticResult<T>(
+  query: SemanticDocumentQuery,
+  value: T,
+): Promise<VersionedSemanticResult<T>> {
+  if (query.document.text.includes("SEMANTIC_WAITS_FOR_ABORT")) {
+    return waitForAbortValue(query.signal)
+  }
+  if (query.document.text.includes("SEMANTIC_DELAY_IGNORING_ABORT")) {
+    query.signal?.addEventListener(
+      "abort",
+      () => process.stderr.write("SCRIPTED_SEMANTIC_STALE_ABORT\n"),
+      { once: true },
+    )
+    await new Promise((resolve) => setTimeout(resolve, 150))
+  }
+  return { documentVersion: query.document.version, value }
+}
+
+function waitForAbortValue<T>(
+  signal?: AbortSignal,
+): Promise<VersionedSemanticResult<T>> {
+  return new Promise((_resolve, reject) => {
+    if (signal?.aborted) {
+      reject(abortError())
+      return
+    }
+    signal?.addEventListener("abort", () => reject(abortError()), { once: true })
+  })
+}
+
+function zeroRange() {
+  return {
+    start: { line: 0, character: 0 },
+    end: { line: 0, character: 0 },
   }
 }
 

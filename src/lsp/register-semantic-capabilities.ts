@@ -6,27 +6,24 @@ import {
   type DocumentSymbol,
   type ServerCapabilities,
   type SymbolInformation,
-  type TextDocuments,
 } from "vscode-languageserver/node.js"
 
 /*
  * Keep the protocol conversion in this adapter; semantic contracts remain
  * editor-neutral and the extracted core has no vscode-languageserver import.
  */
-import type { TextDocument } from "vscode-languageserver-textdocument"
-
-import type { DocumentSnapshot } from "../contracts/document.js"
 import type {
   SemanticDocumentSymbol,
   SemanticEnginePort,
   SemanticHover,
+  SemanticSignatureHelp,
 } from "../contracts/semantic-engine.js"
+import type { SemanticRequestRunner } from "./semantic-request-runner.js"
 
 interface SemanticCapabilityDependencies {
   connection: Connection
-  documents: TextDocuments<TextDocument>
   semantic: SemanticEnginePort
-  snapshot(document: TextDocument): DocumentSnapshot
+  requests: SemanticRequestRunner
 }
 
 interface SemanticCapabilityRegistration {
@@ -36,39 +33,51 @@ interface SemanticCapabilityRegistration {
 
 export function registerSemanticCapabilities({
   connection,
-  documents,
   semantic,
-  snapshot,
+  requests,
 }: SemanticCapabilityDependencies): SemanticCapabilityRegistration {
   let hierarchicalDocumentSymbols = false
 
-  connection.onSignatureHelp(async (params) => {
-    const document = documents.get(params.textDocument.uri)
-    if (!document || !document.uri.startsWith("file:")) return null
-    const result = await semantic.signatureHelp({
-      document: snapshot(document),
-      position: params.position,
+  connection.onSignatureHelp(async (params, token) => {
+    return requests.run({
+      method: "textDocument/signatureHelp",
+      documentUri: params.textDocument.uri,
+      token,
+      fallback: null as SemanticSignatureHelp | null,
+      execute: (document, signal) => semantic.signatureHelp({
+        document,
+        position: params.position,
+        signal,
+      }),
     })
-    return result.value
   })
 
-  connection.onHover(async (params) => {
-    const document = documents.get(params.textDocument.uri)
-    if (!document || !document.uri.startsWith("file:")) return null
-    const result = await semantic.hover({
-      document: snapshot(document),
-      position: params.position,
+  connection.onHover(async (params, token) => {
+    const result = await requests.run({
+      method: "textDocument/hover",
+      documentUri: params.textDocument.uri,
+      token,
+      fallback: null as SemanticHover | null,
+      execute: (document, signal) => semantic.hover({
+        document,
+        position: params.position,
+        signal,
+      }),
     })
-    return result.value ? toLspHover(result.value) : null
+    return result ? toLspHover(result) : null
   })
 
-  connection.onDocumentSymbol(async (params) => {
-    const document = documents.get(params.textDocument.uri)
-    if (!document || !document.uri.startsWith("file:")) return []
-    const result = await semantic.documentSymbols({ document: snapshot(document) })
+  connection.onDocumentSymbol(async (params, token) => {
+    const result = await requests.run({
+      method: "textDocument/documentSymbol",
+      documentUri: params.textDocument.uri,
+      token,
+      fallback: [] as SemanticDocumentSymbol[],
+      execute: (document, signal) => semantic.documentSymbols({ document, signal }),
+    })
     return hierarchicalDocumentSymbols
-      ? result.value.map(toLspDocumentSymbol)
-      : result.value.flatMap((symbol) => toLspSymbolInformation(symbol, document.uri))
+      ? result.map(toLspDocumentSymbol)
+      : result.flatMap((symbol) => toLspSymbolInformation(symbol, params.textDocument.uri))
   })
 
   return {

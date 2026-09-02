@@ -5,7 +5,6 @@ import {
   createConnection,
   ErrorCodes,
   type InitializeParams,
-  LSPErrorCodes,
   PositionEncodingKind,
   ProposedFeatures,
   ResponseError,
@@ -23,6 +22,7 @@ import { createStructuredLogger } from "../observability/logger.js"
 import { createDocumentDiagnostics } from "./document-diagnostics.js"
 import { RequestFreshness } from "./request-freshness.js"
 import { registerSemanticCapabilities } from "./register-semantic-capabilities.js"
+import { SemanticRequestRunner } from "./semantic-request-runner.js"
 
 export interface LanguageServerServices {
   projects: ProjectResolverPort
@@ -52,11 +52,17 @@ export function runLanguageServer(services?: LanguageServerServices): void {
       throw new ResponseError(ErrorCodes.InvalidRequest, "Language server is shutting down")
     }
   }
+  const requests = new SemanticRequestRunner({
+    documents,
+    freshness,
+    logger,
+    assertRunning,
+    snapshot: (document) => snapshot(document, projects),
+  })
   const semanticCapabilities = registerSemanticCapabilities({
     connection,
-    documents,
     semantic,
-    snapshot: (document) => snapshot(document, projects),
+    requests,
   })
   const diagnostics = createDocumentDiagnostics({
     connection,
@@ -107,67 +113,32 @@ export function runLanguageServer(services?: LanguageServerServices): void {
   })
 
   connection.onCompletion(async (params, token) => {
-    const startedAt = performance.now()
-    let outcome = "error"
-    let request: ReturnType<RequestFreshness["start"]> | undefined
-    try {
-      assertRunning()
-      const document = documents.get(params.textDocument.uri)
-      if (!document || !document.uri.startsWith("file:")) {
-        outcome = "document-unavailable"
-        return []
-      }
-      request = freshness.start(`completion:${document.uri}`, token)
-      const requestedDocument = snapshot(document, projects)
-      const result = await semantic.complete({
-        document: requestedDocument,
+    const result = await requests.run({
+      method: "textDocument/completion",
+      documentUri: params.textDocument.uri,
+      token,
+      fallback: [] as SemanticCompletion[],
+      execute: (document, signal) => semantic.complete({
+        document,
         position: params.position,
-        signal: request.signal,
-      })
-      if (request.clientCancelled()) {
-        outcome = "cancelled"
-        throw requestCancelled()
-      }
-      const currentDocument = documents.get(document.uri)
-      if (
-        !request.isCurrent()
-        || currentDocument?.version !== requestedDocument.version
-        || result.documentVersion !== requestedDocument.version
-      ) {
-        outcome = "stale"
-        return []
-      }
-      outcome = "ok"
-      return result.value.map(toLspCompletionItem)
-    } catch (error) {
-      if (request?.clientCancelled()) {
-        outcome = "cancelled"
-        throw requestCancelled()
-      }
-      if (request?.signal.aborted) {
-        outcome = "superseded"
-        return []
-      }
-      throw error
-    } finally {
-      request?.finish()
-      logger.info("request.completed", {
-        method: "textDocument/completion",
-        durationMs: Math.round((performance.now() - startedAt) * 100) / 100,
-        outcome,
-      })
-    }
+        signal,
+      }),
+    })
+    return result.map(toLspCompletionItem)
   })
 
-  connection.onDefinition(async (params) => {
-    assertRunning()
-    const document = documents.get(params.textDocument.uri)
-    if (!document || !document.uri.startsWith("file:")) return []
-    const result = await semantic.define({
-      document: snapshot(document, projects),
-      position: params.position,
+  connection.onDefinition(async (params, token) => {
+    return requests.run({
+      method: "textDocument/definition",
+      documentUri: params.textDocument.uri,
+      token,
+      fallback: [],
+      execute: (document, signal) => semantic.define({
+        document,
+        position: params.position,
+        signal,
+      }),
     })
-    return result.value
   })
 
   connection.onShutdown(() => {
@@ -184,10 +155,6 @@ export function runLanguageServer(services?: LanguageServerServices): void {
 
   documents.listen(connection)
   connection.listen()
-}
-
-function requestCancelled(): ResponseError<void> {
-  return new ResponseError(LSPErrorCodes.RequestCancelled, "Request cancelled by client")
 }
 
 function initialRootUris(params: InitializeParams): string[] {
