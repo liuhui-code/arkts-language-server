@@ -29,7 +29,6 @@ interface DefaultWorkspaceSymbolServiceDependencies {
 export class DefaultWorkspaceSymbolService implements WorkspaceSymbolServicePort {
   private readonly workspaces = new Map<string, WorkspaceDescriptor>()
   private readonly openDocuments = new Map<DocumentUri, DocumentSnapshot>()
-  private readonly openPromises = new Map<string, Promise<void>>()
   private readonly searchableWorkspaces = new Set<string>()
   private readonly progress = new Map<string, WorkspaceIndexProgress>()
   private report?: (progress: WorkspaceIndexProgress) => void
@@ -44,14 +43,17 @@ export class DefaultWorkspaceSymbolService implements WorkspaceSymbolServicePort
   ): void {
     if (this.disposed) return
     this.report = report
+    if (workspaces.length === 0) {
+      report({ ...emptyProgress("ready"), totalFiles: 0 })
+      return
+    }
     for (const workspace of workspaces) {
       this.workspaces.set(workspace.id, workspace)
       this.progress.set(workspace.id, emptyProgress("discovering"))
     }
     this.reportAggregate()
     for (const workspace of workspaces) {
-      const opening = this.openWorkspace(workspace, signal)
-      this.openPromises.set(workspace.id, opening)
+      void this.openWorkspace(workspace, signal)
     }
   }
 
@@ -69,52 +71,62 @@ export class DefaultWorkspaceSymbolService implements WorkspaceSymbolServicePort
     signal?: AbortSignal,
   ): Promise<WorkspaceSymbolSearchResult> {
     assertActive(signal)
-    await raceAbort(Promise.allSettled(this.openPromises.values()), signal)
-    assertActive(signal)
 
     const snapshots = [...this.openDocuments.values()]
     const openUris = new Set(snapshots.map((document) => document.uri))
-    const persistedResults = await Promise.all(
+    const persistedResults = await raceAbort(Promise.all(
       [...this.searchableWorkspaces].map(async (workspaceId) => {
         try {
-          return await this.dependencies.index.searchSymbols(workspaceId, query, limit, signal)
+          return await this.dependencies.index.searchSymbols(
+            workspaceId,
+            query,
+            limit,
+            signal,
+            [...openUris],
+          )
         } catch (error) {
           assertActive(signal)
           return null
         }
       }),
-    )
+    ), signal)
     assertActive(signal)
 
-    const overlayResults = await Promise.all(snapshots.map(async (document) => {
+    const overlayResults = await raceAbort(Promise.all(snapshots.map(async (document) => {
       try {
         const result = await this.dependencies.semantic.documentSymbols({ document, signal })
         const current = this.openDocuments.get(document.uri)
-        return current?.version === document.version && result.documentVersion === document.version
-          ? flattenDocumentSymbols(result.value, document.uri)
-          : []
+        return {
+          items: current?.version === document.version && result.documentVersion === document.version
+            ? flattenDocumentSymbols(result.value, document.uri)
+            : [],
+          failed: false,
+        }
       } catch (error) {
         assertActive(signal)
-        return []
+        return { items: [], failed: true }
       }
-    }))
+    })), signal)
     assertActive(signal)
 
     const availablePersisted = persistedResults.filter(isSearchResult)
     const candidates = [
       ...availablePersisted.flatMap((result) => result.items)
         .filter((item) => !openUris.has(item.uri)),
-      ...overlayResults.flat(),
+      ...overlayResults.flatMap((result) => result.items),
     ]
+    const persistedCompleteness = aggregateCompleteness(
+      availablePersisted.map((result) => result.completeness),
+      this.workspaces.size,
+    )
     return {
       items: rankAndLimit(query, candidates, limit),
       servedGeneration: availablePersisted.length === 0
         ? 0
         : Math.min(...availablePersisted.map((result) => result.servedGeneration)),
-      completeness: aggregateCompleteness(
-        availablePersisted.map((result) => result.completeness),
-        this.searchableWorkspaces.size,
-      ),
+      completeness: overlayResults.some((result) => result.failed)
+        ? "partial"
+        : persistedCompleteness,
     }
   }
 
@@ -133,8 +145,14 @@ export class DefaultWorkspaceSymbolService implements WorkspaceSymbolServicePort
   ): Promise<void> {
     try {
       await this.dependencies.index.open(workspace, this.dependencies.cacheDirectory)
+      if (this.disposed) {
+        await this.dependencies.index.close(workspace.id)
+        return
+      }
+      if (signal?.aborted) {
+        await this.dependencies.index.close(workspace.id)
+      }
       assertActive(signal)
-      if (this.disposed) return
       this.searchableWorkspaces.add(workspace.id)
       void this.runCatalog(workspace, signal)
     } catch (error) {
@@ -162,8 +180,12 @@ export class DefaultWorkspaceSymbolService implements WorkspaceSymbolServicePort
   }
 
   private failWorkspace(workspaceId: string, signal?: AbortSignal): void {
+    if (this.disposed) return
     const phase = signal?.aborted ? "cancelled" : "degraded"
-    this.progress.set(workspaceId, emptyProgress(phase))
+    this.progress.set(workspaceId, {
+      ...(this.progress.get(workspaceId) ?? emptyProgress(phase)),
+      phase,
+    })
     this.reportAggregate()
   }
 
