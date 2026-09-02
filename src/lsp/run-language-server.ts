@@ -8,6 +8,7 @@ import {
   PositionEncodingKind,
   ProposedFeatures,
   ResponseError,
+  SymbolKind,
   TextDocuments,
   TextDocumentSyncKind,
 } from "vscode-languageserver/node.js"
@@ -16,17 +17,19 @@ import { TextDocument } from "vscode-languageserver-textdocument"
 import type { DocumentSnapshot } from "../contracts/document.js"
 import type { SemanticCompletion, SemanticEnginePort } from "../contracts/semantic-engine.js"
 import type { ProjectResolverPort } from "../contracts/project-resolver.js"
+import type { WorkspaceSymbolServicePort } from "../contracts/workspace-symbol-service.js"
 import { SingleRootProjectResolver } from "../project/single-root-project-resolver.js"
 import { LegacySemanticEngine } from "../semantic/legacy-semantic-engine.js"
 import { createStructuredLogger } from "../observability/logger.js"
 import { createDocumentDiagnostics } from "./document-diagnostics.js"
 import { RequestFreshness } from "./request-freshness.js"
 import { registerSemanticCapabilities } from "./register-semantic-capabilities.js"
-import { SemanticRequestRunner } from "./semantic-request-runner.js"
+import { requestCancelled, SemanticRequestRunner } from "./semantic-request-runner.js"
 
 export interface LanguageServerServices {
   projects: ProjectResolverPort
   semantic: SemanticEnginePort
+  workspaceSymbols?: WorkspaceSymbolServicePort
 }
 
 export function runLanguageServer(services?: LanguageServerServices): void {
@@ -36,6 +39,7 @@ export function runLanguageServer(services?: LanguageServerServices): void {
   const projects = services?.projects
     ?? new SingleRootProjectResolver(pathToFileURL(process.cwd()).href)
   const semantic = services?.semantic ?? new LegacySemanticEngine(projects)
+  const workspaceSymbols = services?.workspaceSymbols
   const freshness = new RequestFreshness()
   let shuttingDown = false
   let disposed = false
@@ -44,6 +48,7 @@ export function runLanguageServer(services?: LanguageServerServices): void {
     if (disposed) return
     disposed = true
     semantic.dispose()
+    workspaceSymbols?.dispose()
     logger.info("server.stopped", { reason })
   }
 
@@ -73,7 +78,9 @@ export function runLanguageServer(services?: LanguageServerServices): void {
   logger.info("server.started", { transport: "stdio" })
 
   connection.onInitialize((params: InitializeParams) => {
-    projects.configure(initialRootUris(params))
+    const rootUris = initialRootUris(params)
+    projects.configure(rootUris)
+    workspaceSymbols?.start(rootUris.map((rootUri) => ({ id: rootUri, rootUri })))
     semanticCapabilities.configure(params.capabilities)
     logger.info("lsp.initialized", {
       workspaceCount: initialRootUris(params).length,
@@ -92,23 +99,29 @@ export function runLanguageServer(services?: LanguageServerServices): void {
         },
         completionProvider: { triggerCharacters: ["."] },
         definitionProvider: true,
+        ...(workspaceSymbols ? { workspaceSymbolProvider: true } : {}),
         ...semanticCapabilities.capabilities,
       },
     }
   })
 
   documents.onDidOpen(({ document }) => {
-    semantic.sync(snapshot(document, projects))
+    const opened = snapshot(document, projects)
+    semantic.sync(opened)
+    workspaceSymbols?.sync(opened)
     diagnostics.update(document)
   })
   documents.onDidChangeContent(({ document }) => {
     freshness.cancelDocument(document.uri)
-    semantic.sync(snapshot(document, projects))
+    const changed = snapshot(document, projects)
+    semantic.sync(changed)
+    workspaceSymbols?.sync(changed)
     diagnostics.update(document)
   })
   documents.onDidClose(({ document }) => {
     freshness.cancelDocument(document.uri)
     semantic.close(document.uri)
+    workspaceSymbols?.closeDocument(document.uri)
     diagnostics.close(document.uri)
   })
 
@@ -139,6 +152,52 @@ export function runLanguageServer(services?: LanguageServerServices): void {
         signal,
       }),
     })
+  })
+
+  connection.onWorkspaceSymbol(async (params, token) => {
+    const startedAt = performance.now()
+    let outcome = "error"
+    const request = freshness.start("workspace/symbol", token)
+    try {
+      assertRunning()
+      if (!workspaceSymbols) {
+        outcome = "unavailable"
+        return []
+      }
+      const result = await workspaceSymbols.searchSymbols(params.query, 100, request.signal)
+      if (request.clientCancelled()) {
+        outcome = "cancelled"
+        throw requestCancelled()
+      }
+      if (!request.isCurrent()) {
+        outcome = "superseded"
+        return []
+      }
+      outcome = "ok"
+      return result.items.map((item) => ({
+        name: item.name,
+        kind: workspaceSymbolKind(item.kind),
+        location: { uri: item.uri, range: item.range },
+        containerName: item.containerName,
+      }))
+    } catch (error) {
+      if (request.clientCancelled()) {
+        outcome = "cancelled"
+        throw requestCancelled()
+      }
+      if (request.signal.aborted) {
+        outcome = "superseded"
+        return []
+      }
+      throw error
+    } finally {
+      request.finish()
+      logger.info("request.completed", {
+        method: "workspace/symbol",
+        durationMs: Math.round((performance.now() - startedAt) * 100) / 100,
+        outcome,
+      })
+    }
   })
 
   connection.onShutdown(() => {
@@ -195,5 +254,15 @@ function completionKind(kind: SemanticCompletion["kind"]): CompletionItemKind {
     case "keyword": return CompletionItemKind.Keyword
     case "variable": return CompletionItemKind.Variable
     default: return CompletionItemKind.Property
+  }
+}
+
+function workspaceSymbolKind(kind: string): SymbolKind {
+  switch (kind) {
+    case "class": return SymbolKind.Class
+    case "method": return SymbolKind.Method
+    case "function": return SymbolKind.Function
+    case "struct": return SymbolKind.Struct
+    default: return SymbolKind.Variable
   }
 }

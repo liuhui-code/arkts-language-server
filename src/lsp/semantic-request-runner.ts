@@ -85,6 +85,6 @@ export class SemanticRequestRunner {
   }
 }
 
-function requestCancelled(): ResponseError<void> {
+export function requestCancelled(): ResponseError<void> {
   return new ResponseError(LSPErrorCodes.RequestCancelled, "Request cancelled by client")
 }

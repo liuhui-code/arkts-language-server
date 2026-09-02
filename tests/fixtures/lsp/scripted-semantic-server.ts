@@ -105,6 +105,37 @@ class ScriptedSemanticEngine implements SemanticEnginePort {
   }
 }
 
+class ScriptedWorkspaceSymbols {
+  private readonly documents = new Map<string, DocumentSnapshot>()
+
+  start(_workspaces: readonly { id: string; rootUri: string }[]): void {}
+
+  sync(document: DocumentSnapshot): void {
+    this.documents.set(document.uri, document)
+  }
+
+  closeDocument(documentUri: string): void {
+    this.documents.delete(documentUri)
+  }
+
+  async searchSymbols(query: string, _limit: number, signal?: AbortSignal) {
+    if (query === "WAIT_CANCEL") return waitForAbortWorkspaceSymbols(signal)
+    const items = [...this.documents.values()]
+      .filter((document) => document.text.includes(query))
+      .map((document) => ({
+        name: query,
+        kind: "struct",
+        uri: document.uri,
+        range: zeroRange(),
+      }))
+    return { items, servedGeneration: 7, completeness: "partial" as const }
+  }
+
+  dispose(): void {
+    process.stderr.write("SCRIPTED_WORKSPACE_DISPOSE\n")
+  }
+}
+
 async function scriptedSemanticResult<T>(
   query: SemanticDocumentQuery,
   value: T,
@@ -142,6 +173,16 @@ function zeroRange() {
   }
 }
 
+function waitForAbortWorkspaceSymbols(signal?: AbortSignal): Promise<never> {
+  return new Promise((_resolve, reject) => {
+    if (signal?.aborted) {
+      reject(abortError())
+      return
+    }
+    signal?.addEventListener("abort", () => reject(abortError()), { once: true })
+  })
+}
+
 function waitForAbort(
   signal?: AbortSignal,
 ): Promise<VersionedSemanticResult<SemanticCompletion[]>> {
@@ -161,4 +202,8 @@ function abortError(): Error {
 }
 
 const projects = new SingleRootProjectResolver(pathToFileURL(process.cwd()).href)
-runLanguageServer({ projects, semantic: new ScriptedSemanticEngine() })
+runLanguageServer({
+  projects,
+  semantic: new ScriptedSemanticEngine(),
+  workspaceSymbols: new ScriptedWorkspaceSymbols(),
+})
