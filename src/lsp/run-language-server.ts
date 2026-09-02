@@ -19,6 +19,7 @@ import type { SemanticCompletion, SemanticEnginePort } from "../contracts/semant
 import type { ProjectResolverPort } from "../contracts/project-resolver.js"
 import { SingleRootProjectResolver } from "../project/single-root-project-resolver.js"
 import { LegacySemanticEngine } from "../semantic/legacy-semantic-engine.js"
+import { createStructuredLogger } from "../observability/logger.js"
 import { createDocumentDiagnostics } from "./document-diagnostics.js"
 import { RequestFreshness } from "./request-freshness.js"
 import { registerSemanticCapabilities } from "./register-semantic-capabilities.js"
@@ -29,6 +30,7 @@ export interface LanguageServerServices {
 }
 
 export function runLanguageServer(services?: LanguageServerServices): void {
+  const logger = createStructuredLogger()
   const connection = createConnection(ProposedFeatures.all)
   const documents = new TextDocuments(TextDocument)
   const projects = services?.projects
@@ -38,10 +40,11 @@ export function runLanguageServer(services?: LanguageServerServices): void {
   let shuttingDown = false
   let disposed = false
 
-  const disposeOnce = () => {
+  const disposeOnce = (reason: "shutdown" | "exit") => {
     if (disposed) return
     disposed = true
     semantic.dispose()
+    logger.info("server.stopped", { reason })
   }
 
   const assertRunning = () => {
@@ -61,10 +64,15 @@ export function runLanguageServer(services?: LanguageServerServices): void {
     semantic,
     snapshot: (document) => snapshot(document, projects),
   })
+  logger.info("server.started", { transport: "stdio" })
 
   connection.onInitialize((params: InitializeParams) => {
     projects.configure(initialRootUris(params))
     semanticCapabilities.configure(params.capabilities)
+    logger.info("lsp.initialized", {
+      workspaceCount: initialRootUris(params).length,
+      positionEncoding: "utf-16",
+    })
     return {
       serverInfo: {
         name: "arkts-language-server",
@@ -99,31 +107,55 @@ export function runLanguageServer(services?: LanguageServerServices): void {
   })
 
   connection.onCompletion(async (params, token) => {
-    assertRunning()
-    const document = documents.get(params.textDocument.uri)
-    if (!document || !document.uri.startsWith("file:")) return []
-    const request = freshness.start(`completion:${document.uri}`, token)
-    const requestedDocument = snapshot(document, projects)
+    const startedAt = performance.now()
+    let outcome = "error"
+    let request: ReturnType<RequestFreshness["start"]> | undefined
     try {
+      assertRunning()
+      const document = documents.get(params.textDocument.uri)
+      if (!document || !document.uri.startsWith("file:")) {
+        outcome = "document-unavailable"
+        return []
+      }
+      request = freshness.start(`completion:${document.uri}`, token)
+      const requestedDocument = snapshot(document, projects)
       const result = await semantic.complete({
         document: requestedDocument,
         position: params.position,
         signal: request.signal,
       })
-      if (request.clientCancelled()) throw requestCancelled()
+      if (request.clientCancelled()) {
+        outcome = "cancelled"
+        throw requestCancelled()
+      }
       const currentDocument = documents.get(document.uri)
       if (
         !request.isCurrent()
         || currentDocument?.version !== requestedDocument.version
         || result.documentVersion !== requestedDocument.version
-      ) return []
+      ) {
+        outcome = "stale"
+        return []
+      }
+      outcome = "ok"
       return result.value.map(toLspCompletionItem)
     } catch (error) {
-      if (request.clientCancelled()) throw requestCancelled()
-      if (request.signal.aborted) return []
+      if (request?.clientCancelled()) {
+        outcome = "cancelled"
+        throw requestCancelled()
+      }
+      if (request?.signal.aborted) {
+        outcome = "superseded"
+        return []
+      }
       throw error
     } finally {
-      request.finish()
+      request?.finish()
+      logger.info("request.completed", {
+        method: "textDocument/completion",
+        durationMs: Math.round((performance.now() - startedAt) * 100) / 100,
+        outcome,
+      })
     }
   })
 
@@ -142,12 +174,12 @@ export function runLanguageServer(services?: LanguageServerServices): void {
     shuttingDown = true
     freshness.cancelAll()
     diagnostics.dispose()
-    disposeOnce()
+    disposeOnce("shutdown")
   })
   connection.onExit(() => {
     freshness.cancelAll()
     diagnostics.dispose()
-    disposeOnce()
+    disposeOnce("exit")
   })
 
   documents.listen(connection)
