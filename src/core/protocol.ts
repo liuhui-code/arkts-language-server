@@ -180,8 +180,7 @@ export interface SemanticDiagnostic {
   source: "language"
   severity: "error" | "warning"
   path: string
-  line: number
-  column: number
+  range: SemanticTextRange
   message: string
 }
 

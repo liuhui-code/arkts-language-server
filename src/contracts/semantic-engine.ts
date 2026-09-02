@@ -74,14 +74,21 @@ export interface SemanticDocumentSymbol {
   children?: SemanticDocumentSymbol[]
 }
 
-export interface SemanticQuery {
-  document: DocumentSnapshot
-  position: TextPosition
-  signal?: AbortSignal
+export interface SemanticDiagnostic {
+  range: TextRange
+  severity: "error" | "warning"
+  message: string
+  source: "arkts"
 }
 
 export interface SemanticDocumentQuery {
   document: DocumentSnapshot
+  signal?: AbortSignal
+}
+
+export interface SemanticQuery {
+  document: DocumentSnapshot
+  position: TextPosition
   signal?: AbortSignal
 }
 
@@ -96,6 +103,7 @@ export interface SemanticEnginePort {
   complete(query: SemanticQuery): Promise<VersionedSemanticResult<SemanticCompletion[]>>
   define(query: SemanticQuery): Promise<VersionedSemanticResult<SemanticDefinition[]>>
   documentSymbols(query: SemanticDocumentQuery): Promise<VersionedSemanticResult<SemanticDocumentSymbol[]>>
+  diagnose(query: SemanticDocumentQuery): Promise<VersionedSemanticResult<SemanticDiagnostic[]>>
   hover(query: SemanticQuery): Promise<VersionedSemanticResult<SemanticHover | null>>
   signatureHelp(query: SemanticQuery): Promise<VersionedSemanticResult<SemanticSignatureHelp | null>>
   dispose(): void

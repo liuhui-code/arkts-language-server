@@ -61,6 +61,10 @@ class ScriptedSemanticEngine implements SemanticEnginePort {
     return { documentVersion: query.document.version, value: [] }
   }
 
+  async diagnose(query: { document: DocumentSnapshot }) {
+    return { documentVersion: query.document.version, value: [] }
+  }
+
   async hover(query: SemanticQuery) {
     return { documentVersion: query.document.version, value: null }
   }
