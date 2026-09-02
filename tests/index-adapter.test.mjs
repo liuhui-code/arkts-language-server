@@ -12,6 +12,133 @@ import { buildSync } from "esbuild"
 
 const projectRoot = path.resolve(import.meta.dirname, "..")
 
+test("times out silent initialize and terminates the wedged sidecar", async (t) => {
+  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-index-timeout-initialize-"))
+  t.after(() => fs.rmSync(temporaryRoot, { recursive: true, force: true }))
+  const workspace = path.join(temporaryRoot, "workspace")
+  fs.mkdirSync(workspace)
+  const auditPath = path.join(temporaryRoot, "audit.ndjson")
+  const driver = new DriverProcess(
+    buildDriver(temporaryRoot),
+    {
+      ARKTS_INDEX_SIDECAR_PATH: makeExecutableFixture(temporaryRoot, "silent-sidecar.sh"),
+      ARKTS_INDEX_TEST_AUDIT: auditPath,
+      ARKTS_INDEX_TEST_REQUEST_TIMEOUT_MS: "1500",
+    },
+  )
+  t.after(() => driver.close())
+
+  const startedAt = performance.now()
+  await assert.rejects(
+    driver.call("open", {
+      workspace: { id: "silent-workspace", rootUri: pathToFileURL(workspace).href },
+      cacheDir: path.join(temporaryRoot, "cache"),
+    }, 4_000),
+    (error) => error.name === "SidecarTimeoutError" && /initialize.*1500ms/i.test(error.message),
+  )
+  assert.ok(performance.now() - startedAt < 4_000)
+
+  const audit = fs.readFileSync(auditPath, "utf8").trim().split("\n").map(JSON.parse)
+  assert.equal(audit.filter((entry) => entry.event === "request").length, 1)
+  assert.ok(audit.some((entry) => entry.event === "terminated" && entry.signal === "SIGTERM"))
+})
+
+test("times out silent search, rejects all pending work, and preserves degraded generation", async (t) => {
+  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-index-timeout-search-"))
+  t.after(() => fs.rmSync(temporaryRoot, { recursive: true, force: true }))
+  const workspace = path.join(temporaryRoot, "workspace")
+  fs.mkdirSync(workspace)
+  const auditPath = path.join(temporaryRoot, "audit.ndjson")
+  const driver = new DriverProcess(
+    buildDriver(temporaryRoot),
+    {
+      ARKTS_INDEX_SIDECAR_PATH: makeExecutableFixture(temporaryRoot, "silent-sidecar.sh"),
+      ARKTS_INDEX_TEST_SCENARIO: "silent-search",
+      ARKTS_INDEX_TEST_AUDIT: auditPath,
+      ARKTS_INDEX_TEST_REQUEST_TIMEOUT_MS: "1000",
+    },
+  )
+  t.after(() => driver.close())
+  const workspaceId = "silent-search-workspace"
+  await driver.call("open", {
+    workspace: { id: workspaceId, rootUri: pathToFileURL(workspace).href },
+    cacheDir: path.join(temporaryRoot, "cache"),
+  })
+  assert.deepEqual(await driver.call("refresh", {
+    workspaceId,
+    generation: 7,
+    changed: [],
+    removedUris: [],
+  }), { state: "ready", committedGeneration: 7 })
+
+  const [search, pendingStatus] = await Promise.allSettled([
+    driver.call("search", { workspaceId, query: "never", limit: 20 }),
+    driver.call("status", { workspaceId }),
+  ])
+  for (const result of [search, pendingStatus]) {
+    assert.equal(result.status, "rejected")
+    if (result.status === "rejected") {
+      assert.equal(result.reason.name, "SidecarTimeoutError")
+      assert.match(result.reason.message, /search.*1000ms/i)
+    }
+  }
+
+  assert.deepEqual(await driver.call("status", { workspaceId }), {
+    state: "degraded",
+    committedGeneration: 7,
+    message: "index sidecar search timed out after 1000ms",
+  })
+  assert.equal(await driver.call("close", { workspaceId }), undefined)
+  assert.equal(await driver.call("close", { workspaceId }), undefined)
+  const audit = fs.readFileSync(auditPath, "utf8").trim().split("\n").map(JSON.parse)
+  assert.ok(audit.some((entry) => entry.event === "terminated" && entry.signal === "SIGTERM"))
+})
+
+test("bounds silent shutdown, falls back to SIGKILL, and keeps close idempotent", async (t) => {
+  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-index-timeout-shutdown-"))
+  t.after(() => fs.rmSync(temporaryRoot, { recursive: true, force: true }))
+  const workspace = path.join(temporaryRoot, "workspace")
+  fs.mkdirSync(workspace)
+  const auditPath = path.join(temporaryRoot, "audit.ndjson")
+  const driver = new DriverProcess(
+    buildDriver(temporaryRoot),
+    {
+      ARKTS_INDEX_SIDECAR_PATH: makeExecutableFixture(temporaryRoot, "silent-sidecar.sh"),
+      ARKTS_INDEX_TEST_SCENARIO: "silent-shutdown-ignore-term",
+      ARKTS_INDEX_TEST_AUDIT: auditPath,
+      ARKTS_INDEX_TEST_REQUEST_TIMEOUT_MS: "3000",
+      ARKTS_INDEX_TEST_TERMINATION_TIMEOUT_MS: "250",
+    },
+  )
+  t.after(async () => {
+    await driver.close()
+    if (!fs.existsSync(auditPath)) return
+    const started = readAudit(auditPath).find((entry) => entry.event === "started")
+    if (!started) return
+    try { process.kill(started.pid, "SIGKILL") } catch {}
+  })
+  const workspaceId = "silent-shutdown-workspace"
+  await driver.call("open", {
+    workspace: { id: workspaceId, rootUri: pathToFileURL(workspace).href },
+    cacheDir: path.join(temporaryRoot, "cache"),
+  })
+
+  const startedAt = performance.now()
+  const [firstClose, secondClose] = await Promise.all([
+    driver.call("close", { workspaceId }, 7_000),
+    driver.call("close", { workspaceId }, 7_000),
+  ])
+  assert.equal(firstClose, undefined)
+  assert.equal(secondClose, undefined)
+  assert.ok(performance.now() - startedAt < 7_000)
+
+  const audit = readAudit(auditPath)
+  assert.equal(audit.filter((entry) => entry.event === "request").length, 2)
+  assert.ok(audit.some((entry) => entry.event === "terminated" && entry.signal === "SIGTERM"))
+  const pid = audit.find((entry) => entry.event === "started").pid
+  assert.throws(() => process.kill(pid, 0), (error) => error.code === "ESRCH")
+})
+
 test("maps one workspace session to protocol-v1 requests with canonical paths and monotonic IDs", async (t) => {
   const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-index-adapter-"))
   t.after(() => fs.rmSync(temporaryRoot, { recursive: true, force: true }))
@@ -30,6 +157,7 @@ test("maps one workspace session to protocol-v1 requests with canonical paths an
   const driver = new DriverProcess(driverPath, {
     ARKTS_INDEX_SIDECAR_PATH: sidecarPath,
     ARKTS_INDEX_TEST_AUDIT: auditPath,
+    ARKTS_INDEX_TEST_REQUEST_TIMEOUT_MS: "5000",
   })
   t.after(() => driver.close())
 
@@ -110,6 +238,7 @@ test("maps one workspace session to protocol-v1 requests with canonical paths an
     limit: 20,
     excludedUris: ["file:///workspace/OpenBuffer.ets"],
   })
+  await driver.gracefulExit()
 })
 
 test("rejects an aborted request promptly and drains its late response without corrupting the session", async (t) => {
@@ -122,6 +251,7 @@ test("rejects an aborted request promptly and drains its late response without c
     {
       ARKTS_INDEX_SIDECAR_PATH: makeExecutableFixture(temporaryRoot, "scripted-sidecar.mjs"),
       ARKTS_INDEX_TEST_SCENARIO: "delayed-search",
+      ARKTS_INDEX_TEST_REQUEST_TIMEOUT_MS: "5000",
     },
   )
   t.after(() => driver.close())
@@ -152,6 +282,40 @@ test("rejects an aborted request promptly and drains its late response without c
     query: "second",
     limit: 20,
   })).items[0].name, "FixtureService")
+  await driver.call("close", { workspaceId: "workspace-1" })
+  await driver.gracefulExit()
+})
+
+test("cleans a rejected request timer after a sidecar business error", async (t) => {
+  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-index-error-timer-"))
+  t.after(() => fs.rmSync(temporaryRoot, { recursive: true, force: true }))
+  const workspace = path.join(temporaryRoot, "workspace")
+  fs.mkdirSync(workspace)
+  const driver = new DriverProcess(
+    buildDriver(temporaryRoot),
+    {
+      ARKTS_INDEX_SIDECAR_PATH: makeExecutableFixture(temporaryRoot, "scripted-sidecar.mjs"),
+      ARKTS_INDEX_TEST_SCENARIO: "request-error-on-search",
+      ARKTS_INDEX_TEST_REQUEST_TIMEOUT_MS: "5000",
+    },
+  )
+  t.after(() => driver.close())
+  const workspaceId = "request-error-workspace"
+  await driver.call("open", {
+    workspace: { id: workspaceId, rootUri: pathToFileURL(workspace).href },
+    cacheDir: path.join(temporaryRoot, "cache"),
+  })
+
+  await assert.rejects(
+    driver.call("search", { workspaceId, query: "busy", limit: 20 }),
+    (error) => error.name === "SidecarRequestError" && error.code === "busy",
+  )
+  assert.deepEqual(await driver.call("status", { workspaceId }), {
+    state: "warming",
+    committedGeneration: 0,
+  })
+  await driver.call("close", { workspaceId })
+  await driver.gracefulExit()
 })
 
 test("rejects pending work and reports degraded without exposing stderr after the sidecar exits", async (t) => {
@@ -199,6 +363,7 @@ for (const [scenario, message] of [
   ["protocol-mismatch", /invalid protocol response/i],
   ["unknown-response-id", /unknown response id/i],
   ["blank-protocol-line", /empty protocol line/i],
+  ["unknown-event", /unrecognized sidecar event/i],
 ]) {
   test(`rejects ${scenario} as a strict sidecar protocol error`, async (t) => {
     const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), `arkts-index-${scenario}-`))
@@ -366,10 +531,17 @@ test("routes a valid id-less sidecar event without corrupting pending request re
   assert.equal(search.items[0].name, "FixtureService")
   assert.deepEqual(await driver.call("events"), [{
     protocol: 1,
-    event: "catalogProgress",
-    params: { discovered: 42, indexed: 21 },
+    event: "catalog/progress",
+    params: {
+      workspaceIdentity: "file:///workspace",
+      status: { phase: "indexing", discovered: 42, indexed: 21 },
+    },
   }])
 })
+
+function readAudit(auditPath) {
+  return fs.readFileSync(auditPath, "utf8").trim().split("\n").filter(Boolean).map(JSON.parse)
+}
 
 function buildDriver(temporaryRoot) {
   const outfile = path.join(temporaryRoot, "adapter-driver.cjs")
@@ -435,5 +607,23 @@ class DriverProcess {
     this.child.stdin.end()
     this.child.kill("SIGTERM")
     await once(this.child, "close")
+  }
+
+  async gracefulExit(timeoutMs = 2_000) {
+    if (this.child.exitCode !== null) return
+    await this.call("exit")
+    this.child.stdin.end()
+    if (this.child.exitCode !== null) return
+    await new Promise((resolve, reject) => {
+      const onClose = () => {
+        clearTimeout(timer)
+        resolve()
+      }
+      const timer = setTimeout(() => {
+        this.child.off("close", onClose)
+        reject(new Error("adapter driver retained a completed request timer"))
+      }, timeoutMs)
+      this.child.once("close", onClose)
+    })
   }
 }
