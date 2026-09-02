@@ -16,8 +16,11 @@ extension_dir=$project_root/editors/zed
 extension_target_dir=$extension_dir/target
 extension_build=$extension_target_dir/wasm32-wasip2/release/zed_arkts_local.wasm
 extension_wasm=$extension_dir/extension.wasm
+lockfile=$project_root/pnpm-lock.yaml
+dependency_stamp_dir=$project_root/node_modules/.cache/arkts-language-server
+dependency_stamp=$dependency_stamp_dir/pnpm-lock.sha256
 
-for required_command in pnpm cargo; do
+for required_command in node pnpm cargo; do
   if ! command -v "$required_command" >/dev/null 2>&1; then
     echo "arkts-language-server local install requires $required_command on PATH." >&2
     exit 127
@@ -31,8 +34,27 @@ if [ -e "$installed_command" ] || [ -L "$installed_command" ]; then
   fi
 fi
 
-if [ ! -x "$project_root/node_modules/.bin/esbuild" ]; then
+if [ ! -f "$lockfile" ]; then
+  echo "Missing dependency lockfile: $lockfile" >&2
+  exit 1
+fi
+lockfile_signature=$(node -e '
+  const crypto = require("node:crypto")
+  const fs = require("node:fs")
+  process.stdout.write(crypto.createHash("sha256").update(fs.readFileSync(process.argv[1])).digest("hex"))
+' "$lockfile")
+installed_signature=
+if [ -f "$dependency_stamp" ]; then
+  installed_signature=$(sed -n '1p' "$dependency_stamp")
+fi
+if [ ! -x "$project_root/node_modules/.bin/esbuild" ] || [ "$installed_signature" != "$lockfile_signature" ]; then
   (cd "$project_root" && pnpm install --frozen-lockfile)
+  mkdir -p "$dependency_stamp_dir"
+  dependency_stamp_tmp=$dependency_stamp.tmp.$$
+  trap 'rm -f "$dependency_stamp_tmp"' EXIT HUP INT TERM
+  printf '%s\n' "$lockfile_signature" > "$dependency_stamp_tmp"
+  mv "$dependency_stamp_tmp" "$dependency_stamp"
+  trap - EXIT HUP INT TERM
 fi
 (cd "$project_root" && pnpm build)
 CARGO_TARGET_DIR=$extension_target_dir \
