@@ -17,6 +17,8 @@ import type {
 import { resolveIndexSidecarPath, type SidecarPathOptions } from "./sidecar-path.js"
 
 const PROTOCOL_VERSION = 1
+const DEFAULT_REQUEST_TIMEOUT_MS = 15_000
+const DEFAULT_TERMINATION_TIMEOUT_MS = 1_000
 
 interface SidecarResponse {
   protocol: number
@@ -34,12 +36,17 @@ interface PendingRequest {
 
 export interface SidecarProtocolEvent {
   protocol: 1
-  event: string
-  params: unknown
+  event: "catalog/progress"
+  params: {
+    workspaceIdentity: string
+    status: Record<string, unknown>
+  }
 }
 
 export interface SidecarWorkspaceIndexOptions extends SidecarPathOptions {
   onEvent?(event: SidecarProtocolEvent): void
+  requestTimeoutMs?: number
+  terminationTimeoutMs?: number
 }
 
 export class SidecarWorkspaceIndex implements WorkspaceIndexPort {
@@ -57,7 +64,12 @@ export class SidecarWorkspaceIndex implements WorkspaceIndexPort {
 
     const workspaceRoot = await canonicalFileWorkspaceRoot(workspace.rootUri)
     const cacheDirectory = await canonicalDirectory(cacheDir)
-    const session = new SidecarSession(resolveIndexSidecarPath(this.options), this.options.onEvent)
+    const session = new SidecarSession(
+      resolveIndexSidecarPath(this.options),
+      this.options.onEvent,
+      resolveRequestTimeout(this.options.requestTimeoutMs),
+      resolveTerminationTimeout(this.options.terminationTimeoutMs),
+    )
     this.sessions.set(workspace.id, session)
     try {
       const initialized = asRecord(await session.request("initialize", {
@@ -138,12 +150,15 @@ class SidecarSession {
   private closed = false
   private closing = false
   private failure: Error | undefined
+  private terminationPromise: Promise<void> | undefined
   private readonly closedPromise: Promise<void>
   private resolveClosed!: () => void
 
   constructor(
     sidecarPath: string,
     private readonly onEvent?: (event: SidecarProtocolEvent) => void,
+    private readonly requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
+    private readonly terminationTimeoutMs = DEFAULT_TERMINATION_TIMEOUT_MS,
   ) {
     this.closedPromise = new Promise((resolve) => { this.resolveClosed = resolve })
     this.child = spawn(sidecarPath, [], {
@@ -175,6 +190,7 @@ class SidecarSession {
     const id = this.nextRequestId++
     const line = `${JSON.stringify({ protocol: PROTOCOL_VERSION, id, method, params })}\n`
     return new Promise((resolve, reject) => {
+      let timer: ReturnType<typeof setTimeout> | undefined
       const onAbort = () => {
         const pending = this.pending.get(id)
         if (!pending) return
@@ -183,9 +199,16 @@ class SidecarSession {
         pending.cleanup()
         pending.reject(abortError())
       }
-      const cleanup = () => signal?.removeEventListener("abort", onAbort)
+      const cleanup = () => {
+        signal?.removeEventListener("abort", onAbort)
+        if (timer) clearTimeout(timer)
+      }
       this.pending.set(id, { resolve, reject, cleanup })
       signal?.addEventListener("abort", onAbort, { once: true })
+      timer = setTimeout(() => {
+        if (!this.pending.has(id)) return
+        this.fail(new SidecarTimeoutError(method, this.requestTimeoutMs), true)
+      }, this.requestTimeoutMs)
       this.child.stdin.write(line, (error) => {
         if (!error) return
         const pending = this.pending.get(id)
@@ -211,23 +234,26 @@ class SidecarSession {
   }
 
   async closeAfterFailure(): Promise<void> {
-    this.closing = true
-    if (!this.closed) this.child.kill()
-    await this.closedPromise
+    await this.terminate()
   }
 
   private async shutdown(): Promise<void> {
     if (this.closed) return
     if (this.failure) {
-      this.closing = true
-      this.child.kill()
-      await this.closedPromise
+      await this.terminate()
       return
     }
-    await this.request("shutdown", {})
+    try {
+      await this.request("shutdown", {})
+    } catch {
+      await this.terminate()
+      return
+    }
     this.closing = true
     this.child.stdin.end()
-    await this.closedPromise
+    if (!await this.waitForClose(this.terminationTimeoutMs)) {
+      await this.terminate()
+    }
   }
 
   private acceptStdout(chunk: string): void {
@@ -253,7 +279,11 @@ class SidecarSession {
       this.fail(new SidecarProtocolError("index sidecar emitted malformed JSON"))
       return
     }
-    if (isProtocolEvent(parsed)) {
+    if (isIdlessEventEnvelope(parsed)) {
+      if (!isProtocolEvent(parsed)) {
+        this.fail(new SidecarProtocolError("index sidecar emitted an unrecognized sidecar event"))
+        return
+      }
       try {
         this.onEvent?.(parsed)
       } catch {
@@ -299,7 +329,7 @@ class SidecarSession {
     }
   }
 
-  private fail(error: Error): void {
+  private fail(error: Error, terminate = false): void {
     this.failure ??= error
     for (const pending of this.pending.values()) {
       pending.cleanup()
@@ -307,6 +337,34 @@ class SidecarSession {
     }
     this.pending.clear()
     this.abandoned.clear()
+    if (terminate && !this.closed) {
+      void this.terminate()
+    }
+  }
+
+  private terminate(): Promise<void> {
+    this.terminationPromise ??= this.terminateProcess()
+    return this.terminationPromise
+  }
+
+  private async terminateProcess(): Promise<void> {
+    this.closing = true
+    if (this.closed) return
+    this.child.kill("SIGTERM")
+    if (await this.waitForClose(this.terminationTimeoutMs)) return
+    this.child.kill("SIGKILL")
+    await this.waitForClose(this.terminationTimeoutMs)
+  }
+
+  private waitForClose(timeoutMs: number): Promise<boolean> {
+    if (this.closed) return Promise.resolve(true)
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => resolve(false), timeoutMs)
+      void this.closedPromise.then(() => {
+        clearTimeout(timer)
+        resolve(true)
+      })
+    })
   }
 }
 
@@ -321,6 +379,13 @@ export class SidecarProtocolError extends Error {
   constructor(message: string) {
     super(message)
     this.name = "SidecarProtocolError"
+  }
+}
+
+export class SidecarTimeoutError extends Error {
+  constructor(readonly method: string, readonly timeoutMs: number) {
+    super(`index sidecar ${method} timed out after ${timeoutMs}ms`)
+    this.name = "SidecarTimeoutError"
   }
 }
 
@@ -407,9 +472,17 @@ function isProtocolEvent(value: unknown): value is SidecarProtocolEvent {
   return isRecord(value)
     && value.protocol === PROTOCOL_VERSION
     && !("id" in value)
-    && typeof value.event === "string"
-    && value.event.length > 0
-    && "params" in value
+    && value.event === "catalog/progress"
+    && isRecord(value.params)
+    && typeof value.params.workspaceIdentity === "string"
+    && isRecord(value.params.status)
+}
+
+function isIdlessEventEnvelope(value: unknown): value is Record<string, unknown> {
+  return isRecord(value)
+    && value.protocol === PROTOCOL_VERSION
+    && !("id" in value)
+    && "event" in value
 }
 
 function isIndexState(value: unknown): value is WorkspaceIndexStatus["state"] {
@@ -426,4 +499,20 @@ function isNonNegativeInteger(value: unknown): value is number {
 
 function abortError(): Error {
   return new DOMException("Index request aborted", "AbortError")
+}
+
+function resolveRequestTimeout(value: number | undefined): number {
+  const timeout = value ?? DEFAULT_REQUEST_TIMEOUT_MS
+  if (!Number.isFinite(timeout) || timeout <= 0) {
+    throw new RangeError("index sidecar request timeout must be a positive number")
+  }
+  return timeout
+}
+
+function resolveTerminationTimeout(value: number | undefined): number {
+  const timeout = value ?? DEFAULT_TERMINATION_TIMEOUT_MS
+  if (!Number.isFinite(timeout) || timeout <= 0) {
+    throw new RangeError("index sidecar termination timeout must be a positive number")
+  }
+  return timeout
 }

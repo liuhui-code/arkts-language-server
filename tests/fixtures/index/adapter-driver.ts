@@ -27,7 +27,15 @@ interface DriverCommand {
 }
 
 const sidecarEvents: unknown[] = []
-const index = new SidecarWorkspaceIndex({ onEvent: (event) => sidecarEvents.push(event) })
+const configuredTimeout = Number(process.env.ARKTS_INDEX_TEST_REQUEST_TIMEOUT_MS)
+const configuredTerminationTimeout = Number(process.env.ARKTS_INDEX_TEST_TERMINATION_TIMEOUT_MS)
+const index = new SidecarWorkspaceIndex({
+  onEvent: (event) => sidecarEvents.push(event),
+  ...(Number.isFinite(configuredTimeout) ? { requestTimeoutMs: configuredTimeout } : {}),
+  ...(Number.isFinite(configuredTerminationTimeout)
+    ? { terminationTimeoutMs: configuredTerminationTimeout }
+    : {}),
+})
 const input = createInterface({ input: process.stdin })
 const controllers = new Map<string, AbortController>()
 

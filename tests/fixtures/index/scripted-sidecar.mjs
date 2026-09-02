@@ -37,13 +37,27 @@ input.on("line", (line) => {
       if (process.env.ARKTS_INDEX_TEST_SCENARIO === "event-before-search") {
         process.stdout.write(`${JSON.stringify({
           protocol: 1,
-          event: "catalogProgress",
-          params: { discovered: 42, indexed: 21 },
+          event: "catalog/progress",
+          params: {
+            workspaceIdentity: "file:///workspace",
+            status: { phase: "indexing", discovered: 42, indexed: 21 },
+          },
+        })}\n`)
+      }
+      if (process.env.ARKTS_INDEX_TEST_SCENARIO === "unknown-event") {
+        process.stdout.write(`${JSON.stringify({
+          protocol: 1,
+          event: "catalog/unknown",
+          params: {},
         })}\n`)
       }
       if (process.env.ARKTS_INDEX_TEST_SCENARIO === "exit-on-search") {
         exiting = true
         process.stderr.write("SECRET_SOURCE_TEXT".repeat(16_384), () => process.exit(17))
+        break
+      }
+      if (process.env.ARKTS_INDEX_TEST_SCENARIO === "request-error-on-search") {
+        respond(request.id, false, undefined, { code: "busy", message: "index is busy" })
         break
       }
       if (process.env.ARKTS_INDEX_TEST_SCENARIO === "malformed-response") {
@@ -126,3 +140,8 @@ function respond(id, success, result, error) {
 function audit(entry) {
   if (auditPath) fs.appendFileSync(auditPath, `${JSON.stringify(entry)}\n`)
 }
+
+process.on("SIGTERM", () => {
+  audit({ event: "terminated", signal: "SIGTERM" })
+  process.exit(0)
+})
