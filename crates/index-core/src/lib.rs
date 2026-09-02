@@ -1,6 +1,6 @@
 //! Headless ArkTS workspace-symbol indexing.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, error::Error, fmt};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Document {
@@ -62,59 +62,221 @@ pub struct WorkspaceSymbol {
 pub struct RefreshReport {
     pub indexed_documents: usize,
     pub rejected_documents: Vec<String>,
+    pub committed_generation: u64,
+    pub state: IndexState,
 }
 
-/// Storage boundary for the parsed symbol snapshots of individual documents.
-///
-/// The in-memory implementation is used by the spike. A persistent store can
-/// implement this contract without changing parsing or the workspace API.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum IndexState {
+    Warming,
+    #[default]
+    Ready,
+    Degraded,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StoreErrorKind {
+    Busy,
+    Corrupt,
+    Incompatible,
+    WorkspaceMismatch,
+    InvalidData,
+    InvalidGeneration,
+    Io,
+    Internal,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StoreError {
+    kind: StoreErrorKind,
+    message: String,
+}
+
+impl StoreError {
+    pub fn new(kind: StoreErrorKind, message: impl Into<String>) -> Self {
+        Self {
+            kind,
+            message: message.into(),
+        }
+    }
+
+    pub const fn kind(&self) -> StoreErrorKind {
+        self.kind
+    }
+}
+
+impl fmt::Display for StoreError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.message)
+    }
+}
+
+impl Error for StoreError {}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct StoreMetadata {
+    pub committed_generation: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DocumentSymbols {
+    pub uri: String,
+    pub symbols: Vec<WorkspaceSymbol>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RefreshBatch {
+    pub generation: u64,
+    pub replacements: Vec<DocumentSymbols>,
+    pub removed_uris: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CommitReceipt {
+    pub committed_generation: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SymbolSearchResult {
+    pub items: Vec<WorkspaceSymbol>,
+    pub served_generation: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SymbolQuery {
+    folded: String,
+    limit: usize,
+}
+
+impl SymbolQuery {
+    pub fn new(query: &str, limit: usize) -> Self {
+        Self {
+            folded: query.to_lowercase(),
+            limit,
+        }
+    }
+
+    pub fn folded(&self) -> &str {
+        &self.folded
+    }
+
+    pub const fn limit(&self) -> usize {
+        self.limit
+    }
+
+    pub fn rank(&self, name: &str) -> Option<u8> {
+        symbol_match_rank(name, &self.folded)
+    }
+}
+
+/// Atomic storage boundary for document symbol snapshots and generations.
 pub trait SymbolStore {
-    fn replace_document(&mut self, uri: &str, symbols: Vec<WorkspaceSymbol>);
-    fn remove_document(&mut self, uri: &str);
-    fn search(&self, query: &str, limit: usize) -> Vec<WorkspaceSymbol>;
+    fn metadata(&self) -> Result<StoreMetadata, StoreError>;
+    fn apply_batch(&mut self, batch: RefreshBatch) -> Result<CommitReceipt, StoreError>;
+    fn search(&self, query: &SymbolQuery) -> Result<SymbolSearchResult, StoreError>;
 }
 
 #[derive(Default)]
 pub struct MemoryStore {
     documents: HashMap<String, Vec<WorkspaceSymbol>>,
+    committed_generation: u64,
 }
 
 impl SymbolStore for MemoryStore {
-    fn replace_document(&mut self, uri: &str, symbols: Vec<WorkspaceSymbol>) {
-        self.documents.insert(uri.to_owned(), symbols);
+    fn metadata(&self) -> Result<StoreMetadata, StoreError> {
+        Ok(StoreMetadata {
+            committed_generation: self.committed_generation,
+        })
     }
 
-    fn remove_document(&mut self, uri: &str) {
-        self.documents.remove(uri);
+    fn apply_batch(&mut self, batch: RefreshBatch) -> Result<CommitReceipt, StoreError> {
+        ensure_newer_generation(self.committed_generation, batch.generation)?;
+        let mut next_documents = self.documents.clone();
+        for uri in batch.removed_uris {
+            next_documents.remove(&uri);
+        }
+        for replacement in batch.replacements {
+            ensure_symbol_uris(&replacement)?;
+            next_documents.insert(replacement.uri, replacement.symbols);
+        }
+        self.documents = next_documents;
+        self.committed_generation = batch.generation;
+        Ok(CommitReceipt {
+            committed_generation: batch.generation,
+        })
     }
 
-    fn search(&self, query: &str, limit: usize) -> Vec<WorkspaceSymbol> {
-        let query = query.to_lowercase();
-        let mut matches: Vec<_> = self
-            .documents
-            .values()
-            .flatten()
-            .filter_map(|symbol| {
-                symbol_match_rank(&symbol.name, &query).map(|rank| (rank, symbol.clone()))
-            })
-            .collect();
+    fn search(&self, query: &SymbolQuery) -> Result<SymbolSearchResult, StoreError> {
+        Ok(SymbolSearchResult {
+            items: rank_symbols(query, self.documents.values().flatten().cloned()),
+            served_generation: self.committed_generation,
+        })
+    }
+}
 
-        matches.sort_by(|(left_rank, left), (right_rank, right)| {
-            let left_name = left.name.to_lowercase();
-            let right_name = right.name.to_lowercase();
-            left_rank
-                .cmp(right_rank)
-                .then_with(|| left_name.cmp(&right_name))
-                .then_with(|| left.uri.cmp(&right.uri))
-                .then_with(|| left.range.start.cmp(&right.range.start))
-        });
-        matches.truncate(limit);
-        matches.into_iter().map(|(_, symbol)| symbol).collect()
+pub fn fold_for_search(value: &str) -> String {
+    value.to_lowercase()
+}
+
+pub fn acronym_for_search(name: &str) -> String {
+    name.chars()
+        .enumerate()
+        .filter_map(|(index, character)| {
+            (index == 0 || character.is_uppercase()).then_some(character)
+        })
+        .collect::<String>()
+        .to_lowercase()
+}
+
+pub fn rank_symbols(
+    query: &SymbolQuery,
+    symbols: impl IntoIterator<Item = WorkspaceSymbol>,
+) -> Vec<WorkspaceSymbol> {
+    let mut matches: Vec<_> = symbols
+        .into_iter()
+        .filter_map(|symbol| query.rank(&symbol.name).map(|rank| (rank, symbol)))
+        .collect();
+    matches.sort_by(|(left_rank, left), (right_rank, right)| {
+        let left_name = fold_for_search(&left.name);
+        let right_name = fold_for_search(&right.name);
+        left_rank
+            .cmp(right_rank)
+            .then_with(|| left_name.cmp(&right_name))
+            .then_with(|| left.uri.cmp(&right.uri))
+            .then_with(|| left.range.start.cmp(&right.range.start))
+    });
+    matches.truncate(query.limit());
+    matches.into_iter().map(|(_, symbol)| symbol).collect()
+}
+
+fn ensure_newer_generation(current: u64, next: u64) -> Result<(), StoreError> {
+    if next > current {
+        Ok(())
+    } else {
+        Err(StoreError::new(
+            StoreErrorKind::InvalidGeneration,
+            format!("generation {next} must be newer than committed generation {current}"),
+        ))
+    }
+}
+
+fn ensure_symbol_uris(document: &DocumentSymbols) -> Result<(), StoreError> {
+    if document
+        .symbols
+        .iter()
+        .all(|symbol| symbol.uri == document.uri)
+    {
+        Ok(())
+    } else {
+        Err(StoreError::new(
+            StoreErrorKind::InvalidData,
+            format!("symbol URI does not match document {}", document.uri),
+        ))
     }
 }
 
 fn symbol_match_rank(name: &str, query: &str) -> Option<u8> {
-    let lowercase_name = name.to_lowercase();
+    let lowercase_name = fold_for_search(name);
     if lowercase_name == query {
         return Some(0);
     }
@@ -122,14 +284,7 @@ fn symbol_match_rank(name: &str, query: &str) -> Option<u8> {
         return Some(1);
     }
 
-    let acronym: String = name
-        .chars()
-        .enumerate()
-        .filter_map(|(index, character)| {
-            (index == 0 || character.is_uppercase()).then_some(character)
-        })
-        .collect::<String>()
-        .to_lowercase();
+    let acronym = acronym_for_search(name);
     if acronym.starts_with(query) {
         return Some(2);
     }
@@ -153,31 +308,50 @@ impl WorkspaceIndex {
 
     pub fn refresh(
         &mut self,
+        generation: u64,
         changed_documents: impl IntoIterator<Item = Document>,
         removed_uris: &[&str],
-    ) -> RefreshReport {
-        for uri in removed_uris {
-            self.store.remove_document(uri);
-        }
-
+    ) -> Result<RefreshReport, StoreError> {
         let mut report = RefreshReport::default();
+        let mut replacements = Vec::new();
+        let mut removals: Vec<String> = removed_uris.iter().map(|uri| (*uri).to_owned()).collect();
         for document in changed_documents {
             match parse_symbols(&document) {
                 Ok(symbols) => {
-                    self.store.replace_document(&document.uri, symbols);
+                    replacements.push(DocumentSymbols {
+                        uri: document.uri,
+                        symbols,
+                    });
                     report.indexed_documents += 1;
                 }
                 Err(()) => {
-                    self.store.remove_document(&document.uri);
+                    removals.push(document.uri.clone());
                     report.rejected_documents.push(document.uri);
                 }
             }
         }
-        report
+        removals.sort();
+        removals.dedup();
+        let receipt = self.store.apply_batch(RefreshBatch {
+            generation,
+            replacements,
+            removed_uris: removals,
+        })?;
+        report.committed_generation = receipt.committed_generation;
+        report.state = if report.rejected_documents.is_empty() {
+            IndexState::Ready
+        } else {
+            IndexState::Degraded
+        };
+        Ok(report)
     }
 
-    pub fn search(&self, query: &str, limit: usize) -> Vec<WorkspaceSymbol> {
-        self.store.search(query, limit)
+    pub fn search(&self, query: &str, limit: usize) -> Result<SymbolSearchResult, StoreError> {
+        self.store.search(&SymbolQuery::new(query, limit))
+    }
+
+    pub fn metadata(&self) -> Result<StoreMetadata, StoreError> {
+        self.store.metadata()
     }
 }
 
@@ -207,6 +381,8 @@ fn parse_symbols(document: &Document) -> Result<Vec<WorkspaceSymbol>, ()> {
     let mut containers: Vec<Container> = Vec::new();
     let mut pending_container: Option<String> = None;
     let mut brace_depth = 0usize;
+    let mut parenthesis_depth = 0usize;
+    let mut bracket_depth = 0usize;
 
     for (index, token) in tokens.iter().enumerate() {
         match token.text {
@@ -254,6 +430,20 @@ fn parse_symbols(document: &Document) -> Result<Vec<WorkspaceSymbol>, ()> {
                 }
                 brace_depth = brace_depth.saturating_sub(1);
             }
+            "(" => parenthesis_depth += 1,
+            ")" => {
+                if parenthesis_depth == 0 {
+                    return Err(());
+                }
+                parenthesis_depth -= 1;
+            }
+            "[" => bracket_depth += 1,
+            "]" => {
+                if bracket_depth == 0 {
+                    return Err(());
+                }
+                bracket_depth -= 1;
+            }
             _ => {
                 let Some(container) = containers.last() else {
                     continue;
@@ -279,7 +469,7 @@ fn parse_symbols(document: &Document) -> Result<Vec<WorkspaceSymbol>, ()> {
         }
     }
 
-    if brace_depth == 0 {
+    if brace_depth == 0 && parenthesis_depth == 0 && bracket_depth == 0 {
         Ok(symbols)
     } else {
         Err(())

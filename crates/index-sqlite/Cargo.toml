@@ -1,0 +1,10 @@
+[package]
+name = "arkts-index-sqlite"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+arkts-index-core = { path = "../index-core" }
+rusqlite = { version = "=0.40.1", features = ["bundled"] }
+sha2 = "0.10"
