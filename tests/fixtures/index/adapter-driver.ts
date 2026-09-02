@@ -20,6 +20,7 @@ interface DriverCommand {
   generation?: number
   changed?: DocumentSnapshot[]
   removedUris?: string[]
+  excludedUris?: string[]
   query?: string
   limit?: number
   requestKey?: string
@@ -61,6 +62,7 @@ async function dispatch(command: DriverCommand): Promise<void> {
           command.query ?? "",
           required(command.limit, "limit"),
           controller?.signal,
+          command.excludedUris,
         )
         break
       case "status":

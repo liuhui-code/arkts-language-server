@@ -43,6 +43,7 @@ export interface WorkspaceIndexPort {
     query: string,
     limit: number,
     signal?: AbortSignal,
+    excludedUris?: readonly DocumentUri[],
   ): Promise<WorkspaceSymbolSearchResult>
   status(workspaceId: WorkspaceId): Promise<WorkspaceIndexStatus>
   close(workspaceId: WorkspaceId): Promise<void>

@@ -53,6 +53,7 @@ test("maps one workspace session to protocol-v1 requests with canonical paths an
     workspaceId: "workspace-1",
     query: "FS",
     limit: 20,
+    excludedUris: ["file:///workspace/OpenBuffer.ets"],
   }), {
     items: [
       {
@@ -103,6 +104,11 @@ test("maps one workspace session to protocol-v1 requests with canonical paths an
     generation: 1,
     changed: [{ uri: "file:///workspace/FixtureService.ets", text: "class FixtureService {}\n" }],
     removedUris: ["file:///workspace/Removed.ets"],
+  })
+  assert.deepEqual(requests[2].params, {
+    query: "FS",
+    limit: 20,
+    excludedUris: ["file:///workspace/OpenBuffer.ets"],
   })
 })
 
