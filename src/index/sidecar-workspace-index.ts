@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url"
 
 import type {
   DocumentSnapshot,
+  DocumentUri,
   WorkspaceDescriptor,
   WorkspaceId,
 } from "../contracts/document.js"
@@ -97,8 +98,13 @@ export class SidecarWorkspaceIndex implements WorkspaceIndexPort {
     query: string,
     limit: number,
     signal?: AbortSignal,
+    excludedUris: readonly DocumentUri[] = [],
   ): Promise<WorkspaceSymbolSearchResult> {
-    return mapSearchResult(await this.session(workspaceId).request("search", { query, limit }, signal))
+    return mapSearchResult(await this.session(workspaceId).request(
+      "search",
+      { query, limit, excludedUris },
+      signal,
+    ))
   }
 
   async status(workspaceId: WorkspaceId): Promise<WorkspaceIndexStatus> {
