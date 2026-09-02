@@ -15,7 +15,7 @@ Parent revision: `548e649369ce421b2c4bfb3ec75cbd617a3ec263`
   reserved for protocol JSON and operational failures use stderr.
 
 The cache lives below the host-provided cache directory at
-`workspaces/<sha256>/symbols-v1.sqlite3`. The digest includes a namespace and
+`workspaces/<sha256>/symbols-v2.sqlite3`. The digest includes a namespace and
 the canonical workspace file URI. The full URI is also stored in SQLite and
 verified when opening the database, so a hash/path mix-up cannot expose another
 workspace's symbols.
@@ -122,7 +122,9 @@ Results:
 - Clippy: zero warnings; release workspace build passed.
 - Dependency tree contains only the three project crates plus direct
   `rusqlite`/bundled SQLite, `sha2`, `serde`, and `serde_json` dependency
-  families. It contains no Tauri, ArkLine schema, ORM, Tokio, or FTS.
+  families. It contains no Tauri, ArkLine schema, ORM, or Tokio. Schema v2
+  uses bundled SQLite's FTS5 trigram tokenizer for indexed substring
+  candidates; exact ranking remains in `arkts-index-core`.
 - Existing TypeScript/LSP/Zed gate: 13 passed, 0 failed.
 - The first frontend gate attempt stopped before tests because this worktree
   lacked `node_modules`. After an offline frozen-lockfile install, one run had

@@ -102,7 +102,7 @@ impl Runtime {
                 self.committed_generation = metadata.committed_generation;
                 self.state = IndexState::Warming;
                 self.completeness = "stale";
-                self.rejected_count = 0;
+                self.rejected_count = metadata.rejected_documents.len();
                 self.index = Some(index);
                 Ok((
                     json!({
@@ -167,7 +167,7 @@ impl Runtime {
                     .items
                     .into_iter()
                     .map(|symbol| {
-                        json!({
+                        let mut item = json!({
                             "name": symbol.name,
                             "kind": symbol_kind_name(symbol.kind),
                             "uri": symbol.uri,
@@ -181,8 +181,11 @@ impl Runtime {
                                     "character": symbol.range.end.character,
                                 },
                             },
-                            "containerName": symbol.container,
-                        })
+                        });
+                        if let Some(container) = symbol.container {
+                            item["containerName"] = json!(container);
+                        }
+                        item
                     })
                     .collect();
                 Ok((
