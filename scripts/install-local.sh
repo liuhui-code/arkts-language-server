@@ -66,6 +66,9 @@ if [ ! -x "$project_root/node_modules/.bin/esbuild" ] || [ "$installed_signature
   trap - EXIT HUP INT TERM
 fi
 (cd "$project_root" && pnpm build)
+CARGO_TARGET_DIR=$project_root/target \
+  cargo build --locked --manifest-path "$project_root/Cargo.toml" \
+  --package arkts-index-sidecar --release
 CARGO_TARGET_DIR=$extension_target_dir \
   cargo build --locked --manifest-path "$extension_dir/Cargo.toml" --target wasm32-wasip2 --release
 

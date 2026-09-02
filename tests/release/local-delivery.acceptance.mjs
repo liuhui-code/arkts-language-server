@@ -59,8 +59,16 @@ test("one local command builds and idempotently installs a working Zed language 
 
   const serverBundle = path.join(projectRoot, "dist", "server.cjs")
   const extensionWasm = path.join(projectRoot, "editors", "zed", "extension.wasm")
+  const sidecarBinary = path.join(
+    projectRoot,
+    "target",
+    "release",
+    process.platform === "win32" ? "arkts-index-sidecar.exe" : "arkts-index-sidecar",
+  )
   assert.ok(fs.statSync(serverBundle).size > 0)
   assert.deepEqual(fs.readFileSync(extensionWasm).subarray(0, 4), Buffer.from([0x00, 0x61, 0x73, 0x6d]))
+  assert.ok(fs.statSync(sidecarBinary).size > 0)
+  fs.accessSync(sidecarBinary, fs.constants.X_OK)
 
   const installedCommand = path.join(binDirectory, "arkts-language-server")
   const firstTarget = fs.realpathSync(installedCommand)
