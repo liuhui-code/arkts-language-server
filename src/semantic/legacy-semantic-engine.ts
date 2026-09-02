@@ -10,7 +10,9 @@ import type {
   SemanticCompletion,
   SemanticCompletionKind,
   SemanticEnginePort,
+  SemanticHover,
   SemanticQuery,
+  SemanticSignatureHelp,
   VersionedSemanticResult,
   SemanticDefinition,
 } from "../contracts/semantic-engine.js"
@@ -72,6 +74,37 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     return { documentVersion: query.document.version, value }
   }
 
+  async signatureHelp(
+    query: SemanticQuery,
+  ): Promise<VersionedSemanticResult<SemanticSignatureHelp | null>> {
+    assertActive(query.signal)
+    this.sync(query.document)
+    const prepared = this.prepare(query.document, query.position)
+    return {
+      documentVersion: query.document.version,
+      value: prepared.engine.signatureHelp(prepared.position),
+    }
+  }
+
+  async hover(
+    query: SemanticQuery,
+  ): Promise<VersionedSemanticResult<SemanticHover | null>> {
+    assertActive(query.signal)
+    this.sync(query.document)
+    const prepared = this.prepare(query.document, query.position)
+    const hover = prepared.engine.hover(prepared.position)
+    return {
+      documentVersion: query.document.version,
+      value: hover
+        ? {
+            signature: hover.signature,
+            documentation: hover.documentation,
+            range: toPublicRange(hover.range),
+          }
+        : null,
+    }
+  }
+
   dispose(): void {
     this.engines.dispose()
   }
@@ -109,6 +142,18 @@ function completionKind(kind: string): SemanticCompletionKind {
       return kind
     default:
       return "property"
+  }
+}
+
+function toPublicRange(range: {
+  startLine: number
+  startColumn: number
+  endLine: number
+  endColumn: number
+}) {
+  return {
+    start: { line: range.startLine - 1, character: range.startColumn - 1 },
+    end: { line: range.endLine - 1, character: range.endColumn - 1 },
   }
 }
 

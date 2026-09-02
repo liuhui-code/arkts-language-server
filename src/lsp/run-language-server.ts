@@ -16,12 +16,19 @@ import type { SemanticCompletion, SemanticEnginePort } from "../contracts/semant
 import type { ProjectResolverPort } from "../contracts/project-resolver.js"
 import { SingleRootProjectResolver } from "../project/single-root-project-resolver.js"
 import { LegacySemanticEngine } from "../semantic/legacy-semantic-engine.js"
+import { registerSemanticCapabilities } from "./register-semantic-capabilities.js"
 
 export function runLanguageServer(): void {
   const connection = createConnection(ProposedFeatures.all)
   const documents = new TextDocuments(TextDocument)
   const projects = new SingleRootProjectResolver(pathToFileURL(process.cwd()).href)
   const semantic = new LegacySemanticEngine(projects)
+  const semanticCapabilities = registerSemanticCapabilities({
+    connection,
+    documents,
+    semantic,
+    snapshot: (document) => snapshot(document, projects),
+  })
 
   connection.onInitialize((params: InitializeParams) => {
     projects.configure(initialRootUris(params))
@@ -38,6 +45,7 @@ export function runLanguageServer(): void {
         },
         completionProvider: { triggerCharacters: ["."] },
         definitionProvider: true,
+        ...semanticCapabilities,
       },
     }
   })
