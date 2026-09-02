@@ -1,6 +1,10 @@
 //! Headless ArkTS workspace-symbol indexing.
 
-use std::{collections::HashMap, error::Error, fmt};
+use std::{
+    collections::{BTreeSet, HashMap},
+    error::Error,
+    fmt,
+};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Document {
@@ -116,6 +120,7 @@ impl Error for StoreError {}
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct StoreMetadata {
     pub committed_generation: u64,
+    pub rejected_documents: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -129,11 +134,13 @@ pub struct RefreshBatch {
     pub generation: u64,
     pub replacements: Vec<DocumentSymbols>,
     pub removed_uris: Vec<String>,
+    pub rejected_uris: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CommitReceipt {
     pub committed_generation: u64,
+    pub rejected_documents: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -179,6 +186,7 @@ pub trait SymbolStore {
 #[derive(Default)]
 pub struct MemoryStore {
     documents: HashMap<String, Vec<WorkspaceSymbol>>,
+    rejected_documents: BTreeSet<String>,
     committed_generation: u64,
 }
 
@@ -186,23 +194,33 @@ impl SymbolStore for MemoryStore {
     fn metadata(&self) -> Result<StoreMetadata, StoreError> {
         Ok(StoreMetadata {
             committed_generation: self.committed_generation,
+            rejected_documents: self.rejected_documents.iter().cloned().collect(),
         })
     }
 
     fn apply_batch(&mut self, batch: RefreshBatch) -> Result<CommitReceipt, StoreError> {
         ensure_newer_generation(self.committed_generation, batch.generation)?;
         let mut next_documents = self.documents.clone();
+        let mut next_rejected_documents = self.rejected_documents.clone();
         for uri in batch.removed_uris {
             next_documents.remove(&uri);
+            next_rejected_documents.remove(&uri);
         }
         for replacement in batch.replacements {
             ensure_symbol_uris(&replacement)?;
+            next_rejected_documents.remove(&replacement.uri);
             next_documents.insert(replacement.uri, replacement.symbols);
         }
+        for uri in batch.rejected_uris {
+            next_documents.remove(&uri);
+            next_rejected_documents.insert(uri);
+        }
         self.documents = next_documents;
+        self.rejected_documents = next_rejected_documents;
         self.committed_generation = batch.generation;
         Ok(CommitReceipt {
             committed_generation: batch.generation,
+            rejected_documents: self.rejected_documents.iter().cloned().collect(),
         })
     }
 
@@ -276,6 +294,9 @@ fn ensure_symbol_uris(document: &DocumentSymbols) -> Result<(), StoreError> {
 }
 
 fn symbol_match_rank(name: &str, query: &str) -> Option<u8> {
+    if query.is_empty() {
+        return None;
+    }
     let lowercase_name = fold_for_search(name);
     if lowercase_name == query {
         return Some(0);
@@ -288,7 +309,11 @@ fn symbol_match_rank(name: &str, query: &str) -> Option<u8> {
     if acronym.starts_with(query) {
         return Some(2);
     }
-    lowercase_name.contains(query).then_some(3)
+    query
+        .chars()
+        .nth(2)
+        .is_some_and(|_| lowercase_name.contains(query))
+        .then_some(3)
 }
 
 pub struct WorkspaceIndex {
@@ -315,6 +340,7 @@ impl WorkspaceIndex {
         let mut report = RefreshReport::default();
         let mut replacements = Vec::new();
         let mut removals: Vec<String> = removed_uris.iter().map(|uri| (*uri).to_owned()).collect();
+        let mut rejected_uris = Vec::new();
         for document in changed_documents {
             match parse_symbols(&document) {
                 Ok(symbols) => {
@@ -325,19 +351,22 @@ impl WorkspaceIndex {
                     report.indexed_documents += 1;
                 }
                 Err(()) => {
-                    removals.push(document.uri.clone());
-                    report.rejected_documents.push(document.uri);
+                    rejected_uris.push(document.uri);
                 }
             }
         }
         removals.sort();
         removals.dedup();
+        rejected_uris.sort();
+        rejected_uris.dedup();
         let receipt = self.store.apply_batch(RefreshBatch {
             generation,
             replacements,
             removed_uris: removals,
+            rejected_uris,
         })?;
         report.committed_generation = receipt.committed_generation;
+        report.rejected_documents = receipt.rejected_documents;
         report.state = if report.rejected_documents.is_empty() {
             IndexState::Ready
         } else {

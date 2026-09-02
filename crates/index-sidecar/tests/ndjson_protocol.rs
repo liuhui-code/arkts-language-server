@@ -289,3 +289,123 @@ fn failed_store_operation_changes_status_from_ready_to_degraded() {
     assert_eq!(status["result"]["committedGeneration"], 1);
     process.shutdown(5);
 }
+
+#[test]
+fn sidecar_restores_unresolved_rejections_and_only_clears_them_by_uri() {
+    let temp = TestDir::new("persistent-rejections");
+    let workspace = temp.path().join("workspace");
+    let cache = temp.path().join("cache");
+    fs::create_dir_all(&workspace).expect("workspace should exist");
+
+    let mut first = SidecarProcess::spawn();
+    assert_eq!(initialize(&mut first, &workspace, &cache, 1)["ok"], true);
+    let rejected = first.request(json!({
+        "protocol": 1,
+        "id": 2,
+        "method": "refresh",
+        "params": {
+            "generation": 1,
+            "changed": [{
+                "uri": "file:///workspace/Broken.ets",
+                "text": "class BrokenService {\n  run( {\n}\n"
+            }],
+            "removedUris": []
+        }
+    }));
+    assert_eq!(rejected["result"]["status"]["state"], "degraded");
+    assert_eq!(rejected["result"]["status"]["rejectedCount"], 1);
+    first.shutdown(3);
+
+    let mut second = SidecarProcess::spawn();
+    let restored = initialize(&mut second, &workspace, &cache, 4);
+    assert_eq!(restored["result"]["status"]["state"], "warming");
+    assert_eq!(
+        restored["result"]["status"]["rejectedCount"], 1,
+        "restart must retain unresolved rejection coverage"
+    );
+    let unrelated = second.request(json!({
+        "protocol": 1,
+        "id": 5,
+        "method": "refresh",
+        "params": {
+            "generation": 2,
+            "changed": [{
+                "uri": "file:///workspace/Healthy.ets",
+                "text": "class HealthyService {}\n"
+            }],
+            "removedUris": []
+        }
+    }));
+    assert_eq!(unrelated["result"]["status"]["state"], "degraded");
+    assert_eq!(unrelated["result"]["status"]["completeness"], "partial");
+
+    let removed = second.request(json!({
+        "protocol": 1,
+        "id": 6,
+        "method": "refresh",
+        "params": {
+            "generation": 3,
+            "changed": [],
+            "removedUris": ["file:///workspace/Broken.ets"]
+        }
+    }));
+    assert_eq!(removed["result"]["status"]["state"], "ready");
+    assert_eq!(removed["result"]["status"]["rejectedCount"], 0);
+    second.shutdown(7);
+}
+
+#[test]
+fn search_omits_absent_container_name_and_matches_the_exact_protocol_shape() {
+    let temp = TestDir::new("search-shape");
+    let workspace = temp.path().join("workspace");
+    let cache = temp.path().join("cache");
+    fs::create_dir_all(&workspace).expect("workspace should exist");
+
+    let mut process = SidecarProcess::spawn();
+    assert_eq!(initialize(&mut process, &workspace, &cache, 1)["ok"], true);
+    assert_eq!(
+        process.request(json!({
+            "protocol": 1,
+            "id": 2,
+            "method": "refresh",
+            "params": {
+                "generation": 1,
+                "changed": [{
+                    "uri": "file:///workspace/Root.ets",
+                    "text": "class Root {}\n"
+                }],
+                "removedUris": []
+            }
+        }))["ok"],
+        true
+    );
+
+    let searched = process.request(json!({
+        "protocol": 1,
+        "id": 3,
+        "method": "search",
+        "params": {"query": "Root", "limit": 20}
+    }));
+    assert_eq!(
+        searched,
+        json!({
+            "protocol": 1,
+            "id": 3,
+            "ok": true,
+            "result": {
+                "items": [{
+                    "name": "Root",
+                    "kind": "class",
+                    "uri": "file:///workspace/Root.ets",
+                    "range": {
+                        "start": {"line": 0, "character": 6},
+                        "end": {"line": 0, "character": 10}
+                    }
+                }],
+                "servedGeneration": 1,
+                "completeness": "ready"
+            }
+        })
+    );
+    process.shutdown(4);
+}
