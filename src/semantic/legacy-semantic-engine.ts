@@ -9,6 +9,8 @@ import type { ProjectResolverPort } from "../contracts/project-resolver.js"
 import type {
   SemanticCompletion,
   SemanticCompletionKind,
+  SemanticDiagnostic,
+  SemanticDocumentQuery,
   SemanticEnginePort,
   SemanticHover,
   SemanticQuery,
@@ -71,6 +73,21 @@ export class LegacySemanticEngine implements SemanticEnginePort {
         range: { start, end: start },
       }
     })
+    return { documentVersion: query.document.version, value }
+  }
+
+  async diagnose(
+    query: SemanticDocumentQuery,
+  ): Promise<VersionedSemanticResult<SemanticDiagnostic[]>> {
+    assertActive(query.signal)
+    this.sync(query.document)
+    const prepared = this.prepare(query.document, { line: 0, character: 0 })
+    const value = prepared.engine.diagnostics(prepared.position).map((diagnostic) => ({
+      range: toPublicRange(diagnostic.range),
+      severity: diagnostic.severity,
+      message: diagnostic.message,
+      source: "arkts" as const,
+    }))
     return { documentVersion: query.document.version, value }
   }
 

@@ -19,6 +19,7 @@ import type { SemanticCompletion, SemanticEnginePort } from "../contracts/semant
 import type { ProjectResolverPort } from "../contracts/project-resolver.js"
 import { SingleRootProjectResolver } from "../project/single-root-project-resolver.js"
 import { LegacySemanticEngine } from "../semantic/legacy-semantic-engine.js"
+import { createDocumentDiagnostics } from "./document-diagnostics.js"
 import { RequestFreshness } from "./request-freshness.js"
 import { registerSemanticCapabilities } from "./register-semantic-capabilities.js"
 
@@ -54,6 +55,12 @@ export function runLanguageServer(services?: LanguageServerServices): void {
     semantic,
     snapshot: (document) => snapshot(document, projects),
   })
+  const diagnostics = createDocumentDiagnostics({
+    connection,
+    documents,
+    semantic,
+    snapshot: (document) => snapshot(document, projects),
+  })
 
   connection.onInitialize((params: InitializeParams) => {
     projects.configure(initialRootUris(params))
@@ -75,14 +82,19 @@ export function runLanguageServer(services?: LanguageServerServices): void {
     }
   })
 
-  documents.onDidOpen(({ document }) => semantic.sync(snapshot(document, projects)))
+  documents.onDidOpen(({ document }) => {
+    semantic.sync(snapshot(document, projects))
+    diagnostics.update(document)
+  })
   documents.onDidChangeContent(({ document }) => {
     freshness.cancelDocument(document.uri)
     semantic.sync(snapshot(document, projects))
+    diagnostics.update(document)
   })
   documents.onDidClose(({ document }) => {
     freshness.cancelDocument(document.uri)
     semantic.close(document.uri)
+    diagnostics.close(document.uri)
   })
 
   connection.onCompletion(async (params, token) => {
@@ -128,10 +140,12 @@ export function runLanguageServer(services?: LanguageServerServices): void {
   connection.onShutdown(() => {
     shuttingDown = true
     freshness.cancelAll()
+    diagnostics.dispose()
     disposeOnce()
   })
   connection.onExit(() => {
     freshness.cancelAll()
+    diagnostics.dispose()
     disposeOnce()
   })
 

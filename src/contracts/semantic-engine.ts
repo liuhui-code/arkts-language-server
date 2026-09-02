@@ -51,6 +51,18 @@ export interface SemanticHover {
   range: TextRange
 }
 
+export interface SemanticDiagnostic {
+  range: TextRange
+  severity: "error" | "warning"
+  message: string
+  source: "arkts"
+}
+
+export interface SemanticDocumentQuery {
+  document: DocumentSnapshot
+  signal?: AbortSignal
+}
+
 export interface SemanticQuery {
   document: DocumentSnapshot
   position: TextPosition
@@ -67,6 +79,7 @@ export interface SemanticEnginePort {
   close(documentUri: DocumentUri): void
   complete(query: SemanticQuery): Promise<VersionedSemanticResult<SemanticCompletion[]>>
   define(query: SemanticQuery): Promise<VersionedSemanticResult<SemanticDefinition[]>>
+  diagnose(query: SemanticDocumentQuery): Promise<VersionedSemanticResult<SemanticDiagnostic[]>>
   hover(query: SemanticQuery): Promise<VersionedSemanticResult<SemanticHover | null>>
   signatureHelp(query: SemanticQuery): Promise<VersionedSemanticResult<SemanticSignatureHelp | null>>
   dispose(): void

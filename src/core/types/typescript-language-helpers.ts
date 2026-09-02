@@ -39,8 +39,7 @@ export function mapTypescriptDiagnostics(
       source: "language" as const,
       severity: diagnostic.category === ts.DiagnosticCategory.Error ? "error" as const : "warning" as const,
       path: filePath,
-      line: range.startLine,
-      column: range.startColumn,
+      range,
       message,
     }]
   })
