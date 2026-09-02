@@ -5,6 +5,7 @@ set -eu
 audit_path=${ARKTS_INDEX_TEST_AUDIT:?}
 scenario=${ARKTS_INDEX_TEST_SCENARIO:-silent-initialize}
 request_count=0
+workspace_identity=${ARKTS_INDEX_TEST_WORKSPACE_IDENTITY:-file:///fixture}
 
 on_term() {
   printf '%s\n' '{"event":"terminated","signal":"SIGTERM"}' >> "$audit_path"
@@ -22,7 +23,7 @@ while IFS= read -r request; do
   printf '%s\n' "{\"event\":\"request\",\"sequence\":$request_count}" >> "$audit_path"
   case "$scenario:$request_count" in
     silent-search:1|silent-shutdown:1|silent-shutdown-ignore-term:1)
-      printf '%s\n' '{"protocol":1,"id":1,"ok":true,"result":{"workspaceIdentity":"file:///fixture","status":{"state":"warming","committedGeneration":0,"completeness":"stale","rejectedCount":0}}}'
+      printf '%s\n' "{\"protocol\":1,\"id\":1,\"ok\":true,\"result\":{\"workspaceIdentity\":\"$workspace_identity\",\"status\":{\"state\":\"warming\",\"committedGeneration\":0,\"completeness\":\"stale\",\"rejectedCount\":0}}}"
       ;;
     silent-search:2)
       printf '%s\n' '{"protocol":1,"id":2,"ok":true,"result":{"status":{"state":"ready","committedGeneration":7,"completeness":"ready","rejectedCount":0},"rejectedDocuments":[]}}'

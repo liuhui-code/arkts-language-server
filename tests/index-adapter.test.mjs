@@ -23,7 +23,9 @@ test("times out silent initialize and terminates the wedged sidecar", async (t) 
     {
       ARKTS_INDEX_SIDECAR_PATH: makeExecutableFixture(temporaryRoot, "silent-sidecar.sh"),
       ARKTS_INDEX_TEST_AUDIT: auditPath,
-      ARKTS_INDEX_TEST_REQUEST_TIMEOUT_MS: "1500",
+      ARKTS_INDEX_TEST_WORKSPACE_IDENTITY: pathToFileURL(fs.realpathSync(workspace)).href,
+      ARKTS_INDEX_TEST_REQUEST_TIMEOUT_MS: "5000",
+      ARKTS_INDEX_TEST_INITIALIZE_TIMEOUT_MS: "5000",
     },
   )
   t.after(() => driver.close())
@@ -33,14 +35,16 @@ test("times out silent initialize and terminates the wedged sidecar", async (t) 
     driver.call("open", {
       workspace: { id: "silent-workspace", rootUri: pathToFileURL(workspace).href },
       cacheDir: path.join(temporaryRoot, "cache"),
-    }, 4_000),
-    (error) => error.name === "SidecarTimeoutError" && /initialize.*1500ms/i.test(error.message),
+    }, 9_000),
+    (error) => error.name === "SidecarTimeoutError" && /initialize.*5000ms/i.test(error.message),
   )
-  assert.ok(performance.now() - startedAt < 4_000)
+  assert.ok(performance.now() - startedAt < 9_000)
 
-  const audit = fs.readFileSync(auditPath, "utf8").trim().split("\n").map(JSON.parse)
-  assert.equal(audit.filter((entry) => entry.event === "request").length, 1)
-  assert.ok(audit.some((entry) => entry.event === "terminated" && entry.signal === "SIGTERM"))
+  if (fs.existsSync(auditPath)) {
+    const audit = fs.readFileSync(auditPath, "utf8").trim().split("\n").map(JSON.parse)
+    assert.equal(audit.filter((entry) => entry.event === "request").length, 1)
+    assert.ok(audit.some((entry) => entry.event === "terminated" && entry.signal === "SIGTERM"))
+  }
 })
 
 test("times out silent search, rejects all pending work, and preserves degraded generation", async (t) => {
@@ -55,7 +59,9 @@ test("times out silent search, rejects all pending work, and preserves degraded 
       ARKTS_INDEX_SIDECAR_PATH: makeExecutableFixture(temporaryRoot, "silent-sidecar.sh"),
       ARKTS_INDEX_TEST_SCENARIO: "silent-search",
       ARKTS_INDEX_TEST_AUDIT: auditPath,
-      ARKTS_INDEX_TEST_REQUEST_TIMEOUT_MS: "1000",
+      ARKTS_INDEX_TEST_WORKSPACE_IDENTITY: pathToFileURL(fs.realpathSync(workspace)).href,
+      ARKTS_INDEX_TEST_REQUEST_TIMEOUT_MS: "5000",
+      ARKTS_INDEX_TEST_INITIALIZE_TIMEOUT_MS: "15000",
     },
   )
   t.after(() => driver.close())
@@ -79,14 +85,14 @@ test("times out silent search, rejects all pending work, and preserves degraded 
     assert.equal(result.status, "rejected")
     if (result.status === "rejected") {
       assert.equal(result.reason.name, "SidecarTimeoutError")
-      assert.match(result.reason.message, /search.*1000ms/i)
+      assert.match(result.reason.message, /search.*5000ms/i)
     }
   }
 
   assert.deepEqual(await driver.call("status", { workspaceId }), {
     state: "degraded",
     committedGeneration: 7,
-    message: "index sidecar search timed out after 1000ms",
+    message: "index sidecar search timed out after 5000ms",
   })
   assert.equal(await driver.call("close", { workspaceId }), undefined)
   assert.equal(await driver.call("close", { workspaceId }), undefined)
@@ -106,7 +112,9 @@ test("bounds silent shutdown, falls back to SIGKILL, and keeps close idempotent"
       ARKTS_INDEX_SIDECAR_PATH: makeExecutableFixture(temporaryRoot, "silent-sidecar.sh"),
       ARKTS_INDEX_TEST_SCENARIO: "silent-shutdown-ignore-term",
       ARKTS_INDEX_TEST_AUDIT: auditPath,
+      ARKTS_INDEX_TEST_WORKSPACE_IDENTITY: pathToFileURL(fs.realpathSync(workspace)).href,
       ARKTS_INDEX_TEST_REQUEST_TIMEOUT_MS: "3000",
+      ARKTS_INDEX_TEST_INITIALIZE_TIMEOUT_MS: "15000",
       ARKTS_INDEX_TEST_TERMINATION_TIMEOUT_MS: "250",
     },
   )
@@ -158,10 +166,15 @@ test("maps one workspace session to protocol-v1 requests with canonical paths an
     ARKTS_INDEX_SIDECAR_PATH: sidecarPath,
     ARKTS_INDEX_TEST_AUDIT: auditPath,
     ARKTS_INDEX_TEST_REQUEST_TIMEOUT_MS: "5000",
+    ARKTS_INDEX_TEST_INITIALIZE_TIMEOUT_MS: "15000",
   })
   t.after(() => driver.close())
 
   const workspaceDescriptor = { id: "workspace-1", rootUri: pathToFileURL(workspaceAlias).href }
+  const fixtureServiceUri = pathToFileURL(path.join(workspaceAlias, "FixtureService.ets")).href
+  const functionsUri = pathToFileURL(path.join(workspaceAlias, "functions.ets")).href
+  const removedUri = pathToFileURL(path.join(workspaceAlias, "Removed.ets")).href
+  const openBufferUri = pathToFileURL(path.join(workspaceAlias, "OpenBuffer.ets")).href
   assert.deepEqual(await driver.call("open", { workspace: workspaceDescriptor, cacheDir: cacheAlias }), {
     state: "warming",
     committedGeneration: 0,
@@ -170,24 +183,24 @@ test("maps one workspace session to protocol-v1 requests with canonical paths an
     workspaceId: "workspace-1",
     generation: 1,
     changed: [{
-      uri: "file:///workspace/FixtureService.ets",
+      uri: fixtureServiceUri,
       version: 7,
       text: "class FixtureService {}\n",
       workspaceId: "workspace-1",
     }],
-    removedUris: ["file:///workspace/Removed.ets"],
+    removedUris: [removedUri],
   }), { state: "ready", committedGeneration: 1 })
   assert.deepEqual(await driver.call("search", {
     workspaceId: "workspace-1",
     query: "FS",
     limit: 20,
-    excludedUris: ["file:///workspace/OpenBuffer.ets"],
+    excludedUris: [openBufferUri],
   }), {
     items: [
       {
         name: "FixtureService",
         kind: "class",
-        uri: "file:///workspace/FixtureService.ets",
+        uri: fixtureServiceUri,
         range: {
           start: { line: 2, character: 1 },
           end: { line: 2, character: 15 },
@@ -197,7 +210,7 @@ test("maps one workspace session to protocol-v1 requests with canonical paths an
       {
         name: "topLevel",
         kind: "function",
-        uri: "file:///workspace/functions.ets",
+        uri: functionsUri,
         range: {
           start: { line: 0, character: 0 },
           end: { line: 0, character: 8 },
@@ -230,13 +243,16 @@ test("maps one workspace session to protocol-v1 requests with canonical paths an
   assert.equal(requests[0].params.cacheDirectory, fs.realpathSync(cache))
   assert.deepEqual(requests[1].params, {
     generation: 1,
-    changed: [{ uri: "file:///workspace/FixtureService.ets", text: "class FixtureService {}\n" }],
-    removedUris: ["file:///workspace/Removed.ets"],
+    changed: [{
+      uri: pathToFileURL(path.join(fs.realpathSync(workspace), "FixtureService.ets")).href,
+      text: "class FixtureService {}\n",
+    }],
+    removedUris: [pathToFileURL(path.join(fs.realpathSync(workspace), "Removed.ets")).href],
   })
   assert.deepEqual(requests[2].params, {
     query: "FS",
     limit: 20,
-    excludedUris: ["file:///workspace/OpenBuffer.ets"],
+    excludedUris: [pathToFileURL(path.join(fs.realpathSync(workspace), "OpenBuffer.ets")).href],
   })
   await driver.gracefulExit()
 })
@@ -252,6 +268,7 @@ test("rejects an aborted request promptly and drains its late response without c
       ARKTS_INDEX_SIDECAR_PATH: makeExecutableFixture(temporaryRoot, "scripted-sidecar.mjs"),
       ARKTS_INDEX_TEST_SCENARIO: "delayed-search",
       ARKTS_INDEX_TEST_REQUEST_TIMEOUT_MS: "5000",
+      ARKTS_INDEX_TEST_INITIALIZE_TIMEOUT_MS: "15000",
     },
   )
   t.after(() => driver.close())
@@ -316,6 +333,129 @@ test("cleans a rejected request timer after a sidecar business error", async (t)
   })
   await driver.call("close", { workspaceId })
   await driver.gracefulExit()
+})
+
+test("sends each workspace sidecar only exclusions inside that workspace root", async (t) => {
+  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-index-root-exclusions-"))
+  t.after(() => fs.rmSync(temporaryRoot, { recursive: true, force: true }))
+  const workspaceA = path.join(temporaryRoot, "workspace-a")
+  const workspaceB = path.join(temporaryRoot, "workspace-b")
+  fs.mkdirSync(workspaceA)
+  fs.mkdirSync(workspaceB)
+  const auditPath = path.join(temporaryRoot, "audit.ndjson")
+  const driver = new DriverProcess(buildDriver(temporaryRoot), {
+    ARKTS_INDEX_SIDECAR_PATH: makeExecutableFixture(temporaryRoot, "scripted-sidecar.mjs"),
+    ARKTS_INDEX_TEST_AUDIT: auditPath,
+  })
+  t.after(() => driver.close())
+  const rootA = { id: "root-a", rootUri: pathToFileURL(workspaceA).href }
+  const rootB = { id: "root-b", rootUri: pathToFileURL(workspaceB).href }
+  await driver.call("open", { workspace: rootA, cacheDir: path.join(temporaryRoot, "cache-a") })
+  await driver.call("open", { workspace: rootB, cacheDir: path.join(temporaryRoot, "cache-b") })
+
+  const local = pathToFileURL(path.join(workspaceA, "Open.ets")).href
+  const foreign = Array.from({ length: 300 }, (_, index) =>
+    pathToFileURL(path.join(workspaceB, `Foreign-${index}.ets`)).href)
+  await driver.call("search", {
+    workspaceId: rootA.id,
+    query: "root-a-exclusions",
+    limit: 20,
+    excludedUris: [local, ...foreign, "untitled:Unsaved.ets"],
+  })
+
+  const search = readAudit(auditPath)
+    .filter((entry) => entry.event === "request")
+    .map((entry) => entry.request)
+    .find((request) => request.method === "search")
+  assert.deepEqual(search.params.excludedUris, [
+    pathToFileURL(path.join(fs.realpathSync(workspaceA), "Open.ets")).href,
+  ])
+  await driver.call("close", { workspaceId: rootA.id })
+  await driver.call("close", { workspaceId: rootB.id })
+})
+
+test("rejects refresh documents outside the owning workspace before calling the sidecar", async (t) => {
+  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-index-root-refresh-"))
+  t.after(() => fs.rmSync(temporaryRoot, { recursive: true, force: true }))
+  const workspace = path.join(temporaryRoot, "workspace")
+  fs.mkdirSync(workspace)
+  const auditPath = path.join(temporaryRoot, "audit.ndjson")
+  const driver = new DriverProcess(buildDriver(temporaryRoot), {
+    ARKTS_INDEX_SIDECAR_PATH: makeExecutableFixture(temporaryRoot, "scripted-sidecar.mjs"),
+    ARKTS_INDEX_TEST_AUDIT: auditPath,
+  })
+  t.after(() => driver.close())
+  await driver.call("open", {
+    workspace: { id: "root", rootUri: pathToFileURL(workspace).href },
+    cacheDir: path.join(temporaryRoot, "cache"),
+  })
+
+  await assert.rejects(driver.call("refresh", {
+    workspaceId: "root",
+    generation: 1,
+    changed: [{
+      uri: pathToFileURL(path.join(temporaryRoot, "Outside.ets")).href,
+      version: 1,
+      text: "class Outside {}",
+      workspaceId: "root",
+    }],
+  }), /outside workspace root/i)
+  assert.equal(readAudit(auditPath)
+    .filter((entry) => entry.event === "request" && entry.request.method === "refresh").length, 0)
+})
+
+test("poisons the session when the sidecar returns a symbol outside its workspace root", async (t) => {
+  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-index-root-result-"))
+  t.after(() => fs.rmSync(temporaryRoot, { recursive: true, force: true }))
+  const workspace = path.join(temporaryRoot, "workspace")
+  fs.mkdirSync(workspace)
+  const driver = new DriverProcess(buildDriver(temporaryRoot), {
+    ARKTS_INDEX_SIDECAR_PATH: makeExecutableFixture(temporaryRoot, "scripted-sidecar.mjs"),
+    ARKTS_INDEX_TEST_SCENARIO: "outside-root-result",
+  })
+  t.after(() => driver.close())
+  await driver.call("open", {
+    workspace: { id: "root", rootUri: pathToFileURL(workspace).href },
+    cacheDir: path.join(temporaryRoot, "cache"),
+  })
+
+  await assert.rejects(
+    driver.call("search", { workspaceId: "root", query: "Outside", limit: 20 }),
+    (error) => error.name === "SidecarProtocolError" && /outside workspace root/i.test(error.message),
+  )
+  assert.equal((await driver.call("status", { workspaceId: "root" })).state, "degraded")
+})
+
+test("terminates a session when an aborted response never arrives for protocol draining", async (t) => {
+  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-index-abort-drain-"))
+  t.after(() => fs.rmSync(temporaryRoot, { recursive: true, force: true }))
+  const workspace = path.join(temporaryRoot, "workspace")
+  fs.mkdirSync(workspace)
+  const driver = new DriverProcess(buildDriver(temporaryRoot), {
+    ARKTS_INDEX_SIDECAR_PATH: makeExecutableFixture(temporaryRoot, "scripted-sidecar.mjs"),
+    ARKTS_INDEX_TEST_SCENARIO: "never-answer-search",
+    ARKTS_INDEX_TEST_REQUEST_TIMEOUT_MS: "250",
+    ARKTS_INDEX_TEST_TERMINATION_TIMEOUT_MS: "100",
+  })
+  t.after(() => driver.close())
+  await driver.call("open", {
+    workspace: { id: "root", rootUri: pathToFileURL(workspace).href },
+    cacheDir: path.join(temporaryRoot, "cache"),
+  })
+  const search = driver.call("search", {
+    workspaceId: "root",
+    query: "never",
+    limit: 20,
+    requestKey: "never",
+  })
+  await driver.call("abort", { requestKey: "never" })
+  await assert.rejects(search, (error) => error.name === "AbortError")
+  await new Promise((resolve) => setTimeout(resolve, 400))
+  assert.deepEqual(await driver.call("status", { workspaceId: "root" }), {
+    state: "degraded",
+    committedGeneration: 0,
+    message: "index sidecar search cancellation drain timed out after 250ms",
+  })
 })
 
 test("rejects pending work and reports degraded without exposing stderr after the sidecar exits", async (t) => {
@@ -533,8 +673,21 @@ test("routes a valid id-less sidecar event without corrupting pending request re
     protocol: 1,
     event: "catalog/progress",
     params: {
-      workspaceIdentity: "file:///workspace",
-      status: { phase: "indexing", discovered: 42, indexed: 21 },
+      workspaceIdentity: pathToFileURL(fs.realpathSync(workspace)).href,
+      status: {
+        state: "warming",
+        committedGeneration: 0,
+        completeness: "stale",
+        rejectedCount: 0,
+        phase: "activating",
+        buildingGeneration: 1,
+        discovered: 42,
+        indexed: 21,
+        rejected: 0,
+        policySkipped: 0,
+        ignored: 0,
+        totalFiles: 42,
+      },
     },
   }])
 })

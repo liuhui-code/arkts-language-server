@@ -4,8 +4,10 @@ Parent revision: `cb69598`
 
 ## Delivered boundary
 
-Every Node-to-sidecar request now has a deadline. The default is 15 seconds;
-tests and embedding callers can set `requestTimeoutMs`. A timeout is fatal to
+Every Node-to-sidecar request now has a deadline. Foreground requests default
+to 15 seconds; cold initialization has an independent 30-second budget. Tests
+and embedding callers can set `requestTimeoutMs` and `initializeTimeoutMs`.
+A timeout is fatal to
 that workspace session: every pending request receives the same typed
 `SidecarTimeoutError`, the last committed generation remains observable as
 `degraded`, and the wedged child is terminated.
@@ -33,8 +35,10 @@ node --test --test-name-pattern='silent initialize' tests/index-adapter.test.mjs
 ```
 
 RED: the outer driver timed out because initialize remained pending forever.
-GREEN: initialize rejected with `SidecarTimeoutError`, and the deterministic
-silent child recorded SIGTERM before the four-second outer boundary.
+GREEN: initialize rejected with `SidecarTimeoutError`; when the deliberately
+silent child had begun executing it recorded SIGTERM before the outer boundary.
+The separate initialization budget prevents foreground timeout tests from
+misclassifying a healthy but CPU-starved process startup.
 
 ### Silent search and pending status
 

@@ -1,13 +1,17 @@
 #!/usr/bin/env node
 
 import fs from "node:fs"
+import path from "node:path"
 import { createInterface } from "node:readline"
+import { pathToFileURL } from "node:url"
 
 const auditPath = process.env.ARKTS_INDEX_TEST_AUDIT
 let committedGeneration = 0
 let state = "warming"
 let searchCount = 0
 let exiting = false
+let workspaceRoot = process.cwd()
+let workspaceIdentity = pathToFileURL(workspaceRoot).href
 
 audit({ event: "started", pid: process.pid })
 
@@ -23,8 +27,12 @@ input.on("line", (line) => {
 
   switch (request.method) {
     case "initialize":
+      workspaceRoot = request.params.workspaceRoot
+      workspaceIdentity = pathToFileURL(workspaceRoot).href
       respond(request.id, true, {
-        workspaceIdentity: `file://${request.params.workspaceRoot}`,
+        workspaceIdentity: process.env.ARKTS_INDEX_TEST_SCENARIO === "wrong-workspace-identity"
+          ? pathToFileURL(path.dirname(workspaceRoot)).href
+          : workspaceIdentity,
         status: status(),
       })
       break
@@ -39,8 +47,18 @@ input.on("line", (line) => {
           protocol: 1,
           event: "catalog/progress",
           params: {
-            workspaceIdentity: "file:///workspace",
-            status: { phase: "indexing", discovered: 42, indexed: 21 },
+            workspaceIdentity,
+            status: {
+              ...status(),
+              phase: "activating",
+              buildingGeneration: 1,
+              discovered: 42,
+              indexed: 21,
+              rejected: 0,
+              policySkipped: 0,
+              ignored: 0,
+              totalFiles: 42,
+            },
           },
         })}\n`)
       }
@@ -75,13 +93,25 @@ input.on("line", (line) => {
       if (process.env.ARKTS_INDEX_TEST_SCENARIO === "blank-protocol-line") {
         process.stdout.write("\n")
       }
+      if (process.env.ARKTS_INDEX_TEST_SCENARIO === "never-answer-search") break
+      if (process.env.ARKTS_INDEX_TEST_SCENARIO === "invalid-search-result") {
+        respond(request.id, true, {
+          items: "not-an-array",
+          servedGeneration: committedGeneration,
+          completeness: "ready",
+        })
+        break
+      }
       searchCount += 1
+      const fixtureServiceUri = process.env.ARKTS_INDEX_TEST_SCENARIO === "outside-root-result"
+        ? pathToFileURL(path.join(path.dirname(workspaceRoot), "Outside.ets")).href
+        : pathToFileURL(path.join(workspaceRoot, "FixtureService.ets")).href
       const searchResult = {
         items: [
           {
             name: "FixtureService",
             kind: "class",
-            uri: "file:///workspace/FixtureService.ets",
+            uri: fixtureServiceUri,
             range: {
               start: { line: 2, character: 1 },
               end: { line: 2, character: 15 },
@@ -91,7 +121,7 @@ input.on("line", (line) => {
           {
             name: "topLevel",
             kind: "function",
-            uri: "file:///workspace/functions.ets",
+            uri: pathToFileURL(path.join(workspaceRoot, "functions.ets")).href,
             range: {
               start: { line: 0, character: 0 },
               end: { line: 0, character: 8 },

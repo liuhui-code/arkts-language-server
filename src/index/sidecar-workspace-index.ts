@@ -1,7 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process"
 import { mkdir, realpath } from "node:fs/promises"
 import path from "node:path"
-import { fileURLToPath } from "node:url"
+import { fileURLToPath, pathToFileURL } from "node:url"
 
 import type {
   DocumentSnapshot,
@@ -9,17 +9,21 @@ import type {
   WorkspaceDescriptor,
   WorkspaceId,
 } from "../contracts/document.js"
+import type { WorkspaceCatalogPort } from "../contracts/workspace-catalog.js"
 import type {
   WorkspaceIndexPort,
   WorkspaceIndexStatus,
   WorkspaceSymbol,
   WorkspaceSymbolSearchResult,
 } from "../contracts/workspace-index.js"
+import type { WorkspaceIndexProgress } from "../contracts/workspace-symbol-service.js"
 import { resolveIndexSidecarPath, type SidecarPathOptions } from "./sidecar-path.js"
 
 const PROTOCOL_VERSION = 1
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000
+const DEFAULT_INITIALIZE_TIMEOUT_MS = 30_000
 const DEFAULT_TERMINATION_TIMEOUT_MS = 1_000
+const DEFAULT_CATALOG_STALL_TIMEOUT_MS = 30_000
 
 interface SidecarResponse {
   protocol: number
@@ -47,40 +51,94 @@ export interface SidecarProtocolEvent {
 export interface SidecarWorkspaceIndexOptions extends SidecarPathOptions {
   onEvent?(event: SidecarProtocolEvent): void
   requestTimeoutMs?: number
+  initializeTimeoutMs?: number
   terminationTimeoutMs?: number
+  catalogCancelTimeoutMs?: number
+  catalogStallTimeoutMs?: number
 }
 
-export class SidecarWorkspaceIndex implements WorkspaceIndexPort {
+interface CatalogRun {
+  resolve(): void
+  reject(error: Error): void
+  report(progress: WorkspaceIndexProgress): void
+  bufferedEvents: SidecarProtocolEvent[]
+  generation?: number
+  abortRequested: boolean
+  cancelStarted: boolean
+  cancelTimer?: ReturnType<typeof setTimeout>
+  stallTimer?: ReturnType<typeof setTimeout>
+  lastProgress?: CatalogProgressMark
+  settled: boolean
+  cleanup(): void
+}
+
+export class SidecarWorkspaceIndex implements WorkspaceIndexPort, WorkspaceCatalogPort {
   private readonly sessions = new Map<WorkspaceId, SidecarSession>()
+  private readonly openingWorkspaces = new Map<WorkspaceId, Promise<WorkspaceIndexStatus>>()
+  private readonly catalogRuns = new Map<WorkspaceId, CatalogRun>()
   private readonly options: SidecarWorkspaceIndexOptions
+  private readonly catalogCancelTimeoutMs: number
+  private readonly catalogStallTimeoutMs: number
 
   constructor(options: SidecarWorkspaceIndexOptions = {}) {
     this.options = options
+    this.catalogCancelTimeoutMs = resolveRequestTimeout(
+      options.catalogCancelTimeoutMs ?? options.requestTimeoutMs,
+    )
+    this.catalogStallTimeoutMs = resolvePositiveTimeout(
+      options.catalogStallTimeoutMs,
+      DEFAULT_CATALOG_STALL_TIMEOUT_MS,
+      "catalog stall",
+    )
   }
 
-  async open(workspace: WorkspaceDescriptor, cacheDir: string): Promise<WorkspaceIndexStatus> {
-    if (this.sessions.has(workspace.id)) {
-      throw new Error(`workspace index is already open: ${workspace.id}`)
+  open(workspace: WorkspaceDescriptor, cacheDir: string): Promise<WorkspaceIndexStatus> {
+    if (this.sessions.has(workspace.id) || this.openingWorkspaces.has(workspace.id)) {
+      return Promise.reject(new Error(`workspace index is already open: ${workspace.id}`))
     }
+    const opening = this.openWorkspace(workspace, cacheDir)
+    this.openingWorkspaces.set(workspace.id, opening)
+    void opening.then(
+      () => this.openingWorkspaces.delete(workspace.id),
+      () => this.openingWorkspaces.delete(workspace.id),
+    )
+    return opening
+  }
 
+  private async openWorkspace(
+    workspace: WorkspaceDescriptor,
+    cacheDir: string,
+  ): Promise<WorkspaceIndexStatus> {
     const workspaceRoot = await canonicalFileWorkspaceRoot(workspace.rootUri)
     const cacheDirectory = await canonicalDirectory(cacheDir)
     const session = new SidecarSession(
       resolveIndexSidecarPath(this.options),
-      this.options.onEvent,
+      (event) => {
+        this.acceptCatalogEvent(workspace.id, event)
+        this.options.onEvent?.(event)
+      },
+      (error) => this.rejectCatalog(workspace.id, error),
       resolveRequestTimeout(this.options.requestTimeoutMs),
+      resolveInitializeTimeout(this.options.initializeTimeoutMs),
       resolveTerminationTimeout(this.options.terminationTimeoutMs),
     )
+    session.clientRootUri = workspace.rootUri
     this.sessions.set(workspace.id, session)
     try {
       const initialized = asRecord(await session.request("initialize", {
         workspaceRoot,
         cacheDirectory,
       }))
+      if (typeof initialized.workspaceIdentity !== "string") {
+        throw new SidecarProtocolError("index sidecar omitted workspace identity")
+      }
+      assertEquivalentWorkspaceIdentity(initialized.workspaceIdentity, workspaceRoot)
+      session.workspaceIdentity = initialized.workspaceIdentity
       const status = mapStatus(initialized.status)
       session.lastStatus = status
       return status
     } catch (error) {
+      if (error instanceof SidecarProtocolError) session.protocolFailure(error)
       this.sessions.delete(workspace.id)
       await session.closeAfterFailure()
       throw error
@@ -95,14 +153,22 @@ export class SidecarWorkspaceIndex implements WorkspaceIndexPort {
     signal?: AbortSignal,
   ): Promise<WorkspaceIndexStatus> {
     const session = this.session(workspaceId)
-    const result = asRecord(await session.request("refresh", {
-      generation,
-      changed: changed.map(({ uri, text }) => ({ uri, text })),
-      removedUris,
-    }, signal))
-    const status = mapStatus(result.status)
-    session.lastStatus = status
-    return status
+    try {
+      const result = asRecord(await session.request("refresh", {
+        generation,
+        changed: changed.map(({ uri, text }) => ({
+          uri: toWorkspaceIdentityUri(session, uri),
+          text,
+        })),
+        removedUris: removedUris.map((uri) => toWorkspaceIdentityUri(session, uri)),
+      }, signal))
+      const status = mapStatus(result.status)
+      session.lastStatus = status
+      return status
+    } catch (error) {
+      if (error instanceof SidecarProtocolError) session.protocolFailure(error)
+      throw error
+    }
   }
 
   async searchSymbols(
@@ -112,25 +178,93 @@ export class SidecarWorkspaceIndex implements WorkspaceIndexPort {
     signal?: AbortSignal,
     excludedUris: readonly DocumentUri[] = [],
   ): Promise<WorkspaceSymbolSearchResult> {
-    return mapSearchResult(await this.session(workspaceId).request(
-      "search",
-      { query, limit, excludedUris },
-      signal,
-    ))
+    const session = this.session(workspaceId)
+    try {
+      return mapSearchResult(await session.request(
+        "search",
+        {
+          query,
+          limit,
+          excludedUris: excludedUris.flatMap((uri) => {
+            const rebased = tryWorkspaceIdentityUri(session, uri)
+            return rebased === undefined ? [] : [rebased]
+          }),
+        },
+        signal,
+      ), (uri) => toClientWorkspaceUri(session, uri))
+    } catch (error) {
+      if (error instanceof SidecarProtocolError) session.protocolFailure(error)
+      throw error
+    }
   }
 
   async status(workspaceId: WorkspaceId): Promise<WorkspaceIndexStatus> {
     const session = this.session(workspaceId)
     const degraded = session.degradedStatus()
     if (degraded) return degraded
-    const status = mapStatus(await session.request("status", {}))
-    session.lastStatus = status
-    return status
+    try {
+      const status = mapStatus(await session.request("status", {}))
+      session.lastStatus = status
+      return status
+    } catch (error) {
+      if (error instanceof SidecarProtocolError) session.protocolFailure(error)
+      throw error
+    }
+  }
+
+  start(
+    workspace: WorkspaceDescriptor,
+    report: (progress: WorkspaceIndexProgress) => void,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    if (signal?.aborted) return Promise.reject(abortError())
+    const session = this.session(workspace.id)
+    if (this.catalogRuns.has(workspace.id)) {
+      return Promise.reject(new Error(`workspace catalog is already running: ${workspace.id}`))
+    }
+
+    let resolve!: () => void
+    let reject!: (error: Error) => void
+    const promise = new Promise<void>((accept, decline) => {
+      resolve = accept
+      reject = decline
+    })
+    const onAbort = () => {
+      const run = this.catalogRuns.get(workspace.id)
+      if (!run || run.settled) return
+      run.abortRequested = true
+      if (run.generation !== undefined) void this.cancelCatalog(workspace.id, session, run)
+    }
+    signal?.addEventListener("abort", onAbort, { once: true })
+    let run!: CatalogRun
+    run = {
+      resolve,
+      reject,
+      report,
+      bufferedEvents: [],
+      abortRequested: false,
+      cancelStarted: false,
+      settled: false,
+      cleanup: () => {
+        signal?.removeEventListener("abort", onAbort)
+        if (run.cancelTimer) clearTimeout(run.cancelTimer)
+        if (run.stallTimer) clearTimeout(run.stallTimer)
+      },
+    }
+    this.catalogRuns.set(workspace.id, run)
+    if (signal?.aborted) onAbort()
+    void this.beginCatalog(workspace.id, session, run)
+    return promise
   }
 
   async close(workspaceId: WorkspaceId): Promise<void> {
+    const opening = this.openingWorkspaces.get(workspaceId)
+    if (opening) {
+      try { await opening } catch { return }
+    }
     const session = this.sessions.get(workspaceId)
     if (!session) return
+    this.rejectCatalog(workspaceId, new Error("workspace index closed during cataloging"))
     try {
       await session.close()
     } finally {
@@ -143,14 +277,181 @@ export class SidecarWorkspaceIndex implements WorkspaceIndexPort {
     if (!session) throw new Error(`workspace index is not open: ${workspaceId}`)
     return session
   }
+
+  private async beginCatalog(
+    workspaceId: WorkspaceId,
+    session: SidecarSession,
+    run: CatalogRun,
+  ): Promise<void> {
+    try {
+      const result = asRecord(await session.request("catalog/start", {
+        reason: "workspace-open",
+        force: false,
+      }))
+      if (typeof result.accepted !== "boolean" || !isNonNegativeInteger(result.generation)) {
+        throw new SidecarProtocolError("index sidecar returned an invalid catalog start result")
+      }
+      run.generation = result.generation
+      this.reportCatalogStatus(workspaceId, session, run, result.status)
+      for (const event of run.bufferedEvents.splice(0)) {
+        if (run.settled) break
+        this.applyCatalogEvent(workspaceId, session, run, event)
+      }
+      if (run.abortRequested && !run.settled) {
+        await this.cancelCatalog(workspaceId, session, run)
+      }
+    } catch (error) {
+      if (error instanceof SidecarProtocolError) session.protocolFailure(error)
+      this.rejectCatalog(workspaceId, asError(error))
+    }
+  }
+
+  private async cancelCatalog(
+    workspaceId: WorkspaceId,
+    session: SidecarSession,
+    run: CatalogRun,
+  ): Promise<void> {
+    if (run.generation === undefined || run.settled || run.cancelStarted) return
+    run.cancelStarted = true
+    try {
+      const result = asRecord(await session.request("catalog/cancel", {
+        generation: run.generation,
+      }))
+      if (typeof result.cancelled !== "boolean" || result.generation !== run.generation) {
+        throw new SidecarProtocolError("index sidecar returned an invalid catalog cancel result")
+      }
+      this.reportCatalogStatus(workspaceId, session, run, result.status)
+      if (!run.settled) {
+        run.cancelTimer = setTimeout(() => {
+          session.failFromHost(
+            new SidecarTimeoutError("catalog/cancel terminal", this.catalogCancelTimeoutMs),
+          )
+        }, this.catalogCancelTimeoutMs)
+      }
+    } catch (error) {
+      if (error instanceof SidecarProtocolError) session.protocolFailure(error)
+      this.rejectCatalog(workspaceId, asError(error))
+    }
+  }
+
+  private acceptCatalogEvent(workspaceId: WorkspaceId, event: SidecarProtocolEvent): void {
+    const run = this.catalogRuns.get(workspaceId)
+    if (!run || run.settled) return
+    const session = this.session(workspaceId)
+    if (event.params.workspaceIdentity !== session.workspaceIdentity) {
+      throw new SidecarProtocolError("index sidecar catalog event used the wrong workspace identity")
+    }
+    if (run.generation === undefined) {
+      run.bufferedEvents.push(event)
+      return
+    }
+    this.applyCatalogEvent(workspaceId, session, run, event)
+  }
+
+  private applyCatalogEvent(
+    workspaceId: WorkspaceId,
+    session: SidecarSession,
+    run: CatalogRun,
+    event: SidecarProtocolEvent,
+  ): void {
+    const mapped = mapCatalogStatus(event.params.status)
+    this.validateCatalogGeneration(run, mapped)
+    this.reportCatalogProgress(workspaceId, session, run, mapped)
+  }
+
+  private reportCatalogStatus(
+    workspaceId: WorkspaceId,
+    session: SidecarSession,
+    run: CatalogRun,
+    value: unknown,
+  ): void {
+    const mapped = mapCatalogStatus(value)
+    this.validateCatalogGeneration(run, mapped)
+    this.reportCatalogProgress(workspaceId, session, run, mapped)
+  }
+
+  private reportCatalogProgress(
+    workspaceId: WorkspaceId,
+    session: SidecarSession,
+    run: CatalogRun,
+    mapped: MappedCatalogStatus,
+  ): void {
+    if (run.settled) return
+    session.lastStatus = mapped.indexStatus
+    run.report(mapped.progress)
+    if (!mapped.terminal) {
+      if (run.cancelStarted && mapped.phase === "cancelling") {
+        if (run.stallTimer) clearTimeout(run.stallTimer)
+        run.stallTimer = undefined
+        return
+      }
+      this.advanceCatalogWatchdog(workspaceId, session, run, mapped.mark)
+      return
+    }
+    run.settled = true
+    run.cleanup()
+    if (this.catalogRuns.get(workspaceId) === run) this.catalogRuns.delete(workspaceId)
+    run.resolve()
+  }
+
+  private validateCatalogGeneration(run: CatalogRun, mapped: MappedCatalogStatus): void {
+    if (run.generation === undefined) {
+      throw new SidecarProtocolError("index sidecar catalog status arrived before generation")
+    }
+    if (!mapped.terminal) {
+      if (mapped.buildingGeneration !== run.generation) {
+        throw new SidecarProtocolError("index sidecar catalog status used the wrong generation")
+      }
+      return
+    }
+    if ((mapped.phase === "ready" || mapped.phase === "partial")
+      && mapped.committedGeneration !== run.generation) {
+      throw new SidecarProtocolError("index sidecar catalog terminal committed the wrong generation")
+    }
+    if (mapped.phase === "cancelled" && !run.cancelStarted) {
+      throw new SidecarProtocolError("index sidecar cancelled a catalog that was not cancelled")
+    }
+  }
+
+  private advanceCatalogWatchdog(
+    workspaceId: WorkspaceId,
+    session: SidecarSession,
+    run: CatalogRun,
+    mark: CatalogProgressMark,
+  ): void {
+    const previous = run.lastProgress
+    if (previous) {
+      assertMonotonicCatalogProgress(previous, mark)
+      if (!catalogProgressAdvanced(previous, mark)) return
+    }
+    run.lastProgress = mark
+    if (run.stallTimer) clearTimeout(run.stallTimer)
+    run.stallTimer = setTimeout(() => {
+      if (this.catalogRuns.get(workspaceId) !== run || run.settled) return
+      session.failFromHost(
+        new SidecarTimeoutError("catalog progress", this.catalogStallTimeoutMs),
+      )
+    }, this.catalogStallTimeoutMs)
+  }
+
+  private rejectCatalog(workspaceId: WorkspaceId, error: Error): void {
+    const run = this.catalogRuns.get(workspaceId)
+    if (!run || run.settled) return
+    run.settled = true
+    run.cleanup()
+    this.catalogRuns.delete(workspaceId)
+    run.reject(error)
+  }
 }
 
 class SidecarSession {
   readonly child: ChildProcessWithoutNullStreams
   lastStatus: WorkspaceIndexStatus = { state: "warming", committedGeneration: 0 }
+  workspaceIdentity = ""
+  clientRootUri = ""
   private nextRequestId = 1
   private readonly pending = new Map<number, PendingRequest>()
-  private readonly abandoned = new Set<number>()
+  private readonly abandoned = new Map<number, ReturnType<typeof setTimeout>>()
   private stdoutBuffer = ""
   private closePromise: Promise<void> | undefined
   private closed = false
@@ -163,7 +464,9 @@ class SidecarSession {
   constructor(
     sidecarPath: string,
     private readonly onEvent?: (event: SidecarProtocolEvent) => void,
+    private readonly onFailure?: (error: Error) => void,
     private readonly requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
+    private readonly initializeTimeoutMs = DEFAULT_INITIALIZE_TIMEOUT_MS,
     private readonly terminationTimeoutMs = DEFAULT_TERMINATION_TIMEOUT_MS,
   ) {
     this.closedPromise = new Promise((resolve) => { this.resolveClosed = resolve })
@@ -177,7 +480,7 @@ class SidecarSession {
     // Always drain stderr to avoid child-process backpressure, but retain none of
     // its potentially source-bearing content in memory or public error objects.
     this.child.stderr.resume()
-    this.child.on("error", (error) => this.fail(error))
+    this.child.on("error", (error) => this.fail(error, true))
     this.child.on("close", (code, signal) => {
       this.closed = true
       if (!this.closing) {
@@ -188,11 +491,29 @@ class SidecarSession {
   }
 
   request(method: string, params: unknown, signal?: AbortSignal): Promise<unknown> {
+    return this.sendRequest(method, params, signal, false)
+  }
+
+  protocolFailure(error: SidecarProtocolError): void {
+    this.fail(error, true)
+  }
+
+  failFromHost(error: Error): void {
+    this.fail(error, true)
+  }
+
+  private sendRequest(
+    method: string,
+    params: unknown,
+    signal: AbortSignal | undefined,
+    allowClosing: boolean,
+  ): Promise<unknown> {
     if (this.failure) return Promise.reject(this.failure)
-    if (this.closed || this.closing) {
+    if (this.closed || (this.closing && !allowClosing)) {
       return Promise.reject(new Error("index sidecar session is closed"))
     }
     if (signal?.aborted) return Promise.reject(abortError())
+    const timeoutMs = method === "initialize" ? this.initializeTimeoutMs : this.requestTimeoutMs
     const id = this.nextRequestId++
     const line = `${JSON.stringify({ protocol: PROTOCOL_VERSION, id, method, params })}\n`
     return new Promise((resolve, reject) => {
@@ -201,8 +522,14 @@ class SidecarSession {
         const pending = this.pending.get(id)
         if (!pending) return
         this.pending.delete(id)
-        this.abandoned.add(id)
         pending.cleanup()
+        this.abandoned.set(id, setTimeout(() => {
+          if (!this.abandoned.delete(id)) return
+          this.fail(
+            new SidecarTimeoutError(`${method} cancellation drain`, timeoutMs),
+            true,
+          )
+        }, timeoutMs))
         pending.reject(abortError())
       }
       const cleanup = () => {
@@ -213,14 +540,11 @@ class SidecarSession {
       signal?.addEventListener("abort", onAbort, { once: true })
       timer = setTimeout(() => {
         if (!this.pending.has(id)) return
-        this.fail(new SidecarTimeoutError(method, this.requestTimeoutMs), true)
-      }, this.requestTimeoutMs)
+        this.fail(new SidecarTimeoutError(method, timeoutMs), true)
+      }, timeoutMs)
       this.child.stdin.write(line, (error) => {
         if (!error) return
-        const pending = this.pending.get(id)
-        this.pending.delete(id)
-        pending?.cleanup()
-        pending?.reject(error)
+        this.fail(error, true)
       })
     })
   }
@@ -249,13 +573,15 @@ class SidecarSession {
       await this.terminate()
       return
     }
+    this.closing = true
     try {
-      await this.request("shutdown", {})
+      await this.sendRequest("shutdown", {}, undefined, true)
     } catch {
       await this.terminate()
       return
     }
-    this.closing = true
+    this.rejectPending(new Error("index sidecar session is closed"))
+    this.clearAbandoned()
     this.child.stdin.end()
     if (!await this.waitForClose(this.terminationTimeoutMs)) {
       await this.terminate()
@@ -270,7 +596,7 @@ class SidecarSession {
       const line = this.stdoutBuffer.slice(0, newline)
       this.stdoutBuffer = this.stdoutBuffer.slice(newline + 1)
       if (!line.trim()) {
-        this.fail(new SidecarProtocolError("index sidecar emitted an empty protocol line"))
+        this.protocolFailure(new SidecarProtocolError("index sidecar emitted an empty protocol line"))
       } else {
         this.acceptLine(line)
       }
@@ -282,18 +608,20 @@ class SidecarSession {
     try {
       parsed = JSON.parse(line) as unknown
     } catch {
-      this.fail(new SidecarProtocolError("index sidecar emitted malformed JSON"))
+      this.protocolFailure(new SidecarProtocolError("index sidecar emitted malformed JSON"))
       return
     }
     if (isIdlessEventEnvelope(parsed)) {
       if (!isProtocolEvent(parsed)) {
-        this.fail(new SidecarProtocolError("index sidecar emitted an unrecognized sidecar event"))
+        this.protocolFailure(new SidecarProtocolError("index sidecar emitted an unrecognized sidecar event"))
         return
       }
       try {
         this.onEvent?.(parsed)
-      } catch {
-        this.fail(new SidecarProtocolError("index sidecar event handler failed"))
+      } catch (error) {
+        this.protocolFailure(error instanceof SidecarProtocolError
+          ? error
+          : new SidecarProtocolError("index sidecar event handler failed"))
       }
       return
     }
@@ -301,19 +629,28 @@ class SidecarSession {
       || parsed.protocol !== PROTOCOL_VERSION
       || !Number.isSafeInteger(parsed.id)
       || typeof parsed.ok !== "boolean") {
-      this.fail(new SidecarProtocolError("index sidecar emitted an invalid protocol response"))
+      this.protocolFailure(new SidecarProtocolError("index sidecar emitted an invalid protocol response"))
       return
     }
     const response = parsed as unknown as SidecarResponse
     const pending = this.pending.get(response.id)
     if (!pending) {
-      if (this.abandoned.delete(response.id)) return
-      this.fail(new SidecarProtocolError(`index sidecar emitted an unknown response id: ${response.id}`))
+      const abandonedTimer = this.abandoned.get(response.id)
+      if (abandonedTimer) {
+        clearTimeout(abandonedTimer)
+        this.abandoned.delete(response.id)
+        return
+      }
+      this.protocolFailure(
+        new SidecarProtocolError(`index sidecar emitted an unknown response id: ${response.id}`),
+      )
       return
     }
     if (response.ok) {
       if (!("result" in parsed)) {
-        this.fail(new SidecarProtocolError("index sidecar omitted a successful response result"))
+        this.protocolFailure(
+          new SidecarProtocolError("index sidecar omitted a successful response result"),
+        )
         return
       }
       this.pending.delete(response.id)
@@ -323,7 +660,7 @@ class SidecarSession {
       if (!isRecord(response.error)
         || typeof response.error.code !== "string"
         || typeof response.error.message !== "string") {
-        this.fail(new SidecarProtocolError("index sidecar emitted an invalid error response"))
+        this.protocolFailure(new SidecarProtocolError("index sidecar emitted an invalid error response"))
         return
       }
       this.pending.delete(response.id)
@@ -336,16 +673,27 @@ class SidecarSession {
   }
 
   private fail(error: Error, terminate = false): void {
+    const firstFailure = this.failure === undefined
     this.failure ??= error
-    for (const pending of this.pending.values()) {
-      pending.cleanup()
-      pending.reject(this.failure)
-    }
-    this.pending.clear()
-    this.abandoned.clear()
+    if (firstFailure) this.onFailure?.(this.failure)
+    this.rejectPending(this.failure)
+    this.clearAbandoned()
     if (terminate && !this.closed) {
       void this.terminate()
     }
+  }
+
+  private rejectPending(error: Error): void {
+    for (const pending of this.pending.values()) {
+      pending.cleanup()
+      pending.reject(error)
+    }
+    this.pending.clear()
+  }
+
+  private clearAbandoned(): void {
+    for (const timer of this.abandoned.values()) clearTimeout(timer)
+    this.abandoned.clear()
   }
 
   private terminate(): Promise<void> {
@@ -410,7 +758,7 @@ async function canonicalDirectory(directory: string): Promise<string> {
 function mapStatus(value: unknown): WorkspaceIndexStatus {
   const status = asRecord(value)
   if (!isIndexState(status.state) || !isNonNegativeInteger(status.committedGeneration)) {
-    throw new Error("index sidecar returned an invalid status")
+    throw new SidecarProtocolError("index sidecar returned an invalid status")
   }
   return {
     state: status.state,
@@ -419,7 +767,10 @@ function mapStatus(value: unknown): WorkspaceIndexStatus {
   }
 }
 
-function mapSearchResult(value: unknown): WorkspaceSymbolSearchResult {
+function mapSearchResult(
+  value: unknown,
+  mapUri: (uri: DocumentUri) => DocumentUri = (uri) => uri,
+): WorkspaceSymbolSearchResult {
   const result = asRecord(value)
   if (!Array.isArray(result.items)
     || !isNonNegativeInteger(result.servedGeneration)
@@ -427,9 +778,80 @@ function mapSearchResult(value: unknown): WorkspaceSymbolSearchResult {
     throw new Error("index sidecar returned an invalid symbol search result")
   }
   return {
-    items: result.items.map(mapWorkspaceSymbol),
+    items: result.items.map((item) => {
+      const symbol = mapWorkspaceSymbol(item)
+      return { ...symbol, uri: mapUri(symbol.uri) }
+    }),
     servedGeneration: result.servedGeneration,
     completeness: result.completeness,
+  }
+}
+
+interface MappedCatalogStatus {
+  progress: WorkspaceIndexProgress
+  indexStatus: WorkspaceIndexStatus
+  phase: CatalogPhase
+  committedGeneration: number
+  buildingGeneration: number | null
+  mark: CatalogProgressMark
+  terminal: boolean
+}
+
+interface CatalogProgressMark {
+  phase: CatalogPhase
+  discovered: number
+  indexed: number
+  rejected: number
+  policySkipped: number
+  ignored: number
+  totalFiles?: number
+}
+
+function mapCatalogStatus(value: unknown): MappedCatalogStatus {
+  const status = asRecord(value)
+  if (!isCatalogPhase(status.phase)
+    || !isIndexState(status.state)
+    || !isCompleteness(status.completeness)
+    || !isNonNegativeInteger(status.committedGeneration)
+    || !isNullableGeneration(status.buildingGeneration)
+    || !isNonNegativeInteger(status.discovered)
+    || !isNonNegativeInteger(status.indexed)
+    || !isNonNegativeInteger(status.rejected)
+    || !isNonNegativeInteger(status.policySkipped)
+    || !isNonNegativeInteger(status.ignored)
+    || (status.totalFiles !== undefined && !isNonNegativeInteger(status.totalFiles))) {
+    throw new SidecarProtocolError("index sidecar returned an invalid catalog status")
+  }
+  const phase = mapCatalogPhase(status.phase, status.totalFiles !== undefined)
+  return {
+    progress: {
+      phase,
+      discoveredFiles: status.discovered,
+      indexedFiles: status.indexed,
+      skippedEntries: status.rejected + status.policySkipped + status.ignored,
+      ...(status.totalFiles === undefined ? {} : { totalFiles: status.totalFiles }),
+    },
+    indexStatus: {
+      state: status.state,
+      committedGeneration: status.committedGeneration,
+      ...(typeof status.message === "string" ? { message: status.message } : {}),
+    },
+    phase: status.phase,
+    committedGeneration: status.committedGeneration,
+    buildingGeneration: status.buildingGeneration,
+    mark: {
+      phase: status.phase,
+      discovered: status.discovered,
+      indexed: status.indexed,
+      rejected: status.rejected,
+      policySkipped: status.policySkipped,
+      ignored: status.ignored,
+      ...(status.totalFiles === undefined ? {} : { totalFiles: status.totalFiles }),
+    },
+    terminal: status.phase === "ready"
+      || status.phase === "partial"
+      || status.phase === "degraded"
+      || status.phase === "cancelled",
   }
 }
 
@@ -475,13 +897,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isProtocolEvent(value: unknown): value is SidecarProtocolEvent {
-  return isRecord(value)
+  if (!(isRecord(value)
     && value.protocol === PROTOCOL_VERSION
     && !("id" in value)
     && value.event === "catalog/progress"
     && isRecord(value.params)
-    && typeof value.params.workspaceIdentity === "string"
-    && isRecord(value.params.status)
+    && typeof value.params.workspaceIdentity === "string")) return false
+  try {
+    mapCatalogStatus(value.params.status)
+    return true
+  } catch {
+    return false
+  }
 }
 
 function isIdlessEventEnvelope(value: unknown): value is Record<string, unknown> {
@@ -499,12 +926,138 @@ function isCompleteness(value: unknown): value is WorkspaceSymbolSearchResult["c
   return value === "ready" || value === "partial" || value === "stale"
 }
 
+type CatalogPhase = "idle" | "discovering" | "activating" | "cancelling" | "ready" | "partial" | "degraded" | "cancelled"
+
+function isCatalogPhase(value: unknown): value is CatalogPhase {
+  return value === "idle"
+    || value === "discovering"
+    || value === "activating"
+    || value === "cancelling"
+    || value === "ready"
+    || value === "partial"
+    || value === "degraded"
+    || value === "cancelled"
+}
+
+function mapCatalogPhase(
+  phase: CatalogPhase,
+  totalKnown: boolean,
+): WorkspaceIndexProgress["phase"] {
+  if (phase === "ready" || phase === "partial") return "ready"
+  if (phase === "degraded") return "degraded"
+  if (phase === "cancelled") return "cancelled"
+  if (phase === "activating" || phase === "cancelling" || totalKnown) return "indexing"
+  return "discovering"
+}
+
+function assertMonotonicCatalogProgress(
+  previous: CatalogProgressMark,
+  current: CatalogProgressMark,
+): void {
+  const regressed = catalogPhaseRank(current.phase) < catalogPhaseRank(previous.phase)
+    || current.discovered < previous.discovered
+    || current.indexed < previous.indexed
+    || current.rejected < previous.rejected
+    || current.policySkipped < previous.policySkipped
+    || current.ignored < previous.ignored
+    || (previous.totalFiles !== undefined
+      && (current.totalFiles === undefined || current.totalFiles < previous.totalFiles))
+  if (regressed) {
+    throw new SidecarProtocolError("index sidecar catalog progress regressed")
+  }
+}
+
+function catalogProgressAdvanced(
+  previous: CatalogProgressMark,
+  current: CatalogProgressMark,
+): boolean {
+  return catalogPhaseRank(current.phase) > catalogPhaseRank(previous.phase)
+    || current.discovered > previous.discovered
+    || current.indexed > previous.indexed
+    || current.rejected > previous.rejected
+    || current.policySkipped > previous.policySkipped
+    || current.ignored > previous.ignored
+    || (previous.totalFiles === undefined && current.totalFiles !== undefined)
+    || (previous.totalFiles !== undefined
+      && current.totalFiles !== undefined
+      && current.totalFiles > previous.totalFiles)
+}
+
+function catalogPhaseRank(phase: CatalogPhase): number {
+  switch (phase) {
+    case "idle": return 0
+    case "discovering": return 1
+    case "activating": return 2
+    case "cancelling": return 3
+    case "ready":
+    case "partial":
+    case "degraded":
+    case "cancelled": return 4
+  }
+}
+
+function isNullableGeneration(value: unknown): value is number | null {
+  return value === null || isNonNegativeInteger(value)
+}
+
 function isNonNegativeInteger(value: unknown): value is number {
   return Number.isSafeInteger(value) && Number(value) >= 0
 }
 
 function abortError(): Error {
   return new DOMException("Index request aborted", "AbortError")
+}
+
+function asError(value: unknown): Error {
+  return value instanceof Error ? value : new Error(String(value))
+}
+
+function assertEquivalentWorkspaceIdentity(identity: string, canonicalRoot: string): void {
+  try {
+    const identityPath = fileURLToPath(identity)
+    if (path.resolve(identityPath) === path.resolve(canonicalRoot)) return
+  } catch {
+    // Fall through to the locked protocol error.
+  }
+  throw new SidecarProtocolError("index sidecar returned the wrong workspace identity")
+}
+
+function toWorkspaceIdentityUri(session: SidecarSession, uri: DocumentUri): DocumentUri {
+  const rebased = tryWorkspaceIdentityUri(session, uri)
+  if (rebased !== undefined) return rebased
+  throw new Error(`document URI is outside workspace root: ${uri}`)
+}
+
+function tryWorkspaceIdentityUri(
+  session: SidecarSession,
+  uri: DocumentUri,
+): DocumentUri | undefined {
+  return tryRebaseFileUri(uri, session.clientRootUri, session.workspaceIdentity)
+    ?? tryRebaseFileUri(uri, session.workspaceIdentity, session.workspaceIdentity)
+}
+
+function toClientWorkspaceUri(session: SidecarSession, uri: DocumentUri): DocumentUri {
+  const rebased = tryRebaseFileUri(uri, session.workspaceIdentity, session.clientRootUri)
+  if (rebased !== undefined) return rebased
+  throw new SidecarProtocolError(`index sidecar returned a symbol outside workspace root: ${uri}`)
+}
+
+function tryRebaseFileUri(
+  documentUri: DocumentUri,
+  sourceRootUri: DocumentUri,
+  targetRootUri: DocumentUri,
+): DocumentUri | undefined {
+  try {
+    const sourceRoot = fileURLToPath(sourceRootUri)
+    const documentPath = fileURLToPath(documentUri)
+    const relative = path.relative(sourceRoot, documentPath)
+    if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+      return undefined
+    }
+    return pathToFileURL(path.join(fileURLToPath(targetRootUri), relative)).href
+  } catch {
+    return undefined
+  }
 }
 
 function resolveRequestTimeout(value: number | undefined): number {
@@ -515,10 +1068,30 @@ function resolveRequestTimeout(value: number | undefined): number {
   return timeout
 }
 
+function resolveInitializeTimeout(value: number | undefined): number {
+  const timeout = value ?? DEFAULT_INITIALIZE_TIMEOUT_MS
+  if (!Number.isFinite(timeout) || timeout <= 0) {
+    throw new RangeError("index sidecar initialize timeout must be a positive number")
+  }
+  return timeout
+}
+
 function resolveTerminationTimeout(value: number | undefined): number {
   const timeout = value ?? DEFAULT_TERMINATION_TIMEOUT_MS
   if (!Number.isFinite(timeout) || timeout <= 0) {
     throw new RangeError("index sidecar termination timeout must be a positive number")
+  }
+  return timeout
+}
+
+function resolvePositiveTimeout(
+  value: number | undefined,
+  fallback: number,
+  label: string,
+): number {
+  const timeout = value ?? fallback
+  if (!Number.isFinite(timeout) || timeout <= 0) {
+    throw new RangeError(`index sidecar ${label} timeout must be a positive number`)
   }
   return timeout
 }

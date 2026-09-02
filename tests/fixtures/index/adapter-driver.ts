@@ -29,10 +29,14 @@ interface DriverCommand {
 
 const sidecarEvents: unknown[] = []
 const configuredTimeout = Number(process.env.ARKTS_INDEX_TEST_REQUEST_TIMEOUT_MS)
+const configuredInitializeTimeout = Number(process.env.ARKTS_INDEX_TEST_INITIALIZE_TIMEOUT_MS)
 const configuredTerminationTimeout = Number(process.env.ARKTS_INDEX_TEST_TERMINATION_TIMEOUT_MS)
 const index = new SidecarWorkspaceIndex({
   onEvent: (event) => sidecarEvents.push(event),
   ...(Number.isFinite(configuredTimeout) ? { requestTimeoutMs: configuredTimeout } : {}),
+  ...(Number.isFinite(configuredInitializeTimeout)
+    ? { initializeTimeoutMs: configuredInitializeTimeout }
+    : {}),
   ...(Number.isFinite(configuredTerminationTimeout)
     ? { terminationTimeoutMs: configuredTerminationTimeout }
     : {}),
