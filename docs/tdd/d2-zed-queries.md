@@ -64,6 +64,8 @@ The manifest parser reads `repository` and `rev` only from the exact
 `[grammars.arkts]` table. Before compilation, the cache must match that declared
 origin and revision and have no modified or untracked files. This prevents a
 matching `HEAD` from masking locally changed `parser.c` or `scanner.c` inputs.
+Repository URLs are compared canonically so the conventional trailing `.git`
+suffix used by caches created by the earlier gate remains compatible.
 
 `highlights.scm` now embeds the pinned `tree-sitter-javascript` v0.23.1
 baseline plus the ArkTS delta. The real parser regression fixture asserts

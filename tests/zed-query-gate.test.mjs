@@ -144,6 +144,25 @@ test("the query gate rejects a modified tracked parser in the grammar cache", ()
   }
 })
 
+test("the query gate accepts the same declared origin with a conventional dot-git suffix", () => {
+  const fixture = createGrammarCacheFixture()
+  const repository = "https://example.invalid/tree-sitter-arkts"
+  const revision = git(fixture.cache, "rev-parse", "HEAD")
+  git(fixture.cache, "remote", "set-url", "origin", `${repository}.git`)
+  fs.writeFileSync(fixture.manifest, `
+[grammars.arkts]
+repository = "${repository}"
+rev = "${revision}"
+`)
+
+  try {
+    const result = verifyGrammarCache(fixture)
+    assert.equal(result.status, 0, result.stderr)
+  } finally {
+    fs.rmSync(fixture.directory, { recursive: true, force: true })
+  }
+})
+
 test("the query gate discovers every shipped scm query instead of a fixed list", () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-query-files-"))
   const nested = path.join(directory, "future")

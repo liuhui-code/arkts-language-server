@@ -30,7 +30,7 @@ test("the ArkTS language config enables comments, autoclosing, and ArkTS identif
   assert.match(config, /word_characters\s*=\s*\[[^\]]*"\$"[^\]]*\]/)
 })
 
-test("the local installer reruns frozen dependency install only when the lockfile stamp changes", () => {
+test("the local installer reruns frozen install when its dependency fingerprint changes", () => {
   const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-installer-lock-"))
   const fakeBin = path.join(fixture, "fake-bin")
   const installBin = path.join(fixture, "installed-bin")
@@ -45,10 +45,15 @@ test("the local installer reruns frozen dependency install only when the lockfil
   fs.writeFileSync(path.join(fixture, "bin", "arkts-language-server"), "#!/bin/sh\nexit 0\n")
   fs.writeFileSync(path.join(fixture, "node_modules", ".bin", "esbuild"), "#!/bin/sh\nexit 0\n")
   fs.writeFileSync(path.join(fakeBin, "pnpm"), `#!/bin/sh
+if [ "$1" = "--version" ]; then
+  printf '%s\\n' "$ARKTS_INSTALL_TEST_PNPM_VERSION"
+  exit 0
+fi
 printf '%s\\n' "$*" >> "$ARKTS_INSTALL_TEST_LOG"
 exit 0
 `)
   fs.writeFileSync(path.join(fakeBin, "cargo"), `#!/bin/sh
+printf 'cargo %s\\n' "$*" >> "$ARKTS_INSTALL_TEST_LOG"
 mkdir -p "$CARGO_TARGET_DIR/wasm32-wasip2/release"
 printf '\\000asm' > "$CARGO_TARGET_DIR/wasm32-wasip2/release/zed_arkts_local.wasm"
 exit 0
@@ -61,7 +66,7 @@ exit 0
     path.join(fakeBin, "cargo"),
   ]) fs.chmodSync(executable, 0o755)
 
-  const runInstaller = () => spawnSync(
+  const runInstaller = (pnpmVersion = "8.15.9") => spawnSync(
     path.join(fixture, "scripts", "install-local.sh"),
     [installBin],
     {
@@ -71,6 +76,7 @@ exit 0
         ...process.env,
         PATH: `${fakeBin}:${path.dirname(process.execPath)}:/usr/bin:/bin`,
         ARKTS_INSTALL_TEST_LOG: log,
+        ARKTS_INSTALL_TEST_PNPM_VERSION: pnpmVersion,
       },
     },
   )
@@ -83,12 +89,35 @@ exit 0
     fs.writeFileSync(path.join(fixture, "pnpm-lock.yaml"), "lockfileVersion: two\n")
     result = runInstaller()
     assert.equal(result.status, 0, result.stderr)
+    result = runInstaller("9.15.9")
+    assert.equal(result.status, 0, result.stderr)
 
     const installs = fs.readFileSync(log, "utf8")
       .trim()
       .split("\n")
       .filter((command) => command === "install --frozen-lockfile")
-    assert.equal(installs.length, 2)
+    assert.equal(installs.length, 3)
+
+    const fingerprint = JSON.parse(fs.readFileSync(
+      path.join(fixture, "node_modules", ".cache", "arkts-language-server", "dependency-fingerprint.json"),
+      "utf8",
+    ))
+    assert.deepEqual(fingerprint, {
+      arch: process.arch,
+      lockfileSha256: fingerprint.lockfileSha256,
+      nodeMajor: process.versions.node.split(".")[0],
+      nodeModulesAbi: process.versions.modules,
+      platform: process.platform,
+      pnpmVersion: "9.15.9",
+    })
+    assert.match(fingerprint.lockfileSha256, /^[0-9a-f]{64}$/)
+
+    const cargoBuilds = fs.readFileSync(log, "utf8")
+      .trim()
+      .split("\n")
+      .filter((command) => command.startsWith("cargo build"))
+    assert.equal(cargoBuilds.length, 4)
+    for (const command of cargoBuilds) assert.match(command, /^cargo build --locked /)
   } finally {
     fs.rmSync(fixture, { recursive: true, force: true })
   }

@@ -18,7 +18,7 @@ extension_build=$extension_target_dir/wasm32-wasip2/release/zed_arkts_local.wasm
 extension_wasm=$extension_dir/extension.wasm
 lockfile=$project_root/pnpm-lock.yaml
 dependency_stamp_dir=$project_root/node_modules/.cache/arkts-language-server
-dependency_stamp=$dependency_stamp_dir/pnpm-lock.sha256
+dependency_stamp=$dependency_stamp_dir/dependency-fingerprint.json
 
 for required_command in node pnpm cargo; do
   if ! command -v "$required_command" >/dev/null 2>&1; then
@@ -38,27 +38,36 @@ if [ ! -f "$lockfile" ]; then
   echo "Missing dependency lockfile: $lockfile" >&2
   exit 1
 fi
-lockfile_signature=$(node -e '
+pnpm_version=$(pnpm --version)
+dependency_fingerprint=$(node -e '
   const crypto = require("node:crypto")
   const fs = require("node:fs")
-  process.stdout.write(crypto.createHash("sha256").update(fs.readFileSync(process.argv[1])).digest("hex"))
-' "$lockfile")
+  const lockfileSha256 = crypto.createHash("sha256").update(fs.readFileSync(process.argv[1])).digest("hex")
+  process.stdout.write(JSON.stringify({
+    arch: process.arch,
+    lockfileSha256,
+    nodeMajor: process.versions.node.split(".")[0],
+    nodeModulesAbi: process.versions.modules,
+    platform: process.platform,
+    pnpmVersion: process.argv[2],
+  }))
+' "$lockfile" "$pnpm_version")
 installed_signature=
 if [ -f "$dependency_stamp" ]; then
   installed_signature=$(sed -n '1p' "$dependency_stamp")
 fi
-if [ ! -x "$project_root/node_modules/.bin/esbuild" ] || [ "$installed_signature" != "$lockfile_signature" ]; then
+if [ ! -x "$project_root/node_modules/.bin/esbuild" ] || [ "$installed_signature" != "$dependency_fingerprint" ]; then
   (cd "$project_root" && pnpm install --frozen-lockfile)
   mkdir -p "$dependency_stamp_dir"
   dependency_stamp_tmp=$dependency_stamp.tmp.$$
   trap 'rm -f "$dependency_stamp_tmp"' EXIT HUP INT TERM
-  printf '%s\n' "$lockfile_signature" > "$dependency_stamp_tmp"
+  printf '%s\n' "$dependency_fingerprint" > "$dependency_stamp_tmp"
   mv "$dependency_stamp_tmp" "$dependency_stamp"
   trap - EXIT HUP INT TERM
 fi
 (cd "$project_root" && pnpm build)
 CARGO_TARGET_DIR=$extension_target_dir \
-  cargo build --manifest-path "$extension_dir/Cargo.toml" --target wasm32-wasip2 --release
+  cargo build --locked --manifest-path "$extension_dir/Cargo.toml" --target wasm32-wasip2 --release
 
 extension_tmp=$extension_wasm.tmp.$$
 trap 'rm -f "$extension_tmp"' EXIT HUP INT TERM
