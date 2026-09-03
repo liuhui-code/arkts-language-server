@@ -97,18 +97,11 @@ test("maps the complete public capability contract to executable feature evidenc
       claim: "workspace-symbol.bundle.production-full-kinds",
     },
   ])
-  assert.deepEqual(workspaceSymbol?.evidence.artifact, [
-    {
-      entry: "tests/release/portable-install.acceptance.mjs",
-      test: "installs one verified artifact without source dependencies or a rebuild",
-      claim: "workspace-symbol.artifact.immutable-index",
-    },
-    {
-      entry: "tests/release/portable-install.acceptance.mjs",
-      test: "installs one verified artifact without source dependencies or a rebuild",
-      claim: "workspace-symbol.artifact.immutable-kind-range",
-    },
-  ])
+  assert.deepEqual(workspaceSymbol?.evidence.artifact, [{
+    entry: "tests/release/portable-install.acceptance.mjs",
+    test: "installs one verified artifact without source dependencies or a rebuild",
+    claim: "workspace-symbol.artifact.immutable-index-kind-uri-name-range",
+  }])
   const references = CURRENT_LSP_FEATURE_MATRIX.features.find(
     ({ id }) => id === "references",
   )
@@ -335,6 +328,25 @@ test("rejects a duplicate evidence claim across the matrix", () => {
       layerManifest: TEST_LAYER_MANIFEST,
     }),
     /completion: duplicate evidence claim completion\.protocol\.latest-wins/,
+  )
+})
+
+test("rejects relabeling one exact test as multiple claims in one feature layer", () => {
+  const matrix = mutateFeature("completion", (feature) => {
+    feature.evidence.protocol.push({
+      ...feature.evidence.protocol[0],
+      claim: "completion.protocol.same-test-new-label",
+    })
+  })
+
+  assert.throws(
+    () => validateLspFeatureMatrix({
+      root: projectRoot,
+      matrix,
+      capabilityContract: CURRENT_LSP_CAPABILITY_CONTRACT,
+      layerManifest: TEST_LAYER_MANIFEST,
+    }),
+    /completion: protocol evidence reuses tests\/lsp-reliability\.test\.mjs#"a newer completion request supersedes the previous request in its lane" for multiple claims/,
   )
 })
 

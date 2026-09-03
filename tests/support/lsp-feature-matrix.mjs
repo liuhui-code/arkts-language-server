@@ -173,18 +173,11 @@ export const CURRENT_LSP_FEATURE_MATRIX = Object.freeze({
           "workspace-symbol.bundle.production-full-kinds",
         ),
       ],
-      artifact: [
-        evidence(
-          "tests/release/portable-install.acceptance.mjs",
-          "installs one verified artifact without source dependencies or a rebuild",
-          "workspace-symbol.artifact.immutable-index",
-        ),
-        evidence(
-          "tests/release/portable-install.acceptance.mjs",
-          "installs one verified artifact without source dependencies or a rebuild",
-          "workspace-symbol.artifact.immutable-kind-range",
-        ),
-      ],
+      artifact: [evidence(
+        "tests/release/portable-install.acceptance.mjs",
+        "installs one verified artifact without source dependencies or a rebuild",
+        "workspace-symbol.artifact.immutable-index-kind-uri-name-range",
+      )],
       artifactGap: null,
     }),
     enabledFeature({
@@ -362,6 +355,7 @@ export function validateLspFeatureMatrix({
   const featureIds = new Set()
   const nodeTestNamesByEntry = new Map()
   const evidenceClaims = new Set()
+  const evidenceLocators = new Set()
 
   for (const feature of matrix.features) {
     if (featureIds.has(feature.id)) issues.push(`${feature.id}: duplicate feature id`)
@@ -407,6 +401,7 @@ export function validateLspFeatureMatrix({
       layerByEntry,
       nodeTestNamesByEntry,
       evidenceClaims,
+      evidenceLocators,
       feature,
       "protocol",
       "protocol",
@@ -417,6 +412,7 @@ export function validateLspFeatureMatrix({
       layerByEntry,
       nodeTestNamesByEntry,
       evidenceClaims,
+      evidenceLocators,
       feature,
       "bundle",
       "bundle-e2e",
@@ -427,6 +423,7 @@ export function validateLspFeatureMatrix({
       layerByEntry,
       nodeTestNamesByEntry,
       evidenceClaims,
+      evidenceLocators,
       feature,
       "artifact",
       "artifact-e2e",
@@ -465,6 +462,7 @@ function validateEvidence(
   layerByEntry,
   nodeTestNamesByEntry,
   evidenceClaims,
+  evidenceLocators,
   feature,
   evidenceKind,
   expectedLayer,
@@ -486,6 +484,14 @@ function validateEvidence(
       issues.push(`${feature.id}: duplicate evidence claim ${reference.claim}`)
     } else {
       evidenceClaims.add(reference.claim)
+    }
+    const evidenceLocator = [feature.id, evidenceKind, reference.entry, reference.test].join("\0")
+    if (evidenceLocators.has(evidenceLocator)) {
+      issues.push(
+        `${feature.id}: ${evidenceKind} evidence reuses ${reference.entry}#${JSON.stringify(reference.test)} for multiple claims`,
+      )
+    } else {
+      evidenceLocators.add(evidenceLocator)
     }
     const { entry } = reference
     if (!isSafeEvidenceEntry(entry)) {
