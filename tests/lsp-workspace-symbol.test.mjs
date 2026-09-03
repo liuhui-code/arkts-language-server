@@ -54,6 +54,61 @@ test("search stays live during catalog work and returns the unsaved overlay with
   assert.ok(response.result.every((item) => !item.name.startsWith("Partial workspace results")))
 })
 
+test("maps every workspace symbol contract kind and conservatively falls back for an unknown index kind", async (t) => {
+  const server = new LspProcess({ serverPath: scriptedServerPath })
+  t.after(() => server.close())
+  const rootUri = pathToFileURL(projectRoot).href
+  const uri = pathToFileURL(`${projectRoot}/fixtures/W2WorkspaceSymbolKinds.ets`).href
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: { processId: process.pid, rootUri, capabilities: {} },
+  })
+  await server.response(1)
+  server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
+  server.send({
+    jsonrpc: "2.0",
+    method: "textDocument/didOpen",
+    params: {
+      textDocument: {
+        uri,
+        languageId: "arkts",
+        version: 1,
+        text: "// WORKSPACE_SYMBOL_KIND_FIXTURE",
+      },
+    },
+  })
+  server.send({
+    jsonrpc: "2.0",
+    id: 2,
+    method: "workspace/symbol",
+    params: { query: "W2Symbol" },
+  })
+
+  const response = await server.response(2)
+  assert.equal(response.error, undefined, JSON.stringify(response.error))
+  assert.deepEqual(
+    Object.fromEntries(response.result.map(({ name, kind }) => [name, kind])),
+    {
+      W2Symbolclass: 5,
+      W2Symbolconstructor: 9,
+      W2Symbolenum: 10,
+      W2SymbolenumMember: 22,
+      W2Symbolfunction: 12,
+      W2Symbolinterface: 11,
+      W2Symbolmethod: 6,
+      W2Symbolmodule: 2,
+      W2Symbolproperty: 7,
+      W2Symbolstruct: 23,
+      W2Symboltype: 26,
+      W2SymbolUnknown: 13,
+      W2Symbolvariable: 13,
+    },
+  )
+})
+
 test("maps workspace symbol cancellation and rejects requests after shutdown", async (t) => {
   const server = new LspProcess({ serverPath: scriptedServerPath })
   t.after(() => server.close())

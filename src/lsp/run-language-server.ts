@@ -616,8 +616,16 @@ function includesQuickFix(only: readonly string[] | undefined): boolean {
 function workspaceSymbolKind(kind: string): SymbolKind {
   switch (kind) {
     case "class": return SymbolKind.Class
+    case "interface": return SymbolKind.Interface
+    case "enum": return SymbolKind.Enum
+    case "enumMember": return SymbolKind.EnumMember
     case "method": return SymbolKind.Method
     case "function": return SymbolKind.Function
+    case "property": return SymbolKind.Property
+    case "constructor": return SymbolKind.Constructor
+    case "module": return SymbolKind.Module
+    case "type": return SymbolKind.TypeParameter
+    case "variable": return SymbolKind.Variable
     case "struct": return SymbolKind.Struct
     default: return SymbolKind.Variable
   }

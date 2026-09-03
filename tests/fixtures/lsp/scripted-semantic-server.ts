@@ -156,6 +156,28 @@ class ScriptedSemanticEngine implements SemanticEnginePort {
   async documentSymbols(
     query: SemanticDocumentQuery,
   ): Promise<VersionedSemanticResult<SemanticDocumentSymbol[]>> {
+    if (query.document.text.includes("WORKSPACE_SYMBOL_KIND_FIXTURE")) {
+      const kinds = [
+        "class",
+        "interface",
+        "enum",
+        "enumMember",
+        "function",
+        "method",
+        "property",
+        "constructor",
+        "module",
+        "type",
+        "variable",
+        "struct",
+      ] satisfies SemanticDocumentSymbol["kind"][]
+      return scriptedSemanticResult(query, kinds.map((kind) => ({
+        name: `W2Symbol${kind}`,
+        kind,
+        range: zeroRange(),
+        selectionRange: zeroRange(),
+      })))
+    }
     const declaration = /\b(struct|class)\s+([A-Za-z_$][\w$]*)/.exec(query.document.text)
     return scriptedSemanticResult(query, [{
       name: declaration?.[2] ?? "Scripted",
@@ -183,15 +205,24 @@ class ScriptedWorkspaceIndex {
     if (query === "WAIT_CANCEL") return waitForAbortWorkspaceSymbols(signal)
     const uri = pathToFileURL(`${process.cwd()}/fixtures/UnsavedWorkspaceSymbol.ets`).href
     return {
-      items: query === "UnsavedWorkspaceType" ? [{
-        name: "StalePersistedType",
-        kind: "class",
-        uri,
-        range: {
-          start: { line: 99, character: 0 },
-          end: { line: 99, character: 1 },
-        },
-      }] : [],
+      items: query === "UnsavedWorkspaceType"
+        ? [{
+            name: "StalePersistedType",
+            kind: "class",
+            uri,
+            range: {
+              start: { line: 99, character: 0 },
+              end: { line: 99, character: 1 },
+            },
+          }]
+        : query === "W2Symbol"
+          ? [{
+              name: "W2SymbolUnknown",
+              kind: "future-index-kind",
+              uri: pathToFileURL(`${process.cwd()}/fixtures/W2UnknownSymbol.ets`).href,
+              range: zeroRange(),
+            }]
+          : [],
       servedGeneration: 7,
       completeness: "stale" as const,
     }
