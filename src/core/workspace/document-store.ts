@@ -13,6 +13,8 @@ const MAX_CACHED_DOCUMENTS = 512
 const MAX_CACHED_BYTES = 16 * 1024 * 1024
 const MAX_CLOSURE_DOCUMENTS = 256
 const MAX_CLOSURE_BYTES = 8 * 1024 * 1024
+const MAX_PROJECT_FILE_SET_ROOTS = 4
+const MAX_PROJECT_FILE_SET_PATH_BYTES = 1024 * 1024
 const SOURCE_EXTENSIONS = [".ets", ".ts"]
 const MAX_REPLAY_DOCUMENTS = 32
 const MAX_REPLAY_BYTES = 4 * 1024 * 1024
@@ -37,6 +39,15 @@ interface DependencyClosureResult {
   removedPaths: string[]
 }
 
+export interface SemanticDocumentStoreOptions {
+  enumerateWorkspaceSources?: (rootPath: string) => string[]
+  projectFileSetLimits?: {
+    maxRoots?: number
+    maxPaths?: number
+    maxPathBytes?: number
+  }
+}
+
 export interface SemanticWorkspaceView {
   rootPath: string
   documents: WorkspaceDocument[]
@@ -48,8 +59,35 @@ export class SemanticDocumentStore {
   private readonly documents = new Map<string, DocumentRecord>()
   private readonly dependencyGenerations = new Map<string, number>()
   private readonly dependencyClosures = new Map<string, DependencyClosureCacheEntry>()
+  private readonly projectFileSets = new Map<string, string[]>()
+  private readonly enumerateWorkspaceSources: (rootPath: string) => string[]
+  private readonly maxProjectFileSetRoots: number
+  private readonly maxProjectFileSetPaths: number
+  private readonly maxProjectFileSetPathBytes: number
   private accessClock = 0
   private cachedBytes = 0
+
+  constructor({
+    enumerateWorkspaceSources = listWorkspaceSourcePaths,
+    projectFileSetLimits = {},
+  }: SemanticDocumentStoreOptions = {}) {
+    this.enumerateWorkspaceSources = enumerateWorkspaceSources
+    this.maxProjectFileSetRoots = boundedLimit(
+      projectFileSetLimits.maxRoots,
+      MAX_PROJECT_FILE_SET_ROOTS,
+      "project file set roots",
+    )
+    this.maxProjectFileSetPaths = boundedLimit(
+      projectFileSetLimits.maxPaths,
+      MAX_CLOSURE_DOCUMENTS,
+      "project file set paths",
+    )
+    this.maxProjectFileSetPathBytes = boundedLimit(
+      projectFileSetLimits.maxPathBytes,
+      MAX_PROJECT_FILE_SET_PATH_BYTES,
+      "project file set path bytes",
+    )
+  }
 
   restore(documents: SemanticReplayDocument[]): number {
     if (documents.length > MAX_REPLAY_DOCUMENTS) {
@@ -99,12 +137,23 @@ export class SemanticDocumentStore {
     }
     if (cached?.documentVersion === document.documentVersion && cached.content === document.content) {
       cached.lastAccess = ++this.accessClock
+      this.includeOpenedProjectSource(document.workspaceRoot, filePath)
       return cached
     }
     const generation = cached?.content === document.content
       ? cached.contentGeneration
       : (cached?.contentGeneration ?? 0) + 1
-    return this.store(filePath, document.content, generation, null, true, document.documentVersion, true)
+    const record = this.store(
+      filePath,
+      document.content,
+      generation,
+      null,
+      true,
+      document.documentVersion,
+      true,
+    )
+    this.includeOpenedProjectSource(document.workspaceRoot, filePath)
+    return record
   }
 
   close(filePath: string): void {
@@ -114,6 +163,19 @@ export class SemanticDocumentStore {
     this.documents.delete(resolved)
     this.dependencyClosures.delete(resolved)
     this.cachedBytes -= Buffer.byteLength(cached.content)
+  }
+
+  invalidate(rootPath: string): void {
+    this.projectFileSets.delete(canonicalWorkspaceRoot(rootPath))
+  }
+
+  dispose(): void {
+    this.documents.clear()
+    this.dependencyGenerations.clear()
+    this.dependencyClosures.clear()
+    this.projectFileSets.clear()
+    this.accessClock = 0
+    this.cachedBytes = 0
   }
 
   prepare(position: SemanticDocumentPosition, includeWorkspaceFiles = false): SemanticWorkspaceView {
@@ -129,7 +191,7 @@ export class SemanticDocumentStore {
     if (includeWorkspaceFiles) {
       const loadedPaths = new Set(closure.map(({ record }) => record.path))
       let totalBytes = closure.reduce((total, { record }) => total + Buffer.byteLength(record.content), 0)
-      for (const sourcePath of listWorkspaceSourcePaths(rootPath)) {
+      for (const sourcePath of this.projectSourcePaths(rootPath)) {
         if (loadedPaths.has(sourcePath) || closure.length >= MAX_CLOSURE_DOCUMENTS) continue
         const before = this.documents.get(sourcePath)
         const record = this.loadFromDisk(sourcePath, before)
@@ -199,6 +261,53 @@ export class SemanticDocumentStore {
       return cached
     }
     return this.loadFromDisk(filePath, cached)
+  }
+
+  private projectSourcePaths(rootPath: string): string[] {
+    const resolvedRoot = path.resolve(rootPath)
+    const canonicalRoot = canonicalWorkspaceRoot(resolvedRoot)
+    const cached = this.projectFileSets.get(canonicalRoot)
+    if (cached) {
+      this.projectFileSets.delete(canonicalRoot)
+      this.projectFileSets.set(canonicalRoot, cached)
+      return cached
+    }
+    const candidates = this.enumerateWorkspaceSources(resolvedRoot)
+      .map((sourcePath) => path.resolve(sourcePath))
+      .filter((sourcePath, index, all) => all.indexOf(sourcePath) === index)
+    const paths: string[] = []
+    let pathBytes = 0
+    for (const sourcePath of candidates) {
+      if (paths.length >= this.maxProjectFileSetPaths) break
+      const bytes = Buffer.byteLength(sourcePath)
+      if (pathBytes + bytes > this.maxProjectFileSetPathBytes) continue
+      paths.push(sourcePath)
+      pathBytes += bytes
+    }
+    paths.sort()
+    this.projectFileSets.set(canonicalRoot, paths)
+    while (this.projectFileSets.size > this.maxProjectFileSetRoots) {
+      const oldestRoot = this.projectFileSets.keys().next().value
+      if (oldestRoot === undefined) break
+      this.projectFileSets.delete(oldestRoot)
+    }
+    return paths
+  }
+
+  private includeOpenedProjectSource(rootPath: string | undefined, filePath: string): void {
+    if (!rootPath || !SOURCE_EXTENSIONS.includes(path.extname(filePath))) return
+    const canonicalRoot = canonicalWorkspaceRoot(rootPath)
+    const paths = this.projectFileSets.get(canonicalRoot)
+    const resolvedPath = path.resolve(filePath)
+    const comparablePath = canonicalSourcePath(resolvedPath)
+    if (!paths || paths.includes(resolvedPath) || !isInside(canonicalRoot, comparablePath)) return
+    if (paths.length >= this.maxProjectFileSetPaths) return
+    const cachedPathBytes = paths.reduce((total, sourcePath) => (
+      total + Buffer.byteLength(sourcePath)
+    ), 0)
+    if (cachedPathBytes + Buffer.byteLength(resolvedPath) > this.maxProjectFileSetPathBytes) return
+    paths.push(resolvedPath)
+    paths.sort()
   }
 
   private loadFromDisk(filePath: string, cached?: DocumentRecord): DocumentRecord {
@@ -355,6 +464,41 @@ export class SemanticDocumentStore {
       this.cachedBytes -= Buffer.byteLength(record.content)
     }
   }
+}
+
+function canonicalWorkspaceRoot(rootPath: string): string {
+  const resolved = path.resolve(rootPath)
+  try {
+    return fs.realpathSync.native(resolved)
+  } catch {
+    return resolved
+  }
+}
+
+function canonicalSourcePath(filePath: string): string {
+  const resolved = path.resolve(filePath)
+  try {
+    return fs.realpathSync.native(resolved)
+  } catch {
+    try {
+      return path.join(fs.realpathSync.native(path.dirname(resolved)), path.basename(resolved))
+    } catch {
+      return resolved
+    }
+  }
+}
+
+function isInside(rootPath: string, candidatePath: string): boolean {
+  const relative = path.relative(rootPath, candidatePath)
+  return relative.length > 0 && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)
+}
+
+function boundedLimit(value: number | undefined, hardMaximum: number, label: string): number {
+  if (value === undefined) return hardMaximum
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new RangeError(`${label} limit must be a positive safe integer`)
+  }
+  return Math.min(value, hardMaximum)
 }
 
 function listWorkspaceSourcePaths(rootPath: string): string[] {
