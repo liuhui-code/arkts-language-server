@@ -144,25 +144,25 @@ mode 和 SHA-256。installer 增加“从 artifact 安装/禁止构建”路径�
 
 ### P0：发布前必须完成
 
-- [ ] Lifecycle：initialize/open/incremental change/close/cancel/shutdown/exit。
-- [ ] Completion：本地/继承/imported receiver、字段/方法、1–2 字符前缀、kind、
+- [x] Lifecycle：initialize/open/incremental change/close/cancel/shutdown/exit。
+- [x] Completion：本地/继承/imported receiver、字段/方法、1–2 字符前缀、kind、
   ranking、精确 replacement range。
-- [ ] Completion resolve：documentation/detail/opaque data；未打开文件 auto-import
+- [x] Completion resolve：documentation/detail/opaque data；未打开文件 auto-import
   返回唯一 `additionalTextEdits`，应用后 diagnostics 为零。
-- [ ] Definition：local/import/alias/barrel/unopened/跨 module；range 精确覆盖名称；
+- [x] Definition：local/import/alias/barrel/unopened/跨 module；range 精确覆盖名称；
   UTF-16 non-BMP 前缀不漂移。
 - [ ] Diagnostics：syntax/type/ArkTS DSL，code/severity/range/version；快速连改、close
   后不得发布 stale diagnostics。
-- [ ] Hover/signature help：跨文件文档、overload、active parameter、trigger/retrigger、
+- [x] Hover/signature help：跨文件文档、overload、active parameter、trigger/retrigger、
   UTF-16 range。
-- [ ] Document symbols：hierarchical/flat，并覆盖 contract 声明的 symbol kinds。
+- [x] Document symbols：hierarchical/flat，并覆盖 contract 声明的 symbol kinds。
 - [ ] Workspace symbols：catalog 中和 ready 后都可查询；overlay 优先；正确 kind/range；
   progress 按 token 匹配。
 - [ ] References：`includeDeclaration` 两种语义、跨文件/重导出/unopened/overlay、
   精确完整 range、取消。
 - [ ] Prepare rename/rename：placeholder/range、跨文件 WorkspaceEdit、非法名称/冲突、
   version 安全；应用后语义闭环全绿。
-- [ ] Code action + resolve：至少从稳定 diagnostic code 产生一个 quick fix；lazy resolve
+- [x] Code action + resolve：至少从稳定 diagnostic code 产生一个 quick fix；lazy resolve
   返回 version-safe WorkspaceEdit，应用后 diagnostics 清零。
 
 ### P1：P0 后推进
@@ -327,8 +327,8 @@ Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产�
 - [x] B4b watched-files create/delete/rename 一致性完成并独立复验（`9fc8d22`）。
 - [x] I2b installed completion-resolve/apply-and-recheck characterization 完成并独立复验
   （`c8774d7`）。
-- [x] Wave 3 references/rename 只读设计审查完成；R0 completeness gate 尚待实现，能力保持
-  absent。
+- [x] Wave 3 references/rename 从 fail-closed 设计推进到 bundle/protocol/installed 全链证据，
+  capability 已按客户端事务能力条件广告（`c2d0a30`、`3264efe`、`20cecb3`、`8199a65`）。
 - [x] Wave 3 diagnostics code/code-action 只读设计审查完成；G1/Q1/Q2 尚待实现。
 - [x] N0/Q0b versioned `TextDocumentEdit` 安全应用 helper（`5dc6517`）。
 - [x] Q0a UTF-16 + ArkTS rewrite 的稳定 TS2552 spelling fixture（`c488c54`）。
@@ -373,10 +373,18 @@ Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产�
   403 文件跨 resident/lazy window、20,001 文件 partial fail-closed、取消/陈旧语义与 immutable
   installed artifact（`c2d0a30`、`9d4e623`、`e51eeab`、`52678fc`）。
 - [x] N1/N2a/N2b prepare/rename handler：精确 placeholder、consumer alias 语义、origin→barrel
-  API 保持、versioned `documentChanges` 与全量映射/重叠校验（`3264efe`）；能力尚未广告。
+  API 保持、versioned `documentChanges` 与全量映射/重叠校验（`3264efe`）。
+- [x] N2c/N3/N4 alias 边界、越 root 原子拒绝、四类固定错误、事务型条件广告及 installed
+  edit 应用门禁（`c70bc6a`、`7d322e0`、`20cecb3`、`8199a65`）。
+- [x] R0c-3 同 workspace open/change/close/watched change 使 cancellation-resistant 的
+  references/prepareRename/rename 返回 `ContentModified`；跨 workspace 与 document-scoped
+  completion 保持隔离（`0445863`）。
+- [x] 新增 protocol/bundle 测试纳入唯一 layer manifest 和命名 capability evidence，防止
+  “测试存在但发布门禁未执行”（`9fe3a88`）。
 - [x] E0b advertised capability 必须拥有 immutable artifact evidence，`artifactGap` 仅允许
   planned/absent 能力（`eb52afb`）。
-- [ ] 本批次集成门禁：所有并行切片提交后运行 fresh `pnpm check:fast`。
+- [x] 本批次集成门禁：fresh `pnpm check:fast` 为 298/298，0 failed、0 skipped、0 todo，
+  耗时 150.2 s；immutable portable acceptance 为 4/4（本分支 HEAD 含 `0445863`、`9fe3a88`）。
 
 #### 下一批 P0 基本功能 checklist（按依赖执行）
 
@@ -398,11 +406,11 @@ Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产�
   不再统一降级为 Variable；未知 sidecar kind 保守降级为 Variable（`eb0ef8c`）。
 - [x] E1 Hover depth：unopened dependency、import alias、JSDoc tags、emoji UTF-16 range，并加入
   immutable artifact smoke（`905f029`、`0011dde`）。
-- [ ] E2 Signature depth：
+- [x] E2 Signature depth：
   - [x] E2a 转发 LSP trigger/retrigger context；覆盖 overload、nested/generic、active parameter、
     快速 didChange（`0bd947c`）。
   - [x] E2b 加入 immutable artifact smoke（`c1e39a5`）。
-- [ ] E3b Document symbols depth：
+- [x] E3b Document symbols depth：
   - [x] E3b-1 补全公开 kind、深层 hierarchy/flat fallback、稳定顺序与 UTF-16 range
     （`423817a`；RED 为 `export const` 被静默丢弃）。
   - [x] E3b-2 加入 immutable artifact smoke（`c1e39a5`）。
@@ -477,19 +485,19 @@ capability advertisement 与 transcript 一致；`pnpm check:fast`、artifact sm
 - [x] R0b 将 project membership 与 resident 内容窗口解耦，并由 TypeScript host lazy 消费
   complete snapshot、记录 membership/content revision；lazy snapshot 默认限制为 128 文件/
   8 MiB（`e52b2c9`）。本项不启用 references/rename。
-- [ ] R0c 全局查询完整性与 freshness：
-  - [ ] R0c-1 partial/unknown membership 对全局查询整体返回 `RequestFailed`，不得返回空数组或
+- [x] R0c 全局查询完整性与 freshness：
+  - [x] R0c-1 partial/unknown membership 对全局查询整体返回 `RequestFailed`，不得返回空数组或
     部分结果。
   - [x] R0c-2 所有 open overlay 保持 pinned；`didClose` 后恢复 disk truth 并推进 workspace
     content epoch（`927ffe3`）。
-  - [ ] R0c-3 watched create/delete/rename 原子更新 membership revision；root-dirty 立即降级
+  - [x] R0c-3 watched create/delete/rename 原子更新 membership revision；root-dirty 立即降级
     partial，重枚举成功才发布新 complete snapshot；open/change/close/watcher 使同 root 的旧
-    全局请求返回 `ContentModified`。
+    全局请求返回 `ContentModified`（`9fc8d22`、`0445863`）。
 - [x] R1 References：`includeDeclaration=false` 返回 import、usage、barrel re-export 的完整
   `Profile` ranges，排除 declaration 与同名 shadow；结果稳定排序、去重（`c2d0a30`）。
-- [ ] R2 References：`includeDeclaration=true` 增加全部 canonical declaration，覆盖 unopened、
-  overload、client cancel 与 immutable artifact（`9d4e623`、`52678fc`）；另一参与文件变化使
-  in-flight 请求 stale 的 root-scoped freshness 仍归 R0c-3。
+- [x] R2 References：`includeDeclaration=true` 增加全部 canonical declaration，覆盖 unopened、
+  overload、client cancel、root-scoped freshness 与 immutable artifact
+  （`9d4e623`、`52678fc`、`0445863`）。
 - [x] R3 References：403 文件跨 resident/lazy window、未打开 ArkTS struct rewrite、emoji
   range 精确；20,001 文件 partial membership 整体 `RequestFailed`（`e51eeab`）。
 - [x] N0 扩展安全 edit helper 支持 versioned `documentChanges`，原子拒绝 version mismatch、
@@ -498,10 +506,16 @@ capability advertisement 与 transcript 一致；`pnpm check:fast`、artifact sm
   不泄露 TypeScript 本地化文案（`3264efe`）。
 - [x] N2 Rename：覆盖局部 import alias 与 declaration→barrel→consumer 跨文件语义；保留
   TS `prefixText/suffixText`，只返回稳定排序的 versioned `documentChanges`（`3264efe`）。
-- [ ] N3 Rename fail-closed：非法名称为 `InvalidParams`；不完整/越 root/不可映射为
+- [x] N3 Rename fail-closed：非法名称为 `InvalidParams`；不完整/越 root/不可映射为
   `RequestFailed`；stale/superseded 为 `ContentModified`；client cancel 为 `RequestCancelled`。
-- [ ] N4 只有支持 `workspace.workspaceEdit.documentChanges` 的 client 才可 advertising rename；
-  支持 prepare 时广告 `{ prepareProvider: true }`，全部 bundle/installed transcript GREEN 后接线。
+- [x] N4 只有支持 `workspace.workspaceEdit.documentChanges` 且声明事务失败处理的 client 才
+  advertising `{ prepareProvider: true }`；bundle/installed transcript GREEN 后接线
+  （`20cecb3`、`8199a65`）。
+- [ ] R4 References overlay：didChange v2 增删引用后，两种 `includeDeclaration` 请求只返回
+  overlay truth，排除 stale disk range；先登记 `references.bundle.changed-overlay` claim。
+- [ ] N5 Rename semantic safety：目标 scope 已存在新名称时整体 `RequestFailed` 且无 edit；在
+  immutable artifact 应用 origin/barrel/consumer edits 后，diagnostics/definition/references
+  使用新名称形成语义闭环。
 - [x] Q0a 新增 `QuickFixConsumer.ets`：ArkTS `struct` rewrite 与 emoji 后的 `greting` marker
   可重复 materialize；TypeScript 5.9.2 探针确认 TS2552 与唯一 `spelling` fix（`c488c54`）。
 - [x] G1 Diagnostics：贯通 TypeScript numeric `code`，用含 emoji 且经过 ArkTS virtual
@@ -527,28 +541,57 @@ installed transcript 与 reliability matrix 全绿后 advertised。
 
 - [x] E1 Hover：unopened dependency、alias、JSDoc tags、UTF-16 range，并通过 immutable
   installed artifact；SDK provider 专项仍归 U1/U2。
-- [ ] E2 Signature help：
+- [x] E2 Signature help：
   - [x] bundle 覆盖 overload、nested/generic call、trigger/retrigger、快速 didChange
     （`0bd947c`）。
   - [x] immutable installed artifact smoke（`c1e39a5`）。
-- [ ] E3 Document symbols：
+- [x] E3 Document symbols：
   - [x] E3a 客户端未声明 `symbolKind.valueSet` 时把 ArkTS Struct 降级为 Class；现代客户端
     保留 Struct（`572039e`）。
   - [x] E3b bundle 覆盖全部公开 kind、三层 hierarchy、flat fallback、稳定顺序与 UTF-16 range
     （`423817a`）。
   - [x] immutable installed artifact smoke（`c1e39a5`）；ArkTS component hierarchy 已由
     installed corpus 覆盖，更多 SDK component 语义仍留给 U1。
-- [ ] U1 ArkUI：component/decorator/resource/attribute completion 与 definition。
-- [ ] U2 ArkUI：真实 DSL 无伪 diagnostics，错误 decorator/resource 有稳定 diagnostics。
-- [ ] W1 Workspace symbols：完整 kind 映射、resolve 需求评估、installed overlay/cancel smoke。
+- [ ] U1 ArkUI language features（单一 TypeScript/ArkUI provider owner）：
+  - [ ] U1a `$r("app.string.ti")` 唯一补全 `title`，replacement range 精确；definition 指向
+    固定 `string.json` key range。
+  - [ ] U1b `@Entry/@Component/@State`、Column/Text component 与 `.width` attribute 的
+    completion/hover/definition。
+- [ ] U2 ArkUI diagnostics：合法 DSL 为零；拼错 decorator 和缺失 resource key 返回固定、
+  非本地化的 code/severity/UTF-16 range；普通 syntax diagnostic 也用 numeric code 锁定。
+- [ ] W1 Workspace symbols：
+  - [ ] W1a 真实 production server + `AllKinds.ets` overlay 覆盖全部公开 kind/name range；
+    scripted kind codec 不能独自作为 production evidence。
+  - [ ] W1b immutable installed command 保留并断言 struct/property/method kind 与 range。
+  - [ ] W1c 记录无需 `workspaceSymbol/resolve` 的决策：结果上限 100 且已携完整 Location；
+    cancellation 复用 deterministic protocol evidence。
+
+#### Wave 4 剩余任务并行派工（2026-09-03）
+
+| 轨道 | 首条公开 RED | 初始 ownership | 与其他轨的约束 |
+|---|---|---|---|
+| F-ArkUI | resource completion/definition 当前为空 | 新 ArkUI semantic E2E、corpus/resource fixture、TDD 记录 | 先只建 RED；进入 semantic core 后独占该文件 |
+| F-Workspace | production overlay 全 kind 与 installed kind claim 缺失 | workspace-symbol 新测试/fixture/文档 | 不修改 feature/layer matrix，由集成 owner 接线 |
+| F-References | changed overlay claim/行为缺失 | `references-depth` fixture/test；必要时 semantic core | 若需 core 修改，本批唯一 production core owner |
+| F-Rename | 名称冲突仍可能返回破坏性 edit | rename conflict fixture/test/TDD 记录 | 本轮先停在 RED，待 references core 释放后 GREEN |
+
+顺序门禁：四轨可并行建立稳定 RED；production semantic core 严格串行；每轨 focused GREEN 后
+由集成 owner 更新 layer/evidence matrix，最后统一运行 `pnpm check:fast` 与 portable artifact E2E。
 
 Wave 4 exit criteria：P0 功能 checklist 全部 GREEN；生成机器可读 capability report，
 任何 advertised-but-untested 或 required-but-unadvertised 都使 CI 失败。
 
 ### Wave 5 — build once / test once / publish same bytes（串并结合）
 
+2026-09-03 只读审计：当前 `check:release` 先构建一次，artifact 层中的 source installer
+acceptance 又调用 installer 两次，而每次都会重建 JS、sidecar、WASM；因此每类交付 bytes
+在一条 gate 中至少构建三次。portable directory artifact 能证明“安装时不重建”，但 CI 尚未
+上传/下载该 artifact，也没有 digest promotion。公开发布还被 `PROVENANCE.md` 中
+`UNLICENSED`/禁止公开分发声明阻塞，P5 不得在许可决策前推进。
+
 - [ ] P1 单次 staging build 生成 archive、manifest、checksums。
-- [ ] P2 installer 支持 `--from-artifact`/`--no-build`；acceptance 中发现编译即失败。
+- [x] P2 installer 支持 `--from-artifact` 的 consume-only 路径；acceptance 用 poison
+  `pnpm/cargo/esbuild` 保证安装时不编译，并校验 bytes/mode/digest；最终 archive 输入接线归 P1/P4。
 - [ ] P3 CI `build-artifacts` job 上传 immutable artifact。
 - [ ] P4 独立干净 job 下载同一 digest，运行 L3 artifact E2E。
 - [ ] P5 GitHub Release 只能 promote 已通过的 digest，不允许重新 build。
@@ -556,7 +599,19 @@ Wave 4 exit criteria：P0 功能 checklist 全部 GREEN；生成机器可读 cap
 - [ ] P7 Linux/macOS blocking matrix；若承诺 Windows，再提供原生 launcher/package job。
 - [ ] P8 对最终 Zed WASM 至少 validate/instantiate；nightly/RC 增加真实 Zed host smoke。
 
+实施依赖：P1a release-topology RED（禁止 seal 后任何直接或间接构建）→ P1b deterministic
+archive/SHA256 → P8a WASM validate/instantiate → P3/P7 平台 artifact → P4 consume-only
+独立 job → P6 allowlisted evidence（外部上传需授权）→ 许可解除后 P5 promote exact digest →
+P8b nightly/RC Zed host smoke。
+
 ### Wave 6 — 大项目时延与内存（P0 功能全绿后）
+
+2026-09-03 只读审计：现有 455 文件测试只验证 workspace-symbol；所谓
+`assertDefinitions` 没有发送 `textDocument/definition`，也没有 didOpen，因此 completion、
+真实 definition、diagnostics 均未覆盖。“索引中查询”也未证明 response 先于 ready。
+resource sampler 只有注入式 PID 的 unit contract，尚未采集真实 Node/sidecar process tree、
+Node heap 或 churn；没有机器可读 raw samples/runner identity/十次基线。下面各项在 P0 其余
+四项完成前只允许构建测试基础设施，不启用性能阻断阈值。
 
 - [ ] L1 PR 的 455 文件 artifact E2E 加 completion/definition/diagnostics 与索引中交互。
 - [ ] L2 nightly 10k–100k 文件、多 module/root、generated/dependency 噪声 corpus。
@@ -567,6 +622,24 @@ Wave 4 exit criteria：P0 功能 checklist 全部 GREEN；生成机器可读 cap
   P95 < 250 ms、P99 < 500 ms；取消生效 < 100 ms；索引期间前台请求不得停顿 > 500 ms。
 - [ ] L7 内存阻断采用绝对安全帽 + 相对基线：combined RSS 不超过已批准 hard cap，且
   peak/steady RSS 不得较稳定基线回归 > 10%；阈值及 runner identity 写入 evidence。
+
+#### Wave 6 可执行并行轨
+
+- [ ] A Large semantic landmarks：固定 revision 的 marker manifest；先验证 BuildProfile
+  versioned diagnostics，再验证 RHS definition 和 TeamRepo member completion；索引中场景必须
+  以 response-vs-terminal 顺序证明真实重叠。
+- [ ] B Performance evidence contract：raw samples、nearest-rank p50/p95/p99、fixture/artifact/
+  runner identity、至少 10 次独立 run、绝对/相对 verdict；不得先填假 baseline。
+- [ ] C Real resource probes：macOS `ps`/Linux `/proc` 可注入 parser，按 PID+start identity
+  发现 server/sidecar tree；通过 Node preload 采 heapUsed/heapTotal/external。
+- [ ] D Immutable large command：large 层只从 manifest-installed command 启动并记录
+  server/sidecar/manifest SHA-256，不再直接消费 repo `dist`/`target`。
+- [ ] E Provider latency/cancel：A/B/D 后按 provider 采 30 个 warm raw samples；cold 进 nightly
+  10 runs；取消门禁处理“100 ms 内完成”与 `-32800` 的合法竞态。
+- [ ] F Churn/reclaim：A/B/C/D 后执行固定文件集 open→change→versioned diagnostics→close，
+  用多轮 post-quiescence plateau/slope 判定泄漏，不要求 RSS 单调下降、不以延长 sleep 假绿。
+- [ ] G Gate integration（单一 owner）：最后才修改 layer manifest、package scripts、release
+  driver/workflow，拆分 PR smoke 与 nightly，并接入经授权的 allowlisted evidence 上传。
 
 如果硬件或 corpus 改变，必须新建基线 PR；不得通过放宽阈值修复产品回归。
 
