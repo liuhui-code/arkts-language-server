@@ -35,6 +35,8 @@
 - completion、definition、diagnostics、hover、signature help、document symbols、
   workspace symbols、references、prepare rename/rename、code actions 达到下文的
   最小功能契约；
+- document highlight、folding、document formatting 必须实现真实用户路径，或以宿主
+  E2E 明确证明由客户端等价承担；能力不得从矩阵中静默消失；
 - CI 只构建一次，测试、安装和发布使用同一 artifact digest；
 - 失败时保留 LSP transcript、进程退出信息、日志、索引状态和资源采样；
 - 功能门禁全绿之后，大项目性能和内存阈值才具有发布阻断权。
@@ -151,8 +153,9 @@ mode 和 SHA-256。installer 增加“从 artifact 安装/禁止构建”路径�
   返回唯一 `additionalTextEdits`，应用后 diagnostics 为零。
 - [x] Definition：local/import/alias/barrel/unopened/跨 module；range 精确覆盖名称；
   UTF-16 non-BMP 前缀不漂移。
-- [ ] Diagnostics：syntax/type/ArkTS DSL，code/severity/range/version；快速连改、close
-  后不得发布 stale diagnostics。
+- [x] Diagnostics：syntax/type/ArkTS DSL，code/severity/range/version；快速连改、close
+  后不得发布 stale diagnostics；resource watcher 对未编辑的 open document 主动刷新
+  （`2d7a496`、`b9b8d4b`）。
 - [x] Hover/signature help：跨文件文档、overload、active parameter、trigger/retrigger、
   UTF-16 range。
 - [x] Document symbols：hierarchical/flat，并覆盖 contract 声明的 symbol kinds。
@@ -164,12 +167,19 @@ mode 和 SHA-256。installer 增加“从 artifact 安装/禁止构建”路径�
   version 安全；应用后语义闭环全绿。
 - [x] Code action + resolve：至少从稳定 diagnostic code 产生一个 quick fix；lazy resolve
   返回 version-safe WorkspaceEdit，应用后 diagnostics 清零。
+- [ ] Client capability negotiation：hover 遵守 `contentFormat`；document/workspace symbol
+  kind 遵守 `valueSet`，省略时只返回 LSP 1–18。
+- [ ] Document highlight：当前文档 declaration/write/read、精确 UTF-16 range、稳定排序、
+  overlay freshness 与 installed artifact 证据。
+- [ ] Folding range：ArkUI builder/import/comment、`lineFoldingOnly`、`rangeLimit`、稳定有界结果。
+- [ ] Document formatting：应用 edits 后 diagnostics 不增加、symbol identity 不变、二次调用
+  幂等；若交给外部 formatter，必须有 Zed host E2E 而非从矩阵隐去。
 
 ### P1：P0 后推进
 
 - [ ] ArkUI SDK provider：component/decorator/resource/attribute completion、hover、
   definition、diagnostics。
-- [ ] Type definition、implementation、document highlights。
+- [ ] Type definition、implementation。
 - [ ] Semantic tokens、inlay hints、call hierarchy 的需求验证与分级；Zed 已由
   tree-sitter 满足的能力不重复建设。
 - [ ] 真实 worker cancellation、项目重载、配置/SDK 变化和多 root 隔离。
@@ -409,6 +419,13 @@ Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产�
   diagnostics/completion/hover/definition 4/4 GREEN（`b2b73c1`）。
 - [x] G3e scripted protocol server 改为每测试进程独占临时构建；并发与 cleanup failure
   contract 已 GREEN，不再共写 repo `dist`（`a0fea3a`、`3bcab8c`）。
+- [x] U2 missing-resource diagnostics、partial/unavailable fail-closed、numeric quick-fix 隔离与
+  resource watcher 主动重发已在 bundle/public transcript GREEN（`2d7a496`、`b9b8d4b`）。
+- [x] U1c/U2 immutable installed artifact 已验证 resource completion/definition、missing
+  diagnostic 与 builder-tail completion/hover/definition，执行 claim 与 matrix exact-set 绑定
+  （`86bde16`、`f45d252`）。
+- [ ] 二次 P0 审计新增：hover/symbol client negotiation、document highlight、folding、document
+  formatting；三项缺失能力先进入 planned/absent 矩阵，再分别建立公共 RED。
 - [x] 本批次集成门禁：fresh `pnpm check:fast` 为 298/298，0 failed、0 skipped、0 todo，
   耗时 150.2 s；immutable portable acceptance 为 4/4（本分支 HEAD 含 `0445863`、`9fe3a88`）。
 
@@ -588,17 +605,21 @@ installed transcript 与 reliability matrix 全绿后 advertised。
   - [x] U1b-2 nested `Column() { ... }.width(...)` 使用 tuple/arrow lowering 保留 receiver
     类型；diagnostics 为零且 width completion/hover/definition 精确；转换数量与扩张字节数
     有硬上限，超限时不产生半转换结果（`b2b73c1`）。
-  - [ ] U1c 在禁止 rebuild 的 immutable installed artifact 上复用 SDK symbol、resource
-    completion/definition 与 builder-tail transcript，并由执行时 `verifiedClaims` 绑定证据。
-- [ ] U2 ArkUI diagnostics：
+  - [x] U1c 在禁止 rebuild 的 immutable installed artifact 上复用 resource completion/
+    definition 与 builder-tail transcript，并由执行时 `verifiedClaims` 绑定证据
+    （`86bde16`、`f45d252`）。
+  - [ ] U1d installed artifact 继续覆盖 `@Entry/@Component/@State`、Column/Text 的 SDK
+    completion/hover/definition，不能用单个 width 场景代表整个 provider。
+- [x] U2 ArkUI diagnostics：
   - [x] 基础合法 DSL 为零，普通 syntax diagnostic 使用 numeric code；拼错 `@Componet`
     已 characterization 为 TS2552 + 精确 UTF-16 range（`6f5751b`、`51c93bc`）。
-  - [ ] 缺失 resource key 仅在完整 resource snapshot 上返回稳定
-    `arkui.resource.not-found`、Error、精确 key range；partial/unavailable index 不得误报。
-  - [ ] watched resource 新增/删除后，无需编辑或重开已打开文档，即主动清除/重新发布
-    missing-resource diagnostics；该刷新不得推进 TypeScript engine generation。
-  - [ ] immutable installed artifact 精确验证 string diagnostic code/severity/range，且不会把
-    ArkUI 字符串 code 送入只接受 numeric code 的 TypeScript quick-fix 路径。
+  - [x] 缺失 resource key 仅在完整 resource snapshot 上返回稳定
+    `arkui.resource.not-found`、Error、精确 key range；partial/unavailable index 不误报
+    （`2d7a496`）。
+  - [x] watched resource 新增/删除后，无需编辑或重开已打开文档，即主动清除/重新发布
+    missing-resource diagnostics；该刷新不推进 TypeScript engine generation（`b9b8d4b`）。
+  - [x] immutable installed artifact 精确验证 string diagnostic code/severity/range，且 ArkUI
+    字符串 code 不进入只接受 numeric code 的 TypeScript quick-fix 路径（`f45d252`）。
 - [x] W1 Workspace symbols：
   - [x] W1a 真实 production server + `AllKinds.ets` overlay 覆盖全部公开 kind/name range；
     scripted kind codec 不能独自作为 production evidence。
@@ -610,15 +631,39 @@ installed transcript 与 reliability matrix 全绿后 advertised。
 
 | 轨道 | 首条公开 RED | 初始 ownership | 与其他轨的约束 |
 |---|---|---|---|
-| F-ArkUI-resource | missing key diagnostics 真 RED | `src/core/arkui/**`、diagnostic contract 与独立测试 | 与 virtualizer owner 分离；只有完整 snapshot 才能报 missing |
+| F-ArkUI-resource | missing key diagnostics 真 RED | `src/core/arkui/**`、diagnostic contract 与独立测试 | `2d7a496` 完成；完整 snapshot 才报 missing |
 | F-ArkUI-tail | nested builder tail 真 RED | `arkts-virtual-document.ts` 与独立 tail 测试 | `b2b73c1` 已完成；待 installed transcript |
 | F-Test-runtime | scripted server 共写 repo `dist` | build helper、4 个 protocol caller、并发 contract | `a0fea3a`/`3bcab8c` 已完成；待统一 full gate |
-| F-Artifact-evidence | installed claims 的执行绑定 | installed helper、portable acceptance、feature matrix | E0d 已完成；正并行增加 ArkUI 真断言 |
-| F-Diagnostic-freshness | resource watcher 后诊断主动刷新 | 新公共 LSP transcript；生产接线由集成 owner串行 | 先提交 RED，不与 resource provider 并行改 src |
+| F-Artifact-evidence | installed claims 的执行绑定 | installed helper、portable acceptance、feature matrix | ArkUI 真断言与 exact claims 已完成（`f45d252`） |
+| F-Diagnostic-freshness | resource watcher 后诊断主动刷新 | 新公共 LSP transcript；生产接线由集成 owner 串行 | RED `2bb0fbe` → GREEN `b9b8d4b` |
 | F-Workspace/References/Rename | P0 深度与 artifact 闭环 | 对应独立 bundle/installed tests | 已完成，最终统一 full gate |
 
 顺序门禁：四轨可并行建立稳定 RED；production semantic core 严格串行；每轨 focused GREEN 后
 由集成 owner 更新 layer/evidence matrix，最后统一运行 `pnpm check:fast` 与 portable artifact E2E。
+
+#### Wave 4b — 二次基本完备度审计（功能优先于性能）
+
+审计规则：matrix 必须同时建模 `enabled`、`planned/absent` 与经 host E2E 证明的
+`client-owned`；空的 planned/absent 集合不能被解释为“没有功能缺口”。
+
+- [ ] V0 Matrix baseline：document highlight、folding range、document formatting 在实现前
+  明确登记为 planned + absent；从计划、contract 或 matrix 任一处消失都 fail closed。
+- [ ] V1 Hover negotiation：plaintext-only client 不得收到 Markdown fence；明确支持 Markdown
+  的 client 保持现有结构，bundle 与 installed 各有一条真实 transcript。
+- [ ] V2 Symbol-kind negotiation：document/workspace symbol 省略 `valueSet` 时只返回 1–18；
+  明确声明 1–26 时保留 EnumMember/Struct/TypeParameter；bundle 与 installed 均验证。
+- [ ] V3 Installed SDK breadth：在 immutable artifact 上覆盖 Entry/Component/State/Column/Text，
+  复用 completion/hover/definition 场景而非以单个 `width` 断言泛化 provider。
+- [ ] V4 Document highlight tracer：真实 bundle 先以 method-not-found RED，随后实现
+  declaration/write/read kind、changed overlay freshness、排序去重、取消与 installed claim。
+- [ ] V5 Folding tracer：使用 source/syntax provider，不依赖完整 TypeScript Program；覆盖 ArkUI
+  nested builder、comment/import、`lineFoldingOnly`、`rangeLimit` 与 installed claim。
+- [ ] V6 Document formatting tracer：独立 source provider；应用 edits 后 diagnostics 不增加、
+  definition identity 保持、二次调用幂等、stale edits 不泄漏；若改由 Zed formatter 负责，则
+  必须先提供等价 host E2E 并登记 `client-owned`。
+
+并行 ownership：V0/V3 只改 evidence/installed helper；V1/V2 串行独占 LSP capability codec；
+V4/V5/V6 可并行提交 test-only RED，生产 handler/contract 接线由 integration owner 逐条合入。
 
 Wave 4 exit criteria：P0 功能 checklist 全部 GREEN；生成机器可读 capability report，
 任何 advertised-but-untested 或 required-but-unadvertised 都使 CI 失败。
@@ -652,8 +697,13 @@ P8b nightly/RC Zed host smoke。
 `assertDefinitions` 没有发送 `textDocument/definition`，也没有 didOpen，因此 completion、
 真实 definition、diagnostics 均未覆盖。“索引中查询”也未证明 response 先于 ready。
 resource sampler 只有注入式 PID 的 unit contract，尚未采集真实 Node/sidecar process tree、
-Node heap 或 churn；没有机器可读 raw samples/runner identity/十次基线。下面各项在 P0 其余
-四项完成前只允许构建测试基础设施，不启用性能阻断阈值。
+Node heap 或 churn；没有机器可读 raw samples/runner identity/十次基线。下面各项在 Wave 4b
+全部功能与协商门禁完成前只允许构建测试基础设施，不启用性能阻断阈值。
+
+大型门禁的额外前置条件：production TypeScript semantic work 必须移出主 LSP 事件循环或具备
+真实可中断执行；scripted cancellation 只能证明 adapter plumbing。10k–100k corpus 还必须先
+显式处理当前 20,000 paths / 4 MiB membership 上限，否则全局能力会按设计 partial/fail-closed，
+无法把结果称为性能基线。
 
 - [ ] L1 PR 的 455 文件 artifact E2E 加 completion/definition/diagnostics 与索引中交互。
 - [ ] L2 nightly 10k–100k 文件、多 module/root、generated/dependency 噪声 corpus。
