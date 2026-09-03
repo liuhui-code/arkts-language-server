@@ -313,10 +313,10 @@ Owner files：`tests/support/test-layer-manifest.mjs`、runner、package scripts
 - [x] G3d fast/artifact/large 通过 Node 20 自定义 reporter 拒绝运行时
   skip/todo/cancelled；人类输出实时透传，机器摘要为 O(1) 计数且最多 4 KiB，缺失或畸形
   摘要 fail closed（`da0e285`）。
-- [ ] G3e scripted protocol server 不再由多个 test process 共写
+- [x] G3e scripted protocol server 不再由多个 test process 共写
   `dist/scripted-semantic-server.cjs`；先用并发 child contract 观察 RED，再改为每进程临时
-  artifact、同进程单次构建和有界清理。默认沙箱下的直接失败已确认是 `dist` 写权限边界；
-  授权写入后 freshness 8/8 GREEN，但共享输出竞态仍须从结构上消除。
+  artifact、同进程单次构建和有界清理（`a0fea3a`、`3bcab8c`）。默认沙箱下曾观察到的直接
+  失败已单独确认是 `dist` 写权限边界；共享输出竞态则已从结构上消除。
 
 Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产物；随后由集成轨
 串行接入 package scripts，并运行 `pnpm check:fast`。本地 exit gate 已完成：fresh build
@@ -405,6 +405,10 @@ Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产�
   （`6f5751b`、`ae05a07`）。
 - [x] U1b/U2 测试先行：SDK symbol 基础能力 characterization 已 GREEN；missing-resource 与
   nested post-block tail 已形成两个稳定真实 stdio RED（`51c93bc`）。
+- [x] U1b-2 nested builder tail 采用有界、可回映且保留 receiver 类型的 lowering；真实 stdio
+  diagnostics/completion/hover/definition 4/4 GREEN（`b2b73c1`）。
+- [x] G3e scripted protocol server 改为每测试进程独占临时构建；并发与 cleanup failure
+  contract 已 GREEN，不再共写 repo `dist`（`a0fea3a`、`3bcab8c`）。
 - [x] 本批次集成门禁：fresh `pnpm check:fast` 为 298/298，0 failed、0 skipped、0 todo，
   耗时 150.2 s；immutable portable acceptance 为 4/4（本分支 HEAD 含 `0445863`、`9fe3a88`）。
 
@@ -581,14 +585,20 @@ installed transcript 与 reliability matrix 全绿后 advertised。
     （`6f5751b`、`ae05a07`）。
   - [x] U1b-1 `@Entry/@Component/@State`、Column/Text 与普通 `Text(...).width` 的
     completion/hover/definition 已由真实 stdio characterization 锁定（`51c93bc`）。
-  - [ ] U1b-2 nested `Column() { ... }.width(...)` 需要保留 receiver 类型的 lowering；
-    diagnostics 为零且 width completion/hover/definition 精确。当前稳定 RED 为
-    TS1128(`.`) + TS2304(`width`)。
+  - [x] U1b-2 nested `Column() { ... }.width(...)` 使用 tuple/arrow lowering 保留 receiver
+    类型；diagnostics 为零且 width completion/hover/definition 精确；转换数量与扩张字节数
+    有硬上限，超限时不产生半转换结果（`b2b73c1`）。
+  - [ ] U1c 在禁止 rebuild 的 immutable installed artifact 上复用 SDK symbol、resource
+    completion/definition 与 builder-tail transcript，并由执行时 `verifiedClaims` 绑定证据。
 - [ ] U2 ArkUI diagnostics：
   - [x] 基础合法 DSL 为零，普通 syntax diagnostic 使用 numeric code；拼错 `@Componet`
     已 characterization 为 TS2552 + 精确 UTF-16 range（`6f5751b`、`51c93bc`）。
   - [ ] 缺失 resource key 仅在完整 resource snapshot 上返回稳定
     `arkui.resource.not-found`、Error、精确 key range；partial/unavailable index 不得误报。
+  - [ ] watched resource 新增/删除后，无需编辑或重开已打开文档，即主动清除/重新发布
+    missing-resource diagnostics；该刷新不得推进 TypeScript engine generation。
+  - [ ] immutable installed artifact 精确验证 string diagnostic code/severity/range，且不会把
+    ArkUI 字符串 code 送入只接受 numeric code 的 TypeScript quick-fix 路径。
 - [x] W1 Workspace symbols：
   - [x] W1a 真实 production server + `AllKinds.ets` overlay 覆盖全部公开 kind/name range；
     scripted kind codec 不能独自作为 production evidence。
@@ -601,9 +611,10 @@ installed transcript 与 reliability matrix 全绿后 advertised。
 | 轨道 | 首条公开 RED | 初始 ownership | 与其他轨的约束 |
 |---|---|---|---|
 | F-ArkUI-resource | missing key diagnostics 真 RED | `src/core/arkui/**`、diagnostic contract 与独立测试 | 与 virtualizer owner 分离；只有完整 snapshot 才能报 missing |
-| F-ArkUI-tail | nested builder tail 真 RED | `arkts-virtual-document.ts` 与独立 tail 测试 | 保型 lowering；不得过滤 TS1128/2304 |
-| F-Test-runtime | scripted server 共写 repo `dist` | build helper、4 个 protocol caller、并发 contract | 每进程 temp artifact；不改产品代码 |
-| F-Artifact-evidence | 12 个 installed claims 的执行绑定 | installed helper、portable acceptance、feature matrix | `e69d69b` 已完成；待统一 portable 4/4 复验 |
+| F-ArkUI-tail | nested builder tail 真 RED | `arkts-virtual-document.ts` 与独立 tail 测试 | `b2b73c1` 已完成；待 installed transcript |
+| F-Test-runtime | scripted server 共写 repo `dist` | build helper、4 个 protocol caller、并发 contract | `a0fea3a`/`3bcab8c` 已完成；待统一 full gate |
+| F-Artifact-evidence | installed claims 的执行绑定 | installed helper、portable acceptance、feature matrix | E0d 已完成；正并行增加 ArkUI 真断言 |
+| F-Diagnostic-freshness | resource watcher 后诊断主动刷新 | 新公共 LSP transcript；生产接线由集成 owner串行 | 先提交 RED，不与 resource provider 并行改 src |
 | F-Workspace/References/Rename | P0 深度与 artifact 闭环 | 对应独立 bundle/installed tests | 已完成，最终统一 full gate |
 
 顺序门禁：四轨可并行建立稳定 RED；production semantic core 严格串行；每轨 focused GREEN 后
