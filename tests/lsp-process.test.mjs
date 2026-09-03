@@ -102,3 +102,52 @@ test("rejects a pending response when the child emits invalid JSON", async () =>
     await lsp.close()
   }
 })
+
+test("rejects every pending waiter when a notification matcher throws", async () => {
+  const lsp = new LspProcess({
+    command: process.execPath,
+    args: [
+      "-e",
+      `
+        const body = JSON.stringify({
+          jsonrpc: "2.0",
+          method: "fixture/matcher",
+          params: { ready: true },
+        })
+        setTimeout(() => {
+          process.stdout.write(
+            "Content-Length: " + Buffer.byteLength(body) + "\\r\\n\\r\\n" + body,
+          )
+        }, 50)
+        setInterval(() => {}, 1_000)
+      `,
+    ],
+  })
+  const matcherFailure = new Error(
+    `MATCHER-START-${"x".repeat(400)}-END-SHOULD-NOT-APPEAR`,
+  )
+
+  try {
+    const matched = lsp.notification("fixture/matcher", () => {
+      throw matcherFailure
+    }, 5_000)
+    const unrelated = lsp.response(74, 5_000)
+    const results = await withTimeout(
+      Promise.allSettled([matched, unrelated]),
+      1_000,
+      "pending waiters did not reject after matcher failure",
+    )
+
+    for (const result of results) {
+      assert.equal(result.status, "rejected")
+      assert.match(result.reason.message, /LSP transport failure: accept handler threw/)
+      assert.match(result.reason.message, /MATCHER-START-/)
+      assert.doesNotMatch(result.reason.message, /END-SHOULD-NOT-APPEAR/)
+      assert.ok(result.reason.message.length < 350, "transport failure must be bounded")
+      assert.equal(result.reason.cause, matcherFailure)
+    }
+    assert.equal(results[0].reason, results[1].reason)
+  } finally {
+    await lsp.close()
+  }
+})

@@ -23,7 +23,7 @@ export class LspProcess {
     this.waiters = []
     this.stderr = ""
     this.transportFailure = undefined
-    this.child.stdout.on("data", (chunk) => this.accept(chunk))
+    this.child.stdout.on("data", (chunk) => this.acceptSafely(chunk))
     this.child.stderr.on("data", (chunk) => { this.stderr += chunk.toString() })
     this.child.on("close", (code, signal) => this.rejectPendingOnClose(code, signal))
   }
@@ -92,6 +92,22 @@ export class LspProcess {
     const exited = once(this.child, "exit")
     this.child.kill("SIGTERM")
     await exited
+  }
+
+  acceptSafely(chunk) {
+    try {
+      this.accept(chunk)
+    } catch (cause) {
+      const detail = cause instanceof Error ? cause.message : String(cause)
+      const excerptLimit = 160
+      const excerpt = detail.length > excerptLimit
+        ? `${detail.slice(0, excerptLimit)}…`
+        : detail
+      this.failTransport(new Error(
+        `LSP transport failure: accept handler threw. cause=${JSON.stringify(excerpt)}`,
+        { cause },
+      ))
+    }
   }
 
   accept(chunk) {
