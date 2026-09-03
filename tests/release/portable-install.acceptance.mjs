@@ -5,9 +5,10 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import test from "node:test"
-import { fileURLToPath } from "node:url"
+import { fileURLToPath, pathToFileURL } from "node:url"
 
 import { assertInstalledSemanticSmoke } from "../support/installed-semantic-smoke.mjs"
+import { LspSession } from "../support/lsp-session.mjs"
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 const artifactBuilder = path.join(projectRoot, "scripts", "artifact", "build-portable.mjs")
@@ -189,6 +190,8 @@ test("installs one verified artifact without source dependencies or a rebuild", 
   const environment = {
     ...process.env,
     HOME: isolatedHome,
+    ARKTS_INDEX_SIDECAR_PATH: undefined,
+    ARKTS_LSP_HOME: undefined,
     PATH: [toolDirectory, path.dirname(process.execPath), "/usr/bin", "/bin"]
       .join(path.delimiter),
   }
@@ -234,6 +237,59 @@ test("installs one verified artifact without source dependencies or a rebuild", 
     )
   }
 
+  const installedSidecar = path.join(releaseRoot, "target", "release", sidecarName)
+  const repositorySidecar = path.join(projectRoot, "target", "release", sidecarName)
+  fs.accessSync(repositorySidecar, fs.constants.X_OK)
+  assert.notEqual(fs.realpathSync(installedSidecar), fs.realpathSync(repositorySidecar))
+  const withheldSidecar = `${installedSidecar}.withheld`
+  fs.renameSync(installedSidecar, withheldSidecar)
+  try {
+    assert.equal(fs.existsSync(installedSidecar), false)
+    assert.equal(fs.existsSync(repositorySidecar), true)
+    const missingAdjacent = await runInstalledIndexProbe({
+      command,
+      temporaryRoot,
+      cwd: externalCwd,
+      env: environment,
+      cacheName: "missing-adjacent-cache",
+    })
+    assert.equal(
+      missingAdjacent.terminal.params.value.message,
+      "Indexing degraded after 0 files; skipped 0 entries",
+      "a missing installed sidecar must not fall back to the repository sidecar",
+    )
+    assert.deepEqual(missingAdjacent.response.result, [])
+  } finally {
+    fs.renameSync(withheldSidecar, installedSidecar)
+  }
+  const adjacent = await runInstalledIndexProbe({
+    command,
+    temporaryRoot,
+    cwd: externalCwd,
+    env: environment,
+    cacheName: "installed-adjacent-cache",
+  })
+  assert.equal(
+    adjacent.terminal.params.value.percentage,
+    100,
+    `catalog did not use the installed adjacent sidecar: ${adjacent.terminal.params.value.message}`,
+  )
+  assert.equal(adjacent.terminal.params.value.message, "Indexed 1/1 files; skipped 0 entries")
+  assert.deepEqual(adjacent.response.result, [{
+    name: adjacent.sourceName,
+    kind: 5,
+    location: {
+      uri: pathToFileURL(adjacent.sourcePath).href,
+      range: {
+        start: { line: 0, character: adjacent.source.indexOf(adjacent.sourceName) },
+        end: {
+          line: 0,
+          character: adjacent.source.indexOf(adjacent.sourceName) + adjacent.sourceName.length,
+        },
+      },
+    },
+  }])
+
   const response = await initialize(command, externalCwd, environment)
   assert.equal(response.result.serverInfo.name, "arkts-language-server")
   await assertInstalledSemanticSmoke({
@@ -248,6 +304,62 @@ test("installs one verified artifact without source dependencies or a rebuild", 
     "installed artifact semantic runtime invoked a forbidden build tool",
   )
 })
+
+async function runInstalledIndexProbe({ command, temporaryRoot, cwd, env, cacheName }) {
+  const workspace = path.join(temporaryRoot, `${cacheName}-workspace`)
+  fs.mkdirSync(workspace)
+  const sourceName = "ArtifactAdjacentSidecarType"
+  const source = `export class ${sourceName} {}\n`
+  const sourcePath = path.join(workspace, `${sourceName}.ets`)
+  fs.writeFileSync(sourcePath, source, "utf8")
+  const indexEnvironment = {
+    ...env,
+    ARKTS_INDEX_SIDECAR_PATH: undefined,
+    ARKTS_INDEX_CACHE_DIR: path.join(temporaryRoot, cacheName),
+    ARKTS_LSP_HOME: undefined,
+    ARKTS_LSP_LOG_DIR: path.join(temporaryRoot, `${cacheName}-logs`),
+  }
+  assert.equal(indexEnvironment.ARKTS_INDEX_SIDECAR_PATH, undefined)
+  assert.equal(indexEnvironment.ARKTS_LSP_HOME, undefined)
+  const session = new LspSession({
+    command,
+    args: ["--stdio"],
+    cwd,
+    env: indexEnvironment,
+    rootUri: pathToFileURL(workspace).href,
+    capabilities: { window: { workDoneProgress: true } },
+  })
+
+  try {
+    const initialized = await session.initialize({ timeoutMs: 15_000 })
+    assert.equal(initialized.result.capabilities.workspaceSymbolProvider, true)
+    const create = await session.transport.serverRequest(
+      "window/workDoneProgress/create",
+      () => true,
+      15_000,
+    )
+    session.transport.send({ jsonrpc: "2.0", id: create.id, result: null })
+    const terminal = await session.transport.progress(
+      create.params.token,
+      (message) => message.params.value.kind === "report"
+        && (message.params.value.percentage === 100
+          || /^Indexing degraded/.test(message.params.value.message ?? "")),
+      30_000,
+    )
+    await session.transport.progress(
+      create.params.token,
+      (message) => message.params.value.kind === "end",
+      30_000,
+    )
+    const response = await session.request("workspace/symbol", { query: sourceName }, {
+      timeoutMs: 15_000,
+    })
+    assert.equal(response.error, undefined, JSON.stringify(response.error))
+    return { terminal, response, sourceName, sourcePath, source }
+  } finally {
+    await session.close({ timeoutMs: 15_000 })
+  }
+}
 
 test("installed command remains self-contained after its source checkout moves", async (t) => {
   const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-portable-install-"))
