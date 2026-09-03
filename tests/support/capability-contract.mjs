@@ -33,7 +33,11 @@ export const CURRENT_LSP_CAPABILITY_CONTRACT = Object.freeze({
     { path: "documentSymbolProvider", expected: true },
     { path: "workspaceSymbolProvider", expected: true },
   ]),
-  absent: Object.freeze([]),
+  absent: Object.freeze([
+    "documentHighlightProvider",
+    "foldingRangeProvider",
+    "documentFormattingProvider",
+  ]),
 })
 
 export function assertLspCapabilityContract(capabilities, contract) {

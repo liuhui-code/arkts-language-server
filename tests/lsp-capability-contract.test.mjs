@@ -42,6 +42,21 @@ test("production initialize advertises exactly the implemented LSP capability co
   )
 })
 
+test("records mature editor providers as an explicit absent baseline", () => {
+  assert.deepEqual(CURRENT_LSP_CAPABILITY_CONTRACT.absent, [
+    "documentHighlightProvider",
+    "foldingRangeProvider",
+    "documentFormattingProvider",
+  ])
+  for (const provider of CURRENT_LSP_CAPABILITY_CONTRACT.absent) {
+    assert.equal(
+      CURRENT_LSP_CAPABILITY_CONTRACT.allowedTopLevel.includes(provider),
+      false,
+      `${provider} must remain fail-closed until executable evidence exists`,
+    )
+  }
+})
+
 test("omits code actions when any client prerequisite is missing", async (t) => {
   const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-capability-negative-"))
   t.after(() => fs.rmSync(temporaryRoot, { recursive: true, force: true }))

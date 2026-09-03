@@ -336,6 +336,21 @@ export const CURRENT_LSP_FEATURE_MATRIX = Object.freeze({
       )],
       artifactGap: null,
     }),
+    plannedFeature(
+      "document-highlight",
+      "documentHighlightProvider",
+      "No protocol, bundle, or installed-artifact E2E exists; keep the provider absent.",
+    ),
+    plannedFeature(
+      "folding-range",
+      "foldingRangeProvider",
+      "No protocol, bundle, or installed-artifact E2E exists; keep the provider absent.",
+    ),
+    plannedFeature(
+      "document-formatting",
+      "documentFormattingProvider",
+      "No protocol, bundle, or installed-artifact E2E exists; keep the provider absent.",
+    ),
   ]),
 })
 

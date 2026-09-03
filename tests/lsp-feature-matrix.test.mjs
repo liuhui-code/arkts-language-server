@@ -119,9 +119,13 @@ test("maps the complete public capability contract to executable feature evidenc
     "rename",
     "code-actions",
   ])
-  assert.deepEqual(audit.plannedFeatureIds, [])
+  assert.deepEqual(audit.plannedFeatureIds, [
+    "document-highlight",
+    "folding-range",
+    "document-formatting",
+  ])
   assert.equal(audit.requiredCapabilityCount, 14)
-  assert.equal(audit.absentCapabilityCount, 0)
+  assert.equal(audit.absentCapabilityCount, 3)
   assert.deepEqual(audit.artifactCoveredFeatureIds, [
     "document-sync",
     "completion",
@@ -136,7 +140,24 @@ test("maps the complete public capability contract to executable feature evidenc
     "rename",
     "code-actions",
   ])
-  assert.deepEqual(audit.artifactGapFeatureIds, [])
+  assert.deepEqual(audit.artifactGapFeatureIds, [
+    "document-highlight",
+    "folding-range",
+    "document-formatting",
+  ])
+  const plannedProviders = new Map([
+    ["document-highlight", "documentHighlightProvider"],
+    ["folding-range", "foldingRangeProvider"],
+    ["document-formatting", "documentFormattingProvider"],
+  ])
+  for (const [featureId, provider] of plannedProviders) {
+    const feature = CURRENT_LSP_FEATURE_MATRIX.features.find(({ id }) => id === featureId)
+    assert.equal(feature?.state, "planned")
+    assert.deepEqual(feature?.absentCapabilities, [provider])
+    assert.deepEqual(feature?.evidence, { protocol: [], bundle: [], artifact: [] })
+    assert.equal(typeof feature?.artifactGap, "string")
+    assert.ok(feature.artifactGap.length > 0)
+  }
   const diagnostics = CURRENT_LSP_FEATURE_MATRIX.features.find(({ id }) => id === "diagnostics")
   assert.deepEqual(diagnostics?.knownGaps, [])
   const hover = CURRENT_LSP_FEATURE_MATRIX.features.find(({ id }) => id === "hover")
@@ -258,6 +279,29 @@ test("maps the complete public capability contract to executable feature evidenc
     claim: "rename.artifact.immutable-versioned-alias-conflict-applied-semantic-recheck",
   }])
   assert.equal(rename?.artifactGap, null)
+})
+
+test("cannot silently drop a planned absent capability baseline", () => {
+  const plannedProviders = new Map([
+    ["document-highlight", "documentHighlightProvider"],
+    ["folding-range", "foldingRangeProvider"],
+    ["document-formatting", "documentFormattingProvider"],
+  ])
+
+  for (const [featureId, provider] of plannedProviders) {
+    const matrix = structuredClone(CURRENT_LSP_FEATURE_MATRIX)
+    matrix.features = matrix.features.filter(({ id }) => id !== featureId)
+    assert.throws(
+      () => validateLspFeatureMatrix({
+        root: projectRoot,
+        matrix,
+        capabilityContract: CURRENT_LSP_CAPABILITY_CONTRACT,
+        layerManifest: TEST_LAYER_MANIFEST,
+      }),
+      new RegExp(`${provider}: absent capability must be covered once; covered by none`),
+      featureId,
+    )
+  }
 })
 
 test("rejects capability and evidence drift instead of accepting a stale matrix", () => {
