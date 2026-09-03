@@ -224,11 +224,18 @@ export const CURRENT_LSP_FEATURE_MATRIX = Object.freeze({
         "maps cancellation for every advertised semantic request to RequestCancelled",
         "references.protocol.cancellation",
       )],
-      bundle: [evidence(
-        "tests/semantic/references-depth.test.mjs",
-        "finds unopened barrel references with exact UTF-16 ranges and declaration policy",
-        "references.bundle.unopened-barrel-declaration-policy",
-      )],
+      bundle: [
+        evidence(
+          "tests/semantic/references-depth.test.mjs",
+          "finds unopened barrel references with exact UTF-16 ranges and declaration policy",
+          "references.bundle.unopened-barrel-declaration-policy",
+        ),
+        evidence(
+          "tests/semantic/references-completeness.test.mjs",
+          "classifies every overload declaration without losing stable usage references",
+          "references.bundle.overload-declaration-policy",
+        ),
+      ],
       artifact: [evidence(
         "tests/release/portable-install.acceptance.mjs",
         "installs one verified artifact without source dependencies or a rebuild",
