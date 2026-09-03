@@ -177,7 +177,16 @@ test("advertises signature help only after its transcript is supported", async (
 })
 
 test("returns documented ArkTS hover information at the exact source range", async (t) => {
-  const { server, documentUri } = await openFixture(t, "hover", "Profile.ets")
+  const { server, documentUri } = await openFixture(
+    t,
+    "hover",
+    "Profile.ets",
+    {
+      textDocument: {
+        hover: { contentFormat: ["markdown"] },
+      },
+    },
+  )
 
   server.send({
     jsonrpc: "2.0",
@@ -194,6 +203,40 @@ test("returns documented ArkTS hover information at the exact source range", asy
   assert.equal(response.result.contents.kind, "markdown")
   assert.match(response.result.contents.value, /Profile\.title: string/)
   assert.match(response.result.contents.value, /Human-readable title\./)
+  assert.deepEqual(response.result.range, {
+    start: { line: 5, character: 9 },
+    end: { line: 5, character: 14 },
+  })
+})
+
+test("returns plaintext hover when the client only supports plaintext", async (t) => {
+  const { server, documentUri } = await openFixture(
+    t,
+    "hover",
+    "Profile.ets",
+    {
+      textDocument: {
+        hover: { contentFormat: ["plaintext"] },
+      },
+    },
+  )
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 40,
+    method: "textDocument/hover",
+    params: {
+      textDocument: { uri: documentUri },
+      position: { line: 5, character: 11 },
+    },
+  })
+
+  const response = await server.response(40)
+  assert.equal(response.error, undefined, JSON.stringify(response.error))
+  assert.deepEqual(response.result.contents, {
+    kind: "plaintext",
+    value: "(property) Profile.title: string\n\nHuman-readable title.",
+  })
   assert.deepEqual(response.result.range, {
     start: { line: 5, character: 9 },
     end: { line: 5, character: 14 },
@@ -223,6 +266,11 @@ test("returns source documentation and UTF-16 reference ranges for an unopened i
     t,
     "cross-file-hover",
     "Consumer.ets",
+    {
+      textDocument: {
+        hover: { contentFormat: ["markdown"] },
+      },
+    },
   )
 
   const aliasRange = utf16RangeOf(text, "ServiceAlias", 2)

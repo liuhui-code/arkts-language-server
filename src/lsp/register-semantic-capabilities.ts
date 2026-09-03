@@ -46,6 +46,7 @@ export function registerSemanticCapabilities({
 }: SemanticCapabilityDependencies): SemanticCapabilityRegistration {
   let hierarchicalDocumentSymbols = false
   let documentStructKind: SymbolKind = SymbolKind.Class
+  let hoverMarkupKind: MarkupKind = MarkupKind.Markdown
   const capabilities: ServerCapabilities = {
     documentSymbolProvider: true,
     hoverProvider: true,
@@ -83,7 +84,7 @@ export function registerSemanticCapabilities({
         signal,
       }),
     })
-    return result ? toLspHover(result) : null
+    return result ? toLspHover(result, hoverMarkupKind) : null
   })
 
   connection.onReferences(async (params, token) => {
@@ -175,6 +176,7 @@ export function registerSemanticCapabilities({
   return {
     capabilities,
     configure(clientCapabilities) {
+      hoverMarkupKind = preferredHoverMarkupKind(clientCapabilities)
       hierarchicalDocumentSymbols = clientCapabilities.textDocument
         ?.documentSymbol?.hierarchicalDocumentSymbolSupport === true
       documentStructKind = clientCapabilities.textDocument?.documentSymbol
@@ -233,6 +235,13 @@ function isSignatureHelpRetriggerCharacter(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
+}
+
+function preferredHoverMarkupKind(clientCapabilities: ClientCapabilities): MarkupKind {
+  const formats = clientCapabilities.textDocument?.hover?.contentFormat
+  return formats?.find((format) => (
+    format === MarkupKind.Markdown || format === MarkupKind.PlainText
+  )) ?? MarkupKind.Markdown
 }
 
 function supportsResolvableQuickFixes(clientCapabilities: ClientCapabilities): boolean {
@@ -341,12 +350,14 @@ function unavailableRename(): ResponseError<void> {
   )
 }
 
-function toLspHover(hover: SemanticHover) {
-  const sections = [`\`\`\`arkts\n${hover.signature}\n\`\`\``]
+function toLspHover(hover: SemanticHover, markupKind: MarkupKind) {
+  const sections = [markupKind === MarkupKind.Markdown
+    ? `\`\`\`arkts\n${hover.signature}\n\`\`\``
+    : hover.signature]
   if (hover.documentation) sections.push(hover.documentation)
   return {
     contents: {
-      kind: MarkupKind.Markdown,
+      kind: markupKind,
       value: sections.join("\n\n"),
     },
     range: hover.range,
