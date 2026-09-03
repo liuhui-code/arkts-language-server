@@ -11,6 +11,7 @@ export class LspSession {
     this.initialized = false
     this.initialization = undefined
     this.closing = undefined
+    this.documentVersions = new Map()
   }
 
   initialize({ rootUri = this.rootUri, capabilities = this.capabilities, timeoutMs = 5_000 } = {}) {
@@ -30,6 +31,39 @@ export class LspSession {
       return response
     })
     return this.initialization
+  }
+
+  openDocument({ uri, languageId = "arkts", version, text }) {
+    this.transport.send({
+      jsonrpc: "2.0",
+      method: "textDocument/didOpen",
+      params: { textDocument: { uri, languageId, version, text } },
+    })
+    this.documentVersions.set(uri, version)
+  }
+
+  changeDocument({ uri, version, text, contentChanges = [{ text }] }) {
+    const previousVersion = this.documentVersions.get(uri)
+    if (previousVersion !== undefined && version <= previousVersion) {
+      throw new RangeError(
+        `didChange version ${version} must be greater than ${previousVersion} for ${uri}`,
+      )
+    }
+    this.transport.send({
+      jsonrpc: "2.0",
+      method: "textDocument/didChange",
+      params: {
+        textDocument: { uri, version },
+        contentChanges,
+      },
+    })
+    this.documentVersions.set(uri, version)
+  }
+
+  request(method, params, { timeoutMs = 5_000 } = {}) {
+    const id = this.nextRequestId++
+    this.transport.send({ jsonrpc: "2.0", id, method, params })
+    return this.transport.response(id, timeoutMs)
   }
 
   close({ timeoutMs = 2_000 } = {}) {
