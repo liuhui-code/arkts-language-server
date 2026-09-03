@@ -596,6 +596,7 @@ function invalidCodeActionResolution(status: "stale" | "unknown"): ResponseError
 function completionKind(kind: SemanticCompletion["kind"]): CompletionItemKind {
   switch (kind) {
     case "method": return CompletionItemKind.Method
+    case "field": return CompletionItemKind.Field
     case "function": return CompletionItemKind.Function
     case "class": return CompletionItemKind.Class
     case "interface": return CompletionItemKind.Interface

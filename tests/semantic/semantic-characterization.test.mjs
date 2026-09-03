@@ -393,6 +393,91 @@ test("completes inherited fields and methods after this dot", async (t) => {
   assert.ok(labels.includes("inheritedRefresh"), `Expected inheritedRefresh in ${JSON.stringify(labels)}`)
 })
 
+test("completes imported receiver fields and methods with exact kinds and UTF-16 range", async (t) => {
+  const materialized = await materializeConformanceWorkspace()
+  const sourceDirectory = path.join(
+    materialized.workspaceRoot,
+    "entry",
+    "src",
+    "main",
+    "ets",
+    "pages",
+  )
+  const receiverPath = path.join(sourceDirectory, "ImportedReceiver.ets")
+  const consumerPath = path.join(sourceDirectory, "ImportedReceiverConsumer.ets")
+  const receiverSource = [
+    "export class ImportedReceiver {",
+    "  memberField: number = 1",
+    "  memberMethod(): string { return 'ready' }",
+    "}",
+    "",
+  ].join("\n")
+  const prefix = "m"
+  const consumerSource = [
+    'import { ImportedReceiver } from "./ImportedReceiver.ets"',
+    "const receiver = new ImportedReceiver()",
+    `const face = '😀'; const selected = receiver.${prefix}`,
+    "",
+  ].join("\n")
+  await fs.promises.writeFile(receiverPath, receiverSource, "utf8")
+  await fs.promises.writeFile(consumerPath, consumerSource, "utf8")
+  const consumerUri = pathToFileURL(consumerPath).href
+  const prefixEnd = consumerSource.lastIndexOf(prefix) + prefix.length
+  const replacementRange = {
+    start: positionAt(consumerSource, prefixEnd - prefix.length),
+    end: positionAt(consumerSource, prefixEnd),
+  }
+  const linePrefix = consumerSource.split("\n")[replacementRange.start.line]
+    .slice(0, replacementRange.start.character)
+  assert.equal(
+    linePrefix.length - Array.from(linePrefix).length,
+    1,
+    "the receiver completion must be positioned in UTF-16 after an emoji",
+  )
+  const session = new LspSession({
+    command: process.execPath,
+    args: [path.join(projectRoot, "dist", "server.cjs"), "--stdio"],
+    cwd: projectRoot,
+    env: {
+      HOME: path.join(materialized.root, "missing-home"),
+      DEVECO_SDK_HOME: path.join(materialized.root, "missing-deveco"),
+      ARKLINE_HARMONY_SDK_PATH: path.join(materialized.corpusRoot, "sdk", "openharmony"),
+    },
+    rootUri: pathToFileURL(materialized.workspaceRoot).href,
+    capabilities: { general: { positionEncodings: ["utf-16"] } },
+  })
+  t.after(async () => {
+    try {
+      await session.close()
+    } finally {
+      await fs.promises.rm(materialized.root, { recursive: true, force: true })
+    }
+  })
+
+  await session.initialize()
+  session.openDocument({
+    uri: consumerUri,
+    languageId: "arkts",
+    version: 1,
+    text: consumerSource,
+  })
+  const response = await session.request("textDocument/completion", {
+    textDocument: { uri: consumerUri },
+    position: replacementRange.end,
+  })
+
+  assert.equal(response.error, undefined, JSON.stringify(response.error))
+  const items = Array.isArray(response.result) ? response.result : response.result?.items ?? []
+  const field = items.filter((item) => item.label === "memberField")
+  const method = items.filter((item) => item.label === "memberMethod")
+  assert.equal(field.length, 1, `Expected memberField in ${JSON.stringify(items)}`)
+  assert.equal(method.length, 1, `Expected memberMethod in ${JSON.stringify(items)}`)
+  assert.equal(field[0].kind, CompletionItemKind.Field)
+  assert.equal(method[0].kind, CompletionItemKind.Method)
+  assert.deepEqual(field[0].textEdit, { range: replacementRange, newText: "memberField" })
+  assert.deepEqual(method[0].textEdit, { range: replacementRange, newText: "memberMethod" })
+})
+
 test("maps a definition in a rewritten ArkTS struct back to source coordinates", async (t) => {
   const server = new LspProcess()
   t.after(() => server.close())

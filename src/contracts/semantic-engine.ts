@@ -7,6 +7,7 @@ import type {
 
 export type SemanticCompletionKind =
   | "method"
+  | "field"
   | "function"
   | "class"
   | "interface"

@@ -263,6 +263,7 @@ function toLegacyPosition(
 function completionKind(kind: string): SemanticCompletionKind {
   switch (kind) {
     case "method":
+    case "field":
     case "function":
     case "class":
     case "interface":

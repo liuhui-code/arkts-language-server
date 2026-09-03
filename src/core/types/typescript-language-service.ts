@@ -839,6 +839,7 @@ function completionPrefix(content: string, offset: number): string {
 
 function completionKind(kind: ts.ScriptElementKind): string {
   if (kind === ts.ScriptElementKind.memberFunctionElement) return "method"
+  if (kind === ts.ScriptElementKind.memberVariableElement) return "field"
   if (kind === ts.ScriptElementKind.functionElement) return "function"
   if (kind === ts.ScriptElementKind.classElement) return "class"
   if (kind === ts.ScriptElementKind.interfaceElement) return "interface"
