@@ -363,10 +363,19 @@ Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产�
   trigger/retrigger context 与 capability 字符集合（`0bd947c`）。
 - [x] E3b-1 Document symbols bundle：12 类语义 kind、三层 hierarchy、flat fallback、老客户端
   Struct 降级、稳定顺序与精确 UTF-16 range（`423817a`）。
-- [ ] E2b/E3b-2 在 immutable installed artifact 上复用 signature/document-symbol transcript，并
-  消除 feature matrix 对这两项的 `artifactGap`。
+- [x] E2b/E3b-2 在 immutable installed artifact 上复用 signature/document-symbol transcript，并
+  消除 feature matrix 对这两项的 `artifactGap`（`c1e39a5`）。
 - [x] R0 references/rename fail-closed 审计：确认 TypeScript 返回能力可用，但当前 adapter 会
   静默丢弃 unopened/partial/越 root/不可映射位置，故能力继续保持 absent。
+- [x] R0c-2 所有同 root open overlays pinned；跨 workspace 回收不淘汰未保存内容；didClose
+  恢复 disk truth 并推进 root content revision（`927ffe3`）。
+- [x] R1/R2/R3 references：barrel/import/unopened/overload 声明策略、精确 source-map range、
+  403 文件跨 resident/lazy window、20,001 文件 partial fail-closed、取消/陈旧语义与 immutable
+  installed artifact（`c2d0a30`、`9d4e623`、`e51eeab`、`52678fc`）。
+- [x] N1/N2a/N2b prepare/rename handler：精确 placeholder、consumer alias 语义、origin→barrel
+  API 保持、versioned `documentChanges` 与全量映射/重叠校验（`3264efe`）；能力尚未广告。
+- [x] E0b advertised capability 必须拥有 immutable artifact evidence，`artifactGap` 仅允许
+  planned/absent 能力（`eb52afb`）。
 - [ ] 本批次集成门禁：所有并行切片提交后运行 fresh `pnpm check:fast`。
 
 #### 下一批 P0 基本功能 checklist（按依赖执行）
@@ -376,8 +385,8 @@ Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产�
 
 - [x] E0 Evidence：feature matrix 从“测试文件存在”升级为可核验的命名场景 claim；错误、
   缺失或重复 claim fail closed（schema v2，`d6163e7`）。
-- [ ] E0b Release evidence：让 release gate 拒绝 advertised capability 仅靠 `artifactGap`
-  放行；待 E2/E3b immutable artifact transcript 补齐后启用。
+- [x] E0b Release evidence：release gate 拒绝 advertised capability 仅靠 `artifactGap`
+  放行；只有 planned/absent 能力允许显式记录 gap（`eb52afb`）。
 - [x] L1 Lifecycle installed：精确断言 incremental sync capability；执行 ranged didChange，
   查询证明 v2 生效，再在 didClose 后证明 overlay 被移除、disk truth 恢复。
 - [x] C8 Completion receiver：imported/typed receiver 同时返回 field 和 method；kind 分别为
@@ -392,11 +401,11 @@ Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产�
 - [ ] E2 Signature depth：
   - [x] E2a 转发 LSP trigger/retrigger context；覆盖 overload、nested/generic、active parameter、
     快速 didChange（`0bd947c`）。
-  - [ ] E2b 加入 immutable artifact smoke。
+  - [x] E2b 加入 immutable artifact smoke（`c1e39a5`）。
 - [ ] E3b Document symbols depth：
   - [x] E3b-1 补全公开 kind、深层 hierarchy/flat fallback、稳定顺序与 UTF-16 range
     （`423817a`；RED 为 `export const` 被静默丢弃）。
-  - [ ] E3b-2 加入 immutable artifact smoke。
+  - [x] E3b-2 加入 immutable artifact smoke（`c1e39a5`）。
 
 可并行组：`E0`（证据契约）、`L1`（installed test-only）、`W2`（独立 symbol codec）可互斥
 推进；`C8 → C9 → E1 → E2 → E3b` 共享 TypeScript/LSP adapter，按此顺序串行。
@@ -471,21 +480,24 @@ capability advertisement 与 transcript 一致；`pnpm check:fast`、artifact sm
 - [ ] R0c 全局查询完整性与 freshness：
   - [ ] R0c-1 partial/unknown membership 对全局查询整体返回 `RequestFailed`，不得返回空数组或
     部分结果。
-  - [ ] R0c-2 所有 open overlay 保持 pinned；`didClose` 后恢复 disk truth 并推进 workspace
-    content epoch。
+  - [x] R0c-2 所有 open overlay 保持 pinned；`didClose` 后恢复 disk truth 并推进 workspace
+    content epoch（`927ffe3`）。
   - [ ] R0c-3 watched create/delete/rename 原子更新 membership revision；root-dirty 立即降级
     partial，重枚举成功才发布新 complete snapshot；open/change/close/watcher 使同 root 的旧
     全局请求返回 `ContentModified`。
-- [ ] R1 References：`includeDeclaration=false` 返回 import、usage、barrel re-export 的完整
-  `Profile` ranges，排除 declaration 与同名 shadow；结果稳定排序、去重。
-- [ ] R2 References：`includeDeclaration=true` 只额外加入 origin declaration；覆盖 unopened、
-  overlay、另一参与文件变更后的 stale、client cancel。
+- [x] R1 References：`includeDeclaration=false` 返回 import、usage、barrel re-export 的完整
+  `Profile` ranges，排除 declaration 与同名 shadow；结果稳定排序、去重（`c2d0a30`）。
+- [ ] R2 References：`includeDeclaration=true` 增加全部 canonical declaration，覆盖 unopened、
+  overload、client cancel 与 immutable artifact（`9d4e623`、`52678fc`）；另一参与文件变化使
+  in-flight 请求 stale 的 root-scoped freshness 仍归 R0c-3。
+- [x] R3 References：403 文件跨 resident/lazy window、未打开 ArkTS struct rewrite、emoji
+  range 精确；20,001 文件 partial membership 整体 `RequestFailed`（`e51eeab`）。
 - [x] N0 扩展安全 edit helper 支持 versioned `documentChanges`，原子拒绝 version mismatch、
   unknown URI、resource operation、overlap/out-of-bounds，且不改变输入（`5dc6517`）。
-- [ ] N1 Prepare rename：精确 range + placeholder；不可重命名目标返回固定 `RequestFailed`，
-  不泄露 TypeScript 本地化文案。
-- [ ] N2 Rename：先覆盖局部 import alias 语义，再覆盖 declaration→barrel→consumer 的跨文件
-  语义；保留 TS `prefixText/suffixText`，只返回稳定排序的 versioned `documentChanges`。
+- [x] N1 Prepare rename：精确 range + placeholder；不可重命名目标返回固定 `RequestFailed`，
+  不泄露 TypeScript 本地化文案（`3264efe`）。
+- [x] N2 Rename：覆盖局部 import alias 与 declaration→barrel→consumer 跨文件语义；保留
+  TS `prefixText/suffixText`，只返回稳定排序的 versioned `documentChanges`（`3264efe`）。
 - [ ] N3 Rename fail-closed：非法名称为 `InvalidParams`；不完整/越 root/不可映射为
   `RequestFailed`；stale/superseded 为 `ContentModified`；client cancel 为 `RequestCancelled`。
 - [ ] N4 只有支持 `workspace.workspaceEdit.documentChanges` 的 client 才可 advertising rename；
@@ -518,13 +530,14 @@ installed transcript 与 reliability matrix 全绿后 advertised。
 - [ ] E2 Signature help：
   - [x] bundle 覆盖 overload、nested/generic call、trigger/retrigger、快速 didChange
     （`0bd947c`）。
-  - [ ] immutable installed artifact smoke。
+  - [x] immutable installed artifact smoke（`c1e39a5`）。
 - [ ] E3 Document symbols：
   - [x] E3a 客户端未声明 `symbolKind.valueSet` 时把 ArkTS Struct 降级为 Class；现代客户端
     保留 Struct（`572039e`）。
   - [x] E3b bundle 覆盖全部公开 kind、三层 hierarchy、flat fallback、稳定顺序与 UTF-16 range
     （`423817a`）。
-  - [ ] immutable installed artifact smoke；ArkTS component hierarchy 留给 U1 corpus。
+  - [x] immutable installed artifact smoke（`c1e39a5`）；ArkTS component hierarchy 已由
+    installed corpus 覆盖，更多 SDK component 语义仍留给 U1。
 - [ ] U1 ArkUI：component/decorator/resource/attribute completion 与 definition。
 - [ ] U2 ArkUI：真实 DSL 无伪 diagnostics，错误 decorator/resource 有稳定 diagnostics。
 - [ ] W1 Workspace symbols：完整 kind 映射、resolve 需求评估、installed overlay/cancel smoke。
