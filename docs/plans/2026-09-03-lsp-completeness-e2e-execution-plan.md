@@ -369,10 +369,10 @@ Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产�
 - [x] C8 Completion receiver：imported/typed receiver 同时返回 field 和 method；kind 分别为
   `Field`/`Method`，replacement range 在 emoji 后仍精确（`fbe3d6f`；RED 为字段错误映射成
   `Property(10)`）。
-- [ ] C9 Completion ranking：同名来源去重，local/member 优先于 auto-import；重复请求排序稳定，
-  `sortText` 与最终顺序契约一致。
-- [ ] W2 Workspace symbol kind：overlay 的 interface/enum/property/constructor/module/type/variable
-  不得统一降级为 Variable；补 exact kind/range、overlay precedence 和 cancel。
+- [x] C9 Completion ranking：local 优先于 auto-import，重复请求排序与 `sortText` 稳定；同名但
+  语义不同的 auto-import 不误删，并以 workspace-relative module source 区分（`4b245df`）。
+- [x] W2 Workspace symbol kind：overlay 的 interface/enum/property/constructor/module/type/variable
+  不再统一降级为 Variable；未知 sidecar kind 保守降级为 Variable（`eb0ef8c`）。
 - [ ] E1 Hover depth：unopened dependency、import alias、JSDoc tags、emoji UTF-16 range，并加入
   immutable artifact smoke。
 - [ ] E2 Signature depth：转发 LSP trigger/retrigger context；覆盖 overload、nested/generic、
