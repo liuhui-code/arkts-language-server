@@ -8,7 +8,7 @@
 
 ## 文档变更的 TDD 例外
 
-- 原因：本提交只新增执行计划，不改变运行行为。
+- 原因：本文件只新增或同步执行计划/checklist，不改变运行行为。
 - 影响范围：仅本文件。
 - Owner：ArkTS Language Server maintainers。
 - 到期日：2026-09-10；从第一个实现任务起恢复严格 RED → GREEN。
@@ -332,8 +332,21 @@ Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产�
 - [x] Wave 3 diagnostics code/code-action 只读设计审查完成；G1/Q1/Q2 尚待实现。
 - [x] N0/Q0b versioned `TextDocumentEdit` 安全应用 helper（`5dc6517`）。
 - [x] Q0a UTF-16 + ArkTS rewrite 的稳定 TS2552 spelling fixture（`c488c54`）。
-- [ ] G1 diagnostic numeric code 端到端保真：并行实施中。
-- [ ] E3a legacy document-symbol kind compatibility：并行实施中。
+- [x] G1 diagnostic numeric code 端到端保真，并同步机器可读能力证据
+  （`e1a787f`、`c5d8b7f`）。
+- [x] G1b 快速连改与 close 不发布 stale diagnostics 的无 sleep 真实进程门禁
+  （`ade2a2f`；既有行为的 characterization，无虚构 RED）。
+- [x] C-P0 1 字符仅本地、2 字符 workspace auto-import 的短前缀策略与精确 replacement
+  （`0ecc337`）。
+- [x] D1 unopened/overlay/alias/barrel/relative cross-module definition 精确范围门禁
+  （`c4debfe`；既有行为的 characterization）。
+- [x] E3a legacy document-symbol kind compatibility（`572039e`）。
+- [x] R0a 项目成员全集与 256 文件内容窗口解耦；partial/revision/枚举资源释放契约
+  （`c62b088`）。
+- [x] I1 从 manifest 校验并无构建安装同一份 directory artifact bytes（`af2177c`）。
+- [ ] R0b TypeScript host 对完整成员集的 lazy/bounded 消费：并行实施中。
+- [ ] Q1/Q2 code-action 适配设计与 TypeScript 5.9 API 核验：并行审查中。
+- [ ] I2 不可变 artifact 上复用完整 semantic smoke 场景。
 - [ ] 本批次集成门禁：所有并行切片提交后运行 fresh `pnpm check:fast`。
 
 ### Wave 2 — 首个功能切片与 installed semantic smoke（部分并行）
@@ -360,20 +373,25 @@ Owner：一个端到端 owner 独占 semantic contract、project set、completio
 - [x] B5 应用 completion 与 auto-import edits，didChange v2 后 diagnostics 清零，再精确
   definition 到未打开 Greeter（`600eb84`）。
 - [x] B6 scripted cancel/forged/stale/shutdown contract（`600eb84`）。
+- [x] B7 一字符非 member 请求只查本地 scope；两字符才允许 workspace module-export
+  completion，并精确替换对应 prefix（`0ecc337`）。
 
 #### Track D：definition 精确性（D0 先行；D1/D2 与 B 的共享契约合入后并行）
 
 - [x] D0 在其他新增 capability 前先 RED：materialized corpus 中只打开带 emoji 前缀的
   reference，definition 精确指向未打开文件的完整名称 range（`e605033`）。
-- [ ] D1 加 unopened、alias/barrel、跨 module、open target overlay。
-- [ ] D2 加 emoji 前缀 UTF-16 source mapping。
+- [x] D1 加 unopened、alias/barrel、relative cross-module、open target overlay，并锁定完整
+  非零 target range（`c4debfe`）。
+- [x] D2 emoji 前缀与 ArkTS rewrite 后的 UTF-16 source mapping（`e605033`、`c4debfe`）。
 
 #### Track I：installed artifact semantic smoke（与场景 helper GREEN 后并行）
 
 - [x] I0 本地 installer characterization：从外部 cwd 启动安装后的命令，完成 completion、
   definition、diagnostics 以及 completion-resolve/apply-and-recheck transcript
   （`3b5f76c`、`c8774d7`）；该测试仍会从源码构建，不能替代 I1。
-- [ ] I1 在禁止 build、无源码、无 node_modules、随机 cwd/clean HOME 环境安装 artifact。
+- [x] I1 在禁止 build、无源码、无 node_modules、随机 cwd/clean HOME 环境校验并安装
+  directory artifact；runtime bytes/mode 与 manifest 一致（`af2177c`）。archive、签名和 CI
+  promotion 仍由 Wave 5 负责。
 - [ ] I2 对不可变 artifact 的 installed command 运行 completion、definition、diagnostics 与
   completion-resolve/apply-and-recheck transcript。
 - [ ] I3 验证启动的是 artifact 内相邻 sidecar，没有 repo-relative fallback。
@@ -389,8 +407,9 @@ capability advertisement 与 transcript 一致；`pnpm check:fast`、artifact sm
 解耦。当前 TypeScript engine 会静默丢弃未加载文件中的 references/rename locations；在能
 证明全局结果完整前不得 advertising，无法保证完整时必须 fail closed，不能返回成功但不完整。
 
-- [ ] R0a 用 >256 文件 fixture 建立 project-snapshot completeness RED；snapshot 必须显式
-  `complete/partial`，partial 全局查询返回 `RequestFailed`，不得返回部分成功结果。
+- [x] R0a 用 >256 文件 fixture 建立 project-membership completeness RED；membership 显式
+  `complete/partial`，且与有界内容窗口解耦（`c62b088`）。partial 全局查询的
+  `RequestFailed` 接线保留给 R0b/R1。
 - [ ] R0b 将 project membership 与 256 文件/8 MiB 内容缓存解耦；只在可证明完整的 snapshot
   上执行 references/rename，并记录 workspace revision。
 - [ ] R0c watched create/delete/rename 原子更新 membership revision；root-dirty 立即降级 partial，
@@ -411,8 +430,8 @@ capability advertisement 与 transcript 一致；`pnpm check:fast`、artifact sm
   支持 prepare 时广告 `{ prepareProvider: true }`，全部 bundle/installed transcript GREEN 后接线。
 - [x] Q0a 新增 `QuickFixConsumer.ets`：ArkTS `struct` rewrite 与 emoji 后的 `greting` marker
   可重复 materialize；TypeScript 5.9.2 探针确认 TS2552 与唯一 `spelling` fix（`c488c54`）。
-- [ ] G1 Diagnostics：先只贯通 TypeScript numeric `code`，用含 emoji 且经过 ArkTS virtual
-  rewrite 的 `greting` marker 稳定断言 `TS2552`；related info/data/tags 留给 G1b。
+- [x] G1 Diagnostics：贯通 TypeScript numeric `code`，用含 emoji 且经过 ArkTS virtual
+  rewrite 的 `greting` marker 稳定断言 `TS2552`（`e1a787f`）；related info/data/tags 后置。
 - [ ] Q1 Code action list：服务端按当前 snapshot 的 code + source-mapped range 重算匹配，
   只返回唯一 `spelling` quick fix 的 title/kind/diagnostic/opaque UUID，不在 list 返回 edit。
 - [ ] Q2 Code action resolve：只信上限 512 条、绑定 URI/version 的服务端记录；返回 versioned
@@ -430,6 +449,8 @@ installed transcript 与 reliability matrix 全绿后 advertised。
 - [ ] E1 Hover：unopened dependency、alias、JSDoc tags、SDK、UTF-16 range。
 - [ ] E2 Signature help：overload、nested/generic call、trigger/retrigger、快速 didChange。
 - [ ] E3 Document symbols：全部公开 kind、ArkTS component hierarchy、flat/hierarchical。
+  - [x] E3a 客户端未声明 `symbolKind.valueSet` 时把 ArkTS Struct 降级为 Class；现代客户端
+    保留 Struct（`572039e`）。
 - [ ] U1 ArkUI：component/decorator/resource/attribute completion 与 definition。
 - [ ] U2 ArkUI：真实 DSL 无伪 diagnostics，错误 decorator/resource 有稳定 diagnostics。
 - [ ] W1 Workspace symbols：完整 kind 映射、resolve 需求评估、installed overlay/cancel smoke。
