@@ -269,6 +269,38 @@ test("rejects an invalid rename name with fixed InvalidParams and no edit", asyn
   })
 })
 
+test("rejects rename when the target name already exists in the same scope", async (t) => {
+  const scenarioRoot = path.join(fixtureRoot, "same-scope-conflict")
+  const document = fixtureDocument(scenarioRoot, "ConflictingTypes.ets")
+  const { server } = await openDocument(t, {
+    scenarioRoot,
+    document,
+    version: 19,
+  })
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 2,
+    method: "textDocument/rename",
+    params: {
+      textDocument: { uri: document.uri },
+      position: midpoint(utf16RangeOf(document.text, "Profile")),
+      newName: "Account",
+    },
+  })
+
+  const response = await server.response(2)
+  assert.equal(response.result, undefined, "a conflicting rename must not leak a WorkspaceEdit")
+  assert.deepEqual(response.error, {
+    code: -32803,
+    message: "Rename is not available at this position.",
+  })
+  assert.equal(
+    fs.readFileSync(path.join(scenarioRoot, "ConflictingTypes.ets"), "utf8"),
+    document.text,
+  )
+})
+
 test("atomically rejects rename when TypeScript reports an out-of-workspace location", async (t) => {
   const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-rename-outside-"))
   const scenarioRoot = path.join(temporaryRoot, "workspace")
