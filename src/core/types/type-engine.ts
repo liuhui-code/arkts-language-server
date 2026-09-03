@@ -10,6 +10,7 @@ import type {
   SemanticSignatureHelp,
   SemanticTextRange,
   SemanticUsageResult,
+  SemanticNumericDiagnostic,
 } from "../protocol.js"
 import { ArkUIResourceLanguageProvider } from "../arkui/resource-language-provider.js"
 import type { SemanticWorkspaceView } from "../workspace/document-store.js"
@@ -29,7 +30,7 @@ export interface SemanticTypeEngineState {
 export interface SemanticCodeFixCandidate {
   title: string
   kind: "quickfix"
-  diagnostic: SemanticDiagnostic
+  diagnostic: SemanticNumericDiagnostic
   fingerprint: string
 }
 
@@ -156,7 +157,10 @@ export class SemanticTypeEngineRegistry {
       ),
       prepareRename: (position) => entry.engine.prepareRename(position),
       usages: (position) => entry.engine.usages(position),
-      diagnostics: (position) => entry.engine.diagnostics(position),
+      diagnostics: (position) => mergeDiagnostics(
+        entry.engine.diagnostics(position),
+        sourceContent ? entry.arkui.diagnostics(position, sourceContent) : [],
+      ),
       codeActions: (position, range) => entry.engine.codeActions(position, range),
       resolveCodeAction: (position, range, fingerprint) => (
         entry.engine.resolveCodeAction(position, range, fingerprint)
@@ -225,4 +229,44 @@ function mergeDefinitions(
     result.push(definition)
   }
   return result
+}
+
+function mergeDiagnostics(
+  typescript: SemanticDiagnostic[],
+  arkui: SemanticDiagnostic[],
+): SemanticDiagnostic[] {
+  if (arkui.length === 0) return typescript
+  if (typescript.length === 0) return arkui
+  const result: SemanticDiagnostic[] = []
+  const seen = new Set<string>()
+  for (const diagnostic of [...typescript, ...arkui]) {
+    const key = JSON.stringify([
+      diagnostic.path,
+      diagnostic.range.startLine,
+      diagnostic.range.startColumn,
+      diagnostic.range.endLine,
+      diagnostic.range.endColumn,
+      diagnostic.code,
+      diagnostic.severity,
+      diagnostic.message,
+    ])
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.push(diagnostic)
+  }
+  return result.sort((left, right) => (
+    ordinalCompare(left.path, right.path)
+    || left.range.startLine - right.range.startLine
+    || left.range.startColumn - right.range.startColumn
+    || left.range.endLine - right.range.endLine
+    || left.range.endColumn - right.range.endColumn
+    || ordinalCompare(String(left.code), String(right.code))
+    || ordinalCompare(left.message, right.message)
+  ))
+}
+
+function ordinalCompare(left: string, right: string): number {
+  if (left < right) return -1
+  if (left > right) return 1
+  return 0
 }

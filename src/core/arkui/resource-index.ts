@@ -21,6 +21,7 @@ const EXCLUDED_DIRECTORIES = new Set([
   "oh_modules",
 ])
 const RESOURCE_NAME = /^[A-Za-z_$][A-Za-z0-9_$]*$/u
+const EMPTY_RESOURCES: readonly ArkUIStringResource[] = Object.freeze([])
 
 export interface ArkUIStringResource {
   reference: string
@@ -30,6 +31,13 @@ export interface ArkUIStringResource {
   range: SemanticTextRange
 }
 
+export type ArkUIResourceIndexStatus = "ready" | "partial" | "unavailable"
+
+export interface ArkUIResourceQueryResult {
+  status: ArkUIResourceIndexStatus
+  resources: readonly ArkUIStringResource[]
+}
+
 export interface ArkUIResourceIndexOptions {
   maxVisitedEntries?: number
   maxDirectoryEntries?: number
@@ -37,6 +45,7 @@ export interface ArkUIResourceIndexOptions {
   maxResourceFileBytes?: number
   maxResourceBytes?: number
   maxResourceEntries?: number
+  readResourceFile?: (filePath: string) => string | null
 }
 
 interface ResourceIndexLimits {
@@ -48,15 +57,34 @@ interface ResourceIndexLimits {
   maxResourceEntries: number
 }
 
+interface ArkUIResourceSnapshot {
+  status: ArkUIResourceIndexStatus
+  resources: readonly ArkUIStringResource[]
+  uniqueResources: readonly ArkUIStringResource[]
+  byReference: ReadonlyMap<string, readonly ArkUIStringResource[]>
+}
+
+interface ResourceFileDiscovery {
+  status: ArkUIResourceIndexStatus
+  files: string[]
+}
+
+interface ParsedStringResources {
+  status: "ready" | "unavailable"
+  resources: ArkUIStringResource[]
+}
+
 export class ArkUIResourceIndex {
   private readonly rootPath: string
   private readonly canonicalRoot: string
   private readonly limits: ResourceIndexLimits
-  private snapshot: ArkUIStringResource[] | undefined
+  private readonly readResourceFile: (filePath: string) => string | null
+  private snapshot: ArkUIResourceSnapshot | undefined
 
   constructor(workspaceRoot: string, options: ArkUIResourceIndexOptions = {}) {
     this.rootPath = path.resolve(workspaceRoot)
     this.canonicalRoot = canonicalPath(this.rootPath)
+    this.readResourceFile = options.readResourceFile ?? safeRead
     this.limits = {
       maxVisitedEntries: boundedLimit(
         options.maxVisitedEntries,
@@ -91,18 +119,26 @@ export class ArkUIResourceIndex {
     }
   }
 
-  findByPrefix(referencePrefix: string): ArkUIStringResource[] {
-    const resources = this.load()
-    const seen = new Set<string>()
-    return resources.filter((resource) => {
-      if (!resource.reference.startsWith(referencePrefix) || seen.has(resource.reference)) return false
-      seen.add(resource.reference)
-      return true
+  findByPrefix(referencePrefix: string): ArkUIResourceQueryResult {
+    const snapshot = this.load()
+    const start = lowerBound(snapshot.uniqueResources, referencePrefix)
+    let end = start
+    while (
+      end < snapshot.uniqueResources.length
+      && snapshot.uniqueResources[end]?.reference.startsWith(referencePrefix)
+    ) end += 1
+    return Object.freeze({
+      status: snapshot.status,
+      resources: Object.freeze(snapshot.uniqueResources.slice(start, end)),
     })
   }
 
-  findExact(reference: string): ArkUIStringResource[] {
-    return this.load().filter((resource) => resource.reference === reference)
+  findExact(reference: string): ArkUIResourceQueryResult {
+    const snapshot = this.load()
+    return Object.freeze({
+      status: snapshot.status,
+      resources: snapshot.byReference.get(reference) ?? EMPTY_RESOURCES,
+    })
   }
 
   invalidate(): void {
@@ -113,35 +149,47 @@ export class ArkUIResourceIndex {
     this.snapshot = undefined
   }
 
-  private load(): ArkUIStringResource[] {
+  private load(): ArkUIResourceSnapshot {
     if (this.snapshot) return this.snapshot
-    const files = discoverStringResourceFiles(
+    const discovery = discoverStringResourceFiles(
       this.rootPath,
       this.canonicalRoot,
       this.limits,
     )
-    if (!files) return (this.snapshot = [])
+    if (discovery.status !== "ready") {
+      return (this.snapshot = createSnapshot(discovery.status, []))
+    }
 
     let totalBytes = 0
+    let status: ArkUIResourceIndexStatus = "ready"
     const resources: ArkUIStringResource[] = []
-    for (const filePath of files) {
+    for (const filePath of discovery.files) {
       const stat = safeStat(filePath)
-      if (!stat || !stat.isFile() || stat.size > this.limits.maxResourceFileBytes) {
-        return (this.snapshot = [])
+      if (!stat || !stat.isFile()) {
+        status = "unavailable"
+        continue
+      }
+      if (stat.size > this.limits.maxResourceFileBytes) {
+        return (this.snapshot = createSnapshot("partial", []))
       }
       totalBytes += stat.size
-      if (totalBytes > this.limits.maxResourceBytes) return (this.snapshot = [])
-      const content = safeRead(filePath)
-      if (content === null) continue
-      const parsed = parseStringResources(filePath, content)
-      if (resources.length + parsed.length > this.limits.maxResourceEntries) {
-        return (this.snapshot = [])
+      if (totalBytes > this.limits.maxResourceBytes) {
+        return (this.snapshot = createSnapshot("partial", []))
       }
-      resources.push(...parsed)
+      const content = this.readResourceFile(filePath)
+      if (content === null) {
+        status = "unavailable"
+        continue
+      }
+      const parsed = parseStringResources(filePath, content)
+      if (parsed.status === "unavailable") status = "unavailable"
+      if (resources.length + parsed.resources.length > this.limits.maxResourceEntries) {
+        return (this.snapshot = createSnapshot("partial", []))
+      }
+      resources.push(...parsed.resources)
     }
     resources.sort(compareResources)
-    this.snapshot = resources
-    return resources
+    return (this.snapshot = createSnapshot(status, resources))
   }
 }
 
@@ -149,7 +197,7 @@ function discoverStringResourceFiles(
   rootPath: string,
   canonicalRoot: string,
   limits: ResourceIndexLimits,
-): string[] | null {
+): ResourceFileDiscovery {
   const pending = [rootPath]
   const files: string[] = []
   let visitedEntries = 0
@@ -157,12 +205,13 @@ function discoverStringResourceFiles(
     const directoryPath = pending.pop()
     if (!directoryPath) break
     const entries = safeReadDirectory(directoryPath)
-    if (!entries || entries.length > limits.maxDirectoryEntries) return null
+    if (!entries) return { status: "unavailable", files: [] }
+    if (entries.length > limits.maxDirectoryEntries) return { status: "partial", files: [] }
     entries.sort((left, right) => ordinalCompare(left.name, right.name))
     const directories: string[] = []
     for (const entry of entries) {
       visitedEntries += 1
-      if (visitedEntries > limits.maxVisitedEntries) return null
+      if (visitedEntries > limits.maxVisitedEntries) return { status: "partial", files: [] }
       if (entry.isSymbolicLink()) continue
       const candidatePath = path.join(directoryPath, entry.name)
       if (entry.isDirectory()) {
@@ -173,40 +222,46 @@ function discoverStringResourceFiles(
       const canonicalCandidate = canonicalPath(candidatePath)
       if (!isInside(canonicalRoot, canonicalCandidate)) continue
       files.push(candidatePath)
-      if (files.length > limits.maxResourceFiles) return null
+      if (files.length > limits.maxResourceFiles) return { status: "partial", files: [] }
     }
     for (let index = directories.length - 1; index >= 0; index -= 1) {
       pending.push(directories[index])
     }
   }
   files.sort(ordinalCompare)
-  return files
+  return { status: "ready", files }
 }
 
-function parseStringResources(filePath: string, content: string): ArkUIStringResource[] {
+function parseStringResources(filePath: string, content: string): ParsedStringResources {
   let parsed: unknown
   try {
     parsed = JSON.parse(content)
   } catch {
-    return []
+    return { status: "unavailable", resources: [] }
   }
-  if (!isRecord(parsed) || !Array.isArray(parsed.string)) return []
+  if (!isRecord(parsed) || !Array.isArray(parsed.string)) {
+    return { status: "unavailable", resources: [] }
+  }
   const declarations = parsed.string
   if (!declarations.every((entry) => (
     isRecord(entry)
     && typeof entry.name === "string"
     && RESOURCE_NAME.test(entry.name)
     && (entry.value === undefined || typeof entry.value === "string")
-  ))) return []
+  ))) return { status: "unavailable", resources: [] }
 
   const locations = resourceNameLocations(content)
-  if (locations.length !== declarations.length) return []
+  if (locations.length !== declarations.length) return { status: "unavailable", resources: [] }
   const resources: ArkUIStringResource[] = []
   for (let index = 0; index < declarations.length; index += 1) {
     const declaration = declarations[index]
-    if (!isRecord(declaration) || typeof declaration.name !== "string") return []
+    if (!isRecord(declaration) || typeof declaration.name !== "string") {
+      return { status: "unavailable", resources: [] }
+    }
     const location = locations[index]
-    if (!location || location.name !== declaration.name) return []
+    if (!location || location.name !== declaration.name) {
+      return { status: "unavailable", resources: [] }
+    }
     resources.push({
       reference: `app.string.${declaration.name}`,
       name: declaration.name,
@@ -215,7 +270,7 @@ function parseStringResources(filePath: string, content: string): ArkUIStringRes
       range: spanToRange(content, location.start, location.length),
     })
   }
-  return resources
+  return { status: "ready", resources }
 }
 
 function resourceNameLocations(content: string): Array<{ name: string; start: number; length: number }> {
@@ -302,6 +357,45 @@ function compareResources(left: ArkUIStringResource, right: ArkUIStringResource)
     || ordinalCompare(left.path, right.path)
     || left.range.startLine - right.range.startLine
     || left.range.startColumn - right.range.startColumn
+}
+
+function createSnapshot(
+  status: ArkUIResourceIndexStatus,
+  resources: ArkUIStringResource[],
+): ArkUIResourceSnapshot {
+  const immutableResources = Object.freeze(resources.map((resource) => Object.freeze({
+    ...resource,
+    range: Object.freeze({ ...resource.range }),
+  })))
+  const byReference = new Map<string, ArkUIStringResource[]>()
+  for (const resource of immutableResources) {
+    const matches = byReference.get(resource.reference)
+    if (matches) matches.push(resource)
+    else byReference.set(resource.reference, [resource])
+  }
+  const immutableByReference = new Map<string, readonly ArkUIStringResource[]>()
+  for (const [reference, matches] of byReference) {
+    immutableByReference.set(reference, Object.freeze(matches))
+  }
+  return Object.freeze({
+    status,
+    resources: immutableResources,
+    uniqueResources: Object.freeze(
+      [...immutableByReference.values()].flatMap((matches) => matches[0] ?? []),
+    ),
+    byReference: immutableByReference,
+  })
+}
+
+function lowerBound(resources: readonly ArkUIStringResource[], reference: string): number {
+  let low = 0
+  let high = resources.length
+  while (low < high) {
+    const middle = low + Math.floor((high - low) / 2)
+    if ((resources[middle]?.reference ?? "") < reference) low = middle + 1
+    else high = middle
+  }
+  return low
 }
 
 function ordinalCompare(left: string, right: string): number {

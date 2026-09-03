@@ -127,15 +127,19 @@ export interface SemanticDocumentSymbol {
 export interface SemanticDiagnostic {
   range: TextRange
   severity: "error" | "warning"
-  code: number
+  code: number | string
   message: string
   source: "arkts"
+}
+
+export interface SemanticNumericDiagnostic extends SemanticDiagnostic {
+  code: number
 }
 
 export interface SemanticCodeAction {
   title: string
   kind: "quickfix"
-  diagnostic: SemanticDiagnostic
+  diagnostic: SemanticNumericDiagnostic
   fingerprint: string
 }
 

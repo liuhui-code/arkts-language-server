@@ -7,7 +7,7 @@ import type { SemanticDiagnostic } from "../contracts/semantic-engine.js"
 
 export type MappedDiagnostic = Diagnostic & {
   severity: DiagnosticSeverity
-  code: number
+  code: number | string
   source: "arkts"
 }
 

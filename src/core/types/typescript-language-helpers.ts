@@ -2,7 +2,7 @@ import path from "node:path"
 
 import ts from "typescript"
 
-import type { SemanticDiagnostic } from "../protocol.js"
+import type { SemanticNumericDiagnostic } from "../protocol.js"
 import type { ArktsVirtualDocument } from "../virtual/arkts-virtual-document.js"
 import type { SemanticTypeStatus } from "./type-engine.js"
 
@@ -38,7 +38,7 @@ export function mapTypescriptDiagnostics(
   filePath: string,
   virtualDocument: ArktsVirtualDocument,
   ...diagnosticGroups: readonly ts.Diagnostic[][]
-): SemanticDiagnostic[] {
+): SemanticNumericDiagnostic[] {
   const seen = new Set<string>()
   return diagnosticGroups.flat().flatMap((diagnostic) => {
     if (

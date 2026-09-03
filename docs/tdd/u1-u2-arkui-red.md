@@ -210,12 +210,63 @@ node --test --test-name-pattern="routes only in-root ArkUI|bounds an ArkUI resou
 # 3 passed, 0 failed
 ```
 
+## U2 missing-resource diagnostic RED → GREEN
+
+The diagnostic slice starts at parent revision
+`51c93bc053050f0fd2deb0bdcc23dd861322106a`. Its real stdio RED opened an ArkTS
+document containing `$r("app.string.missing_title")` after a non-BMP character.
+The expected LSP diagnostic used string code `arkui.resource.not-found`, error
+severity, source `arkts`, and a UTF-16 range covering only `missing_title`.
+Production returned no matching diagnostic:
+
+```text
+node --test --test-name-pattern="missing ArkUI string resource" \
+  tests/semantic/arkui-diagnostics-depth.test.mjs
+# 0 passed, 1 failed
+# actual matching diagnostics: []
+```
+
+GREEN keeps general diagnostic codes as `number | string`, while the
+TypeScript quick-fix contracts explicitly accept only numeric diagnostics.
+ArkUI string codes therefore never enter `getCodeFixesAtPosition`; the existing
+TS2552 list/resolve/apply path remains unchanged.
+
+Resource lookup now owns an independent `ready | partial | unavailable`
+completeness state. Exact lookup uses a map, prefix lookup uses a sorted unique
+array plus binary lower bound, and returned query snapshots and resource
+records are runtime-immutable. Missing-key diagnostics are emitted only from a
+complete `ready` snapshot. Directory/file/count/byte limits, unreadable files,
+and invalid JSON fail closed for negative claims; an unavailable snapshot can
+still serve known valid completion/definition entries from other resource
+files.
+
+A bounded LRU caches one lexical `$r` fact scan by resolved document path,
+document version, and exact content. Both source bytes and estimated literal
+metadata count toward the byte limit. Completion, definition, and diagnostics
+share those facts; mixed TypeScript and ArkUI diagnostics are deduplicated and
+sorted deterministically by path and source range. Narrow resource invalidation
+refreshes the next diagnostics query without resetting the TypeScript engine.
+
+Focused GREEN evidence:
+
+```text
+node --test tests/semantic/arkui-diagnostics-depth.test.mjs
+# 9 passed, 0 failed
+
+node --test tests/semantic/arkui-language-features.test.mjs \
+  tests/semantic/diagnostic-code-characterization.test.mjs
+# 15 passed, 0 failed
+
+pnpm check
+# exited 0
+```
+
 ## Remaining risks (not claimed by U1/U2)
 
 - A watched resource change refreshes the next completion/definition request,
   but does not proactively republish diagnostics for already-open documents.
-  Missing-resource diagnostics and their watched-change publication need a
-  separate RED before that U2 behavior can be claimed.
+  Active watched-change publication needs its own public RED before that U2
+  behavior can be claimed.
 - Cold `$r` access performs one synchronous, bounded workspace traversal before
   caching its immutable snapshot. The limits prevent unbounded memory/work, but
   a large-workspace latency benchmark and background/catalog handoff are still
