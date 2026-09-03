@@ -44,6 +44,20 @@
       "shape": "range"
     },
     {
+      "id": "cross-module.definition",
+      "kind": "definition",
+      "role": "target",
+      "file": "workspace/shared/src/main/ets/model/SharedProfile.ets",
+      "shape": "range"
+    },
+    {
+      "id": "cross-module.reference",
+      "kind": "definition",
+      "role": "reference",
+      "file": "workspace/entry/src/main/ets/pages/CrossModuleConsumer.ets",
+      "shape": "range"
+    },
+    {
       "id": "quickfix.greeting",
       "kind": "diagnostic",
       "role": "spelling-quickfix",

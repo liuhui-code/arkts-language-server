@@ -70,6 +70,40 @@ test("returns the exact unopened definition range after an emoji prefix", async 
   assert.deepEqual(locations[0].range, target.range)
   assert.notDeepEqual(locations[0].range.start, locations[0].range.end)
   assert.equal(textInRange(profile, locations[0].range), "Profile")
+
+  const overlayPrefix = "const overlayMarker = '😀'\n\nstruct OverlayPadding {}\n\n"
+  const profileOverlay = `${overlayPrefix}${profile}`
+  const overlayNameOffset = profileOverlay.indexOf("Profile", overlayPrefix.length)
+  assert.notEqual(overlayNameOffset, -1)
+  const overlayRange = {
+    start: positionAt(profileOverlay, overlayNameOffset),
+    end: positionAt(profileOverlay, overlayNameOffset + "Profile".length),
+  }
+  assert.equal(
+    overlayPrefix.length - Array.from(overlayPrefix).length,
+    1,
+    "the target overlay prefix must contain a non-BMP UTF-16 character",
+  )
+  session.openDocument({
+    uri: target.uri,
+    languageId: "arkts",
+    version: 1,
+    text: profileOverlay,
+  })
+  const overlayResponse = await session.request("textDocument/definition", {
+    textDocument: { uri: reference.uri },
+    position: midpoint(reference.range),
+  })
+
+  assert.equal(overlayResponse.error, undefined, JSON.stringify(overlayResponse.error))
+  const overlayLocations = overlayResponse.result === null
+    ? []
+    : Array.isArray(overlayResponse.result)
+      ? overlayResponse.result
+      : [overlayResponse.result]
+  assert.deepEqual(overlayLocations, [{ uri: target.uri, range: overlayRange }])
+  assert.notDeepEqual(overlayLocations[0].range.start, overlayLocations[0].range.end)
+  assert.equal(textInRange(profileOverlay, overlayLocations[0].range), "Profile")
 })
 
 test("completes a one-character non-member local with an exact replacement", async (t) => {
@@ -413,6 +447,14 @@ test("resolves a definition through an import alias and barrel export", async (t
   const fixtureRoot = path.join(projectRoot, "fixtures", "semantic", "alias-barrel")
   const documentPath = path.join(fixtureRoot, "Main.ets")
   const targetPath = path.join(fixtureRoot, "models", "Profile.ets")
+  const targetSource = fs.readFileSync(targetPath, "utf8")
+  const targetName = "displayName"
+  const targetNameOffset = targetSource.indexOf(targetName)
+  assert.notEqual(targetNameOffset, -1)
+  const targetRange = {
+    start: positionAt(targetSource, targetNameOffset),
+    end: positionAt(targetSource, targetNameOffset + targetName.length),
+  }
   const documentUri = pathToFileURL(documentPath).href
 
   server.send({
@@ -453,7 +495,72 @@ test("resolves a definition through an import alias and barrel export", async (t
   const locations = Array.isArray(response.result) ? response.result : [response.result]
   assert.equal(locations.length, 1)
   assert.equal(locations[0].uri, pathToFileURL(targetPath).href)
-  assert.deepEqual(locations[0].range.start, { line: 1, character: 2 })
+  assert.deepEqual(locations[0].range, targetRange)
+  assert.notDeepEqual(locations[0].range.start, locations[0].range.end)
+  assert.equal(textInRange(targetSource, locations[0].range), targetName)
+})
+
+test("resolves an exact unopened definition across Harmony modules", async (t) => {
+  const materialized = await materializeConformanceWorkspace()
+  const reference = materialized.cases["cross-module.reference"]
+  const target = materialized.cases["cross-module.definition"]
+  const consumer = fs.readFileSync(fileURLToPath(reference.uri), "utf8")
+  const targetSource = fs.readFileSync(fileURLToPath(target.uri), "utf8")
+  const session = new LspSession({
+    command: process.execPath,
+    args: [path.join(projectRoot, "dist", "server.cjs"), "--stdio"],
+    cwd: projectRoot,
+    env: {
+      HOME: path.join(materialized.root, "missing-home"),
+      DEVECO_SDK_HOME: path.join(materialized.root, "missing-deveco"),
+      ARKLINE_HARMONY_SDK_PATH: path.join(materialized.corpusRoot, "sdk", "openharmony"),
+    },
+    rootUri: pathToFileURL(materialized.workspaceRoot).href,
+    capabilities: { general: { positionEncodings: ["utf-16"] } },
+  })
+  t.after(async () => {
+    try {
+      await session.close()
+    } finally {
+      await fs.promises.rm(materialized.root, { recursive: true, force: true })
+    }
+  })
+
+  assert.equal(textInRange(consumer, reference.range), "SharedProfile")
+  assert.equal(textInRange(targetSource, target.range), "SharedProfile")
+  for (const [source, range] of [
+    [consumer, reference.range],
+    [targetSource, target.range],
+  ]) {
+    const line = source.split("\n")[range.start.line]
+    const prefix = line.slice(0, range.start.character)
+    assert.match(prefix, /😀/)
+    assert.equal(
+      prefix.length - Array.from(prefix).length,
+      1,
+      "the cross-module marker prefix must use JavaScript UTF-16 code units",
+    )
+  }
+  await session.initialize()
+  session.openDocument({
+    uri: reference.uri,
+    languageId: "arkts",
+    version: 1,
+    text: consumer,
+  })
+  const response = await session.request("textDocument/definition", {
+    textDocument: { uri: reference.uri },
+    position: midpoint(reference.range),
+  })
+
+  assert.equal(response.error, undefined, JSON.stringify(response.error))
+  const locations = response.result === null
+    ? []
+    : Array.isArray(response.result)
+      ? response.result
+      : [response.result]
+  assert.deepEqual(locations, [{ uri: target.uri, range: target.range }])
+  assert.notDeepEqual(locations[0].range.start, locations[0].range.end)
 })
 
 function midpoint(range) {

@@ -115,6 +115,9 @@ test("materializes a deterministic Harmony workspace with unopened semantic file
     path.join("entry", "build-profile.json5"),
     path.join("entry", "oh-package.json5"),
     path.join("entry", "src", "main", "module.json5"),
+    path.join("shared", "build-profile.json5"),
+    path.join("shared", "oh-package.json5"),
+    path.join("shared", "src", "main", "module.json5"),
   ]
   const semanticFiles = new Map([
     [path.join("entry", "src", "main", "ets", "pages", "Home.ets"), ["completion.unicode", "Gree"]],
@@ -122,6 +125,8 @@ test("materializes a deterministic Harmony workspace with unopened semantic file
     [path.join("entry", "src", "main", "ets", "model", "Profile.ets"), ["profile.definition", "Profile"]],
     [path.join("entry", "src", "main", "ets", "model", "index.ets"), ["profile.barrel", "Profile"]],
     [path.join("entry", "src", "main", "ets", "services", "Greeter.ets"), ["greeter.definition", "Greeter"]],
+    [path.join("entry", "src", "main", "ets", "pages", "CrossModuleConsumer.ets"), ["cross-module.reference", "SharedProfile"]],
+    [path.join("shared", "src", "main", "ets", "model", "SharedProfile.ets"), ["cross-module.definition", "SharedProfile"]],
   ])
 
   for (const relativePath of manifestPaths) {

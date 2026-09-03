@@ -17,5 +17,15 @@
         },
       ],
     },
+    {
+      name: "shared",
+      srcPath: "./shared",
+      targets: [
+        {
+          name: "default",
+          applyToProducts: ["default"],
+        },
+      ],
+    },
   ],
 }
