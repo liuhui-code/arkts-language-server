@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import { spawn } from "node:child_process"
 import fs from "node:fs"
+import os from "node:os"
 import path from "node:path"
 import test from "node:test"
 import { pathToFileURL } from "node:url"
@@ -35,6 +36,28 @@ test("isolates one reusable scripted server build per test process", async () =>
   assert.equal(fs.existsSync(path.dirname(right.report.firstPath)), false)
 })
 
+test("does not let temporary cleanup failure change a successful process exit", async (t) => {
+  const result = await runNodeProcess(`
+    import fs from "node:fs";
+    import { buildScriptedSemanticServer } from ${JSON.stringify(helperUrl)};
+
+    const serverPath = buildScriptedSemanticServer();
+    fs.rmSync = () => { throw new Error("fixture cleanup denied"); };
+    process.stdout.write(JSON.stringify({
+      serverPath,
+      existedBeforeExit: fs.existsSync(serverPath),
+    }));
+  `)
+  const outputDirectory = path.dirname(result.report.serverPath ?? "")
+  if (isWithin(os.tmpdir(), outputDirectory)
+    && path.basename(outputDirectory).startsWith("arkts-scripted-server-")) {
+    t.after(() => fs.rmSync(outputDirectory, { recursive: true, force: true }))
+  }
+
+  assert.deepEqual(result.exit, { code: 0, signal: null }, result.stderr)
+  assert.equal(result.report.existedBeforeExit, true)
+})
+
 function runBuildProcess() {
   const source = `
     import fs from "node:fs";
@@ -65,6 +88,10 @@ function runBuildProcess() {
     }));
   `
 
+  return runNodeProcess(source)
+}
+
+function runNodeProcess(source) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, ["--input-type=module", "--eval", source], {
       cwd: projectRoot,

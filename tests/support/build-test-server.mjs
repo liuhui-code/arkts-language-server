@@ -12,7 +12,11 @@ export function buildScriptedSemanticServer() {
 
   const outputDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-scripted-server-"))
   const outputPath = path.join(outputDirectory, "scripted-semantic-server.cjs")
-  const cleanup = () => fs.rmSync(outputDirectory, { recursive: true, force: true })
+  const cleanup = () => {
+    try {
+      fs.rmSync(outputDirectory, { recursive: true, force: true })
+    } catch {}
+  }
   process.once("exit", cleanup)
 
   try {

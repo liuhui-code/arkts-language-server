@@ -13,8 +13,8 @@ Parent revision: `e69d69bc6609a7b2f0b69200cd1bf016eb26fcbb`
   repository `dist` directory.
 - The generated CommonJS artifact exists and is accepted by Node before the
   process exits.
-- Normal process exit removes the single temporary build directory. A failed
-  build removes its directory and rethrows the original build error.
+- Normal process exit removes the single temporary build directory. Cleanup is
+  best-effort and cannot replace a build error or change the process exit code.
 
 ## RED
 
@@ -44,7 +44,7 @@ instead of importing a repository-global constant.
 
 ```text
 node --test tests/build-test-server.test.mjs
-# 1 passed, 0 failed
+# 2 passed, 0 failed
 
 node --test \
   tests/lsp-reliability.test.mjs \
@@ -54,6 +54,11 @@ node --test \
 # 32 passed, 0 failed
 ```
 
-This slice changes only test infrastructure and protocol callers. It does not
-change the production server, test-layer manifest, feature matrix, or installed
-artifact acceptance.
+The injected cleanup-failure case verifies that a deletion error cannot turn a
+successful child into a failed process. The build-failure branch is a direct
+code invariant rather than a synthetic esbuild failure: it calls the same
+non-throwing cleanup and then rethrows the caught build error unchanged.
+
+This slice changes only test infrastructure, protocol callers, and the explicit
+unit-contract test-layer registration. It does not change the production
+server, feature matrix, or installed artifact acceptance.
