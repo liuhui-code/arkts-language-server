@@ -112,7 +112,9 @@ export class TypeScriptLanguageServiceEngine {
             entry.replacementSpan.start,
             entry.replacementSpan.length,
           )
-        : undefined,
+        : prefix.length > 0
+          ? spanToRange(script.sourceContent, sourceOffset - prefix.length, prefix.length)
+          : undefined,
       data: {
         provider: "typescript",
         engineVersion: ENGINE_VERSION,

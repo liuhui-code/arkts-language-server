@@ -310,6 +310,13 @@ function toLspCompletionItem(item: SemanticCompletion) {
     insertText: item.insertText,
     filterText: item.filterText,
     sortText: item.sortText,
+    textEdit: item.replacementRange
+      ? {
+          range: item.replacementRange,
+          newText: item.insertText ?? item.label,
+        }
+      : undefined,
+    data: item.data,
   }
 }
 

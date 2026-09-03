@@ -21,6 +21,8 @@ export interface SemanticCompletion {
   insertText?: string
   filterText?: string
   sortText?: string
+  replacementRange?: TextRange
+  data?: Record<string, unknown>
 }
 
 export interface SemanticDefinition {

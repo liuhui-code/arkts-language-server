@@ -52,7 +52,7 @@ export class LegacySemanticEngine implements SemanticEnginePort {
   ): Promise<VersionedSemanticResult<SemanticCompletion[]>> {
     assertActive(query.signal)
     this.sync(query.document)
-    const prepared = this.prepare(query.document, query.position)
+    const prepared = this.prepare(query.document, query.position, true)
     const value = prepared.engine.complete(prepared.position).map((item) => ({
       label: item.label,
       detail: item.detail,
@@ -60,6 +60,10 @@ export class LegacySemanticEngine implements SemanticEnginePort {
       insertText: item.insertText,
       filterText: item.filterText,
       sortText: item.sortText,
+      replacementRange: item.replacementRange
+        ? toPublicRange(item.replacementRange)
+        : undefined,
+      data: item.data,
     }))
     return { documentVersion: query.document.version, value }
   }
@@ -139,10 +143,16 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     this.engines.dispose()
   }
 
-  private prepare(document: DocumentSnapshot, position: TextPosition) {
+  private prepare(
+    document: DocumentSnapshot,
+    position: TextPosition,
+    includeWorkspaceFiles = false,
+  ) {
     const workspace = this.projects.projectFor(document.uri)
     const legacyPosition = toLegacyPosition(document, position, workspace)
-    const engine = this.engines.prepare(this.documents.prepare(legacyPosition))
+    const engine = this.engines.prepare(
+      this.documents.prepare(legacyPosition, includeWorkspaceFiles),
+    )
     return { engine, position: legacyPosition }
   }
 }

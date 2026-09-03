@@ -4,6 +4,8 @@ import path from "node:path"
 import test from "node:test"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
+import { CompletionItemKind } from "vscode-languageserver/node.js"
+
 import { LspSession } from "../support/lsp-session.mjs"
 import { LspProcess, projectRoot } from "../support/lsp-process.mjs"
 import { materializeConformanceWorkspace } from "../support/materialize-conformance-workspace.mjs"
@@ -67,6 +69,57 @@ test("returns the exact unopened definition range after an emoji prefix", async 
   assert.deepEqual(locations[0].range, target.range)
   assert.notDeepEqual(locations[0].range.start, locations[0].range.end)
   assert.equal(textInRange(profile, locations[0].range), "Profile")
+})
+
+test("preserves an exact unopened class completion from the production list", async (t) => {
+  const materialized = await materializeConformanceWorkspace()
+  const completion = materialized.cases["completion.unicode"]
+  const home = fs.readFileSync(fileURLToPath(completion.uri), "utf8")
+  const session = new LspSession({
+    command: process.execPath,
+    args: [path.join(projectRoot, "dist", "server.cjs"), "--stdio"],
+    cwd: projectRoot,
+    env: {
+      HOME: path.join(materialized.root, "missing-home"),
+      DEVECO_SDK_HOME: path.join(materialized.root, "missing-deveco"),
+      ARKLINE_HARMONY_SDK_PATH: path.join(materialized.corpusRoot, "sdk", "openharmony"),
+    },
+    rootUri: pathToFileURL(materialized.workspaceRoot).href,
+    capabilities: { general: { positionEncodings: ["utf-16"] } },
+  })
+  t.after(async () => {
+    try {
+      await session.close()
+    } finally {
+      await fs.promises.rm(materialized.root, { recursive: true, force: true })
+    }
+  })
+
+  assert.equal(textInRange(home, completion.range), "Gree")
+  const initialized = await session.initialize()
+  assert.equal(initialized.result.capabilities.completionProvider.resolveProvider, undefined)
+  session.openDocument({
+    uri: completion.uri,
+    languageId: "arkts",
+    version: 1,
+    text: home,
+  })
+  const response = await session.request("textDocument/completion", {
+    textDocument: { uri: completion.uri },
+    position: completion.position,
+  })
+
+  assert.equal(response.error, undefined, JSON.stringify(response.error))
+  const items = Array.isArray(response.result) ? response.result : response.result?.items ?? []
+  const greeters = items.filter((item) => item.label === "Greeter")
+  assert.equal(greeters.length, 1, `Expected one Greeter in ${JSON.stringify(items)}`)
+  const [greeter] = greeters
+  assert.equal(greeter.kind, CompletionItemKind.Class)
+  assert.deepEqual(greeter.textEdit, {
+    range: completion.range,
+    newText: "Greeter",
+  })
+  assert.ok(greeter.data && typeof greeter.data === "object", "expected opaque completion data")
 })
 
 test("completes inherited fields and methods after this dot", async (t) => {
