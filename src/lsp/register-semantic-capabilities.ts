@@ -1,5 +1,6 @@
 import {
   CodeActionKind,
+  DocumentHighlightKind,
   LSPErrorCodes,
   MarkupKind,
   ResponseError,
@@ -18,6 +19,7 @@ import {
  */
 import type {
   SemanticDocumentSymbol,
+  SemanticDocumentHighlight,
   SemanticEnginePort,
   SemanticHover,
   SemanticPrepareRenameOutcome,
@@ -48,6 +50,7 @@ export function registerSemanticCapabilities({
   let documentSymbolKindValueSet: readonly SymbolKind[] | undefined
   let hoverMarkupKind: MarkupKind = MarkupKind.Markdown
   const capabilities: ServerCapabilities = {
+    documentHighlightProvider: true,
     documentSymbolProvider: true,
     hoverProvider: true,
     referencesProvider: true,
@@ -85,6 +88,24 @@ export function registerSemanticCapabilities({
       }),
     })
     return result ? toLspHover(result, hoverMarkupKind) : null
+  })
+
+  connection.onDocumentHighlight(async (params, token) => {
+    const result = await requests.run({
+      method: "textDocument/documentHighlight",
+      documentUri: params.textDocument.uri,
+      token,
+      fallback: [] as SemanticDocumentHighlight[],
+      execute: (document, signal) => semantic.documentHighlights({
+        document,
+        position: params.position,
+        signal,
+      }),
+    })
+    return result.map((highlight) => ({
+      range: highlight.range,
+      kind: toLspDocumentHighlightKind(highlight.kind),
+    }))
   })
 
   connection.onReferences(async (params, token) => {
@@ -195,6 +216,16 @@ export function registerSemanticCapabilities({
         delete capabilities.renameProvider
       }
     },
+  }
+}
+
+function toLspDocumentHighlightKind(
+  kind: SemanticDocumentHighlight["kind"],
+): DocumentHighlightKind {
+  switch (kind) {
+    case "write": return DocumentHighlightKind.Write
+    case "read": return DocumentHighlightKind.Read
+    default: return DocumentHighlightKind.Text
   }
 }
 

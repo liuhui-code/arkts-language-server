@@ -101,6 +101,13 @@ export interface SemanticHover {
   range: TextRange
 }
 
+export type SemanticDocumentHighlightKind = "text" | "read" | "write"
+
+export interface SemanticDocumentHighlight {
+  range: TextRange
+  kind: SemanticDocumentHighlightKind
+}
+
 export type SemanticDocumentSymbolKind =
   | "struct"
   | "class"
@@ -221,6 +228,9 @@ export interface SemanticEnginePort {
     query: SemanticQuery,
   ): Promise<VersionedSemanticResult<SemanticPrepareRenameOutcome>>
   rename(query: SemanticRenameQuery): Promise<VersionedSemanticResult<SemanticRenameOutcome>>
+  documentHighlights(
+    query: SemanticQuery,
+  ): Promise<VersionedSemanticResult<SemanticDocumentHighlight[]>>
   documentSymbols(query: SemanticDocumentQuery): Promise<VersionedSemanticResult<SemanticDocumentSymbol[]>>
   diagnose(query: SemanticDocumentQuery): Promise<VersionedSemanticResult<SemanticDiagnostic[]>>
   codeActions(query: SemanticCodeActionQuery): Promise<VersionedSemanticResult<SemanticCodeAction[]>>

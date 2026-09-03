@@ -15,6 +15,7 @@ import type {
   SemanticCompletionKind,
   SemanticCompletionResolveQuery,
   SemanticDiagnostic,
+  SemanticDocumentHighlight,
   SemanticDocumentQuery,
   SemanticDocumentSymbol,
   SemanticEnginePort,
@@ -199,6 +200,21 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     return {
       documentVersion: query.document.version,
       value: prepared.engine.documentSymbols(prepared.position).map(toPublicDocumentSymbol),
+    }
+  }
+
+  async documentHighlights(
+    query: SemanticQuery,
+  ): Promise<VersionedSemanticResult<SemanticDocumentHighlight[]>> {
+    assertActive(query.signal)
+    this.sync(query.document)
+    const prepared = this.prepare(query.document, query.position)
+    return {
+      documentVersion: query.document.version,
+      value: prepared.engine.documentHighlights(prepared.position).map((highlight) => ({
+        range: toPublicRange(highlight.range),
+        kind: highlight.kind,
+      })),
     }
   }
 
