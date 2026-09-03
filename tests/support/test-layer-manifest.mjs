@@ -43,6 +43,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/version-identity.test.mjs",
     ]),
     layer("artifact-e2e", false, [
+      "tests/release/index-sidecar.acceptance.mjs",
       "tests/release/local-delivery.acceptance.mjs",
       "tests/release/portable-install.acceptance.mjs",
     ]),
@@ -62,6 +63,7 @@ export function validateTestLayerManifest({ root, manifest }) {
   for (const currentLayer of manifest.layers) {
     layerCounts[currentLayer.id] = currentLayer.entries.length
     for (const entry of currentLayer.entries) {
+      const absolutePath = path.resolve(root, ...entry.split("/"))
       const previousLayer = assignedLayers.get(entry)
       if (previousLayer) {
         issues.push(`${entry}: assigned to both ${previousLayer} and ${currentLayer.id}`)
@@ -69,10 +71,16 @@ export function validateTestLayerManifest({ root, manifest }) {
         assignedLayers.set(entry, currentLayer.id)
       }
 
-      if (!fs.existsSync(path.resolve(root, ...entry.split("/")))) {
+      if (!fs.existsSync(absolutePath)) {
         issues.push(`${entry}: manifest path does not exist`)
       } else if (!discoveredSet.has(entry)) {
         issues.push(`${entry}: manifest path is not an executable test entry`)
+      } else if (currentLayer.fast) {
+        for (const skip of explicitNodeTestSkips(absolutePath)) {
+          issues.push(
+            `${entry}:${skip.line}: fast layer ${currentLayer.id} contains ${skip.syntax}`,
+          )
+        }
       }
 
       if (currentLayer.fast && isReleaseAcceptance(entry)) {
@@ -96,6 +104,20 @@ export function validateTestLayerManifest({ root, manifest }) {
     ))),
     layerCounts,
   }
+}
+
+function explicitNodeTestSkips(absolutePath) {
+  return fs.readFileSync(absolutePath, "utf8")
+    .split(/\r?\n/)
+    .flatMap((sourceLine, index) => {
+      if (/^\s*t\.skip\s*\(/.test(sourceLine)) {
+        return [{ line: index + 1, syntax: "t.skip(...)" }]
+      }
+      const directSkip = /^\s*(test|it|describe|suite)\.skip\s*\(/.exec(sourceLine)
+      return directSkip
+        ? [{ line: index + 1, syntax: `${directSkip[1]}.skip(...)` }]
+        : []
+    })
 }
 
 function discoverTestEntries(root) {
