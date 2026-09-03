@@ -89,6 +89,79 @@ test("omits code actions when any client prerequisite is missing", async (t) => 
   }
 })
 
+for (const failureHandling of ["transactional", "textOnlyTransactional"]) {
+  test(`advertises prepare rename for ${failureHandling} workspace edits`, async (t) => {
+    const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-rename-capability-"))
+    t.after(() => fs.rmSync(temporaryRoot, { recursive: true, force: true }))
+    const server = new LspProcess({
+      env: { ARKTS_LSP_LOG_DIR: path.join(temporaryRoot, "logs") },
+    })
+    try {
+      server.send({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          processId: process.pid,
+          rootUri: null,
+          capabilities: renameCapableClientCapabilities(failureHandling),
+        },
+      })
+      const initialized = await server.response(1)
+      assert.deepEqual(
+        initialized.result.capabilities.renameProvider,
+        { prepareProvider: true },
+        failureHandling,
+      )
+    } finally {
+      await server.close()
+    }
+  })
+}
+
+test("omits rename when any client safety prerequisite is missing", async (t) => {
+  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-rename-negative-"))
+  t.after(() => fs.rmSync(temporaryRoot, { recursive: true, force: true }))
+  const cases = [
+    ["versioned document changes", (capabilities) => {
+      capabilities.workspace.workspaceEdit.documentChanges = false
+    }],
+    ["prepare support", (capabilities) => {
+      delete capabilities.textDocument.rename
+    }],
+    ["workspace edit failure handling", (capabilities) => {
+      delete capabilities.workspace.workspaceEdit.failureHandling
+    }],
+    ["transactional failure handling", (capabilities) => {
+      capabilities.workspace.workspaceEdit.failureHandling = "abort"
+    }],
+  ]
+
+  for (const [index, [missing, removeSupport]] of cases.entries()) {
+    const capabilities = renameCapableClientCapabilities("transactional")
+    removeSupport(capabilities)
+    const server = new LspProcess({
+      env: { ARKTS_LSP_LOG_DIR: path.join(temporaryRoot, `case-${index}`) },
+    })
+    try {
+      server.send({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: { processId: process.pid, rootUri: null, capabilities },
+      })
+      const initialized = await server.response(1)
+      assert.equal(
+        initialized.result.capabilities.renameProvider,
+        undefined,
+        `must not advertise rename without ${missing}`,
+      )
+    } finally {
+      await server.close()
+    }
+  }
+})
+
 test("capability contract failures report one concise difference per path", () => {
   const contract = {
     allowedTopLevel: ["hoverProvider"],
@@ -131,4 +204,11 @@ function supportedClientCapabilities() {
       },
     },
   }
+}
+
+function renameCapableClientCapabilities(failureHandling) {
+  const capabilities = supportedClientCapabilities()
+  capabilities.workspace.workspaceEdit.failureHandling = failureHandling
+  capabilities.textDocument.rename = { prepareSupport: true }
+  return capabilities
 }

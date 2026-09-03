@@ -121,7 +121,133 @@ test("maps LSP signature-help context to bounded semantic trigger reasons", asyn
   }
 })
 
-async function openScriptedServer(t, fileName, text) {
+test("maps rename client cancellation to RequestCancelled without leaking an edit", async (t) => {
+  const cases = [
+    ["textDocument/prepareRename", "scripted prepare-rename wait entered"],
+    ["textDocument/rename", "scripted rename wait entered"],
+  ]
+
+  for (const [index, [method, enteredMessage]] of cases.entries()) {
+    const server = await openScriptedServer(
+      t,
+      `RenameCancel${index}.ets`,
+      "// RENAME_WAITS_FOR_ABORT",
+      renameCapableClientCapabilities(),
+    )
+    const entered = server.notification(
+      "window/logMessage",
+      (message) => message.params.message.includes(enteredMessage),
+    )
+    const id = 500 + index
+    server.send(renameRequest(id, method, server.documentUri))
+    await entered
+    server.send({
+      jsonrpc: "2.0",
+      method: "$/cancelRequest",
+      params: { id },
+    })
+
+    const response = await server.response(id)
+    assert.equal(response.result, undefined, `${method} must not leak a result or edit`)
+    assert.deepEqual(response.error, {
+      code: -32800,
+      message: "Request cancelled by client",
+    })
+  }
+})
+
+test("rejects cancellation-resistant rename after didChange and didClose with ContentModified", async (t) => {
+  const lifecycles = ["change", "close"]
+
+  for (const [index, lifecycle] of lifecycles.entries()) {
+    const server = await openScriptedServer(
+      t,
+      `RenameStale${index}.ets`,
+      "// RENAME_IGNORES_ABORT",
+      renameCapableClientCapabilities(),
+    )
+    const entered = server.notification(
+      "window/logMessage",
+      (message) => message.params.message.includes("scripted resistant rename entered"),
+    )
+    const id = 510 + index
+    server.send(renameRequest(id, "textDocument/rename", server.documentUri))
+    await entered
+    server.send(lifecycle === "change"
+      ? {
+          jsonrpc: "2.0",
+          method: "textDocument/didChange",
+          params: {
+            textDocument: { uri: server.documentUri, version: 2 },
+            contentChanges: [{ text: "struct Current {}" }],
+          },
+        }
+      : {
+          jsonrpc: "2.0",
+          method: "textDocument/didClose",
+          params: { textDocument: { uri: server.documentUri } },
+        })
+
+    const response = await server.response(id)
+    assert.equal(response.result, undefined, `${lifecycle} must not leak a WorkspaceEdit`)
+    assert.deepEqual(response.error, {
+      code: -32801,
+      message: "Rename request is stale",
+    })
+  }
+})
+
+test("maps invalid rename names to InvalidParams without leaking an edit", async (t) => {
+  const server = await openScriptedServer(
+    t,
+    "RenameInvalidName.ets",
+    "struct RenameInvalidName {}",
+    renameCapableClientCapabilities(),
+  )
+  server.send(renameRequest(
+    520,
+    "textDocument/rename",
+    server.documentUri,
+    { newName: "not valid" },
+  ))
+
+  const response = await server.response(520)
+  assert.equal(response.result, undefined, "invalid names must not return a WorkspaceEdit")
+  assert.deepEqual(response.error, {
+    code: -32602,
+    message: "Rename requires a valid identifier.",
+  })
+})
+
+test("maps incomplete and unavailable prepare/rename outcomes to fixed RequestFailed", async (t) => {
+  const cases = [
+    ["incomplete", "// RENAME_INCOMPLETE"],
+    ["unavailable", "// RENAME_UNAVAILABLE"],
+  ]
+  const methods = ["textDocument/prepareRename", "textDocument/rename"]
+
+  for (const [caseIndex, [outcome, text]] of cases.entries()) {
+    for (const [methodIndex, method] of methods.entries()) {
+      const server = await openScriptedServer(
+        t,
+        `RenameFailure${caseIndex}-${methodIndex}.ets`,
+        text,
+        renameCapableClientCapabilities(),
+      )
+      const id = 530 + caseIndex * methods.length + methodIndex
+      server.send(renameRequest(id, method, server.documentUri))
+
+      const response = await server.response(id)
+      assert.equal(response.result, undefined, `${method} ${outcome} must not return an edit`)
+      assert.deepEqual(response.error, {
+        code: -32803,
+        message: "Rename is not available at this position.",
+      })
+    }
+  }
+})
+
+async function openScriptedServer(t, fileName, text, capabilities = {}) {
   const server = new LspProcess({ serverPath: scriptedServerPath })
   t.after(() => server.close())
   const uri = pathToFileURL(`${projectRoot}/fixtures/${fileName}`).href
@@ -133,7 +259,7 @@ async function openScriptedServer(t, fileName, text) {
     params: {
       processId: process.pid,
       rootUri: pathToFileURL(projectRoot).href,
-      capabilities: {},
+      capabilities,
     },
   })
   await server.response(1)
@@ -146,4 +272,30 @@ async function openScriptedServer(t, fileName, text) {
     },
   })
   return server
+}
+
+function renameRequest(id, method, documentUri, overrides = {}) {
+  return {
+    jsonrpc: "2.0",
+    id,
+    method,
+    params: {
+      textDocument: { uri: documentUri },
+      position: { line: 0, character: 0 },
+      ...(method === "textDocument/rename" ? { newName: "Renamed" } : {}),
+      ...overrides,
+    },
+  }
+}
+
+function renameCapableClientCapabilities() {
+  return {
+    workspace: {
+      workspaceEdit: {
+        documentChanges: true,
+        failureHandling: "transactional",
+      },
+    },
+    textDocument: { rename: { prepareSupport: true } },
+  }
 }

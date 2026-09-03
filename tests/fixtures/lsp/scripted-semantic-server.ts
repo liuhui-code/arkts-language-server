@@ -12,6 +12,8 @@ import type {
   SemanticQuery,
   SemanticReferencesOutcome,
   SemanticReferencesQuery,
+  SemanticPrepareRenameOutcome,
+  SemanticRenameOutcome,
   SemanticRenameQuery,
   SemanticResolvedCodeAction,
   SemanticSignatureHelp,
@@ -27,10 +29,15 @@ import { DefaultWorkspaceSymbolService } from "../../../src/workspace/default-wo
 class ScriptedSemanticEngine implements SemanticEnginePort {
   private completionCount = 0
   private readonly resistantCodeActionResolvers = new Map<string, () => void>()
+  private readonly resistantRenameResolvers = new Map<string, () => void>()
 
-  sync(_document: DocumentSnapshot): void {}
+  sync(document: DocumentSnapshot): void {
+    this.releaseResistantRename(document.uri)
+  }
 
-  close(_documentUri: string): void {}
+  close(documentUri: string): void {
+    this.releaseResistantRename(documentUri)
+  }
 
   async complete(
     query: SemanticQuery,
@@ -142,12 +149,63 @@ class ScriptedSemanticEngine implements SemanticEnginePort {
     return scriptedSemanticResult(query, { status: "complete", references: [] })
   }
 
-  async prepareRename(query: SemanticQuery) {
-    return scriptedSemanticResult(query, { status: "unavailable" as const })
+  async prepareRename(
+    query: SemanticQuery,
+  ): Promise<VersionedSemanticResult<SemanticPrepareRenameOutcome>> {
+    if (query.document.text.includes("RENAME_WAITS_FOR_ABORT")) {
+      console.log("scripted prepare-rename wait entered")
+      return waitForAbortValue(query.signal)
+    }
+    if (query.document.text.includes("RENAME_INCOMPLETE")) {
+      return scriptedSemanticResult(query, {
+        status: "incomplete",
+        reason: "project-membership-incomplete",
+      })
+    }
+    if (query.document.text.includes("RENAME_UNAVAILABLE")) {
+      return scriptedSemanticResult(query, { status: "unavailable" })
+    }
+    return scriptedSemanticResult(query, {
+      status: "ready",
+      range: zeroRange(),
+      placeholder: "ScriptedName",
+    })
   }
 
-  async rename(query: SemanticRenameQuery) {
-    return scriptedSemanticResult(query, { status: "unavailable" as const })
+  async rename(
+    query: SemanticRenameQuery,
+  ): Promise<VersionedSemanticResult<SemanticRenameOutcome>> {
+    if (query.document.text.includes("RENAME_WAITS_FOR_ABORT")) {
+      console.log("scripted rename wait entered")
+      return waitForAbortValue(query.signal)
+    }
+    if (query.document.text.includes("RENAME_IGNORES_ABORT")) {
+      await new Promise<void>((resolve) => {
+        this.resistantRenameResolvers.set(query.document.uri, resolve)
+        console.log("scripted resistant rename entered")
+      })
+    }
+    if (query.newName === "not valid") {
+      return scriptedSemanticResult(query, { status: "invalid-name" })
+    }
+    if (query.document.text.includes("RENAME_INCOMPLETE")) {
+      return scriptedSemanticResult(query, {
+        status: "incomplete",
+        reason: "source-unavailable",
+      })
+    }
+    if (query.document.text.includes("RENAME_UNAVAILABLE")) {
+      return scriptedSemanticResult(query, { status: "unavailable" })
+    }
+    return scriptedSemanticResult(query, {
+      status: "complete",
+      edits: [{
+        uri: query.document.uri,
+        range: zeroRange(),
+        newText: query.newName,
+        expectedVersion: query.document.version,
+      }],
+    })
   }
 
   async diagnose(query: { document: DocumentSnapshot }) {
@@ -213,6 +271,13 @@ class ScriptedSemanticEngine implements SemanticEnginePort {
 
   dispose(): void {
     process.stderr.write("SCRIPTED_DISPOSE\n")
+  }
+
+  private releaseResistantRename(documentUri: string): void {
+    const release = this.resistantRenameResolvers.get(documentUri)
+    if (!release) return
+    this.resistantRenameResolvers.delete(documentUri)
+    release()
   }
 }
 
