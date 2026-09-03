@@ -2,13 +2,10 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import { pathToFileURL } from "node:url"
 
-import {
-  buildScriptedSemanticServer,
-  scriptedServerPath,
-} from "./support/build-test-server.mjs"
+import { buildScriptedSemanticServer } from "./support/build-test-server.mjs"
 import { LspProcess, projectRoot } from "./support/lsp-process.mjs"
 
-buildScriptedSemanticServer()
+const scriptedServerPath = buildScriptedSemanticServer()
 
 test("search stays live during catalog work and returns the unsaved overlay without status rows", async (t) => {
   const server = new LspProcess({ serverPath: scriptedServerPath })

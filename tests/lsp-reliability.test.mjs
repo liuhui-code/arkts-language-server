@@ -3,13 +3,10 @@ import { once } from "node:events"
 import test from "node:test"
 import { pathToFileURL } from "node:url"
 
-import {
-  buildScriptedSemanticServer,
-  scriptedServerPath,
-} from "./support/build-test-server.mjs"
+import { buildScriptedSemanticServer } from "./support/build-test-server.mjs"
 import { LspProcess, projectRoot, withTimeout } from "./support/lsp-process.mjs"
 
-buildScriptedSemanticServer()
+const scriptedServerPath = buildScriptedSemanticServer()
 
 test("runs injected semantic services and observes framed notifications", async (t) => {
   const server = new LspProcess({ serverPath: scriptedServerPath })

@@ -5,13 +5,10 @@ import path from "node:path"
 import test from "node:test"
 import { pathToFileURL } from "node:url"
 
-import {
-  buildScriptedSemanticServer,
-  scriptedServerPath,
-} from "./support/build-test-server.mjs"
+import { buildScriptedSemanticServer } from "./support/build-test-server.mjs"
 import { LspProcess } from "./support/lsp-process.mjs"
 
-buildScriptedSemanticServer()
+const scriptedServerPath = buildScriptedSemanticServer()
 
 test("a didOpen in the same workspace makes an in-flight references result ContentModified", async (t) => {
   const session = await openMultiRootServer(t)

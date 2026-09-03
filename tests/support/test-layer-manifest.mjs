@@ -7,6 +7,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
   layers: Object.freeze([
     layer("unit-contract", true, [
       "tests/artifact-manifest.test.mjs",
+      "tests/build-test-server.test.mjs",
       "tests/code-action-resolution-store.test.mjs",
       "tests/conformance-corpus.test.mjs",
       "tests/index-adapter.test.mjs",
