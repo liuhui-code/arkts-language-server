@@ -132,6 +132,58 @@ test("returns null hover information on whitespace", async (t) => {
   assert.equal(response.result, null)
 })
 
+test("returns source documentation and UTF-16 reference ranges for an unopened imported alias and member", async (t) => {
+  const { server, documentUri, text } = await openFixture(
+    t,
+    "cross-file-hover",
+    "Consumer.ets",
+  )
+
+  const aliasRange = utf16RangeOf(text, "ServiceAlias", 2)
+  server.send({
+    jsonrpc: "2.0",
+    id: 8,
+    method: "textDocument/hover",
+    params: {
+      textDocument: { uri: documentUri },
+      position: aliasRange.start,
+    },
+  })
+  const alias = await server.response(8)
+  assert.equal(alias.error, undefined, JSON.stringify(alias.error))
+  assert.equal(alias.result.contents.kind, "markdown")
+  assert.equal(
+    hoverSignature(alias.result.contents.value),
+    "(alias) class ServiceAlias\nimport ServiceAlias",
+  )
+  assert.match(alias.result.contents.value, /Remote greeting service\./)
+  assert.match(alias.result.contents.value, /Keeps greeting behavior in a reusable module\./)
+  assert.match(alias.result.contents.value, /@since\s+1\.2\.3/)
+  assert.deepEqual(alias.result.range, aliasRange)
+
+  const memberRange = utf16RangeOf(text, "formatGreeting")
+  server.send({
+    jsonrpc: "2.0",
+    id: 9,
+    method: "textDocument/hover",
+    params: {
+      textDocument: { uri: documentUri },
+      position: memberRange.start,
+    },
+  })
+  const member = await server.response(9)
+  assert.equal(member.error, undefined, JSON.stringify(member.error))
+  assert.equal(member.result.contents.kind, "markdown")
+  assert.equal(
+    hoverSignature(member.result.contents.value),
+    "(method) RemoteService.formatGreeting(name: string): string",
+  )
+  assert.match(member.result.contents.value, /Formats a greeting for one recipient\./)
+  assert.match(member.result.contents.value, /@param\s+name.*Recipient display name\./)
+  assert.match(member.result.contents.value, /@returns\s+A formatted greeting\./)
+  assert.deepEqual(member.result.range, memberRange)
+})
+
 test("advertises hover only after documented and empty transcripts are supported", async (t) => {
   const { initialized } = await openFixture(t, "hover", "Profile.ets")
 
@@ -310,3 +362,30 @@ test("advertises document symbols only after both client response shapes work", 
 
   assert.equal(initialized.result.capabilities.documentSymbolProvider, true)
 })
+
+function utf16RangeOf(text, token, occurrence = 1) {
+  let startOffset = -1
+  for (let found = 0; found < occurrence; found += 1) {
+    startOffset = text.indexOf(token, startOffset + 1)
+    if (startOffset === -1) break
+  }
+  assert.notEqual(startOffset, -1, `missing ${token} marker`)
+  const endOffset = startOffset + token.length
+  return {
+    start: utf16PositionAt(text, startOffset),
+    end: utf16PositionAt(text, endOffset),
+  }
+}
+
+function utf16PositionAt(text, offset) {
+  const prefix = text.slice(0, offset)
+  const line = prefix.split("\n").length - 1
+  const lineStart = prefix.lastIndexOf("\n") + 1
+  return { line, character: prefix.slice(lineStart).length }
+}
+
+function hoverSignature(markdown) {
+  const match = /^```arkts\n([\s\S]*?)\n```/.exec(markdown)
+  assert.ok(match, "hover must start with an ArkTS signature fence")
+  return match[1]
+}
