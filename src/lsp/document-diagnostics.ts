@@ -1,12 +1,9 @@
-import {
-  DiagnosticSeverity,
-  type Connection,
-  type TextDocuments,
-} from "vscode-languageserver/node.js"
+import type { Connection, TextDocuments } from "vscode-languageserver/node.js"
 import type { TextDocument } from "vscode-languageserver-textdocument"
 
 import type { DocumentSnapshot } from "../contracts/document.js"
-import type { SemanticDiagnostic, SemanticEnginePort } from "../contracts/semantic-engine.js"
+import type { SemanticEnginePort } from "../contracts/semantic-engine.js"
+import { toLspDiagnostic } from "./diagnostic-mapper.js"
 
 const DIAGNOSTIC_DELAY_MS = 75
 
@@ -88,18 +85,6 @@ export function createDocumentDiagnostics({
     dispose: () => {
       for (const uri of [...pending.keys()]) cancel(uri)
     },
-  }
-}
-
-function toLspDiagnostic(diagnostic: SemanticDiagnostic) {
-  return {
-    range: diagnostic.range,
-    severity: diagnostic.severity === "error"
-      ? DiagnosticSeverity.Error
-      : DiagnosticSeverity.Warning,
-    code: diagnostic.code,
-    source: diagnostic.source,
-    message: diagnostic.message,
   }
 }
 

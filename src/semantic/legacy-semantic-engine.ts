@@ -8,6 +8,9 @@ import type {
 } from "../contracts/document.js"
 import type { ProjectResolverPort } from "../contracts/project-resolver.js"
 import type {
+  SemanticCodeAction,
+  SemanticCodeActionQuery,
+  SemanticCodeActionResolveQuery,
   SemanticCompletion,
   SemanticCompletionKind,
   SemanticCompletionResolveQuery,
@@ -17,6 +20,7 @@ import type {
   SemanticEnginePort,
   SemanticHover,
   SemanticQuery,
+  SemanticResolvedCodeAction,
   SemanticSignatureHelp,
   SemanticWorkspaceFileChangeBatch,
   VersionedSemanticResult,
@@ -132,6 +136,65 @@ export class LegacySemanticEngine implements SemanticEnginePort {
       source: "arkts" as const,
     }))
     return { documentVersion: query.document.version, value }
+  }
+
+  async codeActions(
+    query: SemanticCodeActionQuery,
+  ): Promise<VersionedSemanticResult<SemanticCodeAction[]>> {
+    assertActive(query.signal)
+    this.sync(query.document)
+    const prepared = this.prepare(query.document, query.range.start)
+    const value = prepared.engine
+      .codeActions(prepared.position, toLegacyRange(query.range))
+      .map((action) => ({
+        title: action.title,
+        kind: action.kind,
+        diagnostic: {
+          range: toPublicRange(action.diagnostic.range),
+          severity: action.diagnostic.severity,
+          code: action.diagnostic.code,
+          message: action.diagnostic.message,
+          source: "arkts" as const,
+        },
+        fingerprint: action.fingerprint,
+      }))
+    return { documentVersion: query.document.version, value }
+  }
+
+  async resolveCodeAction(
+    query: SemanticCodeActionResolveQuery,
+  ): Promise<VersionedSemanticResult<SemanticResolvedCodeAction | null>> {
+    assertActive(query.signal)
+    this.sync(query.document)
+    const prepared = this.prepare(query.document, query.action.diagnostic.range.start)
+    const action = prepared.engine.resolveCodeAction(
+      prepared.position,
+      toLegacyRange(query.action.diagnostic.range),
+      query.action.fingerprint,
+    )
+    return {
+      documentVersion: query.document.version,
+      value: action
+        ? {
+            title: action.title,
+            kind: action.kind,
+            diagnostic: {
+              range: toPublicRange(action.diagnostic.range),
+              severity: action.diagnostic.severity,
+              code: action.diagnostic.code,
+              message: action.diagnostic.message,
+              source: "arkts",
+            },
+            fingerprint: action.fingerprint,
+            edits: action.edits.map((edit) => ({
+              uri: pathToFileURL(edit.path).href,
+              range: toPublicRange(edit.range),
+              newText: edit.newText,
+              expectedVersion: edit.expectedVersion,
+            })),
+          }
+        : null,
+    }
   }
 
   async signatureHelp(

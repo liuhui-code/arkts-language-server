@@ -93,6 +93,24 @@ export interface SemanticDiagnostic {
   source: "arkts"
 }
 
+export interface SemanticCodeAction {
+  title: string
+  kind: "quickfix"
+  diagnostic: SemanticDiagnostic
+  fingerprint: string
+}
+
+export interface SemanticCodeActionTextEdit {
+  uri: DocumentUri
+  range: TextRange
+  newText: string
+  expectedVersion: number
+}
+
+export interface SemanticResolvedCodeAction extends SemanticCodeAction {
+  edits: SemanticCodeActionTextEdit[]
+}
+
 export interface SemanticDocumentQuery {
   document: DocumentSnapshot
   signal?: AbortSignal
@@ -106,6 +124,14 @@ export interface SemanticQuery {
 
 export interface SemanticCompletionResolveQuery extends SemanticQuery {
   completion: SemanticCompletion
+}
+
+export interface SemanticCodeActionQuery extends SemanticDocumentQuery {
+  range: TextRange
+}
+
+export interface SemanticCodeActionResolveQuery extends SemanticDocumentQuery {
+  action: SemanticCodeAction
 }
 
 export interface VersionedSemanticResult<T> {
@@ -133,6 +159,10 @@ export interface SemanticEnginePort {
   define(query: SemanticQuery): Promise<VersionedSemanticResult<SemanticDefinition[]>>
   documentSymbols(query: SemanticDocumentQuery): Promise<VersionedSemanticResult<SemanticDocumentSymbol[]>>
   diagnose(query: SemanticDocumentQuery): Promise<VersionedSemanticResult<SemanticDiagnostic[]>>
+  codeActions(query: SemanticCodeActionQuery): Promise<VersionedSemanticResult<SemanticCodeAction[]>>
+  resolveCodeAction(
+    query: SemanticCodeActionResolveQuery,
+  ): Promise<VersionedSemanticResult<SemanticResolvedCodeAction | null>>
   hover(query: SemanticQuery): Promise<VersionedSemanticResult<SemanticHover | null>>
   signatureHelp(query: SemanticQuery): Promise<VersionedSemanticResult<SemanticSignatureHelp | null>>
   dispose(): void

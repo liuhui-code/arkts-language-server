@@ -10,6 +10,7 @@ import { buildSync } from "esbuild"
 import ts from "typescript"
 
 import { LspSession } from "../support/lsp-session.mjs"
+import { applyWorkspaceEdit } from "../support/lsp-edits.mjs"
 import { projectRoot } from "../support/lsp-process.mjs"
 import { materializeConformanceWorkspace } from "../support/materialize-conformance-workspace.mjs"
 
@@ -71,6 +72,174 @@ test("publishes the TypeScript spelling diagnostic code at the exact UTF-16 mark
       code: 2552,
     },
   )
+})
+
+test("lists one unresolved spelling quick fix for the current diagnostic", async (t) => {
+  const materialized = await materializeConformanceWorkspace()
+  const quickFix = materialized.cases["quickfix.greeting"]
+  const source = fs.readFileSync(fileURLToPath(quickFix.uri), "utf8")
+  const session = new LspSession({
+    command: process.execPath,
+    args: [path.join(projectRoot, "dist", "server.cjs"), "--stdio"],
+    cwd: projectRoot,
+    env: {
+      HOME: path.join(materialized.root, "missing-home"),
+      DEVECO_SDK_HOME: path.join(materialized.root, "missing-deveco"),
+      ARKLINE_HARMONY_SDK_PATH: path.join(materialized.corpusRoot, "sdk", "openharmony"),
+      ARKTS_LSP_LOG_DIR: path.join(materialized.root, "logs"),
+    },
+    rootUri: pathToFileURL(materialized.workspaceRoot).href,
+    capabilities: {
+      workspace: { workspaceEdit: { documentChanges: true } },
+      textDocument: {
+        publishDiagnostics: { versionSupport: true },
+        codeAction: {
+          codeActionLiteralSupport: { codeActionKind: { valueSet: ["quickfix"] } },
+          dataSupport: true,
+          resolveSupport: { properties: ["edit"] },
+        },
+      },
+    },
+  })
+  t.after(async () => {
+    try {
+      await session.close()
+    } finally {
+      await fs.promises.rm(materialized.root, { recursive: true, force: true })
+    }
+  })
+
+  const initialized = await session.initialize()
+  assert.equal(initialized.result.capabilities.codeActionProvider, undefined)
+  const publication = session.transport.notification(
+    "textDocument/publishDiagnostics",
+    (message) => message.params.uri === quickFix.uri && message.params.version === 1,
+  )
+  session.openDocument({
+    uri: quickFix.uri,
+    languageId: "arkts",
+    version: 1,
+    text: source,
+  })
+  const published = await publication
+  const diagnostics = published.params.diagnostics.filter((diagnostic) => (
+    diagnostic.code === 2552 && sameRange(diagnostic.range, quickFix.range)
+  ))
+  assert.equal(diagnostics.length, 1, JSON.stringify(published.params.diagnostics))
+
+  const response = await session.request("textDocument/codeAction", {
+    textDocument: { uri: quickFix.uri },
+    range: quickFix.range,
+    context: { diagnostics, only: ["quickfix"] },
+  })
+
+  assert.equal(response.error, undefined, JSON.stringify(response.error))
+  assert.equal(response.result.length, 1, JSON.stringify(response.result))
+  const [action] = response.result
+  assert.deepEqual({
+    title: action.title,
+    kind: action.kind,
+    diagnostics: action.diagnostics,
+  }, {
+    title: "Change spelling to 'greeting'",
+    kind: "quickfix",
+    diagnostics,
+  })
+  assert.deepEqual(Object.keys(action.data ?? {}), ["arktsCodeActionId"])
+  assert.match(
+    action.data.arktsCodeActionId,
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+  )
+  assert.equal("edit" in action, false)
+  assert.equal("command" in action, false)
+})
+
+test("resolves and applies the current spelling fix as one versioned document edit", async (t) => {
+  const materialized = await materializeConformanceWorkspace()
+  const quickFix = materialized.cases["quickfix.greeting"]
+  const source = fs.readFileSync(fileURLToPath(quickFix.uri), "utf8")
+  const session = new LspSession({
+    command: process.execPath,
+    args: [path.join(projectRoot, "dist", "server.cjs"), "--stdio"],
+    cwd: projectRoot,
+    env: {
+      HOME: path.join(materialized.root, "missing-home"),
+      DEVECO_SDK_HOME: path.join(materialized.root, "missing-deveco"),
+      ARKLINE_HARMONY_SDK_PATH: path.join(materialized.corpusRoot, "sdk", "openharmony"),
+      ARKTS_LSP_LOG_DIR: path.join(materialized.root, "logs"),
+    },
+    rootUri: pathToFileURL(materialized.workspaceRoot).href,
+    capabilities: {
+      workspace: { workspaceEdit: { documentChanges: true } },
+      textDocument: {
+        publishDiagnostics: { versionSupport: true },
+        codeAction: {
+          codeActionLiteralSupport: { codeActionKind: { valueSet: ["quickfix"] } },
+          dataSupport: true,
+          resolveSupport: { properties: ["edit"] },
+        },
+      },
+    },
+  })
+  t.after(async () => {
+    try {
+      await session.close()
+    } finally {
+      await fs.promises.rm(materialized.root, { recursive: true, force: true })
+    }
+  })
+
+  await session.initialize()
+  const versionOnePublication = session.transport.notification(
+    "textDocument/publishDiagnostics",
+    (message) => message.params.uri === quickFix.uri && message.params.version === 1,
+  )
+  session.openDocument({
+    uri: quickFix.uri,
+    languageId: "arkts",
+    version: 1,
+    text: source,
+  })
+  const published = await versionOnePublication
+  const diagnostics = published.params.diagnostics.filter((diagnostic) => (
+    diagnostic.code === 2552 && sameRange(diagnostic.range, quickFix.range)
+  ))
+  assert.equal(diagnostics.length, 1, JSON.stringify(published.params.diagnostics))
+  const listed = await session.request("textDocument/codeAction", {
+    textDocument: { uri: quickFix.uri },
+    range: quickFix.range,
+    context: { diagnostics, only: ["quickfix"] },
+  })
+  assert.equal(listed.error, undefined, JSON.stringify(listed.error))
+  assert.equal(listed.result.length, 1, JSON.stringify(listed.result))
+
+  const resolved = await session.request("codeAction/resolve", listed.result[0])
+
+  assert.equal(resolved.error, undefined, JSON.stringify(resolved.error))
+  assert.deepEqual(resolved.result.edit, {
+    documentChanges: [{
+      textDocument: { uri: quickFix.uri, version: 1 },
+      edits: [{ range: quickFix.range, newText: "greeting" }],
+    }],
+  })
+  assert.equal("changes" in resolved.result.edit, false)
+  assert.equal("command" in resolved.result, false)
+  assert.deepEqual(resolved.result.data, listed.result[0].data)
+
+  const updatedDocuments = applyWorkspaceEdit(
+    new Map([[quickFix.uri, source]]),
+    resolved.result.edit,
+    { documentVersions: new Map([[quickFix.uri, 1]]) },
+  )
+  const updated = updatedDocuments.get(quickFix.uri)
+  assert.equal(updated, source.replace("greting", "greeting"))
+  const versionTwoPublication = session.transport.notification(
+    "textDocument/publishDiagnostics",
+    (message) => message.params.uri === quickFix.uri && message.params.version === 2,
+  )
+  session.changeDocument({ uri: quickFix.uri, version: 2, text: updated })
+  const current = await versionTwoPublication
+  assert.deepEqual(current.params.diagnostics, [])
 })
 
 test("rapid change and close never publish diagnostics for an obsolete version", async (t) => {

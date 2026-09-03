@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 
@@ -14,6 +15,7 @@ import type {
   SemanticDocumentSymbolKind,
   SemanticHoverInfo,
   SemanticSignatureHelp,
+  SemanticTextRange,
   SemanticUnsupportedResult,
   SemanticUsageResult,
   SemanticWorkspaceEditPlan,
@@ -24,7 +26,11 @@ import type {
   ProjectMembershipSnapshot,
   SemanticWorkspaceView,
 } from "../workspace/document-store.js"
-import type { SemanticTypeEngineState } from "./type-engine.js"
+import type {
+  SemanticCodeFixCandidate,
+  SemanticResolvedCodeFix,
+  SemanticTypeEngineState,
+} from "./type-engine.js"
 import { mapTypescriptDiagnostics, typescriptTypeDetail, typescriptTypeStatus } from "./typescript-language-helpers.js"
 import { lineColumnToOffset, offsetToLineColumn, spanToRange } from "./text-position.js"
 
@@ -52,6 +58,14 @@ interface LazySnapshotRecord {
   virtualDocument: ArktsVirtualDocument
   snapshot: ts.IScriptSnapshot
   bytes: number
+}
+
+interface SafeCodeFix extends SemanticCodeFixCandidate {
+  edits: Array<{
+    path: string
+    range: SemanticTextRange
+    newText: string
+  }>
 }
 
 export interface TypeScriptLanguageServiceEngineOptions {
@@ -339,6 +353,82 @@ export class TypeScriptLanguageServiceEngine {
       this.service.getSyntacticDiagnostics(filePath),
       this.service.getSemanticDiagnostics(filePath),
     )
+  }
+
+  codeActions(
+    position: SemanticDocumentPosition,
+    requestedRange: SemanticTextRange,
+  ): SemanticCodeFixCandidate[] {
+    return this.safeCodeFixes(position, requestedRange).map(({ edits: _edits, ...action }) => action)
+  }
+
+  resolveCodeAction(
+    position: SemanticDocumentPosition,
+    requestedRange: SemanticTextRange,
+    fingerprint: string,
+  ): SemanticResolvedCodeFix | null {
+    const documentVersion = position.documentVersion
+    if (documentVersion === undefined || !Number.isSafeInteger(documentVersion)) return null
+    const action = this.safeCodeFixes(position, requestedRange)
+      .find((candidate) => candidate.fingerprint === fingerprint)
+    if (!action) return null
+    return {
+      ...action,
+      edits: action.edits.map((edit) => ({
+        ...edit,
+        expectedVersion: documentVersion,
+      })),
+    }
+  }
+
+  private safeCodeFixes(
+    position: SemanticDocumentPosition,
+    requestedRange: SemanticTextRange,
+  ): SafeCodeFix[] {
+    const filePath = path.resolve(position.path)
+    const script = this.scripts.get(filePath)
+    if (!script) return []
+    script.lastAccess = ++this.accessClock
+
+    const diagnostics = [
+      ...this.service.getSyntacticDiagnostics(filePath),
+      ...this.service.getSemanticDiagnostics(filePath),
+    ]
+    const seen = new Set<string>()
+    const candidates: SafeCodeFix[] = []
+    for (const diagnostic of diagnostics) {
+      if (diagnostic.start === undefined) continue
+      const [mappedDiagnostic] = mapTypescriptDiagnostics(
+        filePath,
+        script.virtualDocument,
+        [diagnostic],
+      )
+      if (!mappedDiagnostic || !sameTextRange(mappedDiagnostic.range, requestedRange)) continue
+      const actions = this.service.getCodeFixesAtPosition(
+        filePath,
+        diagnostic.start,
+        diagnostic.start + (diagnostic.length ?? 1),
+        [diagnostic.code],
+        ts.getDefaultFormatCodeSettings(documentEol(script.sourceContent)),
+        { allowTextChangesInNewFiles: false },
+      )
+      for (const action of actions) {
+        if (action.fixName !== "spelling") continue
+        const safe = safeCodeFix(filePath, script, action)
+        if (!safe || seen.has(safe.fingerprint)) continue
+        seen.add(safe.fingerprint)
+        candidates.push({
+          title: action.description,
+          kind: "quickfix",
+          diagnostic: mappedDiagnostic,
+          fingerprint: safe.fingerprint,
+          edits: safe.edits,
+        })
+      }
+    }
+    return candidates.sort((left, right) => (
+      left.title.localeCompare(right.title) || left.fingerprint.localeCompare(right.fingerprint)
+    ))
   }
 
   documentSymbols(position: SemanticDocumentPosition): SemanticDocumentSymbolInfo[] {
@@ -755,6 +845,80 @@ function completionKind(kind: ts.ScriptElementKind): string {
   if (kind === ts.ScriptElementKind.keyword) return "keyword"
   if (kind === ts.ScriptElementKind.constElement || kind === ts.ScriptElementKind.letElement) return "variable"
   return "property"
+}
+
+function safeCodeFix(
+  currentPath: string,
+  script: ScriptRecord,
+  action: ts.CodeFixAction,
+): Pick<SafeCodeFix, "fingerprint" | "edits"> | undefined {
+  if (action.commands?.length || action.changes.length === 0) return undefined
+  const normalizedChanges: Array<{
+    fileName: string
+    textChanges: Array<{ start: number; length: number; newText: string }>
+  }> = []
+  const edits: SafeCodeFix["edits"] = []
+  const spans: Array<{ start: number; end: number }> = []
+  for (const change of action.changes) {
+    if (
+      change.isNewFile
+      || path.resolve(change.fileName) !== currentPath
+      || change.textChanges.length === 0
+    ) return undefined
+    const textChanges: Array<{ start: number; length: number; newText: string }> = []
+    for (const textChange of change.textChanges) {
+      const { start, length } = textChange.span
+      const sourceStart = script.virtualDocument.toSourceOffset(start)
+      const sourceEnd = script.virtualDocument.toSourceOffset(start + length)
+      if (
+        !Number.isSafeInteger(start)
+        || !Number.isSafeInteger(length)
+        || start < 0
+        || length < 0
+        || start + length > script.content.length
+        || script.virtualDocument.toGeneratedOffset(
+          sourceStart,
+        ) !== start
+        || script.virtualDocument.toGeneratedOffset(
+          sourceEnd,
+        ) !== start + length
+        || script.content.slice(start, start + length)
+          !== script.sourceContent.slice(sourceStart, sourceEnd)
+      ) return undefined
+      textChanges.push({ start, length, newText: textChange.newText })
+      spans.push({ start, end: start + length })
+      edits.push({
+        path: currentPath,
+        range: script.virtualDocument.generatedSpanToSourceRange(start, length),
+        newText: textChange.newText,
+      })
+    }
+    normalizedChanges.push({
+      fileName: path.resolve(change.fileName),
+      textChanges,
+    })
+  }
+  spans.sort((left, right) => left.start - right.start || left.end - right.end)
+  for (let index = 1; index < spans.length; index += 1) {
+    if (spans[index].start < spans[index - 1].end) return undefined
+  }
+  const fingerprint = `sha256:${createHash("sha256").update(JSON.stringify({
+    fixName: action.fixName,
+    description: action.description,
+    changes: normalizedChanges,
+  })).digest("hex")}`
+  return { fingerprint, edits }
+}
+
+function sameTextRange(left: SemanticTextRange, right: SemanticTextRange): boolean {
+  return left.startLine === right.startLine
+    && left.startColumn === right.startColumn
+    && left.endLine === right.endLine
+    && left.endColumn === right.endColumn
+}
+
+function documentEol(content: string): string {
+  return content.includes("\r\n") ? "\r\n" : "\n"
 }
 
 function optionalDisplayParts(parts: ts.SymbolDisplayPart[]) {

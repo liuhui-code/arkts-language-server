@@ -2,8 +2,10 @@ import { randomUUID } from "node:crypto"
 import { pathToFileURL } from "node:url"
 
 import {
+  CodeActionKind,
   CompletionItemKind,
   createConnection,
+  DiagnosticSeverity,
   DidChangeWatchedFilesNotification,
   ErrorCodes,
   type InitializeParams,
@@ -18,7 +20,12 @@ import { TextDocument } from "vscode-languageserver-textdocument"
 
 import { ARKTS_LANGUAGE_SERVER_IDENTITY } from "../build-identity.js"
 import type { DocumentSnapshot } from "../contracts/document.js"
-import type { SemanticCompletion, SemanticEnginePort } from "../contracts/semantic-engine.js"
+import type {
+  SemanticCodeAction,
+  SemanticCompletion,
+  SemanticEnginePort,
+  SemanticResolvedCodeAction,
+} from "../contracts/semantic-engine.js"
 import type { ProjectResolverPort } from "../contracts/project-resolver.js"
 import type {
   WorkspaceIndexProgress,
@@ -28,6 +35,11 @@ import { SingleRootProjectResolver } from "../project/single-root-project-resolv
 import { LegacySemanticEngine } from "../semantic/legacy-semantic-engine.js"
 import { createStructuredLogger } from "../observability/logger.js"
 import { createDocumentDiagnostics } from "./document-diagnostics.js"
+import {
+  CodeActionResolutionStore,
+  type CodeActionResolutionData,
+} from "./code-action-resolution-store.js"
+import { toLspDiagnostic } from "./diagnostic-mapper.js"
 import { RequestFreshness } from "./request-freshness.js"
 import { registerSemanticCapabilities } from "./register-semantic-capabilities.js"
 import { requestCancelled, SemanticRequestRunner } from "./semantic-request-runner.js"
@@ -98,6 +110,7 @@ export function runLanguageServer(services?: LanguageServerServices): void {
   const workspaceSymbols = services?.workspaceSymbols
   const freshness = new RequestFreshness()
   const completionResolutions = new CompletionResolutionStore()
+  const codeActionResolutions = new CodeActionResolutionStore()
   let shuttingDown = false
   let disposed = false
   let workspaceRoots: { id: string; rootUri: string }[] = []
@@ -110,6 +123,7 @@ export function runLanguageServer(services?: LanguageServerServices): void {
     disposed = true
     workspaceIndexAbort?.abort(new Error("Language server stopped"))
     completionResolutions.clear()
+    codeActionResolutions.clear()
     semantic.dispose()
     workspaceSymbols?.dispose()
     logger.info("server.stopped", { reason })
@@ -257,6 +271,7 @@ export function runLanguageServer(services?: LanguageServerServices): void {
   documents.onDidChangeContent(({ document }) => {
     freshness.cancelDocument(document.uri)
     completionResolutions.forgetDocument(document.uri)
+    codeActionResolutions.forgetDocument(document.uri)
     const changed = snapshot(document, projects)
     semantic.sync(changed)
     workspaceSymbols?.sync(changed)
@@ -265,6 +280,7 @@ export function runLanguageServer(services?: LanguageServerServices): void {
   documents.onDidClose(({ document }) => {
     freshness.cancelDocument(document.uri)
     completionResolutions.forgetDocument(document.uri)
+    codeActionResolutions.forgetDocument(document.uri)
     semantic.close(document.uri)
     workspaceSymbols?.closeDocument(document.uri)
     diagnostics.close(document.uri)
@@ -316,6 +332,116 @@ export function runLanguageServer(services?: LanguageServerServices): void {
     })
     if (!resolved) throw invalidCompletionResolution()
     return toLspResolvedCompletionItem(resolved, clientItem.data as CompletionResolutionData, record)
+  })
+
+  connection.onCodeAction(async (params, token) => {
+    if (!includesQuickFix(params.context.only)) return []
+    const actions = await requests.run({
+      method: "textDocument/codeAction",
+      documentUri: params.textDocument.uri,
+      token,
+      fallback: [] as SemanticCodeAction[],
+      execute: (document, signal) => semantic.codeActions({
+        document,
+        range: params.range,
+        signal,
+      }),
+    })
+    const document = documents.get(params.textDocument.uri)
+    if (!document) return []
+    return actions.map((action) => {
+      const diagnostic = toLspDiagnostic(action.diagnostic)
+      const data = codeActionResolutions.remember({
+        documentUri: document.uri,
+        documentVersion: document.version,
+        action: {
+          title: action.title,
+          kind: "quickfix",
+          diagnostic: {
+            range: action.diagnostic.range,
+            severity: diagnostic.severity,
+            code: action.diagnostic.code,
+            source: action.diagnostic.source,
+            message: action.diagnostic.message,
+          },
+        },
+        fingerprint: action.fingerprint,
+      })
+      return {
+        title: action.title,
+        kind: CodeActionKind.QuickFix,
+        diagnostics: [diagnostic],
+        data,
+      }
+    })
+  })
+
+  connection.onCodeActionResolve(async (clientAction, token) => {
+    assertRunning()
+    const lookup = codeActionResolutions.lookup(clientAction.data)
+    if (lookup.status !== "active") throw invalidCodeActionResolution(lookup.status)
+    const { record } = lookup
+    const currentDocument = documents.get(record.documentUri)
+    if (!currentDocument || currentDocument.version !== record.documentVersion) {
+      codeActionResolutions.forgetDocument(record.documentUri)
+      throw invalidCodeActionResolution("stale")
+    }
+    const resolved = await requests.run<SemanticResolvedCodeAction | null>({
+      method: "codeAction/resolve",
+      documentUri: record.documentUri,
+      token,
+      fallback: null,
+      execute: (document, signal) => semantic.resolveCodeAction({
+        document,
+        action: {
+          title: record.action.title,
+          kind: record.action.kind,
+          diagnostic: {
+            range: record.action.diagnostic.range,
+            severity: record.action.diagnostic.severity === DiagnosticSeverity.Error
+              ? "error"
+              : "warning",
+            code: record.action.diagnostic.code,
+            message: record.action.diagnostic.message,
+            source: "arkts",
+          },
+          fingerprint: record.fingerprint,
+        },
+        signal,
+      }),
+    })
+    if (
+      !resolved
+      || resolved.edits.length === 0
+      || resolved.edits.some((edit) => (
+        edit.uri !== record.documentUri || edit.expectedVersion !== record.documentVersion
+      ))
+    ) throw invalidCodeActionResolution("stale")
+    const resolutionData = clientAction.data as CodeActionResolutionData
+    const diagnostic = {
+      ...record.action.diagnostic,
+      severity: record.action.diagnostic.severity === DiagnosticSeverity.Error
+        ? DiagnosticSeverity.Error
+        : DiagnosticSeverity.Warning,
+    }
+    return {
+      title: record.action.title,
+      kind: CodeActionKind.QuickFix,
+      diagnostics: [diagnostic],
+      data: { arktsCodeActionId: resolutionData.arktsCodeActionId },
+      edit: {
+        documentChanges: [{
+          textDocument: {
+            uri: record.documentUri,
+            version: record.documentVersion,
+          },
+          edits: resolved.edits.map((edit) => ({
+            range: edit.range,
+            newText: edit.newText,
+          })),
+        }],
+      },
+    }
   })
 
   connection.onDefinition(async (params, token) => {
@@ -459,6 +585,13 @@ function invalidCompletionResolution(): ResponseError<void> {
   )
 }
 
+function invalidCodeActionResolution(status: "stale" | "unknown"): ResponseError<void> {
+  return new ResponseError(
+    ErrorCodes.InvalidParams,
+    status === "stale" ? "Code action is stale" : "Code action is unknown",
+  )
+}
+
 function completionKind(kind: SemanticCompletion["kind"]): CompletionItemKind {
   switch (kind) {
     case "method": return CompletionItemKind.Method
@@ -469,6 +602,13 @@ function completionKind(kind: SemanticCompletion["kind"]): CompletionItemKind {
     case "variable": return CompletionItemKind.Variable
     default: return CompletionItemKind.Property
   }
+}
+
+function includesQuickFix(only: readonly string[] | undefined): boolean {
+  if (!only || only.length === 0) return true
+  return only.some((kind) => (
+    kind === "" || kind === CodeActionKind.QuickFix || CodeActionKind.QuickFix.startsWith(`${kind}.`)
+  ))
 }
 
 function workspaceSymbolKind(kind: string): SymbolKind {

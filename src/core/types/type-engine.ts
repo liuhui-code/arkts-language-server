@@ -6,6 +6,7 @@ import type {
   SemanticDocumentSymbolInfo,
   SemanticHoverInfo,
   SemanticSignatureHelp,
+  SemanticTextRange,
   SemanticUsageResult,
   SemanticWorkspaceEditPlan,
   SemanticUnsupportedResult,
@@ -24,6 +25,22 @@ export interface SemanticTypeEngineState {
   generation: number
 }
 
+export interface SemanticCodeFixCandidate {
+  title: string
+  kind: "quickfix"
+  diagnostic: SemanticDiagnostic
+  fingerprint: string
+}
+
+export interface SemanticResolvedCodeFix extends SemanticCodeFixCandidate {
+  edits: Array<{
+    path: string
+    range: SemanticTextRange
+    newText: string
+    expectedVersion: number
+  }>
+}
+
 export interface SemanticTypeQueryContext {
   state: SemanticTypeEngineState
   complete(position: SemanticDocumentPosition): SemanticCompletionItem[]
@@ -31,6 +48,15 @@ export interface SemanticTypeQueryContext {
   define(position: SemanticDocumentPosition): SemanticDefinitionCandidate[]
   usages(position: SemanticDocumentPosition): SemanticUsageResult[]
   diagnostics(position: SemanticDocumentPosition): SemanticDiagnostic[]
+  codeActions(
+    position: SemanticDocumentPosition,
+    range: SemanticTextRange,
+  ): SemanticCodeFixCandidate[]
+  resolveCodeAction(
+    position: SemanticDocumentPosition,
+    range: SemanticTextRange,
+    fingerprint: string,
+  ): SemanticResolvedCodeFix | null
   documentSymbols(position: SemanticDocumentPosition): SemanticDocumentSymbolInfo[]
   hover(position: SemanticDocumentPosition): SemanticHoverInfo | null
   rename(position: SemanticDocumentPosition, newName: string): SemanticWorkspaceEditPlan | SemanticUnsupportedResult
@@ -69,6 +95,10 @@ export class SemanticTypeEngineRegistry {
       define: (position) => entry.engine.define(position),
       usages: (position) => entry.engine.usages(position),
       diagnostics: (position) => entry.engine.diagnostics(position),
+      codeActions: (position, range) => entry.engine.codeActions(position, range),
+      resolveCodeAction: (position, range, fingerprint) => (
+        entry.engine.resolveCodeAction(position, range, fingerprint)
+      ),
       documentSymbols: (position) => entry.engine.documentSymbols(position),
       hover: (position) => entry.engine.hover(position),
       rename: (position, newName) => entry.engine.rename(position, newName),
