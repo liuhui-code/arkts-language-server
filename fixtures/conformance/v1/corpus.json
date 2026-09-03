@@ -79,6 +79,13 @@
       "shape": "range"
     },
     {
+      "id": "rename.conflict-origin",
+      "kind": "rename",
+      "role": "same-scope-conflict",
+      "file": "workspace/entry/src/main/ets/model/RenameConflict.ets",
+      "shape": "range"
+    },
+    {
       "id": "cross-module.definition",
       "kind": "definition",
       "role": "target",

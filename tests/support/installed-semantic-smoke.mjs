@@ -25,6 +25,7 @@ export async function assertInstalledSemanticSmoke({
   const renameBarrel = materialized.cases["rename.barrel"]
   const renameConsumerImport = materialized.cases["rename.consumer-import"]
   const renameConsumerReference = materialized.cases["rename.consumer-reference"]
+  const renameConflictOrigin = materialized.cases["rename.conflict-origin"]
   const completion = materialized.cases["completion.unicode"]
   const greeterDefinition = materialized.cases["greeter.definition"]
   const quickFix = materialized.cases["quickfix.greeting"]
@@ -40,6 +41,7 @@ export async function assertInstalledSemanticSmoke({
   const consumerSource = fs.readFileSync(fileURLToPath(reference.uri), "utf8")
   const definitionSource = fs.readFileSync(fileURLToPath(definition.uri), "utf8")
   const barrelSource = fs.readFileSync(fileURLToPath(barrel.uri), "utf8")
+  const renameConflictSource = fs.readFileSync(fileURLToPath(renameConflictOrigin.uri), "utf8")
   const homeSource = fs.readFileSync(fileURLToPath(completion.uri), "utf8")
   const greeterSource = fs.readFileSync(fileURLToPath(greeterDefinition.uri), "utf8")
   const quickFixSource = fs.readFileSync(fileURLToPath(quickFix.uri), "utf8")
@@ -57,6 +59,7 @@ export async function assertInstalledSemanticSmoke({
   assert.equal(textInRange(barrelSource, renameBarrel.range), "Profile")
   assert.equal(textInRange(consumerSource, renameConsumerImport.range), "Profile")
   assert.equal(textInRange(consumerSource, renameConsumerReference.range), "Profile")
+  assert.equal(textInRange(renameConflictSource, renameConflictOrigin.range), "Profile")
   const referenceLine = consumerSource.split("\n")[reference.range.start.line]
   const referencePrefix = referenceLine.slice(0, reference.range.start.character)
   assert.match(referencePrefix, /😀/)
@@ -251,6 +254,39 @@ export async function assertInstalledSemanticSmoke({
       { uri: importedReference.uri, range: importedReference.range },
       { uri: reference.uri, range: reference.range },
     ])
+
+    const conflictDiagnostics = session.transport.notification(
+      "textDocument/publishDiagnostics",
+      (message) => message.params.uri === renameConflictOrigin.uri
+        && message.params.version === 1,
+      timeoutMs,
+    )
+    session.openDocument({
+      uri: renameConflictOrigin.uri,
+      languageId: "arkts",
+      version: 1,
+      text: renameConflictSource,
+    })
+    assert.deepEqual((await conflictDiagnostics).params.diagnostics, [])
+    const conflictingRename = await session.request("textDocument/rename", {
+      textDocument: { uri: renameConflictOrigin.uri },
+      position: midpoint(renameConflictOrigin.range),
+      newName: "Account",
+    }, { timeoutMs })
+    assert.equal(
+      conflictingRename.result,
+      undefined,
+      "a same-scope conflict must not leak a WorkspaceEdit",
+    )
+    assert.deepEqual(conflictingRename.error, {
+      code: -32803,
+      message: "Rename is not available at this position.",
+    })
+    session.transport.send({
+      jsonrpc: "2.0",
+      method: "textDocument/didClose",
+      params: { textDocument: { uri: renameConflictOrigin.uri } },
+    })
 
     const preparedRename = await session.request("textDocument/prepareRename", {
       textDocument: { uri: renameConsumerReference.uri },
