@@ -20,13 +20,18 @@ import type {
 } from "../protocol.js"
 import { resolveHarmonySdkModule } from "../sdk/module-resolver.js"
 import { createArktsVirtualDocument, type ArktsVirtualDocument } from "../virtual/arkts-virtual-document.js"
-import type { SemanticWorkspaceView } from "../workspace/document-store.js"
+import type {
+  ProjectMembershipSnapshot,
+  SemanticWorkspaceView,
+} from "../workspace/document-store.js"
 import type { SemanticTypeEngineState } from "./type-engine.js"
 import { mapTypescriptDiagnostics, typescriptTypeDetail, typescriptTypeStatus } from "./typescript-language-helpers.js"
 import { lineColumnToOffset, offsetToLineColumn, spanToRange } from "./text-position.js"
 
 const MAX_SCRIPTS = 512
 const MAX_SCRIPT_BYTES = 16 * 1024 * 1024
+const MAX_LAZY_SNAPSHOTS = 128
+const MAX_LAZY_SNAPSHOT_BYTES = 8 * 1024 * 1024
 const MAX_COMPLETIONS = 128
 const MIN_MODULE_EXPORT_PREFIX_LENGTH = 2
 const ENGINE_VERSION = `typescript-${ts.version}-arkts-v2`
@@ -41,16 +46,62 @@ interface ScriptRecord {
   lastAccess: number
 }
 
+interface LazySnapshotRecord {
+  path: string
+  content: string
+  virtualDocument: ArktsVirtualDocument
+  snapshot: ts.IScriptSnapshot
+  bytes: number
+}
+
+export interface TypeScriptLanguageServiceEngineOptions {
+  readSourceFile?: (filePath: string) => string | null
+  lazySnapshotLimits?: {
+    maxFiles?: number
+    maxBytes?: number
+  }
+}
+
 export class TypeScriptLanguageServiceEngine {
   private readonly scripts = new Map<string, ScriptRecord>()
+  private readonly projectMembershipPaths = new Set<string>()
+  private readonly projectContentVersions = new Map<string, number>()
+  private readonly lazySnapshots = new Map<string, LazySnapshotRecord>()
   private readonly sdkDeclarationPaths: string[]
+  private membershipFileNames: string[]
+  private combinedFileNames: string[] | undefined
   private readonly options: ts.CompilerOptions
   private readonly service: ts.LanguageService
+  private readonly readSourceFile: (filePath: string) => string | null
+  private readonly maxLazySnapshots: number
+  private readonly maxLazySnapshotBytes: number
   private accessClock = 0
   private generation = 0
   private scriptBytes = 0
+  private lazySnapshotBytes = 0
+  private projectMembershipStatus: ProjectMembershipSnapshot["status"] | "none" = "none"
+  private projectMembershipReason: ProjectMembershipSnapshot["reason"]
+  private projectMembershipRevision = 0
+  private projectContentRevision = 0
 
-  constructor(private readonly rootPath: string) {
+  constructor(
+    private readonly rootPath: string,
+    {
+      readSourceFile = safeRead,
+      lazySnapshotLimits = {},
+    }: TypeScriptLanguageServiceEngineOptions = {},
+  ) {
+    this.readSourceFile = readSourceFile
+    this.maxLazySnapshots = cacheLimit(
+      lazySnapshotLimits.maxFiles,
+      MAX_LAZY_SNAPSHOTS,
+      "lazy snapshot files",
+    )
+    this.maxLazySnapshotBytes = cacheLimit(
+      lazySnapshotLimits.maxBytes,
+      MAX_LAZY_SNAPSHOT_BYTES,
+      "lazy snapshot bytes",
+    )
     this.options = {
       allowNonTsExtensions: true,
       allowSyntheticDefaultImports: true,
@@ -62,12 +113,15 @@ export class TypeScriptLanguageServiceEngine {
       target: ts.ScriptTarget.ES2022,
     }
     this.sdkDeclarationPaths = discoverSdkAmbientDeclarations()
+    this.membershipFileNames = [...this.sdkDeclarationPaths]
     this.service = ts.createLanguageService(this.createHost(), ts.createDocumentRegistry())
   }
 
   prepare(workspace: SemanticWorkspaceView): SemanticTypeEngineState {
     const protectedPaths = new Set<string>()
-    for (const removedPath of workspace.removedPaths ?? []) this.removeScript(path.resolve(removedPath))
+    this.updateProjectMembership(workspace.projectMembership)
+    this.updateProjectContent(workspace.contentRevision, workspace.changedPaths)
+    this.removeProjectFiles(workspace.removedPaths)
     for (const document of workspace.documents) {
       const filePath = path.resolve(document.path)
       protectedPaths.add(filePath)
@@ -80,6 +134,40 @@ export class TypeScriptLanguageServiceEngine {
       version: ENGINE_VERSION,
       generation: this.generation,
     }
+  }
+
+  cacheState() {
+    return {
+      projectMembership: {
+        status: this.projectMembershipStatus,
+        ...(this.projectMembershipReason ? { reason: this.projectMembershipReason } : {}),
+        revision: this.projectMembershipRevision,
+        paths: this.projectMembershipPaths.size,
+      },
+      residentScripts: {
+        files: this.scripts.size,
+        bytes: this.scriptBytes,
+        maxFiles: MAX_SCRIPTS,
+        maxBytes: MAX_SCRIPT_BYTES,
+      },
+      lazySnapshots: {
+        files: this.lazySnapshots.size,
+        bytes: this.lazySnapshotBytes,
+        maxFiles: this.maxLazySnapshots,
+        maxBytes: this.maxLazySnapshotBytes,
+      },
+    }
+  }
+
+  scriptFileNames(): string[] {
+    if (this.combinedFileNames) return this.combinedFileNames
+    const extras = [...this.scripts.keys()].filter((filePath) => (
+      !this.projectMembershipPaths.has(filePath)
+      && !this.sdkDeclarationPaths.includes(filePath)
+    ))
+    if (extras.length === 0) return this.membershipFileNames
+    this.combinedFileNames = [...extras, ...this.membershipFileNames]
+    return this.combinedFileNames
   }
 
   complete(position: SemanticDocumentPosition): SemanticCompletionItem[] {
@@ -175,13 +263,21 @@ export class TypeScriptLanguageServiceEngine {
     return definitions.flatMap((definition) => {
       const targetPath = path.resolve(definition.fileName)
       const targetScript = this.scripts.get(targetPath)
-      const content = targetScript?.sourceContent ?? safeRead(targetPath)
+      const targetLazy = targetScript ? undefined : this.loadLazySnapshot(targetPath)
+      const content = targetScript?.sourceContent
+        ?? targetLazy?.virtualDocument.sourceContent
+        ?? safeRead(targetPath)
       if (content === null) return []
       const range = targetScript
         ? targetScript.virtualDocument.generatedSpanToSourceRange(
             definition.textSpan.start,
             definition.textSpan.length,
           )
+        : targetLazy
+          ? targetLazy.virtualDocument.generatedSpanToSourceRange(
+              definition.textSpan.start,
+              definition.textSpan.length,
+            )
         : spanToRange(content, definition.textSpan.start, definition.textSpan.length)
       const key = [
         targetPath,
@@ -352,7 +448,11 @@ export class TypeScriptLanguageServiceEngine {
   dispose(): void {
     this.service.dispose()
     this.scripts.clear()
+    this.projectMembershipPaths.clear()
+    this.projectContentVersions.clear()
+    this.lazySnapshots.clear()
     this.scriptBytes = 0
+    this.lazySnapshotBytes = 0
   }
 
   private createHost(): ts.LanguageServiceHost {
@@ -360,19 +460,47 @@ export class TypeScriptLanguageServiceEngine {
       getCompilationSettings: () => this.options,
       getCurrentDirectory: () => this.rootPath,
       getDefaultLibFileName: (options) => ts.getDefaultLibFilePath(options),
-      getProjectVersion: () => String(this.generation),
-      getScriptFileNames: () => [...this.scripts.keys(), ...this.sdkDeclarationPaths],
+      getProjectVersion: () => [
+        this.generation,
+        this.projectMembershipStatus,
+        this.projectMembershipRevision,
+        this.projectContentRevision,
+      ].join(":"),
+      getScriptFileNames: () => this.scriptFileNames(),
       getScriptKind: () => ts.ScriptKind.TS,
       getScriptSnapshot: (fileName) => {
-        const content = this.scripts.get(path.resolve(fileName))?.content ?? safeRead(fileName)
+        const filePath = path.resolve(fileName)
+        const resident = this.scripts.get(filePath)
+        if (resident) return ts.ScriptSnapshot.fromString(resident.content)
+        const lazy = this.loadLazySnapshot(filePath)
+        if (lazy) return lazy.snapshot
+        const content = safeRead(filePath)
         return content === null ? undefined : ts.ScriptSnapshot.fromString(content)
       },
-      getScriptVersion: (fileName) => String(this.scripts.get(path.resolve(fileName))?.version ?? 0),
+      getScriptVersion: (fileName) => {
+        const filePath = path.resolve(fileName)
+        const resident = this.scripts.get(filePath)
+        return resident
+          ? String(resident.version)
+          : this.projectMembershipPaths.has(filePath)
+            ? `content-${this.projectContentVersions.get(filePath) ?? 0}`
+            : "0"
+      },
       directoryExists: ts.sys.directoryExists,
-      fileExists: (fileName) => this.scripts.has(path.resolve(fileName)) || ts.sys.fileExists(fileName),
+      fileExists: (fileName) => {
+        const filePath = path.resolve(fileName)
+        return this.scripts.has(filePath)
+          || this.projectMembershipPaths.has(filePath)
+          || ts.sys.fileExists(fileName)
+      },
       getDirectories: ts.sys.getDirectories,
       readDirectory: ts.sys.readDirectory,
-      readFile: (fileName) => this.scripts.get(path.resolve(fileName))?.content ?? ts.sys.readFile(fileName),
+      readFile: (fileName) => {
+        const filePath = path.resolve(fileName)
+        return this.scripts.get(filePath)?.content
+          ?? this.loadLazySnapshot(filePath)?.content
+          ?? ts.sys.readFile(fileName)
+      },
       resolveModuleNames: (names, containingFile) => names.map((name) =>
         this.resolveModule(name, containingFile)),
     }
@@ -412,6 +540,7 @@ export class TypeScriptLanguageServiceEngine {
   }
 
   private updateScript(filePath: string, content: string): void {
+    this.removeLazySnapshot(filePath)
     const previous = this.scripts.get(filePath)
     if (previous?.sourceContent === content) {
       previous.lastAccess = ++this.accessClock
@@ -429,6 +558,7 @@ export class TypeScriptLanguageServiceEngine {
       bytes,
       lastAccess: ++this.accessClock,
     })
+    if (!previous && !this.projectMembershipPaths.has(filePath)) this.combinedFileNames = undefined
     this.scriptBytes += bytes
     this.generation += 1
   }
@@ -437,8 +567,135 @@ export class TypeScriptLanguageServiceEngine {
     const previous = this.scripts.get(filePath)
     if (!previous) return
     this.scripts.delete(filePath)
+    if (!this.projectMembershipPaths.has(filePath)) this.combinedFileNames = undefined
     this.scriptBytes -= previous.bytes
     this.generation += 1
+  }
+
+  private removeProjectFiles(removedPaths: string[] | undefined): void {
+    let membershipChanged = false
+    for (const removedPath of removedPaths ?? []) {
+      const filePath = path.resolve(removedPath)
+      membershipChanged = this.projectMembershipPaths.delete(filePath) || membershipChanged
+      this.projectContentVersions.delete(filePath)
+      this.removeScript(filePath)
+      this.removeLazySnapshot(filePath)
+    }
+    if (!membershipChanged) return
+    this.membershipFileNames = [
+      ...this.projectMembershipPaths,
+      ...this.sdkDeclarationPaths.filter((filePath) => !this.projectMembershipPaths.has(filePath)),
+    ]
+    this.combinedFileNames = undefined
+    this.generation += 1
+  }
+
+  private updateProjectMembership(membership: ProjectMembershipSnapshot | undefined): void {
+    if (!membership) return
+    if (
+      membership.status === this.projectMembershipStatus
+      && membership.revision === this.projectMembershipRevision
+    ) return
+
+    this.projectMembershipStatus = membership.status
+    this.projectMembershipReason = membership.reason
+    this.projectMembershipRevision = membership.revision
+    if (membership.status === "partial") {
+      for (const filePath of this.projectMembershipPaths) this.removeScript(filePath)
+      this.projectMembershipPaths.clear()
+      this.projectContentVersions.clear()
+      this.clearLazySnapshots()
+      this.membershipFileNames = [...this.sdkDeclarationPaths]
+      this.combinedFileNames = undefined
+      this.generation += 1
+      return
+    }
+
+    const nextPaths = new Set(membership.paths.map((filePath) => path.resolve(filePath)))
+    for (const filePath of this.scripts.keys()) {
+      if (isWithinRoot(this.rootPath, filePath) && !nextPaths.has(filePath)) {
+        this.removeScript(filePath)
+      }
+    }
+    for (const filePath of this.projectMembershipPaths) {
+      if (nextPaths.has(filePath)) continue
+      this.removeLazySnapshot(filePath)
+      this.projectContentVersions.delete(filePath)
+    }
+    for (const filePath of this.lazySnapshots.keys()) {
+      if (!nextPaths.has(filePath)) this.removeLazySnapshot(filePath)
+    }
+    this.projectMembershipPaths.clear()
+    for (const filePath of nextPaths) this.projectMembershipPaths.add(filePath)
+    this.membershipFileNames = [
+      ...this.projectMembershipPaths,
+      ...this.sdkDeclarationPaths.filter((filePath) => !this.projectMembershipPaths.has(filePath)),
+    ]
+    this.combinedFileNames = undefined
+    this.generation += 1
+  }
+
+  private updateProjectContent(
+    contentRevision: number | undefined,
+    changedPaths: string[] | undefined,
+  ): void {
+    if (contentRevision !== undefined) this.projectContentRevision = contentRevision
+    for (const changedPath of changedPaths ?? []) {
+      const filePath = path.resolve(changedPath)
+      this.projectContentVersions.set(filePath, this.projectContentRevision)
+      this.removeScript(filePath)
+      this.removeLazySnapshot(filePath)
+    }
+  }
+
+  private loadLazySnapshot(filePath: string): LazySnapshotRecord | undefined {
+    if (!this.projectMembershipPaths.has(filePath)) return undefined
+    const cached = this.lazySnapshots.get(filePath)
+    if (cached) {
+      this.lazySnapshots.delete(filePath)
+      this.lazySnapshots.set(filePath, cached)
+      return cached
+    }
+    const sourceContent = this.readSourceFile(filePath)
+    if (sourceContent === null) return undefined
+    const virtualDocument = createArktsVirtualDocument(filePath, sourceContent)
+    const content = virtualDocument.generatedContent
+    const record: LazySnapshotRecord = {
+      path: filePath,
+      content,
+      virtualDocument,
+      snapshot: ts.ScriptSnapshot.fromString(content),
+      bytes: Buffer.byteLength(sourceContent) + Buffer.byteLength(content),
+    }
+    if (record.bytes <= this.maxLazySnapshotBytes && this.maxLazySnapshots > 0) {
+      this.lazySnapshots.set(filePath, record)
+      this.lazySnapshotBytes += record.bytes
+      this.evictLazySnapshots()
+    }
+    return record
+  }
+
+  private removeLazySnapshot(filePath: string): void {
+    const cached = this.lazySnapshots.get(filePath)
+    if (!cached) return
+    this.lazySnapshots.delete(filePath)
+    this.lazySnapshotBytes -= cached.bytes
+  }
+
+  private clearLazySnapshots(): void {
+    this.lazySnapshots.clear()
+    this.lazySnapshotBytes = 0
+  }
+
+  private evictLazySnapshots(): void {
+    while (
+      this.lazySnapshots.size > this.maxLazySnapshots
+      || this.lazySnapshotBytes > this.maxLazySnapshotBytes
+    ) {
+      const oldestPath = this.lazySnapshots.keys().next().value
+      if (oldestPath === undefined) return
+      this.removeLazySnapshot(oldestPath)
+    }
   }
 
   private mapCompletionEdits(
@@ -604,6 +861,14 @@ function safeRead(filePath: string): string | null {
   } catch {
     return null
   }
+}
+
+function cacheLimit(value: number | undefined, fallback: number, label: string): number {
+  if (value === undefined) return fallback
+  if (!Number.isSafeInteger(value) || value < 0 || value > fallback) {
+    throw new RangeError(`${label} must be an integer between 0 and ${fallback}`)
+  }
+  return value
 }
 
 function unsupportedRename(reason: string): SemanticUnsupportedResult {

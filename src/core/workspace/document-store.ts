@@ -17,6 +17,7 @@ const MAX_PROJECT_FILE_SET_ROOTS = 4
 const MAX_PROJECT_FILE_SET_PATHS = 20_000
 const MAX_PROJECT_FILE_SET_PATH_BYTES = 4 * 1024 * 1024
 const MAX_WATCHED_REMOVED_PATHS = 512
+const MAX_WATCHED_CHANGED_PATHS = 512
 const SOURCE_EXTENSIONS = [".ets", ".ts"]
 const MAX_REPLAY_DOCUMENTS = 32
 const MAX_REPLAY_BYTES = 4 * 1024 * 1024
@@ -61,6 +62,7 @@ export interface SemanticDocumentStoreOptions {
   }
   watchedFileLimits?: {
     maxRemovedPaths?: number
+    maxChangedPaths?: number
   }
 }
 
@@ -69,6 +71,8 @@ export interface SemanticWorkspaceView {
   documents: WorkspaceDocument[]
   projectMembership?: ProjectMembershipSnapshot
   removedPaths?: string[]
+  changedPaths?: string[]
+  contentRevision: number
   resetTypeEngine?: boolean
   state: SemanticResponseState
 }
@@ -88,12 +92,15 @@ export class SemanticDocumentStore {
   private readonly dependencyClosures = new Map<string, DependencyClosureCacheEntry>()
   private readonly projectFileSets = new Map<string, ProjectFileSetCacheEntry>()
   private readonly watchedRemovedPaths = new Map<string, Set<string>>()
+  private readonly watchedChangedPaths = new Map<string, Set<string>>()
+  private readonly contentRevisions = new Map<string, number>()
   private readonly typeEngineResetRoots = new Set<string>()
   private readonly enumerateWorkspaceSources: (rootPath: string) => Iterable<string>
   private readonly maxProjectFileSetRoots: number
   private readonly maxProjectFileSetPaths: number
   private readonly maxProjectFileSetPathBytes: number
   private readonly maxWatchedRemovedPaths: number
+  private readonly maxWatchedChangedPaths: number
   private accessClock = 0
   private cachedBytes = 0
   private projectMembershipRevision = 0
@@ -123,6 +130,11 @@ export class SemanticDocumentStore {
       watchedFileLimits.maxRemovedPaths,
       MAX_WATCHED_REMOVED_PATHS,
       "watched removed paths",
+    )
+    this.maxWatchedChangedPaths = boundedLimit(
+      watchedFileLimits.maxChangedPaths,
+      MAX_WATCHED_CHANGED_PATHS,
+      "watched changed paths",
     )
   }
 
@@ -225,6 +237,7 @@ export class SemanticDocumentStore {
     const entry = this.projectFileSets.get(canonicalRoot)
     const paths = entry?.paths
     let membershipChanged = false
+    let contentChanged = false
     for (const change of batch.changes) {
       const sourcePath = path.resolve(change.path)
       if (!SOURCE_EXTENSIONS.includes(path.extname(sourcePath))) continue
@@ -247,7 +260,12 @@ export class SemanticDocumentStore {
         }
         if (known) this.markWatchedRemoved(canonicalRoot, sourcePath)
       } else {
+        if (change.kind === "changed" && this.documents.get(sourcePath)?.overlay) continue
         this.invalidateDiskDocument(sourcePath)
+        if (change.kind === "changed") {
+          this.markWatchedChanged(canonicalRoot, sourcePath)
+          contentChanged = true
+        }
       }
       if (change.kind !== "created" || !paths) continue
       if (paths.includes(sourcePath)) continue
@@ -273,6 +291,9 @@ export class SemanticDocumentStore {
       membershipChanged = true
     }
     if (entry && membershipChanged) entry.revision = ++this.projectMembershipRevision
+    if (contentChanged) {
+      this.contentRevisions.set(canonicalRoot, (this.contentRevisions.get(canonicalRoot) ?? 0) + 1)
+    }
   }
 
   private invalidateDiskDocument(filePath: string): void {
@@ -304,12 +325,29 @@ export class SemanticDocumentStore {
     removed.add(filePath)
   }
 
+  private markWatchedChanged(canonicalRoot: string, filePath: string): void {
+    if (this.typeEngineResetRoots.has(canonicalRoot)) return
+    let changed = this.watchedChangedPaths.get(canonicalRoot)
+    if (!changed) {
+      changed = new Set()
+      this.watchedChangedPaths.set(canonicalRoot, changed)
+    }
+    if (!changed.has(filePath) && changed.size >= this.maxWatchedChangedPaths) {
+      changed.clear()
+      this.typeEngineResetRoots.add(canonicalRoot)
+      return
+    }
+    changed.add(filePath)
+  }
+
   dispose(): void {
     this.documents.clear()
     this.dependencyGenerations.clear()
     this.dependencyClosures.clear()
     this.projectFileSets.clear()
     this.watchedRemovedPaths.clear()
+    this.watchedChangedPaths.clear()
+    this.contentRevisions.clear()
     this.typeEngineResetRoots.clear()
     this.accessClock = 0
     this.cachedBytes = 0
@@ -348,6 +386,8 @@ export class SemanticDocumentStore {
     const canonicalRoot = canonicalWorkspaceRoot(rootPath)
     const watchedRemovedPaths = this.watchedRemovedPaths.get(canonicalRoot)
     this.watchedRemovedPaths.delete(canonicalRoot)
+    const watchedChangedPaths = this.watchedChangedPaths.get(canonicalRoot)
+    this.watchedChangedPaths.delete(canonicalRoot)
     const resetTypeEngine = this.typeEngineResetRoots.delete(canonicalRoot)
 
     return {
@@ -358,6 +398,8 @@ export class SemanticDocumentStore {
         ...(watchedRemovedPaths ?? []),
         ...closureResult.removedPaths,
       ])],
+      changedPaths: [...(watchedChangedPaths ?? [])],
+      contentRevision: this.contentRevisions.get(canonicalRoot) ?? 0,
       resetTypeEngine,
       state: {
         path: currentPath,
