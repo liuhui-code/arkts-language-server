@@ -119,7 +119,12 @@ export const CURRENT_LSP_FEATURE_MATRIX = Object.freeze({
         "returns ArkTS signature help with the active parameter",
         "signature-help.bundle.active-parameter",
       )],
-      artifactGap: "Installed artifacts do not run a signature-help transcript yet.",
+      artifact: [evidence(
+        "tests/release/portable-install.acceptance.mjs",
+        "installs one verified artifact without source dependencies or a rebuild",
+        "signature-help.artifact.immutable-unopened-overload",
+      )],
+      artifactGap: null,
     }),
     enabledFeature({
       id: "document-symbol",
@@ -141,7 +146,12 @@ export const CURRENT_LSP_FEATURE_MATRIX = Object.freeze({
           "document-symbol.bundle.flat-legacy-kinds",
         ),
       ],
-      artifactGap: "Installed artifacts do not run a document-symbol transcript yet.",
+      artifact: [evidence(
+        "tests/release/portable-install.acceptance.mjs",
+        "installs one verified artifact without source dependencies or a rebuild",
+        "document-symbol.artifact.immutable-arkui-hierarchy",
+      )],
+      artifactGap: null,
     }),
     enabledFeature({
       id: "workspace-symbol",

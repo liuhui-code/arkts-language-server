@@ -22,11 +22,22 @@ export async function assertInstalledSemanticSmoke({
   const completion = materialized.cases["completion.unicode"]
   const greeterDefinition = materialized.cases["greeter.definition"]
   const quickFix = materialized.cases["quickfix.greeting"]
+  const signature = materialized.cases["signature.format-call"]
+  const documentSymbolPage = materialized.cases["document-symbol.arkui-page"]
+  const documentSymbolTitle = materialized.cases["document-symbol.title"]
+  const documentSymbolBuild = materialized.cases["document-symbol.build"]
+  assert.ok(signature, "the installed-artifact corpus must expose signature.format-call")
+  assert.ok(
+    documentSymbolPage && documentSymbolTitle && documentSymbolBuild,
+    "the installed-artifact corpus must expose the ArkUI document-symbol hierarchy",
+  )
   const consumerSource = fs.readFileSync(fileURLToPath(reference.uri), "utf8")
   const definitionSource = fs.readFileSync(fileURLToPath(definition.uri), "utf8")
   const homeSource = fs.readFileSync(fileURLToPath(completion.uri), "utf8")
   const greeterSource = fs.readFileSync(fileURLToPath(greeterDefinition.uri), "utf8")
   const quickFixSource = fs.readFileSync(fileURLToPath(quickFix.uri), "utf8")
+  const signatureSource = fs.readFileSync(fileURLToPath(signature.uri), "utf8")
+  const documentSymbolSource = fs.readFileSync(fileURLToPath(documentSymbolPage.uri), "utf8")
   assert.equal(textInRange(consumerSource, reference.range), "Profile")
   const referenceLine = consumerSource.split("\n")[reference.range.start.line]
   const referencePrefix = referenceLine.slice(0, reference.range.start.character)
@@ -46,6 +57,22 @@ export async function assertInstalledSemanticSmoke({
     "the completion marker must use UTF-16 code units after its emoji prefix",
   )
   assert.equal(textInRange(quickFixSource, quickFix.range), "greting")
+  const signatureLine = signatureSource.split("\n")[signature.position.line]
+  const signaturePrefix = signatureLine.slice(0, signature.position.character)
+  assert.match(signaturePrefix, /😀/)
+  assert.equal(
+    signaturePrefix.length - Array.from(signaturePrefix).length,
+    1,
+    "the signature marker must use UTF-16 code units after its emoji prefix",
+  )
+  const titleLine = documentSymbolSource.split("\n")[documentSymbolTitle.range.start.line]
+  const titlePrefix = titleLine.slice(0, documentSymbolTitle.range.start.character)
+  assert.match(titlePrefix, /😀/)
+  assert.equal(
+    titlePrefix.length - Array.from(titlePrefix).length,
+    1,
+    "the document-symbol marker must use UTF-16 code units after its emoji prefix",
+  )
   const externalCwd = cwd ?? path.join(temporaryRoot, "semantic-external-cwd")
   fs.mkdirSync(externalCwd, { recursive: true })
   const session = new LspSession({
@@ -66,6 +93,11 @@ export async function assertInstalledSemanticSmoke({
       workspace: { workspaceEdit: { documentChanges: true } },
       textDocument: {
         publishDiagnostics: { versionSupport: true },
+        signatureHelp: { contextSupport: true },
+        documentSymbol: {
+          hierarchicalDocumentSymbolSupport: true,
+          symbolKind: { valueSet: Array.from({ length: 26 }, (_, index) => index + 1) },
+        },
         codeAction: {
           codeActionLiteralSupport: { codeActionKind: { valueSet: ["quickfix"] } },
           dataSupport: true,
@@ -84,6 +116,11 @@ export async function assertInstalledSemanticSmoke({
     })
     assert.equal(initialized.result.capabilities.completionProvider.resolveProvider, true)
     assert.equal(initialized.result.capabilities.hoverProvider, true)
+    assert.deepEqual(initialized.result.capabilities.signatureHelpProvider, {
+      triggerCharacters: ["(", ",", "<"],
+      retriggerCharacters: [")"],
+    })
+    assert.equal(initialized.result.capabilities.documentSymbolProvider, true)
     assert.deepEqual(initialized.result.capabilities.codeActionProvider, {
       codeActionKinds: ["quickfix"],
       resolveProvider: true,
@@ -152,6 +189,34 @@ export async function assertInstalledSemanticSmoke({
     )
     assert.match(hoverResponse.result.contents.value, /@since\s+1\.0\.0/)
     assert.deepEqual(hoverResponse.result.range, reference.range)
+
+    session.openDocument({
+      uri: signature.uri,
+      languageId: "arkts",
+      version: 1,
+      text: signatureSource,
+    })
+    const signatureResponse = await session.request("textDocument/signatureHelp", {
+      textDocument: { uri: signature.uri },
+      position: signature.position,
+      context: {
+        triggerKind: 2,
+        triggerCharacter: ",",
+        isRetrigger: false,
+      },
+    }, { timeoutMs })
+    assert.equal(signatureResponse.error, undefined, JSON.stringify(signatureResponse.error))
+    assert.equal(signatureResponse.result.activeSignature, 1)
+    assert.equal(signatureResponse.result.activeParameter, 1)
+    assert.equal(
+      signatureResponse.result.signatures[1].label,
+      "format(value: string, suffix: string): string",
+    )
+    session.transport.send({
+      jsonrpc: "2.0",
+      method: "textDocument/didClose",
+      params: { textDocument: { uri: signature.uri } },
+    })
 
     const diskGreeterResponse = await session.request(
       "workspace/symbol",
@@ -462,6 +527,58 @@ export async function assertInstalledSemanticSmoke({
     session.changeDocument({ uri: quickFix.uri, version: 2, text: updatedQuickFix })
     const clearedQuickFixDiagnostics = await quickFixDiagnosticsV2
     assert.deepEqual(clearedQuickFixDiagnostics.params.diagnostics, [])
+
+    session.transport.send({
+      jsonrpc: "2.0",
+      method: "textDocument/didClose",
+      params: { textDocument: { uri: quickFix.uri } },
+    })
+    session.openDocument({
+      uri: documentSymbolPage.uri,
+      languageId: "arkts",
+      version: 1,
+      text: documentSymbolSource,
+    })
+    const firstDocumentSymbols = await session.request("textDocument/documentSymbol", {
+      textDocument: { uri: documentSymbolPage.uri },
+    }, { timeoutMs })
+    const repeatedDocumentSymbols = await session.request("textDocument/documentSymbol", {
+      textDocument: { uri: documentSymbolPage.uri },
+    }, { timeoutMs })
+    assert.equal(
+      firstDocumentSymbols.error,
+      undefined,
+      JSON.stringify(firstDocumentSymbols.error),
+    )
+    assert.equal(
+      repeatedDocumentSymbols.error,
+      undefined,
+      JSON.stringify(repeatedDocumentSymbols.error),
+    )
+    assert.deepEqual(
+      repeatedDocumentSymbols.result,
+      firstDocumentSymbols.result,
+      "installed document symbols must retain stable source order",
+    )
+    assert.equal(firstDocumentSymbols.result.length, 1)
+    const [pageSymbol] = firstDocumentSymbols.result
+    assert.deepEqual({
+      name: pageSymbol.name,
+      kind: pageSymbol.kind,
+      selectionRange: pageSymbol.selectionRange,
+    }, {
+      name: "ArkuiPage",
+      kind: 23,
+      selectionRange: documentSymbolPage.range,
+    })
+    assert.deepEqual(pageSymbol.children.map(({ name, kind, selectionRange }) => ({
+      name,
+      kind,
+      selectionRange,
+    })), [
+      { name: "title", kind: 7, selectionRange: documentSymbolTitle.range },
+      { name: "build", kind: 6, selectionRange: documentSymbolBuild.range },
+    ])
   } finally {
     try {
       await session.close({ timeoutMs })

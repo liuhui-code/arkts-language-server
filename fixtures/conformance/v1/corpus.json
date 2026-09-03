@@ -65,9 +65,37 @@
       "shape": "range"
     },
     {
+      "id": "signature.format-call",
+      "kind": "signature-help",
+      "role": "query",
+      "file": "workspace/entry/src/main/ets/pages/SignatureConsumer.ets",
+      "shape": "point"
+    },
+    {
       "id": "arkui.decorator.entry",
       "kind": "arkui",
       "role": "decorator",
+      "file": "workspace/entry/src/main/ets/pages/ArkuiPage.ets",
+      "shape": "range"
+    },
+    {
+      "id": "document-symbol.arkui-page",
+      "kind": "document-symbol",
+      "role": "root",
+      "file": "workspace/entry/src/main/ets/pages/ArkuiPage.ets",
+      "shape": "range"
+    },
+    {
+      "id": "document-symbol.title",
+      "kind": "document-symbol",
+      "role": "field",
+      "file": "workspace/entry/src/main/ets/pages/ArkuiPage.ets",
+      "shape": "range"
+    },
+    {
+      "id": "document-symbol.build",
+      "kind": "document-symbol",
+      "role": "method",
       "file": "workspace/entry/src/main/ets/pages/ArkuiPage.ets",
       "shape": "range"
     },

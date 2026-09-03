@@ -46,14 +46,14 @@ test("maps the complete public capability contract to executable feature evidenc
     "completion",
     "definition",
     "hover",
+    "signature-help",
+    "document-symbol",
     "workspace-symbol",
     "diagnostics",
     "completion-resolve",
     "code-actions",
   ])
   assert.deepEqual(audit.artifactGapFeatureIds, [
-    "signature-help",
-    "document-symbol",
     "references",
     "rename",
   ])
@@ -66,6 +66,24 @@ test("maps the complete public capability contract to executable feature evidenc
     claim: "hover.artifact.immutable-unopened-import",
   }])
   assert.equal(hover?.artifactGap, null)
+  const signatureHelp = CURRENT_LSP_FEATURE_MATRIX.features.find(
+    ({ id }) => id === "signature-help",
+  )
+  assert.deepEqual(signatureHelp?.evidence.artifact, [{
+    entry: "tests/release/portable-install.acceptance.mjs",
+    test: "installs one verified artifact without source dependencies or a rebuild",
+    claim: "signature-help.artifact.immutable-unopened-overload",
+  }])
+  assert.equal(signatureHelp?.artifactGap, null)
+  const documentSymbol = CURRENT_LSP_FEATURE_MATRIX.features.find(
+    ({ id }) => id === "document-symbol",
+  )
+  assert.deepEqual(documentSymbol?.evidence.artifact, [{
+    entry: "tests/release/portable-install.acceptance.mjs",
+    test: "installs one verified artifact without source dependencies or a rebuild",
+    claim: "document-symbol.artifact.immutable-arkui-hierarchy",
+  }])
+  assert.equal(documentSymbol?.artifactGap, null)
 })
 
 test("rejects capability and evidence drift instead of accepting a stale matrix", () => {
@@ -97,10 +115,10 @@ test("rejects capability and evidence drift instead of accepting a stale matrix"
     ],
     [
       "empty artifact gap",
-      mutateFeature("signature-help", (feature) => {
+      mutateFeature("references", (feature) => {
         feature.artifactGap = "   "
       }),
-      /signature-help: missing artifact evidence requires artifactGap/,
+      /references: missing artifact evidence requires artifactGap/,
     ],
   ]
 
