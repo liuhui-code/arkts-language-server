@@ -131,6 +131,7 @@ export async function assertInstalledSemanticSmoke({
       window: { workDoneProgress: true },
     },
   })
+  let workspaceSymbolKindUriNameRange
 
   try {
     const initialized = await session.initialize({ timeoutMs })
@@ -702,6 +703,39 @@ export async function assertInstalledSemanticSmoke({
       version: 1,
       text: documentSymbolSource,
     })
+    const expectedWorkspaceSymbols = [
+      {
+        name: "ArkuiPage",
+        kind: 23,
+        location: { uri: documentSymbolPage.uri, range: documentSymbolPage.range },
+      },
+      {
+        name: "title",
+        kind: 7,
+        location: { uri: documentSymbolTitle.uri, range: documentSymbolTitle.range },
+      },
+      {
+        name: "build",
+        kind: 6,
+        location: { uri: documentSymbolBuild.uri, range: documentSymbolBuild.range },
+      },
+    ]
+    const actualWorkspaceSymbols = []
+    for (const expectedSymbol of expectedWorkspaceSymbols) {
+      const response = await session.request("workspace/symbol", {
+        query: expectedSymbol.name,
+      }, { timeoutMs })
+      assert.equal(response.error, undefined, JSON.stringify(response.error))
+      actualWorkspaceSymbols.push(...exactWorkspaceSymbolDetails(
+        response.result,
+        expectedSymbol.location.uri,
+        expectedSymbol.name,
+      ))
+    }
+    workspaceSymbolKindUriNameRange = {
+      actual: actualWorkspaceSymbols,
+      expected: expectedWorkspaceSymbols,
+    }
     const firstDocumentSymbols = await session.request("textDocument/documentSymbol", {
       textDocument: { uri: documentSymbolPage.uri },
     }, { timeoutMs })
@@ -749,6 +783,7 @@ export async function assertInstalledSemanticSmoke({
       await fs.promises.rm(materialized.root, { recursive: true, force: true })
     }
   }
+  return { workspaceSymbolKindUriNameRange }
 }
 
 function midpoint(range) {
@@ -789,6 +824,19 @@ function exactWorkspaceSymbols(symbols, uri, name) {
       name: symbol.name,
       uri: symbol.location.uri,
       range: symbol.location.range,
+    }))
+}
+
+function exactWorkspaceSymbolDetails(symbols, uri, name) {
+  return symbols
+    .filter((symbol) => symbol.name === name && symbol.location?.uri === uri)
+    .map((symbol) => ({
+      name: symbol.name,
+      kind: symbol.kind,
+      location: {
+        uri: symbol.location.uri,
+        range: symbol.location.range,
+      },
     }))
 }
 

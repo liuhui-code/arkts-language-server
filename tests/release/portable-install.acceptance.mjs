@@ -292,12 +292,21 @@ test("installs one verified artifact without source dependencies or a rebuild", 
 
   const response = await initialize(command, externalCwd, environment)
   assert.equal(response.result.serverInfo.name, "arkts-language-server")
-  await assertInstalledSemanticSmoke({
+  const semanticEvidence = await assertInstalledSemanticSmoke({
     installedCommand: command,
     temporaryRoot,
     cwd: externalCwd,
     env: environment,
   })
+  assert.ok(
+    semanticEvidence?.workspaceSymbolKindUriNameRange,
+    "installed smoke must expose workspace-symbol kind, URI, and name-range evidence",
+  )
+  assert.deepEqual(
+    semanticEvidence.workspaceSymbolKindUriNameRange.actual,
+    semanticEvidence.workspaceSymbolKindUriNameRange.expected,
+    "installed workspace/symbol must preserve exact kinds, URIs, and name ranges",
+  )
   assert.equal(
     fs.existsSync(invocationLog),
     false,
