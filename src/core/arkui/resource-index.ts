@@ -5,6 +5,7 @@ import ts from "typescript"
 
 import type { SemanticTextRange } from "../protocol.js"
 import { spanToRange } from "../types/text-position.js"
+import { isArkUIStringResourcePath } from "./resource-path.js"
 
 const MAX_VISITED_ENTRIES = 20_000
 const MAX_DIRECTORY_ENTRIES = 4_096
@@ -168,7 +169,7 @@ function discoverStringResourceFiles(
         if (!EXCLUDED_DIRECTORIES.has(entry.name)) directories.push(candidatePath)
         continue
       }
-      if (!entry.isFile() || !isStringResourcePath(candidatePath)) continue
+      if (!entry.isFile() || !isArkUIStringResourcePath(candidatePath)) continue
       const canonicalCandidate = canonicalPath(candidatePath)
       if (!isInside(canonicalRoot, canonicalCandidate)) continue
       files.push(candidatePath)
@@ -180,17 +181,6 @@ function discoverStringResourceFiles(
   }
   files.sort(ordinalCompare)
   return files
-}
-
-function isStringResourcePath(filePath: string): boolean {
-  if (path.basename(filePath) !== "string.json") return false
-  if (path.basename(path.dirname(filePath)) !== "element") return false
-  let current = path.dirname(path.dirname(filePath))
-  while (current !== path.dirname(current)) {
-    if (path.basename(current) === "resources") return true
-    current = path.dirname(current)
-  }
-  return false
 }
 
 function parseStringResources(filePath: string, content: string): ArkUIStringResource[] {

@@ -103,6 +103,125 @@ test("does not silently drop workspace roots beyond an arbitrary prefix", (t) =>
   }])
 })
 
+test("routes only in-root ArkUI string resources and rejects JSON or symlink escapes", (t) => {
+  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-watched-resource-"))
+  const workspaceRoot = path.join(temporaryRoot, "workspace")
+  const outsideRoot = path.join(temporaryRoot, "outside")
+  t.after(() => fs.rmSync(temporaryRoot, { recursive: true, force: true }))
+  const resourcePath = path.join(workspaceRoot, "resources", "base", "element", "string.json")
+  const ordinaryJsonPath = path.join(workspaceRoot, "settings.json")
+  const wrongLayoutPath = path.join(workspaceRoot, "resources", "base", "profile.json")
+  const missingQualifierPath = path.join(workspaceRoot, "resources", "element", "string.json")
+  const nestedQualifierPath = path.join(
+    workspaceRoot,
+    "resources",
+    "base",
+    "dark",
+    "element",
+    "string.json",
+  )
+  const outsideResourcePath = path.join(outsideRoot, "resources", "base", "element", "string.json")
+  const escapedDirectory = path.join(workspaceRoot, "escaped")
+  for (const filePath of [
+    resourcePath,
+    wrongLayoutPath,
+    missingQualifierPath,
+    nestedQualifierPath,
+    outsideResourcePath,
+  ]) {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true })
+    fs.writeFileSync(filePath, "{}\n", "utf8")
+  }
+  fs.writeFileSync(ordinaryJsonPath, "{}\n", "utf8")
+  fs.symlinkSync(outsideRoot, escapedDirectory, "dir")
+  const escapedResourcePath = path.join(
+    escapedDirectory,
+    "resources",
+    "base",
+    "element",
+    "string.json",
+  )
+  const rootUri = pathToFileURL(workspaceRoot).href
+  const { WorkspaceFileChangeCoordinator } = buildDriver(t)
+  const coordinator = new WorkspaceFileChangeCoordinator({ rootUris: [rootUri] })
+
+  coordinator.accept([
+    { uri: pathToFileURL(resourcePath).href, type: 2 },
+    { uri: pathToFileURL(ordinaryJsonPath).href, type: 2 },
+    { uri: pathToFileURL(wrongLayoutPath).href, type: 2 },
+    { uri: pathToFileURL(missingQualifierPath).href, type: 2 },
+    { uri: pathToFileURL(nestedQualifierPath).href, type: 2 },
+    { uri: pathToFileURL(outsideResourcePath).href, type: 2 },
+    { uri: pathToFileURL(escapedResourcePath).href, type: 2 },
+  ])
+
+  assert.deepEqual(coordinator.drain(), [{
+    rootUri,
+    rootDirty: false,
+    changes: [{ uri: pathToFileURL(resourcePath).href, kind: "changed" }],
+  }])
+})
+
+test("bounds an ArkUI resource burst without discarding pending source changes", (t) => {
+  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-watched-resource-burst-"))
+  const firstRoot = path.join(temporaryRoot, "first")
+  const secondRoot = path.join(temporaryRoot, "second")
+  fs.mkdirSync(firstRoot)
+  fs.mkdirSync(secondRoot)
+  fs.mkdirSync(path.join(firstRoot, "nested"))
+  t.after(() => fs.rmSync(temporaryRoot, { recursive: true, force: true }))
+  const firstRootUri = pathToFileURL(firstRoot).href
+  const secondRootUri = pathToFileURL(secondRoot).href
+  const sourceUri = pathToFileURL(path.join(firstRoot, "Main.ets")).href
+  const resourcePath = (rootPath, qualifier) => path.join(
+    rootPath,
+    "resources",
+    qualifier,
+    "element",
+    "string.json",
+  )
+  const resourceUri = (rootPath, qualifier) => pathToFileURL(
+    resourcePath(rootPath, qualifier),
+  ).href
+  for (const [rootPath, qualifier] of [
+    [firstRoot, "base"],
+    [firstRoot, "en_US"],
+    [firstRoot, "zh_CN"],
+    [secondRoot, "base"],
+  ]) {
+    const filePath = resourcePath(rootPath, qualifier)
+    fs.mkdirSync(path.dirname(filePath), { recursive: true })
+    fs.writeFileSync(filePath, "{}\n", "utf8")
+  }
+  const { WorkspaceFileChangeCoordinator } = buildDriver(t)
+  const coordinator = new WorkspaceFileChangeCoordinator({
+    rootUris: [firstRootUri, secondRootUri],
+    maxPendingPaths: 2,
+  })
+
+  coordinator.accept([
+    { uri: sourceUri, type: 2 },
+    { uri: resourceUri(firstRoot, "base"), type: 2 },
+    { uri: resourceUri(firstRoot, "en_US"), type: 2 },
+    { uri: resourceUri(firstRoot, "zh_CN"), type: 2 },
+    { uri: resourceUri(secondRoot, "base"), type: 1 },
+  ])
+
+  assert.deepEqual(coordinator.drain(), [
+    {
+      rootUri: firstRootUri,
+      rootDirty: false,
+      resourceDirty: true,
+      changes: [{ uri: sourceUri, kind: "changed" }],
+    },
+    {
+      rootUri: secondRootUri,
+      rootDirty: false,
+      changes: [{ uri: resourceUri(secondRoot, "base"), kind: "created" }],
+    },
+  ])
+})
+
 test("adds a watched source create to a cached project set without rescanning", (t) => {
   const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-watched-create-"))
   t.after(() => fs.rmSync(workspaceRoot, { recursive: true, force: true }))
@@ -351,6 +470,44 @@ test("a root reset drops its stale type scripts without rebuilding another root"
   )))
 })
 
+test("invalidates only one workspace ArkUI snapshot without resetting TypeScript", (t) => {
+  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-resource-invalidate-"))
+  const firstRoot = path.join(temporaryRoot, "first")
+  const secondRoot = path.join(temporaryRoot, "second")
+  fs.mkdirSync(firstRoot)
+  fs.mkdirSync(secondRoot)
+  t.after(() => fs.rmSync(temporaryRoot, { recursive: true, force: true }))
+  const firstMain = path.join(firstRoot, "Main.ets")
+  const secondMain = path.join(secondRoot, "Main.ets")
+  const source = 'const value = $r("app.string.")\n'
+  fs.writeFileSync(firstMain, source, "utf8")
+  fs.writeFileSync(secondMain, source, "utf8")
+  const firstResource = writeStringResource(firstRoot, "first_old")
+  const secondResource = writeStringResource(secondRoot, "second_old")
+  const firstRootSpelling = `${firstRoot}${path.sep}nested${path.sep}..`
+  const { SemanticTypeEngineRegistry } = buildTypeEngineDriver(t)
+  const registry = new SemanticTypeEngineRegistry()
+  t.after(() => registry.dispose())
+  const firstPosition = resourceCompletionPosition(firstMain, source, firstRoot)
+  const secondPosition = resourceCompletionPosition(secondMain, source, secondRoot)
+  const first = registry.prepare(workspaceView(firstRootSpelling, firstMain, source))
+  const second = registry.prepare(workspaceView(secondRoot, secondMain, source))
+
+  assert.deepEqual(arkuiLabels(first.complete(firstPosition)), ["first_old"])
+  assert.deepEqual(arkuiLabels(second.complete(secondPosition)), ["second_old"])
+  fs.writeFileSync(firstResource, resourceJson("first_new"), "utf8")
+  fs.writeFileSync(secondResource, resourceJson("second_new"), "utf8")
+
+  registry.invalidateArkUIResources(firstRoot)
+  const firstAfter = registry.prepare(workspaceView(firstRootSpelling, firstMain, source))
+  const secondAfter = registry.prepare(workspaceView(secondRoot, secondMain, source))
+
+  assert.deepEqual(arkuiLabels(firstAfter.complete(firstPosition)), ["first_new"])
+  assert.deepEqual(arkuiLabels(secondAfter.complete(secondPosition)), ["second_old"])
+  assert.equal(firstAfter.state.generation, first.state.generation)
+  assert.equal(secondAfter.state.generation, second.state.generation)
+})
+
 test("bounds pending removed paths and escalates overflow to a one-shot root reset", (t) => {
   const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-watched-removal-limit-"))
   t.after(() => fs.rmSync(workspaceRoot, { recursive: true, force: true }))
@@ -457,6 +614,30 @@ function completionPosition(documentPath, content) {
     column: line.length + 1,
     workspaceRoot: path.dirname(documentPath),
   }
+}
+
+function resourceCompletionPosition(documentPath, content, workspaceRoot) {
+  return {
+    path: documentPath,
+    line: 1,
+    column: content.indexOf('")') + 1,
+    workspaceRoot,
+  }
+}
+
+function writeStringResource(workspaceRoot, name) {
+  const resourcePath = path.join(workspaceRoot, "resources", "base", "element", "string.json")
+  fs.mkdirSync(path.dirname(resourcePath), { recursive: true })
+  fs.writeFileSync(resourcePath, resourceJson(name), "utf8")
+  return resourcePath
+}
+
+function resourceJson(name) {
+  return `${JSON.stringify({ string: [{ name, value: name }] }, null, 2)}\n`
+}
+
+function arkuiLabels(items) {
+  return items.filter(({ source }) => source === "arkui").map(({ label }) => label)
 }
 
 function syncPosition(store, workspaceRoot, documentPath) {

@@ -37,6 +37,7 @@ import type {
   SemanticDocumentPosition,
   SemanticDocumentSymbolInfo,
 } from "../core/protocol.js"
+import { isArkUIStringResourcePath } from "../core/arkui/resource-path.js"
 import { SemanticTypeEngineRegistry } from "../core/types/type-engine.js"
 import { SemanticDocumentStore } from "../core/workspace/document-store.js"
 
@@ -65,13 +66,23 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     for (const batch of batches) {
       const rootPath = toFilePath(batch.rootUri)
       if (!rootPath) continue
+      const changes = batch.changes.flatMap((change) => {
+        const changedPath = toFilePath(change.uri)
+        return changedPath ? [{ path: changedPath, kind: change.kind }] : []
+      })
+      if (batch.resourceDirty || changes.some(({ path: changedPath }) => (
+        isArkUIStringResourcePath(changedPath)
+      ))) {
+        this.engines.invalidateArkUIResources(rootPath)
+      }
+      const sourceChanges = changes.filter(({ path: changedPath }) => (
+        changedPath.endsWith(".ets") || changedPath.endsWith(".ts")
+      ))
+      if (!batch.rootDirty && sourceChanges.length === 0) continue
       this.documents.workspaceFilesChanged({
         rootPath,
         rootDirty: batch.rootDirty,
-        changes: batch.changes.flatMap((change) => {
-          const changedPath = toFilePath(change.uri)
-          return changedPath ? [{ path: changedPath, kind: change.kind }] : []
-        }),
+        changes: sourceChanges,
       })
     }
   }

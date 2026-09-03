@@ -1,3 +1,5 @@
+import path from "node:path"
+
 import type {
   SemanticCompletionItem,
   SemanticDefinitionCandidate,
@@ -115,26 +117,27 @@ export class SemanticTypeEngineRegistry {
   private accessClock = 0
 
   prepare(workspace: SemanticWorkspaceView): SemanticTypeQueryContext {
+    const rootPath = path.resolve(workspace.rootPath)
     if (workspace.resetTypeEngine) {
-      this.workspaces.get(workspace.rootPath)?.engine.dispose()
-      this.workspaces.get(workspace.rootPath)?.arkui.dispose()
-      this.workspaces.delete(workspace.rootPath)
+      this.workspaces.get(rootPath)?.engine.dispose()
+      this.workspaces.get(rootPath)?.arkui.dispose()
+      this.workspaces.delete(rootPath)
     }
-    let entry = this.workspaces.get(workspace.rootPath)
+    let entry = this.workspaces.get(rootPath)
     if (!entry) {
       entry = {
-        engine: new TypeScriptLanguageServiceEngine(workspace.rootPath),
-        arkui: new ArkUIResourceLanguageProvider(workspace.rootPath),
+        engine: new TypeScriptLanguageServiceEngine(rootPath),
+        arkui: new ArkUIResourceLanguageProvider(rootPath),
         lastAccess: 0,
       }
-      this.workspaces.set(workspace.rootPath, entry)
+      this.workspaces.set(rootPath, entry)
     }
     entry.lastAccess = ++this.accessClock
     const state = entry.engine.prepare(workspace)
     const sourceContent = workspace.documents.find((document) => (
       document.path === workspace.state.path
     ))?.content
-    this.evict(workspace.rootPath)
+    this.evict(rootPath)
     return {
       state,
       complete: (position) => mergeCompletions(
@@ -167,6 +170,10 @@ export class SemanticTypeEngineRegistry {
 
   workspaceCount(): number {
     return this.workspaces.size
+  }
+
+  invalidateArkUIResources(rootPath: string): void {
+    this.workspaces.get(path.resolve(rootPath))?.arkui.invalidate()
   }
 
   dispose(): void {

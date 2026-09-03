@@ -32,9 +32,10 @@ import type {
   WorkspaceIndexProgress,
   WorkspaceSymbolServicePort,
 } from "../contracts/workspace-symbol-service.js"
+import { ARKUI_STRING_RESOURCE_GLOB } from "../core/arkui/resource-path.js"
 import { SingleRootProjectResolver } from "../project/single-root-project-resolver.js"
-import { LegacySemanticEngine } from "../semantic/legacy-semantic-engine.js"
 import { createStructuredLogger } from "../observability/logger.js"
+import { LegacySemanticEngine } from "../semantic/legacy-semantic-engine.js"
 import { createDocumentDiagnostics } from "./document-diagnostics.js"
 import {
   CodeActionResolutionStore,
@@ -192,6 +193,7 @@ export function runLanguageServer(services?: LanguageServerServices): void {
         watchers: [
           { globPattern: "**/*.ets" },
           { globPattern: "**/*.ts" },
+          { globPattern: ARKUI_STRING_RESOURCE_GLOB },
         ],
       }).catch(() => {
         logger.error("workspace.watch.registration.failed", { outcome: "disabled" })

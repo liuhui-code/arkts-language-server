@@ -134,7 +134,7 @@ test("watched create delete and rename are visible to the immediately following 
   )
 })
 
-test("dynamically registers the bounded ArkTS and TypeScript watchers when supported", async (t) => {
+test("dynamically registers bounded source and ArkUI resource watchers when supported", async (t) => {
   const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-watched-register-"))
   const workspaceRoot = path.join(temporaryRoot, "workspace")
   fs.mkdirSync(workspaceRoot)
@@ -197,6 +197,7 @@ test("dynamically registers the bounded ArkTS and TypeScript watchers when suppo
     watchers: [
       { globPattern: "**/*.ets" },
       { globPattern: "**/*.ts" },
+      { globPattern: "**/resources/*/element/string.json" },
     ],
   })
 

@@ -303,6 +303,126 @@ test("completes and defines an ArkUI string resource through $r", async (t) => {
   })
 })
 
+test("refreshes a cached ArkUI resource before the next request after a watched change", async (t) => {
+  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-arkui-watch-"))
+  const workspaceRoot = path.join(temporaryRoot, "workspace")
+  const temporarySdkRoot = path.join(workspaceRoot, "sdk", "openharmony")
+  const temporaryResourcePath = path.join(
+    workspaceRoot,
+    "resources",
+    "base",
+    "element",
+    "string.json",
+  )
+  fs.cpSync(sdkRoot, temporarySdkRoot, { recursive: true })
+  fs.mkdirSync(path.dirname(temporaryResourcePath), { recursive: true })
+  fs.writeFileSync(temporaryResourcePath, resourceJson("title"), "utf8")
+  const text = [
+    "struct WatchedResourcePage {",
+    "  build() {",
+    '    const choice = $r("app.string.")',
+    '    const oldValue = $r("app.string.title")',
+    '    const newValue = $r("app.string.subtitle")',
+    "  }",
+    "}",
+    "",
+  ].join("\n")
+  const temporaryDocumentPath = path.join(workspaceRoot, "WatchedResourcePage.ets")
+  fs.writeFileSync(temporaryDocumentPath, text, "utf8")
+  const temporaryDocumentUri = pathToFileURL(temporaryDocumentPath).href
+  const temporaryResourceUri = pathToFileURL(temporaryResourcePath).href
+  const rootUri = pathToFileURL(workspaceRoot).href
+  const completionPosition = positionAt(text, text.indexOf('")', text.indexOf("app.string.")))
+  const oldRange = suffixRangeOf(text, "app.string.title", "title")
+  const newRange = suffixRangeOf(text, "app.string.subtitle", "subtitle")
+  const server = new LspProcess({
+    env: { ARKLINE_HARMONY_SDK_PATH: temporarySdkRoot },
+  })
+  t.after(async () => {
+    try {
+      await server.close()
+    } finally {
+      fs.rmSync(temporaryRoot, { recursive: true, force: true })
+    }
+  })
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: {
+      processId: process.pid,
+      rootUri,
+      capabilities: { general: { positionEncodings: ["utf-16"] } },
+    },
+  })
+  const initialized = await server.response(1)
+  assert.equal(initialized.error, undefined, JSON.stringify(initialized.error))
+  server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
+  server.send({
+    jsonrpc: "2.0",
+    method: "textDocument/didOpen",
+    params: {
+      textDocument: {
+        uri: temporaryDocumentUri,
+        languageId: "arkts",
+        version: 1,
+        text,
+      },
+    },
+  })
+
+  const initialItems = await completionItems(server, 2, temporaryDocumentUri, completionPosition)
+  const initialDefinition = await definitionLocations(
+    server,
+    3,
+    temporaryDocumentUri,
+    midpoint(oldRange),
+  )
+  assert.deepEqual(resourceLabels(initialItems), ["title"])
+  assert.equal(initialDefinition[0]?.uri, temporaryResourceUri)
+
+  const changedResourceText = resourceJson("subtitle")
+  fs.writeFileSync(temporaryResourcePath, changedResourceText, "utf8")
+  server.send({
+    jsonrpc: "2.0",
+    method: "workspace/didChangeWatchedFiles",
+    params: { changes: [{ uri: temporaryResourceUri, type: 2 }] },
+  })
+  const changedItemsPromise = completionItems(
+    server,
+    4,
+    temporaryDocumentUri,
+    completionPosition,
+  )
+  const oldDefinitionPromise = definitionLocations(
+    server,
+    5,
+    temporaryDocumentUri,
+    midpoint(oldRange),
+  )
+  const newDefinitionPromise = definitionLocations(
+    server,
+    6,
+    temporaryDocumentUri,
+    midpoint(newRange),
+  )
+  const [changedItems, oldDefinition, newDefinition] = await Promise.all([
+    changedItemsPromise,
+    oldDefinitionPromise,
+    newDefinitionPromise,
+  ])
+  const changedKeyRange = suffixRangeOf(
+    changedResourceText,
+    '"name": "subtitle',
+    "subtitle",
+  )
+
+  assert.deepEqual(resourceLabels(changedItems), ["subtitle"])
+  assert.deepEqual(oldDefinition, [])
+  assert.deepEqual(newDefinition, [{ uri: temporaryResourceUri, range: changedKeyRange }])
+})
+
 test("publishes no diagnostics for declared ArkUI component and resource DSL", async (t) => {
   const { server, documentUri, text } = await openDiagnosticFixture(t, "ValidPage.ets", 5)
   const published = await server.notification(
@@ -395,6 +515,35 @@ function positionAt(source, offset) {
   const line = prefix.split("\n").length - 1
   const lineStart = prefix.lastIndexOf("\n") + 1
   return { line, character: offset - lineStart }
+}
+
+async function completionItems(server, id, uri, position) {
+  server.send({
+    jsonrpc: "2.0",
+    id,
+    method: "textDocument/completion",
+    params: { textDocument: { uri }, position, context: { triggerKind: 1 } },
+  })
+  const response = await server.response(id)
+  assert.equal(response.error, undefined, JSON.stringify(response.error))
+  return Array.isArray(response.result) ? response.result : response.result?.items ?? []
+}
+
+async function definitionLocations(server, id, uri, position) {
+  server.send({
+    jsonrpc: "2.0",
+    id,
+    method: "textDocument/definition",
+    params: { textDocument: { uri }, position },
+  })
+  const response = await server.response(id)
+  assert.equal(response.error, undefined, JSON.stringify(response.error))
+  if (response.result === null || response.result === undefined) return []
+  return Array.isArray(response.result) ? response.result : [response.result]
+}
+
+function resourceLabels(items) {
+  return items.map(({ label }) => label).filter((label) => label === "title" || label === "subtitle")
 }
 
 function midpoint(range) {

@@ -193,6 +193,7 @@ export interface VersionedSemanticResult<T> {
 export interface SemanticWorkspaceFileChangeBatch {
   rootUri: DocumentUri
   rootDirty: boolean
+  resourceDirty?: boolean
   changes: Array<{
     uri: DocumentUri
     kind: "created" | "changed" | "deleted"

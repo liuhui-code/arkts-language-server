@@ -2,8 +2,12 @@ import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
+import { isArkUIStringResourcePath } from "../core/arkui/resource-path.js"
+
 const SOURCE_EXTENSIONS = new Set([".ets", ".ts"])
 const MAX_PENDING_PATHS = 1_024
+
+type WorkspaceFileDomain = "source" | "arkui-resource"
 
 export type WorkspaceFileChangeKind = "created" | "changed" | "deleted"
 
@@ -15,6 +19,7 @@ export interface WorkspaceFileChange {
 export interface WorkspaceFileChangeBatch {
   rootUri: string
   rootDirty: boolean
+  resourceDirty?: boolean
   changes: WorkspaceFileChange[]
 }
 
@@ -38,13 +43,15 @@ interface WorkspaceRoot {
 interface PendingChange extends WorkspaceFileChange {
   root: WorkspaceRoot
   canonicalPath: string
+  domain: WorkspaceFileDomain
 }
 
 export class WorkspaceFileChangeCoordinator {
   private readonly roots: WorkspaceRoot[]
   private readonly maxPendingPaths: number
   private readonly pending = new Map<string, PendingChange>()
-  private readonly dirtyRoots = new Set<string>()
+  private readonly sourceDirtyRoots = new Set<string>()
+  private readonly resourceDirtyRoots = new Set<string>()
 
   constructor({ rootUris, maxPendingPaths }: WorkspaceFileChangeCoordinatorOptions) {
     this.roots = rootUris
@@ -70,15 +77,22 @@ export class WorkspaceFileChangeCoordinator {
   drain(): WorkspaceFileChangeBatch[] {
     const batches = new Map<string, WorkspaceFileChangeBatch>()
     for (const root of this.roots) {
-      if (!this.dirtyRoots.has(root.canonicalPath)) continue
+      const rootDirty = this.sourceDirtyRoots.has(root.canonicalPath)
+      const resourceDirty = this.resourceDirtyRoots.has(root.canonicalPath)
+      if (!rootDirty && !resourceDirty) continue
       batches.set(root.canonicalPath, {
         rootUri: root.uri,
-        rootDirty: true,
+        rootDirty,
+        ...(resourceDirty ? { resourceDirty: true } : {}),
         changes: [],
       })
     }
     for (const change of this.pending.values()) {
-      if (this.dirtyRoots.has(change.root.canonicalPath)) continue
+      if (change.domain === "source" && this.sourceDirtyRoots.has(change.root.canonicalPath)) continue
+      if (
+        change.domain === "arkui-resource"
+        && this.resourceDirtyRoots.has(change.root.canonicalPath)
+      ) continue
       let batch = batches.get(change.root.canonicalPath)
       if (!batch) {
         batch = {
@@ -94,7 +108,8 @@ export class WorkspaceFileChangeCoordinator {
       .sort(([left], [right]) => this.rootOrder(left) - this.rootOrder(right))
       .map(([, batch]) => batch)
     this.pending.clear()
-    this.dirtyRoots.clear()
+    this.sourceDirtyRoots.clear()
+    this.resourceDirtyRoots.clear()
     return result
   }
 
@@ -102,10 +117,11 @@ export class WorkspaceFileChangeCoordinator {
     const candidatePath = filePath(event.uri)
     const kind = changeKind(event.type)
     if (candidatePath === undefined || kind === undefined) return
-    if (!SOURCE_EXTENSIONS.has(path.extname(candidatePath))) return
+    const domain = workspaceFileDomain(candidatePath)
+    if (!domain) return
     const candidateCanonicalPath = canonicalPath(candidatePath)
     const root = this.roots.find((entry) => isInside(entry.canonicalPath, candidateCanonicalPath))
-    if (!root || this.dirtyRoots.has(root.canonicalPath)) return
+    if (!root || this.isDirty(root, domain)) return
 
     const key = `${root.canonicalPath}\0${candidateCanonicalPath}`
     const existing = this.pending.get(key)
@@ -115,21 +131,31 @@ export class WorkspaceFileChangeCoordinator {
       return
     }
     if (this.pending.size >= this.maxPendingPaths) {
-      this.markRootDirty(root)
+      this.markRootDirty(root, domain)
       return
     }
     this.pending.set(key, {
       root,
       canonicalPath: candidateCanonicalPath,
+      domain,
       uri: event.uri,
       kind,
     })
   }
 
-  private markRootDirty(root: WorkspaceRoot): void {
-    this.dirtyRoots.add(root.canonicalPath)
+  private isDirty(root: WorkspaceRoot, domain: WorkspaceFileDomain): boolean {
+    return domain === "source"
+      ? this.sourceDirtyRoots.has(root.canonicalPath)
+      : this.resourceDirtyRoots.has(root.canonicalPath)
+  }
+
+  private markRootDirty(root: WorkspaceRoot, domain: WorkspaceFileDomain): void {
+    const dirtyRoots = domain === "source" ? this.sourceDirtyRoots : this.resourceDirtyRoots
+    dirtyRoots.add(root.canonicalPath)
     for (const [key, change] of this.pending) {
-      if (change.root.canonicalPath === root.canonicalPath) this.pending.delete(key)
+      if (change.root.canonicalPath === root.canonicalPath && change.domain === domain) {
+        this.pending.delete(key)
+      }
     }
   }
 
@@ -137,6 +163,12 @@ export class WorkspaceFileChangeCoordinator {
     return this.roots.find((root) => root.canonicalPath === canonicalRoot)?.order
       ?? Number.MAX_SAFE_INTEGER
   }
+}
+
+function workspaceFileDomain(filePath: string): WorkspaceFileDomain | undefined {
+  if (SOURCE_EXTENSIONS.has(path.extname(filePath))) return "source"
+  if (isArkUIStringResourcePath(filePath)) return "arkui-resource"
+  return undefined
 }
 
 function filePath(uri: string): string | undefined {

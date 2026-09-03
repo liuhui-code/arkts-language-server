@@ -160,13 +160,62 @@ out-of-root query rejection, symlink-escape rejection, malformed JSON
 isolation, exact JSON AST key selection, nested builder rewriting, and source
 round trips after a non-BMP character.
 
+## U1a watched-resource freshness RED → GREEN
+
+Live resource freshness started from parent revision
+`d0635827d4927143c0c70771c15dcab571bab439`. A real stdio regression first
+populated the resource snapshot with `app.string.title`, rewrote the same
+`resources/base/element/string.json` to contain only `subtitle`, sent
+`workspace/didChangeWatchedFiles`, and immediately issued completion plus old
+and new definition requests without a sleep. Before production changes it was
+stable RED:
+
+```text
+node --test --test-name-pattern="refreshes a cached ArkUI resource" \
+  tests/semantic/arkui-language-features.test.mjs
+# 0 passed, 1 failed
+# actual resource labels: ["title"]
+# expected resource labels: ["subtitle"]
+```
+
+The dynamic-registration and coordinator contracts independently failed
+because the server registered only source watchers and discarded resource JSON
+events. GREEN adds the exact bounded watcher
+`**/resources/*/element/string.json`; the shared classifier accepts only
+`resources/<qualifier>/element/string.json`. Ordinary JSON, a missing or nested
+qualifier, paths outside the workspace, and symlink escapes are ignored.
+
+Accepted changes invalidate only the immutable ArkUI snapshot belonging to the
+matched workspace. A resource-only batch never enters `SemanticDocumentStore`,
+does not reset the TypeScript engine, and leaves its generation unchanged.
+Source and resource overflow have separate dirty domains while sharing one
+hard pending-path budget, so a resource burst cannot discard a pending source
+change or silently consume an unbounded second queue. Registry keys normalize
+workspace-root spellings with `path.resolve`, and a two-root contract proves
+that invalidating one spelling refreshes only the corresponding workspace.
+
+Focused GREEN evidence:
+
+```text
+node --test --test-name-pattern="refreshes a cached ArkUI resource" \
+  tests/semantic/arkui-language-features.test.mjs
+# 1 passed, 0 failed
+
+node --test --test-name-pattern="dynamically registers bounded" \
+  tests/lsp-workspace-file-changes.test.mjs
+# 1 passed, 0 failed
+
+node --test --test-name-pattern="routes only in-root ArkUI|bounds an ArkUI resource burst|invalidates only one workspace ArkUI" \
+  tests/workspace-file-change-coordinator.test.mjs
+# 3 passed, 0 failed
+```
+
 ## Remaining risks (not claimed by U1/U2)
 
-- The current LSP watched-file registration accepts only `*.ets` and `*.ts`.
-  `string.json` changes therefore do not yet call the provider's explicit
-  invalidation hook. A watched-resource change/race RED is required before
-  promising live resource refresh; U1a as a complete live-workspace capability
-  therefore remains open.
+- A watched resource change refreshes the next completion/definition request,
+  but does not proactively republish diagnostics for already-open documents.
+  Missing-resource diagnostics and their watched-change publication need a
+  separate RED before that U2 behavior can be claimed.
 - Cold `$r` access performs one synchronous, bounded workspace traversal before
   caching its immutable snapshot. The limits prevent unbounded memory/work, but
   a large-workspace latency benchmark and background/catalog handoff are still
