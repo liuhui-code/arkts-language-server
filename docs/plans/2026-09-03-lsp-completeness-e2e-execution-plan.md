@@ -354,6 +354,11 @@ Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产�
 - [x] I2 不可变 artifact 上复用完整 semantic smoke 场景（`09f6352`）。
 - [x] I3 正负控证明安装版只使用 immutable release 相邻 sidecar，不回退源码仓库
   （`9eeb742`）。
+- [x] Q3/Q4 quick-fix reliability、条件 capability 广告与命名 evidence matrix v2
+  （`370b927`、`d6163e7`）。
+- [x] L1/C8/C9/W2 基本完备度切片：installed lifecycle、imported receiver kind、同名
+  auto-import source identity、workspace-symbol kind（`68dad41`、`fbe3d6f`、`4b245df`、`eb0ef8c`）。
+- [x] E1 跨文件 hover bundle + immutable installed transcript（`905f029`、`0011dde`）。
 - [ ] 本批次集成门禁：所有并行切片提交后运行 fresh `pnpm check:fast`。
 
 #### 下一批 P0 基本功能 checklist（按依赖执行）
@@ -361,9 +366,10 @@ Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产�
 测试先行原则：测试/fixture 可以并行；一旦进入生产实现，所有修改
 `typescript-language-service.ts` 或 capability adapter 的切片回到单一 owner 串行。
 
-- [ ] E0 Evidence：feature matrix 从“测试文件存在”升级为可核验的命名场景 claim；错误、
-  缺失或重复 claim fail closed。随后让 release gate 拒绝 advertised capability 仅靠
-  `artifactGap` 放行。
+- [x] E0 Evidence：feature matrix 从“测试文件存在”升级为可核验的命名场景 claim；错误、
+  缺失或重复 claim fail closed（schema v2，`d6163e7`）。
+- [ ] E0b Release evidence：让 release gate 拒绝 advertised capability 仅靠 `artifactGap`
+  放行；待 E2/E3b immutable artifact transcript 补齐后启用。
 - [x] L1 Lifecycle installed：精确断言 incremental sync capability；执行 ranged didChange，
   查询证明 v2 生效，再在 didClose 后证明 overlay 被移除、disk truth 恢复。
 - [x] C8 Completion receiver：imported/typed receiver 同时返回 field 和 method；kind 分别为
@@ -373,8 +379,8 @@ Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产�
   语义不同的 auto-import 不误删，并以 workspace-relative module source 区分（`4b245df`）。
 - [x] W2 Workspace symbol kind：overlay 的 interface/enum/property/constructor/module/type/variable
   不再统一降级为 Variable；未知 sidecar kind 保守降级为 Variable（`eb0ef8c`）。
-- [ ] E1 Hover depth：unopened dependency、import alias、JSDoc tags、emoji UTF-16 range，并加入
-  immutable artifact smoke。
+- [x] E1 Hover depth：unopened dependency、import alias、JSDoc tags、emoji UTF-16 range，并加入
+  immutable artifact smoke（`905f029`、`0011dde`）。
 - [ ] E2 Signature depth：转发 LSP trigger/retrigger context；覆盖 overload、nested/generic、
   active parameter、快速 didChange，并加入 immutable artifact smoke。
 - [ ] E3b Document symbols depth：补全公开 kind、深层 hierarchy/flat fallback、稳定顺序与
@@ -481,7 +487,7 @@ capability advertisement 与 transcript 一致；`pnpm check:fast`、artifact sm
 - [x] Q3 Code action reliability：伪造 UUID/过期版本拒绝，伪造 title/kind/diagnostic 无效，
   client cancel 为 `RequestCancelled`，shutdown 清空 registry；全部测试不使用 sleep
   （`370b927`）。
-- [ ] Q4 只有声明 code-action literal/data/resolve-edit 与 versioned documentChanges 支持的
+- [x] Q4 只有声明 code-action literal/data/resolve-edit 与 versioned documentChanges 支持的
   client 才广告 `{ codeActionKinds: ["quickfix"], resolveProvider: true }`；installed GREEN 后接线。
 
 Wave 3 exit criteria：references、prepare rename/rename、code action 仅在各自 bundle、
@@ -489,7 +495,8 @@ installed transcript 与 reliability matrix 全绿后 advertised。
 
 ### Wave 4 — 现有能力深度与 ArkUI（可并行）
 
-- [ ] E1 Hover：unopened dependency、alias、JSDoc tags、SDK、UTF-16 range。
+- [x] E1 Hover：unopened dependency、alias、JSDoc tags、UTF-16 range，并通过 immutable
+  installed artifact；SDK provider 专项仍归 U1/U2。
 - [ ] E2 Signature help：overload、nested/generic call、trigger/retrigger、快速 didChange。
 - [ ] E3 Document symbols：全部公开 kind、ArkTS component hierarchy、flat/hierarchical。
   - [x] E3a 客户端未声明 `symbolKind.valueSet` 时把 ArkTS Struct 降级为 Class；现代客户端
