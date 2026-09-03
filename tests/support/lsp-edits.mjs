@@ -1,3 +1,21 @@
+export function applyWorkspaceEdit(documents, workspaceEdit) {
+  if (workspaceEdit.documentChanges !== undefined) {
+    throw new TypeError("WorkspaceEdit documentChanges are not supported")
+  }
+  const updated = new Map(documents)
+  const changes = workspaceEdit.changes ?? {}
+  const uris = Object.keys(changes).sort()
+  for (const uri of uris) {
+    if (!documents.has(uri)) throw new RangeError(`Unknown document URI in WorkspaceEdit: ${uri}`)
+  }
+  for (const uri of uris) {
+    updated.set(uri, applyTextEdits(updated.get(uri), changes[uri]))
+  }
+  return new Map([...updated].sort(([left], [right]) => (
+    left < right ? -1 : left > right ? 1 : 0
+  )))
+}
+
 export function applyTextEdits(source, edits) {
   const located = edits.map((edit) => ({
     ...edit,

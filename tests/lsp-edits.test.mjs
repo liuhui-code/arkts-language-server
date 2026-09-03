@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
-import { applyTextEdits } from "./support/lsp-edits.mjs"
+import { applyTextEdits, applyWorkspaceEdit } from "./support/lsp-edits.mjs"
 
 test("applies a TextEdit at UTF-16 positions after an emoji", () => {
   const source = "header\n😀old\ntail"
@@ -97,4 +97,67 @@ test("rejects overlapping TextEdits", () => {
     ]),
     /overlapping TextEdits/i,
   )
+})
+
+test("applies WorkspaceEdit changes immutably and returns documents in URI order", () => {
+  const documents = new Map([
+    ["file:///z.ets", "😀old"],
+    ["file:///a.ets", "const value = 1"],
+  ])
+  const workspaceEdit = {
+    changes: {
+      "file:///z.ets": [{
+        range: {
+          start: { line: 0, character: 2 },
+          end: { line: 0, character: 5 },
+        },
+        newText: "new",
+      }],
+      "file:///a.ets": [{
+        range: {
+          start: { line: 0, character: 14 },
+          end: { line: 0, character: 15 },
+        },
+        newText: "2",
+      }],
+    },
+  }
+  const originalEdit = structuredClone(workspaceEdit)
+
+  const updated = applyWorkspaceEdit(documents, workspaceEdit)
+
+  assert.deepEqual([...updated], [
+    ["file:///a.ets", "const value = 2"],
+    ["file:///z.ets", "😀new"],
+  ])
+  assert.deepEqual([...documents], [
+    ["file:///z.ets", "😀old"],
+    ["file:///a.ets", "const value = 1"],
+  ])
+  assert.deepEqual(workspaceEdit, originalEdit)
+})
+
+test("rejects WorkspaceEdit changes for an unknown document URI", () => {
+  const documents = new Map([["file:///known.ets", "known"]])
+
+  assert.throws(
+    () => applyWorkspaceEdit(documents, {
+      changes: { "file:///unknown.ets": [] },
+    }),
+    /unknown document URI.*file:\/\/\/unknown\.ets/i,
+  )
+  assert.deepEqual([...documents], [["file:///known.ets", "known"]])
+})
+
+test("rejects unsupported documentChanges instead of partially applying changes", () => {
+  const documents = new Map([["file:///known.ets", "known"]])
+
+  assert.throws(
+    () => applyWorkspaceEdit(documents, {
+      changes: { "file:///known.ets": [] },
+      documentChanges: [],
+    }),
+    /documentChanges.*not supported/i,
+  )
+  assert.deepEqual([...documents], [["file:///known.ets", "known"]])
 })
