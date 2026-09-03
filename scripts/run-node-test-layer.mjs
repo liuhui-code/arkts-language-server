@@ -2,9 +2,17 @@ import { spawn as spawnChild } from "node:child_process"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
+import { withTestEvidence } from "../tests/support/test-evidence.mjs"
 import { TEST_LAYER_MANIFEST } from "../tests/support/test-layer-manifest.mjs"
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
+const SAFE_EVIDENCE_TARGETS = new Set([
+  "unit-contract",
+  "protocol",
+  "bundle-e2e",
+  "artifact-e2e",
+  "large",
+])
 
 export async function runNodeTestLayer({
   argv = process.argv.slice(2),
@@ -13,6 +21,7 @@ export async function runNodeTestLayer({
   stdout = process.stdout,
   cwd = projectRoot,
   nodePath = process.execPath,
+  evidenceRoot = process.env.ARKTS_TEST_EVIDENCE_ROOT,
 } = {}) {
   const selection = parseArguments(argv, manifest)
   const selectedLayers = selection.fast
@@ -26,13 +35,41 @@ export async function runNodeTestLayer({
     return { entries, code: 0, signal: null }
   }
 
-  const child = spawn(
+  const runChild = () => childTermination(spawn(
     nodePath,
     ["--test", "--test-concurrency=1", ...entries],
     { cwd, stdio: "inherit" },
-  )
-  const { code, signal } = await childTermination(child)
+  ))
+  const target = evidenceTarget(selection)
+  const { code, signal } = evidenceRoot
+    ? await terminationWithEvidence({ runChild, evidenceRoot, target })
+    : await runChild()
   return { entries, code, signal }
+}
+
+async function terminationWithEvidence({ runChild, evidenceRoot, target }) {
+  let failedTermination
+  try {
+    return await withTestEvidence({
+      root: evidenceRoot,
+      caseId: `node-test-layer/${target}`,
+      metadata: { target },
+    }, async () => {
+      const termination = await runChild()
+      if (termination.code === 0 && termination.signal === null) return termination
+
+      failedTermination = termination
+      throw Object.assign(new Error("Node test layer failed"), termination)
+    })
+  } catch (error) {
+    if (failedTermination) return failedTermination
+    throw error
+  }
+}
+
+function evidenceTarget(selection) {
+  if (selection.fast) return "fast"
+  return SAFE_EVIDENCE_TARGETS.has(selection.layerId) ? selection.layerId : "custom"
 }
 
 function stableUnique(entries) {

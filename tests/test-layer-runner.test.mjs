@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import { EventEmitter } from "node:events"
 import fs from "node:fs"
+import os from "node:os"
 import path from "node:path"
 import test from "node:test"
 import { fileURLToPath } from "node:url"
@@ -87,6 +88,125 @@ test("--layer spawns the selected tests with the current Node and preserves term
       })
     })
   }
+})
+
+test("retains bounded evidence for every selected layer failure", async (t) => {
+  const manifest = evidenceManifest()
+  const selections = [
+    { argv: ["--fast"], target: "fast" },
+    { argv: ["--layer", "artifact-e2e"], target: "artifact-e2e" },
+    { argv: ["--layer", "large"], target: "large" },
+  ]
+  const terminations = [
+    { code: 23, signal: null },
+    { code: null, signal: "SIGTERM" },
+  ]
+
+  for (const selection of selections) {
+    for (const termination of terminations) {
+      await t.test(`${selection.target} ${termination.code ?? termination.signal}`, async (t) => {
+        const evidenceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-layer-runner-failure-"))
+        t.after(() => fs.rmSync(evidenceRoot, { recursive: true, force: true }))
+
+        const result = await runNodeTestLayer({
+          argv: selection.argv,
+          manifest,
+          evidenceRoot,
+          spawn: fakeChild(termination),
+        })
+
+        assert.deepEqual(result, {
+          entries: selectedEntries(selection.target),
+          ...termination,
+        })
+        const retained = fs.readdirSync(evidenceRoot)
+        assert.equal(retained.length, 1)
+        const failureText = fs.readFileSync(
+          path.join(evidenceRoot, retained[0], "failure.json"),
+          "utf8",
+        )
+        assert.deepEqual(JSON.parse(failureText), {
+          schema: "arkts-language-server.test-failure",
+          schemaVersion: 1,
+          caseId: `node-test-layer/${selection.target}`,
+          error: {
+            name: "Error",
+            message: "Test case failed",
+            ...termination,
+          },
+          metadata: { target: selection.target },
+        })
+        assert.doesNotMatch(
+          failureText,
+          /PRIVATE_SOURCE_SHOULD_NOT_BE_WRITTEN|SECRET_TOKEN|"entries"|"source"|"environment"/,
+        )
+      })
+    }
+  }
+})
+
+test("removes transient evidence after a selected layer succeeds", async (t) => {
+  const evidenceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-layer-runner-success-"))
+  t.after(() => fs.rmSync(evidenceRoot, { recursive: true, force: true }))
+
+  const result = await runNodeTestLayer({
+    argv: ["--layer", "artifact-e2e"],
+    manifest: evidenceManifest(),
+    evidenceRoot,
+    spawn: fakeChild({ code: 0, signal: null }),
+  })
+
+  assert.deepEqual(result, {
+    entries: selectedEntries("artifact-e2e"),
+    code: 0,
+    signal: null,
+  })
+  assert.deepEqual(fs.readdirSync(evidenceRoot), [])
+})
+
+test("uses ARKTS_TEST_EVIDENCE_ROOT when no evidence root is injected", async (t) => {
+  const evidenceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-layer-runner-env-"))
+  const previousRoot = process.env.ARKTS_TEST_EVIDENCE_ROOT
+  process.env.ARKTS_TEST_EVIDENCE_ROOT = evidenceRoot
+  t.after(() => {
+    if (previousRoot === undefined) delete process.env.ARKTS_TEST_EVIDENCE_ROOT
+    else process.env.ARKTS_TEST_EVIDENCE_ROOT = previousRoot
+    fs.rmSync(evidenceRoot, { recursive: true, force: true })
+  })
+
+  const result = await runNodeTestLayer({
+    argv: ["--fast"],
+    manifest: evidenceManifest(),
+    spawn: fakeChild({ code: 19, signal: null }),
+  })
+
+  assert.equal(result.code, 19)
+  const [retainedDirectory] = fs.readdirSync(evidenceRoot)
+  assert.ok(retainedDirectory)
+  assert.equal(
+    fs.existsSync(path.join(evidenceRoot, retainedDirectory, "failure.json")),
+    true,
+  )
+})
+
+test("preserves spawn error identity when evidence capture is enabled", async (t) => {
+  const evidenceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-layer-runner-spawn-"))
+  t.after(() => fs.rmSync(evidenceRoot, { recursive: true, force: true }))
+  const spawnError = Object.assign(new Error("spawn failed"), { code: "ENOENT" })
+
+  await assert.rejects(
+    runNodeTestLayer({
+      argv: ["--fast"],
+      manifest: evidenceManifest(),
+      evidenceRoot,
+      spawn() {
+        const child = new EventEmitter()
+        queueMicrotask(() => child.emit("error", spawnError))
+        return child
+      },
+    }),
+    (error) => error === spawnError,
+  )
 })
 
 test("rejects unknown, missing, and duplicate selections before spawning", async () => {
@@ -176,5 +296,39 @@ function bufferedOutput() {
     get value() {
       return value
     },
+  }
+}
+
+function evidenceManifest() {
+  return {
+    layers: [
+      {
+        id: "unit-contract",
+        fast: true,
+        entries: ["tests/PRIVATE_SOURCE_SHOULD_NOT_BE_WRITTEN.test.mjs"],
+      },
+      { id: "protocol", fast: true, entries: ["tests/protocol.test.mjs"] },
+      { id: "artifact-e2e", fast: false, entries: ["tests/release/artifact.acceptance.mjs"] },
+      { id: "large", fast: false, entries: ["tests/release/large.acceptance.mjs"] },
+    ],
+  }
+}
+
+function selectedEntries(target) {
+  if (target === "fast") {
+    return [
+      "tests/PRIVATE_SOURCE_SHOULD_NOT_BE_WRITTEN.test.mjs",
+      "tests/protocol.test.mjs",
+    ]
+  }
+  if (target === "artifact-e2e") return ["tests/release/artifact.acceptance.mjs"]
+  return ["tests/release/large.acceptance.mjs"]
+}
+
+function fakeChild({ code, signal }) {
+  return () => {
+    const child = new EventEmitter()
+    queueMicrotask(() => child.emit("exit", code, signal))
+    return child
   }
 }
