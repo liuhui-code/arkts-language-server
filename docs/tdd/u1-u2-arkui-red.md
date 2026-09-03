@@ -1,4 +1,4 @@
-# U1/U2 — ArkUI resource semantics and DSL diagnostic RED
+# U1/U2 first slice — ArkUI resource semantics and DSL diagnostic RED → GREEN
 
 Date: 2026-09-03
 
@@ -102,3 +102,78 @@ changed by this commit.
 3. Re-run the numeric TS1005 guard to prove real syntax errors remain visible.
 4. Only after bundle GREEN, add immutable installed-artifact scenarios and
    ArkUI-specific evidence claims.
+
+## GREEN implementation
+
+GREEN work started from revision
+`2b8e07859e403a52a76472b599b554833424c09b` and retained the original RED
+commit as the public regression boundary.
+
+The resource slice is implemented as two components under `src/core/arkui`:
+
+- a workspace-owned immutable resource snapshot with deterministic traversal,
+  stable ordering, and hard limits for visited paths, directory width, resource
+  file count, individual/total bytes, and parsed entry count;
+- a lexical `$r` provider that owns ArkUI context recognition and exact ranges.
+
+`SemanticTypeEngineRegistry` owns one ArkUI provider beside each TypeScript
+engine and merges completion and definition results. TypeScript-specific code
+does not contain `$r`, resource layout, or JSON special cases. The resource
+index skips symlinks and excluded dependency/generated directories, validates
+canonical paths against the workspace root, and returns no partial snapshot
+when a hard limit is exceeded. Invalid JSON contributes no entries. JSON key
+ranges come from the parsed `string` array AST rather than a repository-wide
+regular expression, preventing unrelated same-name metadata from becoming a
+definition target.
+
+The DSL slice keeps the existing `struct` source map, then parses its normalized
+document. A builder rewrite is accepted only when all of these hold:
+
+- TypeScript recovered adjacent call-expression and block statements;
+- the callee's final identifier is UpperCamelCase;
+- only same-line horizontal whitespace separates the call from the block; and
+- horizontal whitespace can be replaced one-for-one by `;`.
+
+This turns `Column() {` into the equal-width `Column();{`. Method/control-flow
+blocks and lowercase invalid calls are unchanged. No diagnostic code is
+filtered, so the independent numeric TS1005 continues to reach the client.
+
+## GREEN evidence
+
+```text
+node --test tests/semantic/arkui-language-features.test.mjs
+# 7 passed, 0 failed, 0 skipped
+
+node --test tests/semantic/semantic-characterization.test.mjs
+# 10 passed, 0 failed
+
+node --test tests/semantic/diagnostic-code-characterization.test.mjs
+# 7 passed, 0 failed
+
+node --test tests/semantic/project-membership-language-service.test.mjs
+# 5 passed, 0 failed
+```
+
+The focused unit contracts also prove one immutable scan per provider snapshot,
+explicit invalidation, deterministic ordering, limit fail-closed behavior,
+out-of-root query rejection, symlink-escape rejection, malformed JSON
+isolation, exact JSON AST key selection, nested builder rewriting, and source
+round trips after a non-BMP character.
+
+## Remaining risks (not claimed by U1/U2)
+
+- The current LSP watched-file registration accepts only `*.ets` and `*.ts`.
+  `string.json` changes therefore do not yet call the provider's explicit
+  invalidation hook. A watched-resource change/race RED is required before
+  promising live resource refresh; U1a as a complete live-workspace capability
+  therefore remains open.
+- Cold `$r` access performs one synchronous, bounded workspace traversal before
+  caching its immutable snapshot. The limits prevent unbounded memory/work, but
+  a large-workspace latency benchmark and background/catalog handoff are still
+  required before claiming production-scale cold-start performance.
+- This first builder lowering does not claim container post-block chains such
+  as `Column() { ... }.width(...)`. That syntax needs its own RED and a
+  type-preserving lowering rather than diagnostic suppression.
+
+Consequently this commit closes only the two concrete RED examples above; it
+does not mark the broader U1b/U2 capability complete.

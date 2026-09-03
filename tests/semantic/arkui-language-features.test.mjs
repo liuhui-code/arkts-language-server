@@ -1,8 +1,12 @@
 import assert from "node:assert/strict"
 import fs from "node:fs"
+import os from "node:os"
 import path from "node:path"
+import { createRequire } from "node:module"
 import test from "node:test"
 import { pathToFileURL } from "node:url"
+
+import { buildSync } from "esbuild"
 
 import { LspProcess, projectRoot } from "../support/lsp-process.mjs"
 
@@ -14,6 +18,198 @@ const resourceUri = pathToFileURL(resourcePath).href
 const documentText = fs.readFileSync(documentPath, "utf8")
 const resourceText = fs.readFileSync(resourcePath, "utf8")
 const sdkRoot = path.join(fixtureRoot, "sdk", "openharmony")
+
+test("provides deterministic ArkUI resource completion and definition candidates", (t) => {
+  const { ArkUIResourceLanguageProvider } = buildArkUIProviderDriver(t)
+  const provider = new ArkUIResourceLanguageProvider(fixtureRoot)
+  const completionRange = suffixRangeOf(documentText, "app.string.ti", "ti")
+  const definitionRange = suffixRangeOf(documentText, "app.string.title", "title")
+  const resourceKeyRange = suffixRangeOf(resourceText, '"name": "title', "title")
+
+  assert.deepEqual(
+    provider.complete(toSemanticPosition(documentPath, completionRange.end), documentText),
+    [{
+      label: "title",
+      detail: "ArkUI string resource app.string.title",
+      kind: "property",
+      insertText: "title",
+      filterText: "title",
+      sortText: "0000:title",
+      source: "arkui",
+      replacementRange: toSemanticRange(completionRange),
+      data: { provider: "arkui-resource", reference: "app.string.title" },
+    }],
+  )
+  assert.deepEqual(
+    provider.define(toSemanticPosition(documentPath, midpoint(definitionRange)), documentText),
+    [{ path: resourcePath, range: toSemanticRange(resourceKeyRange) }],
+  )
+})
+
+test("bounds and caches each workspace resource snapshot without escaping its root", (t) => {
+  const { ArkUIResourceLanguageProvider } = buildArkUIProviderDriver(t)
+  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-arkui-index-"))
+  const workspaceRoot = path.join(temporaryRoot, "workspace")
+  const outsideRoot = path.join(temporaryRoot, "outside")
+  t.after(() => fs.rmSync(temporaryRoot, { recursive: true, force: true }))
+  const safeResourcePath = path.join(
+    workspaceRoot,
+    "resources",
+    "base",
+    "element",
+    "string.json",
+  )
+  const malformedResourcePath = path.join(
+    workspaceRoot,
+    "resources",
+    "malformed",
+    "element",
+    "string.json",
+  )
+  const escapedResourcePath = path.join(
+    workspaceRoot,
+    "resources",
+    "escaped",
+    "element",
+    "string.json",
+  )
+  const outsideResourcePath = path.join(
+    outsideRoot,
+    "resources",
+    "base",
+    "element",
+    "string.json",
+  )
+  const lateResourcePath = path.join(
+    workspaceRoot,
+    "resources",
+    "late",
+    "element",
+    "string.json",
+  )
+  for (const resourcePath of [
+    safeResourcePath,
+    malformedResourcePath,
+    escapedResourcePath,
+    outsideResourcePath,
+    lateResourcePath,
+  ]) {
+    fs.mkdirSync(path.dirname(resourcePath), { recursive: true })
+  }
+  fs.writeFileSync(safeResourcePath, resourceJson("safe"), "utf8")
+  fs.writeFileSync(malformedResourcePath, '{ "string": [', "utf8")
+  fs.writeFileSync(outsideResourcePath, resourceJson("secret"), "utf8")
+  fs.symlinkSync(outsideResourcePath, escapedResourcePath, "file")
+
+  const source = 'const value = $r("app.string.")\n'
+  const documentPath = path.join(workspaceRoot, "Main.ets")
+  const outsideDocumentPath = path.join(outsideRoot, "Outside.ets")
+  fs.writeFileSync(documentPath, source, "utf8")
+  fs.writeFileSync(outsideDocumentPath, source, "utf8")
+  const queryPosition = positionAt(source, source.indexOf('")'))
+  const provider = new ArkUIResourceLanguageProvider(workspaceRoot)
+  const labels = (filePath = documentPath) => provider.complete(
+    toSemanticPosition(filePath, queryPosition, workspaceRoot),
+    source,
+  ).map(({ label }) => label)
+
+  assert.deepEqual(labels(), ["safe"])
+  fs.writeFileSync(lateResourcePath, resourceJson("later"), "utf8")
+  assert.deepEqual(labels(), ["safe"], "a request must retain its immutable cached snapshot")
+  provider.invalidate()
+  assert.deepEqual(labels(), ["later", "safe"])
+  assert.deepEqual(labels(outsideDocumentPath), [])
+
+  const bounded = new ArkUIResourceLanguageProvider(workspaceRoot, { maxResourceFiles: 1 })
+  assert.deepEqual(
+    bounded.complete(toSemanticPosition(documentPath, queryPosition, workspaceRoot), source),
+    [],
+    "an exceeded resource-file limit must fail closed instead of returning a partial index",
+  )
+})
+
+test("defines the name property inside the ArkUI string array, not unrelated JSON metadata", (t) => {
+  const { ArkUIResourceLanguageProvider } = buildArkUIProviderDriver(t)
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-arkui-json-range-"))
+  t.after(() => fs.rmSync(workspaceRoot, { recursive: true, force: true }))
+  const resourcePath = path.join(workspaceRoot, "resources", "base", "element", "string.json")
+  fs.mkdirSync(path.dirname(resourcePath), { recursive: true })
+  const content = [
+    "{",
+    '  "metadata": { "name": "title" },',
+    '  "string": [{ "name": "title", "value": "Ready" }]',
+    "}",
+    "",
+  ].join("\n")
+  fs.writeFileSync(resourcePath, content, "utf8")
+  const source = 'const title = $r("app.string.title")\n'
+  const documentPath = path.join(workspaceRoot, "Page.ets")
+  fs.writeFileSync(documentPath, source, "utf8")
+  const sourceNameRange = suffixRangeOf(source, "app.string.title", "title")
+  const expectedKeyOffset = content.lastIndexOf('"title"') + 1
+  const provider = new ArkUIResourceLanguageProvider(workspaceRoot)
+
+  assert.deepEqual(
+    provider.define(
+      toSemanticPosition(documentPath, midpoint(sourceNameRange), workspaceRoot),
+      source,
+    ),
+    [{
+      path: resourcePath,
+      range: {
+        startLine: positionAt(content, expectedKeyOffset).line + 1,
+        startColumn: positionAt(content, expectedKeyOffset).character + 1,
+        endLine: positionAt(content, expectedKeyOffset + "title".length).line + 1,
+        endColumn: positionAt(content, expectedKeyOffset + "title".length).character + 1,
+      },
+    }],
+  )
+})
+
+test("rewrites only ArkUI builder blocks while preserving exact source offsets", (t) => {
+  const { createArktsVirtualDocument } = buildArkUIVirtualDocumentDriver(t)
+  const source = [
+    "struct Page {",
+    "  build() {",
+    "    if (this.ready) { this.refresh() }",
+    "    lowercase() { this.bad() }",
+    "    Column() {",
+    "      Row() { Text(\"Ready\") }",
+    "    }",
+    "    const face = \"😀\"; const values = [1 2]",
+    "  }",
+    "}",
+    "function helper() { return 1 }",
+    "",
+  ].join("\n")
+  const expected = [
+    "class Page {",
+    "  build() {",
+    "    if (this.ready) { this.refresh() }",
+    "    lowercase() { this.bad() }",
+    "    Column();{",
+    "      Row();{ Text(\"Ready\") }",
+    "    }",
+    "    const face = \"😀\"; const values = [1 2]",
+    "  }",
+    "}",
+    "function helper() { return 1 }",
+    "",
+  ].join("\n")
+
+  const virtual = createArktsVirtualDocument("/workspace/Page.ets", source)
+  const numericErrorOffset = source.indexOf("[1 2]") + 3
+  const generatedNumericErrorOffset = virtual.toGeneratedOffset(numericErrorOffset)
+
+  assert.equal(virtual.generatedContent, expected)
+  assert.equal(virtual.generatedContent.length, source.length - 1)
+  assert.equal(generatedNumericErrorOffset, numericErrorOffset - 1)
+  assert.equal(virtual.toSourceOffset(generatedNumericErrorOffset), numericErrorOffset)
+  assert.deepEqual(
+    virtual.generatedSpanToSourceRange(generatedNumericErrorOffset, 1),
+    toSemanticRange(suffixRangeOf(source, "values = [1 2", "2")),
+  )
+})
 
 test("completes and defines an ArkUI string resource through $r", async (t) => {
   const completionRange = suffixRangeOf(documentText, "app.string.ti", "ti")
@@ -208,4 +404,69 @@ function midpoint(range) {
     character: range.start.character
       + Math.floor((range.end.character - range.start.character) / 2),
   }
+}
+
+function toSemanticPosition(filePath, position, workspaceRoot = fixtureRoot) {
+  return {
+    path: filePath,
+    line: position.line + 1,
+    column: position.character + 1,
+    documentVersion: 1,
+    workspaceRoot,
+  }
+}
+
+function resourceJson(name) {
+  return `${JSON.stringify({ string: [{ name, value: name }] }, null, 2)}\n`
+}
+
+function toSemanticRange(range) {
+  return {
+    startLine: range.start.line + 1,
+    startColumn: range.start.character + 1,
+    endLine: range.end.line + 1,
+    endColumn: range.end.character + 1,
+  }
+}
+
+function buildArkUIProviderDriver(t) {
+  const outputDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-arkui-provider-"))
+  t.after(() => fs.rmSync(outputDirectory, { recursive: true, force: true }))
+  const driverPath = path.join(outputDirectory, "arkui-resource-language-provider.cjs")
+  buildSync({
+    entryPoints: [path.join(
+      projectRoot,
+      "src",
+      "core",
+      "arkui",
+      "resource-language-provider.ts",
+    )],
+    bundle: true,
+    platform: "node",
+    target: "node20",
+    format: "cjs",
+    outfile: driverPath,
+  })
+  return createRequire(import.meta.url)(driverPath)
+}
+
+function buildArkUIVirtualDocumentDriver(t) {
+  const outputDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-arkui-virtual-"))
+  t.after(() => fs.rmSync(outputDirectory, { recursive: true, force: true }))
+  const driverPath = path.join(outputDirectory, "arkts-virtual-document.cjs")
+  buildSync({
+    entryPoints: [path.join(
+      projectRoot,
+      "src",
+      "core",
+      "virtual",
+      "arkts-virtual-document.ts",
+    )],
+    bundle: true,
+    platform: "node",
+    target: "node20",
+    format: "cjs",
+    outfile: driverPath,
+  })
+  return createRequire(import.meta.url)(driverPath)
 }

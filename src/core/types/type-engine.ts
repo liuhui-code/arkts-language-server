@@ -9,6 +9,7 @@ import type {
   SemanticTextRange,
   SemanticUsageResult,
 } from "../protocol.js"
+import { ArkUIResourceLanguageProvider } from "../arkui/resource-language-provider.js"
 import type { SemanticWorkspaceView } from "../workspace/document-store.js"
 import { TypeScriptLanguageServiceEngine } from "./typescript-language-service.js"
 
@@ -105,6 +106,7 @@ export interface SemanticTypeQueryContext {
 
 interface WorkspaceEngineEntry {
   engine: TypeScriptLanguageServiceEngine
+  arkui: ArkUIResourceLanguageProvider
   lastAccess: number
 }
 
@@ -115,24 +117,37 @@ export class SemanticTypeEngineRegistry {
   prepare(workspace: SemanticWorkspaceView): SemanticTypeQueryContext {
     if (workspace.resetTypeEngine) {
       this.workspaces.get(workspace.rootPath)?.engine.dispose()
+      this.workspaces.get(workspace.rootPath)?.arkui.dispose()
       this.workspaces.delete(workspace.rootPath)
     }
     let entry = this.workspaces.get(workspace.rootPath)
     if (!entry) {
       entry = {
         engine: new TypeScriptLanguageServiceEngine(workspace.rootPath),
+        arkui: new ArkUIResourceLanguageProvider(workspace.rootPath),
         lastAccess: 0,
       }
       this.workspaces.set(workspace.rootPath, entry)
     }
     entry.lastAccess = ++this.accessClock
     const state = entry.engine.prepare(workspace)
+    const sourceContent = workspace.documents.find((document) => (
+      document.path === workspace.state.path
+    ))?.content
     this.evict(workspace.rootPath)
     return {
       state,
-      complete: (position) => entry.engine.complete(position),
-      resolveCompletion: (position, item) => entry.engine.resolveCompletion(position, item),
-      define: (position) => entry.engine.define(position),
+      complete: (position) => mergeCompletions(
+        sourceContent ? entry.arkui.complete(position, sourceContent) : [],
+        entry.engine.complete(position),
+      ),
+      resolveCompletion: (position, item) => item.data?.provider === "arkui-resource"
+        ? item
+        : entry.engine.resolveCompletion(position, item),
+      define: (position) => mergeDefinitions(
+        sourceContent ? entry.arkui.define(position, sourceContent) : [],
+        entry.engine.define(position),
+      ),
       references: (position, includeDeclaration) => (
         entry.engine.references(position, includeDeclaration)
       ),
@@ -155,7 +170,10 @@ export class SemanticTypeEngineRegistry {
   }
 
   dispose(): void {
-    for (const entry of this.workspaces.values()) entry.engine.dispose()
+    for (const entry of this.workspaces.values()) {
+      entry.engine.dispose()
+      entry.arkui.dispose()
+    }
     this.workspaces.clear()
   }
 
@@ -166,7 +184,38 @@ export class SemanticTypeEngineRegistry {
         .sort((left, right) => left[1].lastAccess - right[1].lastAccess)[0]
       if (!candidate) return
       candidate[1].engine.dispose()
+      candidate[1].arkui.dispose()
       this.workspaces.delete(candidate[0])
     }
   }
+}
+
+function mergeCompletions(
+  arkui: SemanticCompletionItem[],
+  typescript: SemanticCompletionItem[],
+): SemanticCompletionItem[] {
+  if (arkui.length === 0) return typescript
+  const arkuiLabels = new Set(arkui.map(({ label }) => label))
+  return [...arkui, ...typescript.filter(({ label }) => !arkuiLabels.has(label))]
+}
+
+function mergeDefinitions(
+  arkui: SemanticDefinitionCandidate[],
+  typescript: SemanticDefinitionCandidate[],
+): SemanticDefinitionCandidate[] {
+  const result: SemanticDefinitionCandidate[] = []
+  const seen = new Set<string>()
+  for (const definition of [...arkui, ...typescript]) {
+    const key = [
+      definition.path,
+      definition.range.startLine,
+      definition.range.startColumn,
+      definition.range.endLine,
+      definition.range.endColumn,
+    ].join(":")
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.push(definition)
+  }
+  return result
 }

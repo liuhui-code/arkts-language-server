@@ -1,3 +1,5 @@
+import ts from "typescript"
+
 import type { SemanticTextRange } from "../protocol.js"
 import { offsetToLineColumn } from "../types/text-position.js"
 
@@ -63,11 +65,69 @@ export function createArktsVirtualDocument(
 }
 
 function collectArktsRewrites(content: string): TextRewrite[] {
-  return [...content.matchAll(/\bstruct(?=\s+[A-Za-z_$])/g)].map((match) => ({
+  const declarationRewrites = [...content.matchAll(/\bstruct(?=\s+[A-Za-z_$])/g)].map((match) => ({
     sourceStart: match.index,
     sourceEnd: match.index + match[0].length,
     generatedText: "class",
   }))
+  const declarationNormalization = applyRewrites(content, declarationRewrites)
+  const builderRewrites = collectArkUIBuilderRewrites(declarationNormalization.generatedContent)
+    .map((rewrite) => ({
+      sourceStart: mapOffset(rewrite.sourceStart, declarationNormalization.segments, "generated"),
+      sourceEnd: mapOffset(rewrite.sourceEnd, declarationNormalization.segments, "generated"),
+      generatedText: rewrite.generatedText,
+    }))
+  return [...declarationRewrites, ...builderRewrites]
+    .sort((left, right) => left.sourceStart - right.sourceStart || left.sourceEnd - right.sourceEnd)
+}
+
+function collectArkUIBuilderRewrites(content: string): TextRewrite[] {
+  const sourceFile = ts.createSourceFile(
+    "arkts-virtual-document.ets",
+    content,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  )
+  const rewrites: TextRewrite[] = []
+  const visitStatements = (statements: ts.NodeArray<ts.Statement>) => {
+    for (let index = 1; index < statements.length; index += 1) {
+      const expression = statements[index - 1]
+      const block = statements[index]
+      if (
+        !expression
+        || !block
+        || !ts.isExpressionStatement(expression)
+        || !ts.isCallExpression(expression.expression)
+        || !ts.isBlock(block)
+        || !isArkUIComponentCall(expression.expression)
+      ) continue
+      const blockStart = block.getStart(sourceFile)
+      const gap = content.slice(expression.end, blockStart)
+      if (!/^[ \t]+$/u.test(gap)) continue
+      rewrites.push({
+        sourceStart: blockStart - 1,
+        sourceEnd: blockStart,
+        generatedText: ";",
+      })
+    }
+  }
+  const visit = (node: ts.Node) => {
+    if (ts.isSourceFile(node) || ts.isBlock(node)) visitStatements(node.statements)
+    ts.forEachChild(node, visit)
+  }
+  visit(sourceFile)
+  return rewrites
+}
+
+function isArkUIComponentCall(call: ts.CallExpression): boolean {
+  const expression = call.expression
+  const name = ts.isIdentifier(expression)
+    ? expression.text
+    : ts.isPropertyAccessExpression(expression)
+      ? expression.name.text
+      : undefined
+  return name !== undefined && /^[A-Z]/u.test(name)
 }
 
 function applyRewrites(source: string, rewrites: TextRewrite[]) {
