@@ -6,6 +6,13 @@ import { buildScriptedSemanticServer } from "./support/build-test-server.mjs"
 import { LspProcess, projectRoot } from "./support/lsp-process.mjs"
 
 const scriptedServerPath = buildScriptedSemanticServer()
+const modernWorkspaceSymbolCapabilities = {
+  workspace: {
+    symbol: {
+      symbolKind: { valueSet: Array.from({ length: 26 }, (_, index) => index + 1) },
+    },
+  },
+}
 
 test("search stays live during catalog work and returns the unsaved overlay without status rows", async (t) => {
   const server = new LspProcess({ serverPath: scriptedServerPath })
@@ -17,7 +24,11 @@ test("search stays live during catalog work and returns the unsaved overlay with
     jsonrpc: "2.0",
     id: 1,
     method: "initialize",
-    params: { processId: process.pid, rootUri, capabilities: {} },
+    params: {
+      processId: process.pid,
+      rootUri,
+      capabilities: modernWorkspaceSymbolCapabilities,
+    },
   })
   const initialized = await server.response(1)
   assert.equal(initialized.result.capabilities.workspaceSymbolProvider, true)
@@ -61,7 +72,11 @@ test("maps every workspace symbol contract kind and conservatively falls back fo
     jsonrpc: "2.0",
     id: 1,
     method: "initialize",
-    params: { processId: process.pid, rootUri, capabilities: {} },
+    params: {
+      processId: process.pid,
+      rootUri,
+      capabilities: modernWorkspaceSymbolCapabilities,
+    },
   })
   await server.response(1)
   server.send({ jsonrpc: "2.0", method: "initialized", params: {} })

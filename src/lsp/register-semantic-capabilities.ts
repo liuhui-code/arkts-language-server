@@ -45,7 +45,7 @@ export function registerSemanticCapabilities({
   requests,
 }: SemanticCapabilityDependencies): SemanticCapabilityRegistration {
   let hierarchicalDocumentSymbols = false
-  let documentStructKind: SymbolKind = SymbolKind.Class
+  let documentSymbolKindValueSet: readonly SymbolKind[] | undefined
   let hoverMarkupKind: MarkupKind = MarkupKind.Markdown
   const capabilities: ServerCapabilities = {
     documentSymbolProvider: true,
@@ -168,9 +168,9 @@ export function registerSemanticCapabilities({
       execute: (document, signal) => semantic.documentSymbols({ document, signal }),
     })
     return hierarchicalDocumentSymbols
-      ? result.map((symbol) => toLspDocumentSymbol(symbol, documentStructKind))
+      ? result.map((symbol) => toLspDocumentSymbol(symbol, documentSymbolKindValueSet))
       : result.flatMap((symbol) =>
-        toLspSymbolInformation(symbol, params.textDocument.uri, documentStructKind))
+        toLspSymbolInformation(symbol, params.textDocument.uri, documentSymbolKindValueSet))
   })
 
   return {
@@ -179,10 +179,8 @@ export function registerSemanticCapabilities({
       hoverMarkupKind = preferredHoverMarkupKind(clientCapabilities)
       hierarchicalDocumentSymbols = clientCapabilities.textDocument
         ?.documentSymbol?.hierarchicalDocumentSymbolSupport === true
-      documentStructKind = clientCapabilities.textDocument?.documentSymbol
-        ?.symbolKind?.valueSet?.includes(SymbolKind.Struct)
-        ? SymbolKind.Struct
-        : SymbolKind.Class
+      documentSymbolKindValueSet = clientCapabilities.textDocument?.documentSymbol
+        ?.symbolKind?.valueSet
       if (supportsResolvableQuickFixes(clientCapabilities)) {
         capabilities.codeActionProvider = {
           codeActionKinds: [CodeActionKind.QuickFix],
@@ -265,44 +263,56 @@ function supportsTransactionalRename(clientCapabilities: ClientCapabilities): bo
 
 function toLspDocumentSymbol(
   symbol: SemanticDocumentSymbol,
-  documentStructKind: SymbolKind,
+  symbolKindValueSet: readonly SymbolKind[] | undefined,
 ): DocumentSymbol {
   return {
     name: symbol.name,
     detail: symbol.detail,
-    kind: symbolKind(symbol.kind, documentStructKind),
+    kind: negotiatedSymbolKind(symbol.kind, symbolKindValueSet),
     range: symbol.range,
     selectionRange: symbol.selectionRange,
     children: symbol.children?.map((child) =>
-      toLspDocumentSymbol(child, documentStructKind)),
+      toLspDocumentSymbol(child, symbolKindValueSet)),
   }
 }
 
 function toLspSymbolInformation(
   symbol: SemanticDocumentSymbol,
   uri: string,
-  documentStructKind: SymbolKind,
+  symbolKindValueSet: readonly SymbolKind[] | undefined,
   containerName?: string,
 ): SymbolInformation[] {
   const current: SymbolInformation = {
     name: symbol.name,
-    kind: symbolKind(symbol.kind, documentStructKind),
+    kind: negotiatedSymbolKind(symbol.kind, symbolKindValueSet),
     location: { uri, range: symbol.range },
     containerName,
   }
   return [
     current,
     ...(symbol.children ?? []).flatMap((child) =>
-      toLspSymbolInformation(child, uri, documentStructKind, symbol.name)),
+      toLspSymbolInformation(child, uri, symbolKindValueSet, symbol.name)),
   ]
 }
 
-function symbolKind(
-  kind: SemanticDocumentSymbol["kind"],
-  documentStructKind: SymbolKind,
+export function negotiatedSymbolKind(
+  kind: string,
+  valueSet: readonly SymbolKind[] | undefined,
 ): SymbolKind {
+  const preferred = semanticSymbolKind(kind)
+  const fallbacks = kind === "struct"
+    ? [SymbolKind.Class, SymbolKind.Object, SymbolKind.Variable]
+    : kind === "enumMember"
+      ? [SymbolKind.Enum, SymbolKind.Constant, SymbolKind.Variable]
+      : kind === "type"
+        ? [SymbolKind.Variable, SymbolKind.Class, SymbolKind.Object]
+        : [SymbolKind.Variable, SymbolKind.Object, SymbolKind.File]
+  return firstSupportedSymbolKind([preferred, ...fallbacks], valueSet)
+}
+
+function semanticSymbolKind(kind: string): SymbolKind {
   switch (kind) {
-    case "struct": return documentStructKind
+    case "struct": return SymbolKind.Struct
     case "class": return SymbolKind.Class
     case "interface": return SymbolKind.Interface
     case "enum": return SymbolKind.Enum
@@ -314,7 +324,20 @@ function symbolKind(
     case "module": return SymbolKind.Module
     case "type": return SymbolKind.TypeParameter
     case "variable": return SymbolKind.Variable
+    default: return SymbolKind.Variable
   }
+}
+
+function firstSupportedSymbolKind(
+  candidates: readonly SymbolKind[],
+  valueSet: readonly SymbolKind[] | undefined,
+): SymbolKind {
+  const supports = (kind: SymbolKind) => valueSet
+    ? valueSet.includes(kind)
+    : kind >= SymbolKind.File && kind <= SymbolKind.Array
+  return candidates.find(supports)
+    ?? valueSet?.find((kind) => kind >= SymbolKind.File && kind <= SymbolKind.TypeParameter)
+    ?? SymbolKind.File
 }
 
 function groupRenameEdits(

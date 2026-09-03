@@ -43,7 +43,10 @@ import {
 } from "./code-action-resolution-store.js"
 import { toLspDiagnostic } from "./diagnostic-mapper.js"
 import { RequestFreshness } from "./request-freshness.js"
-import { registerSemanticCapabilities } from "./register-semantic-capabilities.js"
+import {
+  negotiatedSymbolKind,
+  registerSemanticCapabilities,
+} from "./register-semantic-capabilities.js"
 import { requestCancelled, SemanticRequestRunner } from "./semantic-request-runner.js"
 import { WorkspaceFileChangeCoordinator } from "./workspace-file-change-coordinator.js"
 
@@ -118,6 +121,7 @@ export function runLanguageServer(services?: LanguageServerServices): void {
   let workspaceRoots: { id: string; rootUri: string }[] = []
   let workspaceFileChanges = new WorkspaceFileChangeCoordinator({ rootUris: [] })
   let supportsWatchedFileRegistration = false
+  let workspaceSymbolKindValueSet: readonly SymbolKind[] | undefined
   let workspaceIndexAbort: AbortController | undefined
 
   const disposeOnce = (reason: "shutdown" | "exit") => {
@@ -163,6 +167,8 @@ export function runLanguageServer(services?: LanguageServerServices): void {
     workspaceFileChanges = new WorkspaceFileChangeCoordinator({ rootUris })
     supportsWatchedFileRegistration = params.capabilities.workspace
       ?.didChangeWatchedFiles?.dynamicRegistration === true
+    workspaceSymbolKindValueSet = params.capabilities.workspace?.symbol
+      ?.symbolKind?.valueSet
     semanticCapabilities.configure(params.capabilities)
     logger.info("lsp.initialized", {
       workspaceCount: initialRootUris(params).length,
@@ -516,7 +522,7 @@ export function runLanguageServer(services?: LanguageServerServices): void {
       outcome = "ok"
       return result.items.map((item) => ({
         name: item.name,
-        kind: workspaceSymbolKind(item.kind),
+        kind: negotiatedSymbolKind(item.kind, workspaceSymbolKindValueSet),
         location: { uri: item.uri, range: item.range },
         containerName: item.containerName,
       }))
@@ -646,24 +652,6 @@ function includesQuickFix(only: readonly string[] | undefined): boolean {
   return only.some((kind) => (
     kind === "" || kind === CodeActionKind.QuickFix || CodeActionKind.QuickFix.startsWith(`${kind}.`)
   ))
-}
-
-function workspaceSymbolKind(kind: string): SymbolKind {
-  switch (kind) {
-    case "class": return SymbolKind.Class
-    case "interface": return SymbolKind.Interface
-    case "enum": return SymbolKind.Enum
-    case "enumMember": return SymbolKind.EnumMember
-    case "method": return SymbolKind.Method
-    case "function": return SymbolKind.Function
-    case "property": return SymbolKind.Property
-    case "constructor": return SymbolKind.Constructor
-    case "module": return SymbolKind.Module
-    case "type": return SymbolKind.TypeParameter
-    case "variable": return SymbolKind.Variable
-    case "struct": return SymbolKind.Struct
-    default: return SymbolKind.Variable
-  }
 }
 
 function indexPercentage(status: WorkspaceIndexProgress): number | undefined {

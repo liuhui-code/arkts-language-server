@@ -185,6 +185,57 @@ test("falls back to flat symbols with legacy struct kind, containers, and stable
   ])
 })
 
+test("uses only legacy symbol kinds when the client omits document symbol valueSet", async (t) => {
+  const server = new LspProcess()
+  t.after(() => server.close())
+  server.send({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: {
+      processId: process.pid,
+      rootUri: pathToFileURL(fixtureRoot).href,
+      capabilities: {
+        general: { positionEncodings: ["utf-16"] },
+        textDocument: {
+          documentSymbol: { hierarchicalDocumentSymbolSupport: true },
+        },
+      },
+    },
+  })
+  await server.response(1)
+  server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
+  server.send({
+    jsonrpc: "2.0",
+    method: "textDocument/didOpen",
+    params: {
+      textDocument: {
+        uri: documentUri,
+        languageId: "arkts",
+        version: 1,
+        text,
+      },
+    },
+  })
+
+  const symbols = flatten(await requestDocumentSymbols(server, 4))
+  assert.deepEqual(Object.fromEntries(symbols.map(({ name, kind }) => [name, kind])), {
+    DeepModule: 2,
+    ServiceContract: 11,
+    Mode: 10,
+    Ready: 10,
+    Worker: 5,
+    label: 7,
+    constructor: 9,
+    run: 6,
+    Identifier: 13,
+    sharedIdentifier: 13,
+    makeIdentifier: 12,
+    Panel: 5,
+  })
+  assert.ok(symbols.every(({ kind }) => kind >= 1 && kind <= 18))
+})
+
 async function requestDocumentSymbols(server, id) {
   server.send({
     jsonrpc: "2.0",

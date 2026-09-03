@@ -20,7 +20,7 @@ const overlayText = diskText.replaceAll("WorkspaceKind", "OverlayKind")
 
 test("returns every production overlay workspace-symbol kind with exact UTF-16 name ranges", async (t) => {
   const server = openProductionServer(t)
-  await initialize(server)
+  await initialize(server, Array.from({ length: 26 }, (_, index) => index + 1))
   openOverlay(server, overlayText, 1)
 
   const first = await workspaceSymbols(server, 2, "")
@@ -56,6 +56,29 @@ test("returns every production overlay workspace-symbol kind with exact UTF-16 n
     false,
     "workspace symbols must use the unsaved overlay instead of disk text",
   )
+})
+
+test("uses only legacy symbol kinds when the client omits workspace symbol valueSet", async (t) => {
+  const server = openProductionServer(t)
+  await initialize(server)
+  openOverlay(server, overlayText, 1)
+
+  const symbols = await workspaceSymbols(server, 4, "")
+  assert.deepEqual(Object.fromEntries(symbols.map(({ name, kind }) => [name, kind])), {
+    constructor: 9,
+    OverlayKindClass: 5,
+    OverlayKindEnum: 10,
+    OverlayKindEnumMember: 10,
+    OverlayKindFunction: 12,
+    OverlayKindInterface: 11,
+    OverlayKindMethod: 6,
+    OverlayKindModule: 2,
+    OverlayKindProperty: 7,
+    OverlayKindStruct: 5,
+    OverlayKindType: 13,
+    OverlayKindVariable: 13,
+  })
+  assert.ok(symbols.every(({ kind }) => kind >= 1 && kind <= 18))
 })
 
 test("bounds production workspace-symbol results at 100 complete Locations without resolve data", async (t) => {
@@ -95,7 +118,7 @@ function openProductionServer(t) {
   return server
 }
 
-async function initialize(server) {
+async function initialize(server, symbolKindValueSet) {
   server.send({
     jsonrpc: "2.0",
     id: 1,
@@ -103,7 +126,12 @@ async function initialize(server) {
     params: {
       processId: process.pid,
       rootUri: pathToFileURL(fixtureRoot).href,
-      capabilities: { general: { positionEncodings: ["utf-16"] } },
+      capabilities: {
+        general: { positionEncodings: ["utf-16"] },
+        ...(symbolKindValueSet
+          ? { workspace: { symbol: { symbolKind: { valueSet: symbolKindValueSet } } } }
+          : {}),
+      },
     },
   })
   const response = await server.response(1)
