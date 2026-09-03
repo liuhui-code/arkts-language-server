@@ -1,6 +1,7 @@
 import {
   CodeActionKind,
   MarkupKind,
+  SignatureHelpTriggerKind,
   SymbolKind,
   type ClientCapabilities,
   type Connection,
@@ -18,6 +19,7 @@ import type {
   SemanticEnginePort,
   SemanticHover,
   SemanticSignatureHelp,
+  SemanticSignatureHelpTriggerReason,
 } from "../contracts/semantic-engine.js"
 import type { SemanticRequestRunner } from "./semantic-request-runner.js"
 
@@ -43,7 +45,8 @@ export function registerSemanticCapabilities({
     documentSymbolProvider: true,
     hoverProvider: true,
     signatureHelpProvider: {
-      triggerCharacters: ["(", ","],
+      triggerCharacters: ["(", ",", "<"],
+      retriggerCharacters: [")"],
     },
   }
 
@@ -56,6 +59,7 @@ export function registerSemanticCapabilities({
       execute: (document, signal) => semantic.signatureHelp({
         document,
         position: params.position,
+        triggerReason: toSemanticSignatureHelpTriggerReason(params.context),
         signal,
       }),
     })
@@ -109,6 +113,43 @@ export function registerSemanticCapabilities({
       }
     },
   }
+}
+
+function toSemanticSignatureHelpTriggerReason(
+  context: unknown,
+): SemanticSignatureHelpTriggerReason {
+  if (!isRecord(context) || typeof context.isRetrigger !== "boolean") {
+    return { kind: "invoked" }
+  }
+  if (context.triggerKind === SignatureHelpTriggerKind.TriggerCharacter) {
+    if (context.isRetrigger) {
+      return isSignatureHelpRetriggerCharacter(context.triggerCharacter)
+        ? { kind: "retrigger", triggerCharacter: context.triggerCharacter }
+        : { kind: "invoked" }
+    }
+    return isSignatureHelpTriggerCharacter(context.triggerCharacter)
+      ? { kind: "characterTyped", triggerCharacter: context.triggerCharacter }
+      : { kind: "invoked" }
+  }
+  return context.triggerKind === SignatureHelpTriggerKind.ContentChange
+    && context.isRetrigger
+    && context.triggerCharacter === undefined
+    ? { kind: "retrigger" }
+    : { kind: "invoked" }
+}
+
+function isSignatureHelpTriggerCharacter(value: unknown): value is "(" | "," | "<" {
+  return value === "(" || value === "," || value === "<"
+}
+
+function isSignatureHelpRetriggerCharacter(
+  value: unknown,
+): value is "(" | "," | "<" | ")" {
+  return value === ")" || isSignatureHelpTriggerCharacter(value)
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
 }
 
 function supportsResolvableQuickFixes(clientCapabilities: ClientCapabilities): boolean {

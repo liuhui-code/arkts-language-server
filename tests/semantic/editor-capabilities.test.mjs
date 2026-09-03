@@ -64,6 +64,91 @@ test("returns ArkTS signature help with the active parameter", async (t) => {
   assert.match(response.result.signatures[0].label, /add\(left: number, right: number\): number/)
 })
 
+test("selects the nested generic overload from an unopened import at an emoji UTF-16 position", async (t) => {
+  const { server, documentUri, text } = await openFixture(
+    t,
+    "signature-help-depth",
+    "Main.ets",
+  )
+  const marker = "transform<number>(1,"
+  const markerOffset = text.indexOf(marker)
+  assert.notEqual(markerOffset, -1)
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 20,
+    method: "textDocument/signatureHelp",
+    params: {
+      textDocument: { uri: documentUri },
+      position: utf16PositionAt(text, markerOffset + marker.length),
+      context: {
+        triggerKind: 2,
+        triggerCharacter: ",",
+        isRetrigger: false,
+      },
+    },
+  })
+
+  const response = await server.response(20)
+  assert.equal(response.error, undefined, JSON.stringify(response.error))
+  assert.deepEqual(response.result.signatures.map(({ label }) => label), [
+    "transform<T>(value: T): T",
+    "transform(value: number, mapper: (value: number) => number): number",
+  ])
+  assert.equal(response.result.activeSignature, 1)
+  assert.equal(response.result.activeParameter, 1)
+})
+
+test("uses a ranged didChange snapshot for nested generic signature help", async (t) => {
+  const { server, documentUri, text } = await openFixture(
+    t,
+    "signature-help-depth",
+    "Main.ets",
+  )
+  const previousCall = "transform<number>(1,"
+  const currentCall = 'transform<string>("value",'
+  const changedText = text.replace(previousCall, currentCall)
+  assert.notEqual(changedText, text)
+
+  server.send({
+    jsonrpc: "2.0",
+    method: "textDocument/didChange",
+    params: {
+      textDocument: { uri: documentUri, version: 2 },
+      contentChanges: [{
+        range: utf16RangeOf(text, previousCall),
+        text: currentCall,
+      }],
+    },
+  })
+  server.send({
+    jsonrpc: "2.0",
+    id: 21,
+    method: "textDocument/signatureHelp",
+    params: {
+      textDocument: { uri: documentUri },
+      position: utf16PositionAt(
+        changedText,
+        changedText.indexOf(currentCall) + currentCall.length,
+      ),
+      context: {
+        triggerKind: 2,
+        triggerCharacter: ",",
+        isRetrigger: false,
+      },
+    },
+  })
+
+  const response = await server.response(21)
+  assert.equal(response.error, undefined, JSON.stringify(response.error))
+  assert.equal(
+    response.result.signatures[1].label,
+    "transform(value: string, mapper: (value: string) => string): string",
+  )
+  assert.equal(response.result.activeSignature, 1)
+  assert.equal(response.result.activeParameter, 1)
+})
+
 test("returns null signature help outside a call", async (t) => {
   const { server, documentUri } = await openFixture(t, "signature-help", "Calculator.ets")
 
@@ -86,7 +171,8 @@ test("advertises signature help only after its transcript is supported", async (
   const { initialized } = await openFixture(t, "signature-help", "Calculator.ets")
 
   assert.deepEqual(initialized.result.capabilities.signatureHelpProvider, {
-    triggerCharacters: ["(", ","],
+    triggerCharacters: ["(", ",", "<"],
+    retriggerCharacters: [")"],
   })
 })
 

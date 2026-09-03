@@ -105,7 +105,10 @@ export const CURRENT_LSP_FEATURE_MATRIX = Object.freeze({
     }),
     enabledFeature({
       id: "signature-help",
-      requiredCapabilities: [capability("signatureHelpProvider.triggerCharacters", ["(", ","])],
+      requiredCapabilities: [
+        capability("signatureHelpProvider.triggerCharacters", ["(", ",", "<"]),
+        capability("signatureHelpProvider.retriggerCharacters", [")"]),
+      ],
       protocol: [evidence(
         "tests/lsp-semantic-request-reliability.test.mjs",
         "maps cancellation for every advertised semantic request to RequestCancelled",

@@ -80,6 +80,40 @@ test("rejects every advertised semantic request after shutdown", async (t) => {
   }
 })
 
+test("maps LSP signature-help context to bounded semantic trigger reasons", async (t) => {
+  const server = await openScriptedServer(t, "SignatureContext.ets", "scripted(1)")
+  const cases = [
+    [undefined, "scripted invoked"],
+    [{ triggerKind: 1, isRetrigger: false }, "scripted invoked"],
+    [{ triggerKind: 2, triggerCharacter: "(", isRetrigger: false }, "scripted characterTyped:("],
+    [{ triggerKind: 2, triggerCharacter: ",", isRetrigger: false }, "scripted characterTyped:,"],
+    [{ triggerKind: 2, triggerCharacter: "<", isRetrigger: false }, "scripted characterTyped:<"],
+    [{ triggerKind: 2, triggerCharacter: ")", isRetrigger: true }, "scripted retrigger:)"],
+    [{ triggerKind: 3, isRetrigger: true }, "scripted retrigger"],
+    [{ triggerKind: 2, triggerCharacter: ")", isRetrigger: false }, "scripted invoked"],
+    [{ triggerKind: 2, triggerCharacter: "x", isRetrigger: false }, "scripted invoked"],
+    [{ triggerKind: 99, triggerCharacter: "(", isRetrigger: "yes" }, "scripted invoked"],
+    [{ triggerKind: 99, isRetrigger: true }, "scripted invoked"],
+  ]
+
+  for (const [index, [context, expectedLabel]] of cases.entries()) {
+    const id = 400 + index
+    server.send({
+      jsonrpc: "2.0",
+      id,
+      method: "textDocument/signatureHelp",
+      params: {
+        textDocument: { uri: server.documentUri },
+        position: { line: 0, character: 9 },
+        ...(context === undefined ? {} : { context }),
+      },
+    })
+    const response = await server.response(id)
+    assert.equal(response.error, undefined, JSON.stringify(response.error))
+    assert.equal(response.result.signatures[0].label, expectedLabel)
+  }
+})
+
 async function openScriptedServer(t, fileName, text) {
   const server = new LspProcess({ serverPath: scriptedServerPath })
   t.after(() => server.close())

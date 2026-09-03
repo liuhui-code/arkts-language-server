@@ -57,6 +57,11 @@ export interface SemanticSignatureHelp {
   activeParameter: number
 }
 
+export type SemanticSignatureHelpTriggerReason =
+  | { kind: "invoked" }
+  | { kind: "characterTyped"; triggerCharacter: "(" | "," | "<" }
+  | { kind: "retrigger"; triggerCharacter?: "(" | "," | "<" | ")" }
+
 export interface SemanticHover {
   signature: string
   documentation?: string
@@ -127,6 +132,10 @@ export interface SemanticCompletionResolveQuery extends SemanticQuery {
   completion: SemanticCompletion
 }
 
+export interface SemanticSignatureHelpQuery extends SemanticQuery {
+  triggerReason: SemanticSignatureHelpTriggerReason
+}
+
 export interface SemanticCodeActionQuery extends SemanticDocumentQuery {
   range: TextRange
 }
@@ -165,6 +174,8 @@ export interface SemanticEnginePort {
     query: SemanticCodeActionResolveQuery,
   ): Promise<VersionedSemanticResult<SemanticResolvedCodeAction | null>>
   hover(query: SemanticQuery): Promise<VersionedSemanticResult<SemanticHover | null>>
-  signatureHelp(query: SemanticQuery): Promise<VersionedSemanticResult<SemanticSignatureHelp | null>>
+  signatureHelp(
+    query: SemanticSignatureHelpQuery,
+  ): Promise<VersionedSemanticResult<SemanticSignatureHelp | null>>
   dispose(): void
 }

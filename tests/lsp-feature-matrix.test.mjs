@@ -39,7 +39,7 @@ test("maps the complete public capability contract to executable feature evidenc
     "references",
     "rename",
   ])
-  assert.equal(audit.requiredCapabilityCount, 11)
+  assert.equal(audit.requiredCapabilityCount, 12)
   assert.equal(audit.absentCapabilityCount, 2)
   assert.deepEqual(audit.artifactCoveredFeatureIds, [
     "document-sync",

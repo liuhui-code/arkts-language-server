@@ -41,6 +41,11 @@ export interface SemanticResolvedCodeFix extends SemanticCodeFixCandidate {
   }>
 }
 
+export type SemanticSignatureHelpTriggerReason =
+  | { kind: "invoked" }
+  | { kind: "characterTyped"; triggerCharacter: "(" | "," | "<" }
+  | { kind: "retrigger"; triggerCharacter?: "(" | "," | "<" | ")" }
+
 export interface SemanticTypeQueryContext {
   state: SemanticTypeEngineState
   complete(position: SemanticDocumentPosition): SemanticCompletionItem[]
@@ -60,7 +65,10 @@ export interface SemanticTypeQueryContext {
   documentSymbols(position: SemanticDocumentPosition): SemanticDocumentSymbolInfo[]
   hover(position: SemanticDocumentPosition): SemanticHoverInfo | null
   rename(position: SemanticDocumentPosition, newName: string): SemanticWorkspaceEditPlan | SemanticUnsupportedResult
-  signatureHelp(position: SemanticDocumentPosition): SemanticSignatureHelp | null
+  signatureHelp(
+    position: SemanticDocumentPosition,
+    triggerReason: SemanticSignatureHelpTriggerReason,
+  ): SemanticSignatureHelp | null
 }
 
 interface WorkspaceEngineEntry {
@@ -102,7 +110,7 @@ export class SemanticTypeEngineRegistry {
       documentSymbols: (position) => entry.engine.documentSymbols(position),
       hover: (position) => entry.engine.hover(position),
       rename: (position, newName) => entry.engine.rename(position, newName),
-      signatureHelp: (position) => entry.engine.signatureHelp(position),
+      signatureHelp: (position, triggerReason) => entry.engine.signatureHelp(position, triggerReason),
     }
   }
 

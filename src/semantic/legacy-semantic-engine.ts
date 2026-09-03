@@ -22,6 +22,7 @@ import type {
   SemanticQuery,
   SemanticResolvedCodeAction,
   SemanticSignatureHelp,
+  SemanticSignatureHelpQuery,
   SemanticWorkspaceFileChangeBatch,
   VersionedSemanticResult,
   SemanticDefinition,
@@ -198,14 +199,14 @@ export class LegacySemanticEngine implements SemanticEnginePort {
   }
 
   async signatureHelp(
-    query: SemanticQuery,
+    query: SemanticSignatureHelpQuery,
   ): Promise<VersionedSemanticResult<SemanticSignatureHelp | null>> {
     assertActive(query.signal)
     this.sync(query.document)
     const prepared = this.prepare(query.document, query.position)
     return {
       documentVersion: query.document.version,
-      value: prepared.engine.signatureHelp(prepared.position),
+      value: prepared.engine.signatureHelp(prepared.position, query.triggerReason),
     }
   }
 

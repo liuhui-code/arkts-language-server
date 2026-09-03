@@ -12,6 +12,7 @@ import type {
   SemanticQuery,
   SemanticResolvedCodeAction,
   SemanticSignatureHelp,
+  SemanticSignatureHelpQuery,
   VersionedSemanticResult,
   SemanticCompletion,
   SemanticDefinition,
@@ -144,10 +145,16 @@ class ScriptedSemanticEngine implements SemanticEnginePort {
   }
 
   async signatureHelp(
-    query: SemanticQuery,
+    query: SemanticSignatureHelpQuery,
   ): Promise<VersionedSemanticResult<SemanticSignatureHelp | null>> {
+    const triggerCharacter = "triggerCharacter" in query.triggerReason
+      ? `:${query.triggerReason.triggerCharacter ?? ""}`
+      : ""
     return scriptedSemanticResult(query, {
-      signatures: [{ label: "scripted(value: string)", parameters: [{ label: "value" }] }],
+      signatures: [{
+        label: `scripted ${query.triggerReason.kind}${triggerCharacter}`,
+        parameters: [{ label: "value" }],
+      }],
       activeSignature: 0,
       activeParameter: 0,
     })

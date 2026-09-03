@@ -29,6 +29,7 @@ import type {
 import type {
   SemanticCodeFixCandidate,
   SemanticResolvedCodeFix,
+  SemanticSignatureHelpTriggerReason,
   SemanticTypeEngineState,
 } from "./type-engine.js"
 import { mapTypescriptDiagnostics, typescriptTypeDetail, typescriptTypeStatus } from "./typescript-language-helpers.js"
@@ -505,7 +506,10 @@ export class TypeScriptLanguageServiceEngine {
     }
   }
 
-  signatureHelp(position: SemanticDocumentPosition): SemanticSignatureHelp | null {
+  signatureHelp(
+    position: SemanticDocumentPosition,
+    triggerReason: SemanticSignatureHelpTriggerReason,
+  ): SemanticSignatureHelp | null {
     const filePath = path.resolve(position.path)
     const script = this.scripts.get(filePath)
     if (!script) return null
@@ -513,7 +517,7 @@ export class TypeScriptLanguageServiceEngine {
     const sourceOffset = lineColumnToOffset(script.sourceContent, position.line, position.column)
     const offset = script.virtualDocument.toGeneratedOffset(sourceOffset)
     const info = this.service.getSignatureHelpItems(filePath, offset, {
-      triggerReason: { kind: "invoked" },
+      triggerReason,
     })
     if (!info) return null
 
