@@ -1,5 +1,6 @@
 import assert from "node:assert/strict"
 import { spawn, spawnSync } from "node:child_process"
+import { createHash } from "node:crypto"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -7,6 +8,8 @@ import test from "node:test"
 import { fileURLToPath } from "node:url"
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
+const artifactBuilder = path.join(projectRoot, "scripts", "artifact", "build-portable.mjs")
+
 function writeExecutable(filePath, contents) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true })
   fs.writeFileSync(filePath, contents, { mode: 0o755 })
@@ -67,9 +70,13 @@ function makeCheckout(temporaryRoot) {
   }
 }
 
-function initialize(command, cwd) {
+function initialize(command, cwd, env = process.env) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, ["--stdio"], { cwd, stdio: ["pipe", "pipe", "pipe"] })
+    const child = spawn(command, ["--stdio"], {
+      cwd,
+      env,
+      stdio: ["pipe", "pipe", "pipe"],
+    })
     let stdout = Buffer.alloc(0)
     let stderr = ""
     const timeout = setTimeout(() => {
@@ -106,6 +113,128 @@ function initialize(command, cwd) {
     child.stdin.write(body)
   })
 }
+
+test("installs one verified artifact without source dependencies or a rebuild", async (t) => {
+  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-immutable-artifact-"))
+  t.after(() => fs.rmSync(temporaryRoot, { recursive: true, force: true }))
+  const buildInput = path.join(temporaryRoot, "build-input")
+  const artifactRoot = path.join(temporaryRoot, "artifact")
+  const sidecarName = process.platform === "win32"
+    ? "arkts-index-sidecar.exe"
+    : "arkts-index-sidecar"
+  const runtimePaths = [
+    "bin/arkts-language-server",
+    "dist/server.cjs",
+    `target/release/${sidecarName}`,
+  ]
+
+  for (const relativePath of runtimePaths) {
+    const source = path.join(projectRoot, ...relativePath.split("/"))
+    const destination = path.join(buildInput, ...relativePath.split("/"))
+    fs.mkdirSync(path.dirname(destination), { recursive: true })
+    fs.copyFileSync(source, destination)
+    fs.chmodSync(destination, fs.statSync(source).mode & 0o777)
+  }
+  fs.mkdirSync(path.join(buildInput, "src"), { recursive: true })
+  fs.writeFileSync(path.join(buildInput, "src", "must-not-ship.ts"), "export const source = true\n")
+  fs.mkdirSync(path.join(buildInput, "node_modules"), { recursive: true })
+  fs.writeFileSync(path.join(buildInput, "node_modules", "must-not-ship"), "dependency bytes\n")
+
+  const creation = spawnSync(process.execPath, [
+    artifactBuilder,
+    "--source-root", buildInput,
+    "--output", artifactRoot,
+    "--version", "0.1.0-test",
+    "--commit", "0123456789abcdef",
+    "--toolchains", JSON.stringify({
+      node: process.version,
+      pnpm: "8.15.9",
+      rustc: "rustc 1.90.0",
+    }),
+  ], { cwd: os.tmpdir(), encoding: "utf8" })
+  assert.equal(creation.status, 0, creation.stderr || creation.error?.message)
+
+  const manifestPath = path.join(artifactRoot, "artifact-manifest.json")
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"))
+  assert.equal(manifest.schema, "arkts-language-server.artifact-manifest")
+  for (const relativePath of runtimePaths) {
+    const record = manifest.files.find((file) => file.path === relativePath)
+    assert.ok(record, `manifest is missing ${relativePath}`)
+    assert.equal(
+      record.sha256,
+      createHash("sha256")
+        .update(fs.readFileSync(path.join(artifactRoot, ...relativePath.split("/"))))
+        .digest("hex"),
+    )
+  }
+  assert.equal(fs.existsSync(path.join(artifactRoot, "src")), false)
+  assert.equal(fs.existsSync(path.join(artifactRoot, "node_modules")), false)
+
+  fs.renameSync(buildInput, path.join(temporaryRoot, "build-input-moved"))
+
+  const toolDirectory = path.join(temporaryRoot, "forbidden-build-tools")
+  const invocationLog = path.join(temporaryRoot, "forbidden-build-invocations")
+  for (const command of ["pnpm", "cargo", "esbuild"]) {
+    writeExecutable(
+      path.join(toolDirectory, command),
+      `#!/bin/sh\nprintf '%s\\n' '${command}' >> '${invocationLog}'\nexit 97\n`,
+    )
+  }
+  const isolatedHome = path.join(temporaryRoot, "isolated-home")
+  const externalCwd = path.join(temporaryRoot, "external-cwd")
+  fs.mkdirSync(isolatedHome)
+  fs.mkdirSync(externalCwd)
+  const environment = {
+    ...process.env,
+    HOME: isolatedHome,
+    PATH: [toolDirectory, path.dirname(process.execPath), "/usr/bin", "/bin"]
+      .join(path.delimiter),
+  }
+
+  const corruptedArtifact = path.join(temporaryRoot, "corrupted-artifact")
+  fs.cpSync(artifactRoot, corruptedArtifact, { recursive: true })
+  const corruptedServer = path.join(corruptedArtifact, "dist", "server.cjs")
+  const corruptedBytes = fs.readFileSync(corruptedServer)
+  corruptedBytes[0] ^= 0xff
+  fs.writeFileSync(corruptedServer, corruptedBytes)
+  const rejected = spawnSync(
+    path.join(corruptedArtifact, "scripts", "install-local.sh"),
+    ["--from-artifact", corruptedArtifact, path.join(temporaryRoot, "corrupt-prefix", "bin")],
+    { cwd: externalCwd, encoding: "utf8", env: environment },
+  )
+  assert.notEqual(rejected.status, 0)
+  assert.match(rejected.stderr, /SHA-256 mismatch.*dist\/server\.cjs/i)
+
+  const binDirectory = path.join(temporaryRoot, "prefix", "bin")
+  const installation = spawnSync(
+    path.join(artifactRoot, "scripts", "install-local.sh"),
+    ["--from-artifact", artifactRoot, binDirectory],
+    { cwd: externalCwd, encoding: "utf8", env: environment },
+  )
+  assert.equal(installation.status, 0, installation.stderr || installation.error?.message)
+  assert.equal(fs.existsSync(invocationLog), false, "artifact installation invoked a build tool")
+
+  const command = path.join(binDirectory, "arkts-language-server")
+  const installedLauncher = fs.realpathSync(command)
+  const releaseRoot = path.resolve(path.dirname(installedLauncher), "..")
+  for (const relativePath of runtimePaths) {
+    const installedPath = path.join(releaseRoot, ...relativePath.split("/"))
+    const artifactPath = path.join(artifactRoot, ...relativePath.split("/"))
+    assert.deepEqual(
+      fs.readFileSync(installedPath),
+      fs.readFileSync(artifactPath),
+      `installed bytes differ for ${relativePath}`,
+    )
+    assert.equal(
+      fs.statSync(installedPath).mode & 0o777,
+      fs.statSync(artifactPath).mode & 0o777,
+      `installed mode differs for ${relativePath}`,
+    )
+  }
+
+  const response = await initialize(command, externalCwd, environment)
+  assert.equal(response.result.serverInfo.name, "arkts-language-server")
+})
 
 test("installed command remains self-contained after its source checkout moves", async (t) => {
   const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-portable-install-"))

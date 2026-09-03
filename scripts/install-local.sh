@@ -2,8 +2,18 @@
 
 set -eu
 
+artifact_root=
+if [ "${1:-}" = "--from-artifact" ]; then
+  if [ "$#" -lt 2 ]; then
+    echo "usage: scripts/install-local.sh [--from-artifact ARTIFACT_DIRECTORY] [BIN_DIRECTORY]" >&2
+    exit 2
+  fi
+  artifact_root=$2
+  shift 2
+fi
+
 if [ "$#" -gt 1 ]; then
-  echo "usage: scripts/install-local.sh [BIN_DIRECTORY]" >&2
+  echo "usage: scripts/install-local.sh [--from-artifact ARTIFACT_DIRECTORY] [BIN_DIRECTORY]" >&2
   exit 2
 fi
 
@@ -26,6 +36,19 @@ grammar_stamp=$grammar_dir/.arkts-source
 lockfile=$project_root/pnpm-lock.yaml
 dependency_stamp_dir=$project_root/node_modules/.cache/arkts-language-server
 dependency_stamp=$dependency_stamp_dir/dependency-fingerprint.json
+
+if [ -n "$artifact_root" ]; then
+  if ! command -v node >/dev/null 2>&1; then
+    echo "arkts-language-server artifact install requires node on PATH." >&2
+    exit 127
+  fi
+  artifact_installer=$script_dir/artifact/install-from-manifest.mjs
+  if [ ! -f "$artifact_installer" ]; then
+    echo "Missing artifact installer: $artifact_installer" >&2
+    exit 1
+  fi
+  exec node "$artifact_installer" "$artifact_root" "$install_dir"
+fi
 
 for required_command in node pnpm cargo; do
   if ! command -v "$required_command" >/dev/null 2>&1; then
