@@ -379,9 +379,8 @@ export class TypeScriptLanguageServiceEngine {
     for (const symbol of referencedSymbols) {
       for (const reference of symbol.references) {
         const targetPath = path.resolve(reference.fileName)
-        const isCanonicalDefinition = canonicalDefinitionKeys.has(
-          typescriptSpanKey(targetPath, reference.textSpan),
-        )
+        const isCanonicalDefinition = reference.isDefinition === true
+          || canonicalDefinitionKeys.has(typescriptSpanKey(targetPath, reference.textSpan))
         if (!includeDeclaration && isCanonicalDefinition) continue
         if (!isWithinRoot(this.rootPath, targetPath)) {
           return { status: "incomplete", reason: "source-outside-workspace" }
