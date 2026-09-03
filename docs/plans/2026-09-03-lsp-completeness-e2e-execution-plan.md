@@ -301,7 +301,7 @@ Owner files：`tests/support/capability-contract.mjs`、
 
 Owner files：`tests/support/test-layer-manifest.mjs`、runner、package scripts 与对应证据。
 
-- [x] G1/G2/M2 集成后显式、唯一地把全部 35 个 test/acceptance 入口归入五层，拒绝漏项、重复、
+- [x] G1/G2/M2 集成后显式、唯一地把全部 36 个 test/acceptance 入口归入五层，拒绝漏项、重复、
   无效路径及 release acceptance 混入 fast layer（`f484640`）。
 - [x] G2 runner 从 manifest 稳定选择层，拒绝空选择和隐式测试发现（`d37c03e`）。
 - [x] G3a package scripts 只通过 runner 发现 Node tests；`check:fast` 完成 typecheck、fresh
@@ -310,11 +310,26 @@ Owner files：`tests/support/test-layer-manifest.mjs`、runner、package scripts
   （`2ffb24c`）。
 - [x] G3c fast 层禁止显式 Node test skip；真实 sidecar persistence 移入 artifact 层并在
   缺少 release binary 时明确失败（`ef6102c`）。
+- [x] G3d fast/artifact/large 通过 Node 20 自定义 reporter 拒绝运行时
+  skip/todo/cancelled；人类输出实时透传，机器摘要为 O(1) 计数且最多 4 KiB，缺失或畸形
+  摘要 fail closed（`da0e285`）。
 
 Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产物；随后由集成轨
 串行接入 package scripts，并运行 `pnpm check:fast`。本地 exit gate 已完成：fresh build
 后 172 tests、0 failed、0 skipped，耗时约 83.7 s。H6e 是外部上传授权项，不阻塞本地
 功能切片；授权前 CI 不上传任何 evidence 文件。
+
+### 当前执行看板（2026-09-03）
+
+- [x] G3d 运行时 no-skip 门禁完成并独立复验（`da0e285`）。
+- [x] B4a bounded ProjectSet path cache 完成并独立复验（`052c670`）。
+- [x] B1b/B2b/B3/B5/B6 completion resolve tracer 完成并独立复验（`600eb84`）。
+- [ ] B4b watched-files create/delete/rename 一致性：并行实施中。
+- [ ] I2b installed completion-resolve characterization：并行实施中。
+- [x] Wave 3 references/rename 只读设计审查完成；R0 completeness gate 尚待实现，能力保持
+  absent。
+- [ ] Wave 3 diagnostics code/code-action tracer：只读设计审查中。
+- [ ] 本批次集成门禁：所有并行切片提交后运行 fresh `pnpm check:fast`。
 
 ### Wave 2 — 首个功能切片与 installed semantic smoke（部分并行）
 
@@ -324,13 +339,20 @@ Owner：一个端到端 owner 独占 semantic contract、project set、completio
 
 - [x] B1a 真实 stdio list tracer：只打开 Home，未打开 Greeter 候选唯一、kind 正确，
   UTF-16 replacement `textEdit` 精确且保留 opaque data（`537b9ac`）。
-- [ ] B1b 写 completion resolve/auto-import/apply-and-recheck transcript 并观察稳定 RED。
+- [x] B1b 写 completion resolve/auto-import/apply-and-recheck transcript 并观察逐步稳定 RED
+  （`600eb84`）。
 - [x] B2a 保留 completion `replacementRange/data` 到 LSP list（`537b9ac`）。
-- [ ] B2b resolve 后保留 `documentation/detail/additionalTextEdits/data`。
-- [ ] B3 暴露 `completionItem/resolve`，只有 transcript GREEN 后才 advertising。
-- [ ] B4 project file set 纳入未打开文件；不得在每个请求重新全盘扫描。
-- [ ] B5 应用 auto-import edit 并确认 diagnostics 清零。
-- [ ] B6 加 scripted cancel/stale/shutdown contract。
+- [x] B2b resolve 后保留 `documentation/detail/additionalTextEdits/data`；公共 data 仅为 UUID，
+  服务端 registry 绑定 URI/version/position 且上限 512 条（`600eb84`）。
+- [x] B3 暴露 `completionItem/resolve`，真实 bundle 与 protocol transcript GREEN 后才
+  advertising（`600eb84`）。
+- [x] B4a ProjectSet 纳入未打开文件并按 canonical root 复用，避免每次 completion 同步
+  重扫；4 roots/256 paths/1 MiB path bytes 硬限制与 LRU 已有 contract（`052c670`）。
+- [ ] B4b 通过 `workspace/didChangeWatchedFiles` 增量维护 create/delete/rename；delete/rename
+  必须把旧路径传给 `removedPaths`，notification 后的下一语义请求作为无 sleep 的一致性屏障。
+- [x] B5 应用 completion 与 auto-import edits，didChange v2 后 diagnostics 清零，再精确
+  definition 到未打开 Greeter（`600eb84`）。
+- [x] B6 scripted cancel/forged/stale/shutdown contract（`600eb84`）。
 
 #### Track D：definition 精确性（D0 先行；D1/D2 与 B 的共享契约合入后并行）
 
@@ -341,8 +363,11 @@ Owner：一个端到端 owner 独占 semantic contract、project set、completio
 
 #### Track I：installed artifact semantic smoke（与场景 helper GREEN 后并行）
 
+- [x] I0 本地 installer characterization：从外部 cwd 启动安装后的命令，完成 completion、
+  definition、diagnostics 最小 transcript（`3b5f76c`）；该测试仍会从源码构建，不能替代 I1。
 - [ ] I1 在禁止 build、无源码、无 node_modules、随机 cwd/clean HOME 环境安装 artifact。
-- [ ] I2 对 installed command 运行 completion、definition、diagnostics 最小 transcript。
+- [ ] I2 对不可变 artifact 的 installed command 运行 completion、definition、diagnostics 与
+  completion-resolve/apply-and-recheck transcript。
 - [ ] I3 验证启动的是 artifact 内相邻 sidecar，没有 repo-relative fallback。
 
 Wave 2 exit criteria：首个 tracer 在 bundle 与 installed artifact 两个 target 上全绿；
@@ -351,6 +376,10 @@ capability advertisement 与 transcript 一致；`pnpm check:fast`、artifact sm
 ### Wave 3 — 导航与安全编辑能力（可并行）
 
 共享前置：ProjectSet、WorkspaceEdit codec、UTF-16 mapping 已由 Wave 2 保护。
+
+进入本 Wave 前新增 correctness gate：项目成员全集与 256 文件/8 MiB 的有界内容快照必须
+解耦。当前 TypeScript engine 会静默丢弃未加载文件中的 references/rename locations；在能
+证明全局结果完整前不得 advertising，无法保证完整时必须 fail closed，不能返回成功但不完整。
 
 - [ ] R1 References：先分别为 `includeDeclaration=false/true` 建 RED；实现精确 ranges。
 - [ ] R2 References：unopened/re-export/overlay/同名负样本/cancel。
