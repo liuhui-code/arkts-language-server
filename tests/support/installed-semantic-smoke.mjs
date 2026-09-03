@@ -37,6 +37,53 @@ export async function assertInstalledSemanticSmoke({
   const resourceDefinition = materialized.cases["arkui.resource.definition"]
   const missingResource = materialized.cases["arkui.resource.missing"]
   const builderWidth = materialized.cases["arkui.builder-tail.width"]
+  const arkuiSdkScenarios = [
+    {
+      label: "Entry",
+      prefix: "Ent",
+      kind: CompletionItemKind.Variable,
+      completion: materialized.cases["arkui.sdk-completion.entry"],
+      usage: materialized.cases["arkui.decorator.entry"],
+      definitionAnchor: "declare const Entry",
+      hoverPattern: /const Entry: \(target: object\) => void/,
+    },
+    {
+      label: "Component",
+      prefix: "Com",
+      kind: CompletionItemKind.Variable,
+      completion: materialized.cases["arkui.sdk-completion.component"],
+      usage: materialized.cases["arkui.decorator.component"],
+      definitionAnchor: "declare const Component",
+      hoverPattern: /const Component: \(target: object\) => void/,
+    },
+    {
+      label: "State",
+      prefix: "Sta",
+      kind: CompletionItemKind.Variable,
+      completion: materialized.cases["arkui.sdk-completion.state"],
+      usage: materialized.cases["arkui.decorator.state"],
+      definitionAnchor: "declare const State",
+      hoverPattern: /const State: \(target: object, propertyKey: string\) => void/,
+    },
+    {
+      label: "Column",
+      prefix: "Col",
+      kind: CompletionItemKind.Function,
+      completion: materialized.cases["arkui.sdk-completion.column"],
+      usage: materialized.cases["arkui.component.column"],
+      definitionAnchor: "declare function Column",
+      hoverPattern: /function Column\(\): ArkUIColumnAttribute/,
+    },
+    {
+      label: "Text",
+      prefix: "Te",
+      kind: CompletionItemKind.Function,
+      completion: materialized.cases["arkui.sdk-completion.text"],
+      usage: materialized.cases["arkui.component.text"],
+      definitionAnchor: "declare function Text",
+      hoverPattern: /function Text\(value: string\): ArkUITextAttribute/,
+    },
+  ]
   assert.ok(signature, "the installed-artifact corpus must expose signature.format-call")
   assert.ok(
     documentSymbolPage && documentSymbolTitle && documentSymbolBuild,
@@ -45,6 +92,10 @@ export async function assertInstalledSemanticSmoke({
   assert.ok(
     resourceCompletion && resourceDefinition && missingResource && builderWidth,
     "the installed-artifact corpus must expose ArkUI resource and builder-tail probes",
+  )
+  assert.ok(
+    arkuiSdkScenarios.every(({ completion: sdkCompletion, usage }) => sdkCompletion && usage),
+    "the installed-artifact corpus must expose ArkUI SDK completion and usage probes",
   )
   const consumerSource = fs.readFileSync(fileURLToPath(reference.uri), "utf8")
   const definitionSource = fs.readFileSync(fileURLToPath(definition.uri), "utf8")
@@ -57,6 +108,11 @@ export async function assertInstalledSemanticSmoke({
   const documentSymbolSource = fs.readFileSync(fileURLToPath(documentSymbolPage.uri), "utf8")
   const resourcePageSource = fs.readFileSync(fileURLToPath(resourceCompletion.uri), "utf8")
   const builderPageSource = fs.readFileSync(fileURLToPath(builderWidth.uri), "utf8")
+  const arkuiSdkCompletionUri = arkuiSdkScenarios[0].completion.uri
+  const arkuiSdkCompletionSource = fs.readFileSync(
+    fileURLToPath(arkuiSdkCompletionUri),
+    "utf8",
+  )
   const resourcePath = path.join(
     materialized.workspaceRoot,
     "entry",
@@ -117,6 +173,16 @@ export async function assertInstalledSemanticSmoke({
   assert.equal(textInRange(resourcePageSource, resourceDefinition.range), "title")
   assert.equal(textInRange(resourcePageSource, missingResource.range), "missing_title")
   assert.equal(textInRange(builderPageSource, builderWidth.range), "width")
+  for (const scenario of arkuiSdkScenarios) {
+    assert.equal(scenario.completion.uri, arkuiSdkCompletionUri)
+    assert.deepEqual(scenario.completion.position, scenario.completion.range.end)
+    assert.equal(
+      textInRange(arkuiSdkCompletionSource, scenario.completion.range),
+      scenario.prefix,
+    )
+    assert.equal(scenario.usage.uri, documentSymbolPage.uri)
+    assert.equal(textInRange(documentSymbolSource, scenario.usage.range), scenario.label)
+  }
   const signatureLine = signatureSource.split("\n")[signature.position.line]
   const signaturePrefix = signatureLine.slice(0, signature.position.character)
   assert.match(signaturePrefix, /😀/)
@@ -135,6 +201,7 @@ export async function assertInstalledSemanticSmoke({
   )
   const externalCwd = cwd ?? path.join(temporaryRoot, "semantic-external-cwd")
   fs.mkdirSync(externalCwd, { recursive: true })
+  const modernSymbolKinds = Array.from({ length: 26 }, (_, index) => index + 1)
   const session = new LspSession({
     command: installedCommand,
     args: ["--stdio"],
@@ -155,14 +222,16 @@ export async function assertInstalledSemanticSmoke({
           documentChanges: true,
           failureHandling: "transactional",
         },
+        symbol: { symbolKind: { valueSet: modernSymbolKinds } },
       },
       textDocument: {
         publishDiagnostics: { versionSupport: true },
+        hover: { contentFormat: ["markdown"] },
         rename: { prepareSupport: true },
         signatureHelp: { contextSupport: true },
         documentSymbol: {
           hierarchicalDocumentSymbolSupport: true,
-          symbolKind: { valueSet: Array.from({ length: 26 }, (_, index) => index + 1) },
+          symbolKind: { valueSet: modernSymbolKinds },
         },
         codeAction: {
           codeActionLiteralSupport: { codeActionKind: { valueSet: ["quickfix"] } },
@@ -1036,10 +1105,46 @@ export async function assertInstalledSemanticSmoke({
       params: { textDocument: { uri: builderWidth.uri } },
     })
 
-    verifiedClaims.push("completion.artifact.immutable-typescript-arkui-resource-builder")
-    verifiedClaims.push("definition.artifact.immutable-typescript-arkui-resource-builder-ranges")
-    verifiedClaims.push("hover.artifact.immutable-typescript-arkui-builder-range")
     verifiedClaims.push("diagnostics.artifact.immutable-versioned-arkui-resource-builder")
+
+    session.openDocument({
+      uri: arkuiSdkCompletionUri,
+      languageId: "arkts",
+      version: 1,
+      text: arkuiSdkCompletionSource,
+    })
+    for (const scenario of arkuiSdkScenarios) {
+      const sdkCompletionResponse = await session.request("textDocument/completion", {
+        textDocument: { uri: arkuiSdkCompletionUri },
+        position: scenario.completion.position,
+        context: { triggerKind: 1 },
+      }, { timeoutMs })
+      assert.equal(
+        sdkCompletionResponse.error,
+        undefined,
+        `${scenario.label} completion: ${JSON.stringify(sdkCompletionResponse.error)}`,
+      )
+      const sdkCompletionItems = Array.isArray(sdkCompletionResponse.result)
+        ? sdkCompletionResponse.result
+        : sdkCompletionResponse.result?.items ?? []
+      assert.deepEqual(
+        sdkCompletionItems
+          .filter(({ label }) => label === scenario.label)
+          .map(({ label, kind, textEdit }) => ({ label, kind, textEdit })),
+        [{
+          label: scenario.label,
+          kind: scenario.kind,
+          textEdit: { range: scenario.completion.range, newText: scenario.label },
+        }],
+        `${scenario.label} completion: ${JSON.stringify(sdkCompletionItems)}`,
+      )
+    }
+    session.transport.send({
+      jsonrpc: "2.0",
+      method: "textDocument/didClose",
+      params: { textDocument: { uri: arkuiSdkCompletionUri } },
+    })
+    verifiedClaims.push("completion.artifact.immutable-typescript-arkui-sdk-resource-builder")
 
     session.openDocument({
       uri: documentSymbolPage.uri,
@@ -1047,6 +1152,49 @@ export async function assertInstalledSemanticSmoke({
       version: 1,
       text: documentSymbolSource,
     })
+    for (const scenario of arkuiSdkScenarios) {
+      const sdkHoverResponse = await session.request("textDocument/hover", {
+        textDocument: { uri: scenario.usage.uri },
+        position: midpoint(scenario.usage.range),
+      }, { timeoutMs })
+      assert.equal(
+        sdkHoverResponse.error,
+        undefined,
+        `${scenario.label} hover: ${JSON.stringify(sdkHoverResponse.error)}`,
+      )
+      assert.equal(
+        sdkHoverResponse.result?.contents?.kind,
+        "markdown",
+        `${scenario.label} hover markup kind`,
+      )
+      assert.match(sdkHoverResponse.result.contents.value, scenario.hoverPattern)
+      assert.deepEqual(
+        sdkHoverResponse.result.range,
+        scenario.usage.range,
+        `${scenario.label} hover range`,
+      )
+
+      const sdkDefinitionResponse = await session.request("textDocument/definition", {
+        textDocument: { uri: scenario.usage.uri },
+        position: midpoint(scenario.usage.range),
+      }, { timeoutMs })
+      assert.equal(
+        sdkDefinitionResponse.error,
+        undefined,
+        `${scenario.label} definition: ${JSON.stringify(sdkDefinitionResponse.error)}`,
+      )
+      assert.deepEqual(
+        normalizeLocations(sdkDefinitionResponse.result).filter(({ uri }) => uri === sdkUri),
+        [{
+          uri: sdkUri,
+          range: rangeInAnchor(sdkSource, scenario.definitionAnchor, scenario.label),
+        }],
+        `${scenario.label} SDK definition`,
+      )
+    }
+    verifiedClaims.push("definition.artifact.immutable-typescript-arkui-sdk-resource-builder-ranges")
+    verifiedClaims.push("hover.artifact.immutable-markdown-typescript-arkui-sdk-builder-range")
+
     const expectedWorkspaceSymbols = [
       {
         name: "ArkuiPage",

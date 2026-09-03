@@ -313,6 +313,57 @@ test("materializes installed ArkUI resource and nested builder semantic probes",
   }
 })
 
+test("materializes installed ArkUI SDK completion probes at exact UTF-16 ranges", async (t) => {
+  const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "arkts-lsp-arkui-sdk-"))
+  t.after(() => fs.rm(temporaryRoot, { recursive: true, force: true }))
+
+  const schema = JSON.parse(await fs.readFile(path.join(fixtureRoot, "corpus.json"), "utf8"))
+  const expected = new Map([
+    ["arkui.sdk-completion.entry", "Ent"],
+    ["arkui.sdk-completion.component", "Com"],
+    ["arkui.sdk-completion.state", "Sta"],
+    ["arkui.sdk-completion.column", "Col"],
+    ["arkui.sdk-completion.text", "Te"],
+  ])
+  assert.deepEqual(
+    schema.cases
+      .filter(({ id }) => id.startsWith("arkui.sdk-completion."))
+      .map(({ id, kind, role, file, shape }) => ({ id, kind, role, file, shape })),
+    [...expected.keys()].map((id) => ({
+      id,
+      kind: "completion",
+      role: "arkui-sdk-completion",
+      file: "workspace/entry/src/main/ets/pages/ArkuiSdkCompletion.ets",
+      shape: "point+range",
+    })),
+  )
+
+  const materialized = await materializeConformanceWorkspace({ temporaryRoot })
+  const documentPath = path.join(
+    materialized.workspaceRoot,
+    "entry",
+    "src",
+    "main",
+    "ets",
+    "pages",
+    "ArkuiSdkCompletion.ets",
+  )
+  const documentUri = pathToFileURL(documentPath).href
+  const source = await fs.readFile(documentPath, "utf8")
+  assert.doesNotMatch(source, /\/\*@case\./)
+
+  for (const [caseId, prefix] of expected) {
+    const markerCase = materialized.cases[caseId]
+    assert.equal(markerCase.uri, documentUri)
+    assert.equal(textInRange(source, markerCase.range), prefix)
+    assert.deepEqual(markerCase.position, markerCase.range.end)
+    const line = source.split("\n")[markerCase.range.start.line]
+    const before = line.slice(0, markerCase.range.start.character)
+    assert.match(before, /😀/)
+    assert.equal(before.length - Array.from(before).length, 1)
+  }
+})
+
 test("returns cases in the declared corpus schema order with stable metadata", async (t) => {
   const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "arkts-lsp-schema-test-"))
   t.after(() => fs.rm(temporaryRoot, { recursive: true, force: true }))

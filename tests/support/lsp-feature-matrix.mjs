@@ -59,7 +59,7 @@ export const CURRENT_LSP_FEATURE_MATRIX = Object.freeze({
       artifact: [evidence(
         "tests/release/portable-install.acceptance.mjs",
         "installs one verified artifact without source dependencies or a rebuild",
-        "completion.artifact.immutable-typescript-arkui-resource-builder",
+        "completion.artifact.immutable-typescript-arkui-sdk-resource-builder",
       )],
       artifactGap: null,
     }),
@@ -79,7 +79,7 @@ export const CURRENT_LSP_FEATURE_MATRIX = Object.freeze({
       artifact: [evidence(
         "tests/release/portable-install.acceptance.mjs",
         "installs one verified artifact without source dependencies or a rebuild",
-        "definition.artifact.immutable-typescript-arkui-resource-builder-ranges",
+        "definition.artifact.immutable-typescript-arkui-sdk-resource-builder-ranges",
       )],
       artifactGap: null,
     }),
@@ -99,7 +99,7 @@ export const CURRENT_LSP_FEATURE_MATRIX = Object.freeze({
       artifact: [evidence(
         "tests/release/portable-install.acceptance.mjs",
         "installs one verified artifact without source dependencies or a rebuild",
-        "hover.artifact.immutable-typescript-arkui-builder-range",
+        "hover.artifact.immutable-markdown-typescript-arkui-sdk-builder-range",
       )],
       artifactGap: null,
     }),

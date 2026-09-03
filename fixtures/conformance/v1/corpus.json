@@ -203,6 +203,41 @@
       "role": "nested-builder-attribute",
       "file": "workspace/entry/src/main/ets/pages/ArkuiBuilderTailPage.ets",
       "shape": "range"
+    },
+    {
+      "id": "arkui.sdk-completion.entry",
+      "kind": "completion",
+      "role": "arkui-sdk-completion",
+      "file": "workspace/entry/src/main/ets/pages/ArkuiSdkCompletion.ets",
+      "shape": "point+range"
+    },
+    {
+      "id": "arkui.sdk-completion.component",
+      "kind": "completion",
+      "role": "arkui-sdk-completion",
+      "file": "workspace/entry/src/main/ets/pages/ArkuiSdkCompletion.ets",
+      "shape": "point+range"
+    },
+    {
+      "id": "arkui.sdk-completion.state",
+      "kind": "completion",
+      "role": "arkui-sdk-completion",
+      "file": "workspace/entry/src/main/ets/pages/ArkuiSdkCompletion.ets",
+      "shape": "point+range"
+    },
+    {
+      "id": "arkui.sdk-completion.column",
+      "kind": "completion",
+      "role": "arkui-sdk-completion",
+      "file": "workspace/entry/src/main/ets/pages/ArkuiSdkCompletion.ets",
+      "shape": "point+range"
+    },
+    {
+      "id": "arkui.sdk-completion.text",
+      "kind": "completion",
+      "role": "arkui-sdk-completion",
+      "file": "workspace/entry/src/main/ets/pages/ArkuiSdkCompletion.ets",
+      "shape": "point+range"
     }
   ]
 }
