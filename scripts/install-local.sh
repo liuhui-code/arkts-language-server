@@ -18,6 +18,11 @@ extension_dir=$project_root/editors/zed
 extension_target_dir=$extension_dir/target
 extension_build=$extension_target_dir/wasm32-wasip2/release/zed_arkts_local.wasm
 extension_wasm=$extension_dir/extension.wasm
+grammar_manifest=$extension_dir/extension.toml
+grammar_gate=$project_root/scripts/check-zed-queries.sh
+grammar_dir=$extension_dir/grammars
+grammar_wasm=$grammar_dir/arkts.wasm
+grammar_stamp=$grammar_dir/.arkts-source
 lockfile=$project_root/pnpm-lock.yaml
 dependency_stamp_dir=$project_root/node_modules/.cache/arkts-language-server
 dependency_stamp=$dependency_stamp_dir/dependency-fingerprint.json
@@ -81,6 +86,25 @@ CARGO_TARGET_DIR=$project_root/target \
 CARGO_TARGET_DIR=$extension_target_dir \
   cargo build --locked --manifest-path "$extension_dir/Cargo.toml" --target wasm32-wasip2 --release
 
+# Zed stores a generated grammar beside a development extension. It does not
+# encode the source revision in that artifact, so carrying it across a grammar
+# revision can make otherwise valid queries fail at runtime. Keep a local
+# source stamp and invalidate only an unproven or changed generated grammar.
+grammar_identity=$("$grammar_gate" --print-grammar-source "$grammar_manifest")
+installed_grammar_identity=
+if [ -f "$grammar_stamp" ]; then
+  installed_grammar_identity=$(sed -n '1p' "$grammar_stamp")
+fi
+if [ "$installed_grammar_identity" != "$grammar_identity" ]; then
+  mkdir -p "$grammar_dir"
+  grammar_stamp_tmp=$grammar_stamp.tmp.$$
+  trap 'rm -f "$grammar_stamp_tmp"' EXIT HUP INT TERM
+  printf '%s\n' "$grammar_identity" > "$grammar_stamp_tmp"
+  rm -f "$grammar_wasm"
+  mv "$grammar_stamp_tmp" "$grammar_stamp"
+  trap - EXIT HUP INT TERM
+fi
+
 extension_tmp=$extension_wasm.tmp.$$
 trap 'rm -f "$extension_tmp"' EXIT HUP INT TERM
 cp "$extension_build" "$extension_tmp"
@@ -133,3 +157,5 @@ trap - EXIT HUP INT TERM
 echo "Installed arkts-language-server $release_id at $installed_command"
 echo "Built Zed extension at $extension_wasm"
 echo "Ensure $install_dir is on PATH before starting Zed."
+echo "In Zed, run 'zed: install dev extension' and select $extension_dir."
+echo "Repeat that Zed action after grammar or query updates so Zed rebuilds the pinned grammar."

@@ -4,5 +4,6 @@ dist/
 editors/zed/target/
 editors/zed/extension.wasm
 editors/zed/grammars/*.wasm
+editors/zed/grammars/.arkts-source
 .DS_Store
 *.log

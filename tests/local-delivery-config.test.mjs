@@ -38,11 +38,26 @@ test("the local installer reruns frozen install when its dependency fingerprint 
   fs.mkdirSync(path.join(fixture, "scripts"), { recursive: true })
   fs.mkdirSync(path.join(fixture, "bin"), { recursive: true })
   fs.mkdirSync(path.join(fixture, "editors", "zed"), { recursive: true })
+  fs.mkdirSync(path.join(fixture, "editors", "zed", "grammars"), { recursive: true })
   fs.mkdirSync(path.join(fixture, "node_modules", ".bin"), { recursive: true })
   fs.mkdirSync(fakeBin)
   fs.copyFileSync(path.join(projectRoot, "scripts", "install-local.sh"), path.join(fixture, "scripts", "install-local.sh"))
+  fs.copyFileSync(path.join(projectRoot, "scripts", "check-zed-queries.sh"), path.join(fixture, "scripts", "check-zed-queries.sh"))
   fs.writeFileSync(path.join(fixture, "package.json"), '{"version":"0.0.1"}\n')
   fs.writeFileSync(path.join(fixture, "pnpm-lock.yaml"), "lockfileVersion: one\n")
+  const grammarManifest = path.join(fixture, "editors", "zed", "extension.toml")
+  const grammarWasm = path.join(fixture, "editors", "zed", "grammars", "arkts.wasm")
+  const grammarStamp = path.join(fixture, "editors", "zed", "grammars", ".arkts-source")
+  const grammarRepository = "https://example.invalid/tree-sitter-arkts"
+  const grammarRevisionA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  const grammarRevisionB = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  const writeGrammarManifest = (revision) => fs.writeFileSync(grammarManifest, `
+[grammars.arkts]
+repository = "${grammarRepository}"
+rev = "${revision}"
+`)
+  writeGrammarManifest(grammarRevisionA)
+  fs.writeFileSync(grammarWasm, "stale grammar")
   fs.writeFileSync(path.join(fixture, "bin", "arkts-language-server"), "#!/bin/sh\nexit 0\n")
   fs.writeFileSync(path.join(fixture, "node_modules", ".bin", "esbuild"), "#!/bin/sh\nexit 0\n")
   fs.writeFileSync(path.join(fakeBin, "pnpm"), `#!/bin/sh
@@ -74,6 +89,7 @@ exit 0
 `)
   for (const executable of [
     path.join(fixture, "scripts", "install-local.sh"),
+    path.join(fixture, "scripts", "check-zed-queries.sh"),
     path.join(fixture, "bin", "arkts-language-server"),
     path.join(fixture, "node_modules", ".bin", "esbuild"),
     path.join(fakeBin, "pnpm"),
@@ -98,13 +114,29 @@ exit 0
   try {
     let result = runInstaller()
     assert.equal(result.status, 0, result.stderr)
+    assert.match(result.stdout, /zed: install dev extension/i)
+    assert.match(result.stdout, /editors\/zed/)
+    assert.equal(fs.existsSync(grammarWasm), false, "an untracked stale grammar must be invalidated")
+    assert.equal(
+      fs.readFileSync(grammarStamp, "utf8").trim(),
+      `${grammarRepository}\t${grammarRevisionA}`,
+    )
+    fs.writeFileSync(grammarWasm, "current grammar")
     result = runInstaller()
     assert.equal(result.status, 0, result.stderr)
+    assert.equal(fs.readFileSync(grammarWasm, "utf8"), "current grammar")
     fs.writeFileSync(path.join(fixture, "pnpm-lock.yaml"), "lockfileVersion: two\n")
     result = runInstaller()
     assert.equal(result.status, 0, result.stderr)
+    assert.equal(fs.readFileSync(grammarWasm, "utf8"), "current grammar")
+    writeGrammarManifest(grammarRevisionB)
     result = runInstaller("9.15.9")
     assert.equal(result.status, 0, result.stderr)
+    assert.equal(fs.existsSync(grammarWasm), false, "a changed pinned grammar must invalidate its wasm")
+    assert.equal(
+      fs.readFileSync(grammarStamp, "utf8").trim(),
+      `${grammarRepository}\t${grammarRevisionB}`,
+    )
 
     const installs = fs.readFileSync(log, "utf8")
       .trim()

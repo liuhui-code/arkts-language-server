@@ -45,3 +45,30 @@ The first full `pnpm check:fast` run was also executed, but the shared 2-second
 LSP harness timed out under concurrent first-build load. The integration branch
 independently raises that existing harness timeout to five seconds; the full
 gate is rerun after this branch is merged onto that revision.
+
+## Real-Zed stale grammar regression
+
+An isolated Zed Preview 1.19.0 run exposed a boundary the native query compiler
+could not cover. Zed loaded an ignored `grammars/arkts.wasm` left by an older
+development-extension build; it predated the current manifest and failed to
+compile `highlights.scm` with `Invalid node type "property_identifier"`. The
+same query correctly compiled against the pinned source grammar, proving the
+fault was stale generated state rather than the shipped query.
+
+The installer now records the exact grammar repository and revision beside
+Zed's generated WASM. An absent or changed source stamp invalidates that one
+generated artifact; repeated installs with the same identity preserve it. The
+installer also prints the required `zed: install dev extension` action and
+extension directory, because Zed owns grammar compilation and exposes no local
+extension-install CLI.
+
+TDD command:
+
+```text
+node --test --test-name-pattern="dependency fingerprint" tests/local-delivery-config.test.mjs
+```
+
+RED: an unproven stale grammar survived installation and no Zed reinstall step
+was shown. GREEN: first install and revision changes invalidate the artifact,
+same-revision installs preserve it, the atomic source stamp advances, and the
+user-facing command is explicit. The portable installer suite remained 3/3.

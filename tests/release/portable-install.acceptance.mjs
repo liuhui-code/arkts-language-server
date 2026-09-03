@@ -21,11 +21,14 @@ function makeCheckout(temporaryRoot) {
   }
 
   copy("scripts/install-local.sh")
+  copy("scripts/check-zed-queries.sh")
   copy("bin/arkts-language-server")
   copy("dist/server.cjs")
   copy("target/release/arkts-index-sidecar")
   copy("editors/zed/extension.wasm")
+  copy("editors/zed/extension.toml")
   fs.chmodSync(path.join(checkout, "scripts", "install-local.sh"), 0o755)
+  fs.chmodSync(path.join(checkout, "scripts", "check-zed-queries.sh"), 0o755)
   fs.chmodSync(path.join(checkout, "bin", "arkts-language-server"), 0o755)
   fs.chmodSync(path.join(checkout, "target", "release", "arkts-index-sidecar"), 0o755)
 
