@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "completion.unicode",
+      "kind": "completion",
+      "role": "query",
+      "file": "workspace/entry/src/main/ets/pages/Home.ets",
+      "shape": "point+range"
+    },
+    {
+      "id": "greeter.definition",
+      "kind": "completion",
+      "role": "auto-import-target",
+      "file": "workspace/entry/src/main/ets/services/Greeter.ets",
+      "shape": "range"
+    },
+    {
+      "id": "profile.definition",
+      "kind": "definition",
+      "role": "target",
+      "file": "workspace/entry/src/main/ets/model/Profile.ets",
+      "shape": "range"
+    },
+    {
+      "id": "profile.barrel",
+      "kind": "definition",
+      "role": "re-export",
+      "file": "workspace/entry/src/main/ets/model/index.ets",
+      "shape": "range"
+    },
+    {
+      "id": "profile.reference",
+      "kind": "references",
+      "role": "reference",
+      "file": "workspace/entry/src/main/ets/pages/OtherConsumer.ets",
+      "shape": "range"
+    },
+    {
+      "id": "profile.shadow",
+      "kind": "references",
+      "role": "negative",
+      "file": "workspace/entry/src/main/ets/pages/OtherConsumer.ets",
+      "shape": "range"
+    },
+    {
+      "id": "arkui.decorator.entry",
+      "kind": "arkui",
+      "role": "decorator",
+      "file": "workspace/entry/src/main/ets/pages/ArkuiPage.ets",
+      "shape": "range"
+    },
+    {
+      "id": "arkui.decorator.component",
+      "kind": "arkui",
+      "role": "decorator",
+      "file": "workspace/entry/src/main/ets/pages/ArkuiPage.ets",
+      "shape": "range"
+    },
+    {
+      "id": "arkui.decorator.state",
+      "kind": "arkui",
+      "role": "decorator",
+      "file": "workspace/entry/src/main/ets/pages/ArkuiPage.ets",
+      "shape": "range"
+    },
+    {
+      "id": "arkui.component.column",
+      "kind": "arkui",
+      "role": "component",
+      "file": "workspace/entry/src/main/ets/pages/ArkuiPage.ets",
+      "shape": "range"
+    },
+    {
+      "id": "arkui.component.text",
+      "kind": "arkui",
+      "role": "component",
+      "file": "workspace/entry/src/main/ets/pages/ArkuiPage.ets",
+      "shape": "range"
+    },
+    {
+      "id": "arkui.attribute.width",
+      "kind": "arkui",
+      "role": "attribute",
+      "file": "workspace/entry/src/main/ets/pages/ArkuiPage.ets",
+      "shape": "range"
+    }
+  ]
+}

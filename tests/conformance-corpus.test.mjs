@@ -154,8 +154,155 @@ test("materializes isolated ArkUI and OpenHarmony SDK fixtures without host disc
   }
 })
 
+test("returns cases in the declared corpus schema order with stable metadata", async (t) => {
+  const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "arkts-lsp-schema-test-"))
+  t.after(() => fs.rm(temporaryRoot, { recursive: true, force: true }))
+
+  const schema = JSON.parse(await fs.readFile(path.join(fixtureRoot, "corpus.json"), "utf8"))
+  const materialized = await materializeConformanceWorkspace({ temporaryRoot })
+
+  assert.equal(schema.version, 1)
+  assert.deepEqual(Object.keys(materialized.cases), schema.cases.map(({ id }) => id))
+  for (const declaration of schema.cases) {
+    const markerCase = materialized.cases[declaration.id]
+    assert.equal(markerCase.kind, declaration.kind)
+    assert.equal(markerCase.role, declaration.role)
+    assert.equal(markerCase.shape, declaration.shape)
+    assert.equal(
+      markerCase.uri,
+      pathToFileURL(path.join(materialized.corpusRoot, ...declaration.file.split("/"))).href,
+    )
+  }
+})
+
+test("rejects a duplicate marker endpoint", async (t) => {
+  const injected = await copyFixtureForMutation(t, "duplicate-marker")
+  const homePath = path.join(
+    injected.fixtureRoot,
+    "workspace",
+    "entry",
+    "src",
+    "main",
+    "ets",
+    "pages",
+    "Home.ets",
+  )
+  const source = await fs.readFile(homePath, "utf8")
+  await fs.writeFile(
+    homePath,
+    source.replace(
+      "/*@case.completion.unicode*/",
+      "/*@case.completion.unicode*//*@case.completion.unicode*/",
+    ),
+    "utf8",
+  )
+
+  await assert.rejects(
+    materializeConformanceWorkspace(injected),
+    /duplicate marker endpoint "position" for case "completion\.unicode"/i,
+  )
+})
+
+test("rejects a marker that is not declared in corpus.json", async (t) => {
+  const injected = await copyFixtureForMutation(t, "undeclared-marker")
+  const homePath = path.join(
+    injected.fixtureRoot,
+    "workspace",
+    "entry",
+    "src",
+    "main",
+    "ets",
+    "pages",
+    "Home.ets",
+  )
+  await fs.appendFile(homePath, "\n/*@case.not.declared*/\n", "utf8")
+
+  await assert.rejects(
+    materializeConformanceWorkspace(injected),
+    /marker case "not\.declared" is not declared in corpus\.json/i,
+  )
+})
+
+test("rejects a declared case whose markers are missing", async (t) => {
+  const injected = await copyFixtureForMutation(t, "missing-marker")
+  const barrelPath = path.join(
+    injected.fixtureRoot,
+    "workspace",
+    "entry",
+    "src",
+    "main",
+    "ets",
+    "model",
+    "index.ets",
+  )
+  const source = await fs.readFile(barrelPath, "utf8")
+  await fs.writeFile(
+    barrelPath,
+    source.replace(/\/\*@case\.profile\.barrel\.(?:start|end)\*\//g, ""),
+    "utf8",
+  )
+
+  await assert.rejects(
+    materializeConformanceWorkspace(injected),
+    /declared case "profile\.barrel" has no markers/i,
+  )
+})
+
+test("rejects point and range markers that do not match the declared shape", async (t) => {
+  const injected = await copyFixtureForMutation(t, "marker-shape")
+  const schemaPath = path.join(injected.fixtureRoot, "corpus.json")
+  const schema = JSON.parse(await fs.readFile(schemaPath, "utf8"))
+  schema.cases.find(({ id }) => id === "completion.unicode").shape = "range"
+  await fs.writeFile(schemaPath, `${JSON.stringify(schema, null, 2)}\n`, "utf8")
+
+  await assert.rejects(
+    materializeConformanceWorkspace(injected),
+    /case "completion\.unicode" declares marker shape "range" but found "point\+range"/i,
+  )
+})
+
+test("rejects one case whose marker endpoints span different files", async (t) => {
+  const injected = await copyFixtureForMutation(t, "cross-file-marker")
+  const homePath = path.join(
+    injected.fixtureRoot,
+    "workspace",
+    "entry",
+    "src",
+    "main",
+    "ets",
+    "pages",
+    "Home.ets",
+  )
+  const consumerPath = path.join(
+    injected.fixtureRoot,
+    "workspace",
+    "entry",
+    "src",
+    "main",
+    "ets",
+    "pages",
+    "OtherConsumer.ets",
+  )
+  const home = await fs.readFile(homePath, "utf8")
+  await fs.writeFile(homePath, home.replace("/*@case.completion.unicode*/", ""), "utf8")
+  await fs.appendFile(consumerPath, "\n/*@case.completion.unicode*/\n", "utf8")
+
+  await assert.rejects(
+    materializeConformanceWorkspace(injected),
+    /case "completion\.unicode" marker file conflicts with corpus\.json/i,
+  )
+})
+
 function textInRange(source, range) {
   const lines = source.split("\n")
   assert.equal(range.start.line, range.end.line, "this corpus slice uses single-line ranges")
   return lines[range.start.line].slice(range.start.character, range.end.character)
+}
+
+async function copyFixtureForMutation(t, name) {
+  const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), `arkts-lsp-${name}-test-`))
+  const mutableFixtureRoot = path.join(temporaryRoot, "fixture")
+  await fs.cp(fixtureRoot, mutableFixtureRoot, { recursive: true })
+  t.after(() => fs.rm(temporaryRoot, { recursive: true, force: true }))
+  return { fixtureRoot: mutableFixtureRoot, temporaryRoot }
 }

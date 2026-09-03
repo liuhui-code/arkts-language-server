@@ -70,10 +70,19 @@ export async function materializeConformanceWorkspace({
   const root = await fs.mkdtemp(path.join(temporaryRoot, "arkts-lsp-conformance-"))
   const corpusRoot = path.join(root, "corpus")
   const workspaceRoot = path.join(corpusRoot, "workspace")
-  const cases = {}
 
   try {
     await fs.cp(fixtureRoot, corpusRoot, { recursive: true })
+    const schema = JSON.parse(await fs.readFile(path.join(corpusRoot, "corpus.json"), "utf8"))
+    const cases = Object.fromEntries(schema.cases.map((declaration) => [
+      declaration.id,
+      {
+        kind: declaration.kind,
+        role: declaration.role,
+        shape: declaration.shape,
+        uri: pathToFileURL(path.join(corpusRoot, ...declaration.file.split("/"))).href,
+      },
+    ]))
 
     for (const filePath of await etsFiles(workspaceRoot)) {
       const originalSource = await fs.readFile(filePath, "utf8")
@@ -82,13 +91,25 @@ export async function materializeConformanceWorkspace({
 
       for (const marker of materialized.markers) {
         const { caseId, endpoint } = markerIdentity(marker.id)
-        const testCase = cases[caseId] ?? { uri }
+        if (!Object.hasOwn(cases, caseId)) {
+          throw new Error(`Marker case "${caseId}" is not declared in corpus.json`)
+        }
+        const testCase = cases[caseId]
+        if (testCase.uri !== uri) {
+          throw new Error(`Case "${caseId}" marker file conflicts with corpus.json`)
+        }
         const position = positionAt(materialized.source, marker.offset)
 
         if (endpoint === "position") {
+          if (Object.hasOwn(testCase, "position")) {
+            throw new Error(`Duplicate marker endpoint "position" for case "${caseId}"`)
+          }
           testCase.position = position
         } else {
           testCase.range ??= {}
+          if (Object.hasOwn(testCase.range, endpoint)) {
+            throw new Error(`Duplicate marker endpoint "${endpoint}" for case "${caseId}"`)
+          }
           testCase.range[endpoint] = position
         }
         cases[caseId] = testCase
@@ -96,6 +117,28 @@ export async function materializeConformanceWorkspace({
 
       if (materialized.markers.length > 0) {
         await fs.writeFile(filePath, materialized.source, "utf8")
+      }
+    }
+
+    for (const [caseId, testCase] of Object.entries(cases)) {
+      if (!Object.hasOwn(testCase, "position") && !Object.hasOwn(testCase, "range")) {
+        throw new Error(`Declared case "${caseId}" has no markers`)
+      }
+
+      const hasPoint = Object.hasOwn(testCase, "position")
+      const hasRangeStart = Object.hasOwn(testCase.range ?? {}, "start")
+      const hasRangeEnd = Object.hasOwn(testCase.range ?? {}, "end")
+      const actualShape = hasRangeStart !== hasRangeEnd
+        ? "incomplete-range"
+        : hasPoint && hasRangeStart
+          ? "point+range"
+          : hasPoint
+            ? "point"
+            : "range"
+      if (testCase.shape !== actualShape) {
+        throw new Error(
+          `Case "${caseId}" declares marker shape "${testCase.shape}" but found "${actualShape}"`,
+        )
       }
     }
 
