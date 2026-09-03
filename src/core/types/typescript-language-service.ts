@@ -29,6 +29,7 @@ import type {
 import type {
   SemanticCodeFixCandidate,
   SemanticResolvedCodeFix,
+  SemanticReferenceQueryResult,
   SemanticSignatureHelpTriggerReason,
   SemanticTypeEngineState,
 } from "./type-engine.js"
@@ -341,6 +342,59 @@ export class TypeScriptLanguageServiceEngine {
         confidence: "exact" as const,
       }]
     })
+  }
+
+  references(
+    position: SemanticDocumentPosition,
+    includeDeclaration: boolean,
+  ): SemanticReferenceQueryResult {
+    if (this.projectMembershipStatus !== "complete") {
+      return { status: "incomplete", reason: "project-membership-incomplete" }
+    }
+    const filePath = path.resolve(position.path)
+    const script = this.scripts.get(filePath)
+    if (!script) return { status: "incomplete", reason: "source-unavailable" }
+    script.lastAccess = ++this.accessClock
+    const sourceOffset = lineColumnToOffset(script.sourceContent, position.line, position.column)
+    const offset = script.virtualDocument.toGeneratedOffset(sourceOffset)
+    const definitions = this.service.getDefinitionAtPosition(filePath, offset) ?? []
+    if (definitions.length === 0) return { status: "complete", references: [] }
+
+    const referencedSymbols = definitions.flatMap((definition) => (
+      this.service.findReferences(definition.fileName, definition.textSpan.start) ?? []
+    ))
+    const canonicalDefinitionKeys = new Set(definitions.map((definition) => (
+      typescriptSpanKey(path.resolve(definition.fileName), definition.textSpan)
+    )))
+    const sourceViews = new Map<string, ScriptRecord | LazySnapshotRecord>()
+    const references: SemanticDefinitionCandidate[] = []
+    const seen = new Set<string>()
+    for (const symbol of referencedSymbols) {
+      for (const reference of symbol.references) {
+        const targetPath = path.resolve(reference.fileName)
+        const isCanonicalDefinition = canonicalDefinitionKeys.has(
+          typescriptSpanKey(targetPath, reference.textSpan),
+        )
+        if (!includeDeclaration && isCanonicalDefinition) continue
+        if (!isWithinRoot(this.rootPath, targetPath)) {
+          return { status: "incomplete", reason: "source-outside-workspace" }
+        }
+        let sourceView = sourceViews.get(targetPath)
+        if (!sourceView) {
+          sourceView = this.scripts.get(targetPath) ?? this.loadLazySnapshot(targetPath)
+          if (!sourceView) return { status: "incomplete", reason: "source-unavailable" }
+          sourceViews.set(targetPath, sourceView)
+        }
+        const range = exactSourceRange(sourceView, reference.textSpan)
+        if (!range) return { status: "incomplete", reason: "source-unmappable" }
+        const key = semanticLocationKey(targetPath, range)
+        if (seen.has(key)) continue
+        seen.add(key)
+        references.push({ path: targetPath, range })
+      }
+    }
+    references.sort(compareSemanticLocations)
+    return { status: "complete", references }
   }
 
   diagnostics(position: SemanticDocumentPosition): SemanticDiagnostic[] {
@@ -1067,6 +1121,54 @@ function compareTextEdits(
   return left.path.localeCompare(right.path)
     || left.range.startLine - right.range.startLine
     || left.range.startColumn - right.range.startColumn
+}
+
+function typescriptSpanKey(filePath: string, span: ts.TextSpan): string {
+  return `${filePath}:${span.start}:${span.length}`
+}
+
+function exactSourceRange(
+  sourceView: ScriptRecord | LazySnapshotRecord,
+  span: ts.TextSpan,
+): SemanticTextRange | undefined {
+  if (
+    !Number.isSafeInteger(span.start)
+    || !Number.isSafeInteger(span.length)
+    || span.start < 0
+    || span.length <= 0
+    || span.start + span.length > sourceView.content.length
+  ) return undefined
+  const sourceStart = sourceView.virtualDocument.toSourceOffset(span.start)
+  const sourceEnd = sourceView.virtualDocument.toSourceOffset(span.start + span.length)
+  if (
+    sourceEnd <= sourceStart
+    || sourceView.virtualDocument.toGeneratedOffset(sourceStart) !== span.start
+    || sourceView.virtualDocument.toGeneratedOffset(sourceEnd) !== span.start + span.length
+    || sourceView.content.slice(span.start, span.start + span.length)
+      !== sourceView.virtualDocument.sourceContent.slice(sourceStart, sourceEnd)
+  ) return undefined
+  return sourceView.virtualDocument.generatedSpanToSourceRange(span.start, span.length)
+}
+
+function semanticLocationKey(filePath: string, range: SemanticTextRange): string {
+  return [
+    filePath,
+    range.startLine,
+    range.startColumn,
+    range.endLine,
+    range.endColumn,
+  ].join(":")
+}
+
+function compareSemanticLocations(
+  left: SemanticDefinitionCandidate,
+  right: SemanticDefinitionCandidate,
+): number {
+  return left.path.localeCompare(right.path)
+    || left.range.startLine - right.range.startLine
+    || left.range.startColumn - right.range.startColumn
+    || left.range.endLine - right.range.endLine
+    || left.range.endColumn - right.range.endColumn
 }
 
 function isIdentifierText(value: string) {

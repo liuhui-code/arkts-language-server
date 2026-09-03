@@ -8,6 +8,7 @@ export const CURRENT_LSP_CAPABILITY_CONTRACT = Object.freeze({
     "documentSymbolProvider",
     "hoverProvider",
     "positionEncoding",
+    "referencesProvider",
     "signatureHelpProvider",
     "textDocumentSync",
     "workspaceSymbolProvider",
@@ -23,6 +24,7 @@ export const CURRENT_LSP_CAPABILITY_CONTRACT = Object.freeze({
       expected: { codeActionKinds: ["quickfix"], resolveProvider: true },
     },
     { path: "definitionProvider", expected: true },
+    { path: "referencesProvider", expected: true },
     { path: "hoverProvider", expected: true },
     { path: "signatureHelpProvider.triggerCharacters", expected: ["(", ",", "<"] },
     { path: "signatureHelpProvider.retriggerCharacters", expected: [")"] },
@@ -30,7 +32,6 @@ export const CURRENT_LSP_CAPABILITY_CONTRACT = Object.freeze({
     { path: "workspaceSymbolProvider", expected: true },
   ]),
   absent: Object.freeze([
-    "referencesProvider",
     "renameProvider",
   ]),
 })

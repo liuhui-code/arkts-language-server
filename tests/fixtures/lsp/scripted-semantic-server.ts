@@ -10,6 +10,8 @@ import type {
   SemanticHover,
   SemanticCompletionResolveQuery,
   SemanticQuery,
+  SemanticReferencesOutcome,
+  SemanticReferencesQuery,
   SemanticResolvedCodeAction,
   SemanticSignatureHelp,
   SemanticSignatureHelpQuery,
@@ -131,6 +133,12 @@ class ScriptedSemanticEngine implements SemanticEnginePort {
       uri: query.document.uri,
       range: zeroRange(),
     }])
+  }
+
+  async references(
+    query: SemanticReferencesQuery,
+  ): Promise<VersionedSemanticResult<SemanticReferencesOutcome>> {
+    return scriptedSemanticResult(query, { status: "complete", references: [] })
   }
 
   async diagnose(query: { document: DocumentSnapshot }) {

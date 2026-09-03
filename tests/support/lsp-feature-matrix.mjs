@@ -216,11 +216,21 @@ export const CURRENT_LSP_FEATURE_MATRIX = Object.freeze({
       )],
       artifactGap: null,
     }),
-    plannedFeature(
-      "references",
-      "referencesProvider",
-      "References are not enabled.",
-    ),
+    enabledFeature({
+      id: "references",
+      requiredCapabilities: [capability("referencesProvider", true)],
+      protocol: [evidence(
+        "tests/lsp-semantic-request-reliability.test.mjs",
+        "maps cancellation for every advertised semantic request to RequestCancelled",
+        "references.protocol.cancellation",
+      )],
+      bundle: [evidence(
+        "tests/semantic/references-depth.test.mjs",
+        "finds unopened barrel references with exact UTF-16 ranges and declaration policy",
+        "references.bundle.unopened-barrel-declaration-policy",
+      )],
+      artifactGap: "Immutable installed references transcript is pending.",
+    }),
     plannedFeature(
       "rename",
       "renameProvider",

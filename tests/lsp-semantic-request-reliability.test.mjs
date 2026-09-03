@@ -12,6 +12,11 @@ buildScriptedSemanticServer()
 
 const semanticRequests = [
   ["textDocument/definition", { position: { line: 0, character: 0 } }, []],
+  [
+    "textDocument/references",
+    { position: { line: 0, character: 0 }, context: { includeDeclaration: false } },
+    { staleError: -32801 },
+  ],
   ["textDocument/hover", { position: { line: 0, character: 0 } }, null],
   ["textDocument/signatureHelp", { position: { line: 0, character: 0 } }, null],
   ["textDocument/documentSymbol", {}, []],
@@ -59,7 +64,9 @@ test("drops stale results for every advertised semantic request after didChange"
         contentChanges: [{ text: "struct Current {}" }],
       },
     })
-    assert.deepEqual((await server.response(id)).result, staleValue, method)
+    const response = await server.response(id)
+    if (staleValue?.staleError) assert.equal(response.error.code, staleValue.staleError, method)
+    else assert.deepEqual(response.result, staleValue, method)
   }
 })
 

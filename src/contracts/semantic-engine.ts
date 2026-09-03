@@ -40,6 +40,21 @@ export interface SemanticDefinition {
   range: TextRange
 }
 
+export interface SemanticReference {
+  uri: DocumentUri
+  range: TextRange
+}
+
+export type SemanticGlobalQueryFailureReason =
+  | "project-membership-incomplete"
+  | "source-outside-workspace"
+  | "source-unavailable"
+  | "source-unmappable"
+
+export type SemanticReferencesOutcome =
+  | { status: "complete"; references: SemanticReference[] }
+  | { status: "incomplete"; reason: SemanticGlobalQueryFailureReason }
+
 export interface SemanticSignatureParameter {
   label: string
   documentation?: string
@@ -132,6 +147,10 @@ export interface SemanticCompletionResolveQuery extends SemanticQuery {
   completion: SemanticCompletion
 }
 
+export interface SemanticReferencesQuery extends SemanticQuery {
+  includeDeclaration: boolean
+}
+
 export interface SemanticSignatureHelpQuery extends SemanticQuery {
   triggerReason: SemanticSignatureHelpTriggerReason
 }
@@ -167,6 +186,9 @@ export interface SemanticEnginePort {
     query: SemanticCompletionResolveQuery,
   ): Promise<VersionedSemanticResult<SemanticCompletion>>
   define(query: SemanticQuery): Promise<VersionedSemanticResult<SemanticDefinition[]>>
+  references(
+    query: SemanticReferencesQuery,
+  ): Promise<VersionedSemanticResult<SemanticReferencesOutcome>>
   documentSymbols(query: SemanticDocumentQuery): Promise<VersionedSemanticResult<SemanticDocumentSymbol[]>>
   diagnose(query: SemanticDocumentQuery): Promise<VersionedSemanticResult<SemanticDiagnostic[]>>
   codeActions(query: SemanticCodeActionQuery): Promise<VersionedSemanticResult<SemanticCodeAction[]>>

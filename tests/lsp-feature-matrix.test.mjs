@@ -33,14 +33,14 @@ test("maps the complete public capability contract to executable feature evidenc
     "workspace-symbol",
     "diagnostics",
     "completion-resolve",
+    "references",
     "code-actions",
   ])
   assert.deepEqual(audit.plannedFeatureIds, [
-    "references",
     "rename",
   ])
-  assert.equal(audit.requiredCapabilityCount, 12)
-  assert.equal(audit.absentCapabilityCount, 2)
+  assert.equal(audit.requiredCapabilityCount, 13)
+  assert.equal(audit.absentCapabilityCount, 1)
   assert.deepEqual(audit.artifactCoveredFeatureIds, [
     "document-sync",
     "completion",
@@ -108,10 +108,10 @@ test("rejects capability and evidence drift instead of accepting a stale matrix"
     ],
     [
       "enabled absent capability",
-      mutateFeature("references", (feature) => {
+      mutateFeature("rename", (feature) => {
         feature.state = "enabled"
       }),
-      /references: enabled feature cannot cover absent capabilities/,
+      /rename: enabled feature cannot cover absent capabilities/,
     ],
     [
       "empty artifact gap",

@@ -246,6 +246,10 @@ class ScenarioSemanticEngine implements SemanticEnginePort {
     return versioned(query, [])
   }
 
+  async references(query: SemanticQuery) {
+    return versioned(query, { status: "complete" as const, references: [] })
+  }
+
   async hover(query: SemanticQuery): Promise<VersionedSemanticResult<null>> {
     return versioned(query, null)
   }

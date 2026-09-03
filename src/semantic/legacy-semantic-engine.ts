@@ -20,6 +20,8 @@ import type {
   SemanticEnginePort,
   SemanticHover,
   SemanticQuery,
+  SemanticReferencesOutcome,
+  SemanticReferencesQuery,
   SemanticResolvedCodeAction,
   SemanticSignatureHelp,
   SemanticSignatureHelpQuery,
@@ -109,6 +111,27 @@ export class LegacySemanticEngine implements SemanticEnginePort {
       range: toPublicRange(target.range),
     }))
     return { documentVersion: query.document.version, value }
+  }
+
+  async references(
+    query: SemanticReferencesQuery,
+  ): Promise<VersionedSemanticResult<SemanticReferencesOutcome>> {
+    assertActive(query.signal)
+    this.sync(query.document)
+    const prepared = this.prepare(query.document, query.position, true)
+    const result = prepared.engine.references(prepared.position, query.includeDeclaration)
+    return {
+      documentVersion: query.document.version,
+      value: result.status === "complete"
+        ? {
+            status: "complete",
+            references: result.references.map((reference) => ({
+              uri: pathToFileURL(reference.path).href,
+              range: toPublicRange(reference.range),
+            })),
+          }
+        : result,
+    }
   }
 
   async documentSymbols(

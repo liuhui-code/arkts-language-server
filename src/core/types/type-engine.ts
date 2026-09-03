@@ -41,6 +41,17 @@ export interface SemanticResolvedCodeFix extends SemanticCodeFixCandidate {
   }>
 }
 
+export type SemanticReferenceQueryResult =
+  | { status: "complete"; references: SemanticDefinitionCandidate[] }
+  | {
+      status: "incomplete"
+      reason:
+        | "project-membership-incomplete"
+        | "source-outside-workspace"
+        | "source-unavailable"
+        | "source-unmappable"
+    }
+
 export type SemanticSignatureHelpTriggerReason =
   | { kind: "invoked" }
   | { kind: "characterTyped"; triggerCharacter: "(" | "," | "<" }
@@ -51,6 +62,10 @@ export interface SemanticTypeQueryContext {
   complete(position: SemanticDocumentPosition): SemanticCompletionItem[]
   resolveCompletion(position: SemanticDocumentPosition, item: SemanticCompletionItem): SemanticCompletionItem
   define(position: SemanticDocumentPosition): SemanticDefinitionCandidate[]
+  references(
+    position: SemanticDocumentPosition,
+    includeDeclaration: boolean,
+  ): SemanticReferenceQueryResult
   usages(position: SemanticDocumentPosition): SemanticUsageResult[]
   diagnostics(position: SemanticDocumentPosition): SemanticDiagnostic[]
   codeActions(
@@ -101,6 +116,9 @@ export class SemanticTypeEngineRegistry {
       complete: (position) => entry.engine.complete(position),
       resolveCompletion: (position, item) => entry.engine.resolveCompletion(position, item),
       define: (position) => entry.engine.define(position),
+      references: (position, includeDeclaration) => (
+        entry.engine.references(position, includeDeclaration)
+      ),
       usages: (position) => entry.engine.usages(position),
       diagnostics: (position) => entry.engine.diagnostics(position),
       codeActions: (position, range) => entry.engine.codeActions(position, range),

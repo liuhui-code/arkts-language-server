@@ -1,6 +1,8 @@
 import {
   CodeActionKind,
+  LSPErrorCodes,
   MarkupKind,
+  ResponseError,
   SignatureHelpTriggerKind,
   SymbolKind,
   type ClientCapabilities,
@@ -18,6 +20,7 @@ import type {
   SemanticDocumentSymbol,
   SemanticEnginePort,
   SemanticHover,
+  SemanticReferencesOutcome,
   SemanticSignatureHelp,
   SemanticSignatureHelpTriggerReason,
 } from "../contracts/semantic-engine.js"
@@ -44,6 +47,7 @@ export function registerSemanticCapabilities({
   const capabilities: ServerCapabilities = {
     documentSymbolProvider: true,
     hoverProvider: true,
+    referencesProvider: true,
     signatureHelpProvider: {
       triggerCharacters: ["(", ",", "<"],
       retriggerCharacters: [")"],
@@ -78,6 +82,34 @@ export function registerSemanticCapabilities({
       }),
     })
     return result ? toLspHover(result) : null
+  })
+
+  connection.onReferences(async (params, token) => {
+    const outcome = await requests.run<SemanticReferencesOutcome | { status: "stale" }>({
+      method: "textDocument/references",
+      documentUri: params.textDocument.uri,
+      token,
+      fallback: { status: "stale" },
+      execute: (document, signal) => semantic.references({
+        document,
+        position: params.position,
+        includeDeclaration: params.context.includeDeclaration,
+        signal,
+      }),
+    })
+    if (outcome.status === "stale") {
+      throw new ResponseError(
+        LSPErrorCodes.ContentModified,
+        "References request is stale",
+      )
+    }
+    if (outcome.status === "incomplete") {
+      throw new ResponseError(
+        LSPErrorCodes.RequestFailed,
+        "References require a complete workspace snapshot",
+      )
+    }
+    return outcome.references
   })
 
   connection.onDocumentSymbol(async (params, token) => {
