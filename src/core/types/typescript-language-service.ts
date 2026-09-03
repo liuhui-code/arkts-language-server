@@ -72,6 +72,12 @@ interface SafeCodeFix extends SemanticCodeFixCandidate {
   }>
 }
 
+type RenameConflictPreflight =
+  | "not-applicable"
+  | "clear"
+  | "conflict"
+  | "indeterminate"
+
 export interface TypeScriptLanguageServiceEngineOptions {
   readSourceFile?: (filePath: string) => string | null
   lazySnapshotLimits?: {
@@ -562,6 +568,15 @@ export class TypeScriptLanguageServiceEngine {
     const offset = script.virtualDocument.toGeneratedOffset(sourceOffset)
     const info = this.service.getRenameInfo(filePath, offset, { allowRenameOfImportPath: false })
     if (!info.canRename) return { status: "unavailable" }
+    const conflict = preflightTopLevelClassRenameConflict(
+      this.service,
+      filePath,
+      info.triggerSpan.start,
+      newName,
+    )
+    if (conflict === "conflict" || conflict === "indeterminate") {
+      return { status: "unavailable" }
+    }
     const locations = this.service.findRenameLocations(filePath, offset, false, false, true) ?? []
     if (locations.length === 0) return { status: "unavailable" }
     const sourceViews = new Map<string, ScriptRecord | LazySnapshotRecord>()
@@ -1229,4 +1244,59 @@ function isIdentifierText(value: string) {
   const scanner = ts.createScanner(ts.ScriptTarget.Latest, false, ts.LanguageVariant.Standard, value)
   return scanner.scan() === ts.SyntaxKind.Identifier
     && scanner.scan() === ts.SyntaxKind.EndOfFileToken
+}
+
+function preflightTopLevelClassRenameConflict(
+  service: ts.LanguageService,
+  filePath: string,
+  triggerOffset: number,
+  newName: string,
+): RenameConflictPreflight {
+  const program = service.getProgram()
+  const sourceFile = program?.getSourceFile(filePath)
+  if (!program || !sourceFile) return "indeterminate"
+  const target = identifierAtPosition(sourceFile, triggerOffset)
+  if (
+    !target
+    || !ts.isClassDeclaration(target.parent)
+    || target.parent.name !== target
+    || !ts.isSourceFile(target.parent.parent)
+  ) return "not-applicable"
+
+  const checker = program.getTypeChecker()
+  const targetSymbol = checker.getSymbolAtLocation(target)
+  if (!targetSymbol) return "indeterminate"
+  const canonicalTarget = canonicalExportSymbol(checker, targetSymbol)
+  const candidate = checker.resolveName(
+    newName,
+    target,
+    ts.SymbolFlags.Value | ts.SymbolFlags.Type | ts.SymbolFlags.Namespace,
+    true,
+  )
+  if (!candidate) return "clear"
+  const canonicalCandidate = canonicalExportSymbol(checker, candidate)
+  if (canonicalCandidate === canonicalTarget) return "clear"
+  if (!(canonicalCandidate.flags & ts.SymbolFlags.ClassExcludes)) return "clear"
+  if (canonicalCandidate.declarations?.some((declaration) => (
+    declaration.getSourceFile() === sourceFile
+  ))) return "conflict"
+  return "clear"
+}
+
+function canonicalExportSymbol(checker: ts.TypeChecker, symbol: ts.Symbol): ts.Symbol {
+  return checker.getMergedSymbol(checker.getExportSymbolOfSymbol(symbol))
+}
+
+function identifierAtPosition(
+  sourceFile: ts.SourceFile,
+  position: number,
+): ts.Identifier | undefined {
+  let result: ts.Identifier | undefined
+  const visit = (node: ts.Node): void => {
+    if (position < node.getStart(sourceFile) || position >= node.getEnd()) return
+    if (ts.isIdentifier(node)) result = node
+    ts.forEachChild(node, visit)
+  }
+  visit(sourceFile)
+  return result
 }
