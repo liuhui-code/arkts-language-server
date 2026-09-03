@@ -24,14 +24,32 @@ src/contracts        editor-neutral snapshots and ports
 src/project          workspace/project resolution
 src/semantic         adapters around the extracted semantic core
 src/core             extracted ArkLine implementation; no LSP imports
-src/index            WorkspaceIndexPort adapters; no SQLite schema access
-crates/index-*       future headless Rust parser/store/sidecar
+src/index            sidecar adapter, protocol validation, URI rebasing
+src/composition      production dependency assembly and platform paths
+crates/index-core    headless ArkTS symbol parser and in-memory ranking
+crates/index-sqlite  private persistent schema, WAL and atomic generations
+crates/index-sidecar protocol-v1 NDJSON process and streamed cataloging
 editors/zed           thin local Zed adapter; stable CLI only
 ```
 
-The LSP runtime is the composition root. Semantic and index modules must not
-import `vscode-languageserver`. The Zed extension must not import or encode
-server implementation details.
+`src/server.ts` delegates production assembly to `src/composition`; tests may
+inject the same editor-neutral ports. Semantic and index modules must not import
+`vscode-languageserver`. Only the Rust persistence crate knows the SQLite
+schema. The Zed extension must not import or encode server implementation
+details beyond the stable executable name and `--stdio`.
+
+## Runtime sequencing
+
+1. LSP `initialize` configures all workspace roots and advertises only tested
+   capabilities.
+2. `initialized` opens one sidecar session per root and starts cataloging in the
+   background. Existing committed generations remain searchable.
+3. Open buffers shadow persisted rows; close returns authority to the index.
+4. Catalog generations activate atomically. A timeout, malformed protocol, or
+   child exit degrades only that session and preserves the last committed
+   generation.
+5. Shutdown rejects new work, cancels cataloging, disposes semantic state, and
+   bounds child termination.
 
 ## Parallel ownership
 

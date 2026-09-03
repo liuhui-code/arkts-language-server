@@ -1,81 +1,120 @@
-# ArkTS Language Server Spike
+# ArkTS Language Server — Local Beta
 
-Local-only feasibility spike for running ArkLine's extracted ArkTS semantic
-core as a standalone Language Server Protocol process consumed by Zed.
+A standalone ArkTS language server for local Zed development. Zed talks only
+standard LSP over stdio; the server keeps unsaved documents authoritative and
+uses a separate Rust sidecar for a persistent, non-blocking workspace-symbol
+index.
 
-## Result
+## What works
 
-The spike proves that a new project can:
+- incremental open/change/close document synchronization;
+- completion, including fields and methods after `this.`;
+- go to definition across `.ets` files;
+- diagnostics, hover, signature help, and document outline;
+- fuzzy workspace-symbol search with exact names ranked first;
+- multi-root workspaces and unsaved-buffer overlays;
+- background, cancellable cataloging with truthful progress and persistent
+  warm-cache queries;
+- bounded sidecar requests, protocol validation, structured logs, and clean
+  shutdown.
 
-- speak standard Content-Length framed LSP over stdio;
-- synchronize an unsaved `.ets` document;
-- complete both fields and methods after `this.`;
-- resolve an exact definition in another `.ets` file;
-- shut down cleanly; and
-- be launched by a local Zed language extension.
-
-The stable public interface is:
+The public executable contract is:
 
 ```text
-node dist/server.cjs --stdio
+arkts-language-server --stdio
 ```
+
+## Install for Zed
+
+Prerequisites: Node.js 20+, pnpm, Rust/rustup, Zed, and the Rust
+`wasm32-wasip2` target.
+
+```sh
+rustup target add wasm32-wasip2
+./scripts/install-local.sh "$HOME/.local/bin"
+```
+
+Make sure `~/.local/bin` is on the environment Zed receives, then in Zed run
+`zed: install dev extension` and select this repository's `editors/zed`
+directory. Trust the project when Zed asks; Restricted Mode intentionally does
+not start language servers.
+
+Run the Zed install action again after grammar or query changes. The installer
+tracks the pinned grammar identity and invalidates an unproven or outdated
+generated grammar instead of letting Zed reuse incompatible state.
+
+The command installation is transactional and self-contained. It points to an
+immutable, content-addressed release under the install prefix's `libexec`, so
+moving the source checkout does not break the active server and a failed update
+does not replace the last working command.
+
+## Logs and cache
+
+Print the active platform log path without starting LSP:
+
+```sh
+arkts-language-server --print-log-path
+```
+
+On macOS the defaults are:
+
+- log: `~/Library/Logs/arkts-language-server/server.log`
+- index: `~/Library/Caches/arkts-language-server/index`
+
+`ARKTS_LSP_LOG_DIR` and `ARKTS_INDEX_CACHE_DIR` override those directories.
+Logs are NDJSON, rotate at 5 MiB, never use stdout, and include lifecycle,
+request timing, and aggregate catalog terminal counters.
+
+## Verify
+
+Fast deterministic gate:
+
+```sh
+pnpm install --frozen-lockfile
+pnpm check:fast
+cargo test --locked --workspace --all-targets
+./scripts/check-zed-queries.sh
+```
+
+The release gate additionally needs the pinned
+`netease-kit/nim-uikit-harmony` checkout at commit
+`585feb45114a128a0d2a23947c83faf338e758f7`:
+
+```sh
+ARKTS_INDEX_REAL_FIXTURE=/path/to/nim-uikit-harmony \
+ARKTS_LARGE_FIXTURE=/path/to/nim-uikit-harmony \
+pnpm check:release
+```
+
+CI checks out that revision explicitly. Its acceptance requires a `ready`
+455/455 catalog, zero rejected files, deterministic class/method locations, a
+warm first query under 400 ms, and repeated-query P95 under 100 ms.
 
 ## Architecture
 
 ```text
-Zed local extension
-  -> standard LSP / stdio
-  -> src/server.ts
-  -> extracted SemanticDocumentStore
-  -> extracted TypeScriptLanguageServiceEngine
-  -> ArkTS virtual document + relative dependency loading
+Zed dev extension
+  -> arkts-language-server --stdio
+     -> LSP lifecycle + request freshness
+     -> ArkTS semantic engine (open-document authority)
+     -> workspace-symbol coordinator
+        -> protocol-v1 Rust sidecar
+           -> streamed discovery + parser + SQLite/WAL generations
 ```
 
-Only the ten-file semantic dependency closure was copied from ArkLine. The
-ArkLine custom NDJSON worker session, Tauri host, desktop status model, and
-Rust workspace index are not part of this spike.
+See [docs/architecture.md](docs/architecture.md) for module contracts and
+[docs/zed-local-beta-smoke.md](docs/zed-local-beta-smoke.md) for the isolated
+real-Zed acceptance record.
 
-## Verify
+## Local Beta boundaries
 
-Requires Node 20 or newer and pnpm.
+- Local workspaces only; SSH/remote delivery is intentionally out of scope.
+- References, rename, and code actions are not advertised yet.
+- There is no automatic binary updater; rerun the installer for a new local
+  build.
+- The copied semantic core's upstream source is currently marked
+  `UNLICENSED`. This repository therefore remains private and must not be
+  redistributed until the rights holder makes an explicit licensing decision.
 
-```bash
-pnpm install
-pnpm test
-```
-
-The complete test command runs strict TypeScript checking, builds the real
-server bundle, then starts child processes and exchanges real LSP frames.
-
-Build the local Zed extension:
-
-```bash
-cd editors/zed
-cargo build --target wasm32-wasip2 --release
-cp target/wasm32-wasip2/release/zed_arkts_local.wasm extension.wasm
-```
-
-In Zed, run `zed: install dev extension` and select:
-
-```text
-/Users/liuhui/Documents/code/arkts-language-server/editors/zed
-```
-
-Then open `fixtures/basic/Profile.ets` and request completion after `this.`;
-open `fixtures/basic/Main.ets` and go to definition on `displayName`.
-
-## Deliberate limitations
-
-- Local macOS spike only; no SSH or binary download/update flow.
-- The Zed adapter intentionally contains absolute local Node/server paths.
-- Full document sync only; incremental sync and cancellation are not claimed.
-- Completion and definition only; diagnostics, hover, references and rename are
-  not advertised.
-- The Rust persistent workspace index has not been extracted. The next spike
-  must prove `workspace/symbol` behind a narrow index port without importing
-  Tauri or querying ArkLine's SQLite schema directly from the LSP process.
-- This private spike is not ready for publication or redistribution.
-
-See [docs/spike-evidence.md](docs/spike-evidence.md) for the TDD record and
-[PROVENANCE.md](PROVENANCE.md) for copied-code provenance. Module boundaries
-and parallel ownership are defined in [docs/architecture.md](docs/architecture.md).
+See [PROVENANCE.md](PROVENANCE.md) for exact copied-code provenance and
+third-party notices.
