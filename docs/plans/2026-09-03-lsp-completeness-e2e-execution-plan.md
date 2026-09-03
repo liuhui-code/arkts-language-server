@@ -215,7 +215,9 @@ Owner files：`tests/support/lsp-process.mjs`、`tests/lsp-process.test.mjs`。
 - [x] H2 timeout 必须注销 waiter；迟到消息不得命中已失败请求（`f96586c`）。
 - [x] H3a invalid JSON parse 错误作为 Promise rejection，不得炸 test runner
   （`0b2d1d7`）。
-- [ ] H3b waiter predicate/header/framing 错误进入同一 transport failure 边界。
+- [x] H3b waiter predicate 错误进入同一 transport failure 边界（`338e7da`）；
+  header/framing 继续由 H3c 覆盖。
+- [ ] H3c malformed header/length/truncated frame 进入同一 transport failure 边界。
 - [ ] H4 close 幂等、有界；正常 shutdown/exit 优先，必要时升级终止。
 - [ ] H5 区分 client response 与 server request；progress 必须按 token 关联。
 - [ ] H6 统一 transcript、bounded stderr 和失败 evidence。
@@ -232,7 +234,8 @@ Owner files：`fixtures/conformance/v1/**`、
 - [x] C3 加入最小 Harmony manifests、Home/Profile/barrel/Greeter/negative consumer
   （`82483f2`）。
 - [x] C4 加入隔离的 ArkUI page 与最小 deterministic SDK stubs（`85304c3`）。
-- [ ] C5 corpus schema 校验 marker 唯一性、预期 URI 和重复 symbol identity。
+- [x] C5 corpus schema 校验 marker 唯一性、shape、声明完整性和预期 URI
+  （`a41a0b0`）；semantic identity 由对应功能 transcript 断言。
 
 #### Track S：参数化场景/session
 
@@ -245,7 +248,9 @@ Owner files：新建 `tests/support/lsp-session.mjs`、
   （`5a07877`；最终 installed artifact 验收保留给 I1/I2）。
 - [x] S3 建立 UTF-16-safe TextEdit 应用器并拒绝越界/重叠 edits（`599d32c`）；
   WorkspaceEdit 与 didChange 接线保留为 S3b。
-- [ ] S3b 应用 WorkspaceEdit 后发送 incremental/full didChange。
+- [x] S3b 安全、不可变地应用 `WorkspaceEdit.changes`，拒绝未知 URI 和未支持的
+  `documentChanges`（`53cd4c0`）。
+- [ ] S3c 将应用结果发送为 incremental/full didChange 并重新查询。
 - [ ] S4 将现有手拼 URI 统一为 `pathToFileURL`，fixture root 不再指向整个 repo。
 
 #### Track A：artifact 结构与证据契约
@@ -258,6 +263,15 @@ installer 或 workflow，这些由集成轨在各 track GREEN 后接线。
   （`83694ae`）。
 - [x] A3 资源 sampler 定义 PID/RSS/CPU/时间戳、单飞与可靠停止契约（`f87b600`）；
   平台 probe 在 L3/L4 接线时实现。
+
+#### Track M：能力广告契约
+
+Owner files：`tests/support/capability-contract.mjs`、
+`tests/lsp-capability-contract.test.mjs` 及对应证据。
+
+- [x] M1 真实 production initialize 精确锁定已实现与必须 absent 的 capabilities
+  （`81de320`）。
+- [ ] M2 新增能力时由同一 machine-readable contract 驱动 reliability/conformance 覆盖。
 
 Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产物；随后由集成轨
 串行接入 package scripts，并运行 `pnpm check:fast`。
