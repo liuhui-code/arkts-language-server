@@ -1,6 +1,39 @@
-export function applyWorkspaceEdit(documents, workspaceEdit) {
+export function applyWorkspaceEdit(documents, workspaceEdit, { documentVersions } = {}) {
+  if (workspaceEdit.documentChanges !== undefined && workspaceEdit.changes !== undefined) {
+    throw new TypeError("WorkspaceEdit cannot combine changes and documentChanges")
+  }
   if (workspaceEdit.documentChanges !== undefined) {
-    throw new TypeError("WorkspaceEdit documentChanges are not supported")
+    for (const documentChange of workspaceEdit.documentChanges) {
+      if (typeof documentChange?.kind === "string") {
+        throw new TypeError(
+          `WorkspaceEdit resource operations are not supported: ${documentChange.kind}`,
+        )
+      }
+      if (!documentChange?.textDocument || !Array.isArray(documentChange.edits)) {
+        throw new TypeError("WorkspaceEdit documentChanges supports only TextDocumentEdit entries")
+      }
+    }
+    const updated = new Map(documents)
+    for (const documentChange of workspaceEdit.documentChanges) {
+      const { uri, version } = documentChange.textDocument
+      if (!documents.has(uri)) throw new RangeError(`Unknown document URI in WorkspaceEdit: ${uri}`)
+      if (!documentVersions?.has(uri)) {
+        throw new RangeError(`Missing controlled snapshot version for WorkspaceEdit URI: ${uri}`)
+      }
+      const snapshotVersion = documentVersions.get(uri)
+      if (snapshotVersion !== null && !Number.isSafeInteger(snapshotVersion)) {
+        throw new TypeError(
+          `Controlled snapshot version must be an integer or null for WorkspaceEdit URI: ${uri}`,
+        )
+      }
+      if (version !== snapshotVersion) {
+        throw new RangeError(
+          `WorkspaceEdit version mismatch for ${uri}: expected ${snapshotVersion}, received ${version}`,
+        )
+      }
+      updated.set(uri, applyTextEdits(updated.get(uri), documentChange.edits))
+    }
+    return sortedDocuments(updated)
   }
   const updated = new Map(documents)
   const changes = workspaceEdit.changes ?? {}
@@ -11,9 +44,7 @@ export function applyWorkspaceEdit(documents, workspaceEdit) {
   for (const uri of uris) {
     updated.set(uri, applyTextEdits(updated.get(uri), changes[uri]))
   }
-  return new Map([...updated].sort(([left], [right]) => (
-    left < right ? -1 : left > right ? 1 : 0
-  )))
+  return sortedDocuments(updated)
 }
 
 export function applyTextEdits(source, edits) {
@@ -67,4 +98,10 @@ function outOfBounds(position) {
   return new RangeError(
     `LSP position out of bounds at line ${position.line}, character ${position.character}`,
   )
+}
+
+function sortedDocuments(documents) {
+  return new Map([...documents].sort(([left], [right]) => (
+    left < right ? -1 : left > right ? 1 : 0
+  )))
 }
