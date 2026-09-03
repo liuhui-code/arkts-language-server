@@ -21,6 +21,7 @@ import type {
   SemanticDocumentSymbol,
   SemanticDocumentHighlight,
   SemanticEnginePort,
+  SemanticFoldingRange,
   SemanticHover,
   SemanticPrepareRenameOutcome,
   SemanticReferencesOutcome,
@@ -49,9 +50,13 @@ export function registerSemanticCapabilities({
   let hierarchicalDocumentSymbols = false
   let documentSymbolKindValueSet: readonly SymbolKind[] | undefined
   let hoverMarkupKind: MarkupKind = MarkupKind.Markdown
+  let lineFoldingOnly = false
+  let foldingRangeLimit: number | undefined
+  let foldingRangeKinds: ReadonlySet<string> | undefined
   const capabilities: ServerCapabilities = {
     documentHighlightProvider: true,
     documentSymbolProvider: true,
+    foldingRangeProvider: true,
     hoverProvider: true,
     referencesProvider: true,
     signatureHelpProvider: {
@@ -105,6 +110,30 @@ export function registerSemanticCapabilities({
     return result.map((highlight) => ({
       range: highlight.range,
       kind: toLspDocumentHighlightKind(highlight.kind),
+    }))
+  })
+
+  connection.onFoldingRanges(async (params, token) => {
+    const result = await requests.run({
+      method: "textDocument/foldingRange",
+      documentUri: params.textDocument.uri,
+      token,
+      fallback: [] as SemanticFoldingRange[],
+      execute: (document, signal) => semantic.foldingRanges({
+        document,
+        lineFoldingOnly,
+        rangeLimit: foldingRangeLimit,
+        signal,
+      }),
+    })
+    return result.map((range) => ({
+      startLine: range.startLine,
+      startCharacter: range.startCharacter,
+      endLine: range.endLine,
+      endCharacter: range.endCharacter,
+      kind: range.kind && (!foldingRangeKinds || foldingRangeKinds.has(range.kind))
+        ? range.kind
+        : undefined,
     }))
   })
 
@@ -198,6 +227,12 @@ export function registerSemanticCapabilities({
     capabilities,
     configure(clientCapabilities) {
       hoverMarkupKind = preferredHoverMarkupKind(clientCapabilities)
+      const foldingRange = clientCapabilities.textDocument?.foldingRange
+      lineFoldingOnly = foldingRange?.lineFoldingOnly === true
+      foldingRangeLimit = foldingRange?.rangeLimit
+      foldingRangeKinds = foldingRange?.foldingRangeKind?.valueSet
+        ? new Set(foldingRange.foldingRangeKind.valueSet)
+        : undefined
       hierarchicalDocumentSymbols = clientCapabilities.textDocument
         ?.documentSymbol?.hierarchicalDocumentSymbolSupport === true
       documentSymbolKindValueSet = clientCapabilities.textDocument?.documentSymbol

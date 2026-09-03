@@ -108,6 +108,21 @@ export interface SemanticDocumentHighlight {
   kind: SemanticDocumentHighlightKind
 }
 
+export type SemanticFoldingRangeKind = "comment" | "imports" | "region"
+
+export interface SemanticFoldingRange {
+  startLine: number
+  startCharacter?: number
+  endLine: number
+  endCharacter?: number
+  kind?: SemanticFoldingRangeKind
+}
+
+export interface SemanticFoldingRangeQuery extends SemanticDocumentQuery {
+  lineFoldingOnly?: boolean
+  rangeLimit?: number
+}
+
 export type SemanticDocumentSymbolKind =
   | "struct"
   | "class"
@@ -231,6 +246,9 @@ export interface SemanticEnginePort {
   documentHighlights(
     query: SemanticQuery,
   ): Promise<VersionedSemanticResult<SemanticDocumentHighlight[]>>
+  foldingRanges(
+    query: SemanticFoldingRangeQuery,
+  ): Promise<VersionedSemanticResult<SemanticFoldingRange[]>>
   documentSymbols(query: SemanticDocumentQuery): Promise<VersionedSemanticResult<SemanticDocumentSymbol[]>>
   diagnose(query: SemanticDocumentQuery): Promise<VersionedSemanticResult<SemanticDiagnostic[]>>
   codeActions(query: SemanticCodeActionQuery): Promise<VersionedSemanticResult<SemanticCodeAction[]>>

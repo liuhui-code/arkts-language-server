@@ -19,6 +19,8 @@ import type {
   SemanticDocumentQuery,
   SemanticDocumentSymbol,
   SemanticEnginePort,
+  SemanticFoldingRange,
+  SemanticFoldingRangeQuery,
   SemanticHover,
   SemanticQuery,
   SemanticPrepareRenameOutcome,
@@ -39,12 +41,14 @@ import type {
   SemanticDocumentSymbolInfo,
 } from "../core/protocol.js"
 import { isArkUIStringResourcePath } from "../core/arkui/resource-path.js"
+import { FoldingRangeProvider } from "../core/syntax/folding-range-provider.js"
 import { SemanticTypeEngineRegistry } from "../core/types/type-engine.js"
 import { SemanticDocumentStore } from "../core/workspace/document-store.js"
 
 export class LegacySemanticEngine implements SemanticEnginePort {
   private readonly documents = new SemanticDocumentStore()
   private readonly engines = new SemanticTypeEngineRegistry()
+  private readonly foldingRangeProvider = new FoldingRangeProvider()
 
   constructor(private readonly projects: ProjectResolverPort) {}
 
@@ -215,6 +219,19 @@ export class LegacySemanticEngine implements SemanticEnginePort {
         range: toPublicRange(highlight.range),
         kind: highlight.kind,
       })),
+    }
+  }
+
+  async foldingRanges(
+    query: SemanticFoldingRangeQuery,
+  ): Promise<VersionedSemanticResult<SemanticFoldingRange[]>> {
+    assertActive(query.signal)
+    return {
+      documentVersion: query.document.version,
+      value: this.foldingRangeProvider.provide(query.document.text, {
+        lineFoldingOnly: query.lineFoldingOnly,
+        rangeLimit: query.rangeLimit,
+      }).map((range) => ({ ...range })),
     }
   }
 
