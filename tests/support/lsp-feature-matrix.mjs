@@ -173,11 +173,18 @@ export const CURRENT_LSP_FEATURE_MATRIX = Object.freeze({
           "workspace-symbol.bundle.production-full-kinds",
         ),
       ],
-      artifact: [evidence(
-        "tests/release/portable-install.acceptance.mjs",
-        "installs one verified artifact without source dependencies or a rebuild",
-        "workspace-symbol.artifact.immutable-index",
-      )],
+      artifact: [
+        evidence(
+          "tests/release/portable-install.acceptance.mjs",
+          "installs one verified artifact without source dependencies or a rebuild",
+          "workspace-symbol.artifact.immutable-index",
+        ),
+        evidence(
+          "tests/release/portable-install.acceptance.mjs",
+          "installs one verified artifact without source dependencies or a rebuild",
+          "workspace-symbol.artifact.immutable-kind-range",
+        ),
+      ],
       artifactGap: null,
     }),
     enabledFeature({

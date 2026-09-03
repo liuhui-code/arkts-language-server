@@ -97,6 +97,18 @@ test("maps the complete public capability contract to executable feature evidenc
       claim: "workspace-symbol.bundle.production-full-kinds",
     },
   ])
+  assert.deepEqual(workspaceSymbol?.evidence.artifact, [
+    {
+      entry: "tests/release/portable-install.acceptance.mjs",
+      test: "installs one verified artifact without source dependencies or a rebuild",
+      claim: "workspace-symbol.artifact.immutable-index",
+    },
+    {
+      entry: "tests/release/portable-install.acceptance.mjs",
+      test: "installs one verified artifact without source dependencies or a rebuild",
+      claim: "workspace-symbol.artifact.immutable-kind-range",
+    },
+  ])
   const references = CURRENT_LSP_FEATURE_MATRIX.features.find(
     ({ id }) => id === "references",
   )
