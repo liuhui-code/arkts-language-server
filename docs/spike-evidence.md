@@ -1,5 +1,9 @@
 # Local Zed LSP spike evidence
 
+> Historical feasibility record from the initial spike. It is superseded for
+> current capabilities, delivery, and acceptance by `README.md` and
+> `docs/zed-local-beta-smoke.md`.
+
 Date: 2026-09-02
 
 Initial repository parent: `unborn main`
@@ -43,7 +47,7 @@ Zed refreshed its extension index with `arkts` version `0.0.1`, registered the
 `.ets` matcher, and launched this exact process:
 
 ```text
-/usr/local/bin/node /Users/liuhui/Documents/code/arkts-language-server/dist/server.cjs --stdio
+/usr/local/bin/node <repository>/dist/server.cjs --stdio
 ```
 
 macOS denied automated Control-Space input through `osascript`, so the visual
@@ -52,9 +56,10 @@ definition behavior is covered by the byte-level stdio contracts.
 
 ## Decision
 
-The local standalone LSP architecture is feasible. This result does not yet
-prove extraction of ArkLine's persistent Rust index; that remains a separate
-go/no-go tracer bullet for `workspace/symbol`.
+At the time of this spike, the local standalone LSP architecture was feasible
+but the persistent Rust index was not yet proven. That limitation is historical:
+the Local Beta now ships and acceptance-tests the persistent index and
+`workspace/symbol` path.
 
 ## PR-0 contract freeze
 

@@ -35,6 +35,16 @@ The acceptance filename deliberately does not match the fast `.test.mjs` glob.
   public package-script contract. This protects the earlier design intent from
   silently regressing again.
 
+## Canonical release driver regression
+
+- Parent revision: `43b3108`
+- RED: the package script, GitHub workflow, and README maintained separate
+  command lists; the focused delivery contract failed because
+  `scripts/check-release.sh` did not exist and CI did not watch it.
+- GREEN: `pnpm check:release`, CI, and the README now converge on the same
+  fail-closed driver. The driver requires both fixture variables and owns the
+  ordered Node, Rust, pinned-project, Zed, and serialized acceptance gates.
+
 ## Pinned real-project gate
 
 A later RED showed that the workflow invoked `check:release` without providing

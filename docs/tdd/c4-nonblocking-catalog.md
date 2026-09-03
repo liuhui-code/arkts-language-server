@@ -143,7 +143,8 @@ healthy sources while reporting the damaged rule as degraded coverage.
 ### 6. Pinned real-project performance and query quality
 
 ```text
-cargo test -p arkts-index-sidecar --test ndjson_protocol pinned_large_arkts_fixture_meets_cold_catalog_and_deterministic_query_gates -- --exact
+ARKTS_INDEX_REAL_FIXTURE=/path/to/nim-uikit-harmony \
+cargo test --locked -p arkts-index-sidecar --test ndjson_protocol pinned_large_arkts_fixture_meets_cold_catalog_and_deterministic_query_gates -- --ignored --exact
 ```
 
 RED: the 455-file `nim-uikit-harmony` fixture took roughly 6 seconds, then 7
@@ -153,21 +154,20 @@ large file). GREEN builds one line index per document and uses logarithmic line
 lookup. Files are read only by the scanner and parsed four ways within bounded
 64-file/1 MiB batches; only symbol snapshots survive a batch. Final activation
 batches at most 64 documents and 256 symbols per SQL statement inside the same
-transaction. The ordinary debug gate is now below 3 seconds and exact/acronym
+transaction. The explicit ignored release gate is now below 3 seconds and exact/acronym
 queries deterministically find `ChatBaseViewModel`, `CBVM`, `ChatP2PPage`, and
-`BuildProfile`. If the pinned local fixture is absent, the test skips unless
-`ARKTS_INDEX_REAL_FIXTURE` was explicitly set.
+`BuildProfile`. The canonical release driver requires the pinned fixture
+environment instead of allowing a missing fixture to produce a false GREEN.
 
 ## Final verification
 
 ```text
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
-cargo build --workspace --release
+ARKTS_INDEX_REAL_FIXTURE=/path/to/nim-uikit-harmony \
+ARKTS_LARGE_FIXTURE=/path/to/nim-uikit-harmony \
+pnpm check:release
 ```
 
-Results: formatting clean; clippy completed with zero warnings; all 35 Rust
-behavior tests passed (core 5, SQLite 9, sidecar 21), including the ordinary
-10k-symbol query-plan and 455-file real-project gates; the optimized workspace
-build completed successfully.
+Results: the canonical driver covers formatting, Clippy, all ordinary Rust
+tests, the explicit 455-file real-project gate, optimized Rust/Zed builds, and
+serialized release acceptance. This prevents a documentation command from
+passing while silently filtering out the ignored real-project test.

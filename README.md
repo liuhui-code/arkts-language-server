@@ -67,16 +67,16 @@ request timing, and aggregate catalog terminal counters.
 
 ## Verify
 
-Fast deterministic gate:
+Fast deterministic Node gate:
 
 ```sh
 pnpm install --frozen-lockfile
 pnpm check:fast
-cargo test --locked --workspace --all-targets
-./scripts/check-zed-queries.sh
 ```
 
-The release gate additionally needs the pinned
+The canonical release gate runs the Node gate, Rust format/lint/tests, the
+explicit 455-file catalog test, both release builds, every Zed query check,
+and the serialized install/runtime acceptances. It needs the pinned
 `netease-kit/nim-uikit-harmony` checkout at commit
 `585feb45114a128a0d2a23947c83faf338e758f7`:
 
@@ -86,7 +86,8 @@ ARKTS_LARGE_FIXTURE=/path/to/nim-uikit-harmony \
 pnpm check:release
 ```
 
-CI checks out that revision explicitly. Its acceptance requires a `ready`
+CI checks out that revision explicitly and invokes this same command. Its
+acceptance requires a `ready`
 455/455 catalog, zero rejected files, deterministic class/method locations, a
 warm first query under 400 ms, and repeated-query P95 under 100 ms.
 

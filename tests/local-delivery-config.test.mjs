@@ -16,14 +16,34 @@ const languageConfigPath = path.join(
   "config.toml",
 )
 const zedWorkflowPath = path.join(projectRoot, ".github", "workflows", "zed-extension.yml")
+const releaseDriverPath = path.join(projectRoot, "scripts", "check-release.sh")
 
-test("the release gate serializes stateful acceptance tests", () => {
+test("the package delegates every release check to one serialized driver", () => {
   const packageMetadata = JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf8"))
+  const releaseDriver = fs.readFileSync(releaseDriverPath, "utf8")
 
-  assert.match(
-    packageMetadata.scripts["check:release"],
-    /node --test --test-concurrency=1 tests\/release\/\*\.acceptance\.mjs/,
-  )
+  assert.equal(packageMetadata.scripts["check:release"], "./scripts/check-release.sh")
+  assert.match(releaseDriver, /ARKTS_INDEX_REAL_FIXTURE/)
+  assert.match(releaseDriver, /ARKTS_LARGE_FIXTURE/)
+
+  const orderedGates = [
+    "pnpm check:fast",
+    "cargo fmt --all --check",
+    "cargo clippy --locked --workspace --all-targets -- -D warnings",
+    "cargo test --locked --workspace --all-targets",
+    "pinned_large_arkts_fixture_meets_cold_catalog_and_deterministic_query_gates",
+    "cargo build --locked --workspace --release",
+    "./scripts/check-zed-queries.sh",
+    "cargo fmt --manifest-path editors/zed/Cargo.toml -- --check",
+    "cargo build --manifest-path editors/zed/Cargo.toml --locked --target wasm32-wasip2 --release",
+    "node --test --test-concurrency=1 tests/release/*.acceptance.mjs",
+  ]
+  let previousGate = -1
+  for (const gate of orderedGates) {
+    const gatePosition = releaseDriver.indexOf(gate)
+    assert.ok(gatePosition > previousGate, `${gate} must follow the preceding release gate`)
+    previousGate = gatePosition
+  }
 })
 
 test("the ArkTS language config enables comments, autoclosing, and ArkTS identifier characters", () => {
@@ -180,16 +200,23 @@ exit 0
   }
 })
 
-test("the Zed workflow covers every release input and runs the complete release gate", () => {
+test("the Zed workflow covers every release input and invokes only the canonical release driver", () => {
   const workflow = fs.readFileSync(zedWorkflowPath, "utf8")
   const fixtureRevision = "585feb45114a128a0d2a23947c83faf338e758f7"
 
-  for (const releaseInput of ["Cargo.toml", "Cargo.lock", "crates/**", "bin/**"]) {
+  for (const releaseInput of [
+    "Cargo.toml",
+    "Cargo.lock",
+    "crates/**",
+    "bin/**",
+    "scripts/check-release.sh",
+  ]) {
     const occurrences = workflow.split(`- "${releaseInput}"`).length - 1
     assert.equal(occurrences, 2, `${releaseInput} must trigger pull-request and main-push validation`)
   }
 
-  const orderedGates = [
+  assert.equal(workflow.split("run: pnpm check:release").length - 1, 1)
+  for (const duplicatedGate of [
     "pnpm check:fast",
     "cargo fmt --all --check",
     "cargo clippy --locked --workspace --all-targets -- -D warnings",
@@ -198,13 +225,8 @@ test("the Zed workflow covers every release input and runs the complete release 
     "cargo build --locked --workspace --release",
     "./scripts/check-zed-queries.sh",
     "cargo build --locked --target wasm32-wasip2 --release",
-    "pnpm check:release",
-  ]
-  let previousGate = -1
-  for (const gate of orderedGates) {
-    const gatePosition = workflow.indexOf(gate)
-    assert.ok(gatePosition > previousGate, `${gate} must follow the preceding release gate`)
-    previousGate = gatePosition
+  ]) {
+    assert.doesNotMatch(workflow, new RegExp(duplicatedGate.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")))
   }
 
   assert.match(workflow, /pnpm install --frozen-lockfile/)

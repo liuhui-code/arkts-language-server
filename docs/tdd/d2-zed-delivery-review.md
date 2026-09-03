@@ -41,10 +41,10 @@ cargo build --locked --target wasm32-wasip2 --release
 Finished release profile
 ```
 
-The first full `pnpm check:fast` run was also executed, but the shared 2-second
-LSP harness timed out under concurrent first-build load. The integration branch
-independently raises that existing harness timeout to five seconds; the full
-gate is rerun after this branch is merged onto that revision.
+The first full `pnpm check:fast` run timed out under concurrent first-build
+load with the old 2-second LSP harness. The integrated five-second harness and
+serialized suites now pass the complete gate; this historical failure is kept
+as the RED evidence.
 
 ## Real-Zed stale grammar regression
 

@@ -4,17 +4,17 @@ Parent revision: `a4da5556b7f233abee00b152356ab477dba76f31`
 
 ## Scope and public boundary
 
-This tracer bullet adds a headless, in-memory Rust crate. `WorkspaceIndex`
+This historical tracer bullet added a headless, in-memory Rust crate. `WorkspaceIndex`
 accepts changed and removed document snapshots, parses ArkTS workspace symbols,
 and delegates document replacement and search to `SymbolStore`. `MemoryStore`
-is the spike implementation; a later persistent store can implement the same
-three-method boundary without coupling the parser or callers to SQLite.
+was the C1 implementation; the later persistent store now implements the same
+boundary without coupling the parser or callers to SQLite.
 
 The returned symbol contract contains URI, kind, optional container, and a
 zero-based UTF-16 name range. The parser intentionally covers only the C1
 symbols (`class`, `struct`, declared `function`, and direct class/struct
-methods). Persistence, sidecar transport, interfaces, enums, variables, and
-arrow functions remain out of scope.
+methods). Persistence and sidecar transport were out of scope for this
+historical slice; see the later C2/C4 evidence for their implemented contracts.
 
 ## RED/GREEN cycles
 

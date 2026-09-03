@@ -6,6 +6,7 @@ on:
       - ".github/workflows/zed-extension.yml"
       - "editors/zed/**"
       - "scripts/check-zed-queries.sh"
+      - "scripts/check-release.sh"
       - "scripts/install-local.sh"
       - "src/**"
       - "tests/**"
@@ -22,6 +23,7 @@ on:
       - ".github/workflows/zed-extension.yml"
       - "editors/zed/**"
       - "scripts/check-zed-queries.sh"
+      - "scripts/check-release.sh"
       - "scripts/install-local.sh"
       - "src/**"
       - "tests/**"
@@ -66,38 +68,8 @@ jobs:
       - name: Install the frozen Node dependency graph
         run: pnpm install --frozen-lockfile
 
-      - name: Run the fast Node quality gate
-        run: pnpm check:fast
-
-      - name: Check Rust formatting
-        run: cargo fmt --all --check
-
-      - name: Lint the Rust workspace
-        run: cargo clippy --locked --workspace --all-targets -- -D warnings
-
-      - name: Test the Rust workspace
-        run: cargo test --locked --workspace --all-targets
-
-      - name: Gate the pinned 455-file catalog and deterministic queries
-        run: >-
-          cargo test --locked -p arkts-index-sidecar --test ndjson_protocol
-          pinned_large_arkts_fixture_meets_cold_catalog_and_deterministic_query_gates
-          -- --ignored --exact
-
-      - name: Build the production index sidecar
-        run: cargo build --locked --workspace --release
-
       - name: Install the Zed WebAssembly target
         run: rustup target add wasm32-wasip2
 
-      - name: Compile every ArkTS query against the pinned grammar
-        run: ./scripts/check-zed-queries.sh
-
-      - name: Check and build the Zed adapter
-        working-directory: editors/zed
-        run: |
-          cargo fmt --check
-          cargo build --locked --target wasm32-wasip2 --release
-
-      - name: Run the release acceptance gate
+      - name: Run the canonical release gate
         run: pnpm check:release

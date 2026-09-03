@@ -3,7 +3,7 @@
 ## ArkLine semantic core
 
 The files under `src/core` were mechanically copied, without behavioral
-changes, from `/Users/liuhui/Documents/code/ArkLine/semantic-worker/src` at
+changes, from `semantic-worker/src` in the `liuhui-code/ArkLine` repository at
 revision `2337ff1a5875e27b37bdd03e58ba5ca33c75afe7`:
 
 - `protocol.ts`
@@ -17,7 +17,7 @@ revision `2337ff1a5875e27b37bdd03e58ba5ca33c75afe7`:
 - `types/typescript-language-helpers.ts`
 - `types/typescript-language-service.ts`
 
-Their current source repository is marked `UNLICENSED`; this spike therefore
+Their source repository is marked `UNLICENSED`; this Local Beta therefore
 remains private pending an explicit licensing decision by the rights holder.
 
 ## Zed extension assets
