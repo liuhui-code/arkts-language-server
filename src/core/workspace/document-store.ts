@@ -25,6 +25,7 @@ const MAX_REPLAY_BYTES = 4 * 1024 * 1024
 interface DocumentRecord extends WorkspaceDocument {
   contentGeneration: number
   documentVersion?: number
+  workspaceRoot?: string
   diskFingerprint: string | null
   lastAccess: number
   available: boolean
@@ -168,6 +169,7 @@ export class SemanticDocumentStore {
         true,
         document.documentVersion,
         true,
+        cached?.workspaceRoot,
       )
     }
     return documents.length
@@ -176,6 +178,9 @@ export class SemanticDocumentStore {
   sync(document: SemanticDocumentSync): DocumentRecord {
     const filePath = path.resolve(document.path)
     const cached = this.documents.get(filePath)
+    const workspaceRoot = document.workspaceRoot
+      ? canonicalWorkspaceRoot(document.workspaceRoot)
+      : cached?.workspaceRoot
     if (cached?.documentVersion !== undefined && document.documentVersion < cached.documentVersion) {
       throw new Error(
         `Stale semantic document version for ${filePath}: ${document.documentVersion} < ${cached.documentVersion}`,
@@ -186,6 +191,7 @@ export class SemanticDocumentStore {
     }
     if (cached?.documentVersion === document.documentVersion && cached.content === document.content) {
       cached.lastAccess = ++this.accessClock
+      cached.workspaceRoot = workspaceRoot
       this.includeOpenedProjectSource(document.workspaceRoot, filePath)
       return cached
     }
@@ -200,6 +206,7 @@ export class SemanticDocumentStore {
       true,
       document.documentVersion,
       true,
+      workspaceRoot,
     )
     this.includeOpenedProjectSource(document.workspaceRoot, filePath)
     return record
@@ -212,6 +219,12 @@ export class SemanticDocumentStore {
     this.documents.delete(resolved)
     this.dependencyClosures.delete(resolved)
     this.cachedBytes -= Buffer.byteLength(cached.content)
+    if (cached.overlay) {
+      const canonicalRoot = cached.workspaceRoot
+        ?? canonicalWorkspaceRoot(resolveWorkspaceRoot(resolved))
+      this.markWatchedChanged(canonicalRoot, resolved)
+      this.contentRevisions.set(canonicalRoot, (this.contentRevisions.get(canonicalRoot) ?? 0) + 1)
+    }
   }
 
   invalidate(rootPath: string): void {
@@ -359,15 +372,21 @@ export class SemanticDocumentStore {
     const rootPath = position.workspaceRoot
       ? path.resolve(position.workspaceRoot)
       : resolveWorkspaceRoot(currentPath)
+    const canonicalRoot = canonicalWorkspaceRoot(rootPath)
     const previousCurrent = this.documents.get(currentPath)
     const current = this.loadCurrent(currentPath, position)
     const closureResult = this.collectDependencyClosure(current, previousCurrent === current)
     const closure = closureResult.entries
+    const loadedPaths = new Set(closure.map(({ record }) => record.path))
+    for (const record of this.openOverlays(canonicalRoot)) {
+      if (loadedPaths.has(record.path)) continue
+      closure.push({ record, cacheHit: true })
+      loadedPaths.add(record.path)
+    }
     const documentCacheHit = closure.every(({ cacheHit }) => cacheHit)
     let projectMembership: ProjectMembershipSnapshot | undefined
     if (includeWorkspaceFiles) {
       projectMembership = this.projectMembership(rootPath)
-      const loadedPaths = new Set(closure.map(({ record }) => record.path))
       let totalBytes = closure.reduce((total, { record }) => total + Buffer.byteLength(record.content), 0)
       for (const sourcePath of projectMembership.paths) {
         if (loadedPaths.has(sourcePath) || closure.length >= MAX_CLOSURE_DOCUMENTS) continue
@@ -383,7 +402,6 @@ export class SemanticDocumentStore {
     const documents = closure.map(({ record }) => ({ path: record.path, content: record.content }))
     const dependencyGeneration = this.updateDependencyGeneration(rootPath, closure)
     this.evict(currentPath, new Set(documents.map((document) => document.path)))
-    const canonicalRoot = canonicalWorkspaceRoot(rootPath)
     const watchedRemovedPaths = this.watchedRemovedPaths.get(canonicalRoot)
     this.watchedRemovedPaths.delete(canonicalRoot)
     const watchedChangedPaths = this.watchedChangedPaths.get(canonicalRoot)
@@ -415,6 +433,14 @@ export class SemanticDocumentStore {
     }
   }
 
+  private openOverlays(canonicalRoot: string): DocumentRecord[] {
+    return [...this.documents.values()]
+      .filter((record) => (
+        record.overlay && isInside(canonicalRoot, canonicalSourcePath(record.path))
+      ))
+      .sort((left, right) => left.path.localeCompare(right.path))
+  }
+
   private loadCurrent(filePath: string, position: SemanticDocumentPosition): DocumentRecord {
     const cached = this.documents.get(filePath)
     const requestedGeneration = position.contentGeneration
@@ -441,14 +467,27 @@ export class SemanticDocumentStore {
       }
       if (cached && position.content === cached.content) {
         cached.lastAccess = ++this.accessClock
+        if (position.workspaceRoot) cached.workspaceRoot = canonicalWorkspaceRoot(position.workspaceRoot)
         return cached
       }
       const generation = requestedGeneration ?? ((cached?.contentGeneration ?? 0) + 1)
-      return this.store(filePath, position.content, generation, null, true)
+      return this.store(
+        filePath,
+        position.content,
+        generation,
+        null,
+        true,
+        undefined,
+        true,
+        position.workspaceRoot
+          ? canonicalWorkspaceRoot(position.workspaceRoot)
+          : cached?.workspaceRoot,
+      )
     }
 
     if (cached?.overlay) {
       cached.lastAccess = ++this.accessClock
+      if (position.workspaceRoot) cached.workspaceRoot = canonicalWorkspaceRoot(position.workspaceRoot)
       return cached
     }
     return this.loadFromDisk(filePath, cached)
@@ -664,6 +703,7 @@ export class SemanticDocumentStore {
     available: boolean,
     documentVersion?: number,
     overlay = false,
+    workspaceRoot?: string,
   ): DocumentRecord {
     const previous = this.documents.get(filePath)
     if (previous) this.cachedBytes -= Buffer.byteLength(previous.content)
@@ -672,6 +712,7 @@ export class SemanticDocumentStore {
       content,
       contentGeneration,
       documentVersion,
+      workspaceRoot,
       diskFingerprint,
       lastAccess: ++this.accessClock,
       available,
@@ -696,7 +737,11 @@ export class SemanticDocumentStore {
   private evict(currentPath: string, protectedPaths: Set<string>): void {
     if (this.documents.size <= MAX_CACHED_DOCUMENTS && this.cachedBytes <= MAX_CACHED_BYTES) return
     const candidates = [...this.documents.values()]
-      .filter((record) => record.path !== currentPath && !protectedPaths.has(record.path))
+      .filter((record) => (
+        !record.overlay
+        && record.path !== currentPath
+        && !protectedPaths.has(record.path)
+      ))
       .sort((left, right) => left.lastAccess - right.lastAccess)
     for (const record of candidates) {
       if (this.documents.size <= MAX_CACHED_DOCUMENTS && this.cachedBytes <= MAX_CACHED_BYTES) break

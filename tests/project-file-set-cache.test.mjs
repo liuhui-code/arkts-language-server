@@ -242,6 +242,105 @@ test("adds a newly opened source overlay to an already cached workspace", (t) =>
   assert.deepEqual(documentPaths(second), [mainPath, openedPath].sort())
 })
 
+test("prepares every open overlay beyond the bounded disk snapshot window", (t) => {
+  const fileCount = 260
+  const files = Object.fromEntries(Array.from({ length: fileCount }, (_value, index) => [
+    `Source${String(index).padStart(3, "0")}.ets`,
+    `export const source${index} = "disk-${index}"\n`,
+  ]))
+  const workspace = createWorkspace(t, "pinned-overlays", files)
+  const store = new SemanticDocumentStore({ enumerateWorkspaceSources: () => [] })
+  t.after(() => store.dispose?.())
+  const expected = new Map()
+
+  for (let index = 0; index < fileCount; index += 1) {
+    const documentPath = path.join(workspace, `Source${String(index).padStart(3, "0")}.ets`)
+    const content = `export const source${index} = "overlay-${index}"\n`
+    expected.set(documentPath, content)
+    store.sync({
+      path: documentPath,
+      content,
+      documentVersion: 1,
+      workspaceRoot: workspace,
+    })
+  }
+
+  const currentPath = path.join(workspace, "Source259.ets")
+  const view = store.prepare(viewPathPosition(workspace, currentPath), false)
+  const prepared = new Map(view.documents.map((document) => [document.path, document.content]))
+
+  assert.equal(prepared.size, fileCount)
+  assert.deepEqual(prepared, expected)
+})
+
+test("keeps open overlays pinned while another workspace is prepared", (t) => {
+  const overlayCount = 513
+  const overlayWorkspace = createWorkspace(t, "cross-root-overlays", {})
+  const activeWorkspace = createWorkspace(t, "cross-root-active", {
+    "Main.ets": "export const main = 1\n",
+  })
+  const activePath = path.join(activeWorkspace, "Main.ets")
+  const store = new SemanticDocumentStore({ enumerateWorkspaceSources: () => [] })
+  t.after(() => store.dispose?.())
+
+  for (let index = 0; index < overlayCount; index += 1) {
+    store.sync({
+      path: path.join(overlayWorkspace, `Overlay${String(index).padStart(3, "0")}.ets`),
+      content: `export const overlay${index} = ${index}\n`,
+      documentVersion: 1,
+      workspaceRoot: overlayWorkspace,
+    })
+  }
+  const overlayCurrent = path.join(overlayWorkspace, "Overlay512.ets")
+  const activePosition = syncPosition(store, activeWorkspace, activePath)
+
+  store.prepare(activePosition, false)
+  const overlayView = store.prepare(
+    viewPathPosition(overlayWorkspace, overlayCurrent),
+    false,
+  )
+
+  assert.equal(overlayView.documents.length, overlayCount)
+  assert.equal(
+    documentContent(overlayView, path.join(overlayWorkspace, "Overlay000.ets")),
+    "export const overlay0 = 0\n",
+  )
+})
+
+test("restores disk truth and advances the workspace content revision after close", (t) => {
+  const diskTarget = "export class DiskTarget {}\n"
+  const overlayTarget = "export class OverlayTarget {}\n"
+  const workspace = createWorkspace(t, "close-overlay", {
+    "Main.ets": "export const main = 1\n",
+    "Target.ets": diskTarget,
+  })
+  const mainPath = path.join(workspace, "Main.ets")
+  const targetPath = path.join(workspace, "Target.ets")
+  const store = new SemanticDocumentStore()
+  t.after(() => store.dispose?.())
+  const position = syncPosition(store, workspace, mainPath)
+  store.sync({
+    path: targetPath,
+    content: overlayTarget,
+    documentVersion: 1,
+    workspaceRoot: workspace,
+  })
+
+  const opened = store.prepare(position, true)
+  assert.equal(documentContent(opened, targetPath), overlayTarget)
+
+  store.close(targetPath)
+  const closed = store.prepare(position, true)
+
+  assert.equal(documentContent(closed, targetPath), diskTarget)
+  assert.ok(closed.contentRevision > opened.contentRevision)
+  assert.deepEqual(closed.changedPaths, [targetPath])
+
+  const stable = store.prepare(position, true)
+  assert.equal(stable.contentRevision, closed.contentRevision)
+  assert.deepEqual(stable.changedPaths, [])
+})
+
 test("hard-bounds cached source paths per workspace", (t) => {
   const workspace = createWorkspace(t, "path-limit", {
     "Main.ets": "export const main = 1\n",
@@ -533,4 +632,8 @@ function viewPathPosition(workspaceRoot, documentPath, version = 1) {
 
 function documentPaths(view) {
   return view.documents.map((document) => document.path).sort()
+}
+
+function documentContent(view, documentPath) {
+  return view.documents.find((document) => document.path === documentPath)?.content
 }
