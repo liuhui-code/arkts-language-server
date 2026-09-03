@@ -1543,21 +1543,33 @@ fn malformed_gitignore_rule_does_not_discard_valid_rules_or_healthy_sources() {
 }
 
 #[test]
+#[ignore = "release gate: set ARKTS_INDEX_REAL_FIXTURE to the pinned 455-file checkout"]
 fn pinned_large_arkts_fixture_meets_cold_catalog_and_deterministic_query_gates() {
-    let configured = std::env::var_os("ARKTS_INDEX_REAL_FIXTURE").map(PathBuf::from);
-    let workspace = configured.clone().unwrap_or_else(|| {
-        PathBuf::from(
-            "/Users/liuhui/Documents/code/ArkLine/tests/fixtures/large-arkts/nim-uikit-harmony",
-        )
-    });
-    if !workspace.is_dir() {
-        assert!(
-            configured.is_none(),
-            "ARKTS_INDEX_REAL_FIXTURE must name an existing directory"
-        );
-        eprintln!("pinned large ArkTS fixture unavailable; skipping local real-project gate");
-        return;
-    }
+    let workspace = PathBuf::from(
+        std::env::var_os("ARKTS_INDEX_REAL_FIXTURE")
+            .expect("ARKTS_INDEX_REAL_FIXTURE must name the pinned 455-file checkout"),
+    );
+    assert!(
+        workspace.is_dir(),
+        "large ArkTS fixture must be a directory"
+    );
+    let revision = Command::new("git")
+        .args([
+            "-C",
+            workspace.to_str().expect("fixture path must be UTF-8"),
+            "rev-parse",
+            "HEAD",
+        ])
+        .output()
+        .expect("git must inspect the pinned fixture");
+    assert!(revision.status.success(), "fixture must be a Git checkout");
+    assert_eq!(
+        String::from_utf8(revision.stdout)
+            .expect("fixture revision must be UTF-8")
+            .trim(),
+        "585feb45114a128a0d2a23947c83faf338e758f7",
+        "large ArkTS fixture revision drifted"
+    );
 
     let temp = TestDir::new("real-catalog");
     let cache = temp.path().join("cache");
@@ -1589,8 +1601,12 @@ fn pinned_large_arkts_fixture_meets_cold_catalog_and_deterministic_query_gates()
         "455-file cold catalog must finish within 3s; took {cold_elapsed:?}"
     );
     let status = &terminal["params"]["status"];
-    assert_ne!(status["phase"], "cancelled");
+    assert_eq!(status["phase"], "ready", "unexpected terminal: {status:#?}");
+    assert_eq!(status["state"], "ready");
+    assert_eq!(status["completeness"], "ready");
     assert_eq!(status["discovered"], 455);
+    assert_eq!(status["indexed"], 455);
+    assert_eq!(status["rejected"], 0);
     assert_eq!(status["totalFiles"], 455);
     assert_eq!(status["committedGeneration"], 1);
 
@@ -1613,5 +1629,89 @@ fn pinned_large_arkts_fixture_meets_cold_catalog_and_deterministic_query_gates()
             "query {query} must return the pinned deterministic first match"
         );
     }
-    process.shutdown(7);
+
+    for (id, query, expected_count, expected_locations) in [
+        (
+            7,
+            "TeamRepo",
+            1,
+            vec![("chatkit/src/main/ets/repo/TeamRepo.ets", 96)],
+        ),
+        (
+            8,
+            "sendMessage",
+            4,
+            vec![
+                ("chatkit/src/main/ets/repo/ChatRepo.ets", 261),
+                ("chatkit_ui/src/main/ets/view/MultiLineInputView.ets", 463),
+                (
+                    "chatkit_ui/src/main/ets/viewmodel/ChatBaseViewModel.ets",
+                    1044,
+                ),
+                (
+                    "chatkit_ui/src/main/ets/viewmodel/ChatBotSubSessionViewModel.ets",
+                    284,
+                ),
+            ],
+        ),
+        (
+            9,
+            "BuildProfile",
+            7,
+            vec![
+                ("chatkit/BuildProfile.ets", 11),
+                ("chatkit_ui/BuildProfile.ets", 11),
+                ("common/BuildProfile.ets", 11),
+                ("contactkit_ui/BuildProfile.ets", 11),
+                ("conversationkit_ui/BuildProfile.ets", 11),
+                ("corekit/BuildProfile.ets", 11),
+                ("teamkit_ui/BuildProfile.ets", 11),
+            ],
+        ),
+    ] {
+        let result = process.request(json!({
+            "protocol": 1,
+            "id": id,
+            "method": "search",
+            // Workspace-symbol search is intentionally fuzzy. Limiting the
+            // response to the number of exact definitions proves exact-name
+            // matches rank ahead of prefix and substring matches.
+            "params": {"query": query, "limit": expected_count}
+        }));
+        let items = result["result"]["items"]
+            .as_array()
+            .expect("search items must be an array");
+        assert_eq!(
+            items.len(),
+            expected_count,
+            "unexpected {query} matches: {items:#?}"
+        );
+        let mut actual = items
+            .iter()
+            .map(|item| {
+                let uri = item["uri"].as_str().expect("symbol URI must be a string");
+                let relative = uri
+                    .split("/nim-uikit-harmony/")
+                    .nth(1)
+                    .expect("symbol URI must be inside the pinned fixture");
+                (
+                    relative.to_owned(),
+                    item["range"]["start"]["line"]
+                        .as_u64()
+                        .expect("symbol line must be an integer"),
+                )
+            })
+            .collect::<Vec<_>>();
+        actual.sort();
+        let mut expected = expected_locations
+            .into_iter()
+            .map(|(uri, line)| (uri.to_owned(), line))
+            .collect::<Vec<_>>();
+        expected.sort();
+        assert_eq!(
+            actual, expected,
+            "{query} must jump to every exact definition"
+        );
+    }
+    process.shutdown(10);
 }

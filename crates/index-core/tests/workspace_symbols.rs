@@ -2,6 +2,7 @@ use std::fs;
 
 use arkts_index_core::{
     Document, Position, SymbolKind, TextRange, WorkspaceIndex, WorkspaceSymbol,
+    parse_document_symbols,
 };
 
 fn fixture(name: &str) -> String {
@@ -15,6 +16,63 @@ fn first_match(index: &WorkspaceIndex, query: &str) -> WorkspaceSymbol {
         .expect("in-memory search should succeed")
         .items
         .remove(0)
+}
+
+#[test]
+fn parses_regex_literals_without_confusing_them_with_delimiters_or_division() {
+    let document = Document::new(
+        "file:///workspace/RegexService.ets",
+        r#"
+export class RegexService {
+  normalize(value: string): string {
+    const withoutEdges = value.replace(/^\[|\]$/g, '')
+    const groups = value.match(/\[([^\]]+)\]/g)
+    return withoutEdges.replace(/\//g, '')
+  }
+
+  ratio(total: number, count: number): number {
+    return total / count
+  }
+
+  afterDivision(): void {}
+}
+"#,
+    );
+
+    let symbols = parse_document_symbols(&document)
+        .expect("regex delimiters should not make a balanced document malformed")
+        .symbols;
+    let names: Vec<_> = symbols.into_iter().map(|symbol| symbol.name).collect();
+
+    assert_eq!(
+        names,
+        ["RegexService", "normalize", "ratio", "afterDivision"]
+    );
+}
+
+#[test]
+fn keeps_postfix_division_and_comments_out_of_regex_scanning() {
+    let document = Document::new(
+        "file:///workspace/ArithmeticService.ets",
+        r#"
+export class ArithmeticService {
+  ratio(total: number | undefined, count: number): number {
+    // Regex-looking comment delimiters must stay inert: /[({]/
+    /* The same applies to block comments: /[)}]/ */
+    return total! / count
+  }
+
+  afterDivision(): void {}
+}
+"#,
+    );
+
+    let symbols = parse_document_symbols(&document)
+        .expect("a postfix assertion followed by division is not a regex literal")
+        .symbols;
+    let names: Vec<_> = symbols.into_iter().map(|symbol| symbol.name).collect();
+
+    assert_eq!(names, ["ArithmeticService", "ratio", "afterDivision"]);
 }
 
 #[test]

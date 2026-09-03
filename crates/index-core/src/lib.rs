@@ -656,6 +656,7 @@ fn is_non_method_keyword(identifier: &str) -> bool {
 fn tokenize(source: &str) -> Result<Vec<Token<'_>>, DocumentParseError> {
     let mut tokens = Vec::new();
     let mut offset = 0usize;
+    let mut regex_allowed = true;
 
     while offset < source.len() {
         let rest = &source[offset..];
@@ -678,6 +679,12 @@ fn tokenize(source: &str) -> Result<Vec<Token<'_>>, DocumentParseError> {
         }
         if matches!(character, '\'' | '"' | '`') {
             offset = skip_quoted(source, offset, character).ok_or(DocumentParseError)?;
+            regex_allowed = false;
+            continue;
+        }
+        if character.is_ascii_digit() {
+            offset = skip_number(source, offset);
+            regex_allowed = false;
             continue;
         }
         if is_identifier_start(character) {
@@ -699,6 +706,33 @@ fn tokenize(source: &str) -> Result<Vec<Token<'_>>, DocumentParseError> {
                 start,
                 end: offset,
             });
+            regex_allowed = identifier_allows_regex_after(&source[start..offset]);
+            continue;
+        }
+        if character == '/' && regex_allowed {
+            offset = skip_regex_literal(source, offset).ok_or(DocumentParseError)?;
+            regex_allowed = false;
+            continue;
+        }
+        if rest.starts_with("++") || rest.starts_with("--") {
+            tokens.push(Token {
+                text: &source[offset..offset + 2],
+                kind: TokenKind::Punctuation,
+                start: offset,
+                end: offset + 2,
+            });
+            offset += 2;
+            continue;
+        }
+        if rest.starts_with("=>") {
+            tokens.push(Token {
+                text: &source[offset..offset + 2],
+                kind: TokenKind::Punctuation,
+                start: offset,
+                end: offset + 2,
+            });
+            offset += 2;
+            regex_allowed = true;
             continue;
         }
 
@@ -710,9 +744,100 @@ fn tokenize(source: &str) -> Result<Vec<Token<'_>>, DocumentParseError> {
             end,
         });
         offset = end;
+        regex_allowed = punctuation_allows_regex_after(character, regex_allowed, rest);
     }
 
     Ok(tokens)
+}
+
+fn skip_number(source: &str, start: usize) -> usize {
+    let mut offset = start;
+    while offset < source.len() {
+        let character = source[offset..]
+            .chars()
+            .next()
+            .expect("offset is inside source");
+        if !(character.is_ascii_alphanumeric() || matches!(character, '.' | '_')) {
+            break;
+        }
+        offset += character.len_utf8();
+    }
+    offset
+}
+
+fn identifier_allows_regex_after(identifier: &str) -> bool {
+    matches!(
+        identifier,
+        "await"
+            | "case"
+            | "delete"
+            | "do"
+            | "else"
+            | "extends"
+            | "in"
+            | "instanceof"
+            | "new"
+            | "of"
+            | "return"
+            | "throw"
+            | "typeof"
+            | "void"
+            | "yield"
+    )
+}
+
+fn punctuation_allows_regex_after(
+    punctuation: char,
+    previously_allowed: bool,
+    source_from_punctuation: &str,
+) -> bool {
+    match punctuation {
+        ')' | ']' | '}' | '.' | '<' | '>' => false,
+        '!' if !source_from_punctuation.starts_with("!=") => previously_allowed,
+        '?' if source_from_punctuation.starts_with("?.") => false,
+        _ => true,
+    }
+}
+
+fn skip_regex_literal(source: &str, start: usize) -> Option<usize> {
+    let mut offset = start + 1;
+    let mut escaped = false;
+    let mut in_character_class = false;
+
+    while offset < source.len() {
+        let character = source[offset..]
+            .chars()
+            .next()
+            .expect("offset is inside source");
+        if matches!(character, '\n' | '\r' | '\u{2028}' | '\u{2029}') {
+            return None;
+        }
+        offset += character.len_utf8();
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        match character {
+            '\\' => escaped = true,
+            '[' => in_character_class = true,
+            ']' => in_character_class = false,
+            '/' if !in_character_class => {
+                while offset < source.len() {
+                    let flag = source[offset..]
+                        .chars()
+                        .next()
+                        .expect("offset is inside source");
+                    if !is_identifier_continue(flag) {
+                        break;
+                    }
+                    offset += flag.len_utf8();
+                }
+                return Some(offset);
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 fn skip_quoted(source: &str, start: usize, quote: char) -> Option<usize> {
