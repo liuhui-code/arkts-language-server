@@ -349,6 +349,8 @@ Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产�
 - [x] Q1/Q2 code-action 适配设计与 TypeScript 5.9 API 核验完成；有界 512 条/512 KiB、
   区分 stale/forged 的 resolve store 已落地（`2861aeb`），LSP tracer 正在实施。
 - [x] I2 不可变 artifact 上复用完整 semantic smoke 场景（`09f6352`）。
+- [x] I3 正负控证明安装版只使用 immutable release 相邻 sidecar，不回退源码仓库
+  （`9eeb742`）。
 - [ ] 本批次集成门禁：所有并行切片提交后运行 fresh `pnpm check:fast`。
 
 ### Wave 2 — 首个功能切片与 installed semantic smoke（部分并行）
@@ -397,7 +399,8 @@ Owner：一个端到端 owner 独占 semantic contract、project set、completio
 - [x] I2 对不可变 artifact 的 installed command 运行 completion、definition、diagnostics 与
   completion-resolve/apply-and-recheck transcript（`09f6352`）；与源码安装复用同一 helper，
   4/4 artifact acceptance 与 1/1 local-delivery acceptance GREEN。
-- [ ] I3 验证启动的是 artifact 内相邻 sidecar，没有 repo-relative fallback。
+- [x] I3 验证启动的是 artifact 内相邻 sidecar，没有 repo-relative fallback
+  （`9eeb742`）：withhold 相邻 binary 时明确 degraded/空结果，恢复后 1/1 ready 且精确 symbol。
 
 Wave 2 exit criteria：首个 tracer 在 bundle 与 installed artifact 两个 target 上全绿；
 capability advertisement 与 transcript 一致；`pnpm check:fast`、artifact smoke 全绿。
