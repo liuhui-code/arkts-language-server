@@ -219,11 +219,18 @@ export const CURRENT_LSP_FEATURE_MATRIX = Object.freeze({
     enabledFeature({
       id: "references",
       requiredCapabilities: [capability("referencesProvider", true)],
-      protocol: [evidence(
-        "tests/lsp-semantic-request-reliability.test.mjs",
-        "maps cancellation for every advertised semantic request to RequestCancelled",
-        "references.protocol.cancellation",
-      )],
+      protocol: [
+        evidence(
+          "tests/lsp-semantic-request-reliability.test.mjs",
+          "maps cancellation for every advertised semantic request to RequestCancelled",
+          "references.protocol.cancellation",
+        ),
+        evidence(
+          "tests/lsp-workspace-global-freshness.test.mjs",
+          "a didOpen in the same workspace makes an in-flight references result ContentModified",
+          "references.protocol.workspace-global-freshness",
+        ),
+      ],
       bundle: [
         evidence(
           "tests/semantic/references-depth.test.mjs",
@@ -246,16 +253,30 @@ export const CURRENT_LSP_FEATURE_MATRIX = Object.freeze({
     enabledFeature({
       id: "rename",
       requiredCapabilities: [capability("renameProvider", { prepareProvider: true })],
-      protocol: [evidence(
-        "tests/lsp-semantic-request-reliability.test.mjs",
-        "maps rename client cancellation to RequestCancelled without leaking an edit",
-        "rename.protocol.cancellation-no-edit",
-      )],
-      bundle: [evidence(
-        "tests/semantic/rename-depth.test.mjs",
-        "rename preserves the barrel API while changing the origin declaration",
-        "rename.bundle.origin-barrel-api-preservation",
-      )],
+      protocol: [
+        evidence(
+          "tests/lsp-semantic-request-reliability.test.mjs",
+          "maps rename client cancellation to RequestCancelled without leaking an edit",
+          "rename.protocol.cancellation-no-edit",
+        ),
+        evidence(
+          "tests/lsp-workspace-global-freshness.test.mjs",
+          "every same-workspace mutation makes cancellation-resistant rename ContentModified",
+          "rename.protocol.workspace-global-freshness",
+        ),
+      ],
+      bundle: [
+        evidence(
+          "tests/semantic/rename-depth.test.mjs",
+          "rename preserves the barrel API while changing the origin declaration",
+          "rename.bundle.origin-barrel-api-preservation",
+        ),
+        evidence(
+          "tests/semantic/rename-completeness.test.mjs",
+          "renaming an explicit barrel alias changes only the public alias layer",
+          "rename.bundle.public-local-alias-boundary",
+        ),
+      ],
       artifact: [evidence(
         "tests/release/portable-install.acceptance.mjs",
         "installs one verified artifact without source dependencies or a rebuild",

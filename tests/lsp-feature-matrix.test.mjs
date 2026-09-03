@@ -85,6 +85,18 @@ test("maps the complete public capability contract to executable feature evidenc
   const references = CURRENT_LSP_FEATURE_MATRIX.features.find(
     ({ id }) => id === "references",
   )
+  assert.deepEqual(references?.evidence.protocol, [
+    {
+      entry: "tests/lsp-semantic-request-reliability.test.mjs",
+      test: "maps cancellation for every advertised semantic request to RequestCancelled",
+      claim: "references.protocol.cancellation",
+    },
+    {
+      entry: "tests/lsp-workspace-global-freshness.test.mjs",
+      test: "a didOpen in the same workspace makes an in-flight references result ContentModified",
+      claim: "references.protocol.workspace-global-freshness",
+    },
+  ])
   assert.deepEqual(references?.evidence.artifact, [{
     entry: "tests/release/portable-install.acceptance.mjs",
     test: "installs one verified artifact without source dependencies or a rebuild",
@@ -92,6 +104,30 @@ test("maps the complete public capability contract to executable feature evidenc
   }])
   assert.equal(references?.artifactGap, null)
   const rename = CURRENT_LSP_FEATURE_MATRIX.features.find(({ id }) => id === "rename")
+  assert.deepEqual(rename?.evidence.protocol, [
+    {
+      entry: "tests/lsp-semantic-request-reliability.test.mjs",
+      test: "maps rename client cancellation to RequestCancelled without leaking an edit",
+      claim: "rename.protocol.cancellation-no-edit",
+    },
+    {
+      entry: "tests/lsp-workspace-global-freshness.test.mjs",
+      test: "every same-workspace mutation makes cancellation-resistant rename ContentModified",
+      claim: "rename.protocol.workspace-global-freshness",
+    },
+  ])
+  assert.deepEqual(rename?.evidence.bundle, [
+    {
+      entry: "tests/semantic/rename-depth.test.mjs",
+      test: "rename preserves the barrel API while changing the origin declaration",
+      claim: "rename.bundle.origin-barrel-api-preservation",
+    },
+    {
+      entry: "tests/semantic/rename-completeness.test.mjs",
+      test: "renaming an explicit barrel alias changes only the public alias layer",
+      claim: "rename.bundle.public-local-alias-boundary",
+    },
+  ])
   assert.deepEqual(rename?.evidence.artifact, [{
     entry: "tests/release/portable-install.acceptance.mjs",
     test: "installs one verified artifact without source dependencies or a rebuild",
