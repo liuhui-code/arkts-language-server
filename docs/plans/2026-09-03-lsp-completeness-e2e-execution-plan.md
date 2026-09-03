@@ -228,12 +228,19 @@ Owner files：`tests/support/lsp-process.mjs`、`tests/lsp-process.test.mjs`。
   （`0b2d1d7`）。
 - [x] H3b waiter predicate 错误进入同一 transport failure 边界（`338e7da`）；
   header/framing 继续由 H3c 覆盖。
-- [ ] H3c malformed header/length/truncated frame 进入同一 transport failure 边界。
+- [x] H3c malformed header/length/truncated frame 进入同一 transport failure 边界；header
+  8 KiB、frame 16 MiB 默认上限，terminal error 对未来 waiter 保持 sticky（`050be68`）。
 - [x] H4 close 幂等、有界；正常 shutdown/exit 优先，deadline 后升级终止
   （`95aa209`）。
 - [x] H5a 区分 client response、server request 与 notification（`107f678`）。
 - [x] H5b progress 严格按 token 关联，并迁移全部真实 caller（`0ccd06f`）。
-- [ ] H6 统一 transcript、bounded stderr 和失败 evidence。
+- [x] H6a/H6b bounded stderr/error、去 payload transcript 与不可变 diagnostic snapshot
+  （`8b15314`）。
+- [x] H6c failure container 支持 provider，provider 失败不覆盖原始错误（`2ed1731`）；
+  真实 LSP snapshot 文件接线进行中。
+- [x] H6d layer runner 对 fast/artifact/large 失败保留安全摘要，原样传播 code/signal
+  （`6f33f07`）；`failure.json` 不持久化原错误 message（`bb2bb83`）。
+- [ ] H6e GitHub Actions 只上传 allowlisted `failure.json`；外部上传需用户明确授权后接线。
 
 #### Track C：版本化 conformance corpus
 
@@ -287,18 +294,20 @@ Owner files：`tests/support/capability-contract.mjs`、
 
 - [x] M1 真实 production initialize 精确锁定已实现与必须 absent 的 capabilities
   （`81de320`）。
-- [ ] M2 新增能力时由同一 machine-readable contract 驱动 reliability/conformance 覆盖。
+- [x] M2 machine-readable matrix 将 required/absent capability 与 protocol、bundle、artifact
+  evidence 对齐；artifact 缺口必须显式记录（`11b52f2`）。
 
 #### Track G：测试发现与分层门禁
 
 Owner files：`tests/support/test-layer-manifest.mjs`、runner、package scripts 与对应证据。
 
-- [x] G1/G2 集成后显式、唯一地把全部 33 个 test/acceptance 入口归入五层，拒绝漏项、重复、
+- [x] G1/G2/M2 集成后显式、唯一地把全部 34 个 test/acceptance 入口归入五层，拒绝漏项、重复、
   无效路径及 release acceptance 混入 fast layer（`f484640`）。
 - [x] G2 runner 从 manifest 稳定选择层，拒绝空选择和隐式测试发现（`d37c03e`）。
 - [x] G3a package scripts 只通过 runner 发现 Node tests；`check:fast` 完成 typecheck、fresh
   build 和全部 fast 层，143 tests、0 failed、0 skipped（`f85af75`）。
-- [ ] G3b release gate 分别运行 artifact/large 层，不再直接使用 acceptance glob。
+- [x] G3b release gate 分别运行 artifact/large 层，不再直接使用 acceptance glob
+  （`2ffb24c`）。
 
 Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产物；随后由集成轨
 串行接入 package scripts，并运行 `pnpm check:fast`。
@@ -318,8 +327,8 @@ Owner：一个端到端 owner 独占 semantic contract、project set、completio
 
 #### Track D：definition 精确性（D0 先行；D1/D2 与 B 的共享契约合入后并行）
 
-- [ ] D0 在其他新增 capability 前先 RED：materialized corpus 中未打开 definition 的 range
-  必须完整覆盖名称，而非零长度；修复当前已广告能力的真实性。
+- [x] D0 在其他新增 capability 前先 RED：materialized corpus 中只打开带 emoji 前缀的
+  reference，definition 精确指向未打开文件的完整名称 range（`e605033`）。
 - [ ] D1 加 unopened、alias/barrel、跨 module、open target overlay。
 - [ ] D2 加 emoji 前缀 UTF-16 source mapping。
 
