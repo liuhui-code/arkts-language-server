@@ -344,9 +344,11 @@ Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产�
 - [x] R0a 项目成员全集与 256 文件内容窗口解耦；partial/revision/枚举资源释放契约
   （`c62b088`）。
 - [x] I1 从 manifest 校验并无构建安装同一份 directory artifact bytes（`af2177c`）。
-- [ ] R0b TypeScript host 对完整成员集的 lazy/bounded 消费：并行实施中。
-- [ ] Q1/Q2 code-action 适配设计与 TypeScript 5.9 API 核验：并行审查中。
-- [ ] I2 不可变 artifact 上复用完整 semantic smoke 场景。
+- [x] R0b TypeScript host 对完整成员集的 lazy/bounded 消费；300+ 文件窗口外 completion、
+  lazy ArkTS definition、watcher 新鲜度、partial 降级及双硬上限均有门禁（`e52b2c9`）。
+- [x] Q1/Q2 code-action 适配设计与 TypeScript 5.9 API 核验完成；有界 512 条/512 KiB、
+  区分 stale/forged 的 resolve store 已落地（`2861aeb`），LSP tracer 正在实施。
+- [x] I2 不可变 artifact 上复用完整 semantic smoke 场景（`09f6352`）。
 - [ ] 本批次集成门禁：所有并行切片提交后运行 fresh `pnpm check:fast`。
 
 ### Wave 2 — 首个功能切片与 installed semantic smoke（部分并行）
@@ -392,8 +394,9 @@ Owner：一个端到端 owner 独占 semantic contract、project set、completio
 - [x] I1 在禁止 build、无源码、无 node_modules、随机 cwd/clean HOME 环境校验并安装
   directory artifact；runtime bytes/mode 与 manifest 一致（`af2177c`）。archive、签名和 CI
   promotion 仍由 Wave 5 负责。
-- [ ] I2 对不可变 artifact 的 installed command 运行 completion、definition、diagnostics 与
-  completion-resolve/apply-and-recheck transcript。
+- [x] I2 对不可变 artifact 的 installed command 运行 completion、definition、diagnostics 与
+  completion-resolve/apply-and-recheck transcript（`09f6352`）；与源码安装复用同一 helper，
+  4/4 artifact acceptance 与 1/1 local-delivery acceptance GREEN。
 - [ ] I3 验证启动的是 artifact 内相邻 sidecar，没有 repo-relative fallback。
 
 Wave 2 exit criteria：首个 tracer 在 bundle 与 installed artifact 两个 target 上全绿；
@@ -410,8 +413,9 @@ capability advertisement 与 transcript 一致；`pnpm check:fast`、artifact sm
 - [x] R0a 用 >256 文件 fixture 建立 project-membership completeness RED；membership 显式
   `complete/partial`，且与有界内容窗口解耦（`c62b088`）。partial 全局查询的
   `RequestFailed` 接线保留给 R0b/R1。
-- [ ] R0b 将 project membership 与 256 文件/8 MiB 内容缓存解耦；只在可证明完整的 snapshot
-  上执行 references/rename，并记录 workspace revision。
+- [x] R0b 将 project membership 与 resident 内容窗口解耦，并由 TypeScript host lazy 消费
+  complete snapshot、记录 membership/content revision；lazy snapshot 默认限制为 128 文件/
+  8 MiB（`e52b2c9`）。本项不启用 references/rename。
 - [ ] R0c watched create/delete/rename 原子更新 membership revision；root-dirty 立即降级 partial，
   重枚举成功才发布新 complete snapshot；project version 纳入 membership/content/overlay epoch。
 - [ ] R1 References：`includeDeclaration=false` 返回 import、usage、barrel re-export 的完整
@@ -432,6 +436,8 @@ capability advertisement 与 transcript 一致；`pnpm check:fast`、artifact sm
   可重复 materialize；TypeScript 5.9.2 探针确认 TS2552 与唯一 `spelling` fix（`c488c54`）。
 - [x] G1 Diagnostics：贯通 TypeScript numeric `code`，用含 emoji 且经过 ArkTS virtual
   rewrite 的 `greting` marker 稳定断言 `TS2552`（`e1a787f`）；related info/data/tags 后置。
+- [x] Q0c Code-action resolve store：服务端 UUID-only 记录，active+tombstone 合计 512 条、
+  active payload 合计 512 KiB；文档失效后保留无 payload stale tombstone（`2861aeb`）。
 - [ ] Q1 Code action list：服务端按当前 snapshot 的 code + source-mapped range 重算匹配，
   只返回唯一 `spelling` quick fix 的 title/kind/diagnostic/opaque UUID，不在 list 返回 edit。
 - [ ] Q2 Code action resolve：只信上限 512 条、绑定 URI/version 的服务端记录；返回 versioned
