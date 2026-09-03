@@ -10,6 +10,8 @@ import type {
   SemanticCompletionTextEdit,
   SemanticDefinitionCandidate,
   SemanticDiagnostic,
+  SemanticDocumentHighlight,
+  SemanticDocumentHighlightKind,
   SemanticDocumentPosition,
   SemanticDocumentSymbolInfo,
   SemanticDocumentSymbolKind,
@@ -507,6 +509,32 @@ export class TypeScriptLanguageServiceEngine {
     return (tree.childItems ?? [])
       .flatMap((item) => navigationSymbol(item, script))
       .sort(compareDocumentSymbols)
+  }
+
+  documentHighlights(position: SemanticDocumentPosition): SemanticDocumentHighlight[] {
+    const filePath = path.resolve(position.path)
+    const script = this.scripts.get(filePath)
+    if (!script) return []
+    script.lastAccess = ++this.accessClock
+    const sourceOffset = lineColumnToOffset(script.sourceContent, position.line, position.column)
+    const offset = script.virtualDocument.toGeneratedOffset(sourceOffset)
+    if (script.virtualDocument.toSourceOffset(offset) !== sourceOffset) return []
+    const groups = this.service.getDocumentHighlights(filePath, offset, [filePath]) ?? []
+    const highlights: SemanticDocumentHighlight[] = []
+    const seen = new Set<string>()
+    for (const group of groups) {
+      if (path.resolve(group.fileName) !== filePath) return []
+      for (const span of group.highlightSpans) {
+        const range = exactSourceRange(script, span.textSpan)
+        const kind = documentHighlightKind(span.kind)
+        if (!range || !kind) return []
+        const key = semanticLocationKey(filePath, range)
+        if (seen.has(key)) continue
+        seen.add(key)
+        highlights.push({ range, kind })
+      }
+    }
+    return highlights.sort(compareDocumentHighlights)
   }
 
   hover(position: SemanticDocumentPosition): SemanticHoverInfo | null {
@@ -1140,6 +1168,25 @@ function compareDocumentSymbols(
 ): number {
   return left.range.startLine - right.range.startLine
     || left.range.startColumn - right.range.startColumn
+}
+
+function documentHighlightKind(
+  kind: ts.HighlightSpanKind,
+): SemanticDocumentHighlightKind | undefined {
+  if (kind === ts.HighlightSpanKind.writtenReference) return "write"
+  if (kind === ts.HighlightSpanKind.reference) return "read"
+  if (kind === ts.HighlightSpanKind.definition || kind === ts.HighlightSpanKind.none) return "text"
+  return undefined
+}
+
+function compareDocumentHighlights(
+  left: SemanticDocumentHighlight,
+  right: SemanticDocumentHighlight,
+): number {
+  return left.range.startLine - right.range.startLine
+    || left.range.startColumn - right.range.startColumn
+    || left.range.endLine - right.range.endLine
+    || left.range.endColumn - right.range.endColumn
 }
 
 function safeRead(filePath: string): string | null {

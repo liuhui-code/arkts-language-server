@@ -4,6 +4,7 @@ import type {
   SemanticCompletionItem,
   SemanticDefinitionCandidate,
   SemanticDiagnostic,
+  SemanticDocumentHighlight,
   SemanticDocumentPosition,
   SemanticDocumentSymbolInfo,
   SemanticHoverInfo,
@@ -99,6 +100,7 @@ export interface SemanticTypeQueryContext {
     range: SemanticTextRange,
     fingerprint: string,
   ): SemanticResolvedCodeFix | null
+  documentHighlights(position: SemanticDocumentPosition): SemanticDocumentHighlight[]
   documentSymbols(position: SemanticDocumentPosition): SemanticDocumentSymbolInfo[]
   hover(position: SemanticDocumentPosition): SemanticHoverInfo | null
   signatureHelp(
@@ -165,6 +167,7 @@ export class SemanticTypeEngineRegistry {
       resolveCodeAction: (position, range, fingerprint) => (
         entry.engine.resolveCodeAction(position, range, fingerprint)
       ),
+      documentHighlights: (position) => entry.engine.documentHighlights(position),
       documentSymbols: (position) => entry.engine.documentSymbols(position),
       hover: (position) => entry.engine.hover(position),
       rename: (position, newName) => entry.engine.rename(position, newName),

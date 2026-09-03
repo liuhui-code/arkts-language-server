@@ -132,6 +132,13 @@ export interface SemanticHoverInfo {
   range: SemanticTextRange
 }
 
+export type SemanticDocumentHighlightKind = "text" | "read" | "write"
+
+export interface SemanticDocumentHighlight {
+  range: SemanticTextRange
+  kind: SemanticDocumentHighlightKind
+}
+
 export type SemanticDocumentSymbolKind =
   | "struct"
   | "class"
