@@ -159,6 +159,11 @@ test("maps the complete public capability contract to executable feature evidenc
       test: "renaming an explicit barrel alias changes only the public alias layer",
       claim: "rename.bundle.public-local-alias-boundary",
     },
+    {
+      entry: "tests/semantic/rename-completeness.test.mjs",
+      test: "rejects rename when the target name already exists in the same scope",
+      claim: "rename.bundle.same-scope-conflict",
+    },
   ])
   assert.deepEqual(rename?.evidence.artifact, [{
     entry: "tests/release/portable-install.acceptance.mjs",

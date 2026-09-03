@@ -288,6 +288,11 @@ export const CURRENT_LSP_FEATURE_MATRIX = Object.freeze({
           "renaming an explicit barrel alias changes only the public alias layer",
           "rename.bundle.public-local-alias-boundary",
         ),
+        evidence(
+          "tests/semantic/rename-completeness.test.mjs",
+          "rejects rename when the target name already exists in the same scope",
+          "rename.bundle.same-scope-conflict",
+        ),
       ],
       artifact: [evidence(
         "tests/release/portable-install.acceptance.mjs",
