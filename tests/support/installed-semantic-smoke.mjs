@@ -321,12 +321,41 @@ export async function assertInstalledSemanticSmoke({
       renamedConsumer.result,
       { documentVersions: new Map([[renameConsumerReference.uri, 1]]) },
     )
+    const renamedConsumerSource = renamedDocuments.get(renameConsumerReference.uri)
     assert.equal(
-      renamedDocuments.get(renameConsumerReference.uri),
+      renamedConsumerSource,
       consumerSource
         .replace("import { Profile }", `import { Profile as ${renamedProfile} }`)
         .replace("/* 😀 */ Profile", `/* 😀 */ ${renamedProfile}`),
     )
+    const renamedConsumerReferenceRange = replacementRange(
+      renameConsumerReference.range,
+      renamedProfile,
+    )
+    const renamedConsumerAliasRange = {
+      start: {
+        line: renameConsumerImport.range.start.line,
+        character: renameConsumerImport.range.start.character + "Profile as ".length,
+      },
+      end: {
+        line: renameConsumerImport.range.start.line,
+        character: renameConsumerImport.range.start.character
+          + "Profile as ".length
+          + renamedProfile.length,
+      },
+    }
+    const consumerDiagnosticsV2 = session.transport.notification(
+      "textDocument/publishDiagnostics",
+      (message) => message.params.uri === renameConsumerReference.uri
+        && message.params.version === 2,
+      timeoutMs,
+    )
+    session.changeDocument({
+      uri: renameConsumerReference.uri,
+      version: 2,
+      text: renamedConsumerSource,
+    })
+    assert.deepEqual((await consumerDiagnosticsV2).params.diagnostics, [])
 
     session.openDocument({
       uri: renameOrigin.uri,
@@ -360,14 +389,14 @@ export async function assertInstalledSemanticSmoke({
       new Map([
         [renameOrigin.uri, definitionSource],
         [renameBarrel.uri, barrelSource],
-        [renameConsumerReference.uri, consumerSource],
+        [renameConsumerReference.uri, renamedConsumerSource],
       ]),
       renamedOrigin.result,
       {
         documentVersions: new Map([
           [renameOrigin.uri, 3],
           [renameBarrel.uri, null],
-          [renameConsumerReference.uri, 1],
+          [renameConsumerReference.uri, 2],
         ]),
       },
     )
@@ -381,14 +410,85 @@ export async function assertInstalledSemanticSmoke({
     )
     assert.equal(
       renamedOriginDocuments.get(renameConsumerReference.uri),
-      consumerSource,
+      renamedConsumerSource,
       "renaming an origin must preserve the barrel's public consumer API",
     )
+    const renamedOriginSource = renamedOriginDocuments.get(renameOrigin.uri)
+    const renamedBarrelSource = renamedOriginDocuments.get(renameBarrel.uri)
+    const renamedOriginRange = replacementRange(renameOrigin.range, renamedOriginName)
+    const renamedBarrelOriginRange = replacementRange(renameBarrel.range, renamedOriginName)
+    const originDiagnosticsV4 = session.transport.notification(
+      "textDocument/publishDiagnostics",
+      (message) => message.params.uri === renameOrigin.uri && message.params.version === 4,
+      timeoutMs,
+    )
+    fs.writeFileSync(fileURLToPath(renameBarrel.uri), renamedBarrelSource, "utf8")
     session.transport.send({
       jsonrpc: "2.0",
-      method: "textDocument/didClose",
-      params: { textDocument: { uri: renameOrigin.uri } },
+      method: "workspace/didChangeWatchedFiles",
+      params: { changes: [{ uri: renameBarrel.uri, type: 2 }] },
     })
+    session.changeDocument({
+      uri: renameOrigin.uri,
+      version: 4,
+      text: renamedOriginSource,
+    })
+    assert.deepEqual((await originDiagnosticsV4).params.diagnostics, [])
+
+    const appliedDefinition = await session.request("textDocument/definition", {
+      textDocument: { uri: renameConsumerReference.uri },
+      position: midpoint(renamedConsumerReferenceRange),
+    }, { timeoutMs })
+    assert.equal(appliedDefinition.error, undefined, JSON.stringify(appliedDefinition.error))
+    const appliedDefinitionLocations = Array.isArray(appliedDefinition.result)
+      ? appliedDefinition.result
+      : [appliedDefinition.result]
+    assert.deepEqual(appliedDefinitionLocations, [{
+      uri: renameOrigin.uri,
+      range: renamedOriginRange,
+    }])
+
+    const appliedReferences = await session.request("textDocument/references", {
+      textDocument: { uri: renameOrigin.uri },
+      position: midpoint(renamedOriginRange),
+      context: { includeDeclaration: true },
+    }, { timeoutMs })
+    assert.equal(appliedReferences.error, undefined, JSON.stringify(appliedReferences.error))
+    const publicAliasOffset = renamedBarrelSource.indexOf("Profile")
+    assert.notEqual(publicAliasOffset, -1)
+    const renamedBarrelPublicRange = {
+      start: positionAt(renamedBarrelSource, publicAliasOffset),
+      end: positionAt(renamedBarrelSource, publicAliasOffset + "Profile".length),
+    }
+    const expectedAppliedReferences = [
+      { uri: renameBarrel.uri, range: renamedBarrelOriginRange },
+      { uri: renameBarrel.uri, range: renamedBarrelPublicRange },
+      { uri: renameOrigin.uri, range: renamedOriginRange },
+      { uri: renameConsumerImport.uri, range: renameConsumerImport.range },
+      { uri: renameConsumerImport.uri, range: renamedConsumerAliasRange },
+      { uri: renameConsumerReference.uri, range: renamedConsumerReferenceRange },
+    ]
+    assert.deepEqual(appliedReferences.result, expectedAppliedReferences)
+    const renamedSourceByUri = new Map([
+      [renameOrigin.uri, renamedOriginSource],
+      [renameBarrel.uri, renamedBarrelSource],
+      [renameConsumerReference.uri, renamedConsumerSource],
+    ])
+    assert.deepEqual(appliedReferences.result.map((location) => (
+      textInRange(renamedSourceByUri.get(location.uri), location.range)
+    )), [
+      renamedOriginName,
+      "Profile",
+      renamedOriginName,
+      "Profile",
+      renamedProfile,
+      renamedProfile,
+    ])
+    assert.deepEqual(
+      appliedReferences.result.filter((location) => location.uri === renameOrigin.uri),
+      [{ uri: renameOrigin.uri, range: renamedOriginRange }],
+      "the renamed declaration identity must not retain its old origin range",
+    )
 
     session.openDocument({
       uri: signature.uri,
@@ -829,6 +929,17 @@ function midpoint(range) {
     character: range.start.character + Math.floor(
       (range.end.character - range.start.character) / 2,
     ),
+  }
+}
+
+function replacementRange(range, replacement) {
+  assert.equal(range.start.line, range.end.line, "fixture range must be single-line")
+  return {
+    start: range.start,
+    end: {
+      line: range.start.line,
+      character: range.start.character + replacement.length,
+    },
   }
 }
 
