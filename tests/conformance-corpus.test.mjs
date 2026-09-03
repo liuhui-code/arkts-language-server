@@ -100,6 +100,60 @@ test("materializes a deterministic Harmony workspace with unopened semantic file
   assert.equal(textInRange(otherConsumer, shadowCase.range), "Profile")
 })
 
+test("materializes isolated ArkUI and OpenHarmony SDK fixtures without host discovery", async (t) => {
+  const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "arkts-lsp-arkui-corpus-test-"))
+  const previousHome = process.env.HOME
+  const previousDevEcoSdkHome = process.env.DEVECO_SDK_HOME
+  process.env.HOME = path.join(temporaryRoot, "missing-home")
+  process.env.DEVECO_SDK_HOME = path.join(temporaryRoot, "missing-deveco-sdk")
+  t.after(async () => {
+    if (previousHome === undefined) delete process.env.HOME
+    else process.env.HOME = previousHome
+    if (previousDevEcoSdkHome === undefined) delete process.env.DEVECO_SDK_HOME
+    else process.env.DEVECO_SDK_HOME = previousDevEcoSdkHome
+    await fs.rm(temporaryRoot, { recursive: true, force: true })
+  })
+
+  const materialized = await materializeConformanceWorkspace({ temporaryRoot })
+  const arkuiPath = path.join(
+    materialized.workspaceRoot,
+    "entry",
+    "src",
+    "main",
+    "ets",
+    "pages",
+    "ArkuiPage.ets",
+  )
+  const arkuiSource = await fs.readFile(arkuiPath, "utf8")
+  const arkuiCases = new Map([
+    ["arkui.decorator.entry", "Entry"],
+    ["arkui.decorator.component", "Component"],
+    ["arkui.decorator.state", "State"],
+    ["arkui.component.column", "Column"],
+    ["arkui.component.text", "Text"],
+    ["arkui.attribute.width", "width"],
+  ])
+
+  assert.doesNotMatch(arkuiSource, /\/\*@case\./)
+  for (const [caseId, expectedText] of arkuiCases) {
+    const markerCase = materialized.cases[caseId]
+    assert.equal(markerCase.uri, pathToFileURL(arkuiPath).href)
+    assert.equal(textInRange(arkuiSource, markerCase.range), expectedText)
+  }
+
+  const sdkRoot = path.join(materialized.corpusRoot, "sdk", "openharmony")
+  const sdkFiles = [
+    "sdk-pkg.json",
+    path.join("ets", "component", "arkui.d.ts"),
+    path.join("toolchains", "arkts-lsp-fixture.json"),
+  ]
+  for (const relativePath of sdkFiles) {
+    const fixture = await fs.readFile(path.join(fixtureRoot, "sdk", "openharmony", relativePath))
+    const copy = await fs.readFile(path.join(sdkRoot, relativePath))
+    assert.deepEqual(copy, fixture, `${relativePath} must have deterministic bytes`)
+  }
+})
+
 function textInRange(source, range) {
   const lines = source.split("\n")
   assert.equal(range.start.line, range.end.line, "this corpus slice uses single-line ranges")
