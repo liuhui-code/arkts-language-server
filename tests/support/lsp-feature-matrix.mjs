@@ -307,6 +307,9 @@ export function validateLspFeatureMatrix({
       if (feature.protocolEvidenceRequired && feature.evidence.protocol.length === 0) {
         issues.push(`${feature.id}: enabled feature requires protocol evidence`)
       }
+      if (feature.evidence.artifact.length === 0) {
+        issues.push(`${feature.id}: enabled feature requires artifact-e2e evidence`)
+      }
       if (feature.absentCapabilities.length > 0) {
         issues.push(`${feature.id}: enabled feature cannot cover absent capabilities`)
       }

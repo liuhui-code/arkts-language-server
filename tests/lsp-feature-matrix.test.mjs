@@ -146,6 +146,23 @@ test("rejects capability and evidence drift instead of accepting a stale matrix"
   }
 })
 
+test("rejects an enabled capability without immutable artifact evidence", () => {
+  const matrix = mutateFeature("references", (feature) => {
+    feature.evidence.artifact = []
+    feature.artifactGap = "Artifact transcript is still pending."
+  })
+
+  assert.throws(
+    () => validateLspFeatureMatrix({
+      root: projectRoot,
+      matrix,
+      capabilityContract: CURRENT_LSP_CAPABILITY_CONTRACT,
+      layerManifest: TEST_LAYER_MANIFEST,
+    }),
+    /references: enabled feature requires artifact-e2e evidence/,
+  )
+})
+
 test("rejects path-only evidence without an exact node:test name and stable claim", () => {
   const matrix = structuredClone(CURRENT_LSP_FEATURE_MATRIX)
   const completion = matrix.features.find(({ id }) => id === "completion")
