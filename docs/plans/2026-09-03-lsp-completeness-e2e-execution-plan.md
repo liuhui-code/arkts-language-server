@@ -218,7 +218,8 @@ Owner files：`tests/support/lsp-process.mjs`、`tests/lsp-process.test.mjs`。
 - [x] H3b waiter predicate 错误进入同一 transport failure 边界（`338e7da`）；
   header/framing 继续由 H3c 覆盖。
 - [ ] H3c malformed header/length/truncated frame 进入同一 transport failure 边界。
-- [ ] H4 close 幂等、有界；正常 shutdown/exit 优先，必要时升级终止。
+- [x] H4 close 幂等、有界；正常 shutdown/exit 优先，deadline 后升级终止
+  （`95aa209`）。
 - [ ] H5 区分 client response 与 server request；progress 必须按 token 关联。
 - [ ] H6 统一 transcript、bounded stderr 和失败 evidence。
 
@@ -250,8 +251,10 @@ Owner files：新建 `tests/support/lsp-session.mjs`、
   WorkspaceEdit 与 didChange 接线保留为 S3b。
 - [x] S3b 安全、不可变地应用 `WorkspaceEdit.changes`，拒绝未知 URI 和未支持的
   `documentChanges`（`53cd4c0`）。
-- [ ] S3c 将应用结果发送为 incremental/full didChange 并重新查询。
-- [ ] S4 将现有手拼 URI 统一为 `pathToFileURL`，fixture root 不再指向整个 repo。
+- [x] S3c 将应用结果发送为 didChange 并通过真实 bundle 重新查询，强制版本单调
+  （`dded968`）。
+- [x] S4 将现有手拼 URI 统一为 `pathToFileURL`，核心 transcript/lifecycle fixture root
+  不再指向整个 repo（`bbca863`）。
 
 #### Track A：artifact 结构与证据契约
 
@@ -272,6 +275,15 @@ Owner files：`tests/support/capability-contract.mjs`、
 - [x] M1 真实 production initialize 精确锁定已实现与必须 absent 的 capabilities
   （`81de320`）。
 - [ ] M2 新增能力时由同一 machine-readable contract 驱动 reliability/conformance 覆盖。
+
+#### Track G：测试发现与分层门禁
+
+Owner files：`tests/support/test-layer-manifest.mjs`、runner、package scripts 与对应证据。
+
+- [x] G1 显式、唯一地把全部 32 个 test/acceptance 入口归入五层，拒绝漏项、重复、
+  无效路径及 release acceptance 混入 fast layer（`f484640`）。
+- [ ] G2 runner 从 manifest 选择层并成为 package scripts 的唯一 Node test 发现入口。
+- [ ] G3 `check:fast` 运行全部 fast 层且不得 silent skip；release gate 运行 artifact/large 层。
 
 Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产物；随后由集成轨
 串行接入 package scripts，并运行 `pnpm check:fast`。
