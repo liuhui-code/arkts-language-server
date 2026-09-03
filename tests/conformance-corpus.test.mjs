@@ -39,6 +39,61 @@ test("materializes marker-free files with UTF-16 point and range coordinates", a
   )
 })
 
+test("materializes a stable UTF-16 spelling quick-fix target inside an ArkTS struct", async (t) => {
+  const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "arkts-lsp-quickfix-corpus-test-"))
+  t.after(() => fs.rm(temporaryRoot, { recursive: true, force: true }))
+  const schema = JSON.parse(await fs.readFile(path.join(fixtureRoot, "corpus.json"), "utf8"))
+  const declaration = schema.cases.find(({ id }) => id === "quickfix.greeting")
+  assert.deepEqual(declaration, {
+    id: "quickfix.greeting",
+    kind: "diagnostic",
+    role: "spelling-quickfix",
+    file: "workspace/entry/src/main/ets/pages/QuickFixConsumer.ets",
+    shape: "range",
+  })
+
+  const first = await materializeConformanceWorkspace({ temporaryRoot })
+  const second = await materializeConformanceWorkspace({ temporaryRoot })
+  const relativePath = path.join("entry", "src", "main", "ets", "pages", "QuickFixConsumer.ets")
+  const firstPath = path.join(first.workspaceRoot, relativePath)
+  const secondPath = path.join(second.workspaceRoot, relativePath)
+  const fixturePath = path.join(fixtureRoot, "workspace", relativePath)
+  const fixtureSource = await fs.readFile(fixturePath, "utf8")
+  const firstSource = await fs.readFile(firstPath, "utf8")
+  const secondSource = await fs.readFile(secondPath, "utf8")
+  const quickFixCase = first.cases["quickfix.greeting"]
+
+  assert.equal(
+    fixtureSource.match(/\/\*@case\.quickfix\.greeting\.(?:start|end)\*\//g)?.length,
+    2,
+    "the fixture must contain exactly one start/end marker pair",
+  )
+  assert.equal(firstSource, secondSource, "repeated materialization must produce identical source")
+  assert.deepEqual(quickFixCase.range, second.cases["quickfix.greeting"].range)
+  assert.equal(quickFixCase.uri, pathToFileURL(firstPath).href)
+  assert.doesNotMatch(firstSource, /\/\*@case\./)
+  assert.match(firstSource, /\bstruct QuickFixConsumer\b/)
+  assert.equal(textInRange(firstSource, quickFixCase.range), "greting")
+  assert.equal(offsetAt(firstSource, quickFixCase.range.start), firstSource.indexOf("greting"))
+
+  const sourceLine = firstSource.split("\n")[quickFixCase.range.start.line]
+  const prefix = sourceLine.slice(0, quickFixCase.range.start.character)
+  assert.match(prefix, /😀/)
+  assert.equal(
+    prefix.length - Array.from(prefix).length,
+    1,
+    "the emoji before greting must occupy two UTF-16 code units",
+  )
+
+  const methodStart = firstSource.indexOf("build()")
+  const methodEnd = firstSource.indexOf("\n  }", methodStart)
+  const greetingOffset = firstSource.indexOf("greeting", methodStart)
+  const typoOffset = firstSource.indexOf("greting", methodStart)
+  assert.ok(methodStart >= 0 && methodEnd > methodStart)
+  assert.ok(greetingOffset > methodStart && greetingOffset < methodEnd)
+  assert.ok(typoOffset > greetingOffset && typoOffset < methodEnd)
+})
+
 test("materializes a deterministic Harmony workspace with unopened semantic files", async (t) => {
   const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "arkts-lsp-harmony-corpus-test-"))
   const previousHome = process.env.HOME
@@ -297,6 +352,12 @@ function textInRange(source, range) {
   const lines = source.split("\n")
   assert.equal(range.start.line, range.end.line, "this corpus slice uses single-line ranges")
   return lines[range.start.line].slice(range.start.character, range.end.character)
+}
+
+function offsetAt(source, position) {
+  const lines = source.split("\n")
+  return lines.slice(0, position.line).reduce((offset, line) => offset + line.length + 1, 0)
+    + position.character
 }
 
 async function copyFixtureForMutation(t, name) {

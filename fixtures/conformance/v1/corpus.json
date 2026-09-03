@@ -44,6 +44,13 @@
       "shape": "range"
     },
     {
+      "id": "quickfix.greeting",
+      "kind": "diagnostic",
+      "role": "spelling-quickfix",
+      "file": "workspace/entry/src/main/ets/pages/QuickFixConsumer.ets",
+      "shape": "range"
+    },
+    {
       "id": "arkui.decorator.entry",
       "kind": "arkui",
       "role": "decorator",
