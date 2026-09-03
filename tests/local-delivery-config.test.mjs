@@ -56,7 +56,8 @@ test("the package delegates every release check to one serialized driver", () =>
     "./scripts/check-zed-queries.sh",
     "cargo fmt --manifest-path editors/zed/Cargo.toml -- --check",
     "cargo build --manifest-path editors/zed/Cargo.toml --locked --target wasm32-wasip2 --release",
-    "node --test --test-concurrency=1 tests/release/*.acceptance.mjs",
+    "pnpm test:e2e:artifact",
+    "pnpm test:e2e:large",
   ]
   let previousGate = -1
   for (const gate of orderedGates) {
@@ -64,6 +65,12 @@ test("the package delegates every release check to one serialized driver", () =>
     assert.ok(gatePosition > previousGate, `${gate} must follow the preceding release gate`)
     previousGate = gatePosition
   }
+
+  assert.doesNotMatch(releaseDriver, /node --test|tests\/release\/.*acceptance\.mjs/)
+  assert.equal(releaseDriver.match(/^pnpm check:fast$/gm)?.length, 1)
+  assert.equal(releaseDriver.match(/^pnpm build(?:\s|$)/gm)?.length ?? 0, 0)
+  assert.equal(releaseDriver.match(/^pnpm test:e2e:artifact$/gm)?.length, 1)
+  assert.equal(releaseDriver.match(/^pnpm test:e2e:large$/gm)?.length, 1)
 })
 
 test("the ArkTS language config enables comments, autoclosing, and ArkTS identifier characters", () => {
