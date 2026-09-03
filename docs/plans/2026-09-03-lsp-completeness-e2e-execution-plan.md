@@ -237,7 +237,7 @@ Owner files：`tests/support/lsp-process.mjs`、`tests/lsp-process.test.mjs`。
 - [x] H6a/H6b bounded stderr/error、去 payload transcript 与不可变 diagnostic snapshot
   （`8b15314`）。
 - [x] H6c failure container 支持 provider，provider 失败不覆盖原始错误（`2ed1731`）；
-  真实 LSP snapshot 文件接线进行中。
+  真实 child 失败保留有界 process/transcript/stderr 本地证据（`0cf6a38`）。
 - [x] H6d layer runner 对 fast/artifact/large 失败保留安全摘要，原样传播 code/signal
   （`6f33f07`）；`failure.json` 不持久化原错误 message（`bb2bb83`）。
 - [ ] H6e GitHub Actions 只上传 allowlisted `failure.json`；外部上传需用户明确授权后接线。
@@ -301,16 +301,20 @@ Owner files：`tests/support/capability-contract.mjs`、
 
 Owner files：`tests/support/test-layer-manifest.mjs`、runner、package scripts 与对应证据。
 
-- [x] G1/G2/M2 集成后显式、唯一地把全部 34 个 test/acceptance 入口归入五层，拒绝漏项、重复、
+- [x] G1/G2/M2 集成后显式、唯一地把全部 35 个 test/acceptance 入口归入五层，拒绝漏项、重复、
   无效路径及 release acceptance 混入 fast layer（`f484640`）。
 - [x] G2 runner 从 manifest 稳定选择层，拒绝空选择和隐式测试发现（`d37c03e`）。
 - [x] G3a package scripts 只通过 runner 发现 Node tests；`check:fast` 完成 typecheck、fresh
   build 和全部 fast 层，143 tests、0 failed、0 skipped（`f85af75`）。
 - [x] G3b release gate 分别运行 artifact/large 层，不再直接使用 acceptance glob
   （`2ffb24c`）。
+- [x] G3c fast 层禁止显式 Node test skip；真实 sidecar persistence 移入 artifact 层并在
+  缺少 release binary 时明确失败（`ef6102c`）。
 
 Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产物；随后由集成轨
-串行接入 package scripts，并运行 `pnpm check:fast`。
+串行接入 package scripts，并运行 `pnpm check:fast`。本地 exit gate 已完成：fresh build
+后 172 tests、0 failed、0 skipped，耗时约 83.7 s。H6e 是外部上传授权项，不阻塞本地
+功能切片；授权前 CI 不上传任何 evidence 文件。
 
 ### Wave 2 — 首个功能切片与 installed semantic smoke（部分并行）
 
@@ -318,8 +322,11 @@ Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产�
 
 Owner：一个端到端 owner 独占 semantic contract、project set、completion adapter。
 
-- [ ] B1 写首个真实 stdio tracer transcript并观察稳定 RED。
-- [ ] B2 保留 completion `documentation/replacementRange/additionalTextEdits/data`。
+- [x] B1a 真实 stdio list tracer：只打开 Home，未打开 Greeter 候选唯一、kind 正确，
+  UTF-16 replacement `textEdit` 精确且保留 opaque data（`537b9ac`）。
+- [ ] B1b 写 completion resolve/auto-import/apply-and-recheck transcript 并观察稳定 RED。
+- [x] B2a 保留 completion `replacementRange/data` 到 LSP list（`537b9ac`）。
+- [ ] B2b resolve 后保留 `documentation/detail/additionalTextEdits/data`。
 - [ ] B3 暴露 `completionItem/resolve`，只有 transcript GREEN 后才 advertising。
 - [ ] B4 project file set 纳入未打开文件；不得在每个请求重新全盘扫描。
 - [ ] B5 应用 auto-import edit 并确认 diagnostics 清零。
