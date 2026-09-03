@@ -22,6 +22,7 @@ export class LspProcess {
     this.messages = []
     this.waiters = []
     this.stderr = ""
+    this.transportFailure = undefined
     this.child.stdout.on("data", (chunk) => this.accept(chunk))
     this.child.stderr.on("data", (chunk) => { this.stderr += chunk.toString() })
     this.child.on("close", (code, signal) => this.rejectPendingOnClose(code, signal))
@@ -73,13 +74,28 @@ export class LspProcess {
     }
   }
 
+  failTransport(error) {
+    if (this.transportFailure) return
+    this.transportFailure = error
+    const waiters = this.waiters.splice(0)
+    for (const { reject, timeout } of waiters) {
+      clearTimeout(timeout)
+      reject(error)
+    }
+    if (this.child.exitCode === null && this.child.signalCode === null) {
+      this.child.kill("SIGTERM")
+    }
+  }
+
   async close() {
-    if (this.child.exitCode !== null) return
+    if (this.child.exitCode !== null || this.child.signalCode !== null) return
+    const exited = once(this.child, "exit")
     this.child.kill("SIGTERM")
-    await once(this.child, "exit")
+    await exited
   }
 
   accept(chunk) {
+    if (this.transportFailure) return
     this.buffer = Buffer.concat([this.buffer, chunk])
     while (true) {
       const headerEnd = this.buffer.indexOf("\r\n\r\n")
@@ -92,7 +108,21 @@ export class LspProcess {
       if (!Number.isFinite(length)) throw new Error(`Invalid LSP header: ${header}`)
       const bodyStart = headerEnd + 4
       if (this.buffer.length < bodyStart + length) return
-      const message = JSON.parse(this.buffer.subarray(bodyStart, bodyStart + length).toString("utf8"))
+      const rawBody = this.buffer.subarray(bodyStart, bodyStart + length).toString("utf8")
+      let message
+      try {
+        message = JSON.parse(rawBody)
+      } catch (cause) {
+        const excerptLimit = 160
+        const excerpt = rawBody.length > excerptLimit
+          ? `${rawBody.slice(0, excerptLimit)}…`
+          : rawBody
+        this.failTransport(new Error(
+          `LSP protocol failure: invalid JSON. raw=${JSON.stringify(excerpt)}`,
+          { cause },
+        ))
+        return
+      }
       this.buffer = this.buffer.subarray(bodyStart + length)
       const waiter = this.waiters.findIndex((candidate) => candidate.matches(message))
       if (waiter >= 0) {

@@ -63,3 +63,42 @@ test("routes a late response after its original waiter times out", async () => {
     await lsp.close()
   }
 })
+
+test("rejects a pending response when the child emits invalid JSON", async () => {
+  const lsp = new LspProcess({
+    command: process.execPath,
+    args: [
+      "-e",
+      `
+        const body = '{"jsonrpc":"2.0","id":63,"result":INVALID-START-'
+          + "x".repeat(400)
+          + "-END-SHOULD-NOT-APPEAR"
+        setTimeout(() => {
+          process.stdout.write(
+            "Content-Length: " + Buffer.byteLength(body) + "\\r\\n\\r\\n" + body,
+          )
+        }, 50)
+        setInterval(() => {}, 1_000)
+      `,
+    ],
+  })
+
+  try {
+    await assert.rejects(
+      withTimeout(
+        lsp.response(63, 5_000),
+        1_000,
+        "pending response did not reject after invalid JSON",
+      ),
+      (error) => {
+        assert.match(error.message, /LSP protocol failure: invalid JSON/)
+        assert.match(error.message, /INVALID-START-/)
+        assert.doesNotMatch(error.message, /END-SHOULD-NOT-APPEAR/)
+        assert.ok(error.message.length < 350, "protocol failure excerpt must be bounded")
+        return true
+      },
+    )
+  } finally {
+    await lsp.close()
+  }
+})
