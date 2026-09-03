@@ -108,7 +108,12 @@ export async function assertInstalledSemanticSmoke({
     rootUri: pathToFileURL(materialized.workspaceRoot).href,
     capabilities: {
       general: { positionEncodings: ["utf-16"] },
-      workspace: { workspaceEdit: { documentChanges: true } },
+      workspace: {
+        workspaceEdit: {
+          documentChanges: true,
+          failureHandling: "transactional",
+        },
+      },
       textDocument: {
         publishDiagnostics: { versionSupport: true },
         rename: { prepareSupport: true },
@@ -285,6 +290,68 @@ export async function assertInstalledSemanticSmoke({
         .replace("import { Profile }", `import { Profile as ${renamedProfile} }`)
         .replace("/* 😀 */ Profile", `/* 😀 */ ${renamedProfile}`),
     )
+
+    session.openDocument({
+      uri: renameOrigin.uri,
+      languageId: "arkts",
+      version: 3,
+      text: definitionSource,
+    })
+    const renamedOriginName = "InstalledAccount"
+    const renamedOrigin = await session.request("textDocument/rename", {
+      textDocument: { uri: renameOrigin.uri },
+      position: midpoint(renameOrigin.range),
+      newName: renamedOriginName,
+    }, { timeoutMs })
+    assert.equal(renamedOrigin.error, undefined, JSON.stringify(renamedOrigin.error))
+    assert.equal(renamedOrigin.result.changes, undefined)
+    const expectedOriginChanges = [
+      {
+        textDocument: { uri: renameOrigin.uri, version: 3 },
+        edits: [{ range: renameOrigin.range, newText: renamedOriginName }],
+      },
+      {
+        textDocument: { uri: renameBarrel.uri, version: null },
+        edits: [{
+          range: renameBarrel.range,
+          newText: `${renamedOriginName} as Profile`,
+        }],
+      },
+    ].sort((left, right) => left.textDocument.uri.localeCompare(right.textDocument.uri))
+    assert.deepEqual(renamedOrigin.result.documentChanges, expectedOriginChanges)
+    const renamedOriginDocuments = applyWorkspaceEdit(
+      new Map([
+        [renameOrigin.uri, definitionSource],
+        [renameBarrel.uri, barrelSource],
+        [renameConsumerReference.uri, consumerSource],
+      ]),
+      renamedOrigin.result,
+      {
+        documentVersions: new Map([
+          [renameOrigin.uri, 3],
+          [renameBarrel.uri, null],
+          [renameConsumerReference.uri, 1],
+        ]),
+      },
+    )
+    assert.equal(
+      renamedOriginDocuments.get(renameOrigin.uri),
+      definitionSource.replace("interface Profile", `interface ${renamedOriginName}`),
+    )
+    assert.equal(
+      renamedOriginDocuments.get(renameBarrel.uri),
+      `export { ${renamedOriginName} as Profile } from "./Profile"\n`,
+    )
+    assert.equal(
+      renamedOriginDocuments.get(renameConsumerReference.uri),
+      consumerSource,
+      "renaming an origin must preserve the barrel's public consumer API",
+    )
+    session.transport.send({
+      jsonrpc: "2.0",
+      method: "textDocument/didClose",
+      params: { textDocument: { uri: renameOrigin.uri } },
+    })
 
     session.openDocument({
       uri: signature.uri,
