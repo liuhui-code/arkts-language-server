@@ -66,8 +66,8 @@ function allowlistedMetadata(metadata) {
 
 function errorSummary(error) {
   const summary = {
-    name: typeof error?.name === "string" ? error.name : "Error",
-    message: typeof error?.message === "string" ? error.message : String(error),
+    name: SAFE_ERROR_NAMES.has(error?.name) ? error.name : "Error",
+    message: "Test case failed",
   }
   if (isJsonScalar(error?.code)) summary.code = error.code
   if (isJsonScalar(error?.signal)) summary.signal = error.signal

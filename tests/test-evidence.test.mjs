@@ -30,7 +30,9 @@ test("retains failed case evidence with only an allowlisted failure summary", as
   const evidenceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-test-failure-"))
   t.after(() => fs.rmSync(evidenceRoot, { recursive: true, force: true }))
 
-  const failure = Object.assign(new Error("language server exited"), {
+  const privateErrorMessage = `ORIGINAL_SECRET-${"x".repeat(1_000)}-export const privateSource = true`
+  const failure = Object.assign(new Error(privateErrorMessage), {
+    name: "PrivateSourceError",
     code: 17,
     signal: "SIGTERM",
     environment: { SECRET_TOKEN: "must-not-be-recorded" },
@@ -66,7 +68,7 @@ test("retains failed case evidence with only an allowlisted failure summary", as
     caseId: "completion/resolve",
     error: {
       name: "Error",
-      message: "language server exited",
+      message: "Test case failed",
       code: 17,
       signal: "SIGTERM",
     },
@@ -76,7 +78,11 @@ test("retains failed case evidence with only an allowlisted failure summary", as
       target: "installed-artifact",
     },
   })
-  assert.doesNotMatch(failureJson, /SECRET_TOKEN|privateSource|must-not-be-recorded/)
+  assert.ok(failureJson.length < 600, "failure summary must stay bounded")
+  assert.doesNotMatch(
+    failureJson,
+    /ORIGINAL_SECRET|PrivateSourceError|SECRET_TOKEN|privateSource|must-not-be-recorded/,
+  )
 })
 
 test("captures provider evidence only when the test case fails", async (t) => {
@@ -156,7 +162,7 @@ test("preserves the test error when failure evidence capture also fails", async 
     name: "TypeError",
     message: "Failure evidence provider did not complete",
   })
-  assert.equal(failure.error.message, originalFailure.message)
+  assert.equal(failure.error.message, "Test case failed")
   assert.ok(failureJson.length < 600, "capture failure summary must stay bounded")
   assert.doesNotMatch(
     failureJson,
