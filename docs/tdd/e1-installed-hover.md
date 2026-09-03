@@ -56,7 +56,7 @@ was required.
 The feature-matrix expectation was then changed first and RED showed hover was
 still absent from artifact-covered features. The hover entry now cites the
 exact first portable `node:test` name with claim
-`hover.artifact.immutable-unopened-import` and has `artifactGap: null`. The
+`hover.artifact.immutable-typescript-arkui-builder-range` and has `artifactGap: null`. The
 matrix returned to GREEN without changing any other feature entry.
 
 ## Verification

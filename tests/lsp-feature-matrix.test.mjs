@@ -73,13 +73,13 @@ test("requires installed verifiedClaims to exactly match one artifact test's mat
 test("binds the installed semantic umbrella to its exact verified claim set", () => {
   const verifiedClaims = [
     "document-sync.artifact.immutable-incremental-overlay-lifecycle",
-    "completion.artifact.immutable-semantic-smoke",
-    "definition.artifact.immutable-exact-range",
-    "hover.artifact.immutable-unopened-import",
+    "completion.artifact.immutable-typescript-arkui-resource-builder",
+    "definition.artifact.immutable-typescript-arkui-resource-builder-ranges",
+    "hover.artifact.immutable-typescript-arkui-builder-range",
     "signature-help.artifact.immutable-unopened-overload",
     "document-symbol.artifact.immutable-arkui-hierarchy",
     "workspace-symbol.artifact.immutable-index-kind-uri-name-range",
-    "diagnostics.artifact.immutable-versioned",
+    "diagnostics.artifact.immutable-versioned-arkui-resource-builder",
     "completion-resolve.artifact.immutable-auto-import",
     "references.artifact.immutable-unopened-barrel-declaration-policy",
     "rename.artifact.immutable-versioned-alias-conflict-applied-semantic-recheck",
@@ -143,7 +143,7 @@ test("maps the complete public capability contract to executable feature evidenc
   assert.deepEqual(hover?.evidence.artifact, [{
     entry: "tests/release/portable-install.acceptance.mjs",
     test: "installs one verified artifact without source dependencies or a rebuild",
-    claim: "hover.artifact.immutable-unopened-import",
+    claim: "hover.artifact.immutable-typescript-arkui-builder-range",
   }])
   assert.equal(hover?.artifactGap, null)
   const signatureHelp = CURRENT_LSP_FEATURE_MATRIX.features.find(
