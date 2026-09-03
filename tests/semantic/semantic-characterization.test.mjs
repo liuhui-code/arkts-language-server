@@ -72,6 +72,137 @@ test("returns the exact unopened definition range after an emoji prefix", async 
   assert.equal(textInRange(profile, locations[0].range), "Profile")
 })
 
+test("completes a one-character non-member local with an exact replacement", async (t) => {
+  const materialized = await materializeConformanceWorkspace()
+  const documentPath = path.join(
+    materialized.workspaceRoot,
+    "entry",
+    "src",
+    "main",
+    "ets",
+    "pages",
+    "ShortPrefix.ets",
+  )
+  const documentUri = pathToFileURL(documentPath).href
+  const source = [
+    "class Hidden {",
+    "  ghostMember: number = 0",
+    "}",
+    "",
+    "function build(): void {",
+    "  const genuineLocal = 1",
+    "  const selected = g",
+    "}",
+  ].join("\n")
+  await fs.promises.writeFile(documentPath, source, "utf8")
+  const prefixEnd = source.lastIndexOf("g") + 1
+  const replacementRange = {
+    start: positionAt(source, prefixEnd - 1),
+    end: positionAt(source, prefixEnd),
+  }
+  const session = new LspSession({
+    command: process.execPath,
+    args: [path.join(projectRoot, "dist", "server.cjs"), "--stdio"],
+    cwd: projectRoot,
+    env: {
+      HOME: path.join(materialized.root, "missing-home"),
+      DEVECO_SDK_HOME: path.join(materialized.root, "missing-deveco"),
+      ARKLINE_HARMONY_SDK_PATH: path.join(materialized.corpusRoot, "sdk", "openharmony"),
+    },
+    rootUri: pathToFileURL(materialized.workspaceRoot).href,
+    capabilities: { general: { positionEncodings: ["utf-16"] } },
+  })
+  t.after(async () => {
+    try {
+      await session.close()
+    } finally {
+      await fs.promises.rm(materialized.root, { recursive: true, force: true })
+    }
+  })
+
+  await session.initialize()
+  session.openDocument({
+    uri: documentUri,
+    languageId: "arkts",
+    version: 1,
+    text: source,
+  })
+  const response = await session.request("textDocument/completion", {
+    textDocument: { uri: documentUri },
+    position: replacementRange.end,
+  })
+
+  assert.equal(response.error, undefined, JSON.stringify(response.error))
+  const items = Array.isArray(response.result) ? response.result : response.result?.items ?? []
+  const locals = items.filter((item) => item.label === "genuineLocal")
+  assert.equal(locals.length, 1, `Expected genuineLocal in ${JSON.stringify(items)}`)
+  assert.equal(items.some((item) => item.label === "ghostMember"), false)
+  assert.equal(items.some((item) => item.label === "Greeter"), false)
+  assert.deepEqual(locals[0].textEdit, {
+    range: replacementRange,
+    newText: "genuineLocal",
+  })
+})
+
+test("completes an unopened class from a two-character prefix", async (t) => {
+  const materialized = await materializeConformanceWorkspace()
+  const completion = materialized.cases["completion.unicode"]
+  const home = fs.readFileSync(fileURLToPath(completion.uri), "utf8")
+  const shortRange = {
+    start: completion.range.start,
+    end: {
+      line: completion.range.start.line,
+      character: completion.range.start.character + 2,
+    },
+  }
+  const homeWithShortPrefix = applyTextEdits(home, [{
+    range: completion.range,
+    newText: "Gr",
+  }])
+  const session = new LspSession({
+    command: process.execPath,
+    args: [path.join(projectRoot, "dist", "server.cjs"), "--stdio"],
+    cwd: projectRoot,
+    env: {
+      HOME: path.join(materialized.root, "missing-home"),
+      DEVECO_SDK_HOME: path.join(materialized.root, "missing-deveco"),
+      ARKLINE_HARMONY_SDK_PATH: path.join(materialized.corpusRoot, "sdk", "openharmony"),
+    },
+    rootUri: pathToFileURL(materialized.workspaceRoot).href,
+    capabilities: { general: { positionEncodings: ["utf-16"] } },
+  })
+  t.after(async () => {
+    try {
+      await session.close()
+    } finally {
+      await fs.promises.rm(materialized.root, { recursive: true, force: true })
+    }
+  })
+
+  assert.equal(textInRange(homeWithShortPrefix, shortRange), "Gr")
+  await session.initialize()
+  session.openDocument({
+    uri: completion.uri,
+    languageId: "arkts",
+    version: 1,
+    text: homeWithShortPrefix,
+  })
+  const response = await session.request("textDocument/completion", {
+    textDocument: { uri: completion.uri },
+    position: shortRange.end,
+  })
+
+  assert.equal(response.error, undefined, JSON.stringify(response.error))
+  const items = Array.isArray(response.result) ? response.result : response.result?.items ?? []
+  const greeters = items.filter((item) => item.label === "Greeter")
+  assert.equal(greeters.length, 1, `Expected one Greeter in ${JSON.stringify(items)}`)
+  assert.equal(greeters[0].kind, CompletionItemKind.Class)
+  assert.deepEqual(greeters[0].textEdit, {
+    range: shortRange,
+    newText: "Greeter",
+  })
+})
+
 test("resolves and applies an unopened class auto-import through the production server", async (t) => {
   const materialized = await materializeConformanceWorkspace()
   const completion = materialized.cases["completion.unicode"]

@@ -28,6 +28,7 @@ import { lineColumnToOffset, offsetToLineColumn, spanToRange } from "./text-posi
 const MAX_SCRIPTS = 512
 const MAX_SCRIPT_BYTES = 16 * 1024 * 1024
 const MAX_COMPLETIONS = 128
+const MIN_MODULE_EXPORT_PREFIX_LENGTH = 2
 const ENGINE_VERSION = `typescript-${ts.version}-arkts-v2`
 
 interface ScriptRecord {
@@ -92,7 +93,8 @@ export class TypeScriptLanguageServiceEngine {
     const memberAccess = script.sourceContent.slice(0, sourceOffset - prefix.length).endsWith(".")
     const info = this.service.getCompletionsAtPosition(filePath, offset, {
       includeCompletionsForImportStatements: true,
-      includeCompletionsForModuleExports: !memberAccess && prefix.length >= 3,
+      includeCompletionsForModuleExports:
+        !memberAccess && prefix.length >= MIN_MODULE_EXPORT_PREFIX_LENGTH,
       includeCompletionsWithInsertText: true,
     })
     if (!info) return []
@@ -481,7 +483,7 @@ function hasCompletionPrefix(content: string, position: SemanticDocumentPosition
   const before = content.slice(0, offset)
   return /\.[A-Za-z_$][A-Za-z0-9_$]*$/.test(before)
     || before.endsWith(".")
-    || /\b[A-Za-z_$][A-Za-z0-9_$]{2,}$/.test(before)
+    || /\b[A-Za-z_$][A-Za-z0-9_$]*$/.test(before)
 }
 
 function completionPrefix(content: string, offset: number): string {
