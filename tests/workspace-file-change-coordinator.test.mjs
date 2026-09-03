@@ -158,6 +158,7 @@ test("routes only in-root ArkUI string resources and rejects JSON or symlink esc
   assert.deepEqual(coordinator.drain(), [{
     rootUri,
     rootDirty: false,
+    resourceChanged: true,
     changes: [{ uri: pathToFileURL(resourcePath).href, kind: "changed" }],
   }])
 })
@@ -212,11 +213,13 @@ test("bounds an ArkUI resource burst without discarding pending source changes",
       rootUri: firstRootUri,
       rootDirty: false,
       resourceDirty: true,
+      resourceChanged: true,
       changes: [{ uri: sourceUri, kind: "changed" }],
     },
     {
       rootUri: secondRootUri,
       rootDirty: false,
+      resourceChanged: true,
       changes: [{ uri: resourceUri(secondRoot, "base"), kind: "created" }],
     },
   ])

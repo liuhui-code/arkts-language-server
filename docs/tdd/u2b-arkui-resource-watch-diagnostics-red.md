@@ -1,4 +1,4 @@
-# U2b ArkUI resource-watch diagnostic refresh RED
+# U2b ArkUI resource-watch diagnostic refresh RED → GREEN
 
 Date: 2026-09-03
 
@@ -62,4 +62,55 @@ unit contract already verifies `invalidateArkUIResources(workspace)` changes
 only the selected resource snapshot while preserving both workspaces'
 TypeScript generations. A future production fix must keep that contract green.
 
-No production code is changed in this slice.
+The RED commit changed no production code; the following GREEN commit owns the
+production change described below.
+
+## Root cause
+
+The watcher coordinator correctly classified ArkUI resource paths while
+accepting an event, but that domain information was discarded when it emitted
+the workspace batch. The semantic engine invalidated its resource snapshot,
+yet the LSP layer did not schedule diagnostics for already-open documents.
+Invalidation therefore only became visible after a later source edit, close,
+or reopen.
+
+## Minimal GREEN
+
+- `WorkspaceFileChangeBatch.resourceChanged` preserves the classification made
+  once at the watcher boundary, including bounded-overflow batches.
+- The semantic engine continues to invalidate only the affected workspace's
+  ArkUI resource snapshot.
+- After invalidation, the LSP layer reschedules the existing debounced,
+  version-checked diagnostic pipeline only for open documents in affected
+  workspaces that can contain a direct `$r` reference.
+- A count-only structured log records affected workspaces and scheduled open
+  documents without emitting source paths or contents.
+
+## GREEN evidence
+
+```text
+node --test tests/workspace-file-change-coordinator.test.mjs \
+  tests/semantic/arkui-resource-watch-diagnostics.test.mjs
+# 14 passed, 0 failed, 0 skipped
+
+node --test --test-concurrency=1 \
+  tests/lsp-workspace-global-freshness.test.mjs \
+  tests/lsp-workspace-file-changes.test.mjs \
+  tests/workspace-file-change-coordinator.test.mjs \
+  tests/semantic/arkui-resource-watch-diagnostics.test.mjs
+# 24 passed, 0 failed, 0 skipped
+
+node --test --test-concurrency=1 \
+  tests/lsp-diagnostics.test.mjs \
+  tests/semantic/diagnostic-code-characterization.test.mjs \
+  tests/semantic/arkui-diagnostics-depth.test.mjs \
+  tests/semantic/arkui-language-features.test.mjs \
+  tests/semantic/arkui-builder-tail.test.mjs
+# 31 passed, 0 failed, 0 skipped
+
+pnpm check
+# exit 0
+```
+
+The existing two-workspace unit contract remains the direct evidence that a
+resource-only change does not advance the TypeScript engine generation.

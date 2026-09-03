@@ -198,6 +198,7 @@ export interface SemanticWorkspaceFileChangeBatch {
   rootUri: DocumentUri
   rootDirty: boolean
   resourceDirty?: boolean
+  resourceChanged?: boolean
   changes: Array<{
     uri: DocumentUri
     kind: "created" | "changed" | "deleted"

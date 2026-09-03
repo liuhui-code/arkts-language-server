@@ -20,6 +20,7 @@ export interface WorkspaceFileChangeBatch {
   rootUri: string
   rootDirty: boolean
   resourceDirty?: boolean
+  resourceChanged?: boolean
   changes: WorkspaceFileChange[]
 }
 
@@ -84,6 +85,7 @@ export class WorkspaceFileChangeCoordinator {
         rootUri: root.uri,
         rootDirty,
         ...(resourceDirty ? { resourceDirty: true } : {}),
+        ...(resourceDirty ? { resourceChanged: true } : {}),
         changes: [],
       })
     }
@@ -102,6 +104,7 @@ export class WorkspaceFileChangeCoordinator {
         }
         batches.set(change.root.canonicalPath, batch)
       }
+      if (change.domain === "arkui-resource") batch.resourceChanged = true
       batch.changes.push({ uri: change.uri, kind: change.kind })
     }
     const result = [...batches.entries()]

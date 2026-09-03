@@ -275,6 +275,27 @@ export function runLanguageServer(services?: LanguageServerServices): void {
         freshness.cancelWorkspace(projects.projectFor(batch.rootUri).id)
       }
       semantic.workspaceFilesChanged?.(batches)
+      const resourceWorkspaceIds = new Set(
+        batches
+          .filter((batch) => batch.resourceChanged)
+          .map((batch) => projects.projectFor(batch.rootUri).id),
+      )
+      if (resourceWorkspaceIds.size > 0) {
+        let scheduledDocuments = 0
+        for (const document of documents.all()) {
+          if (
+            document.getText().includes("$r")
+            && resourceWorkspaceIds.has(projects.projectFor(document.uri).id)
+          ) {
+            scheduledDocuments += 1
+            diagnostics.update(document)
+          }
+        }
+        logger.info("diagnostics.resource.refresh.scheduled", {
+          workspaceCount: resourceWorkspaceIds.size,
+          documentCount: scheduledDocuments,
+        })
+      }
     }
   })
   documents.onDidChangeContent(({ document }) => {

@@ -70,7 +70,7 @@ export class LegacySemanticEngine implements SemanticEnginePort {
         const changedPath = toFilePath(change.uri)
         return changedPath ? [{ path: changedPath, kind: change.kind }] : []
       })
-      if (batch.resourceDirty || changes.some(({ path: changedPath }) => (
+      if (batch.resourceChanged || batch.resourceDirty || changes.some(({ path: changedPath }) => (
         isArkUIStringResourcePath(changedPath)
       ))) {
         this.engines.invalidateArkUIResources(rootPath)
