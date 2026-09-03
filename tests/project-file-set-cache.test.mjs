@@ -10,6 +10,51 @@ const driverRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-document-store-d
 after(() => fs.rmSync(driverRoot, { recursive: true, force: true }))
 const { SemanticDocumentStore } = buildDocumentStoreDriver(driverRoot)
 
+test("reports complete project membership independently from the bounded document snapshot", (t) => {
+  const files = Object.fromEntries(Array.from({ length: 300 }, (_value, index) => [
+    `Source${String(index).padStart(3, "0")}.ets`,
+    `export const source${index} = ${index}\n`,
+  ]))
+  files["Main.ets"] = "export const main = 1\n"
+  const workspace = createWorkspace(t, "membership-complete", files)
+  const mainPath = path.join(workspace, "Main.ets")
+  const originalReadDirectory = fs.readdirSync
+  const originalOpenDirectory = fs.opendirSync
+  let directoryReads = 0
+  fs.readdirSync = (...args) => {
+    directoryReads += 1
+    return originalReadDirectory(...args)
+  }
+  fs.opendirSync = (...args) => {
+    directoryReads += 1
+    return originalOpenDirectory(...args)
+  }
+  t.after(() => {
+    fs.readdirSync = originalReadDirectory
+    fs.opendirSync = originalOpenDirectory
+  })
+  const store = new SemanticDocumentStore()
+  t.after(() => store.dispose?.())
+  const position = syncPosition(store, workspace, mainPath)
+
+  const first = store.prepare(position, true)
+  const readsAfterFirst = directoryReads
+  const second = store.prepare(position, true)
+
+  assert.equal(first.projectMembership.status, "complete")
+  assert.equal(first.projectMembership.paths.length, 301)
+  assert.ok(first.projectMembership.paths.includes(mainPath))
+  assert.equal(first.documents.length, 256)
+  assert.ok(
+    first.documents.reduce((total, document) => total + Buffer.byteLength(document.content), 0)
+      <= 8 * 1024 * 1024,
+  )
+  assert.deepEqual(second.projectMembership, first.projectMembership)
+  assert.equal(directoryReads, readsAfterFirst, "unchanged membership must not rescan")
+  assert.ok(Number.isSafeInteger(first.projectMembership.revision))
+  assert.ok(first.projectMembership.revision > 0)
+})
+
 test("reuses the bounded source-path set for an unchanged canonical workspace", (t) => {
   const workspace = createWorkspace(t, "reuse", {
     "Main.ets": "export const main = 1\n",
@@ -81,6 +126,93 @@ test("invalidates only the requested workspace source-path set", (t) => {
   assert.equal(enumerationCounts.get(fs.realpathSync(secondRoot)), 1)
 })
 
+test("advances membership revision across invalidation and watched membership changes", (t) => {
+  const workspace = createWorkspace(t, "membership-revision", {
+    "Main.ets": "export const main = 1\n",
+    "Old.ets": "export const oldValue = 1\n",
+  })
+  const mainPath = path.join(workspace, "Main.ets")
+  const oldPath = path.join(workspace, "Old.ets")
+  const createdPath = path.join(workspace, "Created.ets")
+  const rootDirtyPath = path.join(workspace, "RootDirty.ets")
+  const store = new SemanticDocumentStore()
+  t.after(() => store.dispose?.())
+  const position = syncPosition(store, workspace, mainPath)
+
+  const initial = store.prepare(position, true).projectMembership
+  assert.equal(store.prepare(position, true).projectMembership.revision, initial.revision)
+
+  store.invalidate(workspace)
+  const invalidated = store.prepare(position, true).projectMembership
+  assert.ok(invalidated.revision > initial.revision)
+
+  fs.writeFileSync(createdPath, "export const created = 1\n", "utf8")
+  store.workspaceFilesChanged({
+    rootPath: workspace,
+    rootDirty: false,
+    changes: [{ path: createdPath, kind: "created" }],
+  })
+  const created = store.prepare(position, true).projectMembership
+  assert.ok(created.revision > invalidated.revision)
+  assert.ok(created.paths.includes(createdPath))
+
+  fs.unlinkSync(oldPath)
+  store.workspaceFilesChanged({
+    rootPath: workspace,
+    rootDirty: false,
+    changes: [{ path: oldPath, kind: "deleted" }],
+  })
+  const deleted = store.prepare(position, true).projectMembership
+  assert.ok(deleted.revision > created.revision)
+  assert.ok(!deleted.paths.includes(oldPath))
+
+  fs.writeFileSync(rootDirtyPath, "export const rootDirty = 1\n", "utf8")
+  store.workspaceFilesChanged({ rootPath: workspace, rootDirty: true, changes: [] })
+  const rebuilt = store.prepare(position, true).projectMembership
+  assert.ok(rebuilt.revision > deleted.revision)
+  assert.equal(rebuilt.status, "complete")
+  assert.ok(rebuilt.paths.includes(rootDirtyPath), "root-dirty must not expose the old snapshot")
+})
+
+test("keeps membership revision stable when repeated deltas do not change its truth", (t) => {
+  const workspace = createWorkspace(t, "membership-no-op-revision", {
+    "Main.ets": "export const main = 1\n",
+  })
+  const mainPath = path.join(workspace, "Main.ets")
+  const createdPath = path.join(workspace, "Created.ets")
+  const unknownPath = path.join(workspace, "Unknown.ets")
+  const store = new SemanticDocumentStore()
+  t.after(() => store.dispose?.())
+  const position = syncPosition(store, workspace, mainPath)
+  const initial = store.prepare(position, true).projectMembership
+
+  store.workspaceFilesChanged({
+    rootPath: workspace,
+    rootDirty: false,
+    changes: [{ path: mainPath, kind: "created" }],
+  })
+  assert.equal(store.prepare(position, true).projectMembership.revision, initial.revision)
+
+  fs.writeFileSync(createdPath, "export const created = 1\n", "utf8")
+  store.workspaceFilesChanged({
+    rootPath: workspace,
+    rootDirty: false,
+    changes: [{ path: createdPath, kind: "created" }],
+  })
+  const created = store.prepare(position, true).projectMembership
+  assert.ok(created.revision > initial.revision)
+
+  store.workspaceFilesChanged({
+    rootPath: workspace,
+    rootDirty: false,
+    changes: [
+      { path: createdPath, kind: "created" },
+      { path: unknownPath, kind: "deleted" },
+    ],
+  })
+  assert.equal(store.prepare(position, true).projectMembership.revision, created.revision)
+})
+
 test("adds a newly opened source overlay to an already cached workspace", (t) => {
   const workspace = createWorkspace(t, "opened-overlay", {
     "Main.ets": "export const main = 1\n",
@@ -130,17 +262,176 @@ test("hard-bounds cached source paths per workspace", (t) => {
   assert.deepEqual(documentPaths(view), [mainPath, onePath].sort())
 })
 
+test("reports path-count-limited project membership as partial without exhausting enumeration", (t) => {
+  const files = Object.fromEntries(Array.from({ length: 130 }, (_value, index) => [
+    index === 0 ? "Main.ets" : `Source${String(index).padStart(3, "0")}.ets`,
+    `export const source${index} = ${index}\n`,
+  ]))
+  const workspace = createWorkspace(t, "membership-path-limit", files)
+  const mainPath = path.join(workspace, "Main.ets")
+  const paths = Object.keys(files).map((fileName) => path.join(workspace, fileName))
+  let yielded = 0
+  const store = new SemanticDocumentStore({
+    enumerateWorkspaceSources: function* enumerate() {
+      for (const sourcePath of paths) {
+        yielded += 1
+        yield sourcePath
+      }
+    },
+    projectFileSetLimits: { maxPaths: 128 },
+  })
+  t.after(() => store.dispose?.())
+
+  const view = store.prepare(
+    syncPosition(store, workspace, mainPath),
+    true,
+  )
+
+  assert.equal(view.projectMembership.status, "partial")
+  assert.equal(view.projectMembership.reason, "path-count-limit")
+  assert.equal(view.projectMembership.paths.length, 128)
+  assert.equal(yielded, 129, "enumeration must stop after the first path beyond the limit")
+
+  const omittedPath = paths[paths.length - 1]
+  const omittedContent = fs.readFileSync(omittedPath, "utf8")
+  store.sync({
+    path: omittedPath,
+    content: omittedContent,
+    documentVersion: 1,
+    workspaceRoot: workspace,
+  })
+  store.sync({
+    path: omittedPath,
+    content: omittedContent,
+    documentVersion: 1,
+    workspaceRoot: workspace,
+  })
+  assert.equal(
+    store.prepare(viewPathPosition(workspace, mainPath), true).projectMembership.revision,
+    view.projectMembership.revision,
+    "repeated opens beyond an unchanged partial limit must not create revision noise",
+  )
+})
+
+test("bounds default disk enumeration at the first path beyond the membership limit", (t) => {
+  const files = Object.fromEntries(Array.from({ length: 160 }, (_value, index) => [
+    `sources/${String(index).padStart(3, "0")}/Source.ets`,
+    `export const source${index} = ${index}\n`,
+  ]))
+  files["Main.ets"] = "export const main = 1\n"
+  const workspace = createWorkspace(t, "bounded-default-enumeration", files)
+  const mainPath = path.join(workspace, "Main.ets")
+  const originalReadDirectory = fs.readdirSync
+  const originalOpenDirectory = fs.opendirSync
+  let directoryReads = 0
+  fs.readdirSync = (...args) => {
+    directoryReads += 1
+    return originalReadDirectory(...args)
+  }
+  fs.opendirSync = (...args) => {
+    directoryReads += 1
+    return originalOpenDirectory(...args)
+  }
+  t.after(() => {
+    fs.readdirSync = originalReadDirectory
+    fs.opendirSync = originalOpenDirectory
+  })
+  const store = new SemanticDocumentStore({ projectFileSetLimits: { maxPaths: 128 } })
+  t.after(() => store.dispose?.())
+
+  const view = store.prepare(syncPosition(store, workspace, mainPath), true)
+
+  assert.equal(view.projectMembership.status, "partial")
+  assert.equal(view.projectMembership.reason, "path-count-limit")
+  assert.ok(
+    directoryReads <= 130,
+    `default enumeration opened ${directoryReads} directories after membership was known partial`,
+  )
+})
+
+test("fails project membership closed and closes an enumerator that throws", (t) => {
+  const workspace = createWorkspace(t, "membership-enumeration-error", {
+    "Main.ets": "export const main = 1\n",
+  })
+  const mainPath = path.join(workspace, "Main.ets")
+  let iteratorClosed = false
+  const store = new SemanticDocumentStore({
+    enumerateWorkspaceSources: function* enumerate() {
+      try {
+        yield mainPath
+        throw new Error("fixture enumeration failed")
+      } finally {
+        iteratorClosed = true
+      }
+    },
+  })
+  t.after(() => store.dispose?.())
+
+  const view = store.prepare(syncPosition(store, workspace, mainPath), true)
+
+  assert.equal(view.projectMembership.status, "partial")
+  assert.equal(view.projectMembership.reason, "enumeration-error")
+  assert.deepEqual(view.projectMembership.paths, [mainPath])
+  assert.equal(iteratorClosed, true)
+})
+
+test("fails closed and releases open directories after nested disk enumeration errors", (t) => {
+  const workspace = createWorkspace(t, "membership-disk-error", {
+    "Main.ets": "export const main = 1\n",
+    "nested/Other.ets": "export const other = 2\n",
+  })
+  const mainPath = path.join(workspace, "Main.ets")
+  const failingDirectory = path.join(workspace, "nested")
+  const originalOpenDirectory = fs.opendirSync
+  let openedDirectories = 0
+  let closedDirectories = 0
+  fs.opendirSync = (directoryPath, ...args) => {
+    if (path.resolve(directoryPath) === failingDirectory) {
+      throw new Error("fixture nested directory failed")
+    }
+    const directory = originalOpenDirectory(directoryPath, ...args)
+    const originalClose = directory.closeSync.bind(directory)
+    let closed = false
+    directory.closeSync = (...closeArgs) => {
+      if (!closed) {
+        closed = true
+        closedDirectories += 1
+      }
+      return originalClose(...closeArgs)
+    }
+    openedDirectories += 1
+    return directory
+  }
+  t.after(() => { fs.opendirSync = originalOpenDirectory })
+  const store = new SemanticDocumentStore()
+  t.after(() => store.dispose?.())
+
+  const view = store.prepare(syncPosition(store, workspace, mainPath), true)
+
+  assert.equal(view.projectMembership.status, "partial")
+  assert.equal(view.projectMembership.reason, "enumeration-error")
+  assert.equal(closedDirectories, openedDirectories)
+})
+
 test("hard-bounds cached source-path bytes per workspace", (t) => {
   const workspace = createWorkspace(t, "byte-limit", {
     "Main.ets": "export const main = 1\n",
     "Other.ets": "export const other = 2\n",
+    "Third.ets": "export const third = 3\n",
   })
   const mainPath = path.join(workspace, "Main.ets")
   const otherPath = path.join(workspace, "Other.ets")
+  const thirdPath = path.join(workspace, "Third.ets")
+  let yielded = 0
   const store = new SemanticDocumentStore({
-    enumerateWorkspaceSources: () => [mainPath, otherPath],
+    enumerateWorkspaceSources: function* enumerate() {
+      for (const sourcePath of [mainPath, otherPath, thirdPath]) {
+        yielded += 1
+        yield sourcePath
+      }
+    },
     projectFileSetLimits: {
-      maxPaths: 2,
+      maxPaths: 3,
       maxPathBytes: Buffer.byteLength(mainPath),
     },
   })
@@ -149,6 +440,10 @@ test("hard-bounds cached source-path bytes per workspace", (t) => {
   const view = store.prepare(syncPosition(store, workspace, mainPath), true)
 
   assert.deepEqual(documentPaths(view), [mainPath])
+  assert.equal(view.projectMembership.status, "partial")
+  assert.equal(view.projectMembership.reason, "path-byte-limit")
+  assert.deepEqual(view.projectMembership.paths, [mainPath])
+  assert.equal(yielded, 2, "enumeration must stop on the first byte-budget overflow")
 })
 
 test("hard-bounds cached workspace roots with least-recently-used eviction", (t) => {
@@ -223,6 +518,10 @@ function syncPosition(store, workspaceRoot, documentPath, version = 1) {
     documentVersion: version,
     workspaceRoot,
   })
+  return viewPathPosition(workspaceRoot, documentPath, version)
+}
+
+function viewPathPosition(workspaceRoot, documentPath, version = 1) {
   return {
     path: documentPath,
     line: 1,

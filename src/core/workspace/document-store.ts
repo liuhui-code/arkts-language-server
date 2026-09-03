@@ -14,7 +14,8 @@ const MAX_CACHED_BYTES = 16 * 1024 * 1024
 const MAX_CLOSURE_DOCUMENTS = 256
 const MAX_CLOSURE_BYTES = 8 * 1024 * 1024
 const MAX_PROJECT_FILE_SET_ROOTS = 4
-const MAX_PROJECT_FILE_SET_PATH_BYTES = 1024 * 1024
+const MAX_PROJECT_FILE_SET_PATHS = 20_000
+const MAX_PROJECT_FILE_SET_PATH_BYTES = 4 * 1024 * 1024
 const MAX_WATCHED_REMOVED_PATHS = 512
 const SOURCE_EXTENSIONS = [".ets", ".ts"]
 const MAX_REPLAY_DOCUMENTS = 32
@@ -40,8 +41,19 @@ interface DependencyClosureResult {
   removedPaths: string[]
 }
 
+export interface ProjectMembershipSnapshot {
+  paths: string[]
+  status: "complete" | "partial"
+  reason?: "path-count-limit" | "path-byte-limit" | "enumeration-error"
+  revision: number
+}
+
+interface ProjectFileSetCacheEntry extends ProjectMembershipSnapshot {
+  pathBytes: number
+}
+
 export interface SemanticDocumentStoreOptions {
-  enumerateWorkspaceSources?: (rootPath: string) => string[]
+  enumerateWorkspaceSources?: (rootPath: string) => Iterable<string>
   projectFileSetLimits?: {
     maxRoots?: number
     maxPaths?: number
@@ -55,6 +67,7 @@ export interface SemanticDocumentStoreOptions {
 export interface SemanticWorkspaceView {
   rootPath: string
   documents: WorkspaceDocument[]
+  projectMembership?: ProjectMembershipSnapshot
   removedPaths?: string[]
   resetTypeEngine?: boolean
   state: SemanticResponseState
@@ -73,16 +86,17 @@ export class SemanticDocumentStore {
   private readonly documents = new Map<string, DocumentRecord>()
   private readonly dependencyGenerations = new Map<string, number>()
   private readonly dependencyClosures = new Map<string, DependencyClosureCacheEntry>()
-  private readonly projectFileSets = new Map<string, string[]>()
+  private readonly projectFileSets = new Map<string, ProjectFileSetCacheEntry>()
   private readonly watchedRemovedPaths = new Map<string, Set<string>>()
   private readonly typeEngineResetRoots = new Set<string>()
-  private readonly enumerateWorkspaceSources: (rootPath: string) => string[]
+  private readonly enumerateWorkspaceSources: (rootPath: string) => Iterable<string>
   private readonly maxProjectFileSetRoots: number
   private readonly maxProjectFileSetPaths: number
   private readonly maxProjectFileSetPathBytes: number
   private readonly maxWatchedRemovedPaths: number
   private accessClock = 0
   private cachedBytes = 0
+  private projectMembershipRevision = 0
 
   constructor({
     enumerateWorkspaceSources = listWorkspaceSourcePaths,
@@ -97,7 +111,7 @@ export class SemanticDocumentStore {
     )
     this.maxProjectFileSetPaths = boundedLimit(
       projectFileSetLimits.maxPaths,
-      MAX_CLOSURE_DOCUMENTS,
+      MAX_PROJECT_FILE_SET_PATHS,
       "project file set paths",
     )
     this.maxProjectFileSetPathBytes = boundedLimit(
@@ -195,7 +209,7 @@ export class SemanticDocumentStore {
   workspaceFilesChanged(batch: WorkspaceFileChangeBatch): void {
     const canonicalRoot = canonicalWorkspaceRoot(batch.rootPath)
     if (batch.rootDirty) {
-      const knownPaths = new Set(this.projectFileSets.get(canonicalRoot) ?? [])
+      const knownPaths = new Set(this.projectFileSets.get(canonicalRoot)?.paths ?? [])
       for (const documentPath of this.documents.keys()) {
         if (isInside(canonicalRoot, canonicalSourcePath(documentPath))) knownPaths.add(documentPath)
       }
@@ -208,7 +222,9 @@ export class SemanticDocumentStore {
       this.typeEngineResetRoots.add(canonicalRoot)
       return
     }
-    const paths = this.projectFileSets.get(canonicalRoot)
+    const entry = this.projectFileSets.get(canonicalRoot)
+    const paths = entry?.paths
+    let membershipChanged = false
     for (const change of batch.changes) {
       const sourcePath = path.resolve(change.path)
       if (!SOURCE_EXTENSIONS.includes(path.extname(sourcePath))) continue
@@ -223,21 +239,40 @@ export class SemanticDocumentStore {
         this.invalidateDiskDocument(sourcePath)
         if (paths) {
           const index = paths.indexOf(sourcePath)
-          if (index >= 0) paths.splice(index, 1)
+          if (index >= 0) {
+            paths.splice(index, 1)
+            if (entry) entry.pathBytes -= Buffer.byteLength(sourcePath)
+            membershipChanged = true
+          }
         }
         if (known) this.markWatchedRemoved(canonicalRoot, sourcePath)
       } else {
         this.invalidateDiskDocument(sourcePath)
       }
       if (change.kind !== "created" || !paths) continue
-      if (paths.includes(sourcePath) || paths.length >= this.maxProjectFileSetPaths) continue
-      const cachedPathBytes = paths.reduce((total, candidate) => (
-        total + Buffer.byteLength(candidate)
-      ), 0)
-      if (cachedPathBytes + Buffer.byteLength(sourcePath) > this.maxProjectFileSetPathBytes) continue
+      if (paths.includes(sourcePath)) continue
+      if (paths.length >= this.maxProjectFileSetPaths) {
+        if (entry?.status === "complete") {
+          entry.status = "partial"
+          entry.reason = "path-count-limit"
+          membershipChanged = true
+        }
+        continue
+      }
+      if ((entry?.pathBytes ?? 0) + Buffer.byteLength(sourcePath) > this.maxProjectFileSetPathBytes) {
+        if (entry?.status === "complete") {
+          entry.status = "partial"
+          entry.reason = "path-byte-limit"
+          membershipChanged = true
+        }
+        continue
+      }
       paths.push(sourcePath)
       paths.sort()
+      if (entry) entry.pathBytes += Buffer.byteLength(sourcePath)
+      membershipChanged = true
     }
+    if (entry && membershipChanged) entry.revision = ++this.projectMembershipRevision
   }
 
   private invalidateDiskDocument(filePath: string): void {
@@ -278,6 +313,7 @@ export class SemanticDocumentStore {
     this.typeEngineResetRoots.clear()
     this.accessClock = 0
     this.cachedBytes = 0
+    this.projectMembershipRevision = 0
   }
 
   prepare(position: SemanticDocumentPosition, includeWorkspaceFiles = false): SemanticWorkspaceView {
@@ -290,10 +326,12 @@ export class SemanticDocumentStore {
     const closureResult = this.collectDependencyClosure(current, previousCurrent === current)
     const closure = closureResult.entries
     const documentCacheHit = closure.every(({ cacheHit }) => cacheHit)
+    let projectMembership: ProjectMembershipSnapshot | undefined
     if (includeWorkspaceFiles) {
+      projectMembership = this.projectMembership(rootPath)
       const loadedPaths = new Set(closure.map(({ record }) => record.path))
       let totalBytes = closure.reduce((total, { record }) => total + Buffer.byteLength(record.content), 0)
-      for (const sourcePath of this.projectSourcePaths(rootPath)) {
+      for (const sourcePath of projectMembership.paths) {
         if (loadedPaths.has(sourcePath) || closure.length >= MAX_CLOSURE_DOCUMENTS) continue
         const before = this.documents.get(sourcePath)
         const record = this.loadFromDisk(sourcePath, before)
@@ -315,6 +353,7 @@ export class SemanticDocumentStore {
     return {
       rootPath,
       documents,
+      projectMembership,
       removedPaths: [...new Set([
         ...(watchedRemovedPaths ?? []),
         ...closureResult.removedPaths,
@@ -373,58 +412,101 @@ export class SemanticDocumentStore {
     return this.loadFromDisk(filePath, cached)
   }
 
-  private projectSourcePaths(rootPath: string): string[] {
+  private projectMembership(rootPath: string): ProjectMembershipSnapshot {
     const resolvedRoot = path.resolve(rootPath)
     const canonicalRoot = canonicalWorkspaceRoot(resolvedRoot)
     const cached = this.projectFileSets.get(canonicalRoot)
     if (cached) {
       this.projectFileSets.delete(canonicalRoot)
       this.projectFileSets.set(canonicalRoot, cached)
-      return cached
+      return publicProjectMembership(cached)
     }
     const overlayPaths = [...this.documents.values()]
       .filter((record) => record.overlay && isInside(canonicalRoot, canonicalSourcePath(record.path)))
       .map((record) => record.path)
       .sort()
-    const candidates = [
-      ...overlayPaths,
-      ...this.enumerateWorkspaceSources(resolvedRoot),
-    ]
-      .map((sourcePath) => path.resolve(sourcePath))
-      .filter((sourcePath, index, all) => all.indexOf(sourcePath) === index)
     const paths: string[] = []
+    const seen = new Set<string>()
     let pathBytes = 0
-    for (const sourcePath of candidates) {
-      if (paths.length >= this.maxProjectFileSetPaths) break
+    let status: ProjectMembershipSnapshot["status"] = "complete"
+    let reason: ProjectMembershipSnapshot["reason"]
+    const accept = (candidate: string): boolean => {
+      const sourcePath = path.resolve(candidate)
+      if (seen.has(sourcePath)) return true
+      seen.add(sourcePath)
+      if (paths.length >= this.maxProjectFileSetPaths) {
+        status = "partial"
+        reason = "path-count-limit"
+        return false
+      }
       const bytes = Buffer.byteLength(sourcePath)
-      if (pathBytes + bytes > this.maxProjectFileSetPathBytes) continue
+      if (pathBytes + bytes > this.maxProjectFileSetPathBytes) {
+        status = "partial"
+        reason = "path-byte-limit"
+        return false
+      }
       paths.push(sourcePath)
       pathBytes += bytes
+      return true
+    }
+    for (const overlayPath of overlayPaths) {
+      if (!accept(overlayPath)) break
+    }
+    if (status === "complete") {
+      try {
+        for (const sourcePath of this.enumerateWorkspaceSources(resolvedRoot)) {
+          if (!accept(sourcePath)) break
+        }
+      } catch {
+        status = "partial"
+        reason = "enumeration-error"
+      }
     }
     paths.sort()
-    this.projectFileSets.set(canonicalRoot, paths)
+    const entry: ProjectFileSetCacheEntry = {
+      paths,
+      pathBytes,
+      status,
+      ...(reason ? { reason } : {}),
+      revision: ++this.projectMembershipRevision,
+    }
+    this.projectFileSets.set(canonicalRoot, entry)
     while (this.projectFileSets.size > this.maxProjectFileSetRoots) {
       const oldestRoot = this.projectFileSets.keys().next().value
       if (oldestRoot === undefined) break
       this.projectFileSets.delete(oldestRoot)
     }
-    return paths
+    return publicProjectMembership(entry)
   }
 
   private includeOpenedProjectSource(rootPath: string | undefined, filePath: string): void {
     if (!rootPath || !SOURCE_EXTENSIONS.includes(path.extname(filePath))) return
     const canonicalRoot = canonicalWorkspaceRoot(rootPath)
-    const paths = this.projectFileSets.get(canonicalRoot)
+    const entry = this.projectFileSets.get(canonicalRoot)
+    const paths = entry?.paths
     const resolvedPath = path.resolve(filePath)
     const comparablePath = canonicalSourcePath(resolvedPath)
-    if (!paths || paths.includes(resolvedPath) || !isInside(canonicalRoot, comparablePath)) return
-    if (paths.length >= this.maxProjectFileSetPaths) return
-    const cachedPathBytes = paths.reduce((total, sourcePath) => (
-      total + Buffer.byteLength(sourcePath)
-    ), 0)
-    if (cachedPathBytes + Buffer.byteLength(resolvedPath) > this.maxProjectFileSetPathBytes) return
+    if (!entry || !paths || paths.includes(resolvedPath) || !isInside(canonicalRoot, comparablePath)) return
+    if (paths.length >= this.maxProjectFileSetPaths) {
+      if (entry.status === "complete") {
+        entry.status = "partial"
+        entry.reason = "path-count-limit"
+        entry.revision = ++this.projectMembershipRevision
+      }
+      return
+    }
+    if (entry.pathBytes + Buffer.byteLength(resolvedPath) > this.maxProjectFileSetPathBytes) {
+      if (entry.status === "complete") {
+        entry.status = "partial"
+        entry.reason = "path-byte-limit"
+        entry.revision = ++this.projectMembershipRevision
+      }
+      return
+    }
     paths.push(resolvedPath)
     paths.sort()
+    entry.pathBytes += Buffer.byteLength(resolvedPath)
+    entry.revision = ++this.projectMembershipRevision
   }
 
   private loadFromDisk(filePath: string, cached?: DocumentRecord): DocumentRecord {
@@ -618,28 +700,46 @@ function boundedLimit(value: number | undefined, hardMaximum: number, label: str
   return Math.min(value, hardMaximum)
 }
 
-function listWorkspaceSourcePaths(rootPath: string): string[] {
-  const paths: string[] = []
-  const pending = [rootPath]
-  while (pending.length > 0 && paths.length < MAX_CLOSURE_DOCUMENTS) {
-    const directory = pending.pop()
-    if (!directory) break
-    let entries: fs.Dirent[]
-    try {
-      entries = fs.readdirSync(directory, { withFileTypes: true })
-    } catch {
-      continue
-    }
-    for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+function publicProjectMembership(entry: ProjectFileSetCacheEntry): ProjectMembershipSnapshot {
+  return {
+    paths: [...entry.paths],
+    status: entry.status,
+    ...(entry.reason ? { reason: entry.reason } : {}),
+    revision: entry.revision,
+  }
+}
+
+function* listWorkspaceSourcePaths(rootPath: string): Generator<string> {
+  const pending: Array<{ path: string; directory: fs.Dir }> = []
+  try {
+    pending.push({ path: rootPath, directory: fs.opendirSync(rootPath) })
+    while (pending.length > 0) {
+      const current = pending[pending.length - 1]
+      const entry = current.directory.readSync()
+      if (entry === null) {
+        pending.pop()
+        current.directory.closeSync()
+        continue
+      }
       if (entry.name === ".arkline" || entry.name === ".git" || entry.name === "build"
         || entry.name === "node_modules" || entry.name === "oh_modules") continue
-      const entryPath = path.resolve(directory, entry.name)
-      if (entry.isDirectory()) pending.push(entryPath)
-      else if (entry.isFile() && SOURCE_EXTENSIONS.includes(path.extname(entry.name))) paths.push(entryPath)
-      if (paths.length >= MAX_CLOSURE_DOCUMENTS) break
+      const entryPath = path.resolve(current.path, entry.name)
+      if (entry.isDirectory()) {
+        pending.push({ path: entryPath, directory: fs.opendirSync(entryPath) })
+      }
+      else if (entry.isFile() && SOURCE_EXTENSIONS.includes(path.extname(entry.name))) yield entryPath
     }
+  } finally {
+    let closeError: unknown
+    while (pending.length > 0) {
+      try {
+        pending.pop()?.directory.closeSync()
+      } catch (error) {
+        closeError ??= error
+      }
+    }
+    if (closeError) throw closeError
   }
-  return paths.sort()
 }
 
 function resolveRelativeImports(
