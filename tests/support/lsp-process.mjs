@@ -6,9 +6,16 @@ import { fileURLToPath } from "node:url"
 export const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 
 export class LspProcess {
-  constructor({ serverPath = "dist/server.cjs" } = {}) {
-    this.child = spawn(process.execPath, [serverPath, "--stdio"], {
-      cwd: projectRoot,
+  constructor({
+    serverPath = "dist/server.cjs",
+    command = process.execPath,
+    args = [serverPath, "--stdio"],
+    cwd = projectRoot,
+    env,
+  } = {}) {
+    this.child = spawn(command, args, {
+      cwd,
+      env: env ? { ...process.env, ...env } : undefined,
       stdio: ["pipe", "pipe", "pipe"],
     })
     this.buffer = Buffer.alloc(0)
