@@ -12,6 +12,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/index-catalog-adapter.test.mjs",
       "tests/local-delivery-config.test.mjs",
       "tests/logging.test.mjs",
+      "tests/lsp-feature-matrix.test.mjs",
       "tests/lsp-edits.test.mjs",
       "tests/project-resolver.test.mjs",
       "tests/resource-sampler.test.mjs",
