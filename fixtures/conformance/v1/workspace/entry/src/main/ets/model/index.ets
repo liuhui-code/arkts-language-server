@@ -1,1 +1,1 @@
-export { /*@case.profile.barrel.start*/Profile/*@case.profile.barrel.end*/ } from "./Profile"
+export { /*@case.profile.barrel.start*//*@case.rename.barrel.start*/Profile/*@case.rename.barrel.end*//*@case.profile.barrel.end*/ } from "./Profile"

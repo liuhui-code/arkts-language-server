@@ -186,6 +186,11 @@ export function registerSemanticCapabilities({
       } else {
         delete capabilities.codeActionProvider
       }
+      if (supportsTransactionalRename(clientCapabilities)) {
+        capabilities.renameProvider = { prepareProvider: true }
+      } else {
+        delete capabilities.renameProvider
+      }
     },
   }
 }
@@ -234,6 +239,16 @@ function supportsResolvableQuickFixes(clientCapabilities: ClientCapabilities): b
       .includes(CodeActionKind.QuickFix) === true
     && codeAction.dataSupport === true
     && codeAction.resolveSupport?.properties.includes("edit") === true
+}
+
+function supportsTransactionalRename(clientCapabilities: ClientCapabilities): boolean {
+  const workspaceEdit = clientCapabilities.workspace?.workspaceEdit
+  return workspaceEdit?.documentChanges === true
+    && (
+      workspaceEdit.failureHandling === "transactional"
+      || workspaceEdit.failureHandling === "textOnlyTransactional"
+    )
+    && clientCapabilities.textDocument?.rename?.prepareSupport === true
 }
 
 function toLspDocumentSymbol(

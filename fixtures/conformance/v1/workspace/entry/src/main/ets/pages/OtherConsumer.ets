@@ -1,6 +1,6 @@
-import { /*@case.profile.import.start*/Profile/*@case.profile.import.end*/ } from "../model"
+import { /*@case.profile.import.start*//*@case.rename.consumer-import.start*/Profile/*@case.rename.consumer-import.end*//*@case.profile.import.end*/ } from "../model"
 
-export function displayName(profile: /* 😀 */ /*@case.profile.reference.start*/Profile/*@case.profile.reference.end*/): string {
+export function displayName(profile: /* 😀 */ /*@case.profile.reference.start*//*@case.rename.consumer-reference.start*/Profile/*@case.rename.consumer-reference.end*//*@case.profile.reference.end*/): string {
   return profile.name
 }
 

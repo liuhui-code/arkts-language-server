@@ -21,6 +21,10 @@ export async function assertInstalledSemanticSmoke({
   const definition = materialized.cases["profile.definition"]
   const barrel = materialized.cases["profile.barrel"]
   const importedReference = materialized.cases["profile.import"]
+  const renameOrigin = materialized.cases["rename.origin"]
+  const renameBarrel = materialized.cases["rename.barrel"]
+  const renameConsumerImport = materialized.cases["rename.consumer-import"]
+  const renameConsumerReference = materialized.cases["rename.consumer-reference"]
   const completion = materialized.cases["completion.unicode"]
   const greeterDefinition = materialized.cases["greeter.definition"]
   const quickFix = materialized.cases["quickfix.greeting"]
@@ -45,6 +49,14 @@ export async function assertInstalledSemanticSmoke({
   assert.equal(textInRange(consumerSource, importedReference.range), "Profile")
   assert.equal(textInRange(barrelSource, barrel.range), "Profile")
   assert.equal(textInRange(definitionSource, definition.range), "Profile")
+  assert.equal(renameOrigin.uri, definition.uri)
+  assert.equal(renameBarrel.uri, barrel.uri)
+  assert.equal(renameConsumerImport.uri, reference.uri)
+  assert.equal(renameConsumerReference.uri, reference.uri)
+  assert.equal(textInRange(definitionSource, renameOrigin.range), "Profile")
+  assert.equal(textInRange(barrelSource, renameBarrel.range), "Profile")
+  assert.equal(textInRange(consumerSource, renameConsumerImport.range), "Profile")
+  assert.equal(textInRange(consumerSource, renameConsumerReference.range), "Profile")
   const referenceLine = consumerSource.split("\n")[reference.range.start.line]
   const referencePrefix = referenceLine.slice(0, reference.range.start.character)
   assert.match(referencePrefix, /😀/)
@@ -99,6 +111,7 @@ export async function assertInstalledSemanticSmoke({
       workspace: { workspaceEdit: { documentChanges: true } },
       textDocument: {
         publishDiagnostics: { versionSupport: true },
+        rename: { prepareSupport: true },
         signatureHelp: { contextSupport: true },
         documentSymbol: {
           hierarchicalDocumentSymbolSupport: true,
@@ -123,6 +136,9 @@ export async function assertInstalledSemanticSmoke({
     assert.equal(initialized.result.capabilities.completionProvider.resolveProvider, true)
     assert.equal(initialized.result.capabilities.hoverProvider, true)
     assert.equal(initialized.result.capabilities.referencesProvider, true)
+    assert.deepEqual(initialized.result.capabilities.renameProvider, {
+      prepareProvider: true,
+    })
     assert.deepEqual(initialized.result.capabilities.signatureHelpProvider, {
       triggerCharacters: ["(", ",", "<"],
       retriggerCharacters: [")"],
@@ -229,6 +245,46 @@ export async function assertInstalledSemanticSmoke({
       { uri: importedReference.uri, range: importedReference.range },
       { uri: reference.uri, range: reference.range },
     ])
+
+    const preparedRename = await session.request("textDocument/prepareRename", {
+      textDocument: { uri: renameConsumerReference.uri },
+      position: midpoint(renameConsumerReference.range),
+    }, { timeoutMs })
+    assert.equal(preparedRename.error, undefined, JSON.stringify(preparedRename.error))
+    assert.deepEqual(preparedRename.result, {
+      range: renameConsumerReference.range,
+      placeholder: "Profile",
+    })
+
+    const renamedProfile = "InstalledProfile"
+    const renamedConsumer = await session.request("textDocument/rename", {
+      textDocument: { uri: renameConsumerReference.uri },
+      position: midpoint(renameConsumerReference.range),
+      newName: renamedProfile,
+    }, { timeoutMs })
+    assert.equal(renamedConsumer.error, undefined, JSON.stringify(renamedConsumer.error))
+    assert.equal(renamedConsumer.result.changes, undefined)
+    assert.deepEqual(renamedConsumer.result.documentChanges, [{
+      textDocument: { uri: renameConsumerReference.uri, version: 1 },
+      edits: [
+        {
+          range: renameConsumerImport.range,
+          newText: `Profile as ${renamedProfile}`,
+        },
+        { range: renameConsumerReference.range, newText: renamedProfile },
+      ],
+    }])
+    const renamedDocuments = applyWorkspaceEdit(
+      new Map([[renameConsumerReference.uri, consumerSource]]),
+      renamedConsumer.result,
+      { documentVersions: new Map([[renameConsumerReference.uri, 1]]) },
+    )
+    assert.equal(
+      renamedDocuments.get(renameConsumerReference.uri),
+      consumerSource
+        .replace("import { Profile }", `import { Profile as ${renamedProfile} }`)
+        .replace("/* 😀 */ Profile", `/* 😀 */ ${renamedProfile}`),
+    )
 
     session.openDocument({
       uri: signature.uri,

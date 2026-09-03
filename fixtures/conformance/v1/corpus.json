@@ -51,6 +51,34 @@
       "shape": "range"
     },
     {
+      "id": "rename.origin",
+      "kind": "rename",
+      "role": "origin",
+      "file": "workspace/entry/src/main/ets/model/Profile.ets",
+      "shape": "range"
+    },
+    {
+      "id": "rename.barrel",
+      "kind": "rename",
+      "role": "barrel",
+      "file": "workspace/entry/src/main/ets/model/index.ets",
+      "shape": "range"
+    },
+    {
+      "id": "rename.consumer-import",
+      "kind": "rename",
+      "role": "import",
+      "file": "workspace/entry/src/main/ets/pages/OtherConsumer.ets",
+      "shape": "range"
+    },
+    {
+      "id": "rename.consumer-reference",
+      "kind": "rename",
+      "role": "query",
+      "file": "workspace/entry/src/main/ets/pages/OtherConsumer.ets",
+      "shape": "range"
+    },
+    {
       "id": "cross-module.definition",
       "kind": "definition",
       "role": "target",

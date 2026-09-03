@@ -85,12 +85,27 @@ All four negative prerequisite cases were GREEN, proving the RED is narrowly
 the missing positive advertisement rather than accidental unconditional
 advertisement.
 
-## Pending minimal GREEN
+## Minimal capability GREEN
 
-The production owner should configure `renameProvider` from the three client
-prerequisites above and delete it otherwise. After that change, rerun both
-focused commands, update the shared capability contract/feature matrix, and add
-the installed immutable-artifact transcript before marking N4 complete.
+The semantic capability adapter now configures `renameProvider` from exactly
+the three client prerequisites above and deletes it otherwise. No unconditional
+advertisement was introduced.
+
+Focused verification after a fresh production build:
+
+```text
+pnpm check
+pnpm build
+node --test tests/lsp-capability-contract.test.mjs
+# 6 passed, 0 failed, 0 skipped
+
+node --test tests/lsp-semantic-request-reliability.test.mjs
+# 8 passed, 0 failed, 0 skipped
+```
+
+The shared capability contract/feature matrix will switch rename from planned
+to enabled only after the independently owned immutable-artifact transcript is
+GREEN; the E0b validator now forbids doing so earlier.
 
 ## Remaining risks
 
