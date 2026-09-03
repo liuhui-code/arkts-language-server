@@ -65,10 +65,13 @@ export const CURRENT_LSP_FEATURE_MATRIX = Object.freeze({
     enabledFeature({
       id: "diagnostics",
       protocolEvidenceRequired: false,
-      bundle: ["tests/lsp-diagnostics.test.mjs"],
+      bundle: [
+        "tests/lsp-diagnostics.test.mjs",
+        "tests/semantic/diagnostic-code-characterization.test.mjs",
+      ],
       artifact: ["tests/release/local-delivery.acceptance.mjs"],
       artifactGap: null,
-      knownGaps: ["Published diagnostics do not expose a stable code yet."],
+      knownGaps: [],
     }),
     enabledFeature({
       id: "completion-resolve",

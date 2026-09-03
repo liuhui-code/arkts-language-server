@@ -54,6 +54,8 @@ test("maps the complete public capability contract to executable feature evidenc
     "rename",
     "code-actions",
   ])
+  const diagnostics = CURRENT_LSP_FEATURE_MATRIX.features.find(({ id }) => id === "diagnostics")
+  assert.deepEqual(diagnostics?.knownGaps, [])
 })
 
 test("rejects capability and evidence drift instead of accepting a stale matrix", () => {
