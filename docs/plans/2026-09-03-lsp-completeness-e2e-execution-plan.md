@@ -301,7 +301,7 @@ Owner files：`tests/support/capability-contract.mjs`、
 
 Owner files：`tests/support/test-layer-manifest.mjs`、runner、package scripts 与对应证据。
 
-- [x] G1/G2/M2 集成后显式、唯一地把全部 36 个 test/acceptance 入口归入五层，拒绝漏项、重复、
+- [x] G1/G2/M2 集成后显式、唯一地把全部 38 个 test/acceptance 入口归入五层，拒绝漏项、重复、
   无效路径及 release acceptance 混入 fast layer（`f484640`）。
 - [x] G2 runner 从 manifest 稳定选择层，拒绝空选择和隐式测试发现（`d37c03e`）。
 - [x] G3a package scripts 只通过 runner 发现 Node tests；`check:fast` 完成 typecheck、fresh
@@ -324,12 +324,16 @@ Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产�
 - [x] G3d 运行时 no-skip 门禁完成并独立复验（`da0e285`）。
 - [x] B4a bounded ProjectSet path cache 完成并独立复验（`052c670`）。
 - [x] B1b/B2b/B3/B5/B6 completion resolve tracer 完成并独立复验（`600eb84`）。
-- [ ] B4b watched-files create/delete/rename 一致性：并行实施中。
+- [x] B4b watched-files create/delete/rename 一致性完成并独立复验（`9fc8d22`）。
 - [x] I2b installed completion-resolve/apply-and-recheck characterization 完成并独立复验
   （`c8774d7`）。
 - [x] Wave 3 references/rename 只读设计审查完成；R0 completeness gate 尚待实现，能力保持
   absent。
 - [x] Wave 3 diagnostics code/code-action 只读设计审查完成；G1/Q1/Q2 尚待实现。
+- [x] N0/Q0b versioned `TextDocumentEdit` 安全应用 helper（`5dc6517`）。
+- [x] Q0a UTF-16 + ArkTS rewrite 的稳定 TS2552 spelling fixture（`c488c54`）。
+- [ ] G1 diagnostic numeric code 端到端保真：并行实施中。
+- [ ] E3a legacy document-symbol kind compatibility：并行实施中。
 - [ ] 本批次集成门禁：所有并行切片提交后运行 fresh `pnpm check:fast`。
 
 ### Wave 2 — 首个功能切片与 installed semantic smoke（部分并行）
@@ -349,8 +353,10 @@ Owner：一个端到端 owner 独占 semantic contract、project set、completio
   advertising（`600eb84`）。
 - [x] B4a ProjectSet 纳入未打开文件并按 canonical root 复用，避免每次 completion 同步
   重扫；4 roots/256 paths/1 MiB path bytes 硬限制与 LRU 已有 contract（`052c670`）。
-- [ ] B4b 通过 `workspace/didChangeWatchedFiles` 增量维护 create/delete/rename；delete/rename
-  必须把旧路径传给 `removedPaths`，notification 后的下一语义请求作为无 sleep 的一致性屏障。
+- [x] B4b 通过 `workspace/didChangeWatchedFiles` 增量维护 create/delete/rename；delete/rename
+  把旧路径传给 `removedPaths`，notification 后的下一语义请求是无 sleep 的一致性屏障；
+  open overlay 优先，事件与 removed paths 有硬上限，过载后只重建对应 root engine；动态注册
+  是 best-effort，客户端不响应也不阻塞 indexing/completion（`9fc8d22`）。
 - [x] B5 应用 completion 与 auto-import edits，didChange v2 后 diagnostics 清零，再精确
   definition 到未打开 Greeter（`600eb84`）。
 - [x] B6 scripted cancel/forged/stale/shutdown contract（`600eb84`）。
@@ -387,12 +393,14 @@ capability advertisement 与 transcript 一致；`pnpm check:fast`、artifact sm
   `complete/partial`，partial 全局查询返回 `RequestFailed`，不得返回部分成功结果。
 - [ ] R0b 将 project membership 与 256 文件/8 MiB 内容缓存解耦；只在可证明完整的 snapshot
   上执行 references/rename，并记录 workspace revision。
+- [ ] R0c watched create/delete/rename 原子更新 membership revision；root-dirty 立即降级 partial，
+  重枚举成功才发布新 complete snapshot；project version 纳入 membership/content/overlay epoch。
 - [ ] R1 References：`includeDeclaration=false` 返回 import、usage、barrel re-export 的完整
   `Profile` ranges，排除 declaration 与同名 shadow；结果稳定排序、去重。
 - [ ] R2 References：`includeDeclaration=true` 只额外加入 origin declaration；覆盖 unopened、
   overlay、另一参与文件变更后的 stale、client cancel。
-- [ ] N0 扩展安全 edit helper 支持 versioned `documentChanges`，原子拒绝 version mismatch、
-  unknown URI、resource operation、overlap/out-of-bounds，且不改变输入。
+- [x] N0 扩展安全 edit helper 支持 versioned `documentChanges`，原子拒绝 version mismatch、
+  unknown URI、resource operation、overlap/out-of-bounds，且不改变输入（`5dc6517`）。
 - [ ] N1 Prepare rename：精确 range + placeholder；不可重命名目标返回固定 `RequestFailed`，
   不泄露 TypeScript 本地化文案。
 - [ ] N2 Rename：先覆盖局部 import alias 语义，再覆盖 declaration→barrel→consumer 的跨文件
@@ -401,6 +409,8 @@ capability advertisement 与 transcript 一致；`pnpm check:fast`、artifact sm
   `RequestFailed`；stale/superseded 为 `ContentModified`；client cancel 为 `RequestCancelled`。
 - [ ] N4 只有支持 `workspace.workspaceEdit.documentChanges` 的 client 才可 advertising rename；
   支持 prepare 时广告 `{ prepareProvider: true }`，全部 bundle/installed transcript GREEN 后接线。
+- [x] Q0a 新增 `QuickFixConsumer.ets`：ArkTS `struct` rewrite 与 emoji 后的 `greting` marker
+  可重复 materialize；TypeScript 5.9.2 探针确认 TS2552 与唯一 `spelling` fix（`c488c54`）。
 - [ ] G1 Diagnostics：先只贯通 TypeScript numeric `code`，用含 emoji 且经过 ArkTS virtual
   rewrite 的 `greting` marker 稳定断言 `TS2552`；related info/data/tags 留给 G1b。
 - [ ] Q1 Code action list：服务端按当前 snapshot 的 code + source-mapped range 重算匹配，
