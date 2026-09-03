@@ -8,6 +8,10 @@ import test from "node:test"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
 import { assertInstalledSemanticSmoke } from "../support/installed-semantic-smoke.mjs"
+import {
+  assertExactVerifiedArtifactClaims,
+  CURRENT_LSP_FEATURE_MATRIX,
+} from "../support/lsp-feature-matrix.mjs"
 import { LspSession } from "../support/lsp-session.mjs"
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
@@ -297,6 +301,12 @@ test("installs one verified artifact without source dependencies or a rebuild", 
     temporaryRoot,
     cwd: externalCwd,
     env: environment,
+  })
+  assertExactVerifiedArtifactClaims({
+    matrix: CURRENT_LSP_FEATURE_MATRIX,
+    entry: "tests/release/portable-install.acceptance.mjs",
+    test: "installs one verified artifact without source dependencies or a rebuild",
+    evidence: semanticEvidence,
   })
   assert.ok(
     semanticEvidence?.workspaceSymbolKindUriNameRange,

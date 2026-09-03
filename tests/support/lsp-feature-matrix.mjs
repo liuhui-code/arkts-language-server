@@ -297,7 +297,7 @@ export const CURRENT_LSP_FEATURE_MATRIX = Object.freeze({
       artifact: [evidence(
         "tests/release/portable-install.acceptance.mjs",
         "installs one verified artifact without source dependencies or a rebuild",
-        "rename.artifact.immutable-versioned-alias-edits",
+        "rename.artifact.immutable-versioned-alias-conflict-applied-semantic-recheck",
       )],
       artifactGap: null,
     }),
@@ -338,6 +338,51 @@ export const CURRENT_LSP_FEATURE_MATRIX = Object.freeze({
     }),
   ]),
 })
+
+export function assertExactVerifiedArtifactClaims({ matrix, entry, test, evidence }) {
+  const expectedClaims = matrix.features.flatMap((feature) => (
+    feature.evidence.artifact
+      .filter((reference) => reference.entry === entry && reference.test === test)
+      .map((reference) => reference.claim)
+  ))
+  const verifiedClaims = evidence?.verifiedClaims
+  if (!Array.isArray(verifiedClaims)) {
+    throw new TypeError("installed artifact evidence verifiedClaims must be an array")
+  }
+  if (expectedClaims.some((claim) => typeof claim !== "string")) {
+    throw new TypeError("matrix artifact claims must be strings")
+  }
+  if (verifiedClaims.some((claim) => typeof claim !== "string")) {
+    throw new TypeError("installed artifact verifiedClaims must be strings")
+  }
+
+  const issues = []
+  const duplicateExpected = duplicateValues(expectedClaims)
+  const duplicateVerified = duplicateValues(verifiedClaims)
+  if (duplicateExpected.length > 0) {
+    issues.push(`duplicate matrix claims: ${duplicateExpected.join(", ")}`)
+  }
+  if (duplicateVerified.length > 0) {
+    issues.push(`duplicate verifiedClaims: ${duplicateVerified.join(", ")}`)
+  }
+  const expectedSet = new Set(expectedClaims)
+  const verifiedSet = new Set(verifiedClaims)
+  const missing = [...expectedSet].filter((claim) => !verifiedSet.has(claim)).sort()
+  const extra = [...verifiedSet].filter((claim) => !expectedSet.has(claim)).sort()
+  if (missing.length > 0) issues.push(`missing verified claims: ${missing.join(", ")}`)
+  if (extra.length > 0) issues.push(`extra verified claims: ${extra.join(", ")}`)
+  if (issues.length > 0) {
+    throw new Error([
+      "Installed artifact verifiedClaims do not match the feature matrix:",
+      ...issues.map((issue) => `- ${issue}`),
+    ].join("\n"))
+  }
+
+  return {
+    expectedClaims: [...expectedSet].sort(),
+    verifiedClaims: [...verifiedSet].sort(),
+  }
+}
 
 export function validateLspFeatureMatrix({
   root,
@@ -582,6 +627,16 @@ function appendCoverage(coverage, capabilityPath, featureId) {
   const featureIds = coverage.get(capabilityPath) ?? []
   featureIds.push(featureId)
   coverage.set(capabilityPath, featureIds)
+}
+
+function duplicateValues(values) {
+  const seen = new Set()
+  const duplicates = new Set()
+  for (const value of values) {
+    if (seen.has(value)) duplicates.add(value)
+    seen.add(value)
+  }
+  return [...duplicates].sort()
 }
 
 function capability(path, expected) {

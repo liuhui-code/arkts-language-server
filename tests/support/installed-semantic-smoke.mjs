@@ -135,6 +135,7 @@ export async function assertInstalledSemanticSmoke({
     },
   })
   let workspaceSymbolKindUriNameRange
+  const verifiedClaims = []
 
   try {
     const initialized = await session.initialize({ timeoutMs })
@@ -204,6 +205,7 @@ export async function assertInstalledSemanticSmoke({
     assert.deepEqual(locations, [{ uri: definition.uri, range: definition.range }])
     assert.notDeepEqual(locations[0].range.start, locations[0].range.end)
     assert.equal(textInRange(definitionSource, locations[0].range), "Profile")
+    verifiedClaims.push("definition.artifact.immutable-exact-range")
 
     const hoverResponse = await session.request("textDocument/hover", {
       textDocument: { uri: reference.uri },
@@ -221,6 +223,7 @@ export async function assertInstalledSemanticSmoke({
     )
     assert.match(hoverResponse.result.contents.value, /@since\s+1\.0\.0/)
     assert.deepEqual(hoverResponse.result.range, reference.range)
+    verifiedClaims.push("hover.artifact.immutable-unopened-import")
 
     const referencesWithoutDeclaration = await session.request("textDocument/references", {
       textDocument: { uri: reference.uri },
@@ -254,6 +257,7 @@ export async function assertInstalledSemanticSmoke({
       { uri: importedReference.uri, range: importedReference.range },
       { uri: reference.uri, range: reference.range },
     ])
+    verifiedClaims.push("references.artifact.immutable-unopened-barrel-declaration-policy")
 
     const conflictDiagnostics = session.transport.notification(
       "textDocument/publishDiagnostics",
@@ -489,6 +493,9 @@ export async function assertInstalledSemanticSmoke({
       [{ uri: renameOrigin.uri, range: renamedOriginRange }],
       "the renamed declaration identity must not retain its old origin range",
     )
+    verifiedClaims.push(
+      "rename.artifact.immutable-versioned-alias-conflict-applied-semantic-recheck",
+    )
 
     session.openDocument({
       uri: signature.uri,
@@ -512,6 +519,7 @@ export async function assertInstalledSemanticSmoke({
       signatureResponse.result.signatures[1].label,
       "format(value: string, suffix: string): string",
     )
+    verifiedClaims.push("signature-help.artifact.immutable-unopened-overload")
     session.transport.send({
       jsonrpc: "2.0",
       method: "textDocument/didClose",
@@ -633,6 +641,7 @@ export async function assertInstalledSemanticSmoke({
       range: greeterDefinition.range,
     }])
     assert.equal(textInRange(greeterSource, restoredDiskSymbols[0].range), "Greeter")
+    verifiedClaims.push("document-sync.artifact.immutable-incremental-overlay-lifecycle")
 
     session.transport.send({
       jsonrpc: "2.0",
@@ -660,6 +669,7 @@ export async function assertInstalledSemanticSmoke({
       range: completion.range,
       newText: "Greeter",
     })
+    verifiedClaims.push("completion.artifact.immutable-semantic-smoke")
 
     const [greeter] = greeters
     assert.deepEqual(Object.keys(greeter.data ?? {}), ["arktsCompletionId"])
@@ -729,6 +739,7 @@ export async function assertInstalledSemanticSmoke({
       range: greeterDefinition.range,
     }])
     assert.equal(textInRange(greeterSource, greeterLocations[0].range), "Greeter")
+    verifiedClaims.push("completion-resolve.artifact.immutable-auto-import")
 
     session.transport.send({
       jsonrpc: "2.0",
@@ -827,6 +838,8 @@ export async function assertInstalledSemanticSmoke({
     session.changeDocument({ uri: quickFix.uri, version: 2, text: updatedQuickFix })
     const clearedQuickFixDiagnostics = await quickFixDiagnosticsV2
     assert.deepEqual(clearedQuickFixDiagnostics.params.diagnostics, [])
+    verifiedClaims.push("diagnostics.artifact.immutable-versioned")
+    verifiedClaims.push("code-actions.artifact.immutable-list-resolve-apply")
 
     session.transport.send({
       jsonrpc: "2.0",
@@ -868,10 +881,12 @@ export async function assertInstalledSemanticSmoke({
         expectedSymbol.name,
       ))
     }
+    assert.deepEqual(actualWorkspaceSymbols, expectedWorkspaceSymbols)
     workspaceSymbolKindUriNameRange = {
       actual: actualWorkspaceSymbols,
       expected: expectedWorkspaceSymbols,
     }
+    verifiedClaims.push("workspace-symbol.artifact.immutable-index-kind-uri-name-range")
     const firstDocumentSymbols = await session.request("textDocument/documentSymbol", {
       textDocument: { uri: documentSymbolPage.uri },
     }, { timeoutMs })
@@ -912,6 +927,7 @@ export async function assertInstalledSemanticSmoke({
       { name: "title", kind: 7, selectionRange: documentSymbolTitle.range },
       { name: "build", kind: 6, selectionRange: documentSymbolBuild.range },
     ])
+    verifiedClaims.push("document-symbol.artifact.immutable-arkui-hierarchy")
   } finally {
     try {
       await session.close({ timeoutMs })
@@ -919,7 +935,10 @@ export async function assertInstalledSemanticSmoke({
       await fs.promises.rm(materialized.root, { recursive: true, force: true })
     }
   }
-  return { workspaceSymbolKindUriNameRange }
+  return {
+    verifiedClaims: Object.freeze([...verifiedClaims]),
+    workspaceSymbolKindUriNameRange,
+  }
 }
 
 function midpoint(range) {

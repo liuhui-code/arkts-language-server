@@ -6,6 +6,7 @@ import test from "node:test"
 import { fileURLToPath } from "node:url"
 
 import { CURRENT_LSP_CAPABILITY_CONTRACT } from "./support/capability-contract.mjs"
+import * as featureMatrixSupport from "./support/lsp-feature-matrix.mjs"
 import {
   CURRENT_LSP_FEATURE_MATRIX,
   validateLspFeatureMatrix,
@@ -13,6 +14,87 @@ import {
 import { TEST_LAYER_MANIFEST } from "./support/test-layer-manifest.mjs"
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
+
+test("requires installed verifiedClaims to exactly match one artifact test's matrix claims", () => {
+  const entry = "tests/artifact.test.mjs"
+  const exactTest = "runs the installed artifact"
+  const matrix = {
+    features: [
+      artifactFeature("first.artifact.installed-first", entry, exactTest),
+      artifactFeature("second.artifact.installed-second", entry, exactTest),
+      artifactFeature("other.artifact.different-test", entry, "another artifact test"),
+    ],
+  }
+  const verify = (verifiedClaims) => (
+    featureMatrixSupport.assertExactVerifiedArtifactClaims({
+      matrix,
+      entry,
+      test: exactTest,
+      evidence: verifiedClaims === undefined ? {} : { verifiedClaims },
+    })
+  )
+
+  assert.deepEqual(verify([
+    "second.artifact.installed-second",
+    "first.artifact.installed-first",
+  ]), {
+    expectedClaims: [
+      "first.artifact.installed-first",
+      "second.artifact.installed-second",
+    ],
+    verifiedClaims: [
+      "first.artifact.installed-first",
+      "second.artifact.installed-second",
+    ],
+  })
+  assert.throws(() => verify(undefined), /verifiedClaims must be an array/)
+  assert.throws(
+    () => verify(["first.artifact.installed-first"]),
+    /missing.*second\.artifact\.installed-second/,
+  )
+  assert.throws(
+    () => verify([
+      "first.artifact.installed-first",
+      "second.artifact.installed-second",
+      "extra.artifact.not-declared",
+    ]),
+    /extra.*extra\.artifact\.not-declared/,
+  )
+  assert.throws(
+    () => verify([
+      "first.artifact.installed-first",
+      "first.artifact.installed-first",
+      "second.artifact.installed-second",
+    ]),
+    /duplicate.*first\.artifact\.installed-first/,
+  )
+})
+
+test("binds the installed semantic umbrella to its exact verified claim set", () => {
+  const verifiedClaims = [
+    "document-sync.artifact.immutable-incremental-overlay-lifecycle",
+    "completion.artifact.immutable-semantic-smoke",
+    "definition.artifact.immutable-exact-range",
+    "hover.artifact.immutable-unopened-import",
+    "signature-help.artifact.immutable-unopened-overload",
+    "document-symbol.artifact.immutable-arkui-hierarchy",
+    "workspace-symbol.artifact.immutable-index-kind-uri-name-range",
+    "diagnostics.artifact.immutable-versioned",
+    "completion-resolve.artifact.immutable-auto-import",
+    "references.artifact.immutable-unopened-barrel-declaration-policy",
+    "rename.artifact.immutable-versioned-alias-conflict-applied-semantic-recheck",
+    "code-actions.artifact.immutable-list-resolve-apply",
+  ]
+  const audit = featureMatrixSupport.assertExactVerifiedArtifactClaims({
+    matrix: CURRENT_LSP_FEATURE_MATRIX,
+    entry: "tests/release/portable-install.acceptance.mjs",
+    test: "installs one verified artifact without source dependencies or a rebuild",
+    evidence: { verifiedClaims },
+  })
+
+  assert.deepEqual(audit.verifiedClaims, [...verifiedClaims].sort())
+  assert.equal(audit.expectedClaims.length, 12)
+})
 
 test("maps the complete public capability contract to executable feature evidence", () => {
   assert.equal(CURRENT_LSP_FEATURE_MATRIX.schemaVersion, 2)
@@ -173,7 +255,7 @@ test("maps the complete public capability contract to executable feature evidenc
   assert.deepEqual(rename?.evidence.artifact, [{
     entry: "tests/release/portable-install.acceptance.mjs",
     test: "installs one verified artifact without source dependencies or a rebuild",
-    claim: "rename.artifact.immutable-versioned-alias-edits",
+    claim: "rename.artifact.immutable-versioned-alias-conflict-applied-semantic-recheck",
   }])
   assert.equal(rename?.artifactGap, null)
 })
@@ -406,6 +488,14 @@ function mutateFeature(id, mutate) {
   assert.ok(feature, `unknown matrix feature: ${id}`)
   mutate(feature)
   return matrix
+}
+
+function artifactFeature(claim, entry, exactTest) {
+  return {
+    evidence: {
+      artifact: [{ entry, test: exactTest, claim }],
+    },
+  }
 }
 
 function makeEvidenceFixture(t, {
