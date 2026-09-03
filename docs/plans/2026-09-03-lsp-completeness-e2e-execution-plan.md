@@ -156,11 +156,11 @@ mode 和 SHA-256。installer 增加“从 artifact 安装/禁止构建”路径�
 - [x] Hover/signature help：跨文件文档、overload、active parameter、trigger/retrigger、
   UTF-16 range。
 - [x] Document symbols：hierarchical/flat，并覆盖 contract 声明的 symbol kinds。
-- [ ] Workspace symbols：catalog 中和 ready 后都可查询；overlay 优先；正确 kind/range；
+- [x] Workspace symbols：catalog 中和 ready 后都可查询；overlay 优先；正确 kind/range；
   progress 按 token 匹配。
-- [ ] References：`includeDeclaration` 两种语义、跨文件/重导出/unopened/overlay、
+- [x] References：`includeDeclaration` 两种语义、跨文件/重导出/unopened/overlay、
   精确完整 range、取消。
-- [ ] Prepare rename/rename：placeholder/range、跨文件 WorkspaceEdit、非法名称/冲突、
+- [x] Prepare rename/rename：placeholder/range、跨文件 WorkspaceEdit、非法名称/冲突、
   version 安全；应用后语义闭环全绿。
 - [x] Code action + resolve：至少从稳定 diagnostic code 产生一个 quick fix；lazy resolve
   返回 version-safe WorkspaceEdit，应用后 diagnostics 清零。
@@ -313,6 +313,10 @@ Owner files：`tests/support/test-layer-manifest.mjs`、runner、package scripts
 - [x] G3d fast/artifact/large 通过 Node 20 自定义 reporter 拒绝运行时
   skip/todo/cancelled；人类输出实时透传，机器摘要为 O(1) 计数且最多 4 KiB，缺失或畸形
   摘要 fail closed（`da0e285`）。
+- [ ] G3e scripted protocol server 不再由多个 test process 共写
+  `dist/scripted-semantic-server.cjs`；先用并发 child contract 观察 RED，再改为每进程临时
+  artifact、同进程单次构建和有界清理。默认沙箱下的直接失败已确认是 `dist` 写权限边界；
+  授权写入后 freshness 8/8 GREEN，但共享输出竞态仍须从结构上消除。
 
 Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产物；随后由集成轨
 串行接入 package scripts，并运行 `pnpm check:fast`。本地 exit gate 已完成：fresh build
@@ -383,6 +387,24 @@ Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产�
   “测试存在但发布门禁未执行”（`9fe3a88`）。
 - [x] E0b advertised capability 必须拥有 immutable artifact evidence，`artifactGap` 仅允许
   planned/absent 能力（`eb52afb`）。
+- [x] E0c 同一 feature/layer/exact test 不得重复贴多个 claim；W1 installed 泛化标签已合并为
+  单一诚实 claim（`4fe7746`）。
+- [x] E0d installed semantic helper 只有在对应真实断言簇完成后才返回 12 个结构化
+  `verifiedClaims`；portable acceptance 与 matrix 中同一 exact test 的 claim 集合必须 exact
+  equal，rename claim 已覆盖冲突与 apply 后 diagnostics/definition/references 闭环
+  （`e69d69b`）。
+- [x] W1 production/installed workspace-symbol 全 kind、100 条完整 Location 上限、精确 URI/range
+  与无需 resolve 的决策（`caf6121`、`e5766e3`、`503b758`）。
+- [x] R4 changed overlay 下 references 两种 declaration policy 只返回 overlay truth
+  （`b4ab0c1`）。
+- [x] N5 同 scope 冲突固定拒绝且无 edit；immutable artifact 真正应用 consumer/origin/barrel
+  edits 后，versioned diagnostics、definition 与 6 个 references 使用新符号身份
+  （`d063582`、`967f026`）。
+- [x] U1a 首切片：`$r` completion/definition、JSON key 精确 range、bounded fail-closed cache、
+  基础 builder DSL 无误诊；resource watcher 只失效对应 workspace snapshot，不重建 TS engine
+  （`6f5751b`、`ae05a07`）。
+- [x] U1b/U2 测试先行：SDK symbol 基础能力 characterization 已 GREEN；missing-resource 与
+  nested post-block tail 已形成两个稳定真实 stdio RED（`51c93bc`）。
 - [x] 本批次集成门禁：fresh `pnpm check:fast` 为 298/298，0 failed、0 skipped、0 todo，
   耗时 150.2 s；immutable portable acceptance 为 4/4（本分支 HEAD 含 `0445863`、`9fe3a88`）。
 
@@ -511,11 +533,12 @@ capability advertisement 与 transcript 一致；`pnpm check:fast`、artifact sm
 - [x] N4 只有支持 `workspace.workspaceEdit.documentChanges` 且声明事务失败处理的 client 才
   advertising `{ prepareProvider: true }`；bundle/installed transcript GREEN 后接线
   （`20cecb3`、`8199a65`）。
-- [ ] R4 References overlay：didChange v2 增删引用后，两种 `includeDeclaration` 请求只返回
-  overlay truth，排除 stale disk range；先登记 `references.bundle.changed-overlay` claim。
-- [ ] N5 Rename semantic safety：目标 scope 已存在新名称时整体 `RequestFailed` 且无 edit；在
+- [x] R4 References overlay：didChange v2 增删引用后，两种 `includeDeclaration` 请求只返回
+  overlay truth，排除 stale disk range；已登记 `references.bundle.changed-overlay` claim
+  （`b4ab0c1`）。
+- [x] N5 Rename semantic safety：目标 scope 已存在新名称时整体 `RequestFailed` 且无 edit；在
   immutable artifact 应用 origin/barrel/consumer edits 后，diagnostics/definition/references
-  使用新名称形成语义闭环。
+  使用新名称形成语义闭环（`d063582`、`967f026`）。
 - [x] Q0a 新增 `QuickFixConsumer.ets`：ArkTS `struct` rewrite 与 emoji 后的 `greting` marker
   可重复 materialize；TypeScript 5.9.2 探针确认 TS2552 与唯一 `spelling` fix（`c488c54`）。
 - [x] G1 Diagnostics：贯通 TypeScript numeric `code`，用含 emoji 且经过 ArkTS virtual
@@ -552,28 +575,36 @@ installed transcript 与 reliability matrix 全绿后 advertised。
     （`423817a`）。
   - [x] immutable installed artifact smoke（`c1e39a5`）；ArkTS component hierarchy 已由
     installed corpus 覆盖，更多 SDK component 语义仍留给 U1。
-- [ ] U1 ArkUI language features（单一 TypeScript/ArkUI provider owner）：
-  - [ ] U1a `$r("app.string.ti")` 唯一补全 `title`，replacement range 精确；definition 指向
-    固定 `string.json` key range。
-  - [ ] U1b `@Entry/@Component/@State`、Column/Text component 与 `.width` attribute 的
-    completion/hover/definition。
-- [ ] U2 ArkUI diagnostics：合法 DSL 为零；拼错 decorator 和缺失 resource key 返回固定、
-  非本地化的 code/severity/UTF-16 range；普通 syntax diagnostic 也用 numeric code 锁定。
-- [ ] W1 Workspace symbols：
-  - [ ] W1a 真实 production server + `AllKinds.ets` overlay 覆盖全部公开 kind/name range；
+- [ ] U1 ArkUI language features（ArkUI provider 与 virtualizer 分离 owner）：
+  - [x] U1a `$r("app.string.ti")` 唯一补全 `title`，replacement range 精确；definition 指向
+    固定 `string.json` key range；watched resource 后下一请求无 sleep 使用新 snapshot
+    （`6f5751b`、`ae05a07`）。
+  - [x] U1b-1 `@Entry/@Component/@State`、Column/Text 与普通 `Text(...).width` 的
+    completion/hover/definition 已由真实 stdio characterization 锁定（`51c93bc`）。
+  - [ ] U1b-2 nested `Column() { ... }.width(...)` 需要保留 receiver 类型的 lowering；
+    diagnostics 为零且 width completion/hover/definition 精确。当前稳定 RED 为
+    TS1128(`.`) + TS2304(`width`)。
+- [ ] U2 ArkUI diagnostics：
+  - [x] 基础合法 DSL 为零，普通 syntax diagnostic 使用 numeric code；拼错 `@Componet`
+    已 characterization 为 TS2552 + 精确 UTF-16 range（`6f5751b`、`51c93bc`）。
+  - [ ] 缺失 resource key 仅在完整 resource snapshot 上返回稳定
+    `arkui.resource.not-found`、Error、精确 key range；partial/unavailable index 不得误报。
+- [x] W1 Workspace symbols：
+  - [x] W1a 真实 production server + `AllKinds.ets` overlay 覆盖全部公开 kind/name range；
     scripted kind codec 不能独自作为 production evidence。
-  - [ ] W1b immutable installed command 保留并断言 struct/property/method kind 与 range。
-  - [ ] W1c 记录无需 `workspaceSymbol/resolve` 的决策：结果上限 100 且已携完整 Location；
+  - [x] W1b immutable installed command 保留并断言 struct/property/method kind 与 range。
+  - [x] W1c 记录无需 `workspaceSymbol/resolve` 的决策：结果上限 100 且已携完整 Location；
     cancellation 复用 deterministic protocol evidence。
 
-#### Wave 4 剩余任务并行派工（2026-09-03）
+#### Wave 4 当前并行派工（2026-09-03）
 
 | 轨道 | 首条公开 RED | 初始 ownership | 与其他轨的约束 |
 |---|---|---|---|
-| F-ArkUI | resource completion/definition 当前为空 | 新 ArkUI semantic E2E、corpus/resource fixture、TDD 记录 | 先只建 RED；进入 semantic core 后独占该文件 |
-| F-Workspace | production overlay 全 kind 与 installed kind claim 缺失 | workspace-symbol 新测试/fixture/文档 | 不修改 feature/layer matrix，由集成 owner 接线 |
-| F-References | changed overlay claim/行为缺失 | `references-depth` fixture/test；必要时 semantic core | 若需 core 修改，本批唯一 production core owner |
-| F-Rename | 名称冲突仍可能返回破坏性 edit | rename conflict fixture/test/TDD 记录 | 本轮先停在 RED，待 references core 释放后 GREEN |
+| F-ArkUI-resource | missing key diagnostics 真 RED | `src/core/arkui/**`、diagnostic contract 与独立测试 | 与 virtualizer owner 分离；只有完整 snapshot 才能报 missing |
+| F-ArkUI-tail | nested builder tail 真 RED | `arkts-virtual-document.ts` 与独立 tail 测试 | 保型 lowering；不得过滤 TS1128/2304 |
+| F-Test-runtime | scripted server 共写 repo `dist` | build helper、4 个 protocol caller、并发 contract | 每进程 temp artifact；不改产品代码 |
+| F-Artifact-evidence | 12 个 installed claims 的执行绑定 | installed helper、portable acceptance、feature matrix | `e69d69b` 已完成；待统一 portable 4/4 复验 |
+| F-Workspace/References/Rename | P0 深度与 artifact 闭环 | 对应独立 bundle/installed tests | 已完成，最终统一 full gate |
 
 顺序门禁：四轨可并行建立稳定 RED；production semantic core 严格串行；每轨 focused GREEN 后
 由集成 owner 更新 layer/evidence matrix，最后统一运行 `pnpm check:fast` 与 portable artifact E2E。
