@@ -14,6 +14,7 @@ import {
 } from "vscode-languageserver/node.js"
 import { TextDocument } from "vscode-languageserver-textdocument"
 
+import { ARKTS_LANGUAGE_SERVER_IDENTITY } from "../build-identity.js"
 import type { DocumentSnapshot } from "../contracts/document.js"
 import type { SemanticCompletion, SemanticEnginePort } from "../contracts/semantic-engine.js"
 import type { ProjectResolverPort } from "../contracts/project-resolver.js"
@@ -94,8 +95,7 @@ export function runLanguageServer(services?: LanguageServerServices): void {
     })
     return {
       serverInfo: {
-        name: "arkts-language-server",
-        version: "0.0.1-spike",
+        ...ARKTS_LANGUAGE_SERVER_IDENTITY,
       },
       capabilities: {
         positionEncoding: PositionEncodingKind.UTF16,

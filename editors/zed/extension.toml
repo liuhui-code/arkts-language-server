@@ -1,7 +1,7 @@
 id = "arkts"
 name = "ArkTS"
-description = "Local ArkTS support backed by the arkts-language-server spike"
-version = "0.0.1"
+description = "Local Beta ArkTS support backed by arkts-language-server"
+version = "0.1.0-local-beta.1"
 schema_version = 1
 authors = ["ArkTS Language Server contributors"]
 repository = "https://github.com/liuhui-code/arkts-language-server"
