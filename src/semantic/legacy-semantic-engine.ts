@@ -70,13 +70,10 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     assertActive(query.signal)
     this.sync(query.document)
     const prepared = this.prepare(query.document, query.position)
-    const value = prepared.engine.define(prepared.position).map((target) => {
-      const start = { line: target.line - 1, character: target.column - 1 }
-      return {
-        uri: pathToFileURL(target.path).href,
-        range: { start, end: start },
-      }
-    })
+    const value = prepared.engine.define(prepared.position).map((target) => ({
+      uri: pathToFileURL(target.path).href,
+      range: toPublicRange(target.range),
+    }))
     return { documentVersion: query.document.version, value }
   }
 

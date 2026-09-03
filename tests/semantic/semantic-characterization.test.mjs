@@ -2,9 +2,72 @@ import assert from "node:assert/strict"
 import fs from "node:fs"
 import path from "node:path"
 import test from "node:test"
-import { pathToFileURL } from "node:url"
+import { fileURLToPath, pathToFileURL } from "node:url"
 
+import { LspSession } from "../support/lsp-session.mjs"
 import { LspProcess, projectRoot } from "../support/lsp-process.mjs"
+import { materializeConformanceWorkspace } from "../support/materialize-conformance-workspace.mjs"
+
+test("returns the exact unopened definition range after an emoji prefix", async (t) => {
+  const materialized = await materializeConformanceWorkspace()
+  const reference = materialized.cases["profile.reference"]
+  const target = materialized.cases["profile.definition"]
+  const consumer = fs.readFileSync(fileURLToPath(reference.uri), "utf8")
+  const profile = fs.readFileSync(fileURLToPath(target.uri), "utf8")
+  const session = new LspSession({
+    command: process.execPath,
+    args: [path.join(projectRoot, "dist", "server.cjs"), "--stdio"],
+    cwd: projectRoot,
+    env: {
+      HOME: path.join(materialized.root, "missing-home"),
+      DEVECO_SDK_HOME: path.join(materialized.root, "missing-deveco"),
+      ARKLINE_HARMONY_SDK_PATH: path.join(materialized.corpusRoot, "sdk", "openharmony"),
+    },
+    rootUri: pathToFileURL(materialized.workspaceRoot).href,
+    capabilities: { general: { positionEncodings: ["utf-16"] } },
+  })
+  t.after(async () => {
+    try {
+      await session.close()
+    } finally {
+      await fs.promises.rm(materialized.root, { recursive: true, force: true })
+    }
+  })
+
+  const referenceLine = consumer.split("\n")[reference.range.start.line]
+  const prefix = referenceLine.slice(0, reference.range.start.character)
+  assert.match(prefix, /😀/)
+  assert.equal(
+    prefix.length - Array.from(prefix).length,
+    1,
+    "the emoji before the reference must occupy two UTF-16 code units",
+  )
+  assert.equal(textInRange(consumer, reference.range), "Profile")
+
+  await session.initialize()
+  session.openDocument({
+    uri: reference.uri,
+    languageId: "arkts",
+    version: 1,
+    text: consumer,
+  })
+  const response = await session.request("textDocument/definition", {
+    textDocument: { uri: reference.uri },
+    position: midpoint(reference.range),
+  })
+
+  assert.equal(response.error, undefined, JSON.stringify(response.error))
+  const locations = response.result === null
+    ? []
+    : Array.isArray(response.result)
+      ? response.result
+      : [response.result]
+  assert.equal(locations.length, 1)
+  assert.equal(locations[0].uri, target.uri)
+  assert.deepEqual(locations[0].range, target.range)
+  assert.notDeepEqual(locations[0].range.start, locations[0].range.end)
+  assert.equal(textInRange(profile, locations[0].range), "Profile")
+})
 
 test("completes inherited fields and methods after this dot", async (t) => {
   const server = new LspProcess()
@@ -150,3 +213,18 @@ test("resolves a definition through an import alias and barrel export", async (t
   assert.equal(locations[0].uri, pathToFileURL(targetPath).href)
   assert.deepEqual(locations[0].range.start, { line: 1, character: 2 })
 })
+
+function midpoint(range) {
+  assert.equal(range.start.line, range.end.line, "the query marker must be single-line")
+  return {
+    line: range.start.line,
+    character: range.start.character
+      + Math.floor((range.end.character - range.start.character) / 2),
+  }
+}
+
+function textInRange(source, range) {
+  const lines = source.split("\n")
+  assert.equal(range.start.line, range.end.line, "this semantic slice uses single-line ranges")
+  return lines[range.start.line].slice(range.start.character, range.end.character)
+}

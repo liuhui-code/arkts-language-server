@@ -23,7 +23,7 @@ import { createArktsVirtualDocument, type ArktsVirtualDocument } from "../virtua
 import type { SemanticWorkspaceView } from "../workspace/document-store.js"
 import type { SemanticTypeEngineState } from "./type-engine.js"
 import { mapTypescriptDiagnostics, typescriptTypeDetail, typescriptTypeStatus } from "./typescript-language-helpers.js"
-import { lineColumnToOffset, offsetToLineColumn } from "./text-position.js"
+import { lineColumnToOffset, offsetToLineColumn, spanToRange } from "./text-position.js"
 
 const MAX_SCRIPTS = 512
 const MAX_SCRIPT_BYTES = 16 * 1024 * 1024
@@ -171,14 +171,22 @@ export class TypeScriptLanguageServiceEngine {
       const targetScript = this.scripts.get(targetPath)
       const content = targetScript?.sourceContent ?? safeRead(targetPath)
       if (content === null) return []
-      const targetOffset = targetScript
-        ? targetScript.virtualDocument.toSourceOffset(definition.textSpan.start)
-        : definition.textSpan.start
-      const target = offsetToLineColumn(content, targetOffset)
-      const key = `${targetPath}:${target.line}:${target.column}`
+      const range = targetScript
+        ? targetScript.virtualDocument.generatedSpanToSourceRange(
+            definition.textSpan.start,
+            definition.textSpan.length,
+          )
+        : spanToRange(content, definition.textSpan.start, definition.textSpan.length)
+      const key = [
+        targetPath,
+        range.startLine,
+        range.startColumn,
+        range.endLine,
+        range.endColumn,
+      ].join(":")
       if (seen.has(key)) return []
       seen.add(key)
-      return [{ path: targetPath, line: target.line, column: target.column }]
+      return [{ path: targetPath, range }]
     })
   }
 

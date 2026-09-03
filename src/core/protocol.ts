@@ -168,7 +168,10 @@ export interface SemanticTextRange {
   endColumn: number
 }
 
-export interface SemanticDefinitionCandidate extends SemanticDefinitionTarget {}
+export interface SemanticDefinitionCandidate {
+  path: string
+  range: SemanticTextRange
+}
 
 export interface SemanticUsageResult extends SemanticDefinitionTarget {
   preview: string
