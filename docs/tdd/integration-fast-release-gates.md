@@ -25,3 +25,22 @@ tests being GREEN.
 
 The acceptance filename deliberately does not match the fast `.test.mjs` glob.
 
+## Pinned real-project gate
+
+A later RED showed that the workflow invoked `check:release` without providing
+the mandatory large-project fixture, while the direct Rust 455-file test was
+ignored by the ordinary workspace suite. The workflow now checks out the
+public fixture at exact commit
+`585feb45114a128a0d2a23947c83faf338e758f7`, exports its path to both release
+gates, and explicitly runs the ignored Rust catalog test before building the
+release sidecar. A 30-minute job deadline bounds infrastructure hangs.
+
+The workflow contract is protected by:
+
+```text
+node --test --test-name-pattern="Zed workflow" tests/local-delivery-config.test.mjs
+```
+
+RED: the pinned Rust gate and fixture environment were absent. GREEN: the
+workflow test requires the repository, immutable revision, checkout path, both
+environment variables, and gate ordering.

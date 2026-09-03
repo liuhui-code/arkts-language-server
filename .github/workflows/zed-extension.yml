@@ -39,8 +39,20 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      ARKTS_INDEX_REAL_FIXTURE: ${{ github.workspace }}/.fixtures/nim-uikit-harmony
+      ARKTS_LARGE_FIXTURE: ${{ github.workspace }}/.fixtures/nim-uikit-harmony
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Check out the pinned large ArkTS fixture
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: netease-kit/nim-uikit-harmony
+          ref: 585feb45114a128a0d2a23947c83faf338e758f7
+          path: .fixtures/nim-uikit-harmony
+          persist-credentials: false
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
@@ -65,6 +77,12 @@ jobs:
 
       - name: Test the Rust workspace
         run: cargo test --locked --workspace --all-targets
+
+      - name: Gate the pinned 455-file catalog and deterministic queries
+        run: >-
+          cargo test --locked -p arkts-index-sidecar --test ndjson_protocol
+          pinned_large_arkts_fixture_meets_cold_catalog_and_deterministic_query_gates
+          -- --ignored --exact
 
       - name: Build the production index sidecar
         run: cargo build --locked --workspace --release

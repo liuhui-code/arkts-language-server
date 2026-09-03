@@ -141,6 +141,7 @@ exit 0
 
 test("the Zed workflow covers every release input and runs the complete release gate", () => {
   const workflow = fs.readFileSync(zedWorkflowPath, "utf8")
+  const fixtureRevision = "585feb45114a128a0d2a23947c83faf338e758f7"
 
   for (const releaseInput of ["Cargo.toml", "Cargo.lock", "crates/**", "bin/**"]) {
     const occurrences = workflow.split(`- "${releaseInput}"`).length - 1
@@ -152,6 +153,7 @@ test("the Zed workflow covers every release input and runs the complete release 
     "cargo fmt --all --check",
     "cargo clippy --locked --workspace --all-targets -- -D warnings",
     "cargo test --locked --workspace --all-targets",
+    "pinned_large_arkts_fixture_meets_cold_catalog_and_deterministic_query_gates",
     "cargo build --locked --workspace --release",
     "./scripts/check-zed-queries.sh",
     "cargo build --locked --target wasm32-wasip2 --release",
@@ -165,4 +167,9 @@ test("the Zed workflow covers every release input and runs the complete release 
   }
 
   assert.match(workflow, /pnpm install --frozen-lockfile/)
+  assert.match(workflow, /repository:\s*netease-kit\/nim-uikit-harmony/)
+  assert.match(workflow, new RegExp(`ref:\\s*${fixtureRevision}`))
+  assert.match(workflow, /path:\s*\.fixtures\/nim-uikit-harmony/)
+  assert.match(workflow, /ARKTS_INDEX_REAL_FIXTURE:\s*\$\{\{ github\.workspace \}\}\/\.fixtures\/nim-uikit-harmony/)
+  assert.match(workflow, /ARKTS_LARGE_FIXTURE:\s*\$\{\{ github\.workspace \}\}\/\.fixtures\/nim-uikit-harmony/)
 })
