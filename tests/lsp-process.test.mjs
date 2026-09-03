@@ -323,3 +323,218 @@ test("routes interleaved queued progress by token and predicate", async () => {
     await lsp.close()
   }
 })
+
+test("rejects Content-Length values with trailing garbage", async () => {
+  const lsp = new LspProcess({
+    command: process.execPath,
+    args: [
+      "-e",
+      `
+        process.stdin.once("data", () => {
+          const body = JSON.stringify({ jsonrpc: "2.0", id: 96, result: "invalid-frame" })
+          process.stdout.write(
+            "Content-Length: " + Buffer.byteLength(body) + "garbage\\r\\n\\r\\n" + body,
+          )
+        })
+        setInterval(() => {}, 1_000)
+      `,
+    ],
+  })
+
+  try {
+    const pending = lsp.response(96, 5_000)
+    lsp.send({ jsonrpc: "2.0", method: "fixture/trigger" })
+
+    await assert.rejects(
+      withTimeout(pending, 1_000, "trailing Content-Length garbage was accepted"),
+      (error) => {
+        assert.equal(error.code, "LSP_INVALID_HEADER")
+        assert.match(error.message, /invalid Content-Length/)
+        return true
+      },
+    )
+  } finally {
+    await lsp.close()
+  }
+})
+
+test("enforces configurable and default header limits", async () => {
+  const cases = [
+    { limit: 64, received: 65, options: { maxHeaderBytes: 64 } },
+    { limit: 8 * 1_024, received: (8 * 1_024) + 1, options: {} },
+  ]
+
+  for (const fixture of cases) {
+    const lsp = new LspProcess({
+      command: process.execPath,
+      args: [
+        "-e",
+        `
+          process.stdin.once("data", () => {
+            process.stdout.write("x".repeat(${fixture.received}))
+          })
+          setInterval(() => {}, 1_000)
+        `,
+      ],
+      ...fixture.options,
+    })
+
+    try {
+      const pending = lsp.response(97, 5_000)
+      lsp.send({ jsonrpc: "2.0", method: "fixture/trigger" })
+
+      await assert.rejects(
+        withTimeout(pending, 1_000, "oversized LSP header was not rejected"),
+        (error) => {
+          assert.equal(error.code, "LSP_HEADER_TOO_LARGE")
+          assert.equal(error.limit, fixture.limit)
+          assert.ok(error.received > error.limit)
+          return true
+        },
+      )
+    } finally {
+      await lsp.close()
+    }
+  }
+})
+
+test("enforces configurable and default frame limits before reading a body", async () => {
+  const cases = [
+    { limit: 128, declared: 129, options: { maxFrameBytes: 128 } },
+    {
+      limit: 16 * 1_024 * 1_024,
+      declared: (16 * 1_024 * 1_024) + 1,
+      options: {},
+    },
+  ]
+
+  for (const fixture of cases) {
+    const lsp = new LspProcess({
+      command: process.execPath,
+      args: [
+        "-e",
+        `
+          process.stdin.once("data", () => {
+            process.stdout.write("Content-Length: ${fixture.declared}\\r\\n\\r\\n")
+          })
+          setInterval(() => {}, 1_000)
+        `,
+      ],
+      ...fixture.options,
+    })
+
+    try {
+      const pending = lsp.response(98, 5_000)
+      lsp.send({ jsonrpc: "2.0", method: "fixture/trigger" })
+
+      await assert.rejects(
+        withTimeout(pending, 1_000, "oversized LSP frame was not rejected"),
+        (error) => {
+          assert.equal(error.code, "LSP_FRAME_TOO_LARGE")
+          assert.equal(error.limit, fixture.limit)
+          assert.equal(error.received, fixture.declared)
+          return true
+        },
+      )
+    } finally {
+      await lsp.close()
+    }
+  }
+})
+
+test("reports structured truncated frames when stdout ends mid-body or mid-header", async () => {
+  const body = JSON.stringify({ jsonrpc: "2.0", id: 99, result: "truncated" })
+  const partialBody = body.slice(0, 13)
+  const partialHeader = "Content-Length: 42\r\nContent-Ty"
+  const cases = [
+    {
+      phase: "body",
+      expected: Buffer.byteLength(body),
+      received: Buffer.byteLength(partialBody),
+      output: `Content-Length: ${Buffer.byteLength(body)}\r\n\r\n${partialBody}`,
+    },
+    {
+      phase: "header",
+      expected: "\\r\\n\\r\\n",
+      received: Buffer.byteLength(partialHeader),
+      output: partialHeader,
+    },
+  ]
+
+  for (const fixture of cases) {
+    const encodedOutput = Buffer.from(fixture.output).toString("base64")
+    const lsp = new LspProcess({
+      command: process.execPath,
+      args: [
+        "-e",
+        `
+          process.stdin.once("data", () => {
+            process.stdout.end(Buffer.from("${encodedOutput}", "base64"))
+          })
+          setInterval(() => {}, 1_000)
+        `,
+      ],
+    })
+
+    try {
+      const pending = lsp.response(99, 5_000)
+      lsp.send({ jsonrpc: "2.0", method: "fixture/trigger" })
+
+      await assert.rejects(
+        withTimeout(pending, 1_000, `truncated ${fixture.phase} was not rejected`),
+        (error) => {
+          assert.equal(error.code, "LSP_TRUNCATED_FRAME")
+          assert.equal(error.phase, fixture.phase)
+          assert.equal(error.expected, fixture.expected)
+          assert.equal(error.received, fixture.received)
+          return true
+        },
+      )
+    } finally {
+      await lsp.close()
+    }
+  }
+})
+
+test("reuses a terminal protocol failure for existing and future waiters", async () => {
+  const lsp = new LspProcess({
+    command: process.execPath,
+    args: [
+      "-e",
+      `
+        process.stdin.once("data", () => {
+          process.stdout.write("Content-Length: 1oops\\r\\n\\r\\n{")
+        })
+        setInterval(() => {}, 1_000)
+      `,
+    ],
+  })
+
+  try {
+    const existing = Promise.allSettled([
+      lsp.response(100, 5_000),
+      lsp.notification("fixture/never", undefined, 5_000),
+    ])
+    lsp.send({ jsonrpc: "2.0", method: "fixture/trigger" })
+
+    const existingResults = await withTimeout(
+      existing,
+      1_000,
+      "existing waiters did not receive the terminal protocol failure",
+    )
+    assert.ok(existingResults.every((result) => result.status === "rejected"))
+    const terminalFailure = existingResults[0].reason
+    assert.equal(terminalFailure.code, "LSP_INVALID_HEADER")
+    assert.equal(existingResults[1].reason, terminalFailure)
+
+    const [futureResult] = await withTimeout(
+      Promise.allSettled([lsp.response(101, 5_000)]),
+      500,
+      "future waiter did not immediately receive the terminal protocol failure",
+    )
+    assert.equal(futureResult.status, "rejected")
+    assert.equal(futureResult.reason, terminalFailure)
+  } finally {
+    await lsp.close()
+  }
+})

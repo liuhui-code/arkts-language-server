@@ -22,6 +22,20 @@ function isNotification(message) {
   return !hasOwn(message, "id") && typeof message?.method === "string"
 }
 
+function protocolFailure(code, message, details = {}) {
+  return Object.assign(new Error(`LSP protocol failure: ${message}`), { code, ...details })
+}
+
+function contentLengthFromHeader(header) {
+  const contentLengthLines = header.split("\r\n")
+    .filter((line) => /^Content-Length:/i.test(line))
+  const contentLength = contentLengthLines.length === 1
+    ? /^Content-Length:\s*(\d+)\s*$/i.exec(contentLengthLines[0])
+    : null
+  const length = Number(contentLength?.[1])
+  return contentLength && Number.isSafeInteger(length) ? length : undefined
+}
+
 export class LspProcess {
   constructor({
     serverPath = "dist/server.cjs",
@@ -29,6 +43,8 @@ export class LspProcess {
     args = [serverPath, "--stdio"],
     cwd = projectRoot,
     env,
+    maxHeaderBytes = 8 * 1_024,
+    maxFrameBytes = 16 * 1_024 * 1_024,
   } = {}) {
     this.child = spawn(command, args, {
       cwd,
@@ -41,7 +57,10 @@ export class LspProcess {
     this.stderr = ""
     this.transportFailure = undefined
     this.closePromise = undefined
+    this.maxHeaderBytes = maxHeaderBytes
+    this.maxFrameBytes = maxFrameBytes
     this.child.stdout.on("data", (chunk) => this.acceptSafely(chunk))
+    this.child.stdout.on("end", () => this.handleStdoutEnd())
     this.child.stderr.on("data", (chunk) => { this.stderr += chunk.toString() })
     this.child.on("close", (code, signal) => this.rejectPendingOnClose(code, signal))
   }
@@ -92,6 +111,7 @@ export class LspProcess {
   }
 
   waitFor(matches, description, timeoutMs) {
+    if (this.transportFailure) return Promise.reject(this.transportFailure)
     return new Promise((resolve, reject) => {
       const waiter = { matches, resolve, reject, description, timeout: undefined }
       waiter.timeout = setTimeout(() => {
@@ -170,18 +190,67 @@ export class LspProcess {
     }
   }
 
+  handleStdoutEnd() {
+    if (this.transportFailure || this.buffer.length === 0) return
+    const headerEnd = this.buffer.indexOf("\r\n\r\n")
+    if (headerEnd < 0) {
+      this.failTransport(protocolFailure(
+        "LSP_TRUNCATED_FRAME",
+        `stdout ended after ${this.buffer.length} header bytes; expected header terminator`,
+        {
+          phase: "header",
+          expected: "\\r\\n\\r\\n",
+          received: this.buffer.length,
+        },
+      ))
+      return
+    }
+
+    const header = this.buffer.subarray(0, headerEnd).toString("ascii")
+    const expected = contentLengthFromHeader(header)
+    const received = this.buffer.length - (headerEnd + 4)
+    if (expected !== undefined && received < expected) {
+      this.failTransport(protocolFailure(
+        "LSP_TRUNCATED_FRAME",
+        `stdout ended after ${received} of ${expected} body bytes`,
+        { phase: "body", expected, received },
+      ))
+    }
+  }
+
   accept(chunk) {
     if (this.transportFailure) return
     this.buffer = Buffer.concat([this.buffer, chunk])
     while (true) {
       const headerEnd = this.buffer.indexOf("\r\n\r\n")
+      const receivedHeaderBytes = headerEnd < 0 ? this.buffer.length : headerEnd
+      if (receivedHeaderBytes > this.maxHeaderBytes) {
+        this.failTransport(protocolFailure(
+          "LSP_HEADER_TOO_LARGE",
+          `header exceeds ${this.maxHeaderBytes} bytes`,
+          { limit: this.maxHeaderBytes, received: receivedHeaderBytes },
+        ))
+        return
+      }
       if (headerEnd < 0) return
       const header = this.buffer.subarray(0, headerEnd).toString("ascii")
-      if (!header.startsWith("Content-Length:")) {
-        throw new Error(`Non-LSP output on stdout: ${JSON.stringify(header)}`)
+      const length = contentLengthFromHeader(header)
+      if (length === undefined) {
+        const excerpt = header.length > 160 ? `${header.slice(0, 160)}…` : header
+        this.failTransport(protocolFailure(
+          "LSP_INVALID_HEADER",
+          `invalid Content-Length header ${JSON.stringify(excerpt)}`,
+        ))
+        return
       }
-      const length = Number(/Content-Length:\s*(\d+)/i.exec(header)?.[1])
-      if (!Number.isFinite(length)) throw new Error(`Invalid LSP header: ${header}`)
+      if (length > this.maxFrameBytes) {
+        this.failTransport(protocolFailure(
+          "LSP_FRAME_TOO_LARGE",
+          `frame exceeds ${this.maxFrameBytes} bytes`,
+          { limit: this.maxFrameBytes, received: length },
+        ))
+        return
+      }
       const bodyStart = headerEnd + 4
       if (this.buffer.length < bodyStart + length) return
       const rawBody = this.buffer.subarray(bodyStart, bodyStart + length).toString("utf8")
