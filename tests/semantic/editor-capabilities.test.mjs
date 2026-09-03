@@ -145,7 +145,10 @@ test("returns hierarchical ArkTS document symbols from the changed overlay", asy
     "Panel.ets",
     {
       textDocument: {
-        documentSymbol: { hierarchicalDocumentSymbolSupport: true },
+        documentSymbol: {
+          hierarchicalDocumentSymbolSupport: true,
+          symbolKind: { valueSet: Array.from({ length: 26 }, (_, index) => index + 1) },
+        },
       },
     },
   )
@@ -227,8 +230,17 @@ test("returns hierarchical ArkTS document symbols from the changed overlay", asy
   ])
 })
 
-test("falls back to flat symbol information for non-hierarchical clients", async (t) => {
-  const { server, documentUri } = await openFixture(t, "document-symbols", "Panel.ets")
+test("uses legacy symbol kinds in flat results when the client omits valueSet", async (t) => {
+  const { server, documentUri } = await openFixture(
+    t,
+    "document-symbols",
+    "Panel.ets",
+    {
+      textDocument: {
+        documentSymbol: { hierarchicalDocumentSymbolSupport: false },
+      },
+    },
+  )
 
   server.send({
     jsonrpc: "2.0",
@@ -247,7 +259,7 @@ test("falls back to flat symbol information for non-hierarchical clients", async
   })), [
     {
       name: "Panel",
-      kind: 23,
+      kind: 5,
       containerName: undefined,
       location: {
         uri: documentUri,

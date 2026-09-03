@@ -37,6 +37,7 @@ export function registerSemanticCapabilities({
   requests,
 }: SemanticCapabilityDependencies): SemanticCapabilityRegistration {
   let hierarchicalDocumentSymbols = false
+  let documentStructKind: SymbolKind = SymbolKind.Class
 
   connection.onSignatureHelp(async (params, token) => {
     return requests.run({
@@ -76,8 +77,9 @@ export function registerSemanticCapabilities({
       execute: (document, signal) => semantic.documentSymbols({ document, signal }),
     })
     return hierarchicalDocumentSymbols
-      ? result.map(toLspDocumentSymbol)
-      : result.flatMap((symbol) => toLspSymbolInformation(symbol, params.textDocument.uri))
+      ? result.map((symbol) => toLspDocumentSymbol(symbol, documentStructKind))
+      : result.flatMap((symbol) =>
+        toLspSymbolInformation(symbol, params.textDocument.uri, documentStructKind))
   })
 
   return {
@@ -91,42 +93,54 @@ export function registerSemanticCapabilities({
     configure(clientCapabilities) {
       hierarchicalDocumentSymbols = clientCapabilities.textDocument
         ?.documentSymbol?.hierarchicalDocumentSymbolSupport === true
+      documentStructKind = clientCapabilities.textDocument?.documentSymbol
+        ?.symbolKind?.valueSet?.includes(SymbolKind.Struct)
+        ? SymbolKind.Struct
+        : SymbolKind.Class
     },
   }
 }
 
-function toLspDocumentSymbol(symbol: SemanticDocumentSymbol): DocumentSymbol {
+function toLspDocumentSymbol(
+  symbol: SemanticDocumentSymbol,
+  documentStructKind: SymbolKind,
+): DocumentSymbol {
   return {
     name: symbol.name,
     detail: symbol.detail,
-    kind: symbolKind(symbol.kind),
+    kind: symbolKind(symbol.kind, documentStructKind),
     range: symbol.range,
     selectionRange: symbol.selectionRange,
-    children: symbol.children?.map(toLspDocumentSymbol),
+    children: symbol.children?.map((child) =>
+      toLspDocumentSymbol(child, documentStructKind)),
   }
 }
 
 function toLspSymbolInformation(
   symbol: SemanticDocumentSymbol,
   uri: string,
+  documentStructKind: SymbolKind,
   containerName?: string,
 ): SymbolInformation[] {
   const current: SymbolInformation = {
     name: symbol.name,
-    kind: symbolKind(symbol.kind),
+    kind: symbolKind(symbol.kind, documentStructKind),
     location: { uri, range: symbol.range },
     containerName,
   }
   return [
     current,
     ...(symbol.children ?? []).flatMap((child) =>
-      toLspSymbolInformation(child, uri, symbol.name)),
+      toLspSymbolInformation(child, uri, documentStructKind, symbol.name)),
   ]
 }
 
-function symbolKind(kind: SemanticDocumentSymbol["kind"]): SymbolKind {
+function symbolKind(
+  kind: SemanticDocumentSymbol["kind"],
+  documentStructKind: SymbolKind,
+): SymbolKind {
   switch (kind) {
-    case "struct": return SymbolKind.Struct
+    case "struct": return documentStructKind
     case "class": return SymbolKind.Class
     case "interface": return SymbolKind.Interface
     case "enum": return SymbolKind.Enum
