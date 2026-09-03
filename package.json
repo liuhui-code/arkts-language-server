@@ -7,7 +7,7 @@
     "build": "esbuild src/server.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/server.cjs",
     "check": "tsc --noEmit -p tsconfig.json",
     "check:fast": "pnpm test",
-    "check:release": "pnpm check:fast && node --test tests/release/*.acceptance.mjs",
+    "check:release": "pnpm check:fast && node --test --test-concurrency=1 tests/release/*.acceptance.mjs",
     "test": "pnpm check && pnpm build && node --test --test-concurrency=1 tests/*.test.mjs tests/**/*.test.mjs"
   },
   "dependencies": {

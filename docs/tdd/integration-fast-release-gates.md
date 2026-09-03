@@ -25,6 +25,16 @@ tests being GREEN.
 
 The acceptance filename deliberately does not match the fast `.test.mjs` glob.
 
+## Stateful release-suite serialization regression
+
+- Parent revision: `43dbbd9ba72b417cbb732ac27d6028942052a561`
+- RED: `node --test --test-name-pattern='release gate serializes' tests/local-delivery-config.test.mjs`
+- Failure: `check:release` omitted `--test-concurrency=1`, so its installer and
+  clean-build acceptances could mutate shared build/install state concurrently.
+- GREEN: the same focused command passes after making serialization part of the
+  public package-script contract. This protects the earlier design intent from
+  silently regressing again.
+
 ## Pinned real-project gate
 
 A later RED showed that the workflow invoked `check:release` without providing

@@ -17,6 +17,15 @@ const languageConfigPath = path.join(
 )
 const zedWorkflowPath = path.join(projectRoot, ".github", "workflows", "zed-extension.yml")
 
+test("the release gate serializes stateful acceptance tests", () => {
+  const packageMetadata = JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf8"))
+
+  assert.match(
+    packageMetadata.scripts["check:release"],
+    /node --test --test-concurrency=1 tests\/release\/\*\.acceptance\.mjs/,
+  )
+})
+
 test("the ArkTS language config enables comments, autoclosing, and ArkTS identifier characters", () => {
   const config = fs.readFileSync(languageConfigPath, "utf8")
 
