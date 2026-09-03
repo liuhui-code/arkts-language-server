@@ -22,6 +22,13 @@ function isNotification(message) {
   return !hasOwn(message, "id") && typeof message?.method === "string"
 }
 
+function messageKind(message) {
+  if (isResponse(message)) return "response"
+  if (isServerRequest(message)) return "request"
+  if (isNotification(message)) return "notification"
+  return "unknown"
+}
+
 function protocolFailure(code, message, details = {}) {
   return Object.assign(new Error(`LSP protocol failure: ${message}`), { code, ...details })
 }
@@ -36,6 +43,49 @@ function contentLengthFromHeader(header) {
   return contentLength && Number.isSafeInteger(length) ? length : undefined
 }
 
+function utf8Prefix(value, maxBytes) {
+  let result = ""
+  let used = 0
+  for (const character of value) {
+    const bytes = Buffer.byteLength(character)
+    if (used + bytes > maxBytes) break
+    result += character
+    used += bytes
+  }
+  return result
+}
+
+function utf8Suffix(value, maxBytes) {
+  let result = ""
+  let used = 0
+  const characters = Array.from(value)
+  for (let index = characters.length - 1; index >= 0; index -= 1) {
+    const bytes = Buffer.byteLength(characters[index])
+    if (used + bytes > maxBytes) break
+    result = characters[index] + result
+    used += bytes
+  }
+  return result
+}
+
+function boundedText(value, maxBytes) {
+  if (Buffer.byteLength(value) <= maxBytes) return value
+  const marker = "\n… diagnostic truncated …\n"
+  const markerBytes = Buffer.byteLength(marker)
+  if (maxBytes <= markerBytes) return utf8Prefix(marker, maxBytes)
+  const remaining = maxBytes - markerBytes
+  const tailBytes = Math.floor(remaining / 2)
+  return utf8Prefix(value, remaining - tailBytes)
+    + marker
+    + utf8Suffix(value, tailBytes)
+}
+
+function deepFreeze(value) {
+  if (value === null || typeof value !== "object" || Object.isFrozen(value)) return value
+  for (const nested of Object.values(value)) deepFreeze(nested)
+  return Object.freeze(value)
+}
+
 export class LspProcess {
   constructor({
     serverPath = "dist/server.cjs",
@@ -45,6 +95,10 @@ export class LspProcess {
     env,
     maxHeaderBytes = 8 * 1_024,
     maxFrameBytes = 16 * 1_024 * 1_024,
+    maxStderrBytes = 64 * 1_024,
+    maxDiagnosticTextBytes = 4 * 1_024,
+    maxTranscriptEntries = 128,
+    maxTranscriptBytes = 64 * 1_024,
   } = {}) {
     this.child = spawn(command, args, {
       cwd,
@@ -54,21 +108,149 @@ export class LspProcess {
     this.buffer = Buffer.alloc(0)
     this.messages = []
     this.waiters = []
-    this.stderr = ""
+    this.stderrHead = Buffer.alloc(0)
+    this.stderrTail = Buffer.alloc(0)
+    this.stderrTotalBytes = 0
+    this.transcriptEntries = []
+    this.transcriptSequence = 0
+    this.transcriptTotalEntries = 0
+    this.transcriptRetainedBytes = 0
     this.transportFailure = undefined
     this.closePromise = undefined
     this.maxHeaderBytes = maxHeaderBytes
     this.maxFrameBytes = maxFrameBytes
+    this.maxStderrBytes = maxStderrBytes
+    this.maxDiagnosticTextBytes = maxDiagnosticTextBytes
+    this.maxTranscriptEntries = maxTranscriptEntries
+    this.maxTranscriptBytes = maxTranscriptBytes
     this.child.stdout.on("data", (chunk) => this.acceptSafely(chunk))
     this.child.stdout.on("end", () => this.handleStdoutEnd())
-    this.child.stderr.on("data", (chunk) => { this.stderr += chunk.toString() })
+    this.child.stderr.on("data", (chunk) => this.acceptStderr(chunk))
     this.child.on("close", (code, signal) => this.rejectPendingOnClose(code, signal))
   }
 
   send(message) {
     const body = Buffer.from(JSON.stringify(message))
+    this.recordTranscript("send", message, body.length)
     this.child.stdin.write(`Content-Length: ${body.length}\r\n\r\n`)
     this.child.stdin.write(body)
+  }
+
+  get stderrRetainedBytes() {
+    return this.stderrHead.length + this.stderrTail.length
+  }
+
+  get stderrDroppedBytes() {
+    return this.stderrTotalBytes - this.stderrRetainedBytes
+  }
+
+  get stderr() {
+    const head = this.stderrHead.toString("utf8")
+    const tail = this.stderrTail.toString("utf8")
+    if (this.stderrDroppedBytes === 0) return head + tail
+    return `${head}\n… ${this.stderrDroppedBytes} stderr bytes omitted …\n${tail}`
+  }
+
+  acceptStderr(chunk) {
+    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+    this.stderrTotalBytes += bytes.length
+    const headLimit = Math.ceil(this.maxStderrBytes / 2)
+    const tailLimit = this.maxStderrBytes - headLimit
+    const headRemaining = Math.max(0, headLimit - this.stderrHead.length)
+    const headBytes = Math.min(headRemaining, bytes.length)
+    if (headBytes > 0) {
+      this.stderrHead = Buffer.concat([this.stderrHead, bytes.subarray(0, headBytes)])
+    }
+    if (tailLimit === 0 || headBytes === bytes.length) return
+
+    const remainder = bytes.subarray(headBytes)
+    if (remainder.length >= tailLimit) {
+      this.stderrTail = Buffer.from(remainder.subarray(remainder.length - tailLimit))
+      return
+    }
+    const previousBytes = Math.min(this.stderrTail.length, tailLimit - remainder.length)
+    this.stderrTail = Buffer.concat([
+      this.stderrTail.subarray(this.stderrTail.length - previousBytes),
+      remainder,
+    ])
+  }
+
+  boundedDiagnostic(value) {
+    return boundedText(value, this.maxDiagnosticTextBytes)
+  }
+
+  recordTranscript(direction, message, byteSize) {
+    const entry = {
+      direction,
+      sequence: this.transcriptSequence + 1,
+      kind: messageKind(message),
+      method: typeof message?.method === "string" ? message.method : null,
+      id: hasOwn(message, "id") ? message.id : null,
+      byteSize,
+    }
+    const storageBytes = Buffer.byteLength(JSON.stringify(entry))
+    this.transcriptSequence = entry.sequence
+    this.transcriptTotalEntries += 1
+    this.transcriptRetainedBytes += storageBytes
+    this.transcriptEntries.push({ entry, storageBytes })
+    while (this.transcriptEntries.length > this.maxTranscriptEntries
+      || this.transcriptRetainedBytes > this.maxTranscriptBytes) {
+      const dropped = this.transcriptEntries.shift()
+      this.transcriptRetainedBytes -= dropped.storageBytes
+    }
+  }
+
+  parserSnapshot() {
+    const headerEnd = this.buffer.indexOf("\r\n\r\n")
+    if (headerEnd < 0) {
+      return {
+        phase: "header",
+        bufferedBytes: this.buffer.length,
+        expectedBytes: null,
+        receivedBytes: this.buffer.length,
+      }
+    }
+    const header = this.buffer.subarray(0, headerEnd).toString("ascii")
+    return {
+      phase: "body",
+      bufferedBytes: this.buffer.length,
+      expectedBytes: contentLengthFromHeader(header) ?? null,
+      receivedBytes: this.buffer.length - (headerEnd + 4),
+    }
+  }
+
+  terminalSnapshot() {
+    let state = "running"
+    if (this.transportFailure) state = "failed"
+    else if (this.child.exitCode !== null || this.child.signalCode !== null) state = "exited"
+    else if (this.closePromise) state = "closing"
+    return {
+      state,
+      exitCode: this.child.exitCode,
+      signal: this.child.signalCode,
+      failureCode: this.transportFailure?.code ?? null,
+    }
+  }
+
+  diagnosticSnapshot() {
+    return deepFreeze({
+      pid: this.child.pid,
+      terminal: this.terminalSnapshot(),
+      pendingDescriptions: this.waiters.map((waiter) => waiter.description),
+      parser: this.parserSnapshot(),
+      stderr: {
+        text: this.stderr,
+        totalBytes: this.stderrTotalBytes,
+        retainedBytes: this.stderrRetainedBytes,
+        droppedBytes: this.stderrDroppedBytes,
+      },
+      transcript: {
+        entries: this.transcriptEntries.map(({ entry }) => ({ ...entry })),
+        retainedBytes: this.transcriptRetainedBytes,
+        totalEntries: this.transcriptTotalEntries,
+        droppedEntries: this.transcriptTotalEntries - this.transcriptEntries.length,
+      },
+    })
   }
 
   response(id, timeoutMs = 5_000) {
@@ -117,7 +299,9 @@ export class LspProcess {
       waiter.timeout = setTimeout(() => {
         const index = this.waiters.indexOf(waiter)
         if (index >= 0) this.waiters.splice(index, 1)
-        reject(new Error(`Timed out waiting for ${description}. stderr: ${this.stderr}`))
+        reject(new Error(this.boundedDiagnostic(
+          `Timed out waiting for ${description}. stderr: ${this.stderr}`,
+        )))
       }, timeoutMs)
       this.waiters.push(waiter)
     })
@@ -128,14 +312,17 @@ export class LspProcess {
     for (const { reject, description, timeout } of waiters) {
       clearTimeout(timeout)
       reject(new Error(
-        `LSP process exited before ${description} (code=${code}, signal=${signal}). `
-        + `stderr: ${this.stderr.trimEnd() || "<empty>"}`,
+        this.boundedDiagnostic(
+          `LSP process exited before ${description} (code=${code}, signal=${signal}). `
+          + `stderr: ${this.stderr.trimEnd() || "<empty>"}`,
+        ),
       ))
     }
   }
 
   failTransport(error) {
     if (this.transportFailure) return
+    error.message = this.boundedDiagnostic(error.message)
     this.transportFailure = error
     const waiters = this.waiters.splice(0)
     for (const { reject, timeout } of waiters) {
@@ -268,6 +455,7 @@ export class LspProcess {
         ))
         return
       }
+      this.recordTranscript("receive", message, length)
       this.buffer = this.buffer.subarray(bodyStart + length)
       const waiter = this.waiters.findIndex((candidate) => candidate.matches(message))
       if (waiter >= 0) {

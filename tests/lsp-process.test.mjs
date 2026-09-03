@@ -538,3 +538,330 @@ test("reuses a terminal protocol failure for existing and future waiters", async
     await lsp.close()
   }
 })
+
+test("bounds stderr as head and tail with byte accounting on process exit", async () => {
+  const cases = [
+    {
+      label: "custom",
+      maxStderrBytes: 96,
+      maxDiagnosticTextBytes: 256,
+      fillerBytes: 2 * 1_024,
+      options: { maxStderrBytes: 96, maxDiagnosticTextBytes: 256 },
+    },
+    {
+      label: "default",
+      maxStderrBytes: 64 * 1_024,
+      maxDiagnosticTextBytes: 4 * 1_024,
+      fillerBytes: 35 * 1_024,
+      options: {},
+    },
+  ]
+
+  for (const fixture of cases) {
+    const head = `HEAD-${fixture.label}\n`
+    const sensitive = `SENSITIVE-MIDDLE-${fixture.label}`
+    const tail = `TAIL-${fixture.label}\n`
+    const totalBytes = Buffer.byteLength(head)
+      + fixture.fillerBytes
+      + Buffer.byteLength(sensitive)
+      + fixture.fillerBytes
+      + Buffer.byteLength(tail)
+    const lsp = new LspProcess({
+      command: process.execPath,
+      args: [
+        "-e",
+        `
+          process.stdin.once("data", () => {
+            process.stderr.write(${JSON.stringify(head)}, () => {
+              process.stderr.write("a".repeat(${fixture.fillerBytes}), () => {
+                process.stderr.write(${JSON.stringify(sensitive)}, () => {
+                  process.stderr.write("b".repeat(${fixture.fillerBytes}), () => {
+                    process.stderr.write(${JSON.stringify(tail)}, () => process.exit(23))
+                  })
+                })
+              })
+            })
+          })
+        `,
+      ],
+      ...fixture.options,
+    })
+
+    try {
+      const pending = lsp.response(110, 5_000)
+      lsp.send({ jsonrpc: "2.0", method: "fixture/trigger" })
+      const [result] = await withTimeout(
+        Promise.allSettled([pending]),
+        1_000,
+        "child did not exit after its stderr write callbacks",
+      )
+
+      assert.equal(result.status, "rejected")
+      assert.equal(lsp.stderrTotalBytes, totalBytes)
+      assert.equal(lsp.stderrRetainedBytes, fixture.maxStderrBytes)
+      assert.equal(lsp.stderrDroppedBytes, totalBytes - fixture.maxStderrBytes)
+      assert.match(lsp.stderr, new RegExp(`HEAD-${fixture.label}`))
+      assert.match(lsp.stderr, new RegExp(`TAIL-${fixture.label}`))
+      assert.doesNotMatch(lsp.stderr, new RegExp(sensitive))
+      assert.ok(
+        Buffer.byteLength(result.reason.message) <= fixture.maxDiagnosticTextBytes,
+        "exit diagnostic exceeded its hard byte limit",
+      )
+      assert.match(result.reason.message, new RegExp(`HEAD-${fixture.label}`))
+      assert.match(result.reason.message, new RegExp(`TAIL-${fixture.label}`))
+      assert.doesNotMatch(result.reason.message, new RegExp(sensitive))
+    } finally {
+      await lsp.close()
+    }
+  }
+})
+
+test("hard-bounds timeout diagnostic text", async () => {
+  const lsp = new LspProcess({
+    command: process.execPath,
+    args: ["-e", "process.stdin.resume()"],
+    maxDiagnosticTextBytes: 128,
+  })
+
+  try {
+    await assert.rejects(
+      lsp.notification(`fixture/${"x".repeat(2_048)}`, undefined, 20),
+      (error) => {
+        assert.match(error.message, /^Timed out waiting for LSP notification/)
+        assert.ok(Buffer.byteLength(error.message) <= 128)
+        return true
+      },
+    )
+  } finally {
+    await lsp.close()
+  }
+})
+
+test("hard-bounds protocol failure text without losing its structured code", async () => {
+  const lsp = new LspProcess({
+    command: process.execPath,
+    args: [
+      "-e",
+      `
+        process.stdin.once("data", () => {
+          process.stdout.write("Content-Length: 1" + "x".repeat(400) + "\\r\\n\\r\\n{")
+        })
+        process.stdin.resume()
+      `,
+    ],
+    maxDiagnosticTextBytes: 96,
+  })
+
+  try {
+    const pending = lsp.response(111, 5_000)
+    lsp.send({ jsonrpc: "2.0", method: "fixture/trigger" })
+    await assert.rejects(
+      withTimeout(pending, 1_000, "protocol failure was not delivered"),
+      (error) => {
+        assert.equal(error.code, "LSP_INVALID_HEADER")
+        assert.match(error.message, /^LSP protocol failure:/)
+        assert.ok(Buffer.byteLength(error.message) <= 96)
+        return true
+      },
+    )
+  } finally {
+    await lsp.close()
+  }
+})
+
+test("captures redacted send and receive envelopes in a diagnostic snapshot", async () => {
+  const request = {
+    jsonrpc: "2.0",
+    id: 120,
+    method: "fixture/secret",
+    params: { source: "SENSITIVE-SEND-SOURCE" },
+  }
+  const response = {
+    jsonrpc: "2.0",
+    id: 120,
+    result: { source: "SENSITIVE-RECEIVE-RESULT" },
+  }
+  const ready = {
+    jsonrpc: "2.0",
+    method: "fixture/ready",
+    params: { source: "SENSITIVE-RECEIVE-PARAMS" },
+  }
+  const encodedFrames = [response, ready].map((message) => {
+    const body = JSON.stringify(message)
+    return `Content-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`
+  }).join("")
+  const lsp = new LspProcess({
+    command: process.execPath,
+    args: [
+      "-e",
+      `
+        process.stdin.once("data", () => {
+          process.stdout.write(Buffer.from("${Buffer.from(encodedFrames).toString("base64")}", "base64"))
+        })
+        process.stdin.resume()
+      `,
+    ],
+  })
+
+  try {
+    lsp.send(request)
+    await lsp.response(120, 1_000)
+    await lsp.notification("fixture/ready", undefined, 1_000)
+
+    const snapshot = lsp.diagnosticSnapshot()
+    assert.equal(snapshot.pid, lsp.child.pid)
+    assert.equal(snapshot.terminal.state, "running")
+    assert.deepEqual(snapshot.pendingDescriptions, [])
+    assert.deepEqual(snapshot.parser, {
+      phase: "header",
+      bufferedBytes: 0,
+      expectedBytes: null,
+      receivedBytes: 0,
+    })
+    assert.deepEqual(snapshot.stderr, {
+      text: "",
+      totalBytes: 0,
+      retainedBytes: 0,
+      droppedBytes: 0,
+    })
+    assert.deepEqual(snapshot.transcript.entries, [
+      {
+        direction: "send",
+        sequence: 1,
+        kind: "request",
+        method: "fixture/secret",
+        id: 120,
+        byteSize: Buffer.byteLength(JSON.stringify(request)),
+      },
+      {
+        direction: "receive",
+        sequence: 2,
+        kind: "response",
+        method: null,
+        id: 120,
+        byteSize: Buffer.byteLength(JSON.stringify(response)),
+      },
+      {
+        direction: "receive",
+        sequence: 3,
+        kind: "notification",
+        method: "fixture/ready",
+        id: null,
+        byteSize: Buffer.byteLength(JSON.stringify(ready)),
+      },
+    ])
+    assert.equal(snapshot.transcript.totalEntries, 3)
+    assert.equal(snapshot.transcript.droppedEntries, 0)
+    assert.doesNotMatch(JSON.stringify(snapshot), /SENSITIVE-/)
+  } finally {
+    await lsp.close()
+  }
+})
+
+test("evicts oldest transcript envelopes by configurable entry and byte limits", async () => {
+  const notifications = Array.from({ length: 6 }, (_, index) => ({
+    jsonrpc: "2.0",
+    method: index === 5
+      ? "fixture/ready"
+      : `fixture/event-${index}-${"m".repeat(80)}`,
+    params: { source: `SENSITIVE-${index}` },
+  }))
+  const encodedFrames = notifications.map((message) => {
+    const body = JSON.stringify(message)
+    return `Content-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`
+  }).join("")
+  const cases = [
+    { maxTranscriptEntries: 3, maxTranscriptBytes: 10_000, exactEntries: 3 },
+    { maxTranscriptEntries: 100, maxTranscriptBytes: 220 },
+  ]
+
+  for (const limits of cases) {
+    const lsp = new LspProcess({
+      command: process.execPath,
+      args: [
+        "-e",
+        `
+          process.stdin.once("data", () => {
+            process.stdout.write(Buffer.from("${Buffer.from(encodedFrames).toString("base64")}", "base64"))
+          })
+          process.stdin.resume()
+        `,
+      ],
+      ...limits,
+    })
+
+    try {
+      lsp.send({
+        jsonrpc: "2.0",
+        id: 121,
+        method: "fixture/start",
+        params: { source: "SENSITIVE-SEND" },
+      })
+      await lsp.notification("fixture/ready", undefined, 1_000)
+      const transcript = lsp.diagnosticSnapshot().transcript
+
+      assert.equal(transcript.totalEntries, 7)
+      assert.ok(transcript.entries.length <= limits.maxTranscriptEntries)
+      assert.ok(transcript.retainedBytes <= limits.maxTranscriptBytes)
+      assert.ok(transcript.droppedEntries > 0)
+      if (limits.exactEntries !== undefined) {
+        assert.equal(transcript.entries.length, limits.exactEntries)
+        assert.deepEqual(transcript.entries.map((entry) => entry.sequence), [5, 6, 7])
+      }
+    } finally {
+      await lsp.close()
+    }
+  }
+})
+
+test("returns a deeply immutable snapshot of pending and terminal transport state", async () => {
+  const lsp = new LspProcess({
+    command: process.execPath,
+    args: [
+      "-e",
+      `
+        process.stdin.once("data", () => {
+          process.stdout.write("Content-Length: nope\\r\\n\\r\\n{")
+        })
+        process.stdin.resume()
+      `,
+    ],
+  })
+
+  try {
+    const pending = lsp.response(130, 5_000)
+    const pendingResult = Promise.allSettled([pending])
+    const running = lsp.diagnosticSnapshot()
+    assert.equal(running.pid, lsp.child.pid)
+    assert.equal(running.terminal.state, "running")
+    assert.deepEqual(running.pendingDescriptions, ["LSP response 130"])
+    assert.equal(running.parser.phase, "header")
+    assert.equal(running.parser.bufferedBytes, 0)
+    assert.equal(Object.isFrozen(running), true)
+    assert.equal(Object.isFrozen(running.terminal), true)
+    assert.equal(Object.isFrozen(running.pendingDescriptions), true)
+    assert.equal(Object.isFrozen(running.stderr), true)
+    assert.equal(Object.isFrozen(running.transcript), true)
+    assert.equal(Object.isFrozen(running.transcript.entries), true)
+    assert.throws(() => {
+      running.terminal.state = "tampered"
+    }, TypeError)
+
+    lsp.send({ jsonrpc: "2.0", method: "fixture/trigger" })
+    const [result] = await withTimeout(
+      pendingResult,
+      1_000,
+      "terminal protocol failure was not delivered",
+    )
+    assert.equal(result.status, "rejected")
+
+    const failed = lsp.diagnosticSnapshot()
+    assert.notEqual(failed, running)
+    assert.equal(failed.terminal.state, "failed")
+    assert.equal(failed.terminal.failureCode, "LSP_INVALID_HEADER")
+    assert.deepEqual(failed.pendingDescriptions, [])
+    assert.equal(Object.isFrozen(failed.transcript.entries[0]), true)
+  } finally {
+    await lsp.close()
+  }
+})
