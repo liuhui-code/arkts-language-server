@@ -5,7 +5,7 @@ import { fileURLToPath, pathToFileURL } from "node:url"
 
 import { CompletionItemKind } from "vscode-languageserver/node.js"
 
-import { applyTextEdits } from "./lsp-edits.mjs"
+import { applyTextEdits, applyWorkspaceEdit } from "./lsp-edits.mjs"
 import { LspSession } from "./lsp-session.mjs"
 import { materializeConformanceWorkspace } from "./materialize-conformance-workspace.mjs"
 
@@ -21,10 +21,12 @@ export async function assertInstalledSemanticSmoke({
   const definition = materialized.cases["profile.definition"]
   const completion = materialized.cases["completion.unicode"]
   const greeterDefinition = materialized.cases["greeter.definition"]
+  const quickFix = materialized.cases["quickfix.greeting"]
   const consumerSource = fs.readFileSync(fileURLToPath(reference.uri), "utf8")
   const definitionSource = fs.readFileSync(fileURLToPath(definition.uri), "utf8")
   const homeSource = fs.readFileSync(fileURLToPath(completion.uri), "utf8")
   const greeterSource = fs.readFileSync(fileURLToPath(greeterDefinition.uri), "utf8")
+  const quickFixSource = fs.readFileSync(fileURLToPath(quickFix.uri), "utf8")
   assert.equal(textInRange(consumerSource, reference.range), "Profile")
   assert.equal(textInRange(homeSource, completion.range), "Gree")
   const completionLine = homeSource.split("\n")[completion.range.start.line]
@@ -35,6 +37,7 @@ export async function assertInstalledSemanticSmoke({
     1,
     "the completion marker must use UTF-16 code units after its emoji prefix",
   )
+  assert.equal(textInRange(quickFixSource, quickFix.range), "greting")
   const externalCwd = cwd ?? path.join(temporaryRoot, "semantic-external-cwd")
   fs.mkdirSync(externalCwd, { recursive: true })
   const session = new LspSession({
@@ -52,7 +55,15 @@ export async function assertInstalledSemanticSmoke({
     rootUri: pathToFileURL(materialized.workspaceRoot).href,
     capabilities: {
       general: { positionEncodings: ["utf-16"] },
-      textDocument: { publishDiagnostics: { versionSupport: true } },
+      workspace: { workspaceEdit: { documentChanges: true } },
+      textDocument: {
+        publishDiagnostics: { versionSupport: true },
+        codeAction: {
+          codeActionLiteralSupport: { codeActionKind: { valueSet: ["quickfix"] } },
+          dataSupport: true,
+          resolveSupport: { properties: ["edit"] },
+        },
+      },
       window: { workDoneProgress: true },
     },
   })
@@ -60,6 +71,7 @@ export async function assertInstalledSemanticSmoke({
   try {
     const initialized = await session.initialize({ timeoutMs })
     assert.equal(initialized.result.capabilities.completionProvider.resolveProvider, true)
+    assert.equal(initialized.result.capabilities.codeActionProvider, undefined)
     const create = await session.transport.serverRequest(
       "window/workDoneProgress/create",
       () => true,
@@ -191,6 +203,104 @@ export async function assertInstalledSemanticSmoke({
       range: greeterDefinition.range,
     }])
     assert.equal(textInRange(greeterSource, greeterLocations[0].range), "Greeter")
+
+    session.transport.send({
+      jsonrpc: "2.0",
+      method: "textDocument/didClose",
+      params: { textDocument: { uri: completion.uri } },
+    })
+    const diagnosticsV1 = session.transport.notification(
+      "textDocument/publishDiagnostics",
+      (message) => message.params.uri === quickFix.uri
+        && message.params.version === 1
+        && message.params.diagnostics.some((diagnostic) => (
+          diagnostic.code === 2552 && sameRange(diagnostic.range, quickFix.range)
+        )),
+      timeoutMs,
+    )
+    session.openDocument({
+      uri: quickFix.uri,
+      languageId: "arkts",
+      version: 1,
+      text: quickFixSource,
+    })
+    const publishedQuickFix = await diagnosticsV1
+    const diagnostics = publishedQuickFix.params.diagnostics.filter((diagnostic) => (
+      diagnostic.code === 2552 && sameRange(diagnostic.range, quickFix.range)
+    ))
+    assert.deepEqual(diagnostics.map(({ range, severity, source, code }) => ({
+      range,
+      severity,
+      source,
+      code,
+    })), [{
+      range: quickFix.range,
+      severity: 1,
+      source: "arkts",
+      code: 2552,
+    }])
+
+    const listedResponse = await session.request("textDocument/codeAction", {
+      textDocument: { uri: quickFix.uri },
+      range: quickFix.range,
+      context: { diagnostics, only: ["quickfix"] },
+    }, { timeoutMs })
+    assert.equal(listedResponse.error, undefined, JSON.stringify(listedResponse.error))
+    assert.equal(listedResponse.result.length, 1, JSON.stringify(listedResponse.result))
+    const [action] = listedResponse.result
+    assert.deepEqual({
+      title: action.title,
+      kind: action.kind,
+      diagnostics: action.diagnostics,
+    }, {
+      title: "Change spelling to 'greeting'",
+      kind: "quickfix",
+      diagnostics,
+    })
+    assert.deepEqual(Object.keys(action.data ?? {}), ["arktsCodeActionId"])
+    assert.match(
+      action.data.arktsCodeActionId,
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    )
+    assert.equal("edit" in action, false)
+    assert.equal("command" in action, false)
+
+    const resolvedActionResponse = await session.request(
+      "codeAction/resolve",
+      action,
+      { timeoutMs },
+    )
+    assert.equal(
+      resolvedActionResponse.error,
+      undefined,
+      JSON.stringify(resolvedActionResponse.error),
+    )
+    const resolvedAction = resolvedActionResponse.result
+    assert.deepEqual(resolvedAction.data, action.data)
+    assert.deepEqual(resolvedAction.edit, {
+      documentChanges: [{
+        textDocument: { uri: quickFix.uri, version: 1 },
+        edits: [{ range: quickFix.range, newText: "greeting" }],
+      }],
+    })
+    assert.equal("changes" in resolvedAction.edit, false)
+    assert.equal("command" in resolvedAction, false)
+
+    const updatedQuickFixDocuments = applyWorkspaceEdit(
+      new Map([[quickFix.uri, quickFixSource]]),
+      resolvedAction.edit,
+      { documentVersions: new Map([[quickFix.uri, 1]]) },
+    )
+    const updatedQuickFix = updatedQuickFixDocuments.get(quickFix.uri)
+    assert.equal(updatedQuickFix, quickFixSource.replace("greting", "greeting"))
+    const quickFixDiagnosticsV2 = session.transport.notification(
+      "textDocument/publishDiagnostics",
+      (message) => message.params.uri === quickFix.uri && message.params.version === 2,
+      timeoutMs,
+    )
+    session.changeDocument({ uri: quickFix.uri, version: 2, text: updatedQuickFix })
+    const clearedQuickFixDiagnostics = await quickFixDiagnosticsV2
+    assert.deepEqual(clearedQuickFixDiagnostics.params.diagnostics, [])
   } finally {
     try {
       await session.close({ timeoutMs })
@@ -222,4 +332,11 @@ function positionAt(source, offset) {
   const line = before.split("\n").length - 1
   const lineStart = before.lastIndexOf("\n") + 1
   return { line, character: offset - lineStart }
+}
+
+function sameRange(left, right) {
+  return left?.start?.line === right.start.line
+    && left.start.character === right.start.character
+    && left?.end?.line === right.end.line
+    && left.end.character === right.end.character
 }
