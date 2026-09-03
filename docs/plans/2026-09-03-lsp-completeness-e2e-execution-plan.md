@@ -325,10 +325,11 @@ Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产�
 - [x] B4a bounded ProjectSet path cache 完成并独立复验（`052c670`）。
 - [x] B1b/B2b/B3/B5/B6 completion resolve tracer 完成并独立复验（`600eb84`）。
 - [ ] B4b watched-files create/delete/rename 一致性：并行实施中。
-- [ ] I2b installed completion-resolve characterization：并行实施中。
+- [x] I2b installed completion-resolve/apply-and-recheck characterization 完成并独立复验
+  （`c8774d7`）。
 - [x] Wave 3 references/rename 只读设计审查完成；R0 completeness gate 尚待实现，能力保持
   absent。
-- [ ] Wave 3 diagnostics code/code-action tracer：只读设计审查中。
+- [x] Wave 3 diagnostics code/code-action 只读设计审查完成；G1/Q1/Q2 尚待实现。
 - [ ] 本批次集成门禁：所有并行切片提交后运行 fresh `pnpm check:fast`。
 
 ### Wave 2 — 首个功能切片与 installed semantic smoke（部分并行）
@@ -364,7 +365,8 @@ Owner：一个端到端 owner 独占 semantic contract、project set、completio
 #### Track I：installed artifact semantic smoke（与场景 helper GREEN 后并行）
 
 - [x] I0 本地 installer characterization：从外部 cwd 启动安装后的命令，完成 completion、
-  definition、diagnostics 最小 transcript（`3b5f76c`）；该测试仍会从源码构建，不能替代 I1。
+  definition、diagnostics 以及 completion-resolve/apply-and-recheck transcript
+  （`3b5f76c`、`c8774d7`）；该测试仍会从源码构建，不能替代 I1。
 - [ ] I1 在禁止 build、无源码、无 node_modules、随机 cwd/clean HOME 环境安装 artifact。
 - [ ] I2 对不可变 artifact 的 installed command 运行 completion、definition、diagnostics 与
   completion-resolve/apply-and-recheck transcript。
@@ -381,13 +383,34 @@ capability advertisement 与 transcript 一致；`pnpm check:fast`、artifact sm
 解耦。当前 TypeScript engine 会静默丢弃未加载文件中的 references/rename locations；在能
 证明全局结果完整前不得 advertising，无法保证完整时必须 fail closed，不能返回成功但不完整。
 
-- [ ] R1 References：先分别为 `includeDeclaration=false/true` 建 RED；实现精确 ranges。
-- [ ] R2 References：unopened/re-export/overlay/同名负样本/cancel。
-- [ ] N1 Prepare rename：精确 range + placeholder；不可重命名目标返回 protocol error。
-- [ ] N2 Rename：跨文件 version-safe edits；非法名称与冲突；apply-and-recheck。
-- [ ] G1 Diagnostics：稳定 code、related info/data 的最小公共 contract。
-- [ ] Q1 Code action list：由 diagnostic code 产生 quick fix。
-- [ ] Q2 Code action resolve：lazy edit + stale version 拒绝 + apply 后 diagnostics 清零。
+- [ ] R0a 用 >256 文件 fixture 建立 project-snapshot completeness RED；snapshot 必须显式
+  `complete/partial`，partial 全局查询返回 `RequestFailed`，不得返回部分成功结果。
+- [ ] R0b 将 project membership 与 256 文件/8 MiB 内容缓存解耦；只在可证明完整的 snapshot
+  上执行 references/rename，并记录 workspace revision。
+- [ ] R1 References：`includeDeclaration=false` 返回 import、usage、barrel re-export 的完整
+  `Profile` ranges，排除 declaration 与同名 shadow；结果稳定排序、去重。
+- [ ] R2 References：`includeDeclaration=true` 只额外加入 origin declaration；覆盖 unopened、
+  overlay、另一参与文件变更后的 stale、client cancel。
+- [ ] N0 扩展安全 edit helper 支持 versioned `documentChanges`，原子拒绝 version mismatch、
+  unknown URI、resource operation、overlap/out-of-bounds，且不改变输入。
+- [ ] N1 Prepare rename：精确 range + placeholder；不可重命名目标返回固定 `RequestFailed`，
+  不泄露 TypeScript 本地化文案。
+- [ ] N2 Rename：先覆盖局部 import alias 语义，再覆盖 declaration→barrel→consumer 的跨文件
+  语义；保留 TS `prefixText/suffixText`，只返回稳定排序的 versioned `documentChanges`。
+- [ ] N3 Rename fail-closed：非法名称为 `InvalidParams`；不完整/越 root/不可映射为
+  `RequestFailed`；stale/superseded 为 `ContentModified`；client cancel 为 `RequestCancelled`。
+- [ ] N4 只有支持 `workspace.workspaceEdit.documentChanges` 的 client 才可 advertising rename；
+  支持 prepare 时广告 `{ prepareProvider: true }`，全部 bundle/installed transcript GREEN 后接线。
+- [ ] G1 Diagnostics：先只贯通 TypeScript numeric `code`，用含 emoji 且经过 ArkTS virtual
+  rewrite 的 `greting` marker 稳定断言 `TS2552`；related info/data/tags 留给 G1b。
+- [ ] Q1 Code action list：服务端按当前 snapshot 的 code + source-mapped range 重算匹配，
+  只返回唯一 `spelling` quick fix 的 title/kind/diagnostic/opaque UUID，不在 list 返回 edit。
+- [ ] Q2 Code action resolve：只信上限 512 条、绑定 URI/version 的服务端记录；返回 versioned
+  `TextDocumentEdit`，应用后 didChange v2 diagnostics 清零。
+- [ ] Q3 Code action reliability：伪造 UUID/过期版本拒绝，伪造 title/kind/diagnostic 无效，
+  client cancel 为 `RequestCancelled`，shutdown 清空 registry；全部测试不使用 sleep。
+- [ ] Q4 只有声明 code-action literal/data/resolve-edit 与 versioned documentChanges 支持的
+  client 才广告 `{ codeActionKinds: ["quickfix"], resolveProvider: true }`；installed GREEN 后接线。
 
 Wave 3 exit criteria：references、prepare rename/rename、code action 仅在各自 bundle、
 installed transcript 与 reliability matrix 全绿后 advertised。
