@@ -1,0 +1,7 @@
+{
+  "modelVersion": "5.0.0",
+  "name": "arkts-lsp-conformance",
+  "version": "1.0.0",
+  "description": "Deterministic ArkTS language-server conformance workspace",
+  "dependencies": {},
+}

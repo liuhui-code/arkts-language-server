@@ -1,0 +1,21 @@
+{
+  app: {
+    products: [
+      {
+        name: "default",
+      },
+    ],
+  },
+  modules: [
+    {
+      name: "entry",
+      srcPath: "./entry",
+      targets: [
+        {
+          name: "default",
+          applyToProducts: ["default"],
+        },
+      ],
+    },
+  ],
+}
