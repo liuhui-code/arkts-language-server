@@ -167,18 +167,24 @@ mode 和 SHA-256。installer 增加“从 artifact 安装/禁止构建”路径�
   version 安全；应用后语义闭环全绿。
 - [x] Code action + resolve：至少从稳定 diagnostic code 产生一个 quick fix；lazy resolve
   返回 version-safe WorkspaceEdit，应用后 diagnostics 清零。
-- [ ] Client capability negotiation：hover 遵守 `contentFormat`；document/workspace symbol
-  kind 遵守 `valueSet`，省略时只返回 LSP 1–18。
+- [x] Client capability negotiation：hover 遵守 `contentFormat`；document/workspace symbol
+  kind 遵守 `valueSet`，省略时只返回 LSP 1–18（`4ce9c7e`、`03916f0`）。安装产物的
+  plaintext/legacy-client 对照证据仍由 Wave 4b 单独追踪。
 - [ ] Document highlight：当前文档 declaration/write/read、精确 UTF-16 range、稳定排序、
-  overlay freshness 与 installed artifact 证据。
+  overlay freshness 与 installed artifact 证据。TypeScript core 与真实 LSP handler/capability
+  已完成（`20a37c7`、`380b6ff`）；取消与 immutable artifact 闭环尚未完成。
 - [ ] Folding range：ArkUI builder/import/comment、`lineFoldingOnly`、`rangeLimit`、稳定有界结果。
+  有界 lexical core 与真实 LSP handler/capability 已完成，focused 5/5 GREEN
+  （`d596edd`、`ab3b8a3`）；cancellation 与 artifact 证据仍未完成。
 - [ ] Document formatting：应用 edits 后 diagnostics 不增加、symbol identity 不变、二次调用
-  幂等；若交给外部 formatter，必须有 Zed host E2E 而非从矩阵隐去。
+  幂等；若交给外部 formatter，必须有 Zed host E2E 而非从矩阵隐去。有界、token-preserving、
+  幂等 core 已完成（`299a874`）；LSP 与语义/artifact 闭环仍未完成。
 
 ### P1：P0 后推进
 
-- [ ] ArkUI SDK provider：component/decorator/resource/attribute completion、hover、
-  definition、diagnostics。
+- [x] ArkUI SDK provider：component/decorator/resource/attribute completion、hover、
+  definition、diagnostics；immutable artifact 已覆盖 SDK breadth、resource 与 builder tail
+  （`6f5751b`、`2d7a496`、`b2b73c1`、`4ce2f91`）。
 - [ ] Type definition、implementation。
 - [ ] Semantic tokens、inlay hints、call hierarchy 的需求验证与分级；Zed 已由
   tree-sitter 满足的能力不重复建设。
@@ -327,6 +333,8 @@ Owner files：`tests/support/test-layer-manifest.mjs`、runner、package scripts
   `dist/scripted-semantic-server.cjs`；先用并发 child contract 观察 RED，再改为每进程临时
   artifact、同进程单次构建和有界清理（`a0fea3a`、`3bcab8c`）。默认沙箱下曾观察到的直接
   失败已单独确认是 `dist` 写权限边界；共享输出竞态则已从结构上消除。
+- [x] G3f document-highlight/folding/formatting 新测试入口已唯一归入 layer manifest，防止新增
+  suite 游离于门禁之外（`e56a1c2`）。
 
 Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产物；随后由集成轨
 串行接入 package scripts，并运行 `pnpm check:fast`。本地 exit gate 已完成：fresh build
@@ -424,8 +432,21 @@ Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产�
 - [x] U1c/U2 immutable installed artifact 已验证 resource completion/definition、missing
   diagnostic 与 builder-tail completion/hover/definition，执行 claim 与 matrix exact-set 绑定
   （`86bde16`、`f45d252`）。
-- [ ] 二次 P0 审计新增：hover/symbol client negotiation、document highlight、folding、document
-  formatting；三项缺失能力先进入 planned/absent 矩阵，再分别建立公共 RED。
+- [x] V0 二次 P0 审计的 fail-closed 基线：document highlight、folding、document formatting
+  已显式进入 planned/absent matrix；删除任一项都会因 absent coverage 缺失而失败
+  （`c423db1`）。
+- [x] V1/V2 bundle negotiation：hover 按 `contentFormat` 返回 Markdown/plaintext；document/
+  workspace symbols 按 `valueSet` 保留 modern kind 或降级到 LSP 1–18
+  （`4ce9c7e`、`03916f0`）。
+- [x] V3 immutable installed ArkUI SDK breadth：Entry/Component/State/Column/Text 的
+  completion/hover/definition 与 Markdown/modern-kind client 声明已进入唯一 combined claims
+  （`4ce2f91`）。
+- [x] V4a/V4b document highlight TypeScript core 与 LSP handler/capability 已完成
+  （`20a37c7`、`380b6ff`）；installed artifact/cancellation 仍未完成。
+- [x] V5a/V5b folding 的有界 lexical core 与真实 LSP 接线已完成，focused 5/5 GREEN
+  （`d596edd`、`ab3b8a3`）；cancellation/artifact 仍未完成。
+- [x] V6a formatting 的有界 token-preserving/idempotent core 已完成（`299a874`）；
+  LSP/semantic recheck/artifact 仍未完成。
 - [x] 本批次集成门禁：fresh `pnpm check:fast` 为 298/298，0 failed、0 skipped、0 todo，
   耗时 150.2 s；immutable portable acceptance 为 4/4（本分支 HEAD 含 `0445863`、`9fe3a88`）。
 
@@ -596,7 +617,7 @@ installed transcript 与 reliability matrix 全绿后 advertised。
     （`423817a`）。
   - [x] immutable installed artifact smoke（`c1e39a5`）；ArkTS component hierarchy 已由
     installed corpus 覆盖，更多 SDK component 语义仍留给 U1。
-- [ ] U1 ArkUI language features（ArkUI provider 与 virtualizer 分离 owner）：
+- [x] U1 ArkUI language features（ArkUI provider 与 virtualizer 分离 owner）：
   - [x] U1a `$r("app.string.ti")` 唯一补全 `title`，replacement range 精确；definition 指向
     固定 `string.json` key range；watched resource 后下一请求无 sleep 使用新 snapshot
     （`6f5751b`、`ae05a07`）。
@@ -608,8 +629,9 @@ installed transcript 与 reliability matrix 全绿后 advertised。
   - [x] U1c 在禁止 rebuild 的 immutable installed artifact 上复用 resource completion/
     definition 与 builder-tail transcript，并由执行时 `verifiedClaims` 绑定证据
     （`86bde16`、`f45d252`）。
-  - [ ] U1d installed artifact 继续覆盖 `@Entry/@Component/@State`、Column/Text 的 SDK
-    completion/hover/definition，不能用单个 width 场景代表整个 provider。
+  - [x] U1d installed artifact 覆盖 `@Entry/@Component/@State`、Column/Text 的 SDK
+    completion/hover/definition，并显式声明 Markdown 与 modern symbol-kind client 能力；三个
+    feature 各自保持单一 combined claim（`4ce2f91`）。
 - [x] U2 ArkUI diagnostics：
   - [x] 基础合法 DSL 为零，普通 syntax diagnostic 使用 numeric code；拼错 `@Componet`
     已 characterization 为 TS2552 + 精确 UTF-16 range（`6f5751b`、`51c93bc`）。
@@ -634,7 +656,7 @@ installed transcript 与 reliability matrix 全绿后 advertised。
 | F-ArkUI-resource | missing key diagnostics 真 RED | `src/core/arkui/**`、diagnostic contract 与独立测试 | `2d7a496` 完成；完整 snapshot 才报 missing |
 | F-ArkUI-tail | nested builder tail 真 RED | `arkts-virtual-document.ts` 与独立 tail 测试 | `b2b73c1` 已完成；待 installed transcript |
 | F-Test-runtime | scripted server 共写 repo `dist` | build helper、4 个 protocol caller、并发 contract | `a0fea3a`/`3bcab8c` 已完成；待统一 full gate |
-| F-Artifact-evidence | installed claims 的执行绑定 | installed helper、portable acceptance、feature matrix | ArkUI 真断言与 exact claims 已完成（`f45d252`） |
+| F-Artifact-evidence | installed claims 的执行绑定 | installed helper、portable acceptance、feature matrix | ArkUI resource/builder 真断言与 SDK breadth exact claims 已完成（`f45d252`、`4ce2f91`） |
 | F-Diagnostic-freshness | resource watcher 后诊断主动刷新 | 新公共 LSP transcript；生产接线由集成 owner 串行 | RED `2bb0fbe` → GREEN `b9b8d4b` |
 | F-Workspace/References/Rename | P0 深度与 artifact 闭环 | 对应独立 bundle/installed tests | 已完成，最终统一 full gate |
 
@@ -646,21 +668,37 @@ installed transcript 与 reliability matrix 全绿后 advertised。
 审计规则：matrix 必须同时建模 `enabled`、`planned/absent` 与经 host E2E 证明的
 `client-owned`；空的 planned/absent 集合不能被解释为“没有功能缺口”。
 
-- [ ] V0 Matrix baseline：document highlight、folding range、document formatting 在实现前
-  明确登记为 planned + absent；从计划、contract 或 matrix 任一处消失都 fail closed。
-- [ ] V1 Hover negotiation：plaintext-only client 不得收到 Markdown fence；明确支持 Markdown
-  的 client 保持现有结构，bundle 与 installed 各有一条真实 transcript。
-- [ ] V2 Symbol-kind negotiation：document/workspace symbol 省略 `valueSet` 时只返回 1–18；
-  明确声明 1–26 时保留 EnumMember/Struct/TypeParameter；bundle 与 installed 均验证。
-- [ ] V3 Installed SDK breadth：在 immutable artifact 上覆盖 Entry/Component/State/Column/Text，
-  复用 completion/hover/definition 场景而非以单个 `width` 断言泛化 provider。
-- [ ] V4 Document highlight tracer：真实 bundle 先以 method-not-found RED，随后实现
-  declaration/write/read kind、changed overlay freshness、排序去重、取消与 installed claim。
-- [ ] V5 Folding tracer：使用 source/syntax provider，不依赖完整 TypeScript Program；覆盖 ArkUI
-  nested builder、comment/import、`lineFoldingOnly`、`rangeLimit` 与 installed claim。
-- [ ] V6 Document formatting tracer：独立 source provider；应用 edits 后 diagnostics 不增加、
-  definition identity 保持、二次调用幂等、stale edits 不泄漏；若改由 Zed formatter 负责，则
-  必须先提供等价 host E2E 并登记 `client-owned`。
+- [x] V0 Matrix baseline：document highlight、folding range、document formatting 已登记为
+  planned + absent；contract/matrix coverage 使任一能力无法静默消失（`c423db1`）。
+- [ ] V1 Hover negotiation：
+  - [x] plaintext-only client 不收到 Markdown fence；明确支持 Markdown 的 client 保持现有结构，
+    bundle transcript 已完成（`4ce9c7e`）。
+  - [x] immutable installed SDK breadth 显式请求 Markdown 并验证结构（`4ce2f91`）。
+  - [ ] immutable artifact 的 plaintext-only 对照 transcript。
+- [ ] V2 Symbol-kind negotiation：
+  - [x] document/workspace symbol 省略 `valueSet` 时只返回 1–18，声明 1–26 时保留 modern kind，
+    bundle/protocol transcript 已完成（`03916f0`）。
+  - [x] immutable installed transcript 显式声明 1–26 并精确验证 Struct `kind=23`
+    （`4ce2f91`）。
+  - [ ] immutable artifact 的省略 `valueSet` legacy-client 对照 transcript。
+- [x] V3 Installed SDK breadth：immutable artifact 已覆盖 Entry/Component/State/Column/Text 的
+  completion/hover/definition，不再以单个 `width` 断言泛化 provider（`4ce2f91`）。
+- [ ] V4 Document highlight tracer：
+  - [x] TypeScript core 覆盖当前 changed overlay 的 declaration/write/read、UTF-16 range、
+    排序去重与 fail-closed 映射（`20a37c7`）。
+  - [x] 真实 bundle LSP handler 与 capability 已接线（`380b6ff`）。
+  - [ ] cancellation/freshness reliability 与 immutable installed artifact claim。
+- [ ] V5 Folding tracer：
+  - [x] 不依赖完整 TypeScript Program 的 bounded lexical core 已覆盖 ArkUI nested builder、
+    comment/import、`lineFoldingOnly`、`rangeLimit` 与超限 fail closed（`d596edd`）。
+  - [x] LSP capability/handler 已转发 `lineFoldingOnly`、`rangeLimit` 与受支持 kind，bundle 与
+    core focused 5/5 GREEN（`ab3b8a3`）。
+  - [ ] cancellation reliability 与 immutable installed artifact claim。
+- [ ] V6 Document formatting tracer：
+  - [x] 独立 bounded source formatter 已覆盖 token-preserving edits、二次调用幂等与预算超限
+    fail closed（`299a874`）。
+  - [ ] LSP capability/handler、应用 edits 后 diagnostics/definition identity、stale safety 与
+    immutable installed artifact claim；若改由 Zed formatter 负责，则先提供 host E2E。
 
 并行 ownership：V0/V3 只改 evidence/installed helper；V1/V2 串行独占 LSP capability codec；
 V4/V5/V6 可并行提交 test-only RED，生产 handler/contract 接线由 integration owner 逐条合入。
