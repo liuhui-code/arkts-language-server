@@ -1,4 +1,5 @@
 import assert from "node:assert/strict"
+import { once } from "node:events"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -7,7 +8,7 @@ import { pathToFileURL } from "node:url"
 
 import { applyTextEdits } from "./support/lsp-edits.mjs"
 import { LspSession } from "./support/lsp-session.mjs"
-import { projectRoot } from "./support/lsp-process.mjs"
+import { projectRoot, withTimeout } from "./support/lsp-process.mjs"
 
 test("initializes an injected real server target and closes through shutdown then exit", async (t) => {
   const logDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-lsp-session-"))
@@ -98,4 +99,32 @@ test("rejects a didChange version that does not advance the opened document", as
     () => session.changeDocument({ uri: documentUri, version: 7, text: "struct Versioned {}" }),
     /didChange version 7 must be greater than 7/i,
   )
+})
+
+test("close immediately reports a session already terminated by SIGTERM", async (t) => {
+  const logDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-lsp-session-signal-"))
+  t.after(() => fs.rmSync(logDirectory, { recursive: true, force: true }))
+  const session = new LspSession({
+    command: process.execPath,
+    args: ["dist/server.cjs", "--stdio"],
+    cwd: projectRoot,
+    env: { ARKTS_LSP_LOG_DIR: logDirectory },
+    rootUri: pathToFileURL(path.join(projectRoot, "fixtures", "basic")).href,
+  })
+  t.after(() => session.transport.close())
+
+  await session.initialize()
+  const exited = once(session.transport.child, "exit")
+  assert.equal(session.transport.child.kill("SIGTERM"), true)
+  assert.deepEqual(await exited, [null, "SIGTERM"])
+
+  const first = await withTimeout(
+    session.close({ timeoutMs: 500 }),
+    100,
+    "session.close() waited after the child had already exited by signal",
+  )
+  const second = await session.close()
+
+  assert.deepEqual(first, { shutdown: null, exit: { code: null, signal: "SIGTERM" } })
+  assert.strictEqual(second, first)
 })

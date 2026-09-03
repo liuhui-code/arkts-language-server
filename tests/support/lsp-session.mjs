@@ -72,7 +72,7 @@ export class LspSession {
   }
 
   async closeOnce(timeoutMs) {
-    if (this.transport.child.exitCode !== null) {
+    if (this.transport.child.exitCode !== null || this.transport.child.signalCode !== null) {
       return {
         shutdown: null,
         exit: {
