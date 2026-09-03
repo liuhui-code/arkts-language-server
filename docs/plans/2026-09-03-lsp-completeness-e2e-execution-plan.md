@@ -208,7 +208,8 @@ UTF-16 range 和 WorkspaceEdit codec 将被 references、rename、code action �
 
 Owner files：`tests/support/lsp-process.mjs`、`tests/lsp-process.test.mjs`。
 
-- [ ] H1 子进程异常退出立即拒绝 pending response，并带 code/signal/stderr。
+- [x] H1 子进程异常退出立即拒绝 pending response，并带 code/signal/stderr
+  （`3c3469e`）。
   - RED：`node --test tests/lsp-process.test.mjs`
   - GREEN：同命令。
 - [ ] H2 timeout 必须注销 waiter；迟到消息不得命中已失败请求。
@@ -222,7 +223,8 @@ Owner files：`tests/support/lsp-process.mjs`、`tests/lsp-process.test.mjs`。
 Owner files：`fixtures/conformance/v1/**`、
 `tests/support/materialize-conformance-workspace.mjs`、对应测试。
 
-- [ ] C1 marker 剥离后按 UTF-16 计算单点和 range，先用 emoji 前缀建立 RED。
+- [x] C1 marker 剥离后按 UTF-16 计算单点和 range，先用 emoji 前缀建立 RED
+  （`2287b2b`）。
 - [ ] C2 每次测试物化独立 temp workspace 和固定 SDK，不读取用户环境。
 - [ ] C3 加入最小 Harmony manifests、Home/Profile/barrel/Greeter/negative consumer。
 - [ ] C4 加入隔离的 ArkUI page 与最小 deterministic SDK stubs。
@@ -233,7 +235,8 @@ Owner files：`fixtures/conformance/v1/**`、
 Owner files：新建 `tests/support/lsp-session.mjs`、
 `tests/support/conformance-scenario.mjs` 及其测试；不修改 Track H 文件。
 
-- [ ] S1 用现有 `LspProcess` 建 initialize/shutdown helper；target 可注入 command/cwd/env。
+- [x] S1 用现有 `LspProcess` 建 initialize/shutdown helper；target 可注入 command/cwd/env
+  （`bfe6644`）。
 - [ ] S2 同一 smoke scenario 可运行 repo bundle 和任意 installed command。
 - [ ] S3 支持应用 TextEdit/WorkspaceEdit 后发送 incremental/full didChange。
 - [ ] S4 将现有手拼 URI 统一为 `pathToFileURL`，fixture root 不再指向整个 repo。
@@ -243,7 +246,7 @@ Owner files：新建 `tests/support/lsp-session.mjs`、
 Owner files：新建 artifact manifest/证据 helper 及其测试；暂不修改 package scripts、
 installer 或 workflow，这些由集成轨在各 track GREEN 后接线。
 
-- [ ] A1 artifact manifest 的路径、mode、size、digest contract。
+- [x] A1 artifact manifest 的路径、mode、size、digest contract（`a4abd5b`）。
 - [ ] A2 evidence directory 在成功时清理、失败时保留 transcript/log/process metadata。
 - [ ] A3 资源 sampler 输出 Node/sidecar PID、RSS、CPU、时间戳，且能可靠停止。
 
