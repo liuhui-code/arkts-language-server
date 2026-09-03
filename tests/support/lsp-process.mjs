@@ -1,5 +1,4 @@
 import { spawn } from "node:child_process"
-import { once } from "node:events"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
@@ -23,6 +22,7 @@ export class LspProcess {
     this.waiters = []
     this.stderr = ""
     this.transportFailure = undefined
+    this.closePromise = undefined
     this.child.stdout.on("data", (chunk) => this.acceptSafely(chunk))
     this.child.stderr.on("data", (chunk) => { this.stderr += chunk.toString() })
     this.child.on("close", (code, signal) => this.rejectPendingOnClose(code, signal))
@@ -87,11 +87,31 @@ export class LspProcess {
     }
   }
 
-  async close() {
-    if (this.child.exitCode !== null || this.child.signalCode !== null) return
-    const exited = once(this.child, "exit")
-    this.child.kill("SIGTERM")
-    await exited
+  close({ graceMs = 1_000 } = {}) {
+    if (this.closePromise) return this.closePromise
+    if (this.child.exitCode !== null || this.child.signalCode !== null) {
+      this.closePromise = Promise.resolve({
+        code: this.child.exitCode,
+        signal: this.child.signalCode,
+      })
+      return this.closePromise
+    }
+
+    this.closePromise = new Promise((resolve) => {
+      const onExit = (code, signal) => {
+        clearTimeout(escalation)
+        resolve({ code, signal })
+      }
+      const escalation = setTimeout(() => {
+        if (this.child.exitCode === null && this.child.signalCode === null) {
+          this.child.kill("SIGKILL")
+        }
+      }, graceMs)
+
+      this.child.once("exit", onExit)
+      this.child.kill("SIGTERM")
+    })
+    return this.closePromise
   }
 
   acceptSafely(chunk) {

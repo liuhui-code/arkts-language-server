@@ -1,4 +1,5 @@
 import assert from "node:assert/strict"
+import { once } from "node:events"
 import test from "node:test"
 
 import { LspProcess, withTimeout } from "./support/lsp-process.mjs"
@@ -149,5 +150,47 @@ test("rejects every pending waiter when a notification matcher throws", async ()
     assert.equal(results[0].reason, results[1].reason)
   } finally {
     await lsp.close()
+  }
+})
+
+test("bounds concurrent close calls when the child ignores SIGTERM", async () => {
+  const lsp = new LspProcess({
+    command: process.execPath,
+    args: [
+      "-e",
+      `
+        process.on("SIGTERM", () => {
+          process.stderr.write("fixture ignored SIGTERM\\n")
+        })
+        const body = JSON.stringify({ jsonrpc: "2.0", method: "fixture/ready" })
+        process.stdout.write(
+          "Content-Length: " + Buffer.byteLength(body) + "\\r\\n\\r\\n" + body,
+        )
+        setInterval(() => {}, 1_000)
+      `,
+    ],
+  })
+
+  try {
+    await lsp.notification("fixture/ready", undefined, 1_000)
+
+    const firstClose = lsp.close({ graceMs: 40 })
+    const secondClose = lsp.close({ graceMs: 500 })
+    const sharesCloseResult = firstClose === secondClose
+    const result = await withTimeout(
+      firstClose,
+      1_000,
+      "close did not escalate after its grace deadline",
+    )
+
+    assert.equal(sharesCloseResult, true)
+    assert.deepEqual(result, { code: null, signal: "SIGKILL" })
+    assert.equal(lsp.close({ graceMs: 1 }), firstClose)
+  } finally {
+    if (lsp.child.exitCode === null && lsp.child.signalCode === null) {
+      const exited = once(lsp.child, "exit")
+      lsp.child.kill("SIGKILL")
+      await withTimeout(exited, 1_000, "fixture child did not exit after test cleanup")
+    }
   }
 })
