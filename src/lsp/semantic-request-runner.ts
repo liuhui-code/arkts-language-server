@@ -24,6 +24,7 @@ interface SemanticRequest<T> {
   documentUri: string
   token?: CancellationToken
   fallback: T
+  scope?: "document" | "workspace"
   execute(document: DocumentSnapshot, signal: AbortSignal): Promise<VersionedSemanticResult<T>>
 }
 
@@ -42,11 +43,14 @@ export class SemanticRequestRunner {
         return request.fallback
       }
 
+      const requestedDocument = this.dependencies.snapshot(document)
       freshRequest = this.dependencies.freshness.start(
         `${request.method}:${document.uri}`,
         request.token,
+        request.scope === "workspace"
+          ? { kind: "workspace", workspaceId: requestedDocument.workspaceId }
+          : { kind: "document", documentUri: document.uri },
       )
-      const requestedDocument = this.dependencies.snapshot(document)
       const result = await request.execute(requestedDocument, freshRequest.signal)
       if (freshRequest.clientCancelled()) {
         outcome = "cancelled"

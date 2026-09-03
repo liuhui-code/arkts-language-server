@@ -92,6 +92,7 @@ export function registerSemanticCapabilities({
       documentUri: params.textDocument.uri,
       token,
       fallback: { status: "stale" },
+      scope: "workspace",
       execute: (document, signal) => semantic.references({
         document,
         position: params.position,
@@ -120,6 +121,7 @@ export function registerSemanticCapabilities({
       documentUri: params.textDocument.uri,
       token,
       fallback: { status: "stale" },
+      scope: "workspace",
       execute: (document, signal) => semantic.prepareRename({
         document,
         position: params.position,
@@ -137,6 +139,7 @@ export function registerSemanticCapabilities({
       documentUri: params.textDocument.uri,
       token,
       fallback: { status: "stale" },
+      scope: "workspace",
       execute: (document, signal) => semantic.rename({
         document,
         position: params.position,

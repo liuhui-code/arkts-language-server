@@ -7,41 +7,64 @@ export interface FreshRequest {
   finish(): void
 }
 
-export class RequestFreshness {
-  private readonly lanes = new Map<string, AbortController>()
+export type RequestFreshnessScope =
+  | { kind: "document"; documentUri: string }
+  | { kind: "workspace"; workspaceId: string }
+  | { kind: "independent" }
 
-  start(lane: string, token?: CancellationToken): FreshRequest {
-    this.lanes.get(lane)?.abort(new Error("Semantic request superseded"))
+interface ActiveRequest {
+  controller: AbortController
+  scope: RequestFreshnessScope
+}
+
+export class RequestFreshness {
+  private readonly lanes = new Map<string, ActiveRequest>()
+
+  start(
+    lane: string,
+    token: CancellationToken | undefined,
+    scope: RequestFreshnessScope,
+  ): FreshRequest {
+    this.lanes.get(lane)?.controller.abort(new Error("Semantic request superseded"))
     const controller = new AbortController()
+    const active = { controller, scope }
     let clientCancelled = token?.isCancellationRequested ?? false
     const cancellation = token?.onCancellationRequested(() => {
       clientCancelled = true
       controller.abort(new Error("Semantic request cancelled by client"))
     })
     if (clientCancelled) controller.abort(new Error("Semantic request cancelled by client"))
-    this.lanes.set(lane, controller)
+    this.lanes.set(lane, active)
     return {
       signal: controller.signal,
       clientCancelled: () => clientCancelled,
-      isCurrent: () => this.lanes.get(lane) === controller,
+      isCurrent: () => this.lanes.get(lane) === active && !controller.signal.aborted,
       finish: () => {
         cancellation?.dispose()
-        if (this.lanes.get(lane) === controller) this.lanes.delete(lane)
+        if (this.lanes.get(lane) === active) this.lanes.delete(lane)
       },
     }
   }
 
   cancelAll(): void {
-    for (const controller of this.lanes.values()) {
+    for (const { controller } of this.lanes.values()) {
       controller.abort(new Error("Language server shutting down"))
     }
     this.lanes.clear()
   }
 
   cancelDocument(documentUri: string): void {
-    for (const [lane, controller] of this.lanes) {
-      if (lane.endsWith(`:${documentUri}`)) {
+    for (const { controller, scope } of this.lanes.values()) {
+      if (scope.kind === "document" && scope.documentUri === documentUri) {
         controller.abort(new Error("Document version changed"))
+      }
+    }
+  }
+
+  cancelWorkspace(workspaceId: string): void {
+    for (const { controller, scope } of this.lanes.values()) {
+      if (scope.kind === "workspace" && scope.workspaceId === workspaceId) {
+        controller.abort(new Error("Workspace content changed"))
       }
     }
   }

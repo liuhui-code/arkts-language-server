@@ -260,6 +260,7 @@ export function runLanguageServer(services?: LanguageServerServices): void {
 
   documents.onDidOpen(({ document }) => {
     const opened = snapshot(document, projects)
+    freshness.cancelWorkspace(opened.workspaceId)
     semantic.sync(opened)
     workspaceSymbols?.sync(opened)
     diagnostics.update(document)
@@ -267,19 +268,26 @@ export function runLanguageServer(services?: LanguageServerServices): void {
   connection.onDidChangeWatchedFiles(({ changes }) => {
     workspaceFileChanges.accept(changes)
     const batches = workspaceFileChanges.drain()
-    if (batches.length > 0) semantic.workspaceFilesChanged?.(batches)
+    if (batches.length > 0) {
+      for (const batch of batches) {
+        freshness.cancelWorkspace(projects.projectFor(batch.rootUri).id)
+      }
+      semantic.workspaceFilesChanged?.(batches)
+    }
   })
   documents.onDidChangeContent(({ document }) => {
+    const changed = snapshot(document, projects)
     freshness.cancelDocument(document.uri)
+    freshness.cancelWorkspace(changed.workspaceId)
     completionResolutions.forgetDocument(document.uri)
     codeActionResolutions.forgetDocument(document.uri)
-    const changed = snapshot(document, projects)
     semantic.sync(changed)
     workspaceSymbols?.sync(changed)
     diagnostics.update(document)
   })
   documents.onDidClose(({ document }) => {
     freshness.cancelDocument(document.uri)
+    freshness.cancelWorkspace(projects.projectFor(document.uri).id)
     completionResolutions.forgetDocument(document.uri)
     codeActionResolutions.forgetDocument(document.uri)
     semantic.close(document.uri)
@@ -462,7 +470,11 @@ export function runLanguageServer(services?: LanguageServerServices): void {
   connection.onWorkspaceSymbol(async (params, token) => {
     const startedAt = performance.now()
     let outcome = "error"
-    const request = freshness.start("workspace/symbol", token)
+    const request = freshness.start(
+      "workspace/symbol",
+      token,
+      { kind: "independent" },
+    )
     try {
       assertRunning()
       if (!workspaceSymbols) {

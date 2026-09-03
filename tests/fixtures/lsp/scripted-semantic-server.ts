@@ -21,6 +21,7 @@ import type {
   VersionedSemanticResult,
   SemanticCompletion,
   SemanticDefinition,
+  SemanticWorkspaceFileChangeBatch,
 } from "../../../src/contracts/semantic-engine.js"
 import { runLanguageServer } from "../../../src/lsp/run-language-server.js"
 import { SingleRootProjectResolver } from "../../../src/project/single-root-project-resolver.js"
@@ -30,19 +31,47 @@ class ScriptedSemanticEngine implements SemanticEnginePort {
   private completionCount = 0
   private readonly resistantCodeActionResolvers = new Map<string, () => void>()
   private readonly resistantRenameResolvers = new Map<string, () => void>()
+  private readonly workspaceMutationResolvers = new Map<string, Set<() => void>>()
+  private readonly documentWorkspaces = new Map<string, string>()
 
   sync(document: DocumentSnapshot): void {
+    this.documentWorkspaces.set(document.uri, document.workspaceId)
     this.releaseResistantRename(document.uri)
+    this.releaseWorkspaceMutation(
+      document.workspaceId,
+      `${document.uri}@${document.version}`,
+      document.text.includes("WORKSPACE_MUTATION_PROBE"),
+    )
   }
 
   close(documentUri: string): void {
     this.releaseResistantRename(documentUri)
+    const workspaceId = this.documentWorkspaces.get(documentUri)
+    if (workspaceId) this.releaseWorkspaceMutation(workspaceId, `${documentUri}@close`)
+    this.documentWorkspaces.delete(documentUri)
+  }
+
+  workspaceFilesChanged(batches: readonly SemanticWorkspaceFileChangeBatch[]): void {
+    for (const batch of batches) {
+      this.releaseWorkspaceMutation(batch.rootUri, batch.rootUri)
+    }
   }
 
   async complete(
     query: SemanticQuery,
   ): Promise<VersionedSemanticResult<SemanticCompletion[]>> {
     this.completionCount += 1
+    if (query.document.text.includes("RELEASE_WORKSPACE_GLOBAL_BARRIER")) {
+      this.releaseWorkspaceMutation(
+        query.document.workspaceId,
+        `semantic-release:${query.document.uri}`,
+      )
+    }
+    await this.waitForWorkspaceMutation(
+      query,
+      "completion",
+      "WORKSPACE_MUTATION_RELEASES_COMPLETION",
+    )
     if (
       query.document.text.includes("FIRST_WAITS_FOR_ABORT")
       && this.completionCount === 1
@@ -146,12 +175,19 @@ class ScriptedSemanticEngine implements SemanticEnginePort {
   async references(
     query: SemanticReferencesQuery,
   ): Promise<VersionedSemanticResult<SemanticReferencesOutcome>> {
-    return scriptedSemanticResult(query, { status: "complete", references: [] })
+    await this.waitForWorkspaceMutation(query, "references")
+    return scriptedSemanticResult(query, {
+      status: "complete",
+      references: query.document.text.includes("WORKSPACE_GLOBAL_IGNORES_ABORT")
+        ? [{ uri: query.document.uri, range: zeroRange() }]
+        : [],
+    })
   }
 
   async prepareRename(
     query: SemanticQuery,
   ): Promise<VersionedSemanticResult<SemanticPrepareRenameOutcome>> {
+    await this.waitForWorkspaceMutation(query, "prepareRename")
     if (query.document.text.includes("RENAME_WAITS_FOR_ABORT")) {
       console.log("scripted prepare-rename wait entered")
       return waitForAbortValue(query.signal)
@@ -175,6 +211,7 @@ class ScriptedSemanticEngine implements SemanticEnginePort {
   async rename(
     query: SemanticRenameQuery,
   ): Promise<VersionedSemanticResult<SemanticRenameOutcome>> {
+    await this.waitForWorkspaceMutation(query, "rename")
     if (query.document.text.includes("RENAME_WAITS_FOR_ABORT")) {
       console.log("scripted rename wait entered")
       return waitForAbortValue(query.signal)
@@ -278,6 +315,36 @@ class ScriptedSemanticEngine implements SemanticEnginePort {
     if (!release) return
     this.resistantRenameResolvers.delete(documentUri)
     release()
+  }
+
+  private waitForWorkspaceMutation(
+    query: SemanticDocumentQuery,
+    method: string,
+    marker = "WORKSPACE_GLOBAL_IGNORES_ABORT",
+  ): Promise<void> {
+    if (!query.document.text.includes(marker)) {
+      return Promise.resolve()
+    }
+    console.log(`scripted workspace-global ${method} entered ${query.document.uri}`)
+    return new Promise((resolve) => {
+      const resolvers = this.workspaceMutationResolvers.get(query.document.workspaceId)
+        ?? new Set<() => void>()
+      resolvers.add(resolve)
+      this.workspaceMutationResolvers.set(query.document.workspaceId, resolvers)
+    })
+  }
+
+  private releaseWorkspaceMutation(
+    workspaceId: string,
+    changedUri: string,
+    announce = false,
+  ): void {
+    const resolvers = this.workspaceMutationResolvers.get(workspaceId)
+    if (!resolvers && !announce) return
+    console.log(`scripted workspace mutation processed ${workspaceId} ${changedUri}`)
+    if (!resolvers) return
+    this.workspaceMutationResolvers.delete(workspaceId)
+    for (const release of resolvers) release()
   }
 }
 
