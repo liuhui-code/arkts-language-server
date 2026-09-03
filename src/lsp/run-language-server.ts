@@ -9,6 +9,7 @@ import {
   DidChangeWatchedFilesNotification,
   ErrorCodes,
   type InitializeParams,
+  LSPErrorCodes,
   PositionEncodingKind,
   ProposedFeatures,
   ResponseError,
@@ -587,7 +588,7 @@ function invalidCompletionResolution(): ResponseError<void> {
 
 function invalidCodeActionResolution(status: "stale" | "unknown"): ResponseError<void> {
   return new ResponseError(
-    ErrorCodes.InvalidParams,
+    status === "stale" ? LSPErrorCodes.ContentModified : ErrorCodes.InvalidParams,
     status === "stale" ? "Code action is stale" : "Code action is unknown",
   )
 }

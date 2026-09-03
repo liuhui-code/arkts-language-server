@@ -213,9 +213,34 @@ test("resolves and applies the current spelling fix as one versioned document ed
   assert.equal(listed.error, undefined, JSON.stringify(listed.error))
   assert.equal(listed.result.length, 1, JSON.stringify(listed.result))
 
-  const resolved = await session.request("codeAction/resolve", listed.result[0])
+  const resolved = await session.request("codeAction/resolve", {
+    ...listed.result[0],
+    title: "FORGED CLIENT TITLE",
+    kind: "source.fixAll",
+    diagnostics: [{
+      range: {
+        start: { line: 99, character: 99 },
+        end: { line: 99, character: 100 },
+      },
+      severity: 2,
+      code: 9999,
+      source: "forged-client",
+      message: "FORGED CLIENT DIAGNOSTIC",
+    }],
+    edit: { changes: { [quickFix.uri]: [{ range: quickFix.range, newText: "PWNED" }] } },
+    command: { title: "FORGED CLIENT COMMAND", command: "forged.command" },
+  })
 
   assert.equal(resolved.error, undefined, JSON.stringify(resolved.error))
+  assert.deepEqual({
+    title: resolved.result.title,
+    kind: resolved.result.kind,
+    diagnostics: resolved.result.diagnostics,
+  }, {
+    title: listed.result[0].title,
+    kind: "quickfix",
+    diagnostics,
+  })
   assert.deepEqual(resolved.result.edit, {
     documentChanges: [{
       textDocument: { uri: quickFix.uri, version: 1 },
@@ -240,6 +265,124 @@ test("resolves and applies the current spelling fix as one versioned document ed
   session.changeDocument({ uri: quickFix.uri, version: 2, text: updated })
   const current = await versionTwoPublication
   assert.deepEqual(current.params.diagnostics, [])
+})
+
+test("rejects unknown and forged code-action resolve data as InvalidParams", async (t) => {
+  const materialized = await materializeConformanceWorkspace()
+  const session = new LspSession({
+    command: process.execPath,
+    args: [path.join(projectRoot, "dist", "server.cjs"), "--stdio"],
+    cwd: projectRoot,
+    env: {
+      HOME: path.join(materialized.root, "missing-home"),
+      DEVECO_SDK_HOME: path.join(materialized.root, "missing-deveco"),
+      ARKLINE_HARMONY_SDK_PATH: path.join(materialized.corpusRoot, "sdk", "openharmony"),
+      ARKTS_LSP_LOG_DIR: path.join(materialized.root, "logs"),
+    },
+    rootUri: pathToFileURL(materialized.workspaceRoot).href,
+  })
+  t.after(async () => {
+    try {
+      await session.close()
+    } finally {
+      await fs.promises.rm(materialized.root, { recursive: true, force: true })
+    }
+  })
+
+  await session.initialize()
+  for (const data of [
+    { arktsCodeActionId: "00000000-0000-4000-8000-000000000000" },
+    { arktsCodeActionId: "not-a-uuid", injected: true },
+  ]) {
+    const response = await session.request("codeAction/resolve", {
+      title: "client-controlled",
+      data,
+    })
+    assert.equal(response.result, undefined)
+    assert.equal(response.error.code, -32602)
+    assert.equal(response.error.message, "Code action is unknown")
+  }
+})
+
+test("reports issued code actions as ContentModified after change or close", async (t) => {
+  for (const lifecycle of ["change", "close"]) {
+    const materialized = await materializeConformanceWorkspace()
+    const quickFix = materialized.cases["quickfix.greeting"]
+    const source = fs.readFileSync(fileURLToPath(quickFix.uri), "utf8")
+    const session = new LspSession({
+      command: process.execPath,
+      args: [path.join(projectRoot, "dist", "server.cjs"), "--stdio"],
+      cwd: projectRoot,
+      env: {
+        HOME: path.join(materialized.root, "missing-home"),
+        DEVECO_SDK_HOME: path.join(materialized.root, "missing-deveco"),
+        ARKLINE_HARMONY_SDK_PATH: path.join(materialized.corpusRoot, "sdk", "openharmony"),
+        ARKTS_LSP_LOG_DIR: path.join(materialized.root, "logs"),
+      },
+      rootUri: pathToFileURL(materialized.workspaceRoot).href,
+    })
+    t.after(async () => {
+      try {
+        await session.close()
+      } finally {
+        await fs.promises.rm(materialized.root, { recursive: true, force: true })
+      }
+    })
+
+    await session.initialize()
+    const publication = session.transport.notification(
+      "textDocument/publishDiagnostics",
+      (message) => message.params.uri === quickFix.uri && message.params.version === 1,
+    )
+    session.openDocument({
+      uri: quickFix.uri,
+      languageId: "arkts",
+      version: 1,
+      text: source,
+    })
+    const published = await publication
+    const diagnostics = published.params.diagnostics.filter((diagnostic) => (
+      diagnostic.code === 2552 && sameRange(diagnostic.range, quickFix.range)
+    ))
+    const listed = await session.request("textDocument/codeAction", {
+      textDocument: { uri: quickFix.uri },
+      range: quickFix.range,
+      context: { diagnostics, only: ["quickfix"] },
+    })
+    assert.equal(listed.result.length, 1, `${lifecycle}: ${JSON.stringify(listed)}`)
+    const issued = listed.result[0]
+
+    if (lifecycle === "change") {
+      const versionTwoPublication = session.transport.notification(
+        "textDocument/publishDiagnostics",
+        (message) => message.params.uri === quickFix.uri && message.params.version === 2,
+      )
+      session.changeDocument({
+        uri: quickFix.uri,
+        version: 2,
+        text: source.replace("greting", "greeting"),
+      })
+      await versionTwoPublication
+    } else {
+      const clearedPublication = session.transport.notification(
+        "textDocument/publishDiagnostics",
+        (message) => message.params.uri === quickFix.uri
+          && message.params.version === undefined
+          && message.params.diagnostics.length === 0,
+      )
+      session.transport.send({
+        jsonrpc: "2.0",
+        method: "textDocument/didClose",
+        params: { textDocument: { uri: quickFix.uri } },
+      })
+      await clearedPublication
+    }
+
+    const stale = await session.request("codeAction/resolve", issued)
+    assert.equal(stale.result, undefined)
+    assert.equal(stale.error.code, -32801, lifecycle)
+    assert.equal(stale.error.message, "Code action is stale", lifecycle)
+  }
 })
 
 test("rapid change and close never publish diagnostics for an obsolete version", async (t) => {

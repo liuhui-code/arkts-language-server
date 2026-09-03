@@ -2,12 +2,15 @@ import { pathToFileURL } from "node:url"
 
 import type { DocumentSnapshot } from "../../../src/contracts/document.js"
 import type {
+  SemanticCodeActionQuery,
+  SemanticCodeActionResolveQuery,
   SemanticDocumentQuery,
   SemanticDocumentSymbol,
   SemanticEnginePort,
   SemanticHover,
   SemanticCompletionResolveQuery,
   SemanticQuery,
+  SemanticResolvedCodeAction,
   SemanticSignatureHelp,
   VersionedSemanticResult,
   SemanticCompletion,
@@ -19,6 +22,7 @@ import { DefaultWorkspaceSymbolService } from "../../../src/workspace/default-wo
 
 class ScriptedSemanticEngine implements SemanticEnginePort {
   private completionCount = 0
+  private readonly resistantCodeActionResolvers = new Map<string, () => void>()
 
   sync(_document: DocumentSnapshot): void {}
 
@@ -71,6 +75,51 @@ class ScriptedSemanticEngine implements SemanticEnginePort {
       ...query.completion,
       detail: "Resolved scripted semantic completion",
       documentation: "Scripted completion documentation.",
+    })
+  }
+
+  async codeActions(query: SemanticCodeActionQuery) {
+    return scriptedSemanticResult(query, [{
+      title: "Replace scripted typo",
+      kind: "quickfix" as const,
+      diagnostic: {
+        range: zeroRange(),
+        severity: "error" as const,
+        code: 2552,
+        message: "Scripted spelling diagnostic",
+        source: "arkts" as const,
+      },
+      fingerprint: "scripted-code-action-v1",
+    }])
+  }
+
+  async resolveCodeAction(
+    query: SemanticCodeActionResolveQuery,
+  ): Promise<VersionedSemanticResult<SemanticResolvedCodeAction | null>> {
+    if (query.document.text.includes("CODE_ACTION_RESOLVE_WAITS_FOR_ABORT")) {
+      console.log("scripted code-action resolve entered")
+      return waitForAbortValue(query.signal)
+    }
+    if (query.document.text.includes("CODE_ACTION_RESOLVE_IGNORES_ABORT")) {
+      const releasePrevious = this.resistantCodeActionResolvers.get(query.document.uri)
+      if (releasePrevious) {
+        this.resistantCodeActionResolvers.delete(query.document.uri)
+        releasePrevious()
+      } else {
+        console.log("scripted resistant resolve entered")
+        await new Promise<void>((resolve) => {
+          this.resistantCodeActionResolvers.set(query.document.uri, resolve)
+        })
+      }
+    }
+    return scriptedSemanticResult(query, {
+      ...query.action,
+      edits: [{
+        uri: query.document.uri,
+        range: query.action.diagnostic.range,
+        newText: "fixed",
+        expectedVersion: query.document.version,
+      }],
     })
   }
 
