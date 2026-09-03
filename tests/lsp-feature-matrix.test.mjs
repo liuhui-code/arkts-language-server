@@ -34,13 +34,12 @@ test("maps the complete public capability contract to executable feature evidenc
     "diagnostics",
     "completion-resolve",
     "references",
+    "rename",
     "code-actions",
   ])
-  assert.deepEqual(audit.plannedFeatureIds, [
-    "rename",
-  ])
-  assert.equal(audit.requiredCapabilityCount, 13)
-  assert.equal(audit.absentCapabilityCount, 1)
+  assert.deepEqual(audit.plannedFeatureIds, [])
+  assert.equal(audit.requiredCapabilityCount, 14)
+  assert.equal(audit.absentCapabilityCount, 0)
   assert.deepEqual(audit.artifactCoveredFeatureIds, [
     "document-sync",
     "completion",
@@ -52,11 +51,10 @@ test("maps the complete public capability contract to executable feature evidenc
     "diagnostics",
     "completion-resolve",
     "references",
+    "rename",
     "code-actions",
   ])
-  assert.deepEqual(audit.artifactGapFeatureIds, [
-    "rename",
-  ])
+  assert.deepEqual(audit.artifactGapFeatureIds, [])
   const diagnostics = CURRENT_LSP_FEATURE_MATRIX.features.find(({ id }) => id === "diagnostics")
   assert.deepEqual(diagnostics?.knownGaps, [])
   const hover = CURRENT_LSP_FEATURE_MATRIX.features.find(({ id }) => id === "hover")
@@ -93,6 +91,13 @@ test("maps the complete public capability contract to executable feature evidenc
     claim: "references.artifact.immutable-unopened-barrel-declaration-policy",
   }])
   assert.equal(references?.artifactGap, null)
+  const rename = CURRENT_LSP_FEATURE_MATRIX.features.find(({ id }) => id === "rename")
+  assert.deepEqual(rename?.evidence.artifact, [{
+    entry: "tests/release/portable-install.acceptance.mjs",
+    test: "installs one verified artifact without source dependencies or a rebuild",
+    claim: "rename.artifact.immutable-versioned-alias-edits",
+  }])
+  assert.equal(rename?.artifactGap, null)
 })
 
 test("rejects capability and evidence drift instead of accepting a stale matrix", () => {
@@ -116,11 +121,11 @@ test("rejects capability and evidence drift instead of accepting a stale matrix"
       /tests\/lsp-transcript\.test\.mjs is bundle-e2e, expected protocol/,
     ],
     [
-      "enabled absent capability",
+      "planned required capability",
       mutateFeature("rename", (feature) => {
-        feature.state = "enabled"
+        feature.state = "planned"
       }),
-      /rename: enabled feature cannot cover absent capabilities/,
+      /rename: planned feature cannot cover required capabilities/,
     ],
     [
       "empty artifact gap",

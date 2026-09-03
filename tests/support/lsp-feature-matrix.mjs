@@ -243,11 +243,26 @@ export const CURRENT_LSP_FEATURE_MATRIX = Object.freeze({
       )],
       artifactGap: null,
     }),
-    plannedFeature(
-      "rename",
-      "renameProvider",
-      "Prepare rename and rename are not enabled.",
-    ),
+    enabledFeature({
+      id: "rename",
+      requiredCapabilities: [capability("renameProvider", { prepareProvider: true })],
+      protocol: [evidence(
+        "tests/lsp-semantic-request-reliability.test.mjs",
+        "maps rename client cancellation to RequestCancelled without leaking an edit",
+        "rename.protocol.cancellation-no-edit",
+      )],
+      bundle: [evidence(
+        "tests/semantic/rename-depth.test.mjs",
+        "rename preserves the barrel API while changing the origin declaration",
+        "rename.bundle.origin-barrel-api-preservation",
+      )],
+      artifact: [evidence(
+        "tests/release/portable-install.acceptance.mjs",
+        "installs one verified artifact without source dependencies or a rebuild",
+        "rename.artifact.immutable-versioned-alias-edits",
+      )],
+      artifactGap: null,
+    }),
     enabledFeature({
       id: "code-actions",
       requiredCapabilities: [capability("codeActionProvider", {

@@ -9,6 +9,7 @@ export const CURRENT_LSP_CAPABILITY_CONTRACT = Object.freeze({
     "hoverProvider",
     "positionEncoding",
     "referencesProvider",
+    "renameProvider",
     "signatureHelpProvider",
     "textDocumentSync",
     "workspaceSymbolProvider",
@@ -25,15 +26,14 @@ export const CURRENT_LSP_CAPABILITY_CONTRACT = Object.freeze({
     },
     { path: "definitionProvider", expected: true },
     { path: "referencesProvider", expected: true },
+    { path: "renameProvider", expected: { prepareProvider: true } },
     { path: "hoverProvider", expected: true },
     { path: "signatureHelpProvider.triggerCharacters", expected: ["(", ",", "<"] },
     { path: "signatureHelpProvider.retriggerCharacters", expected: [")"] },
     { path: "documentSymbolProvider", expected: true },
     { path: "workspaceSymbolProvider", expected: true },
   ]),
-  absent: Object.freeze([
-    "renameProvider",
-  ]),
+  absent: Object.freeze([]),
 })
 
 export function assertLspCapabilityContract(capabilities, contract) {

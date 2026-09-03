@@ -195,13 +195,19 @@ function assertContractError(action, expectedMessage) {
 function supportedClientCapabilities() {
   return {
     general: { positionEncodings: ["utf-8", "utf-16"] },
-    workspace: { workspaceEdit: { documentChanges: true } },
+    workspace: {
+      workspaceEdit: {
+        documentChanges: true,
+        failureHandling: "transactional",
+      },
+    },
     textDocument: {
       codeAction: {
         codeActionLiteralSupport: { codeActionKind: { valueSet: ["quickfix"] } },
         dataSupport: true,
         resolveSupport: { properties: ["edit"] },
       },
+      rename: { prepareSupport: true },
     },
   }
 }
