@@ -47,6 +47,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/semantic/arkui-builder-tail.test.mjs",
       "tests/semantic/arkui-diagnostics-depth.test.mjs",
       "tests/semantic/arkui-language-features.test.mjs",
+      "tests/semantic/arkui-resource-watch-diagnostics.test.mjs",
       "tests/semantic/arkui-sdk-symbols.test.mjs",
       "tests/semantic/diagnostic-code-characterization.test.mjs",
       "tests/semantic/document-symbol-depth.test.mjs",
