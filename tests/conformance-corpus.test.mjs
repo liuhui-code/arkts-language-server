@@ -214,6 +214,105 @@ test("materializes isolated ArkUI and OpenHarmony SDK fixtures without host disc
   }
 })
 
+test("materializes installed ArkUI resource and nested builder semantic probes", async (t) => {
+  const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "arkts-lsp-arkui-installed-"))
+  t.after(() => fs.rm(temporaryRoot, { recursive: true, force: true }))
+
+  const schema = JSON.parse(await fs.readFile(path.join(fixtureRoot, "corpus.json"), "utf8"))
+  const expectedDeclarations = [
+    {
+      id: "arkui.resource.completion",
+      kind: "completion",
+      role: "arkui-resource-query",
+      file: "workspace/entry/src/main/ets/pages/ArkuiResourcePage.ets",
+      shape: "point+range",
+    },
+    {
+      id: "arkui.resource.definition",
+      kind: "definition",
+      role: "arkui-resource-reference",
+      file: "workspace/entry/src/main/ets/pages/ArkuiResourcePage.ets",
+      shape: "range",
+    },
+    {
+      id: "arkui.resource.missing",
+      kind: "diagnostic",
+      role: "arkui-missing-resource",
+      file: "workspace/entry/src/main/ets/pages/ArkuiResourcePage.ets",
+      shape: "range",
+    },
+    {
+      id: "arkui.builder-tail.width",
+      kind: "arkui",
+      role: "nested-builder-attribute",
+      file: "workspace/entry/src/main/ets/pages/ArkuiBuilderTailPage.ets",
+      shape: "range",
+    },
+  ]
+  assert.deepEqual(
+    schema.cases.filter(({ id }) => id.startsWith("arkui.resource.")
+      || id === "arkui.builder-tail.width"),
+    expectedDeclarations,
+  )
+
+  const materialized = await materializeConformanceWorkspace({ temporaryRoot })
+  const resourcePath = path.join(
+    materialized.workspaceRoot,
+    "entry",
+    "src",
+    "main",
+    "resources",
+    "base",
+    "element",
+    "string.json",
+  )
+  const resourcePagePath = path.join(
+    materialized.workspaceRoot,
+    "entry",
+    "src",
+    "main",
+    "ets",
+    "pages",
+    "ArkuiResourcePage.ets",
+  )
+  const builderPagePath = path.join(
+    materialized.workspaceRoot,
+    "entry",
+    "src",
+    "main",
+    "ets",
+    "pages",
+    "ArkuiBuilderTailPage.ets",
+  )
+  const resourceText = await fs.readFile(resourcePath, "utf8")
+  const resourcePage = await fs.readFile(resourcePagePath, "utf8")
+  const builderPage = await fs.readFile(builderPagePath, "utf8")
+  const completion = materialized.cases["arkui.resource.completion"]
+  const definition = materialized.cases["arkui.resource.definition"]
+  const missing = materialized.cases["arkui.resource.missing"]
+  const width = materialized.cases["arkui.builder-tail.width"]
+
+  assert.deepEqual(JSON.parse(resourceText), {
+    string: [{ name: "title", value: "Installed title" }],
+  })
+  assert.doesNotMatch(resourcePage, /\/\*@case\./)
+  assert.doesNotMatch(builderPage, /\/\*@case\./)
+  assert.equal(completion.uri, pathToFileURL(resourcePagePath).href)
+  assert.equal(textInRange(resourcePage, completion.range), "ti")
+  assert.deepEqual(completion.position, completion.range.end)
+  assert.equal(textInRange(resourcePage, definition.range), "title")
+  assert.equal(textInRange(resourcePage, missing.range), "missing_title")
+  assert.equal(textInRange(builderPage, width.range), "width")
+  for (const markerCase of [completion, missing, width]) {
+    const line = (markerCase.uri === pathToFileURL(builderPagePath).href
+      ? builderPage
+      : resourcePage).split("\n")[markerCase.range.start.line]
+    const prefix = line.slice(0, markerCase.range.start.character)
+    assert.match(prefix, /😀/)
+    assert.equal(prefix.length - Array.from(prefix).length, 1)
+  }
+})
+
 test("returns cases in the declared corpus schema order with stable metadata", async (t) => {
   const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "arkts-lsp-schema-test-"))
   t.after(() => fs.rm(temporaryRoot, { recursive: true, force: true }))

@@ -175,6 +175,34 @@
       "role": "attribute",
       "file": "workspace/entry/src/main/ets/pages/ArkuiPage.ets",
       "shape": "range"
+    },
+    {
+      "id": "arkui.resource.completion",
+      "kind": "completion",
+      "role": "arkui-resource-query",
+      "file": "workspace/entry/src/main/ets/pages/ArkuiResourcePage.ets",
+      "shape": "point+range"
+    },
+    {
+      "id": "arkui.resource.definition",
+      "kind": "definition",
+      "role": "arkui-resource-reference",
+      "file": "workspace/entry/src/main/ets/pages/ArkuiResourcePage.ets",
+      "shape": "range"
+    },
+    {
+      "id": "arkui.resource.missing",
+      "kind": "diagnostic",
+      "role": "arkui-missing-resource",
+      "file": "workspace/entry/src/main/ets/pages/ArkuiResourcePage.ets",
+      "shape": "range"
+    },
+    {
+      "id": "arkui.builder-tail.width",
+      "kind": "arkui",
+      "role": "nested-builder-attribute",
+      "file": "workspace/entry/src/main/ets/pages/ArkuiBuilderTailPage.ets",
+      "shape": "range"
     }
   ]
 }

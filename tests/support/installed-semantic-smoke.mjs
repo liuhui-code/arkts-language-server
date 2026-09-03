@@ -33,10 +33,18 @@ export async function assertInstalledSemanticSmoke({
   const documentSymbolPage = materialized.cases["document-symbol.arkui-page"]
   const documentSymbolTitle = materialized.cases["document-symbol.title"]
   const documentSymbolBuild = materialized.cases["document-symbol.build"]
+  const resourceCompletion = materialized.cases["arkui.resource.completion"]
+  const resourceDefinition = materialized.cases["arkui.resource.definition"]
+  const missingResource = materialized.cases["arkui.resource.missing"]
+  const builderWidth = materialized.cases["arkui.builder-tail.width"]
   assert.ok(signature, "the installed-artifact corpus must expose signature.format-call")
   assert.ok(
     documentSymbolPage && documentSymbolTitle && documentSymbolBuild,
     "the installed-artifact corpus must expose the ArkUI document-symbol hierarchy",
+  )
+  assert.ok(
+    resourceCompletion && resourceDefinition && missingResource && builderWidth,
+    "the installed-artifact corpus must expose ArkUI resource and builder-tail probes",
   )
   const consumerSource = fs.readFileSync(fileURLToPath(reference.uri), "utf8")
   const definitionSource = fs.readFileSync(fileURLToPath(definition.uri), "utf8")
@@ -47,6 +55,30 @@ export async function assertInstalledSemanticSmoke({
   const quickFixSource = fs.readFileSync(fileURLToPath(quickFix.uri), "utf8")
   const signatureSource = fs.readFileSync(fileURLToPath(signature.uri), "utf8")
   const documentSymbolSource = fs.readFileSync(fileURLToPath(documentSymbolPage.uri), "utf8")
+  const resourcePageSource = fs.readFileSync(fileURLToPath(resourceCompletion.uri), "utf8")
+  const builderPageSource = fs.readFileSync(fileURLToPath(builderWidth.uri), "utf8")
+  const resourcePath = path.join(
+    materialized.workspaceRoot,
+    "entry",
+    "src",
+    "main",
+    "resources",
+    "base",
+    "element",
+    "string.json",
+  )
+  const resourceUri = pathToFileURL(resourcePath).href
+  const resourceSource = fs.readFileSync(resourcePath, "utf8")
+  const sdkPath = path.join(
+    materialized.corpusRoot,
+    "sdk",
+    "openharmony",
+    "ets",
+    "component",
+    "arkui.d.ts",
+  )
+  const sdkUri = pathToFileURL(sdkPath).href
+  const sdkSource = fs.readFileSync(sdkPath, "utf8")
   assert.equal(textInRange(consumerSource, reference.range), "Profile")
   assert.equal(textInRange(consumerSource, importedReference.range), "Profile")
   assert.equal(textInRange(barrelSource, barrel.range), "Profile")
@@ -78,6 +110,13 @@ export async function assertInstalledSemanticSmoke({
     "the completion marker must use UTF-16 code units after its emoji prefix",
   )
   assert.equal(textInRange(quickFixSource, quickFix.range), "greting")
+  assert.equal(resourceCompletion.uri, resourceDefinition.uri)
+  assert.equal(resourceCompletion.uri, missingResource.uri)
+  assert.equal(textInRange(resourcePageSource, resourceCompletion.range), "ti")
+  assert.deepEqual(resourceCompletion.position, resourceCompletion.range.end)
+  assert.equal(textInRange(resourcePageSource, resourceDefinition.range), "title")
+  assert.equal(textInRange(resourcePageSource, missingResource.range), "missing_title")
+  assert.equal(textInRange(builderPageSource, builderWidth.range), "width")
   const signatureLine = signatureSource.split("\n")[signature.position.line]
   const signaturePrefix = signatureLine.slice(0, signature.position.character)
   assert.match(signaturePrefix, /😀/)
@@ -205,7 +244,6 @@ export async function assertInstalledSemanticSmoke({
     assert.deepEqual(locations, [{ uri: definition.uri, range: definition.range }])
     assert.notDeepEqual(locations[0].range.start, locations[0].range.end)
     assert.equal(textInRange(definitionSource, locations[0].range), "Profile")
-    verifiedClaims.push("definition.artifact.immutable-exact-range")
 
     const hoverResponse = await session.request("textDocument/hover", {
       textDocument: { uri: reference.uri },
@@ -223,7 +261,6 @@ export async function assertInstalledSemanticSmoke({
     )
     assert.match(hoverResponse.result.contents.value, /@since\s+1\.0\.0/)
     assert.deepEqual(hoverResponse.result.range, reference.range)
-    verifiedClaims.push("hover.artifact.immutable-unopened-import")
 
     const referencesWithoutDeclaration = await session.request("textDocument/references", {
       textDocument: { uri: reference.uri },
@@ -669,7 +706,6 @@ export async function assertInstalledSemanticSmoke({
       range: completion.range,
       newText: "Greeter",
     })
-    verifiedClaims.push("completion.artifact.immutable-semantic-smoke")
 
     const [greeter] = greeters
     assert.deepEqual(Object.keys(greeter.data ?? {}), ["arktsCompletionId"])
@@ -838,7 +874,6 @@ export async function assertInstalledSemanticSmoke({
     session.changeDocument({ uri: quickFix.uri, version: 2, text: updatedQuickFix })
     const clearedQuickFixDiagnostics = await quickFixDiagnosticsV2
     assert.deepEqual(clearedQuickFixDiagnostics.params.diagnostics, [])
-    verifiedClaims.push("diagnostics.artifact.immutable-versioned")
     verifiedClaims.push("code-actions.artifact.immutable-list-resolve-apply")
 
     session.transport.send({
@@ -846,6 +881,166 @@ export async function assertInstalledSemanticSmoke({
       method: "textDocument/didClose",
       params: { textDocument: { uri: quickFix.uri } },
     })
+
+    const resourceDiagnosticsV1 = session.transport.notification(
+      "textDocument/publishDiagnostics",
+      (message) => message.params.uri === resourceCompletion.uri
+        && message.params.version === 1,
+      timeoutMs,
+    )
+    session.openDocument({
+      uri: resourceCompletion.uri,
+      languageId: "arkts",
+      version: 1,
+      text: resourcePageSource,
+    })
+    const publishedResourceDiagnostics = await resourceDiagnosticsV1
+    assert.deepEqual(
+      publishedResourceDiagnostics.params.diagnostics
+        .filter(({ code }) => code === "arkui.resource.not-found")
+        .map(({ code, severity, source, range }) => ({ code, severity, source, range })),
+      [{
+        code: "arkui.resource.not-found",
+        severity: 1,
+        source: "arkts",
+        range: missingResource.range,
+      }],
+    )
+
+    const resourceCompletionResponse = await session.request("textDocument/completion", {
+      textDocument: { uri: resourceCompletion.uri },
+      position: resourceCompletion.position,
+      context: { triggerKind: 1 },
+    }, { timeoutMs })
+    assert.equal(
+      resourceCompletionResponse.error,
+      undefined,
+      JSON.stringify(resourceCompletionResponse.error),
+    )
+    const resourceCompletionItems = Array.isArray(resourceCompletionResponse.result)
+      ? resourceCompletionResponse.result
+      : resourceCompletionResponse.result?.items ?? []
+    assert.deepEqual(
+      resourceCompletionItems
+        .filter(({ label }) => label === "title")
+        .map(({ label, kind, detail, textEdit }) => ({ label, kind, detail, textEdit })),
+      [{
+        label: "title",
+        kind: CompletionItemKind.Property,
+        detail: "ArkUI string resource app.string.title",
+        textEdit: { range: resourceCompletion.range, newText: "title" },
+      }],
+    )
+
+    const resourceDefinitionResponse = await session.request("textDocument/definition", {
+      textDocument: { uri: resourceDefinition.uri },
+      position: midpoint(resourceDefinition.range),
+    }, { timeoutMs })
+    assert.equal(
+      resourceDefinitionResponse.error,
+      undefined,
+      JSON.stringify(resourceDefinitionResponse.error),
+    )
+    const resourceDefinitionLocations = normalizeLocations(resourceDefinitionResponse.result)
+    const resourceNameRange = rangeInAnchor(resourceSource, '"name": "title"', "title")
+    assert.deepEqual(resourceDefinitionLocations, [{ uri: resourceUri, range: resourceNameRange }])
+    assert.equal(textInRange(resourceSource, resourceNameRange), "title")
+    session.transport.send({
+      jsonrpc: "2.0",
+      method: "textDocument/didClose",
+      params: { textDocument: { uri: resourceCompletion.uri } },
+    })
+
+    const builderDiagnosticsV1 = session.transport.notification(
+      "textDocument/publishDiagnostics",
+      (message) => message.params.uri === builderWidth.uri && message.params.version === 1,
+      timeoutMs,
+    )
+    session.openDocument({
+      uri: builderWidth.uri,
+      languageId: "arkts",
+      version: 1,
+      text: builderPageSource,
+    })
+    const publishedBuilderDiagnostics = await builderDiagnosticsV1
+    assert.deepEqual(
+      publishedBuilderDiagnostics.params.diagnostics
+        .filter(({ code }) => code === 1128 || code === 2304)
+        .map(({ code, severity, source, range }) => ({ code, severity, source, range })),
+      [],
+    )
+
+    const builderHoverResponse = await session.request("textDocument/hover", {
+      textDocument: { uri: builderWidth.uri },
+      position: midpoint(builderWidth.range),
+    }, { timeoutMs })
+    assert.equal(builderHoverResponse.error, undefined, JSON.stringify(builderHoverResponse.error))
+    assert.equal(builderHoverResponse.result?.contents?.kind, "markdown")
+    assert.match(
+      builderHoverResponse.result.contents.value,
+      /ArkUICommonAttribute\.width\(value: ArkUILength\): ArkUIColumnAttribute/,
+    )
+    assert.deepEqual(builderHoverResponse.result.range, builderWidth.range)
+
+    const builderDefinitionResponse = await session.request("textDocument/definition", {
+      textDocument: { uri: builderWidth.uri },
+      position: midpoint(builderWidth.range),
+    }, { timeoutMs })
+    assert.equal(
+      builderDefinitionResponse.error,
+      undefined,
+      JSON.stringify(builderDefinitionResponse.error),
+    )
+    assert.deepEqual(
+      normalizeLocations(builderDefinitionResponse.result).filter(({ uri }) => uri === sdkUri),
+      [{
+        uri: sdkUri,
+        range: rangeInAnchor(sdkSource, "width(value: ArkUILength)", "width"),
+      }],
+    )
+
+    const builderCompletionSource = builderPageSource.replace('.width("100%")', ".wi")
+    assert.notEqual(builderCompletionSource, builderPageSource)
+    const builderCompletionRange = rangeInAnchor(builderCompletionSource, "}.wi", "wi")
+    session.changeDocument({
+      uri: builderWidth.uri,
+      version: 2,
+      text: builderCompletionSource,
+    })
+    const builderCompletionResponse = await session.request("textDocument/completion", {
+      textDocument: { uri: builderWidth.uri },
+      position: builderCompletionRange.end,
+      context: { triggerKind: 1 },
+    }, { timeoutMs })
+    assert.equal(
+      builderCompletionResponse.error,
+      undefined,
+      JSON.stringify(builderCompletionResponse.error),
+    )
+    const builderCompletionItems = Array.isArray(builderCompletionResponse.result)
+      ? builderCompletionResponse.result
+      : builderCompletionResponse.result?.items ?? []
+    assert.deepEqual(
+      builderCompletionItems
+        .filter(({ label }) => label === "width")
+        .map(({ label, kind, textEdit }) => ({ label, kind, textEdit })),
+      [{
+        label: "width",
+        kind: CompletionItemKind.Method,
+        textEdit: { range: builderCompletionRange, newText: "width" },
+      }],
+    )
+    session.transport.send({
+      jsonrpc: "2.0",
+      method: "textDocument/didClose",
+      params: { textDocument: { uri: builderWidth.uri } },
+    })
+
+    verifiedClaims.push("completion.artifact.immutable-typescript-arkui-resource-builder")
+    verifiedClaims.push("definition.artifact.immutable-typescript-arkui-resource-builder-ranges")
+    verifiedClaims.push("hover.artifact.immutable-typescript-arkui-builder-range")
+    verifiedClaims.push("diagnostics.artifact.immutable-versioned-arkui-resource-builder")
+
     session.openDocument({
       uri: documentSymbolPage.uri,
       languageId: "arkts",
@@ -974,6 +1169,26 @@ function positionAt(source, offset) {
   const line = before.split("\n").length - 1
   const lineStart = before.lastIndexOf("\n") + 1
   return { line, character: offset - lineStart }
+}
+
+function rangeInAnchor(source, anchor, token) {
+  const anchorOffset = source.indexOf(anchor)
+  assert.notEqual(anchorOffset, -1, `missing anchor: ${anchor}`)
+  const tokenOffset = anchor.indexOf(token)
+  assert.notEqual(tokenOffset, -1, `${token} is absent from ${anchor}`)
+  const start = anchorOffset + tokenOffset
+  return {
+    start: positionAt(source, start),
+    end: positionAt(source, start + token.length),
+  }
+}
+
+function normalizeLocations(result) {
+  return result === null || result === undefined
+    ? []
+    : Array.isArray(result)
+      ? result
+      : [result]
 }
 
 function sameRange(left, right) {
