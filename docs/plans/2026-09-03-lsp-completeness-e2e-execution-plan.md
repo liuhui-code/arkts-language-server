@@ -347,7 +347,9 @@ Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产�
 - [x] R0b TypeScript host 对完整成员集的 lazy/bounded 消费；300+ 文件窗口外 completion、
   lazy ArkTS definition、watcher 新鲜度、partial 降级及双硬上限均有门禁（`e52b2c9`）。
 - [x] Q1/Q2 code-action 适配设计与 TypeScript 5.9 API 核验完成；有界 512 条/512 KiB、
-  区分 stale/forged 的 resolve store 已落地（`2861aeb`），LSP tracer 正在实施。
+  区分 stale/forged 的 resolve store 已落地（`2861aeb`）；真实 stdio list→resolve→apply→
+  diagnostics clear tracer 已完成（`599b23a`）。
+- [ ] Q3 code-action forged/stale/cancel reliability 与 installed artifact smoke：并行实施中。
 - [x] I2 不可变 artifact 上复用完整 semantic smoke 场景（`09f6352`）。
 - [x] I3 正负控证明安装版只使用 immutable release 相邻 sidecar，不回退源码仓库
   （`9eeb742`）。
@@ -441,10 +443,12 @@ capability advertisement 与 transcript 一致；`pnpm check:fast`、artifact sm
   rewrite 的 `greting` marker 稳定断言 `TS2552`（`e1a787f`）；related info/data/tags 后置。
 - [x] Q0c Code-action resolve store：服务端 UUID-only 记录，active+tombstone 合计 512 条、
   active payload 合计 512 KiB；文档失效后保留无 payload stale tombstone（`2861aeb`）。
-- [ ] Q1 Code action list：服务端按当前 snapshot 的 code + source-mapped range 重算匹配，
-  只返回唯一 `spelling` quick fix 的 title/kind/diagnostic/opaque UUID，不在 list 返回 edit。
-- [ ] Q2 Code action resolve：只信上限 512 条、绑定 URI/version 的服务端记录；返回 versioned
-  `TextDocumentEdit`，应用后 didChange v2 diagnostics 清零。
+- [x] Q1 Code action list：服务端按当前 snapshot 的 code + source-mapped range 重算匹配，
+  只返回唯一 `spelling` quick fix 的 title/kind/diagnostic/opaque UUID，不在 list 返回 edit
+  （`599b23a`）。
+- [x] Q2 Code action resolve：只信上限 512 条、绑定 URI/version 的服务端记录；重新计算并
+  核对完整 action fingerprint 后返回 versioned `TextDocumentEdit`，应用后 didChange v2
+  diagnostics 清零（`599b23a`）。
 - [ ] Q3 Code action reliability：伪造 UUID/过期版本拒绝，伪造 title/kind/diagnostic 无效，
   client cancel 为 `RequestCancelled`，shutdown 清空 registry；全部测试不使用 sleep。
 - [ ] Q4 只有声明 code-action literal/data/resolve-edit 与 versioned documentChanges 支持的
