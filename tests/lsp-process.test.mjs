@@ -31,3 +31,35 @@ test("rejects a pending response immediately when the LSP child exits", async ()
     await lsp.close()
   }
 })
+
+test("routes a late response after its original waiter times out", async () => {
+  const lsp = new LspProcess({
+    command: process.execPath,
+    args: [
+      "-e",
+      `
+        const body = JSON.stringify({ jsonrpc: "2.0", id: 52, result: { late: true } })
+        setTimeout(() => {
+          process.stdout.write(
+            "Content-Length: " + Buffer.byteLength(body) + "\\r\\n\\r\\n" + body,
+          )
+        }, 75)
+        setInterval(() => {}, 1_000)
+      `,
+    ],
+  })
+
+  try {
+    await assert.rejects(
+      lsp.response(52, 20),
+      /Timed out waiting for LSP response 52/,
+    )
+
+    assert.deepEqual(
+      await lsp.response(52, 500),
+      { jsonrpc: "2.0", id: 52, result: { late: true } },
+    )
+  } finally {
+    await lsp.close()
+  }
+})

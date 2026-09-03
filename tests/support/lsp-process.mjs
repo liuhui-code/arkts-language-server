@@ -52,10 +52,13 @@ export class LspProcess {
 
   waitFor(matches, description, timeoutMs) {
     return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
+      const waiter = { matches, resolve, reject, description, timeout: undefined }
+      waiter.timeout = setTimeout(() => {
+        const index = this.waiters.indexOf(waiter)
+        if (index >= 0) this.waiters.splice(index, 1)
         reject(new Error(`Timed out waiting for ${description}. stderr: ${this.stderr}`))
       }, timeoutMs)
-      this.waiters.push({ matches, resolve, reject, description, timeout })
+      this.waiters.push(waiter)
     })
   }
 
