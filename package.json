@@ -1,6 +1,7 @@
 {
   "name": "arkts-language-server",
   "version": "0.1.0-local-beta.1",
+  "packageManager": "pnpm@8.15.9",
   "private": true,
   "type": "module",
   "scripts": {

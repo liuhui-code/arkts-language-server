@@ -18,6 +18,26 @@ const languageConfigPath = path.join(
 const zedWorkflowPath = path.join(projectRoot, ".github", "workflows", "zed-extension.yml")
 const releaseDriverPath = path.join(projectRoot, "scripts", "check-release.sh")
 
+test("local and CI release toolchains share checked-in pins", () => {
+  const packageMetadata = JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf8"))
+  const nodeVersion = fs.readFileSync(path.join(projectRoot, ".node-version"), "utf8").trim()
+  const rustToolchain = fs.readFileSync(path.join(projectRoot, "rust-toolchain.toml"), "utf8")
+  const workflow = fs.readFileSync(zedWorkflowPath, "utf8")
+
+  assert.equal(packageMetadata.packageManager, "pnpm@8.15.9")
+  assert.equal(nodeVersion, "20.19.5")
+  assert.match(rustToolchain, /channel\s*=\s*"1\.95\.0"/)
+  assert.match(rustToolchain, /components\s*=\s*\[[^\]]*"rustfmt"[^\]]*"clippy"[^\]]*\]/)
+  assert.match(rustToolchain, /targets\s*=\s*\[[^\]]*"wasm32-wasip2"[^\]]*\]/)
+  assert.match(workflow, /node-version-file:\s*\.node-version/)
+  assert.match(workflow, new RegExp(`corepack prepare ${packageMetadata.packageManager} --activate`))
+
+  for (const toolchainInput of [".node-version", "rust-toolchain.toml"]) {
+    const occurrences = workflow.split(`- "${toolchainInput}"`).length - 1
+    assert.equal(occurrences, 2, `${toolchainInput} must trigger pull-request and main-push validation`)
+  }
+})
+
 test("the package delegates every release check to one serialized driver", () => {
   const packageMetadata = JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf8"))
   const releaseDriver = fs.readFileSync(releaseDriverPath, "utf8")

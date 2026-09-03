@@ -45,6 +45,27 @@ The acceptance filename deliberately does not match the fast `.test.mjs` glob.
   fail-closed driver. The driver requires both fixture variables and owns the
   ordered Node, Rust, pinned-project, Zed, and serialized acceptance gates.
 
+## Reproducible toolchain regression
+
+- Parent revision: `7a98a93`
+- RED: the release configuration test could not find `.node-version`; pnpm was
+  pinned only inside CI and Rust followed the moving stable channel.
+- GREEN: Node 20.19.5, pnpm 8.15.9, and Rust 1.95.0 plus rustfmt, Clippy, and
+  `wasm32-wasip2` are checked-in contracts. CI reads the same Node pin and is
+  triggered by either toolchain file changing.
+
+## Order-independent release acceptance regression
+
+- Parent revision: `7a98a93`
+- RED: with the ignored `editors/zed/extension.wasm` temporarily absent,
+  running `portable-install.acceptance.mjs` alone failed 3/3 before reaching
+  its assertions. It depended on the preceding local-delivery suite to create
+  that artifact.
+- GREEN: the portable fixture now copies the canonical driver's locked Zed
+  target output directly. Acceptance serialization still protects shared
+  builds, but correctness no longer depends on filename order or another test's
+  side effect.
+
 ## Pinned real-project gate
 
 A later RED showed that the workflow invoked `check:release` without providing

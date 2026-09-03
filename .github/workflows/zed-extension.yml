@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - ".github/workflows/zed-extension.yml"
+      - ".node-version"
       - "editors/zed/**"
       - "scripts/check-zed-queries.sh"
       - "scripts/check-release.sh"
@@ -16,11 +17,13 @@ on:
       - "bin/**"
       - "package.json"
       - "pnpm-lock.yaml"
+      - "rust-toolchain.toml"
       - "tsconfig.json"
   push:
     branches: [main]
     paths:
       - ".github/workflows/zed-extension.yml"
+      - ".node-version"
       - "editors/zed/**"
       - "scripts/check-zed-queries.sh"
       - "scripts/check-release.sh"
@@ -33,6 +36,7 @@ on:
       - "bin/**"
       - "package.json"
       - "pnpm-lock.yaml"
+      - "rust-toolchain.toml"
       - "tsconfig.json"
 
 permissions:
@@ -58,7 +62,7 @@ jobs:
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: 20.19.5
+          node-version-file: .node-version
 
       - name: Enable the pinned pnpm version
         run: |

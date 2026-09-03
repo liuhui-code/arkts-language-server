@@ -14,10 +14,10 @@ function writeExecutable(filePath, contents) {
 
 function makeCheckout(temporaryRoot) {
   const checkout = path.join(temporaryRoot, "checkout")
-  const copy = (relativePath) => {
-    const destination = path.join(checkout, relativePath)
+  const copy = (sourceRelativePath, destinationRelativePath = sourceRelativePath) => {
+    const destination = path.join(checkout, destinationRelativePath)
     fs.mkdirSync(path.dirname(destination), { recursive: true })
-    fs.copyFileSync(path.join(projectRoot, relativePath), destination)
+    fs.copyFileSync(path.join(projectRoot, sourceRelativePath), destination)
   }
 
   copy("scripts/install-local.sh")
@@ -25,7 +25,10 @@ function makeCheckout(temporaryRoot) {
   copy("bin/arkts-language-server")
   copy("dist/server.cjs")
   copy("target/release/arkts-index-sidecar")
-  copy("editors/zed/extension.wasm")
+  copy(
+    "editors/zed/target/wasm32-wasip2/release/zed_arkts_local.wasm",
+    "editors/zed/extension.wasm",
+  )
   copy("editors/zed/extension.toml")
   fs.chmodSync(path.join(checkout, "scripts", "install-local.sh"), 0o755)
   fs.chmodSync(path.join(checkout, "scripts", "check-zed-queries.sh"), 0o755)

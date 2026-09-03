@@ -26,8 +26,9 @@ arkts-language-server --stdio
 
 ## Install for Zed
 
-Prerequisites: Node.js 20+, pnpm, Rust/rustup, Zed, and the Rust
-`wasm32-wasip2` target.
+Prerequisites: a Node version manager/Corepack, Rust/rustup, and Zed. The
+checked-in `.node-version`, `packageManager`, and `rust-toolchain.toml` pin the
+release toolchains, including the `wasm32-wasip2` target.
 
 ```sh
 rustup target add wasm32-wasip2
