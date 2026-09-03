@@ -75,7 +75,8 @@ export const CURRENT_LSP_FEATURE_MATRIX = Object.freeze({
       requiredCapabilities: [capability("completionProvider.resolveProvider", true)],
       protocol: ["tests/lsp-reliability.test.mjs"],
       bundle: ["tests/semantic/semantic-characterization.test.mjs"],
-      artifactGap: "Installed artifacts do not run completion resolve and auto-import yet.",
+      artifact: ["tests/release/local-delivery.acceptance.mjs"],
+      artifactGap: null,
     }),
     plannedFeature(
       "references",

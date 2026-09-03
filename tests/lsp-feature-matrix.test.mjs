@@ -43,13 +43,13 @@ test("maps the complete public capability contract to executable feature evidenc
     "definition",
     "workspace-symbol",
     "diagnostics",
+    "completion-resolve",
   ])
   assert.deepEqual(audit.artifactGapFeatureIds, [
     "document-sync",
     "hover",
     "signature-help",
     "document-symbol",
-    "completion-resolve",
     "references",
     "rename",
     "code-actions",

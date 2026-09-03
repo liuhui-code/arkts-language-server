@@ -9,6 +9,7 @@ import { fileURLToPath, pathToFileURL } from "node:url"
 
 import { CompletionItemKind } from "vscode-languageserver/node.js"
 
+import { applyTextEdits } from "../support/lsp-edits.mjs"
 import { LspProcess } from "../support/lsp-process.mjs"
 import { LspSession } from "../support/lsp-session.mjs"
 import { materializeConformanceWorkspace } from "../support/materialize-conformance-workspace.mjs"
@@ -236,11 +237,21 @@ async function assertInstalledSemanticSmoke({ installedCommand, temporaryRoot })
   const reference = materialized.cases["profile.reference"]
   const definition = materialized.cases["profile.definition"]
   const completion = materialized.cases["completion.unicode"]
+  const greeterDefinition = materialized.cases["greeter.definition"]
   const consumerSource = fs.readFileSync(fileURLToPath(reference.uri), "utf8")
   const definitionSource = fs.readFileSync(fileURLToPath(definition.uri), "utf8")
   const homeSource = fs.readFileSync(fileURLToPath(completion.uri), "utf8")
+  const greeterSource = fs.readFileSync(fileURLToPath(greeterDefinition.uri), "utf8")
   assert.equal(textInRange(consumerSource, reference.range), "Profile")
   assert.equal(textInRange(homeSource, completion.range), "Gree")
+  const completionLine = homeSource.split("\n")[completion.range.start.line]
+  const completionPrefix = completionLine.slice(0, completion.range.start.character)
+  assert.match(completionPrefix, /😀/)
+  assert.equal(
+    completionPrefix.length - Array.from(completionPrefix).length,
+    1,
+    "the completion marker must use UTF-16 code units after its emoji prefix",
+  )
   const externalCwd = path.join(temporaryRoot, "semantic-external-cwd")
   fs.mkdirSync(externalCwd)
   const session = new LspSession({
@@ -263,7 +274,8 @@ async function assertInstalledSemanticSmoke({ installedCommand, temporaryRoot })
   })
 
   try {
-    await session.initialize({ timeoutMs: 15_000 })
+    const initialized = await session.initialize({ timeoutMs: 15_000 })
+    assert.equal(initialized.result.capabilities.completionProvider.resolveProvider, true)
     const create = await session.transport.serverRequest(
       "window/workDoneProgress/create",
       () => true,
@@ -326,6 +338,75 @@ async function assertInstalledSemanticSmoke({ installedCommand, temporaryRoot })
       range: completion.range,
       newText: "Greeter",
     })
+
+    const [greeter] = greeters
+    assert.deepEqual(Object.keys(greeter.data ?? {}), ["arktsCompletionId"])
+    assert.match(
+      greeter.data.arktsCompletionId,
+      /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/,
+    )
+
+    const resolvedResponse = await session.request(
+      "completionItem/resolve",
+      greeter,
+      { timeoutMs: 15_000 },
+    )
+    assert.equal(resolvedResponse.error, undefined, JSON.stringify(resolvedResponse.error))
+    const resolved = resolvedResponse.result
+    assert.deepEqual(resolved.data, greeter.data)
+    assert.match(resolved.detail, /class Greeter/)
+    assert.equal(
+      resolved.documentation,
+      "Builds a deterministic greeting for the supplied name.",
+    )
+    assert.deepEqual(resolved.textEdit, greeter.textEdit)
+    assert.deepEqual(resolved.additionalTextEdits, [{
+      range: {
+        start: { line: 0, character: 0 },
+        end: { line: 0, character: 0 },
+      },
+      newText: 'import { Greeter } from "../services/Greeter.ets";\n\n',
+    }])
+
+    const updatedHome = applyTextEdits(homeSource, [
+      resolved.textEdit,
+      ...resolved.additionalTextEdits,
+    ])
+    assert.match(updatedHome, /^import \{ Greeter \} from "\.\.\/services\/Greeter\.ets";\n\n/)
+    assert.match(updatedHome, /const face = '😀'; const value = Greeter/)
+
+    const diagnosticsV2 = session.transport.notification(
+      "textDocument/publishDiagnostics",
+      (message) => message.params.uri === completion.uri && message.params.version === 2,
+      15_000,
+    )
+    session.changeDocument({
+      uri: completion.uri,
+      version: 2,
+      text: updatedHome,
+    })
+    const updatedDiagnostics = await diagnosticsV2
+    assert.deepEqual(updatedDiagnostics.params.diagnostics, [])
+
+    const usageOffset = updatedHome.lastIndexOf("Greeter")
+    assert.notEqual(usageOffset, -1)
+    const greeterDefinitionResponse = await session.request("textDocument/definition", {
+      textDocument: { uri: completion.uri },
+      position: positionAt(updatedHome, usageOffset + 1),
+    }, { timeoutMs: 15_000 })
+    assert.equal(
+      greeterDefinitionResponse.error,
+      undefined,
+      JSON.stringify(greeterDefinitionResponse.error),
+    )
+    const greeterLocations = Array.isArray(greeterDefinitionResponse.result)
+      ? greeterDefinitionResponse.result
+      : [greeterDefinitionResponse.result]
+    assert.deepEqual(greeterLocations, [{
+      uri: greeterDefinition.uri,
+      range: greeterDefinition.range,
+    }])
+    assert.equal(textInRange(greeterSource, greeterLocations[0].range), "Greeter")
   } finally {
     await session.close({ timeoutMs: 15_000 })
   }
@@ -346,4 +427,11 @@ function textInRange(source, range) {
   return source
     .split("\n")[range.start.line]
     .slice(range.start.character, range.end.character)
+}
+
+function positionAt(source, offset) {
+  const before = source.slice(0, offset)
+  const line = before.split("\n").length - 1
+  const lineStart = before.lastIndexOf("\n") + 1
+  return { line, character: offset - lineStart }
 }
