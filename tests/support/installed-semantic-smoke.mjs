@@ -19,6 +19,8 @@ export async function assertInstalledSemanticSmoke({
   const materialized = await materializeConformanceWorkspace({ temporaryRoot })
   const reference = materialized.cases["profile.reference"]
   const definition = materialized.cases["profile.definition"]
+  const barrel = materialized.cases["profile.barrel"]
+  const importedReference = materialized.cases["profile.import"]
   const completion = materialized.cases["completion.unicode"]
   const greeterDefinition = materialized.cases["greeter.definition"]
   const quickFix = materialized.cases["quickfix.greeting"]
@@ -33,12 +35,16 @@ export async function assertInstalledSemanticSmoke({
   )
   const consumerSource = fs.readFileSync(fileURLToPath(reference.uri), "utf8")
   const definitionSource = fs.readFileSync(fileURLToPath(definition.uri), "utf8")
+  const barrelSource = fs.readFileSync(fileURLToPath(barrel.uri), "utf8")
   const homeSource = fs.readFileSync(fileURLToPath(completion.uri), "utf8")
   const greeterSource = fs.readFileSync(fileURLToPath(greeterDefinition.uri), "utf8")
   const quickFixSource = fs.readFileSync(fileURLToPath(quickFix.uri), "utf8")
   const signatureSource = fs.readFileSync(fileURLToPath(signature.uri), "utf8")
   const documentSymbolSource = fs.readFileSync(fileURLToPath(documentSymbolPage.uri), "utf8")
   assert.equal(textInRange(consumerSource, reference.range), "Profile")
+  assert.equal(textInRange(consumerSource, importedReference.range), "Profile")
+  assert.equal(textInRange(barrelSource, barrel.range), "Profile")
+  assert.equal(textInRange(definitionSource, definition.range), "Profile")
   const referenceLine = consumerSource.split("\n")[reference.range.start.line]
   const referencePrefix = referenceLine.slice(0, reference.range.start.character)
   assert.match(referencePrefix, /😀/)
@@ -116,6 +122,7 @@ export async function assertInstalledSemanticSmoke({
     })
     assert.equal(initialized.result.capabilities.completionProvider.resolveProvider, true)
     assert.equal(initialized.result.capabilities.hoverProvider, true)
+    assert.equal(initialized.result.capabilities.referencesProvider, true)
     assert.deepEqual(initialized.result.capabilities.signatureHelpProvider, {
       triggerCharacters: ["(", ",", "<"],
       retriggerCharacters: [")"],
@@ -189,6 +196,39 @@ export async function assertInstalledSemanticSmoke({
     )
     assert.match(hoverResponse.result.contents.value, /@since\s+1\.0\.0/)
     assert.deepEqual(hoverResponse.result.range, reference.range)
+
+    const referencesWithoutDeclaration = await session.request("textDocument/references", {
+      textDocument: { uri: reference.uri },
+      position: midpoint(reference.range),
+      context: { includeDeclaration: false },
+    }, { timeoutMs })
+    assert.equal(
+      referencesWithoutDeclaration.error,
+      undefined,
+      JSON.stringify(referencesWithoutDeclaration.error),
+    )
+    assert.deepEqual(referencesWithoutDeclaration.result, [
+      { uri: barrel.uri, range: barrel.range },
+      { uri: importedReference.uri, range: importedReference.range },
+      { uri: reference.uri, range: reference.range },
+    ])
+
+    const referencesWithDeclaration = await session.request("textDocument/references", {
+      textDocument: { uri: reference.uri },
+      position: midpoint(reference.range),
+      context: { includeDeclaration: true },
+    }, { timeoutMs })
+    assert.equal(
+      referencesWithDeclaration.error,
+      undefined,
+      JSON.stringify(referencesWithDeclaration.error),
+    )
+    assert.deepEqual(referencesWithDeclaration.result, [
+      { uri: barrel.uri, range: barrel.range },
+      { uri: definition.uri, range: definition.range },
+      { uri: importedReference.uri, range: importedReference.range },
+      { uri: reference.uri, range: reference.range },
+    ])
 
     session.openDocument({
       uri: signature.uri,

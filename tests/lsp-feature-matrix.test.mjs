@@ -51,10 +51,10 @@ test("maps the complete public capability contract to executable feature evidenc
     "workspace-symbol",
     "diagnostics",
     "completion-resolve",
+    "references",
     "code-actions",
   ])
   assert.deepEqual(audit.artifactGapFeatureIds, [
-    "references",
     "rename",
   ])
   const diagnostics = CURRENT_LSP_FEATURE_MATRIX.features.find(({ id }) => id === "diagnostics")
@@ -84,6 +84,15 @@ test("maps the complete public capability contract to executable feature evidenc
     claim: "document-symbol.artifact.immutable-arkui-hierarchy",
   }])
   assert.equal(documentSymbol?.artifactGap, null)
+  const references = CURRENT_LSP_FEATURE_MATRIX.features.find(
+    ({ id }) => id === "references",
+  )
+  assert.deepEqual(references?.evidence.artifact, [{
+    entry: "tests/release/portable-install.acceptance.mjs",
+    test: "installs one verified artifact without source dependencies or a rebuild",
+    claim: "references.artifact.immutable-unopened-barrel-declaration-policy",
+  }])
+  assert.equal(references?.artifactGap, null)
 })
 
 test("rejects capability and evidence drift instead of accepting a stale matrix", () => {
@@ -115,10 +124,11 @@ test("rejects capability and evidence drift instead of accepting a stale matrix"
     ],
     [
       "empty artifact gap",
-      mutateFeature("references", (feature) => {
+      mutateFeature("completion", (feature) => {
+        feature.evidence.artifact = []
         feature.artifactGap = "   "
       }),
-      /references: missing artifact evidence requires artifactGap/,
+      /completion: missing artifact evidence requires artifactGap/,
     ],
   ]
 

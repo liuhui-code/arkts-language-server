@@ -30,6 +30,13 @@
       "shape": "range"
     },
     {
+      "id": "profile.import",
+      "kind": "references",
+      "role": "import",
+      "file": "workspace/entry/src/main/ets/pages/OtherConsumer.ets",
+      "shape": "range"
+    },
+    {
       "id": "profile.reference",
       "kind": "references",
       "role": "reference",

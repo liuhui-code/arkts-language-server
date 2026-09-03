@@ -229,7 +229,12 @@ export const CURRENT_LSP_FEATURE_MATRIX = Object.freeze({
         "finds unopened barrel references with exact UTF-16 ranges and declaration policy",
         "references.bundle.unopened-barrel-declaration-policy",
       )],
-      artifactGap: "Immutable installed references transcript is pending.",
+      artifact: [evidence(
+        "tests/release/portable-install.acceptance.mjs",
+        "installs one verified artifact without source dependencies or a rebuild",
+        "references.artifact.immutable-unopened-barrel-declaration-policy",
+      )],
+      artifactGap: null,
     }),
     plannedFeature(
       "rename",
