@@ -1,8 +1,13 @@
 import assert from "node:assert/strict"
 import { EventEmitter } from "node:events"
+import fs from "node:fs"
+import path from "node:path"
 import test from "node:test"
+import { fileURLToPath } from "node:url"
 
 import { runNodeTestLayer } from "../scripts/run-node-test-layer.mjs"
+
+const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 
 test("--fast --list prints the stable deduplicated fast-layer entries without spawning", async () => {
   const stdout = bufferedOutput()
@@ -138,6 +143,28 @@ test("rejects an empty selection instead of triggering Node implicit discovery",
     /selected test layers contain no entries/,
   )
   assert.equal(spawnCount, 0)
+})
+
+test("package scripts route every Node test gate through the explicit layer runner", () => {
+  const packageJson = JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf8"))
+
+  assert.deepEqual({
+    test: packageJson.scripts.test,
+    "check:fast": packageJson.scripts["check:fast"],
+    "test:unit": packageJson.scripts["test:unit"],
+    "test:protocol": packageJson.scripts["test:protocol"],
+    "test:e2e:bundle": packageJson.scripts["test:e2e:bundle"],
+    "test:e2e:artifact": packageJson.scripts["test:e2e:artifact"],
+    "test:e2e:large": packageJson.scripts["test:e2e:large"],
+  }, {
+    test: "node scripts/run-node-test-layer.mjs --fast",
+    "check:fast": "pnpm check && pnpm build && pnpm test",
+    "test:unit": "node scripts/run-node-test-layer.mjs --layer unit-contract",
+    "test:protocol": "node scripts/run-node-test-layer.mjs --layer protocol",
+    "test:e2e:bundle": "node scripts/run-node-test-layer.mjs --layer bundle-e2e",
+    "test:e2e:artifact": "node scripts/run-node-test-layer.mjs --layer artifact-e2e",
+    "test:e2e:large": "node scripts/run-node-test-layer.mjs --layer large",
+  })
 })
 
 function bufferedOutput() {
