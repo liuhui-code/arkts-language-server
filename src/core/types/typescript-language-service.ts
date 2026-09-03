@@ -998,6 +998,8 @@ function documentSymbolKind(
     case ts.ScriptElementKind.constructorImplementationElement: return "constructor"
     case ts.ScriptElementKind.moduleElement: return "module"
     case ts.ScriptElementKind.typeElement: return "type"
+    case ts.ScriptElementKind.constElement:
+    case ts.ScriptElementKind.letElement:
     case ts.ScriptElementKind.variableElement:
     case ts.ScriptElementKind.localVariableElement:
     case ts.ScriptElementKind.variableUsingElement:
