@@ -7,6 +7,8 @@ import path from "node:path"
 import test from "node:test"
 import { fileURLToPath } from "node:url"
 
+import { assertInstalledSemanticSmoke } from "../support/installed-semantic-smoke.mjs"
+
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 const artifactBuilder = path.join(projectRoot, "scripts", "artifact", "build-portable.mjs")
 
@@ -234,6 +236,17 @@ test("installs one verified artifact without source dependencies or a rebuild", 
 
   const response = await initialize(command, externalCwd, environment)
   assert.equal(response.result.serverInfo.name, "arkts-language-server")
+  await assertInstalledSemanticSmoke({
+    installedCommand: command,
+    temporaryRoot,
+    cwd: externalCwd,
+    env: environment,
+  })
+  assert.equal(
+    fs.existsSync(invocationLog),
+    false,
+    "installed artifact semantic runtime invoked a forbidden build tool",
+  )
 })
 
 test("installed command remains self-contained after its source checkout moves", async (t) => {
