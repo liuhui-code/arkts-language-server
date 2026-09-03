@@ -6,6 +6,7 @@ import type {
   SemanticDocumentSymbol,
   SemanticEnginePort,
   SemanticHover,
+  SemanticCompletionResolveQuery,
   SemanticQuery,
   SemanticSignatureHelp,
   VersionedSemanticResult,
@@ -58,6 +59,19 @@ class ScriptedSemanticEngine implements SemanticEnginePort {
         kind: "property",
       }],
     }
+  }
+
+  async resolveCompletion(
+    query: SemanticCompletionResolveQuery,
+  ): Promise<VersionedSemanticResult<SemanticCompletion>> {
+    if (query.document.text.includes("RESOLVE_WAITS_FOR_ABORT")) {
+      return waitForAbortValue(query.signal)
+    }
+    return scriptedSemanticResult(query, {
+      ...query.completion,
+      detail: "Resolved scripted semantic completion",
+      documentation: "Scripted completion documentation.",
+    })
   }
 
   async define(

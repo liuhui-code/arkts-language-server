@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto"
 import { pathToFileURL } from "node:url"
 
 import {
@@ -30,6 +31,55 @@ import { RequestFreshness } from "./request-freshness.js"
 import { registerSemanticCapabilities } from "./register-semantic-capabilities.js"
 import { requestCancelled, SemanticRequestRunner } from "./semantic-request-runner.js"
 
+const MAX_COMPLETION_RESOLUTIONS = 512
+
+interface CompletionResolutionRecord {
+  documentUri: string
+  documentVersion: number
+  position: { line: number; character: number }
+  completion: SemanticCompletion
+}
+
+interface CompletionResolutionData {
+  arktsCompletionId: string
+}
+
+class CompletionResolutionStore {
+  private readonly entries = new Map<string, CompletionResolutionRecord>()
+
+  remember(record: CompletionResolutionRecord): CompletionResolutionData {
+    const id = randomUUID()
+    this.entries.set(id, record)
+    while (this.entries.size > MAX_COMPLETION_RESOLUTIONS) {
+      const oldest = this.entries.keys().next().value
+      if (oldest === undefined) break
+      this.entries.delete(oldest)
+    }
+    return { arktsCompletionId: id }
+  }
+
+  find(data: unknown): CompletionResolutionRecord | undefined {
+    if (
+      data === null
+      || typeof data !== "object"
+      || Array.isArray(data)
+      || Object.keys(data).length !== 1
+      || typeof (data as { arktsCompletionId?: unknown }).arktsCompletionId !== "string"
+    ) return undefined
+    return this.entries.get((data as CompletionResolutionData).arktsCompletionId)
+  }
+
+  forgetDocument(documentUri: string): void {
+    for (const [id, record] of this.entries) {
+      if (record.documentUri === documentUri) this.entries.delete(id)
+    }
+  }
+
+  clear(): void {
+    this.entries.clear()
+  }
+}
+
 export interface LanguageServerServices {
   projects: ProjectResolverPort
   semantic: SemanticEnginePort
@@ -45,6 +95,7 @@ export function runLanguageServer(services?: LanguageServerServices): void {
   const semantic = services?.semantic ?? new LegacySemanticEngine(projects)
   const workspaceSymbols = services?.workspaceSymbols
   const freshness = new RequestFreshness()
+  const completionResolutions = new CompletionResolutionStore()
   let shuttingDown = false
   let disposed = false
   let workspaceRoots: { id: string; rootUri: string }[] = []
@@ -54,6 +105,7 @@ export function runLanguageServer(services?: LanguageServerServices): void {
     if (disposed) return
     disposed = true
     workspaceIndexAbort?.abort(new Error("Language server stopped"))
+    completionResolutions.clear()
     semantic.dispose()
     workspaceSymbols?.dispose()
     logger.info("server.stopped", { reason })
@@ -103,7 +155,7 @@ export function runLanguageServer(services?: LanguageServerServices): void {
           openClose: true,
           change: TextDocumentSyncKind.Incremental,
         },
-        completionProvider: { triggerCharacters: ["."] },
+        completionProvider: { triggerCharacters: ["."], resolveProvider: true },
         definitionProvider: true,
         ...(workspaceSymbols ? { workspaceSymbolProvider: true } : {}),
         ...semanticCapabilities.capabilities,
@@ -181,6 +233,7 @@ export function runLanguageServer(services?: LanguageServerServices): void {
   })
   documents.onDidChangeContent(({ document }) => {
     freshness.cancelDocument(document.uri)
+    completionResolutions.forgetDocument(document.uri)
     const changed = snapshot(document, projects)
     semantic.sync(changed)
     workspaceSymbols?.sync(changed)
@@ -188,6 +241,7 @@ export function runLanguageServer(services?: LanguageServerServices): void {
   })
   documents.onDidClose(({ document }) => {
     freshness.cancelDocument(document.uri)
+    completionResolutions.forgetDocument(document.uri)
     semantic.close(document.uri)
     workspaceSymbols?.closeDocument(document.uri)
     diagnostics.close(document.uri)
@@ -205,7 +259,40 @@ export function runLanguageServer(services?: LanguageServerServices): void {
         signal,
       }),
     })
-    return result.map(toLspCompletionItem)
+    const document = documents.get(params.textDocument.uri)
+    if (!document) return []
+    return result.map((completion) => toLspCompletionItem(
+      completion,
+      completionResolutions.remember({
+        documentUri: document.uri,
+        documentVersion: document.version,
+        position: { ...params.position },
+        completion,
+      }),
+    ))
+  })
+
+  connection.onCompletionResolve(async (clientItem, token) => {
+    assertRunning()
+    const record = completionResolutions.find(clientItem.data)
+    const currentDocument = record ? documents.get(record.documentUri) : undefined
+    if (!record || !currentDocument || currentDocument.version !== record.documentVersion) {
+      throw invalidCompletionResolution()
+    }
+    const resolved = await requests.run<SemanticCompletion | null>({
+      method: "completionItem/resolve",
+      documentUri: record.documentUri,
+      token,
+      fallback: null,
+      execute: (document, signal) => semantic.resolveCompletion({
+        document,
+        position: record.position,
+        completion: record.completion,
+        signal,
+      }),
+    })
+    if (!resolved) throw invalidCompletionResolution()
+    return toLspResolvedCompletionItem(resolved, clientItem.data as CompletionResolutionData, record)
   })
 
   connection.onDefinition(async (params, token) => {
@@ -302,7 +389,10 @@ function snapshot(document: TextDocument, projects: ProjectResolverPort): Docume
   }
 }
 
-function toLspCompletionItem(item: SemanticCompletion) {
+function toLspCompletionItem(
+  item: SemanticCompletion,
+  data: CompletionResolutionData,
+) {
   return {
     label: item.label,
     detail: item.detail,
@@ -316,8 +406,34 @@ function toLspCompletionItem(item: SemanticCompletion) {
           newText: item.insertText ?? item.label,
         }
       : undefined,
-    data: item.data,
+    data,
   }
+}
+
+function toLspResolvedCompletionItem(
+  item: SemanticCompletion,
+  data: CompletionResolutionData,
+  record: CompletionResolutionRecord,
+) {
+  const additionalTextEdits = item.additionalTextEdits?.map((edit) => {
+    if (
+      edit.uri !== record.documentUri
+      || edit.expectedVersion !== record.documentVersion
+    ) throw invalidCompletionResolution()
+    return { range: edit.range, newText: edit.newText }
+  })
+  return {
+    ...toLspCompletionItem(item, data),
+    documentation: item.documentation,
+    additionalTextEdits,
+  }
+}
+
+function invalidCompletionResolution(): ResponseError<void> {
+  return new ResponseError(
+    ErrorCodes.InvalidParams,
+    "Completion item is unknown or stale",
+  )
 }
 
 function completionKind(kind: SemanticCompletion["kind"]): CompletionItemKind {

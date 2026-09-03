@@ -42,6 +42,7 @@ interface ScriptRecord {
 
 export class TypeScriptLanguageServiceEngine {
   private readonly scripts = new Map<string, ScriptRecord>()
+  private readonly sdkDeclarationPaths: string[]
   private readonly options: ts.CompilerOptions
   private readonly service: ts.LanguageService
   private accessClock = 0
@@ -59,6 +60,7 @@ export class TypeScriptLanguageServiceEngine {
       skipLibCheck: true,
       target: ts.ScriptTarget.ES2022,
     }
+    this.sdkDeclarationPaths = discoverSdkAmbientDeclarations()
     this.service = ts.createLanguageService(this.createHost(), ts.createDocumentRegistry())
   }
 
@@ -357,7 +359,7 @@ export class TypeScriptLanguageServiceEngine {
       getCurrentDirectory: () => this.rootPath,
       getDefaultLibFileName: (options) => ts.getDefaultLibFilePath(options),
       getProjectVersion: () => String(this.generation),
-      getScriptFileNames: () => [...this.scripts.keys()],
+      getScriptFileNames: () => [...this.scripts.keys(), ...this.sdkDeclarationPaths],
       getScriptKind: () => ts.ScriptKind.TS,
       getScriptSnapshot: (fileName) => {
         const content = this.scripts.get(path.resolve(fileName))?.content ?? safeRead(fileName)
@@ -499,6 +501,16 @@ function completionKind(kind: ts.ScriptElementKind): string {
 function optionalDisplayParts(parts: ts.SymbolDisplayPart[]) {
   const value = ts.displayPartsToString(parts)
   return value || undefined
+}
+
+function discoverSdkAmbientDeclarations(): string[] {
+  const sdkRoot = discoverHarmonySdk().path
+  if (!sdkRoot) return []
+  const prelude = [
+    path.join(sdkRoot, "ets", "component", "common.d.ts"),
+    path.join(sdkRoot, "ets", "component", "arkui.d.ts"),
+  ].find((candidate) => fs.existsSync(candidate))
+  return prelude ? [prelude] : []
 }
 
 function quickInfoDocumentation(info: ts.QuickInfo): string | undefined {

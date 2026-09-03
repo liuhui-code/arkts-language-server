@@ -29,24 +29,26 @@ test("maps the complete public capability contract to executable feature evidenc
     "document-symbol",
     "workspace-symbol",
     "diagnostics",
+    "completion-resolve",
   ])
   assert.deepEqual(audit.plannedFeatureIds, [
-    "completion-resolve",
     "references",
     "rename",
     "code-actions",
   ])
-  assert.equal(audit.requiredCapabilityCount, 9)
-  assert.equal(audit.absentCapabilityCount, 4)
-  assert.deepEqual(audit.artifactCoveredFeatureIds, ["workspace-symbol"])
-  assert.deepEqual(audit.artifactGapFeatureIds, [
-    "document-sync",
+  assert.equal(audit.requiredCapabilityCount, 10)
+  assert.equal(audit.absentCapabilityCount, 3)
+  assert.deepEqual(audit.artifactCoveredFeatureIds, [
     "completion",
     "definition",
+    "workspace-symbol",
+    "diagnostics",
+  ])
+  assert.deepEqual(audit.artifactGapFeatureIds, [
+    "document-sync",
     "hover",
     "signature-help",
     "document-symbol",
-    "diagnostics",
     "completion-resolve",
     "references",
     "rename",

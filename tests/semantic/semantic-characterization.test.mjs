@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url"
 
 import { CompletionItemKind } from "vscode-languageserver/node.js"
 
+import { applyTextEdits } from "../support/lsp-edits.mjs"
 import { LspSession } from "../support/lsp-session.mjs"
 import { LspProcess, projectRoot } from "../support/lsp-process.mjs"
 import { materializeConformanceWorkspace } from "../support/materialize-conformance-workspace.mjs"
@@ -71,10 +72,12 @@ test("returns the exact unopened definition range after an emoji prefix", async 
   assert.equal(textInRange(profile, locations[0].range), "Profile")
 })
 
-test("preserves an exact unopened class completion from the production list", async (t) => {
+test("resolves and applies an unopened class auto-import through the production server", async (t) => {
   const materialized = await materializeConformanceWorkspace()
   const completion = materialized.cases["completion.unicode"]
+  const definition = materialized.cases["greeter.definition"]
   const home = fs.readFileSync(fileURLToPath(completion.uri), "utf8")
+  const greeterSource = fs.readFileSync(fileURLToPath(definition.uri), "utf8")
   const session = new LspSession({
     command: process.execPath,
     args: [path.join(projectRoot, "dist", "server.cjs"), "--stdio"],
@@ -97,7 +100,7 @@ test("preserves an exact unopened class completion from the production list", as
 
   assert.equal(textInRange(home, completion.range), "Gree")
   const initialized = await session.initialize()
-  assert.equal(initialized.result.capabilities.completionProvider.resolveProvider, undefined)
+  assert.equal(initialized.result.capabilities.completionProvider.resolveProvider, true)
   session.openDocument({
     uri: completion.uri,
     languageId: "arkts",
@@ -119,7 +122,62 @@ test("preserves an exact unopened class completion from the production list", as
     range: completion.range,
     newText: "Greeter",
   })
-  assert.ok(greeter.data && typeof greeter.data === "object", "expected opaque completion data")
+  assert.deepEqual(Object.keys(greeter.data ?? {}), ["arktsCompletionId"])
+  assert.match(greeter.data.arktsCompletionId, /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/)
+
+  const resolvedResponse = await session.request("completionItem/resolve", greeter)
+  assert.equal(resolvedResponse.error, undefined, JSON.stringify(resolvedResponse.error))
+  const resolved = resolvedResponse.result
+  assert.deepEqual(resolved.data, greeter.data)
+  assert.match(resolved.detail, /class Greeter/)
+  assert.equal(
+    resolved.documentation,
+    "Builds a deterministic greeting for the supplied name.",
+  )
+  assert.deepEqual(resolved.textEdit, greeter.textEdit)
+  assert.equal(resolved.additionalTextEdits.length, 1)
+  assert.deepEqual(resolved.additionalTextEdits[0].range, {
+    start: { line: 0, character: 0 },
+    end: { line: 0, character: 0 },
+  })
+  assert.equal(
+    resolved.additionalTextEdits[0].newText,
+    'import { Greeter } from "../services/Greeter.ets";\n\n',
+  )
+
+  const updatedHome = applyTextEdits(home, [
+    resolved.textEdit,
+    ...resolved.additionalTextEdits,
+  ])
+  assert.match(updatedHome, /^import \{ Greeter \} from "\.\.\/services\/Greeter\.ets";\n\n/)
+  assert.match(updatedHome, /const face = '😀'; const value = Greeter/)
+
+  const diagnosticsV2 = session.transport.notification(
+    "textDocument/publishDiagnostics",
+    (message) => message.params.uri === completion.uri && message.params.version === 2,
+    5_000,
+  )
+  session.changeDocument({
+    uri: completion.uri,
+    version: 2,
+    text: updatedHome,
+  })
+  const diagnostics = await diagnosticsV2
+  assert.deepEqual(diagnostics.params.diagnostics, [])
+
+  const usageOffset = updatedHome.lastIndexOf("Greeter")
+  assert.notEqual(usageOffset, -1)
+  const definitionResponse = await session.request("textDocument/definition", {
+    textDocument: { uri: completion.uri },
+    position: positionAt(updatedHome, usageOffset + 1),
+  })
+  assert.equal(definitionResponse.error, undefined, JSON.stringify(definitionResponse.error))
+  const locations = Array.isArray(definitionResponse.result)
+    ? definitionResponse.result
+    : [definitionResponse.result]
+  assert.equal(locations.length, 1)
+  assert.deepEqual(locations[0], { uri: definition.uri, range: definition.range })
+  assert.equal(textInRange(greeterSource, locations[0].range), "Greeter")
 })
 
 test("completes inherited fields and methods after this dot", async (t) => {
@@ -274,6 +332,13 @@ function midpoint(range) {
     character: range.start.character
       + Math.floor((range.end.character - range.start.character) / 2),
   }
+}
+
+function positionAt(source, offset) {
+  const before = source.slice(0, offset)
+  const line = before.split("\n").length - 1
+  const lineStart = before.lastIndexOf("\n") + 1
+  return { line, character: offset - lineStart }
 }
 
 function textInRange(source, range) {

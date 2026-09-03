@@ -222,6 +222,146 @@ test("maps client cancellation to the semantic abort signal and RequestCancelled
   assert.equal(next.result[0].label, "fixture-v1")
 })
 
+test("maps completion resolve cancellation to the semantic abort signal", async (t) => {
+  const server = new LspProcess({ serverPath: scriptedServerPath })
+  t.after(() => server.close())
+  const uri = pathToFileURL(`${projectRoot}/fixtures/ResolveCancel.ets`).href
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: {
+      processId: process.pid,
+      rootUri: pathToFileURL(projectRoot).href,
+      capabilities: {},
+    },
+  })
+  await server.response(1)
+  server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
+  server.send({
+    jsonrpc: "2.0",
+    method: "textDocument/didOpen",
+    params: {
+      textDocument: {
+        uri,
+        languageId: "arkts",
+        version: 1,
+        text: "// RESOLVE_WAITS_FOR_ABORT",
+      },
+    },
+  })
+  server.send({
+    jsonrpc: "2.0",
+    id: 32,
+    method: "textDocument/completion",
+    params: {
+      textDocument: { uri },
+      position: { line: 0, character: 0 },
+    },
+  })
+  const completion = await server.response(32)
+  const item = completion.result[0]
+  assert.ok(item.data?.arktsCompletionId)
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 33,
+    method: "completionItem/resolve",
+    params: item,
+  })
+  server.send({
+    jsonrpc: "2.0",
+    method: "$/cancelRequest",
+    params: { id: 33 },
+  })
+
+  const cancelled = await server.response(33)
+  assert.equal(cancelled.error.code, -32800)
+})
+
+test("rejects forged and stale completion resolve data", async (t) => {
+  const server = new LspProcess({ serverPath: scriptedServerPath })
+  t.after(() => server.close())
+  const uri = pathToFileURL(`${projectRoot}/fixtures/ResolveData.ets`).href
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: {
+      processId: process.pid,
+      rootUri: pathToFileURL(projectRoot).href,
+      capabilities: {},
+    },
+  })
+  await server.response(1)
+  server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
+  server.send({
+    jsonrpc: "2.0",
+    method: "textDocument/didOpen",
+    params: {
+      textDocument: {
+        uri,
+        languageId: "arkts",
+        version: 1,
+        text: "struct ResolveData {}",
+      },
+    },
+  })
+  server.send({
+    jsonrpc: "2.0",
+    id: 34,
+    method: "textDocument/completion",
+    params: {
+      textDocument: { uri },
+      position: { line: 0, character: 7 },
+    },
+  })
+  const completion = await server.response(34)
+  const item = completion.result[0]
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 35,
+    method: "completionItem/resolve",
+    params: { ...item, label: "FORGED-CLIENT-LABEL", detail: "FORGED-CLIENT-DETAIL" },
+  })
+  const serverBound = await server.response(35)
+  assert.equal(serverBound.result.label, item.label)
+  assert.equal(serverBound.result.detail, "Resolved scripted semantic completion")
+  assert.deepEqual(serverBound.result.data, item.data)
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 36,
+    method: "completionItem/resolve",
+    params: {
+      ...item,
+      data: { arktsCompletionId: `${item.data.arktsCompletionId}-forged` },
+    },
+  })
+  const forged = await server.response(36)
+  assert.equal(forged.error.code, -32602)
+
+  server.send({
+    jsonrpc: "2.0",
+    method: "textDocument/didChange",
+    params: {
+      textDocument: { uri, version: 2 },
+      contentChanges: [{ text: "struct ResolveDataV2 {}" }],
+    },
+  })
+  server.send({
+    jsonrpc: "2.0",
+    id: 37,
+    method: "completionItem/resolve",
+    params: item,
+  })
+  const stale = await server.response(37)
+  assert.equal(stale.error.code, -32602)
+})
+
 test("shutdown rejects later requests, disposes once, and waits for exit", async (t) => {
   const server = new LspProcess({ serverPath: scriptedServerPath })
   t.after(() => server.close())
@@ -251,6 +391,16 @@ test("shutdown rejects later requests, disposes once, and waits for exit", async
       },
     },
   })
+  server.send({
+    jsonrpc: "2.0",
+    id: 39,
+    method: "textDocument/completion",
+    params: {
+      textDocument: { uri },
+      position: { line: 0, character: 0 },
+    },
+  })
+  const completion = await server.response(39)
   server.send({ jsonrpc: "2.0", id: 40, method: "shutdown", params: null })
   const shutdown = await server.response(40)
   assert.equal(shutdown.result, null)
@@ -267,6 +417,15 @@ test("shutdown rejects later requests, disposes once, and waits for exit", async
   })
   const rejected = await server.response(41)
   assert.equal(rejected.error.code, -32600)
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 42,
+    method: "completionItem/resolve",
+    params: completion.result[0],
+  })
+  const rejectedResolve = await server.response(42)
+  assert.equal(rejectedResolve.error.code, -32600)
 
   const exited = once(server.child, "exit")
   server.send({ jsonrpc: "2.0", method: "exit", params: null })

@@ -16,6 +16,7 @@ export const CURRENT_LSP_CAPABILITY_CONTRACT = Object.freeze({
     { path: "textDocumentSync.openClose", expected: true },
     { path: "textDocumentSync.change", expected: 2 },
     { path: "completionProvider.triggerCharacters", expected: ["."] },
+    { path: "completionProvider.resolveProvider", expected: true },
     { path: "definitionProvider", expected: true },
     { path: "hoverProvider", expected: true },
     { path: "signatureHelpProvider.triggerCharacters", expected: ["(", ","] },
@@ -23,7 +24,6 @@ export const CURRENT_LSP_CAPABILITY_CONTRACT = Object.freeze({
     { path: "workspaceSymbolProvider", expected: true },
   ]),
   absent: Object.freeze([
-    "completionProvider.resolveProvider",
     "referencesProvider",
     "renameProvider",
     "codeActionProvider",

@@ -3,12 +3,14 @@ import { fileURLToPath, pathToFileURL } from "node:url"
 import type {
   DocumentSnapshot,
   TextPosition,
+  TextRange,
   WorkspaceDescriptor,
 } from "../contracts/document.js"
 import type { ProjectResolverPort } from "../contracts/project-resolver.js"
 import type {
   SemanticCompletion,
   SemanticCompletionKind,
+  SemanticCompletionResolveQuery,
   SemanticDiagnostic,
   SemanticDocumentQuery,
   SemanticDocumentSymbol,
@@ -20,6 +22,7 @@ import type {
   SemanticDefinition,
 } from "../contracts/semantic-engine.js"
 import type {
+  SemanticCompletionItem,
   SemanticDocumentPosition,
   SemanticDocumentSymbolInfo,
 } from "../core/protocol.js"
@@ -53,19 +56,25 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     assertActive(query.signal)
     this.sync(query.document)
     const prepared = this.prepare(query.document, query.position, true)
-    const value = prepared.engine.complete(prepared.position).map((item) => ({
-      label: item.label,
-      detail: item.detail,
-      kind: completionKind(item.kind),
-      insertText: item.insertText,
-      filterText: item.filterText,
-      sortText: item.sortText,
-      replacementRange: item.replacementRange
-        ? toPublicRange(item.replacementRange)
-        : undefined,
-      data: item.data,
-    }))
+    const value = prepared.engine.complete(prepared.position)
+      .map((item) => toPublicCompletion(item, query.document.version))
     return { documentVersion: query.document.version, value }
+  }
+
+  async resolveCompletion(
+    query: SemanticCompletionResolveQuery,
+  ): Promise<VersionedSemanticResult<SemanticCompletion>> {
+    assertActive(query.signal)
+    this.sync(query.document)
+    const prepared = this.prepare(query.document, query.position, true)
+    const item = prepared.engine.resolveCompletion(
+      prepared.position,
+      toLegacyCompletion(query.completion),
+    )
+    return {
+      documentVersion: query.document.version,
+      value: toPublicCompletion(item, query.document.version),
+    }
   }
 
   async define(
@@ -182,6 +191,56 @@ function completionKind(kind: string): SemanticCompletionKind {
       return kind
     default:
       return "property"
+  }
+}
+
+function toPublicCompletion(
+  item: SemanticCompletionItem,
+  documentVersion: number,
+): SemanticCompletion {
+  return {
+    label: item.label,
+    detail: item.detail,
+    kind: completionKind(item.kind),
+    documentation: item.documentation,
+    insertText: item.insertText,
+    filterText: item.filterText,
+    sortText: item.sortText,
+    replacementRange: item.replacementRange
+      ? toPublicRange(item.replacementRange)
+      : undefined,
+    additionalTextEdits: item.additionalTextEdits?.map((edit) => ({
+      uri: pathToFileURL(edit.path).href,
+      range: toPublicRange(edit.range),
+      newText: edit.newText,
+      expectedVersion: edit.expectedVersion ?? documentVersion,
+    })),
+    data: item.data,
+  }
+}
+
+function toLegacyCompletion(item: SemanticCompletion): SemanticCompletionItem {
+  return {
+    label: item.label,
+    detail: item.detail,
+    kind: item.kind,
+    documentation: item.documentation,
+    insertText: item.insertText,
+    filterText: item.filterText,
+    sortText: item.sortText,
+    replacementRange: item.replacementRange
+      ? toLegacyRange(item.replacementRange)
+      : undefined,
+    data: item.data,
+  }
+}
+
+function toLegacyRange(range: TextRange) {
+  return {
+    startLine: range.start.line + 1,
+    startColumn: range.start.character + 1,
+    endLine: range.end.line + 1,
+    endColumn: range.end.character + 1,
   }
 }
 

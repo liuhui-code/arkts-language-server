@@ -18,11 +18,20 @@ export interface SemanticCompletion {
   label: string
   detail: string
   kind: SemanticCompletionKind
+  documentation?: string
   insertText?: string
   filterText?: string
   sortText?: string
   replacementRange?: TextRange
+  additionalTextEdits?: SemanticCompletionTextEdit[]
   data?: Record<string, unknown>
+}
+
+export interface SemanticCompletionTextEdit {
+  uri: DocumentUri
+  range: TextRange
+  newText: string
+  expectedVersion: number
 }
 
 export interface SemanticDefinition {
@@ -94,6 +103,10 @@ export interface SemanticQuery {
   signal?: AbortSignal
 }
 
+export interface SemanticCompletionResolveQuery extends SemanticQuery {
+  completion: SemanticCompletion
+}
+
 export interface VersionedSemanticResult<T> {
   documentVersion: number
   value: T
@@ -103,6 +116,9 @@ export interface SemanticEnginePort {
   sync(document: DocumentSnapshot): void
   close(documentUri: DocumentUri): void
   complete(query: SemanticQuery): Promise<VersionedSemanticResult<SemanticCompletion[]>>
+  resolveCompletion(
+    query: SemanticCompletionResolveQuery,
+  ): Promise<VersionedSemanticResult<SemanticCompletion>>
   define(query: SemanticQuery): Promise<VersionedSemanticResult<SemanticDefinition[]>>
   documentSymbols(query: SemanticDocumentQuery): Promise<VersionedSemanticResult<SemanticDocumentSymbol[]>>
   diagnose(query: SemanticDocumentQuery): Promise<VersionedSemanticResult<SemanticDiagnostic[]>>
