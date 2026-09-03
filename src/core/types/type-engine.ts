@@ -47,6 +47,10 @@ export class SemanticTypeEngineRegistry {
   private accessClock = 0
 
   prepare(workspace: SemanticWorkspaceView): SemanticTypeQueryContext {
+    if (workspace.resetTypeEngine) {
+      this.workspaces.get(workspace.rootPath)?.engine.dispose()
+      this.workspaces.delete(workspace.rootPath)
+    }
     let entry = this.workspaces.get(workspace.rootPath)
     if (!entry) {
       entry = {

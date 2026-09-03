@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url"
 import {
   CompletionItemKind,
   createConnection,
+  DidChangeWatchedFilesNotification,
   ErrorCodes,
   type InitializeParams,
   PositionEncodingKind,
@@ -30,6 +31,7 @@ import { createDocumentDiagnostics } from "./document-diagnostics.js"
 import { RequestFreshness } from "./request-freshness.js"
 import { registerSemanticCapabilities } from "./register-semantic-capabilities.js"
 import { requestCancelled, SemanticRequestRunner } from "./semantic-request-runner.js"
+import { WorkspaceFileChangeCoordinator } from "./workspace-file-change-coordinator.js"
 
 const MAX_COMPLETION_RESOLUTIONS = 512
 
@@ -99,6 +101,8 @@ export function runLanguageServer(services?: LanguageServerServices): void {
   let shuttingDown = false
   let disposed = false
   let workspaceRoots: { id: string; rootUri: string }[] = []
+  let workspaceFileChanges = new WorkspaceFileChangeCoordinator({ rootUris: [] })
+  let supportsWatchedFileRegistration = false
   let workspaceIndexAbort: AbortController | undefined
 
   const disposeOnce = (reason: "shutdown" | "exit") => {
@@ -140,6 +144,9 @@ export function runLanguageServer(services?: LanguageServerServices): void {
     const rootUris = initialRootUris(params)
     projects.configure(rootUris)
     workspaceRoots = rootUris.map((rootUri) => ({ id: rootUri, rootUri }))
+    workspaceFileChanges = new WorkspaceFileChangeCoordinator({ rootUris })
+    supportsWatchedFileRegistration = params.capabilities.workspace
+      ?.didChangeWatchedFiles?.dynamicRegistration === true
     semanticCapabilities.configure(params.capabilities)
     logger.info("lsp.initialized", {
       workspaceCount: initialRootUris(params).length,
@@ -164,6 +171,17 @@ export function runLanguageServer(services?: LanguageServerServices): void {
   })
 
   connection.onInitialized(async () => {
+    if (shuttingDown) return
+    if (supportsWatchedFileRegistration) {
+      void connection.client.register(DidChangeWatchedFilesNotification.type, {
+        watchers: [
+          { globPattern: "**/*.ets" },
+          { globPattern: "**/*.ts" },
+        ],
+      }).catch(() => {
+        logger.error("workspace.watch.registration.failed", { outcome: "disabled" })
+      })
+    }
     if (!workspaceSymbols || shuttingDown) return
     const progress = await connection.window.createWorkDoneProgress()
     if (shuttingDown) return
@@ -230,6 +248,11 @@ export function runLanguageServer(services?: LanguageServerServices): void {
     semantic.sync(opened)
     workspaceSymbols?.sync(opened)
     diagnostics.update(document)
+  })
+  connection.onDidChangeWatchedFiles(({ changes }) => {
+    workspaceFileChanges.accept(changes)
+    const batches = workspaceFileChanges.drain()
+    if (batches.length > 0) semantic.workspaceFilesChanged?.(batches)
   })
   documents.onDidChangeContent(({ document }) => {
     freshness.cancelDocument(document.uri)

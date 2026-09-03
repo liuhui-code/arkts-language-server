@@ -18,6 +18,7 @@ import type {
   SemanticHover,
   SemanticQuery,
   SemanticSignatureHelp,
+  SemanticWorkspaceFileChangeBatch,
   VersionedSemanticResult,
   SemanticDefinition,
 } from "../contracts/semantic-engine.js"
@@ -48,6 +49,21 @@ export class LegacySemanticEngine implements SemanticEnginePort {
 
   close(documentUri: string): void {
     if (documentUri.startsWith("file:")) this.documents.close(fileURLToPath(documentUri))
+  }
+
+  workspaceFilesChanged(batches: readonly SemanticWorkspaceFileChangeBatch[]): void {
+    for (const batch of batches) {
+      const rootPath = toFilePath(batch.rootUri)
+      if (!rootPath) continue
+      this.documents.workspaceFilesChanged({
+        rootPath,
+        rootDirty: batch.rootDirty,
+        changes: batch.changes.flatMap((change) => {
+          const changedPath = toFilePath(change.uri)
+          return changedPath ? [{ path: changedPath, kind: change.kind }] : []
+        }),
+      })
+    }
   }
 
   async complete(
@@ -270,4 +286,12 @@ function toPublicDocumentSymbol(symbol: SemanticDocumentSymbolInfo): SemanticDoc
 function assertActive(signal?: AbortSignal): void {
   if (!signal?.aborted) return
   throw signal.reason instanceof Error ? signal.reason : new Error("Semantic request cancelled")
+}
+
+function toFilePath(uri: string): string | undefined {
+  try {
+    return uri.startsWith("file:") ? fileURLToPath(uri) : undefined
+  } catch {
+    return undefined
+  }
 }

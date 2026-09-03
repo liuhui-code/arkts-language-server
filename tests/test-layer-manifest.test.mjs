@@ -15,7 +15,7 @@ const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 test("classifies every executable test entry exactly once in an explicit layer", () => {
   const audit = validateTestLayerManifest({ root: projectRoot, manifest: TEST_LAYER_MANIFEST })
 
-  assert.equal(audit.entryCount, 36)
+  assert.equal(audit.entryCount, 38)
   assert.equal(audit.assignments["tests/index-adapter.test.mjs"], "unit-contract")
   assert.equal(
     audit.assignments["tests/release/index-sidecar.acceptance.mjs"],
@@ -23,9 +23,9 @@ test("classifies every executable test entry exactly once in an explicit layer",
   )
   assert.equal(audit.assignments["tests/test-layer-manifest.test.mjs"], "unit-contract")
   assert.deepEqual(audit.layerCounts, {
-    "unit-contract": 18,
+    "unit-contract": 19,
     protocol: 5,
-    "bundle-e2e": 9,
+    "bundle-e2e": 10,
     "artifact-e2e": 3,
     large: 1,
   })

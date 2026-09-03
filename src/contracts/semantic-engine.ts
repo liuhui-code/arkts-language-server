@@ -112,9 +112,19 @@ export interface VersionedSemanticResult<T> {
   value: T
 }
 
+export interface SemanticWorkspaceFileChangeBatch {
+  rootUri: DocumentUri
+  rootDirty: boolean
+  changes: Array<{
+    uri: DocumentUri
+    kind: "created" | "changed" | "deleted"
+  }>
+}
+
 export interface SemanticEnginePort {
   sync(document: DocumentSnapshot): void
   close(documentUri: DocumentUri): void
+  workspaceFilesChanged?(batches: readonly SemanticWorkspaceFileChangeBatch[]): void
   complete(query: SemanticQuery): Promise<VersionedSemanticResult<SemanticCompletion[]>>
   resolveCompletion(
     query: SemanticCompletionResolveQuery,
