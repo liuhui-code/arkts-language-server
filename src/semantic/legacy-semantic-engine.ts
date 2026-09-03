@@ -127,6 +127,7 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     const value = prepared.engine.diagnostics(prepared.position).map((diagnostic) => ({
       range: toPublicRange(diagnostic.range),
       severity: diagnostic.severity,
+      code: diagnostic.code,
       message: diagnostic.message,
       source: "arkts" as const,
     }))

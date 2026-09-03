@@ -97,6 +97,7 @@ function toLspDiagnostic(diagnostic: SemanticDiagnostic) {
     severity: diagnostic.severity === "error"
       ? DiagnosticSeverity.Error
       : DiagnosticSeverity.Warning,
+    code: diagnostic.code,
     source: diagnostic.source,
     message: diagnostic.message,
   }

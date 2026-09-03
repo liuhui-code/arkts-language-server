@@ -182,6 +182,7 @@ export interface SemanticUsageResult extends SemanticDefinitionTarget {
 export interface SemanticDiagnostic {
   source: "language"
   severity: "error" | "warning"
+  code: number
   path: string
   range: SemanticTextRange
   message: string

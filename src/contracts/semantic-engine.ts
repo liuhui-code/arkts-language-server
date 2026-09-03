@@ -88,6 +88,7 @@ export interface SemanticDocumentSymbol {
 export interface SemanticDiagnostic {
   range: TextRange
   severity: "error" | "warning"
+  code: number
   message: string
   source: "arkts"
 }

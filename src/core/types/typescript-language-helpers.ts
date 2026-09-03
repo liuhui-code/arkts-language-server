@@ -32,12 +32,21 @@ export function mapTypescriptDiagnostics(
       diagnostic.length ?? 1,
     )
     const message = ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n")
-    const key = `${range.startLine}:${range.startColumn}:${message}`
+    const key = JSON.stringify([
+      diagnostic.code,
+      diagnostic.category,
+      range.startLine,
+      range.startColumn,
+      range.endLine,
+      range.endColumn,
+      message,
+    ])
     if (seen.has(key)) return []
     seen.add(key)
     return [{
       source: "language" as const,
       severity: diagnostic.category === ts.DiagnosticCategory.Error ? "error" as const : "warning" as const,
+      code: diagnostic.code,
       path: filePath,
       range,
       message,

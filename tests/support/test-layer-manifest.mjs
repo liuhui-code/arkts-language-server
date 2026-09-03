@@ -41,6 +41,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/lsp-production-index.test.mjs",
       "tests/lsp-transcript.test.mjs",
       "tests/lsp-workspace-file-changes.test.mjs",
+      "tests/semantic/diagnostic-code-characterization.test.mjs",
       "tests/semantic/editor-capabilities.test.mjs",
       "tests/semantic/semantic-characterization.test.mjs",
       "tests/version-identity.test.mjs",
