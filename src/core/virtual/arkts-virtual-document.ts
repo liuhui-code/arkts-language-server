@@ -3,6 +3,9 @@ import ts from "typescript"
 import type { SemanticTextRange } from "../protocol.js"
 import { offsetToLineColumn } from "../types/text-position.js"
 
+const MAX_ARKUI_BUILDER_TRANSFORMS = 512
+const MAX_ARKUI_GENERATED_EXPANSION = 8 * 1024
+
 interface TextRewrite {
   sourceStart: number
   sourceEnd: number
@@ -90,6 +93,10 @@ function collectArkUIBuilderRewrites(content: string): TextRewrite[] {
     ts.ScriptKind.TS,
   )
   const rewrites: TextRewrite[] = []
+  let builderTransforms = 0
+  let generatedExpansion = 0
+  let transformLimitExceeded = false
+  let expansionLimitExceeded = false
   const visitStatements = (statements: ts.NodeArray<ts.Statement>) => {
     for (let index = 1; index < statements.length; index += 1) {
       const expression = statements[index - 1]
@@ -105,19 +112,47 @@ function collectArkUIBuilderRewrites(content: string): TextRewrite[] {
       const blockStart = block.getStart(sourceFile)
       const gap = content.slice(expression.end, blockStart)
       if (!/^[ \t]+$/u.test(gap)) continue
-      rewrites.push({
-        sourceStart: blockStart - 1,
-        sourceEnd: blockStart,
-        generatedText: ";",
-      })
+      builderTransforms += 1
+      if (builderTransforms > MAX_ARKUI_BUILDER_TRANSFORMS) {
+        transformLimitExceeded = true
+        return
+      }
+      const expressionStart = expression.getStart(sourceFile)
+      const builderRewrites = [
+        {
+          sourceStart: expressionStart,
+          sourceEnd: expressionStart,
+          generatedText: "([",
+        },
+        {
+          sourceStart: expression.end,
+          sourceEnd: blockStart,
+          generatedText: ",()=>",
+        },
+        {
+          sourceStart: block.end,
+          sourceEnd: block.end,
+          generatedText: "] as const)[0]",
+        },
+      ]
+      const builderExpansion = builderRewrites.reduce((total, rewrite) => (
+        total + Math.max(0, rewrite.generatedText.length - (rewrite.sourceEnd - rewrite.sourceStart))
+      ), 0)
+      generatedExpansion += builderExpansion
+      if (generatedExpansion > MAX_ARKUI_GENERATED_EXPANSION) {
+        expansionLimitExceeded = true
+        return
+      }
+      rewrites.push(...builderRewrites)
     }
   }
   const visit = (node: ts.Node) => {
+    if (transformLimitExceeded || expansionLimitExceeded) return
     if (ts.isSourceFile(node) || ts.isBlock(node)) visitStatements(node.statements)
     ts.forEachChild(node, visit)
   }
   visit(sourceFile)
-  return rewrites
+  return transformLimitExceeded || expansionLimitExceeded ? [] : rewrites
 }
 
 function isArkUIComponentCall(call: ts.CallExpression): boolean {

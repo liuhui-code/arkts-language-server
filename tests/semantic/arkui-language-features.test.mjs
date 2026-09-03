@@ -187,9 +187,9 @@ test("rewrites only ArkUI builder blocks while preserving exact source offsets",
     "  build() {",
     "    if (this.ready) { this.refresh() }",
     "    lowercase() { this.bad() }",
-    "    Column();{",
-    "      Row();{ Text(\"Ready\") }",
-    "    }",
+    "    ([Column(),()=>{",
+    "      ([Row(),()=>{ Text(\"Ready\") }] as const)[0]",
+    "    }] as const)[0]",
     "    const face = \"😀\"; const values = [1 2]",
     "  }",
     "}",
@@ -202,8 +202,8 @@ test("rewrites only ArkUI builder blocks while preserving exact source offsets",
   const generatedNumericErrorOffset = virtual.toGeneratedOffset(numericErrorOffset)
 
   assert.equal(virtual.generatedContent, expected)
-  assert.equal(virtual.generatedContent.length, source.length - 1)
-  assert.equal(generatedNumericErrorOffset, numericErrorOffset - 1)
+  assert.equal(virtual.generatedContent.length, expected.length)
+  assert.equal(generatedNumericErrorOffset, expected.indexOf("[1 2]") + 3)
   assert.equal(virtual.toSourceOffset(generatedNumericErrorOffset), numericErrorOffset)
   assert.deepEqual(
     virtual.generatedSpanToSourceRange(generatedNumericErrorOffset, 1),
