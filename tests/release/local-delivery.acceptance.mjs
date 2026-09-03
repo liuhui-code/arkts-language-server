@@ -7,7 +7,11 @@ import path from "node:path"
 import test from "node:test"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
+import { CompletionItemKind } from "vscode-languageserver/node.js"
+
 import { LspProcess } from "../support/lsp-process.mjs"
+import { LspSession } from "../support/lsp-session.mjs"
+import { materializeConformanceWorkspace } from "../support/materialize-conformance-workspace.mjs"
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 const installer = path.join(projectRoot, "scripts", "install-local.sh")
@@ -81,6 +85,8 @@ test("one local command builds and idempotently installs a working Zed language 
 
   const response = await initialize(installedCommand, os.tmpdir())
   assert.equal(response.result.serverInfo.name, "arkts-language-server")
+
+  await assertInstalledSemanticSmoke({ installedCommand, temporaryRoot })
 
   const workspace = path.join(temporaryRoot, "workspace")
   fs.mkdirSync(workspace)
@@ -224,3 +230,120 @@ test("one local command builds and idempotently installs a working Zed language 
   warm.send({ jsonrpc: "2.0", method: "exit", params: null })
   await warmExited
 })
+
+async function assertInstalledSemanticSmoke({ installedCommand, temporaryRoot }) {
+  const materialized = await materializeConformanceWorkspace({ temporaryRoot })
+  const reference = materialized.cases["profile.reference"]
+  const definition = materialized.cases["profile.definition"]
+  const completion = materialized.cases["completion.unicode"]
+  const consumerSource = fs.readFileSync(fileURLToPath(reference.uri), "utf8")
+  const definitionSource = fs.readFileSync(fileURLToPath(definition.uri), "utf8")
+  const homeSource = fs.readFileSync(fileURLToPath(completion.uri), "utf8")
+  assert.equal(textInRange(consumerSource, reference.range), "Profile")
+  assert.equal(textInRange(homeSource, completion.range), "Gree")
+  const externalCwd = path.join(temporaryRoot, "semantic-external-cwd")
+  fs.mkdirSync(externalCwd)
+  const session = new LspSession({
+    command: installedCommand,
+    args: ["--stdio"],
+    cwd: externalCwd,
+    env: {
+      HOME: path.join(materialized.root, "missing-home"),
+      DEVECO_SDK_HOME: path.join(materialized.root, "missing-deveco"),
+      ARKLINE_HARMONY_SDK_PATH: path.join(materialized.corpusRoot, "sdk", "openharmony"),
+      ARKTS_INDEX_SIDECAR_PATH: "",
+      ARKTS_INDEX_CACHE_DIR: path.join(materialized.root, "index-cache"),
+    },
+    rootUri: pathToFileURL(materialized.workspaceRoot).href,
+    capabilities: {
+      general: { positionEncodings: ["utf-16"] },
+      textDocument: { publishDiagnostics: { versionSupport: true } },
+      window: { workDoneProgress: true },
+    },
+  })
+
+  try {
+    await session.initialize({ timeoutMs: 15_000 })
+    const create = await session.transport.serverRequest(
+      "window/workDoneProgress/create",
+      () => true,
+      15_000,
+    )
+    session.transport.send({ jsonrpc: "2.0", id: create.id, result: null })
+
+    const consumerDiagnostics = session.transport.notification(
+      "textDocument/publishDiagnostics",
+      (message) => message.params.uri === reference.uri && message.params.version === 1,
+      15_000,
+    )
+    session.openDocument({
+      uri: reference.uri,
+      languageId: "arkts",
+      version: 1,
+      text: consumerSource,
+    })
+    const published = await consumerDiagnostics
+    assert.equal(published.params.version, 1)
+    assert.deepEqual(published.params.diagnostics, [])
+
+    const definitionResponse = await session.request("textDocument/definition", {
+      textDocument: { uri: reference.uri },
+      position: midpoint(reference.range),
+    }, { timeoutMs: 15_000 })
+    assert.equal(definitionResponse.error, undefined, JSON.stringify(definitionResponse.error))
+    const locations = definitionResponse.result === null
+      ? []
+      : Array.isArray(definitionResponse.result)
+        ? definitionResponse.result
+        : [definitionResponse.result]
+    assert.deepEqual(locations, [{ uri: definition.uri, range: definition.range }])
+    assert.notDeepEqual(locations[0].range.start, locations[0].range.end)
+    assert.equal(textInRange(definitionSource, locations[0].range), "Profile")
+
+    session.transport.send({
+      jsonrpc: "2.0",
+      method: "textDocument/didClose",
+      params: { textDocument: { uri: reference.uri } },
+    })
+    session.openDocument({
+      uri: completion.uri,
+      languageId: "arkts",
+      version: 1,
+      text: homeSource,
+    })
+    const completionResponse = await session.request("textDocument/completion", {
+      textDocument: { uri: completion.uri },
+      position: completion.position,
+    }, { timeoutMs: 15_000 })
+    assert.equal(completionResponse.error, undefined, JSON.stringify(completionResponse.error))
+    const items = Array.isArray(completionResponse.result)
+      ? completionResponse.result
+      : completionResponse.result?.items ?? []
+    const greeters = items.filter((item) => item.label === "Greeter")
+    assert.equal(greeters.length, 1, `Expected one Greeter in ${JSON.stringify(items)}`)
+    assert.equal(greeters[0].kind, CompletionItemKind.Class)
+    assert.deepEqual(greeters[0].textEdit, {
+      range: completion.range,
+      newText: "Greeter",
+    })
+  } finally {
+    await session.close({ timeoutMs: 15_000 })
+  }
+}
+
+function midpoint(range) {
+  assert.equal(range.start.line, range.end.line, "fixture range must be single-line")
+  return {
+    line: range.start.line,
+    character: range.start.character + Math.floor(
+      (range.end.character - range.start.character) / 2,
+    ),
+  }
+}
+
+function textInRange(source, range) {
+  assert.equal(range.start.line, range.end.line, "fixture range must be single-line")
+  return source
+    .split("\n")[range.start.line]
+    .slice(range.start.character, range.end.character)
+}
