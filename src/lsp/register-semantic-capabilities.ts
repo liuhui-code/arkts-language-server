@@ -1,4 +1,5 @@
 import {
+  CodeActionKind,
   MarkupKind,
   SymbolKind,
   type ClientCapabilities,
@@ -38,6 +39,13 @@ export function registerSemanticCapabilities({
 }: SemanticCapabilityDependencies): SemanticCapabilityRegistration {
   let hierarchicalDocumentSymbols = false
   let documentStructKind: SymbolKind = SymbolKind.Class
+  const capabilities: ServerCapabilities = {
+    documentSymbolProvider: true,
+    hoverProvider: true,
+    signatureHelpProvider: {
+      triggerCharacters: ["(", ","],
+    },
+  }
 
   connection.onSignatureHelp(async (params, token) => {
     return requests.run({
@@ -83,13 +91,7 @@ export function registerSemanticCapabilities({
   })
 
   return {
-    capabilities: {
-      documentSymbolProvider: true,
-      hoverProvider: true,
-      signatureHelpProvider: {
-        triggerCharacters: ["(", ","],
-      },
-    },
+    capabilities,
     configure(clientCapabilities) {
       hierarchicalDocumentSymbols = clientCapabilities.textDocument
         ?.documentSymbol?.hierarchicalDocumentSymbolSupport === true
@@ -97,8 +99,25 @@ export function registerSemanticCapabilities({
         ?.symbolKind?.valueSet?.includes(SymbolKind.Struct)
         ? SymbolKind.Struct
         : SymbolKind.Class
+      if (supportsResolvableQuickFixes(clientCapabilities)) {
+        capabilities.codeActionProvider = {
+          codeActionKinds: [CodeActionKind.QuickFix],
+          resolveProvider: true,
+        }
+      } else {
+        delete capabilities.codeActionProvider
+      }
     },
   }
+}
+
+function supportsResolvableQuickFixes(clientCapabilities: ClientCapabilities): boolean {
+  const codeAction = clientCapabilities.textDocument?.codeAction
+  return clientCapabilities.workspace?.workspaceEdit?.documentChanges === true
+    && codeAction?.codeActionLiteralSupport?.codeActionKind.valueSet
+      .includes(CodeActionKind.QuickFix) === true
+    && codeAction.dataSupport === true
+    && codeAction.resolveSupport?.properties.includes("edit") === true
 }
 
 function toLspDocumentSymbol(

@@ -110,7 +110,10 @@ test("lists one unresolved spelling quick fix for the current diagnostic", async
   })
 
   const initialized = await session.initialize()
-  assert.equal(initialized.result.capabilities.codeActionProvider, undefined)
+  assert.deepEqual(initialized.result.capabilities.codeActionProvider, {
+    codeActionKinds: ["quickfix"],
+    resolveProvider: true,
+  })
   const publication = session.transport.notification(
     "textDocument/publishDiagnostics",
     (message) => message.params.uri === quickFix.uri && message.params.version === 1,

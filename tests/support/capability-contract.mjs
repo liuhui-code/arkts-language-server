@@ -2,6 +2,7 @@ import { isDeepStrictEqual } from "node:util"
 
 export const CURRENT_LSP_CAPABILITY_CONTRACT = Object.freeze({
   allowedTopLevel: Object.freeze([
+    "codeActionProvider",
     "completionProvider",
     "definitionProvider",
     "documentSymbolProvider",
@@ -17,6 +18,10 @@ export const CURRENT_LSP_CAPABILITY_CONTRACT = Object.freeze({
     { path: "textDocumentSync.change", expected: 2 },
     { path: "completionProvider.triggerCharacters", expected: ["."] },
     { path: "completionProvider.resolveProvider", expected: true },
+    {
+      path: "codeActionProvider",
+      expected: { codeActionKinds: ["quickfix"], resolveProvider: true },
+    },
     { path: "definitionProvider", expected: true },
     { path: "hoverProvider", expected: true },
     { path: "signatureHelpProvider.triggerCharacters", expected: ["(", ","] },
@@ -26,7 +31,6 @@ export const CURRENT_LSP_CAPABILITY_CONTRACT = Object.freeze({
   absent: Object.freeze([
     "referencesProvider",
     "renameProvider",
-    "codeActionProvider",
   ]),
 })
 

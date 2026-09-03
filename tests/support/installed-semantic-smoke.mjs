@@ -75,7 +75,10 @@ export async function assertInstalledSemanticSmoke({
       change: 2,
     })
     assert.equal(initialized.result.capabilities.completionProvider.resolveProvider, true)
-    assert.equal(initialized.result.capabilities.codeActionProvider, undefined)
+    assert.deepEqual(initialized.result.capabilities.codeActionProvider, {
+      codeActionKinds: ["quickfix"],
+      resolveProvider: true,
+    })
     const create = await session.transport.serverRequest(
       "window/workDoneProgress/create",
       () => true,
