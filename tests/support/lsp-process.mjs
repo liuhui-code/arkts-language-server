@@ -72,6 +72,16 @@ export class LspProcess {
     return this.waitFor(matches, `LSP notification ${method}`, timeoutMs)
   }
 
+  progress(token, predicate = () => true, timeoutMs = 5_000) {
+    const matches = (message) => isNotification(message)
+      && message.method === "$/progress"
+      && message.params?.token === token
+      && predicate(message)
+    const queued = this.messages.findIndex(matches)
+    if (queued >= 0) return Promise.resolve(this.messages.splice(queued, 1)[0])
+    return this.waitFor(matches, `LSP progress ${JSON.stringify(token)}`, timeoutMs)
+  }
+
   serverRequest(method, predicate = () => true, timeoutMs = 5_000) {
     const matches = (message) => isServerRequest(message)
       && message.method === method

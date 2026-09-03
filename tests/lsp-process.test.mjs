@@ -254,3 +254,72 @@ test("routes responses, server requests, and notifications by JSON-RPC shape", a
     await lsp.close()
   }
 })
+
+test("routes interleaved queued progress by token and predicate", async () => {
+  const lsp = new LspProcess({
+    command: process.execPath,
+    args: [
+      "-e",
+      `
+        const messages = [
+          {
+            jsonrpc: "2.0",
+            method: "$/progress",
+            params: { token: "alpha", value: { kind: "begin", sequence: 1 } },
+          },
+          {
+            jsonrpc: "2.0",
+            method: "$/progress",
+            params: { token: "beta", value: { kind: "begin", sequence: 2 } },
+          },
+          {
+            jsonrpc: "2.0",
+            method: "$/progress",
+            params: { token: "alpha", value: { kind: "report", sequence: 3 } },
+          },
+          {
+            jsonrpc: "2.0",
+            method: "$/progress",
+            params: { token: "beta", value: { kind: "report", sequence: 4 } },
+          },
+          { jsonrpc: "2.0", method: "fixture/ready" },
+        ]
+        const frame = (message) => {
+          const body = JSON.stringify(message)
+          return "Content-Length: " + Buffer.byteLength(body) + "\\r\\n\\r\\n" + body
+        }
+        process.stdout.write(messages.map(frame).join(""))
+        setInterval(() => {}, 1_000)
+      `,
+    ],
+  })
+
+  try {
+    await lsp.notification("fixture/ready", undefined, 1_000)
+
+    const betaBegin = await lsp.progress("beta", undefined, 500)
+    const alphaReport = await lsp.progress(
+      "alpha",
+      (message) => message.params.value.kind === "report",
+      500,
+    )
+    const betaReport = await lsp.progress(
+      "beta",
+      (message) => message.params.value.kind === "report",
+      500,
+    )
+    const alphaBegin = await lsp.progress(
+      "alpha",
+      (message) => message.params.value.kind === "begin",
+      500,
+    )
+
+    assert.deepEqual(
+      [betaBegin, alphaReport, betaReport, alphaBegin]
+        .map((message) => [message.params.token, message.params.value.sequence]),
+      [["beta", 2], ["alpha", 3], ["beta", 4], ["alpha", 1]],
+    )
+  } finally {
+    await lsp.close()
+  }
+})

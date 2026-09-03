@@ -116,15 +116,15 @@ test("one local command builds and idempotently installs a working Zed language 
   server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
   const create = await server.serverRequest("window/workDoneProgress/create", () => true, 15_000)
   server.send({ jsonrpc: "2.0", id: create.id, result: null })
-  const ready = await server.notification(
-    "$/progress",
+  const ready = await server.progress(
+    create.params.token,
     (message) => message.params.value.kind === "report"
       && message.params.value.percentage === 100,
     30_000,
   )
   assert.match(ready.params.value.message, /^Indexed 1\/1 files; skipped 0 entries$/)
-  await server.notification(
-    "$/progress",
+  await server.progress(
+    create.params.token,
     (message) => message.params.value.kind === "end",
     30_000,
   )
@@ -199,8 +199,8 @@ test("one local command builds and idempotently installs a working Zed language 
   warm.send({ jsonrpc: "2.0", method: "initialized", params: {} })
   const warmCreate = await warm.serverRequest("window/workDoneProgress/create", () => true, 15_000)
   warm.send({ jsonrpc: "2.0", id: warmCreate.id, result: null })
-  await warm.notification(
-    "$/progress",
+  await warm.progress(
+    warmCreate.params.token,
     (message) => message.params.value.kind === "report"
       && message.params.value.percentage !== 100,
     15_000,

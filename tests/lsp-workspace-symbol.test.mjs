@@ -121,14 +121,16 @@ test("reports discovery without fake zero percent and completes monotonic indexi
 
   const create = await server.serverRequest("window/workDoneProgress/create")
   server.send({ jsonrpc: "2.0", id: create.id, result: null })
-  const begin = await server.notification("$/progress", (message) => message.params.value.kind === "begin")
+  const begin = await server.progress(create.params.token, (message) => (
+    message.params.value.kind === "begin"
+  ))
   assert.equal(begin.params.value.message, "Discovering project files")
   assert.equal("percentage" in begin.params.value, false)
 
   const reports = []
   while (reports.length < 3) {
-    reports.push(await server.notification(
-      "$/progress",
+    reports.push(await server.progress(
+      create.params.token,
       (message) => message.params.value.kind === "report",
     ))
   }
@@ -139,7 +141,9 @@ test("reports discovery without fake zero percent and completes monotonic indexi
   assert.ok(percentages.every((value, index) => index === 0 || value >= percentages[index - 1]))
   assert.ok(reports.some((message) => /1\/3 files/.test(message.params.value.message)))
 
-  const end = await server.notification("$/progress", (message) => message.params.value.kind === "end")
+  const end = await server.progress(create.params.token, (message) => (
+    message.params.value.kind === "end"
+  ))
   assert.equal(end.params.value.kind, "end")
 })
 

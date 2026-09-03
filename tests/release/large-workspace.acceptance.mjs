@@ -201,15 +201,15 @@ async function initializeWorkspace(server, rootUri, id) {
 }
 
 async function acknowledgeProgressAndWaitUntilReady(server) {
-  await acknowledgeProgress(server)
-  return waitUntilReady(server)
+  const token = await acknowledgeProgress(server)
+  return waitUntilReady(server, token)
 }
 
 async function acknowledgeProgressAndWaitForCatalogActivity(server) {
-  await acknowledgeProgress(server)
+  const token = await acknowledgeProgress(server)
   await progressNotification(
     server,
-    "$/progress",
+    token,
     (message) => message.params.value.kind === "report"
       && message.params.value.percentage !== 100,
     "catalog activity",
@@ -218,7 +218,7 @@ async function acknowledgeProgressAndWaitForCatalogActivity(server) {
 }
 
 async function acknowledgeProgress(server) {
-  const create = await progressNotification(
+  const create = await serverRequest(
     server,
     "window/workDoneProgress/create",
     () => true,
@@ -228,19 +228,20 @@ async function acknowledgeProgress(server) {
   server.send({ jsonrpc: "2.0", id: create.id, result: null })
   const begin = await progressNotification(
     server,
-    "$/progress",
+    create.params.token,
     (message) => message.params.value.kind === "begin",
     "catalog begin",
     30_000,
   )
   assert.equal(begin.params.value.title, "ArkTS workspace index")
   assert.equal(begin.params.value.message, "Discovering project files")
+  return create.params.token
 }
 
-async function waitUntilReady(server) {
+async function waitUntilReady(server, token) {
   const terminal = await progressNotification(
     server,
-    "$/progress",
+    token,
     (message) => message.params.value.kind === "report"
       && (message.params.value.percentage === 100
         || /^Indexing (?:degraded|cancelled)/.test(message.params.value.message ?? "")),
@@ -249,7 +250,7 @@ async function waitUntilReady(server) {
   )
   const end = await progressNotification(
     server,
-    "$/progress",
+    token,
     (message) => message.params.value.kind === "end",
     "catalog end",
     30_000,
@@ -263,9 +264,18 @@ async function waitUntilReady(server) {
   return terminal
 }
 
-async function progressNotification(server, method, predicate, stage, timeoutMs) {
+async function progressNotification(server, token, predicate, stage, timeoutMs) {
   try {
-    return await server.notification(method, predicate, timeoutMs)
+    return await server.progress(token, predicate, timeoutMs)
+  } catch (error) {
+    error.message = `${stage}: ${error.message}; queued messages: ${JSON.stringify(server.messages)}`
+    throw error
+  }
+}
+
+async function serverRequest(server, method, predicate, stage, timeoutMs) {
+  try {
+    return await server.serverRequest(method, predicate, timeoutMs)
   } catch (error) {
     error.message = `${stage}: ${error.message}; queued messages: ${JSON.stringify(server.messages)}`
     throw error
