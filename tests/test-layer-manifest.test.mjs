@@ -15,13 +15,15 @@ const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 test("classifies every executable test entry exactly once in an explicit layer", () => {
   const audit = validateTestLayerManifest({ root: projectRoot, manifest: TEST_LAYER_MANIFEST })
 
-  assert.equal(audit.entryCount, 54)
+  assert.equal(audit.entryCount, 60)
+  assert.equal(audit.assignments["tests/arkts-document-formatter.test.mjs"], "unit-contract")
   assert.equal(audit.assignments["tests/build-test-server.test.mjs"], "unit-contract")
   assert.equal(
     audit.assignments["tests/code-action-resolution-store.test.mjs"],
     "unit-contract",
   )
   assert.equal(audit.assignments["tests/index-adapter.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/folding-range-provider.test.mjs"], "unit-contract")
   assert.equal(
     audit.assignments["tests/release/index-sidecar.acceptance.mjs"],
     "artifact-e2e",
@@ -29,9 +31,22 @@ test("classifies every executable test entry exactly once in an explicit layer",
   assert.equal(audit.assignments["tests/lsp-workspace-global-freshness.test.mjs"], "protocol")
   assert.equal(audit.assignments["tests/test-layer-manifest.test.mjs"], "unit-contract")
   assert.equal(
+    audit.assignments["tests/semantic/document-formatting.test.mjs"],
+    "bundle-e2e",
+  )
+  assert.equal(
+    audit.assignments["tests/semantic/document-highlight-core.test.mjs"],
+    "unit-contract",
+  )
+  assert.equal(
+    audit.assignments["tests/semantic/document-highlight-depth.test.mjs"],
+    "bundle-e2e",
+  )
+  assert.equal(
     audit.assignments["tests/semantic/document-symbol-depth.test.mjs"],
     "bundle-e2e",
   )
+  assert.equal(audit.assignments["tests/semantic/folding-range.test.mjs"], "bundle-e2e")
   assert.equal(
     audit.assignments["tests/semantic/arkui-language-features.test.mjs"],
     "bundle-e2e",
@@ -71,9 +86,9 @@ test("classifies every executable test entry exactly once in an explicit layer",
     "bundle-e2e",
   )
   assert.deepEqual(audit.layerCounts, {
-    "unit-contract": 21,
+    "unit-contract": 24,
     protocol: 6,
-    "bundle-e2e": 23,
+    "bundle-e2e": 26,
     "artifact-e2e": 3,
     large: 1,
   })

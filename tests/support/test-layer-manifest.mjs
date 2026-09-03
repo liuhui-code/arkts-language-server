@@ -6,10 +6,12 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
   schemaVersion: 1,
   layers: Object.freeze([
     layer("unit-contract", true, [
+      "tests/arkts-document-formatter.test.mjs",
       "tests/artifact-manifest.test.mjs",
       "tests/build-test-server.test.mjs",
       "tests/code-action-resolution-store.test.mjs",
       "tests/conformance-corpus.test.mjs",
+      "tests/folding-range-provider.test.mjs",
       "tests/index-adapter.test.mjs",
       "tests/index-catalog-adapter.test.mjs",
       "tests/local-delivery-config.test.mjs",
@@ -27,6 +29,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/workspace-symbol-service.test.mjs",
       "tests/zed-adapter.test.mjs",
       "tests/zed-query-gate.test.mjs",
+      "tests/semantic/document-highlight-core.test.mjs",
     ]),
     layer("protocol", true, [
       "tests/lsp-process.test.mjs",
@@ -50,8 +53,11 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/semantic/arkui-resource-watch-diagnostics.test.mjs",
       "tests/semantic/arkui-sdk-symbols.test.mjs",
       "tests/semantic/diagnostic-code-characterization.test.mjs",
+      "tests/semantic/document-formatting.test.mjs",
+      "tests/semantic/document-highlight-depth.test.mjs",
       "tests/semantic/document-symbol-depth.test.mjs",
       "tests/semantic/editor-capabilities.test.mjs",
+      "tests/semantic/folding-range.test.mjs",
       "tests/semantic/project-membership-language-service.test.mjs",
       "tests/semantic/references-completeness.test.mjs",
       "tests/semantic/references-depth.test.mjs",
