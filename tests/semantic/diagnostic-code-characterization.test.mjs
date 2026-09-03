@@ -73,6 +73,88 @@ test("publishes the TypeScript spelling diagnostic code at the exact UTF-16 mark
   )
 })
 
+test("rapid change and close never publish diagnostics for an obsolete version", async (t) => {
+  const materialized = await materializeConformanceWorkspace()
+  const quickFix = materialized.cases["quickfix.greeting"]
+  const versionOne = fs.readFileSync(fileURLToPath(quickFix.uri), "utf8")
+  const versionTwo = versionOne.replace("greting", "greeting")
+  const session = new LspSession({
+    command: process.execPath,
+    args: [path.join(projectRoot, "dist", "server.cjs"), "--stdio"],
+    cwd: projectRoot,
+    env: {
+      HOME: path.join(materialized.root, "missing-home"),
+      DEVECO_SDK_HOME: path.join(materialized.root, "missing-deveco"),
+      ARKLINE_HARMONY_SDK_PATH: path.join(materialized.corpusRoot, "sdk", "openharmony"),
+      ARKTS_LSP_LOG_DIR: path.join(materialized.root, "logs"),
+    },
+    rootUri: pathToFileURL(materialized.workspaceRoot).href,
+    capabilities: {
+      textDocument: { publishDiagnostics: { versionSupport: true } },
+    },
+  })
+  t.after(async () => {
+    try {
+      await session.close()
+    } finally {
+      await fs.promises.rm(materialized.root, { recursive: true, force: true })
+    }
+  })
+
+  await session.initialize()
+  const versionOnePublication = session.transport.notification(
+    "textDocument/publishDiagnostics",
+    (message) => message.params.uri === quickFix.uri && message.params.version === 1,
+    10_000,
+  ).then(
+    (message) => ({ message }),
+    (error) => ({ error }),
+  )
+  const currentPublication = session.transport.notification(
+    "textDocument/publishDiagnostics",
+    (message) => message.params.uri === quickFix.uri && message.params.version === 2,
+  )
+  session.openDocument({
+    uri: quickFix.uri,
+    languageId: "arkts",
+    version: 1,
+    text: versionOne,
+  })
+  session.changeDocument({ uri: quickFix.uri, version: 2, text: versionTwo })
+
+  const current = await currentPublication
+  assert.deepEqual(current.params.diagnostics, [])
+
+  const versionThreePublication = session.transport.notification(
+    "textDocument/publishDiagnostics",
+    (message) => message.params.uri === quickFix.uri && message.params.version === 3,
+    10_000,
+  ).then(
+    (message) => ({ message }),
+    (error) => ({ error }),
+  )
+  const clearedPublication = session.transport.notification(
+    "textDocument/publishDiagnostics",
+    (message) => message.params.uri === quickFix.uri
+      && message.params.version === undefined
+      && message.params.diagnostics.length === 0,
+  )
+  session.changeDocument({ uri: quickFix.uri, version: 3, text: versionOne })
+  session.transport.send({
+    jsonrpc: "2.0",
+    method: "textDocument/didClose",
+    params: { textDocument: { uri: quickFix.uri } },
+  })
+  const cleared = await clearedPublication
+  assert.deepEqual(cleared.params, { uri: quickFix.uri, diagnostics: [] })
+
+  await session.close()
+  for (const obsolete of await Promise.all([versionOnePublication, versionThreePublication])) {
+    assert.equal("message" in obsolete, false, JSON.stringify(obsolete.message))
+    assert.match(obsolete.error.message, /process exited before LSP notification/)
+  }
+})
+
 test("deduplicates only diagnostics with the same code and complete mapped range", (t) => {
   const { mapTypescriptDiagnostics } = buildDiagnosticMapper(t)
   const filePath = path.join(projectRoot, "fixtures", "Mapper.ets")
