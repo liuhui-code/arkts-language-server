@@ -478,6 +478,89 @@ test("completes imported receiver fields and methods with exact kinds and UTF-16
   assert.deepEqual(method[0].textEdit, { range: replacementRange, newText: "memberMethod" })
 })
 
+test("ranks local completion first and distinguishes stable same-name auto-import sources", async (t) => {
+  const materialized = await materializeConformanceWorkspace()
+  const sourceDirectory = path.join(
+    materialized.workspaceRoot,
+    "entry",
+    "src",
+    "main",
+    "ets",
+    "pages",
+  )
+  await Promise.all([
+    fs.promises.writeFile(
+      path.join(sourceDirectory, "RankedAlpha.ets"),
+      "export class RankedChoice { readonly origin: string = 'alpha' }\n",
+      "utf8",
+    ),
+    fs.promises.writeFile(
+      path.join(sourceDirectory, "RankedBeta.ets"),
+      "export class RankedChoice { readonly origin: string = 'beta' }\n",
+      "utf8",
+    ),
+  ])
+  const consumerPath = path.join(sourceDirectory, "RankedConsumer.ets")
+  const prefix = "Rank"
+  const source = [
+    "const RankLocal = 1",
+    `const selected = ${prefix}`,
+    "",
+  ].join("\n")
+  await fs.promises.writeFile(consumerPath, source, "utf8")
+  const uri = pathToFileURL(consumerPath).href
+  const prefixEnd = source.lastIndexOf(prefix) + prefix.length
+  const position = positionAt(source, prefixEnd)
+  const session = new LspSession({
+    command: process.execPath,
+    args: [path.join(projectRoot, "dist", "server.cjs"), "--stdio"],
+    cwd: projectRoot,
+    env: {
+      HOME: path.join(materialized.root, "missing-home"),
+      DEVECO_SDK_HOME: path.join(materialized.root, "missing-deveco"),
+      ARKLINE_HARMONY_SDK_PATH: path.join(materialized.corpusRoot, "sdk", "openharmony"),
+    },
+    rootUri: pathToFileURL(materialized.workspaceRoot).href,
+  })
+  t.after(async () => {
+    try {
+      await session.close()
+    } finally {
+      await fs.promises.rm(materialized.root, { recursive: true, force: true })
+    }
+  })
+
+  await session.initialize()
+  session.openDocument({ uri, languageId: "arkts", version: 1, text: source })
+  const complete = async () => {
+    const response = await session.request("textDocument/completion", {
+      textDocument: { uri },
+      position,
+    })
+    assert.equal(response.error, undefined, JSON.stringify(response.error))
+    const items = Array.isArray(response.result) ? response.result : response.result?.items ?? []
+    return items.filter((item) => item.label.startsWith(prefix))
+  }
+  const first = await complete()
+  const second = await complete()
+  const localIndex = first.findIndex((item) => item.label === "RankLocal")
+  const choices = first.filter((item) => item.label === "RankedChoice")
+
+  assert.notEqual(localIndex, -1, JSON.stringify(first))
+  assert.equal(choices.length, 2, JSON.stringify(first))
+  assert.ok(localIndex < first.indexOf(choices[0]), "local completion must rank before auto-imports")
+  assert.deepEqual(
+    choices.map((item) => item.detail).sort(),
+    ["./RankedAlpha", "./RankedBeta"],
+    "same-name auto-imports must identify their distinct module sources",
+  )
+  assert.deepEqual(
+    first.map(withoutOpaqueCompletionData),
+    second.map(withoutOpaqueCompletionData),
+    "repeated completion requests must preserve stable order and sort metadata",
+  )
+})
+
 test("maps a definition in a rewritten ArkTS struct back to source coordinates", async (t) => {
   const server = new LspProcess()
   t.after(() => server.close())
@@ -668,4 +751,9 @@ function textInRange(source, range) {
   const lines = source.split("\n")
   assert.equal(range.start.line, range.end.line, "this semantic slice uses single-line ranges")
   return lines[range.start.line].slice(range.start.character, range.end.character)
+}
+
+function withoutOpaqueCompletionData(item) {
+  const { data: _data, ...stable } = item
+  return stable
 }

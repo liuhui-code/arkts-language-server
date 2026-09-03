@@ -1,3 +1,5 @@
+import path from "node:path"
+
 import ts from "typescript"
 
 import type { SemanticDiagnostic } from "../protocol.js"
@@ -10,9 +12,26 @@ export function typescriptTypeStatus(filePath: string): SemanticTypeStatus {
   return "unsupported"
 }
 
-export function typescriptTypeDetail(entry: ts.CompletionEntry): string {
+export function typescriptTypeDetail(
+  entry: ts.CompletionEntry,
+  importingFilePath?: string,
+): string {
+  const sourceDisplay = completionSourceDisplay(entry, importingFilePath)
+  if (sourceDisplay) return sourceDisplay
   const modifiers = entry.kindModifiers ? ` ${entry.kindModifiers}` : ""
   return `TypeScript ${entry.kind}${modifiers}`
+}
+
+function completionSourceDisplay(
+  entry: ts.CompletionEntry,
+  importingFilePath: string | undefined,
+): string | undefined {
+  const source = ts.displayPartsToString(entry.sourceDisplay ?? []) || entry.source
+  if (!source || !importingFilePath || !path.isAbsolute(source)) return source
+  const relativePath = path.relative(path.dirname(importingFilePath), source)
+    .replace(/\\/gu, "/")
+    .replace(/(?:\.d)?\.(?:[cm]?[jt]sx?|ets)$/u, "")
+  return relativePath.startsWith(".") ? relativePath : `./${relativePath}`
 }
 
 export function mapTypescriptDiagnostics(

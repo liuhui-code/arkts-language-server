@@ -207,7 +207,7 @@ export class TypeScriptLanguageServiceEngine {
       .slice(0, MAX_COMPLETIONS)
       .map((entry) => ({
       label: entry.name,
-      detail: typescriptTypeDetail(entry),
+      detail: typescriptTypeDetail(entry, filePath),
       kind: completionKind(entry.kind),
       insertText: entry.insertText,
       filterText: entry.filterText,
