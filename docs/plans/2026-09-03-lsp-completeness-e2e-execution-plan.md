@@ -174,9 +174,20 @@ mode 和 SHA-256。installer 增加“从 artifact 安装/禁止构建”路径�
   tree-sitter 满足的能力不重复建设。
 - [ ] 真实 worker cancellation、项目重载、配置/SDK 变化和多 root 隔离。
 
-## 5. 首个垂直 tracer bullet
+## 5. 首批垂直 tracer bullets
 
-第一个功能切片固定为：
+能力审计发现 `definitionProvider: true` 已经公开，但现有 adapter 丢弃目标
+`textSpan.length`，把所有 definition 结果转换为零长度 range；现有所谓 exact 测试只断言
+`range.start`。因此在新增 completion 能力前，先执行一个“已广告能力真实性”切片：
+
+> 只打开 materialized `OtherConsumer.ets`，在 `profile.reference` 请求 definition；结果
+> 必须恰好指向未打开的 `Profile.ets`，并且 `textInRange(range) === "Profile"`、range
+> 非零、emoji 前缀下 UTF-16 位置不漂移。
+
+该 transcript 必须先稳定 RED，再修复 core → public contract → LSP adapter 的 span 保真。
+它不会新增 capability，只纠正当前已广告能力的虚假精确性。
+
+随后执行 completion resolve/auto-import tracer：
 
 > 只打开 `Home.ets`，在同一行含前置 `😀` 的 `Gree` 位置请求 completion；从未打开、
 > 未 import 的 `Greeter.ets` 获得候选；调用 `completionItem/resolve` 后得到文档、detail
@@ -220,7 +231,8 @@ Owner files：`tests/support/lsp-process.mjs`、`tests/lsp-process.test.mjs`。
 - [ ] H3c malformed header/length/truncated frame 进入同一 transport failure 边界。
 - [x] H4 close 幂等、有界；正常 shutdown/exit 优先，deadline 后升级终止
   （`95aa209`）。
-- [ ] H5 区分 client response 与 server request；progress 必须按 token 关联。
+- [x] H5a 区分 client response、server request 与 notification（`107f678`）。
+- [x] H5b progress 严格按 token 关联，并迁移全部真实 caller（`0ccd06f`）。
 - [ ] H6 统一 transcript、bounded stderr 和失败 evidence。
 
 #### Track C：版本化 conformance corpus
@@ -245,6 +257,7 @@ Owner files：新建 `tests/support/lsp-session.mjs`、
 
 - [x] S1 用现有 `LspProcess` 建 initialize/shutdown helper；target 可注入 command/cwd/env
   （`bfe6644`）。
+- [x] S1b session 正确识别 signal-exited child，并保持 close 幂等（`19b7ab8`）。
 - [x] S2 同一 smoke scenario 可运行 repo bundle 和可注入公共命令 target
   （`5a07877`；最终 installed artifact 验收保留给 I1/I2）。
 - [x] S3 建立 UTF-16-safe TextEdit 应用器并拒绝越界/重叠 edits（`599d32c`）；
@@ -280,10 +293,12 @@ Owner files：`tests/support/capability-contract.mjs`、
 
 Owner files：`tests/support/test-layer-manifest.mjs`、runner、package scripts 与对应证据。
 
-- [x] G1 显式、唯一地把全部 32 个 test/acceptance 入口归入五层，拒绝漏项、重复、
+- [x] G1/G2 集成后显式、唯一地把全部 33 个 test/acceptance 入口归入五层，拒绝漏项、重复、
   无效路径及 release acceptance 混入 fast layer（`f484640`）。
-- [ ] G2 runner 从 manifest 选择层并成为 package scripts 的唯一 Node test 发现入口。
-- [ ] G3 `check:fast` 运行全部 fast 层且不得 silent skip；release gate 运行 artifact/large 层。
+- [x] G2 runner 从 manifest 稳定选择层，拒绝空选择和隐式测试发现（`d37c03e`）。
+- [x] G3a package scripts 只通过 runner 发现 Node tests；`check:fast` 完成 typecheck、fresh
+  build 和全部 fast 层，143 tests、0 failed、0 skipped（`f85af75`）。
+- [ ] G3b release gate 分别运行 artifact/large 层，不再直接使用 acceptance glob。
 
 Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产物；随后由集成轨
 串行接入 package scripts，并运行 `pnpm check:fast`。
@@ -301,11 +316,12 @@ Owner：一个端到端 owner 独占 semantic contract、project set、completio
 - [ ] B5 应用 auto-import edit 并确认 diagnostics 清零。
 - [ ] B6 加 scripted cancel/stale/shutdown contract。
 
-#### Track D：definition 精确性（与 B 的共享契约合入后并行）
+#### Track D：definition 精确性（D0 先行；D1/D2 与 B 的共享契约合入后并行）
 
-- [ ] D1 先 RED：range 必须完整覆盖定义名称，而非零长度。
-- [ ] D2 加 unopened、alias/barrel、跨 module、open target overlay。
-- [ ] D3 加 emoji 前缀 UTF-16 source mapping。
+- [ ] D0 在其他新增 capability 前先 RED：materialized corpus 中未打开 definition 的 range
+  必须完整覆盖名称，而非零长度；修复当前已广告能力的真实性。
+- [ ] D1 加 unopened、alias/barrel、跨 module、open target overlay。
+- [ ] D2 加 emoji 前缀 UTF-16 source mapping。
 
 #### Track I：installed artifact semantic smoke（与场景 helper GREEN 后并行）
 
