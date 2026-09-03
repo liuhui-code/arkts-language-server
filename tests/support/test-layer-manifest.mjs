@@ -43,6 +43,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/lsp-production-index.test.mjs",
       "tests/lsp-transcript.test.mjs",
       "tests/lsp-workspace-file-changes.test.mjs",
+      "tests/semantic/arkui-language-features.test.mjs",
       "tests/semantic/diagnostic-code-characterization.test.mjs",
       "tests/semantic/document-symbol-depth.test.mjs",
       "tests/semantic/editor-capabilities.test.mjs",
@@ -52,6 +53,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/semantic/rename-depth.test.mjs",
       "tests/semantic/rename-completeness.test.mjs",
       "tests/semantic/semantic-characterization.test.mjs",
+      "tests/semantic/workspace-symbol-production.test.mjs",
       "tests/version-identity.test.mjs",
     ]),
     layer("artifact-e2e", false, [

@@ -15,7 +15,7 @@ const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 test("classifies every executable test entry exactly once in an explicit layer", () => {
   const audit = validateTestLayerManifest({ root: projectRoot, manifest: TEST_LAYER_MANIFEST })
 
-  assert.equal(audit.entryCount, 47)
+  assert.equal(audit.entryCount, 49)
   assert.equal(
     audit.assignments["tests/code-action-resolution-store.test.mjs"],
     "unit-contract",
@@ -32,6 +32,10 @@ test("classifies every executable test entry exactly once in an explicit layer",
     "bundle-e2e",
   )
   assert.equal(
+    audit.assignments["tests/semantic/arkui-language-features.test.mjs"],
+    "bundle-e2e",
+  )
+  assert.equal(
     audit.assignments["tests/semantic/project-membership-language-service.test.mjs"],
     "bundle-e2e",
   )
@@ -45,10 +49,14 @@ test("classifies every executable test entry exactly once in an explicit layer",
     audit.assignments["tests/semantic/rename-completeness.test.mjs"],
     "bundle-e2e",
   )
+  assert.equal(
+    audit.assignments["tests/semantic/workspace-symbol-production.test.mjs"],
+    "bundle-e2e",
+  )
   assert.deepEqual(audit.layerCounts, {
     "unit-contract": 20,
     protocol: 6,
-    "bundle-e2e": 17,
+    "bundle-e2e": 19,
     "artifact-e2e": 3,
     large: 1,
   })

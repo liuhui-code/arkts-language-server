@@ -161,11 +161,18 @@ export const CURRENT_LSP_FEATURE_MATRIX = Object.freeze({
         "search stays live during catalog work and returns the unsaved overlay without status rows",
         "workspace-symbol.protocol.live-overlay-search",
       )],
-      bundle: [evidence(
-        "tests/lsp-production-index.test.mjs",
-        "production composition exposes cached search and terminal catalog progress",
-        "workspace-symbol.bundle.production-catalog",
-      )],
+      bundle: [
+        evidence(
+          "tests/lsp-production-index.test.mjs",
+          "production composition exposes cached search and terminal catalog progress",
+          "workspace-symbol.bundle.production-catalog",
+        ),
+        evidence(
+          "tests/semantic/workspace-symbol-production.test.mjs",
+          "returns every production overlay workspace-symbol kind with exact UTF-16 name ranges",
+          "workspace-symbol.bundle.production-full-kinds",
+        ),
+      ],
       artifact: [evidence(
         "tests/release/portable-install.acceptance.mjs",
         "installs one verified artifact without source dependencies or a rebuild",
@@ -241,6 +248,11 @@ export const CURRENT_LSP_FEATURE_MATRIX = Object.freeze({
           "tests/semantic/references-completeness.test.mjs",
           "classifies every overload declaration without losing stable usage references",
           "references.bundle.overload-declaration-policy",
+        ),
+        evidence(
+          "tests/semantic/references-depth.test.mjs",
+          "uses only changed overlay references for both declaration policies",
+          "references.bundle.changed-overlay",
         ),
       ],
       artifact: [evidence(

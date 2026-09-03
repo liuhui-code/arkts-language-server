@@ -82,6 +82,21 @@ test("maps the complete public capability contract to executable feature evidenc
     claim: "document-symbol.artifact.immutable-arkui-hierarchy",
   }])
   assert.equal(documentSymbol?.artifactGap, null)
+  const workspaceSymbol = CURRENT_LSP_FEATURE_MATRIX.features.find(
+    ({ id }) => id === "workspace-symbol",
+  )
+  assert.deepEqual(workspaceSymbol?.evidence.bundle, [
+    {
+      entry: "tests/lsp-production-index.test.mjs",
+      test: "production composition exposes cached search and terminal catalog progress",
+      claim: "workspace-symbol.bundle.production-catalog",
+    },
+    {
+      entry: "tests/semantic/workspace-symbol-production.test.mjs",
+      test: "returns every production overlay workspace-symbol kind with exact UTF-16 name ranges",
+      claim: "workspace-symbol.bundle.production-full-kinds",
+    },
+  ])
   const references = CURRENT_LSP_FEATURE_MATRIX.features.find(
     ({ id }) => id === "references",
   )
@@ -95,6 +110,23 @@ test("maps the complete public capability contract to executable feature evidenc
       entry: "tests/lsp-workspace-global-freshness.test.mjs",
       test: "a didOpen in the same workspace makes an in-flight references result ContentModified",
       claim: "references.protocol.workspace-global-freshness",
+    },
+  ])
+  assert.deepEqual(references?.evidence.bundle, [
+    {
+      entry: "tests/semantic/references-depth.test.mjs",
+      test: "finds unopened barrel references with exact UTF-16 ranges and declaration policy",
+      claim: "references.bundle.unopened-barrel-declaration-policy",
+    },
+    {
+      entry: "tests/semantic/references-completeness.test.mjs",
+      test: "classifies every overload declaration without losing stable usage references",
+      claim: "references.bundle.overload-declaration-policy",
+    },
+    {
+      entry: "tests/semantic/references-depth.test.mjs",
+      test: "uses only changed overlay references for both declaration policies",
+      claim: "references.bundle.changed-overlay",
     },
   ])
   assert.deepEqual(references?.evidence.artifact, [{
