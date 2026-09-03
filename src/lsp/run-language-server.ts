@@ -148,6 +148,14 @@ export function runLanguageServer(services?: LanguageServerServices): void {
       } else {
         progress.report(cancelledMessage(status))
       }
+      logger.info("index.catalog.terminal", {
+        phase: status.phase,
+        workspaceCount: workspaceRoots.length,
+        discoveredFiles: status.discoveredFiles,
+        indexedFiles: status.indexedFiles,
+        skippedEntries: status.skippedEntries,
+        totalFiles: status.totalFiles,
+      })
       finished = true
       cancellation.dispose()
       progress.done()

@@ -31,6 +31,7 @@ test("production composition exposes cached search and terminal catalog progress
   fs.copyFileSync(sidecarFixturePath, sidecarPath)
   fs.chmodSync(sidecarPath, 0o755)
   const auditPath = path.join(cacheDirectory, "sidecar-audit.ndjson")
+  const logDirectory = path.join(cacheDirectory, "logs")
   const server = new LspProcess({
     serverPath,
     env: {
@@ -38,6 +39,7 @@ test("production composition exposes cached search and terminal catalog progress
       ARKTS_INDEX_CACHE_DIR: cacheDirectory,
       ARKTS_INDEX_TEST_AUDIT: auditPath,
       ARKTS_INDEX_TEST_SCENARIO: "slow-catalog",
+      ARKTS_LSP_LOG_DIR: logDirectory,
     },
   })
   t.after(async () => {
@@ -99,6 +101,26 @@ test("production composition exposes cached search and terminal catalog progress
     (message) => message.params.value.kind === "end",
   )
   assert.equal(end.params.value.kind, "end")
+  const indexTerminal = readStructuredLog(logDirectory)
+    .find((entry) => entry.event === "index.catalog.terminal")
+  assert.deepEqual(
+    {
+      phase: indexTerminal?.phase,
+      workspaceCount: indexTerminal?.workspaceCount,
+      discoveredFiles: indexTerminal?.discoveredFiles,
+      indexedFiles: indexTerminal?.indexedFiles,
+      skippedEntries: indexTerminal?.skippedEntries,
+      totalFiles: indexTerminal?.totalFiles,
+    },
+    {
+      phase: "ready",
+      workspaceCount: 2,
+      discoveredFiles: 3,
+      indexedFiles: 3,
+      skippedEntries: 0,
+      totalFiles: 3,
+    },
+  )
 
   server.send({
     jsonrpc: "2.0",
@@ -146,4 +168,12 @@ async function waitUntil(predicate, timeoutMs = 5_000) {
     if (performance.now() >= deadline) throw new Error("timed out waiting for catalog start")
     await new Promise((resolve) => setTimeout(resolve, 10))
   }
+}
+
+function readStructuredLog(logDirectory) {
+  return fs.readFileSync(path.join(logDirectory, "server.log"), "utf8")
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map(JSON.parse)
 }

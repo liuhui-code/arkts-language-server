@@ -35,3 +35,14 @@ slice. It was already GREEN because failure isolation was part of that minimal
 implementation: the server emits `logging.degraded` to stderr, continues in
 stderr-only mode, and completes initialize/shutdown successfully.
 
+## Production catalog terminal
+
+RED: the production LSP progress UI reached `ready`, but `server.log` contained
+no durable index outcome, so an isolated Zed run could not distinguish a
+successful catalog from a swallowed background failure after the UI closed.
+
+GREEN: every aggregate terminal now emits exactly one
+`index.catalog.terminal` record with phase, workspace count, discovered,
+indexed, skipped, and total-file counters. The production child-process test
+asserts the event for two interleaved workspaces while continuing to verify
+that stdout contains only LSP frames.
