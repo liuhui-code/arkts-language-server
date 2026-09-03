@@ -359,6 +359,14 @@ Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产�
 - [x] L1/C8/C9/W2 基本完备度切片：installed lifecycle、imported receiver kind、同名
   auto-import source identity、workspace-symbol kind（`68dad41`、`fbe3d6f`、`4b245df`、`eb0ef8c`）。
 - [x] E1 跨文件 hover bundle + immutable installed transcript（`905f029`、`0011dde`）。
+- [x] E2a Signature bundle：overload/nested/generic、active parameter、快速 didChange、LSP
+  trigger/retrigger context 与 capability 字符集合（`0bd947c`）。
+- [x] E3b-1 Document symbols bundle：12 类语义 kind、三层 hierarchy、flat fallback、老客户端
+  Struct 降级、稳定顺序与精确 UTF-16 range（`423817a`）。
+- [ ] E2b/E3b-2 在 immutable installed artifact 上复用 signature/document-symbol transcript，并
+  消除 feature matrix 对这两项的 `artifactGap`。
+- [x] R0 references/rename fail-closed 审计：确认 TypeScript 返回能力可用，但当前 adapter 会
+  静默丢弃 unopened/partial/越 root/不可映射位置，故能力继续保持 absent。
 - [ ] 本批次集成门禁：所有并行切片提交后运行 fresh `pnpm check:fast`。
 
 #### 下一批 P0 基本功能 checklist（按依赖执行）
@@ -381,10 +389,14 @@ Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产�
   不再统一降级为 Variable；未知 sidecar kind 保守降级为 Variable（`eb0ef8c`）。
 - [x] E1 Hover depth：unopened dependency、import alias、JSDoc tags、emoji UTF-16 range，并加入
   immutable artifact smoke（`905f029`、`0011dde`）。
-- [ ] E2 Signature depth：转发 LSP trigger/retrigger context；覆盖 overload、nested/generic、
-  active parameter、快速 didChange，并加入 immutable artifact smoke。
-- [ ] E3b Document symbols depth：补全公开 kind、深层 hierarchy/flat fallback、稳定顺序与
-  UTF-16 range，并加入 immutable artifact smoke。
+- [ ] E2 Signature depth：
+  - [x] E2a 转发 LSP trigger/retrigger context；覆盖 overload、nested/generic、active parameter、
+    快速 didChange（`0bd947c`）。
+  - [ ] E2b 加入 immutable artifact smoke。
+- [ ] E3b Document symbols depth：
+  - [x] E3b-1 补全公开 kind、深层 hierarchy/flat fallback、稳定顺序与 UTF-16 range
+    （`423817a`；RED 为 `export const` 被静默丢弃）。
+  - [ ] E3b-2 加入 immutable artifact smoke。
 
 可并行组：`E0`（证据契约）、`L1`（installed test-only）、`W2`（独立 symbol codec）可互斥
 推进；`C8 → C9 → E1 → E2 → E3b` 共享 TypeScript/LSP adapter，按此顺序串行。
@@ -456,8 +468,14 @@ capability advertisement 与 transcript 一致；`pnpm check:fast`、artifact sm
 - [x] R0b 将 project membership 与 resident 内容窗口解耦，并由 TypeScript host lazy 消费
   complete snapshot、记录 membership/content revision；lazy snapshot 默认限制为 128 文件/
   8 MiB（`e52b2c9`）。本项不启用 references/rename。
-- [ ] R0c watched create/delete/rename 原子更新 membership revision；root-dirty 立即降级 partial，
-  重枚举成功才发布新 complete snapshot；project version 纳入 membership/content/overlay epoch。
+- [ ] R0c 全局查询完整性与 freshness：
+  - [ ] R0c-1 partial/unknown membership 对全局查询整体返回 `RequestFailed`，不得返回空数组或
+    部分结果。
+  - [ ] R0c-2 所有 open overlay 保持 pinned；`didClose` 后恢复 disk truth 并推进 workspace
+    content epoch。
+  - [ ] R0c-3 watched create/delete/rename 原子更新 membership revision；root-dirty 立即降级
+    partial，重枚举成功才发布新 complete snapshot；open/change/close/watcher 使同 root 的旧
+    全局请求返回 `ContentModified`。
 - [ ] R1 References：`includeDeclaration=false` 返回 import、usage、barrel re-export 的完整
   `Profile` ranges，排除 declaration 与同名 shadow；结果稳定排序、去重。
 - [ ] R2 References：`includeDeclaration=true` 只额外加入 origin declaration；覆盖 unopened、
@@ -497,10 +515,16 @@ installed transcript 与 reliability matrix 全绿后 advertised。
 
 - [x] E1 Hover：unopened dependency、alias、JSDoc tags、UTF-16 range，并通过 immutable
   installed artifact；SDK provider 专项仍归 U1/U2。
-- [ ] E2 Signature help：overload、nested/generic call、trigger/retrigger、快速 didChange。
-- [ ] E3 Document symbols：全部公开 kind、ArkTS component hierarchy、flat/hierarchical。
+- [ ] E2 Signature help：
+  - [x] bundle 覆盖 overload、nested/generic call、trigger/retrigger、快速 didChange
+    （`0bd947c`）。
+  - [ ] immutable installed artifact smoke。
+- [ ] E3 Document symbols：
   - [x] E3a 客户端未声明 `symbolKind.valueSet` 时把 ArkTS Struct 降级为 Class；现代客户端
     保留 Struct（`572039e`）。
+  - [x] E3b bundle 覆盖全部公开 kind、三层 hierarchy、flat fallback、稳定顺序与 UTF-16 range
+    （`423817a`）。
+  - [ ] immutable installed artifact smoke；ArkTS component hierarchy 留给 U1 corpus。
 - [ ] U1 ArkUI：component/decorator/resource/attribute completion 与 definition。
 - [ ] U2 ArkUI：真实 DSL 无伪 diagnostics，错误 decorator/resource 有稳定 diagnostics。
 - [ ] W1 Workspace symbols：完整 kind 映射、resolve 需求评估、installed overlay/cancel smoke。
