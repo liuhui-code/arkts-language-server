@@ -349,7 +349,8 @@ Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产�
 - [x] Q1/Q2 code-action 适配设计与 TypeScript 5.9 API 核验完成；有界 512 条/512 KiB、
   区分 stale/forged 的 resolve store 已落地（`2861aeb`）；真实 stdio list→resolve→apply→
   diagnostics clear tracer 已完成（`599b23a`）。
-- [ ] Q3 code-action forged/stale/cancel reliability 与 installed artifact smoke：并行实施中。
+- [x] Q3 code-action forged/stale/cancel reliability 已完成（`370b927`）；installed artifact
+  list→resolve→apply→diagnostics-clear smoke 已完成（`508a93a`）。
 - [x] I2 不可变 artifact 上复用完整 semantic smoke 场景（`09f6352`）。
 - [x] I3 正负控证明安装版只使用 immutable release 相邻 sidecar，不回退源码仓库
   （`9eeb742`）。
@@ -363,11 +364,11 @@ Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产�
 - [ ] E0 Evidence：feature matrix 从“测试文件存在”升级为可核验的命名场景 claim；错误、
   缺失或重复 claim fail closed。随后让 release gate 拒绝 advertised capability 仅靠
   `artifactGap` 放行。
-- [ ] L1 Lifecycle installed：精确断言 incremental sync capability；执行 ranged didChange，
+- [x] L1 Lifecycle installed：精确断言 incremental sync capability；执行 ranged didChange，
   查询证明 v2 生效，再在 didClose 后证明 overlay 被移除、disk truth 恢复。
-- [ ] C8 Completion receiver：imported/typed receiver 同时返回 field 和 method；kind 分别为
-  `Field`/`Method`，replacement range 在 emoji 后仍精确。当前稳定 RED 为字段错误映射成
-  `Property(10)`。
+- [x] C8 Completion receiver：imported/typed receiver 同时返回 field 和 method；kind 分别为
+  `Field`/`Method`，replacement range 在 emoji 后仍精确（`fbe3d6f`；RED 为字段错误映射成
+  `Property(10)`）。
 - [ ] C9 Completion ranking：同名来源去重，local/member 优先于 auto-import；重复请求排序稳定，
   `sortText` 与最终顺序契约一致。
 - [ ] W2 Workspace symbol kind：overlay 的 interface/enum/property/constructor/module/type/variable
@@ -426,8 +427,9 @@ Owner：一个端到端 owner 独占 semantic contract、project set、completio
   directory artifact；runtime bytes/mode 与 manifest 一致（`af2177c`）。archive、签名和 CI
   promotion 仍由 Wave 5 负责。
 - [x] I2 对不可变 artifact 的 installed command 运行 completion、definition、diagnostics 与
-  completion-resolve/apply-and-recheck transcript（`09f6352`）；与源码安装复用同一 helper，
-  4/4 artifact acceptance 与 1/1 local-delivery acceptance GREEN。
+  completion-resolve/apply-and-recheck transcript（`09f6352`），并覆盖 quick-fix
+  list→resolve→apply→diagnostics-clear（`508a93a`）及 incremental change/close/disk restore
+  lifecycle（`68dad41`）；与源码安装复用同一 helper，4/4 artifact acceptance GREEN。
 - [x] I3 验证启动的是 artifact 内相邻 sidecar，没有 repo-relative fallback
   （`9eeb742`）：withhold 相邻 binary 时明确 degraded/空结果，恢复后 1/1 ready 且精确 symbol。
 
@@ -476,8 +478,9 @@ capability advertisement 与 transcript 一致；`pnpm check:fast`、artifact sm
 - [x] Q2 Code action resolve：只信上限 512 条、绑定 URI/version 的服务端记录；重新计算并
   核对完整 action fingerprint 后返回 versioned `TextDocumentEdit`，应用后 didChange v2
   diagnostics 清零（`599b23a`）。
-- [ ] Q3 Code action reliability：伪造 UUID/过期版本拒绝，伪造 title/kind/diagnostic 无效，
-  client cancel 为 `RequestCancelled`，shutdown 清空 registry；全部测试不使用 sleep。
+- [x] Q3 Code action reliability：伪造 UUID/过期版本拒绝，伪造 title/kind/diagnostic 无效，
+  client cancel 为 `RequestCancelled`，shutdown 清空 registry；全部测试不使用 sleep
+  （`370b927`）。
 - [ ] Q4 只有声明 code-action literal/data/resolve-edit 与 versioned documentChanges 支持的
   client 才广告 `{ codeActionKinds: ["quickfix"], resolveProvider: true }`；installed GREEN 后接线。
 
