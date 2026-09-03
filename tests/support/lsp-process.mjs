@@ -24,6 +24,7 @@ export class LspProcess {
     this.stderr = ""
     this.child.stdout.on("data", (chunk) => this.accept(chunk))
     this.child.stderr.on("data", (chunk) => { this.stderr += chunk.toString() })
+    this.child.on("close", (code, signal) => this.rejectPendingOnClose(code, signal))
   }
 
   send(message) {
@@ -54,8 +55,19 @@ export class LspProcess {
       const timeout = setTimeout(() => {
         reject(new Error(`Timed out waiting for ${description}. stderr: ${this.stderr}`))
       }, timeoutMs)
-      this.waiters.push({ matches, resolve, timeout })
+      this.waiters.push({ matches, resolve, reject, description, timeout })
     })
+  }
+
+  rejectPendingOnClose(code, signal) {
+    const waiters = this.waiters.splice(0)
+    for (const { reject, description, timeout } of waiters) {
+      clearTimeout(timeout)
+      reject(new Error(
+        `LSP process exited before ${description} (code=${code}, signal=${signal}). `
+        + `stderr: ${this.stderr.trimEnd() || "<empty>"}`,
+      ))
+    }
   }
 
   async close() {
