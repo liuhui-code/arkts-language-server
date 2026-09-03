@@ -355,6 +355,33 @@ Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产�
   （`9eeb742`）。
 - [ ] 本批次集成门禁：所有并行切片提交后运行 fresh `pnpm check:fast`。
 
+#### 下一批 P0 基本功能 checklist（按依赖执行）
+
+测试先行原则：测试/fixture 可以并行；一旦进入生产实现，所有修改
+`typescript-language-service.ts` 或 capability adapter 的切片回到单一 owner 串行。
+
+- [ ] E0 Evidence：feature matrix 从“测试文件存在”升级为可核验的命名场景 claim；错误、
+  缺失或重复 claim fail closed。随后让 release gate 拒绝 advertised capability 仅靠
+  `artifactGap` 放行。
+- [ ] L1 Lifecycle installed：精确断言 incremental sync capability；执行 ranged didChange，
+  查询证明 v2 生效，再在 didClose 后证明 overlay 被移除、disk truth 恢复。
+- [ ] C8 Completion receiver：imported/typed receiver 同时返回 field 和 method；kind 分别为
+  `Field`/`Method`，replacement range 在 emoji 后仍精确。当前稳定 RED 为字段错误映射成
+  `Property(10)`。
+- [ ] C9 Completion ranking：同名来源去重，local/member 优先于 auto-import；重复请求排序稳定，
+  `sortText` 与最终顺序契约一致。
+- [ ] W2 Workspace symbol kind：overlay 的 interface/enum/property/constructor/module/type/variable
+  不得统一降级为 Variable；补 exact kind/range、overlay precedence 和 cancel。
+- [ ] E1 Hover depth：unopened dependency、import alias、JSDoc tags、emoji UTF-16 range，并加入
+  immutable artifact smoke。
+- [ ] E2 Signature depth：转发 LSP trigger/retrigger context；覆盖 overload、nested/generic、
+  active parameter、快速 didChange，并加入 immutable artifact smoke。
+- [ ] E3b Document symbols depth：补全公开 kind、深层 hierarchy/flat fallback、稳定顺序与
+  UTF-16 range，并加入 immutable artifact smoke。
+
+可并行组：`E0`（证据契约）、`L1`（installed test-only）、`W2`（独立 symbol codec）可互斥
+推进；`C8 → C9 → E1 → E2 → E3b` 共享 TypeScript/LSP adapter，按此顺序串行。
+
 ### Wave 2 — 首个功能切片与 installed semantic smoke（部分并行）
 
 #### Track B：completion resolve/auto-import（主依赖链）
