@@ -70,6 +70,10 @@ export async function assertInstalledSemanticSmoke({
 
   try {
     const initialized = await session.initialize({ timeoutMs })
+    assert.deepEqual(initialized.result.capabilities.textDocumentSync, {
+      openClose: true,
+      change: 2,
+    })
     assert.equal(initialized.result.capabilities.completionProvider.resolveProvider, true)
     assert.equal(initialized.result.capabilities.codeActionProvider, undefined)
     const create = await session.transport.serverRequest(
@@ -78,6 +82,18 @@ export async function assertInstalledSemanticSmoke({
       timeoutMs,
     )
     session.transport.send({ jsonrpc: "2.0", id: create.id, result: null })
+    const catalogReady = await session.transport.progress(
+      create.params.token,
+      (message) => message.params.value.kind === "report"
+        && message.params.value.percentage === 100,
+      timeoutMs,
+    )
+    assert.match(catalogReady.params.value.message, /^Indexed \d+\/\d+ files; skipped \d+ entries$/)
+    await session.transport.progress(
+      create.params.token,
+      (message) => message.params.value.kind === "end",
+      timeoutMs,
+    )
 
     const consumerDiagnostics = session.transport.notification(
       "textDocument/publishDiagnostics",
@@ -107,6 +123,122 @@ export async function assertInstalledSemanticSmoke({
     assert.deepEqual(locations, [{ uri: definition.uri, range: definition.range }])
     assert.notDeepEqual(locations[0].range.start, locations[0].range.end)
     assert.equal(textInRange(definitionSource, locations[0].range), "Profile")
+
+    const diskGreeterResponse = await session.request(
+      "workspace/symbol",
+      { query: "Greeter" },
+      { timeoutMs },
+    )
+    assert.equal(
+      diskGreeterResponse.error,
+      undefined,
+      JSON.stringify(diskGreeterResponse.error),
+    )
+    assert.deepEqual(
+      exactWorkspaceSymbols(diskGreeterResponse.result, greeterDefinition.uri, "Greeter"),
+      [{ name: "Greeter", uri: greeterDefinition.uri, range: greeterDefinition.range }],
+      "the lifecycle tracer requires a catalog-backed disk symbol",
+    )
+
+    const overlayName = "InstalledOverlayGreeter"
+    const overlaySource = applyTextEdits(greeterSource, [{
+      range: greeterDefinition.range,
+      newText: overlayName,
+    }])
+    const overlayRange = {
+      start: greeterDefinition.range.start,
+      end: {
+        line: greeterDefinition.range.start.line,
+        character: greeterDefinition.range.start.character + overlayName.length,
+      },
+    }
+    assert.equal(textInRange(overlaySource, overlayRange), overlayName)
+    session.openDocument({
+      uri: greeterDefinition.uri,
+      languageId: "arkts",
+      version: 1,
+      text: greeterSource,
+    })
+    session.changeDocument({
+      uri: greeterDefinition.uri,
+      version: 2,
+      contentChanges: [{
+        range: greeterDefinition.range,
+        text: overlayName,
+      }],
+    })
+
+    const changedSymbolResponse = await session.request(
+      "workspace/symbol",
+      { query: overlayName },
+      { timeoutMs },
+    )
+    assert.equal(
+      changedSymbolResponse.error,
+      undefined,
+      JSON.stringify(changedSymbolResponse.error),
+    )
+    assert.deepEqual(
+      exactWorkspaceSymbols(changedSymbolResponse.result, greeterDefinition.uri, overlayName),
+      [{ name: overlayName, uri: greeterDefinition.uri, range: overlayRange }],
+    )
+    const staleDiskSymbolResponse = await session.request(
+      "workspace/symbol",
+      { query: "Greeter" },
+      { timeoutMs },
+    )
+    assert.equal(
+      staleDiskSymbolResponse.error,
+      undefined,
+      JSON.stringify(staleDiskSymbolResponse.error),
+    )
+    assert.deepEqual(
+      exactWorkspaceSymbols(staleDiskSymbolResponse.result, greeterDefinition.uri, "Greeter"),
+      [],
+      "an open incrementally changed overlay must hide the stale indexed disk symbol",
+    )
+
+    session.transport.send({
+      jsonrpc: "2.0",
+      method: "textDocument/didClose",
+      params: { textDocument: { uri: greeterDefinition.uri } },
+    })
+    const closedOverlayResponse = await session.request(
+      "workspace/symbol",
+      { query: overlayName },
+      { timeoutMs },
+    )
+    assert.equal(
+      closedOverlayResponse.error,
+      undefined,
+      JSON.stringify(closedOverlayResponse.error),
+    )
+    assert.deepEqual(
+      exactWorkspaceSymbols(closedOverlayResponse.result, greeterDefinition.uri, overlayName),
+      [],
+      "didClose must remove the in-memory overlay",
+    )
+    const restoredDiskSymbolResponse = await session.request(
+      "workspace/symbol",
+      { query: "Greeter" },
+      { timeoutMs },
+    )
+    assert.equal(
+      restoredDiskSymbolResponse.error,
+      undefined,
+      JSON.stringify(restoredDiskSymbolResponse.error),
+    )
+    const restoredDiskSymbols = exactWorkspaceSymbols(
+      restoredDiskSymbolResponse.result,
+      greeterDefinition.uri,
+      "Greeter",
+    )
+    assert.deepEqual(restoredDiskSymbols, [{
+      name: "Greeter",
+      uri: greeterDefinition.uri,
+      range: greeterDefinition.range,
+    }])
+    assert.equal(textInRange(greeterSource, restoredDiskSymbols[0].range), "Greeter")
 
     session.transport.send({
       jsonrpc: "2.0",
@@ -339,4 +471,14 @@ function sameRange(left, right) {
     && left.start.character === right.start.character
     && left?.end?.line === right.end.line
     && left.end.character === right.end.character
+}
+
+function exactWorkspaceSymbols(symbols, uri, name) {
+  return symbols
+    .filter((symbol) => symbol.name === name && symbol.location?.uri === uri)
+    .map((symbol) => ({
+      name: symbol.name,
+      uri: symbol.location.uri,
+      range: symbol.location.range,
+    }))
 }
