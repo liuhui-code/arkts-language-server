@@ -45,13 +45,13 @@ test("maps the complete public capability contract to executable feature evidenc
     "document-sync",
     "completion",
     "definition",
+    "hover",
     "workspace-symbol",
     "diagnostics",
     "completion-resolve",
     "code-actions",
   ])
   assert.deepEqual(audit.artifactGapFeatureIds, [
-    "hover",
     "signature-help",
     "document-symbol",
     "references",
@@ -59,6 +59,13 @@ test("maps the complete public capability contract to executable feature evidenc
   ])
   const diagnostics = CURRENT_LSP_FEATURE_MATRIX.features.find(({ id }) => id === "diagnostics")
   assert.deepEqual(diagnostics?.knownGaps, [])
+  const hover = CURRENT_LSP_FEATURE_MATRIX.features.find(({ id }) => id === "hover")
+  assert.deepEqual(hover?.evidence.artifact, [{
+    entry: "tests/release/portable-install.acceptance.mjs",
+    test: "installs one verified artifact without source dependencies or a rebuild",
+    claim: "hover.artifact.immutable-unopened-import",
+  }])
+  assert.equal(hover?.artifactGap, null)
 })
 
 test("rejects capability and evidence drift instead of accepting a stale matrix", () => {
@@ -90,10 +97,10 @@ test("rejects capability and evidence drift instead of accepting a stale matrix"
     ],
     [
       "empty artifact gap",
-      mutateFeature("hover", (feature) => {
+      mutateFeature("signature-help", (feature) => {
         feature.artifactGap = "   "
       }),
-      /hover: missing artifact evidence requires artifactGap/,
+      /signature-help: missing artifact evidence requires artifactGap/,
     ],
   ]
 

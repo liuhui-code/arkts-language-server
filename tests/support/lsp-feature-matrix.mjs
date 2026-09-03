@@ -96,7 +96,12 @@ export const CURRENT_LSP_FEATURE_MATRIX = Object.freeze({
         "returns documented ArkTS hover information at the exact source range",
         "hover.bundle.documented-exact-range",
       )],
-      artifactGap: "Installed artifacts do not run a hover transcript yet.",
+      artifact: [evidence(
+        "tests/release/portable-install.acceptance.mjs",
+        "installs one verified artifact without source dependencies or a rebuild",
+        "hover.artifact.immutable-unopened-import",
+      )],
+      artifactGap: null,
     }),
     enabledFeature({
       id: "signature-help",

@@ -28,6 +28,14 @@ export async function assertInstalledSemanticSmoke({
   const greeterSource = fs.readFileSync(fileURLToPath(greeterDefinition.uri), "utf8")
   const quickFixSource = fs.readFileSync(fileURLToPath(quickFix.uri), "utf8")
   assert.equal(textInRange(consumerSource, reference.range), "Profile")
+  const referenceLine = consumerSource.split("\n")[reference.range.start.line]
+  const referencePrefix = referenceLine.slice(0, reference.range.start.character)
+  assert.match(referencePrefix, /😀/)
+  assert.equal(
+    referencePrefix.length - Array.from(referencePrefix).length,
+    1,
+    "the hover reference marker must use UTF-16 code units after its emoji prefix",
+  )
   assert.equal(textInRange(homeSource, completion.range), "Gree")
   const completionLine = homeSource.split("\n")[completion.range.start.line]
   const completionPrefix = completionLine.slice(0, completion.range.start.character)
@@ -75,6 +83,7 @@ export async function assertInstalledSemanticSmoke({
       change: 2,
     })
     assert.equal(initialized.result.capabilities.completionProvider.resolveProvider, true)
+    assert.equal(initialized.result.capabilities.hoverProvider, true)
     assert.deepEqual(initialized.result.capabilities.codeActionProvider, {
       codeActionKinds: ["quickfix"],
       resolveProvider: true,
@@ -126,6 +135,23 @@ export async function assertInstalledSemanticSmoke({
     assert.deepEqual(locations, [{ uri: definition.uri, range: definition.range }])
     assert.notDeepEqual(locations[0].range.start, locations[0].range.end)
     assert.equal(textInRange(definitionSource, locations[0].range), "Profile")
+
+    const hoverResponse = await session.request("textDocument/hover", {
+      textDocument: { uri: reference.uri },
+      position: midpoint(reference.range),
+    }, { timeoutMs })
+    assert.equal(hoverResponse.error, undefined, JSON.stringify(hoverResponse.error))
+    assert.equal(hoverResponse.result.contents.kind, "markdown")
+    assert.equal(
+      hoverSignature(hoverResponse.result.contents.value),
+      "(alias) interface Profile\nimport Profile",
+    )
+    assert.match(
+      hoverResponse.result.contents.value,
+      /Represents a user profile shared across ArkTS modules\./,
+    )
+    assert.match(hoverResponse.result.contents.value, /@since\s+1\.0\.0/)
+    assert.deepEqual(hoverResponse.result.range, reference.range)
 
     const diskGreeterResponse = await session.request(
       "workspace/symbol",
@@ -484,4 +510,10 @@ function exactWorkspaceSymbols(symbols, uri, name) {
       uri: symbol.location.uri,
       range: symbol.location.range,
     }))
+}
+
+function hoverSignature(markdown) {
+  const match = /^```arkts\n([\s\S]*?)\n```/.exec(markdown)
+  assert.ok(match, "hover must start with an ArkTS signature fence")
+  return match[1]
 }
