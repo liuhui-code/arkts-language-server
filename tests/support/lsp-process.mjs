@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process"
+import fs from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
@@ -251,6 +252,44 @@ export class LspProcess {
         droppedEntries: this.transcriptTotalEntries - this.transcriptEntries.length,
       },
     })
+  }
+
+  async writeFailureEvidence(evidenceDirectory, { name }) {
+    if (typeof name !== "string" || !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/.test(name)) {
+      throw new TypeError("LSP safe evidence name must be a 1-64 character identifier")
+    }
+    const snapshot = this.diagnosticSnapshot()
+    const processEvidence = {
+      schema: "arkts-language-server.lsp-process-failure",
+      schemaVersion: 1,
+      pid: snapshot.pid,
+      terminal: snapshot.terminal,
+      pendingDescriptions: snapshot.pendingDescriptions,
+      parser: snapshot.parser,
+      stderr: {
+        totalBytes: snapshot.stderr.totalBytes,
+        retainedBytes: snapshot.stderr.retainedBytes,
+        droppedBytes: snapshot.stderr.droppedBytes,
+      },
+    }
+    const transcript = snapshot.transcript.entries.length === 0
+      ? ""
+      : `${snapshot.transcript.entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`
+    const artifacts = [
+      ["process.json", `${JSON.stringify(processEvidence, null, 2)}\n`],
+      ["transcript.ndjson", transcript],
+      ["stderr.log", snapshot.stderr.text],
+    ].map(([suffix, contents]) => {
+      const destination = path.join(evidenceDirectory, `${name}.${suffix}`)
+      return { destination, temporary: `${destination}.tmp`, contents }
+    })
+
+    await Promise.all(artifacts.map(({ temporary, contents }) => (
+      fs.writeFile(temporary, contents)
+    )))
+    await Promise.all(artifacts.map(({ temporary, destination }) => (
+      fs.rename(temporary, destination)
+    )))
   }
 
   response(id, timeoutMs = 5_000) {

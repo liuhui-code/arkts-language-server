@@ -1,8 +1,12 @@
 import assert from "node:assert/strict"
 import { once } from "node:events"
+import fs from "node:fs/promises"
+import os from "node:os"
+import path from "node:path"
 import test from "node:test"
 
 import { LspProcess, withTimeout } from "./support/lsp-process.mjs"
+import { withTestEvidence } from "./support/test-evidence.mjs"
 
 test("rejects a pending response immediately when the LSP child exits", async () => {
   const lsp = new LspProcess({
@@ -861,6 +865,178 @@ test("returns a deeply immutable snapshot of pending and terminal transport stat
     assert.equal(failed.terminal.failureCode, "LSP_INVALID_HEADER")
     assert.deepEqual(failed.pendingDescriptions, [])
     assert.equal(Object.isFrozen(failed.transcript.entries[0]), true)
+  } finally {
+    await lsp.close()
+  }
+})
+
+test("retains a bounded redacted LSP process evidence bundle after a real child failure", async (t) => {
+  const evidenceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "arkts-lsp-failure-evidence-"))
+  t.after(() => fs.rm(evidenceRoot, { recursive: true, force: true }))
+
+  const sourceCanary = "PRIVATE-SOURCE-CANARY"
+  const stderrCanary = "PRIVATE-STDERR-CANARY"
+  const request = {
+    jsonrpc: "2.0",
+    id: 140,
+    method: "fixture/secret",
+    params: { source: sourceCanary },
+  }
+  const response = {
+    jsonrpc: "2.0",
+    id: 140,
+    result: { source: sourceCanary },
+  }
+  const notification = {
+    jsonrpc: "2.0",
+    method: "fixture/secret-notification",
+    params: { source: sourceCanary },
+  }
+  const stdoutPayload = [response, notification].map((message) => {
+    const body = JSON.stringify(message)
+    return `Content-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`
+  }).join("") + "Content-Length: nope\r\n\r\n{"
+  const stderrPayload = `STDERR-HEAD\n${"x".repeat(512)}${stderrCanary}${"y".repeat(512)}\nSTDERR-TAIL\n`
+  const lsp = new LspProcess({
+    command: process.execPath,
+    args: [
+      "-e",
+      `
+        const stderr = Buffer.from("${Buffer.from(stderrPayload).toString("base64")}", "base64")
+        const stdout = Buffer.from("${Buffer.from(stdoutPayload).toString("base64")}", "base64")
+        process.stdin.once("data", () => {
+          process.stderr.write(stderr, () => process.stdout.write(stdout))
+        })
+        process.stdin.resume()
+      `,
+    ],
+    maxStderrBytes: 96,
+    maxTranscriptEntries: 8,
+    maxTranscriptBytes: 1_024,
+  })
+  let retainedDirectory
+
+  try {
+    await assert.rejects(
+      withTestEvidence({
+        root: evidenceRoot,
+        caseId: "lsp/real-child-failure",
+        captureFailure: ({ evidenceDirectory }) => {
+          retainedDirectory = evidenceDirectory
+          return lsp.writeFailureEvidence(evidenceDirectory, { name: "lsp-failure" })
+        },
+      }, async () => {
+        const childClosed = once(lsp.child, "close")
+        const pending = lsp.response(141, 5_000)
+        const pendingResult = Promise.allSettled([pending])
+        lsp.send(request)
+        const [result] = await withTimeout(
+          pendingResult,
+          1_000,
+          "real child protocol failure was not delivered",
+        )
+        await withTimeout(childClosed, 1_000, "real child did not close after protocol failure")
+        assert.equal(result.status, "rejected")
+        throw result.reason
+      }),
+      (error) => error.code === "LSP_INVALID_HEADER",
+    )
+
+    assert.ok(retainedDirectory)
+    assert.deepEqual((await fs.readdir(retainedDirectory)).sort(), [
+      "failure.json",
+      "lsp-failure.process.json",
+      "lsp-failure.stderr.log",
+      "lsp-failure.transcript.ndjson",
+    ])
+
+    const processPath = path.join(retainedDirectory, "lsp-failure.process.json")
+    const transcriptPath = path.join(retainedDirectory, "lsp-failure.transcript.ndjson")
+    const stderrPath = path.join(retainedDirectory, "lsp-failure.stderr.log")
+    const [processText, transcriptText, stderrText] = await Promise.all([
+      fs.readFile(processPath, "utf8"),
+      fs.readFile(transcriptPath, "utf8"),
+      fs.readFile(stderrPath, "utf8"),
+    ])
+    const processEvidence = JSON.parse(processText)
+    assert.equal(processEvidence.schema, "arkts-language-server.lsp-process-failure")
+    assert.equal(processEvidence.schemaVersion, 1)
+    assert.equal(processEvidence.terminal.state, "failed")
+    assert.equal(processEvidence.terminal.failureCode, "LSP_INVALID_HEADER")
+    assert.deepEqual(processEvidence.pendingDescriptions, [])
+    assert.deepEqual(Object.keys(processEvidence.parser).sort(), [
+      "bufferedBytes",
+      "expectedBytes",
+      "phase",
+      "receivedBytes",
+    ])
+    assert.deepEqual(processEvidence.stderr, {
+      totalBytes: Buffer.byteLength(stderrPayload),
+      retainedBytes: 96,
+      droppedBytes: Buffer.byteLength(stderrPayload) - 96,
+    })
+
+    const transcript = transcriptText.trimEnd().split("\n").map((line) => JSON.parse(line))
+    assert.deepEqual(transcript.map(({ direction, kind, method, id }) => ({
+      direction,
+      kind,
+      method,
+      id,
+    })), [
+      { direction: "send", kind: "request", method: "fixture/secret", id: 140 },
+      { direction: "receive", kind: "response", method: null, id: 140 },
+      {
+        direction: "receive",
+        kind: "notification",
+        method: "fixture/secret-notification",
+        id: null,
+      },
+    ])
+    for (const entry of transcript) {
+      assert.deepEqual(Object.keys(entry).sort(), [
+        "byteSize",
+        "direction",
+        "id",
+        "kind",
+        "method",
+        "sequence",
+      ])
+    }
+    assert.match(stderrText, /STDERR-HEAD/)
+    assert.match(stderrText, /STDERR-TAIL/)
+
+    const retainedEvidence = `${processText}\n${transcriptText}\n${stderrText}`
+    assert.doesNotMatch(retainedEvidence, /PRIVATE-(?:SOURCE|STDERR)-CANARY/)
+    assert.doesNotMatch(retainedEvidence, /"(?:params|result|source)"\s*:/)
+    const [processStat, transcriptStat, stderrStat] = await Promise.all([
+      fs.stat(processPath),
+      fs.stat(transcriptPath),
+      fs.stat(stderrPath),
+    ])
+    assert.ok(processStat.size < 2_048)
+    assert.ok(transcriptStat.size < 1_024)
+    assert.ok(stderrStat.size < 160)
+  } finally {
+    await lsp.close()
+  }
+})
+
+test("rejects unsafe LSP failure evidence names before writing outside the case directory", async (t) => {
+  const evidenceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "arkts-lsp-safe-evidence-"))
+  const evidenceDirectory = path.join(evidenceRoot, "case")
+  await fs.mkdir(evidenceDirectory)
+  t.after(() => fs.rm(evidenceRoot, { recursive: true, force: true }))
+  const lsp = new LspProcess({
+    command: process.execPath,
+    args: ["-e", "process.stdin.resume()"],
+  })
+
+  try {
+    await assert.rejects(
+      lsp.writeFailureEvidence(evidenceDirectory, { name: "../escaped" }),
+      (error) => error instanceof TypeError && /safe evidence name/.test(error.message),
+    )
+    assert.deepEqual(await fs.readdir(evidenceRoot), ["case"])
   } finally {
     await lsp.close()
   }
