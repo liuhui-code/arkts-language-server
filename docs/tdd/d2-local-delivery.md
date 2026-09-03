@@ -54,3 +54,13 @@ pnpm version, so copied `node_modules` cannot false-hit on another toolchain.
 The public fake-toolchain test proves first install, unchanged-fingerprint
 skip, and reinstall after lockfile or pnpm changes without running a real
 release build. The same test requires the WASM build to use Cargo `--locked`.
+
+## Per-user SDK discovery portability regression
+
+- Parent revision: `18ba3f8`
+- RED: `node --test tests/sdk-discovery.test.mjs` returned the original
+  developer's `/Users/liuhui/...` SDK path after injecting
+  `/Users/another-developer`.
+- GREEN: the public candidate function derives the macOS user-level DevEco SDK
+  path from `os.homedir()` and accepts a deterministic home override for tests.
+  No developer-specific absolute path remains in production code.

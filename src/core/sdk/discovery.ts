@@ -1,4 +1,6 @@
 import fs from "node:fs"
+import os from "node:os"
+import path from "node:path"
 
 export interface HarmonySdkDiscovery {
   ready: boolean
@@ -26,12 +28,15 @@ export function discoverHarmonySdk(
   }
 }
 
-export function defaultHarmonySdkCandidates(platform: NodeJS.Platform): string[] {
+export function defaultHarmonySdkCandidates(
+  platform: NodeJS.Platform,
+  homeDirectory = os.homedir(),
+): string[] {
   if (platform === "darwin") {
     return [
       "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony",
       "/Applications/DevEco Studio.app/Contents/sdk/default/openharmony",
-      "/Users/liuhui/Library/Huawei/Sdk/default/openharmony",
+      path.join(homeDirectory, "Library", "Huawei", "Sdk", "default", "openharmony"),
     ]
   }
 
