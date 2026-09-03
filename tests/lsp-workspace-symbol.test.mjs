@@ -119,7 +119,7 @@ test("reports discovery without fake zero percent and completes monotonic indexi
   await server.response(1)
   server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
 
-  const create = await server.notification("window/workDoneProgress/create")
+  const create = await server.serverRequest("window/workDoneProgress/create")
   server.send({ jsonrpc: "2.0", id: create.id, result: null })
   const begin = await server.notification("$/progress", (message) => message.params.value.kind === "begin")
   assert.equal(begin.params.value.message, "Discovering project files")

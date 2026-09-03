@@ -4,6 +4,24 @@ import { fileURLToPath } from "node:url"
 
 export const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 
+function hasOwn(message, key) {
+  return message !== null
+    && typeof message === "object"
+    && Object.prototype.hasOwnProperty.call(message, key)
+}
+
+function isResponse(message) {
+  return hasOwn(message, "id") && !hasOwn(message, "method")
+}
+
+function isServerRequest(message) {
+  return hasOwn(message, "id") && typeof message.method === "string"
+}
+
+function isNotification(message) {
+  return !hasOwn(message, "id") && typeof message?.method === "string"
+}
+
 export class LspProcess {
   constructor({
     serverPath = "dist/server.cjs",
@@ -35,20 +53,32 @@ export class LspProcess {
   }
 
   response(id, timeoutMs = 5_000) {
-    const queued = this.messages.findIndex((message) => message.id === id)
+    const matches = (message) => isResponse(message) && message.id === id
+    const queued = this.messages.findIndex(matches)
     if (queued >= 0) return Promise.resolve(this.messages.splice(queued, 1)[0])
     return this.waitFor(
-      (message) => message.id === id,
+      matches,
       `LSP response ${id}`,
       timeoutMs,
     )
   }
 
   notification(method, predicate = () => true, timeoutMs = 5_000) {
-    const matches = (message) => message.method === method && predicate(message)
+    const matches = (message) => isNotification(message)
+      && message.method === method
+      && predicate(message)
     const queued = this.messages.findIndex(matches)
     if (queued >= 0) return Promise.resolve(this.messages.splice(queued, 1)[0])
     return this.waitFor(matches, `LSP notification ${method}`, timeoutMs)
+  }
+
+  serverRequest(method, predicate = () => true, timeoutMs = 5_000) {
+    const matches = (message) => isServerRequest(message)
+      && message.method === method
+      && predicate(message)
+    const queued = this.messages.findIndex(matches)
+    if (queued >= 0) return Promise.resolve(this.messages.splice(queued, 1)[0])
+    return this.waitFor(matches, `LSP server request ${method}`, timeoutMs)
   }
 
   waitFor(matches, description, timeoutMs) {

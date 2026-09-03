@@ -71,7 +71,7 @@ test("production composition exposes cached search and terminal catalog progress
   assert.equal(initialized.result.capabilities.workspaceSymbolProvider, true)
   server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
 
-  const create = await server.notification("window/workDoneProgress/create")
+  const create = await server.serverRequest("window/workDoneProgress/create")
   server.send({ jsonrpc: "2.0", id: create.id, result: null })
   const begin = await server.notification(
     "$/progress",

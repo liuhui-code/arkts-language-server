@@ -114,7 +114,7 @@ test("one local command builds and idempotently installs a working Zed language 
   const productionInitialize = await server.response(20, 15_000)
   assert.equal(productionInitialize.result.capabilities.workspaceSymbolProvider, true)
   server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
-  const create = await server.notification("window/workDoneProgress/create", () => true, 15_000)
+  const create = await server.serverRequest("window/workDoneProgress/create", () => true, 15_000)
   server.send({ jsonrpc: "2.0", id: create.id, result: null })
   const ready = await server.notification(
     "$/progress",
@@ -197,7 +197,7 @@ test("one local command builds and idempotently installs a working Zed language 
   })
   await warm.response(30, 15_000)
   warm.send({ jsonrpc: "2.0", method: "initialized", params: {} })
-  const warmCreate = await warm.notification("window/workDoneProgress/create", () => true, 15_000)
+  const warmCreate = await warm.serverRequest("window/workDoneProgress/create", () => true, 15_000)
   warm.send({ jsonrpc: "2.0", id: warmCreate.id, result: null })
   await warm.notification(
     "$/progress",

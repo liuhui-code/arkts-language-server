@@ -194,3 +194,63 @@ test("bounds concurrent close calls when the child ignores SIGTERM", async () =>
     }
   }
 })
+
+test("routes responses, server requests, and notifications by JSON-RPC shape", async () => {
+  const lsp = new LspProcess({
+    command: process.execPath,
+    args: [
+      "-e",
+      `
+        const messages = [
+          {
+            jsonrpc: "2.0",
+            id: 85,
+            method: "fixture/route",
+            params: { kind: "server-request" },
+          },
+          { jsonrpc: "2.0", id: 85, result: { kind: "client-response" } },
+          {
+            jsonrpc: "2.0",
+            method: "fixture/route",
+            params: { kind: "notification" },
+          },
+          { jsonrpc: "2.0", method: "fixture/ready" },
+        ]
+        const frame = (message) => {
+          const body = JSON.stringify(message)
+          return "Content-Length: " + Buffer.byteLength(body) + "\\r\\n\\r\\n" + body
+        }
+        process.stdout.write(messages.map(frame).join(""))
+        setInterval(() => {}, 1_000)
+      `,
+    ],
+  })
+
+  try {
+    await lsp.notification("fixture/ready", undefined, 1_000)
+
+    assert.deepEqual(
+      await lsp.response(85, 500),
+      { jsonrpc: "2.0", id: 85, result: { kind: "client-response" } },
+    )
+    assert.deepEqual(
+      await lsp.notification("fixture/route", undefined, 500),
+      {
+        jsonrpc: "2.0",
+        method: "fixture/route",
+        params: { kind: "notification" },
+      },
+    )
+    assert.deepEqual(
+      await lsp.serverRequest("fixture/route", undefined, 500),
+      {
+        jsonrpc: "2.0",
+        id: 85,
+        method: "fixture/route",
+        params: { kind: "server-request" },
+      },
+    )
+  } finally {
+    await lsp.close()
+  }
+})
