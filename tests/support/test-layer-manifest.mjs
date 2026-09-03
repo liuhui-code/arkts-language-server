@@ -7,6 +7,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
   layers: Object.freeze([
     layer("unit-contract", true, [
       "tests/artifact-manifest.test.mjs",
+      "tests/code-action-resolution-store.test.mjs",
       "tests/conformance-corpus.test.mjs",
       "tests/index-adapter.test.mjs",
       "tests/index-catalog-adapter.test.mjs",
@@ -43,6 +44,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/lsp-workspace-file-changes.test.mjs",
       "tests/semantic/diagnostic-code-characterization.test.mjs",
       "tests/semantic/editor-capabilities.test.mjs",
+      "tests/semantic/project-membership-language-service.test.mjs",
       "tests/semantic/semantic-characterization.test.mjs",
       "tests/version-identity.test.mjs",
     ]),
