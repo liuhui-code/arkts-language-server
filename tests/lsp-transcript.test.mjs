@@ -7,6 +7,8 @@ import { pathToFileURL } from "node:url"
 
 import { LspProcess, projectRoot, withTimeout } from "./support/lsp-process.mjs"
 
+const basicFixtureRoot = path.join(projectRoot, "fixtures", "basic")
+
 test("initializes as a standalone ArkTS language server over stdio", async (t) => {
   const server = new LspProcess()
   t.after(() => server.close())
@@ -17,7 +19,7 @@ test("initializes as a standalone ArkTS language server over stdio", async (t) =
     method: "initialize",
     params: {
       processId: process.pid,
-      rootUri: `file://${projectRoot}`,
+      rootUri: pathToFileURL(basicFixtureRoot).href,
       capabilities: {},
     },
   })
@@ -40,14 +42,14 @@ test("completes both a field and a method from the opened ArkTS snapshot", async
     method: "initialize",
     params: {
       processId: process.pid,
-      rootUri: `file://${projectRoot}`,
+      rootUri: pathToFileURL(basicFixtureRoot).href,
       capabilities: { general: { positionEncodings: ["utf-16"] } },
     },
   })
   await server.response(1)
   server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
 
-  const uri = `file://${projectRoot}/fixtures/Profile.ets`
+  const uri = pathToFileURL(path.join(basicFixtureRoot, "Profile.ets")).href
   const text = [
     "struct Profile {",
     "  title: string = \"Ada\"",
@@ -84,9 +86,8 @@ test("completes both a field and a method from the opened ArkTS snapshot", async
 test("returns an exact cross-file definition from an ArkTS dependency", async (t) => {
   const server = new LspProcess()
   t.after(() => server.close())
-  const fixtureRoot = path.join(projectRoot, "fixtures", "basic")
-  const mainPath = path.join(fixtureRoot, "Main.ets")
-  const modelPath = path.join(fixtureRoot, "Model.ets")
+  const mainPath = path.join(basicFixtureRoot, "Main.ets")
+  const modelPath = path.join(basicFixtureRoot, "Model.ets")
   const mainUri = pathToFileURL(mainPath).href
   const modelUri = pathToFileURL(modelPath).href
 
@@ -96,7 +97,7 @@ test("returns an exact cross-file definition from an ArkTS dependency", async (t
     method: "initialize",
     params: {
       processId: process.pid,
-      rootUri: pathToFileURL(fixtureRoot).href,
+      rootUri: pathToFileURL(basicFixtureRoot).href,
       capabilities: { general: { positionEncodings: ["utf-16"] } },
     },
   })
@@ -140,7 +141,7 @@ test("acknowledges shutdown and exits cleanly", async (t) => {
     method: "initialize",
     params: {
       processId: process.pid,
-      rootUri: pathToFileURL(projectRoot).href,
+      rootUri: pathToFileURL(basicFixtureRoot).href,
       capabilities: {},
     },
   })
