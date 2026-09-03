@@ -20,8 +20,11 @@ import type {
   SemanticEnginePort,
   SemanticHover,
   SemanticQuery,
+  SemanticPrepareRenameOutcome,
   SemanticReferencesOutcome,
   SemanticReferencesQuery,
+  SemanticRenameOutcome,
+  SemanticRenameQuery,
   SemanticResolvedCodeAction,
   SemanticSignatureHelp,
   SemanticSignatureHelpQuery,
@@ -128,6 +131,48 @@ export class LegacySemanticEngine implements SemanticEnginePort {
             references: result.references.map((reference) => ({
               uri: pathToFileURL(reference.path).href,
               range: toPublicRange(reference.range),
+            })),
+          }
+        : result,
+    }
+  }
+
+  async prepareRename(
+    query: SemanticQuery,
+  ): Promise<VersionedSemanticResult<SemanticPrepareRenameOutcome>> {
+    assertActive(query.signal)
+    this.sync(query.document)
+    const prepared = this.prepare(query.document, query.position, true)
+    const result = prepared.engine.prepareRename(prepared.position)
+    return {
+      documentVersion: query.document.version,
+      value: result.status === "ready"
+        ? {
+            status: "ready",
+            range: toPublicRange(result.range),
+            placeholder: result.placeholder,
+          }
+        : result,
+    }
+  }
+
+  async rename(
+    query: SemanticRenameQuery,
+  ): Promise<VersionedSemanticResult<SemanticRenameOutcome>> {
+    assertActive(query.signal)
+    this.sync(query.document)
+    const prepared = this.prepare(query.document, query.position, true)
+    const result = prepared.engine.rename(prepared.position, query.newName)
+    return {
+      documentVersion: query.document.version,
+      value: result.status === "complete"
+        ? {
+            status: "complete",
+            edits: result.edits.map((edit) => ({
+              uri: pathToFileURL(edit.path).href,
+              range: toPublicRange(edit.range),
+              newText: edit.newText,
+              expectedVersion: edit.expectedVersion,
             })),
           }
         : result,

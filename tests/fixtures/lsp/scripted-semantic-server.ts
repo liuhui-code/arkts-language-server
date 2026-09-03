@@ -12,6 +12,7 @@ import type {
   SemanticQuery,
   SemanticReferencesOutcome,
   SemanticReferencesQuery,
+  SemanticRenameQuery,
   SemanticResolvedCodeAction,
   SemanticSignatureHelp,
   SemanticSignatureHelpQuery,
@@ -139,6 +140,14 @@ class ScriptedSemanticEngine implements SemanticEnginePort {
     query: SemanticReferencesQuery,
   ): Promise<VersionedSemanticResult<SemanticReferencesOutcome>> {
     return scriptedSemanticResult(query, { status: "complete", references: [] })
+  }
+
+  async prepareRename(query: SemanticQuery) {
+    return scriptedSemanticResult(query, { status: "unavailable" as const })
+  }
+
+  async rename(query: SemanticRenameQuery) {
+    return scriptedSemanticResult(query, { status: "unavailable" as const })
   }
 
   async diagnose(query: { document: DocumentSnapshot }) {

@@ -86,3 +86,39 @@ Implement in this order, keeping each newly reached failure as the next RED:
 4. return the complete origin/barrel edit without changing the public consumer;
 5. add invalid-name, partial membership, stale, cancellation, and conditional
    capability slices under N3/N4 before advertising rename.
+
+Steps 1–4 are now GREEN. The implementation adds editor-neutral prepare/rename
+outcomes and retains the existing TypeScript query-position semantics instead
+of renaming from a canonical definition. This is what preserves the language
+service's mature alias behavior:
+
+- consumer unaliased import becomes `Profile as Account` and only local uses
+  change;
+- origin declaration becomes `Account`, while the unopened barrel becomes
+  `Account as Profile` and downstream public users stay unchanged.
+
+Before producing any `WorkspaceEdit`, every TypeScript location is resolved
+through a resident or lazy ArkTS virtual document, checked for workspace
+containment and exact round-trip source mapping, deduplicated, sorted, and
+checked for overlap. Open overlays carry their exact LSP document version;
+unopened files use explicit `null`. A new public prepare/rename handler maps
+non-targets to the fixed `RequestFailed` message without leaking TypeScript's
+localized diagnostic.
+
+Focused verification:
+
+```text
+pnpm check
+pnpm build
+node --test tests/semantic/rename-depth.test.mjs
+# 4 passed, 0 failed, 0 skipped
+```
+
+The first GREEN run exposed a fixture-only assertion error: the strict edit
+codec correctly preserved the source file's trailing newline while the
+handwritten expected string omitted it. The exact edit assertions had already
+passed; the expected output was corrected to preserve the original newline.
+
+`renameProvider` remains absent. N3/N4 cancellation, stale/partial/invalid-name,
+client capability, and immutable installed-artifact tests must pass before
+advertising it.

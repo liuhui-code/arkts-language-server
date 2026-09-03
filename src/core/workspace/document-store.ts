@@ -69,7 +69,10 @@ export interface SemanticDocumentStoreOptions {
 
 export interface SemanticWorkspaceView {
   rootPath: string
-  documents: WorkspaceDocument[]
+  documents: Array<WorkspaceDocument & {
+    documentVersion?: number
+    overlay: boolean
+  }>
   projectMembership?: ProjectMembershipSnapshot
   removedPaths?: string[]
   changedPaths?: string[]
@@ -399,7 +402,12 @@ export class SemanticDocumentStore {
         totalBytes += bytes
       }
     }
-    const documents = closure.map(({ record }) => ({ path: record.path, content: record.content }))
+    const documents = closure.map(({ record }) => ({
+      path: record.path,
+      content: record.content,
+      documentVersion: record.documentVersion,
+      overlay: record.overlay,
+    }))
     const dependencyGeneration = this.updateDependencyGeneration(rootPath, closure)
     this.evict(currentPath, new Set(documents.map((document) => document.path)))
     const watchedRemovedPaths = this.watchedRemovedPaths.get(canonicalRoot)

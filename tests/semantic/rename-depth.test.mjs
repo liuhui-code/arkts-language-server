@@ -96,6 +96,7 @@ test("rename preserves an unaliased import's exported name with versioned local 
     'import { Profile as Account } from "./models"',
     "",
     'const profileValue = "😀" as unknown as Account',
+    "",
   ].join("\n"))
 })
 

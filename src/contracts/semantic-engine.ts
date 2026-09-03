@@ -55,6 +55,24 @@ export type SemanticReferencesOutcome =
   | { status: "complete"; references: SemanticReference[] }
   | { status: "incomplete"; reason: SemanticGlobalQueryFailureReason }
 
+export type SemanticPrepareRenameOutcome =
+  | { status: "ready"; range: TextRange; placeholder: string }
+  | { status: "unavailable" }
+  | { status: "incomplete"; reason: SemanticGlobalQueryFailureReason }
+
+export interface SemanticRenameTextEdit {
+  uri: DocumentUri
+  range: TextRange
+  newText: string
+  expectedVersion: number | null
+}
+
+export type SemanticRenameOutcome =
+  | { status: "complete"; edits: SemanticRenameTextEdit[] }
+  | { status: "invalid-name" }
+  | { status: "unavailable" }
+  | { status: "incomplete"; reason: SemanticGlobalQueryFailureReason }
+
 export interface SemanticSignatureParameter {
   label: string
   documentation?: string
@@ -151,6 +169,10 @@ export interface SemanticReferencesQuery extends SemanticQuery {
   includeDeclaration: boolean
 }
 
+export interface SemanticRenameQuery extends SemanticQuery {
+  newName: string
+}
+
 export interface SemanticSignatureHelpQuery extends SemanticQuery {
   triggerReason: SemanticSignatureHelpTriggerReason
 }
@@ -189,6 +211,10 @@ export interface SemanticEnginePort {
   references(
     query: SemanticReferencesQuery,
   ): Promise<VersionedSemanticResult<SemanticReferencesOutcome>>
+  prepareRename(
+    query: SemanticQuery,
+  ): Promise<VersionedSemanticResult<SemanticPrepareRenameOutcome>>
+  rename(query: SemanticRenameQuery): Promise<VersionedSemanticResult<SemanticRenameOutcome>>
   documentSymbols(query: SemanticDocumentQuery): Promise<VersionedSemanticResult<SemanticDocumentSymbol[]>>
   diagnose(query: SemanticDocumentQuery): Promise<VersionedSemanticResult<SemanticDiagnostic[]>>
   codeActions(query: SemanticCodeActionQuery): Promise<VersionedSemanticResult<SemanticCodeAction[]>>

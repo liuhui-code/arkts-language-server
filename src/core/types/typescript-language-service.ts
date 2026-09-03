@@ -16,9 +16,7 @@ import type {
   SemanticHoverInfo,
   SemanticSignatureHelp,
   SemanticTextRange,
-  SemanticUnsupportedResult,
   SemanticUsageResult,
-  SemanticWorkspaceEditPlan,
 } from "../protocol.js"
 import { resolveHarmonySdkModule } from "../sdk/module-resolver.js"
 import { createArktsVirtualDocument, type ArktsVirtualDocument } from "../virtual/arkts-virtual-document.js"
@@ -28,8 +26,10 @@ import type {
 } from "../workspace/document-store.js"
 import type {
   SemanticCodeFixCandidate,
+  SemanticPrepareRenameQueryResult,
   SemanticResolvedCodeFix,
   SemanticReferenceQueryResult,
+  SemanticRenameQueryResult,
   SemanticSignatureHelpTriggerReason,
   SemanticTypeEngineState,
 } from "./type-engine.js"
@@ -50,6 +50,8 @@ interface ScriptRecord {
   sourceContent: string
   virtualDocument: ArktsVirtualDocument
   version: number
+  documentVersion?: number
+  overlay: boolean
   bytes: number
   lastAccess: number
 }
@@ -141,7 +143,12 @@ export class TypeScriptLanguageServiceEngine {
     for (const document of workspace.documents) {
       const filePath = path.resolve(document.path)
       protectedPaths.add(filePath)
-      this.updateScript(filePath, document.content)
+      this.updateScript(
+        filePath,
+        document.content,
+        document.documentVersion,
+        document.overlay,
+      )
     }
     this.evict(protectedPaths)
     return {
@@ -517,47 +524,79 @@ export class TypeScriptLanguageServiceEngine {
     }
   }
 
-  rename(
-    position: SemanticDocumentPosition,
-    newName: string,
-  ): SemanticWorkspaceEditPlan | SemanticUnsupportedResult {
+  prepareRename(position: SemanticDocumentPosition): SemanticPrepareRenameQueryResult {
+    if (this.projectMembershipStatus !== "complete") {
+      return { status: "incomplete", reason: "project-membership-incomplete" }
+    }
     const filePath = path.resolve(position.path)
     const script = this.scripts.get(filePath)
-    if (!script) return unsupportedRename("Rename target is not loaded.")
-    if (!isIdentifierText(newName)) {
-      return unsupportedRename(`'${newName}' is not a valid identifier.`)
-    }
+    if (!script) return { status: "incomplete", reason: "source-unavailable" }
     const sourceOffset = lineColumnToOffset(script.sourceContent, position.line, position.column)
     const offset = script.virtualDocument.toGeneratedOffset(sourceOffset)
     const info = this.service.getRenameInfo(filePath, offset, { allowRenameOfImportPath: false })
-    if (!info.canRename) return unsupportedRename(info.localizedErrorMessage)
-    const locations = this.service.findRenameLocations(filePath, offset, false, false, true) ?? []
-    const operations = locations.flatMap((location) => {
-      const targetPath = path.resolve(location.fileName)
-      const targetScript = this.scripts.get(targetPath)
-      if (!targetScript || !isWithinRoot(this.rootPath, targetPath)) return []
-      return [{
-        kind: "text" as const,
-        path: targetPath,
-        range: targetScript.virtualDocument.generatedSpanToSourceRange(
-          location.textSpan.start,
-          location.textSpan.length,
-        ),
-        newText: `${location.prefixText ?? ""}${newName}${location.suffixText ?? ""}`,
-        expectedContentVersion: contentVersion(targetScript.sourceContent),
-      }]
-    }).sort(compareTextEdits)
-    if (operations.length === 0) return unsupportedRename("No rename locations were found.")
-    const affectedFiles = [...new Set(operations.map((operation) => operation.path))].sort()
+    if (!info.canRename) return { status: "unavailable" }
+    const range = exactSourceRange(script, info.triggerSpan)
+    if (!range) return { status: "incomplete", reason: "source-unmappable" }
+    const placeholderStart = script.virtualDocument.toSourceOffset(info.triggerSpan.start)
+    const placeholderEnd = script.virtualDocument.toSourceOffset(
+      info.triggerSpan.start + info.triggerSpan.length,
+    )
     return {
-      id: `semantic.rename.${contentVersion(`${filePath}:${offset}:${newName}`)}`,
-      title: `Rename ${info.displayName} to ${newName}`,
-      operations,
-      conflicts: [],
-      affectedFiles,
-      undoLabel: `Undo rename ${info.displayName} to ${newName}`,
-      requiresPreview: true,
+      status: "ready",
+      range,
+      placeholder: script.sourceContent.slice(placeholderStart, placeholderEnd),
     }
+  }
+
+  rename(
+    position: SemanticDocumentPosition,
+    newName: string,
+  ): SemanticRenameQueryResult {
+    if (this.projectMembershipStatus !== "complete") {
+      return { status: "incomplete", reason: "project-membership-incomplete" }
+    }
+    const filePath = path.resolve(position.path)
+    const script = this.scripts.get(filePath)
+    if (!script) return { status: "incomplete", reason: "source-unavailable" }
+    if (!isIdentifierText(newName)) return { status: "invalid-name" }
+    const sourceOffset = lineColumnToOffset(script.sourceContent, position.line, position.column)
+    const offset = script.virtualDocument.toGeneratedOffset(sourceOffset)
+    const info = this.service.getRenameInfo(filePath, offset, { allowRenameOfImportPath: false })
+    if (!info.canRename) return { status: "unavailable" }
+    const locations = this.service.findRenameLocations(filePath, offset, false, false, true) ?? []
+    if (locations.length === 0) return { status: "unavailable" }
+    const sourceViews = new Map<string, ScriptRecord | LazySnapshotRecord>()
+    const edits: Extract<SemanticRenameQueryResult, { status: "complete" }>["edits"] = []
+    const seen = new Set<string>()
+    for (const location of locations) {
+      const targetPath = path.resolve(location.fileName)
+      if (!isWithinRoot(this.rootPath, targetPath)) {
+        return { status: "incomplete", reason: "source-outside-workspace" }
+      }
+      let sourceView = sourceViews.get(targetPath)
+      if (!sourceView) {
+        sourceView = this.scripts.get(targetPath) ?? this.loadLazySnapshot(targetPath)
+        if (!sourceView) return { status: "incomplete", reason: "source-unavailable" }
+        sourceViews.set(targetPath, sourceView)
+      }
+      const range = exactSourceRange(sourceView, location.textSpan)
+      if (!range) return { status: "incomplete", reason: "source-unmappable" }
+      const newText = `${location.prefixText ?? ""}${newName}${location.suffixText ?? ""}`
+      const key = semanticLocationKey(targetPath, range)
+      if (seen.has(key)) continue
+      seen.add(key)
+      edits.push({
+        path: targetPath,
+        range,
+        newText,
+        expectedVersion: this.scripts.get(targetPath)?.documentVersion ?? null,
+      })
+    }
+    edits.sort(compareTextEdits)
+    if (hasOverlappingEdits(edits)) {
+      return { status: "incomplete", reason: "source-unmappable" }
+    }
+    return { status: "complete", edits }
   }
 
   signatureHelp(
@@ -687,10 +726,17 @@ export class TypeScriptLanguageServiceEngine {
       : undefined
   }
 
-  private updateScript(filePath: string, content: string): void {
+  private updateScript(
+    filePath: string,
+    content: string,
+    documentVersion?: number,
+    overlay = false,
+  ): void {
     this.removeLazySnapshot(filePath)
     const previous = this.scripts.get(filePath)
     if (previous?.sourceContent === content) {
+      previous.documentVersion = documentVersion
+      previous.overlay = overlay
       previous.lastAccess = ++this.accessClock
       return
     }
@@ -703,6 +749,8 @@ export class TypeScriptLanguageServiceEngine {
       sourceContent: content,
       virtualDocument,
       version: (previous?.version ?? 0) + 1,
+      documentVersion,
+      overlay,
       bytes,
       lastAccess: ++this.accessClock,
     })
@@ -1096,31 +1144,38 @@ function cacheLimit(value: number | undefined, fallback: number, label: string):
   return value
 }
 
-function unsupportedRename(reason: string): SemanticUnsupportedResult {
-  return { status: "unsupported", reason }
-}
-
 function isWithinRoot(rootPath: string, filePath: string) {
   const relative = path.relative(path.resolve(rootPath), path.resolve(filePath))
   return relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)
 }
 
-function contentVersion(content: string) {
-  let hash = 0xcbf29ce484222325n
-  for (const byte of Buffer.from(content)) {
-    hash ^= BigInt(byte)
-    hash = BigInt.asUintN(64, hash * 0x100000001b3n)
-  }
-  return `fnv1a64:${hash.toString(16).padStart(16, "0")}`
-}
-
 function compareTextEdits(
-  left: { path: string; range: { startLine: number; startColumn: number } },
-  right: { path: string; range: { startLine: number; startColumn: number } },
+  left: { path: string; range: SemanticTextRange },
+  right: { path: string; range: SemanticTextRange },
 ) {
   return left.path.localeCompare(right.path)
     || left.range.startLine - right.range.startLine
     || left.range.startColumn - right.range.startColumn
+    || left.range.endLine - right.range.endLine
+    || left.range.endColumn - right.range.endColumn
+}
+
+function hasOverlappingEdits(
+  edits: Array<{ path: string; range: SemanticTextRange }>,
+): boolean {
+  for (let index = 1; index < edits.length; index += 1) {
+    const previous = edits[index - 1]
+    const current = edits[index]
+    if (previous.path !== current.path) continue
+    if (
+      current.range.startLine < previous.range.endLine
+      || (
+        current.range.startLine === previous.range.endLine
+        && current.range.startColumn < previous.range.endColumn
+      )
+    ) return true
+  }
+  return false
 }
 
 function typescriptSpanKey(filePath: string, span: ts.TextSpan): string {

@@ -8,8 +8,6 @@ import type {
   SemanticSignatureHelp,
   SemanticTextRange,
   SemanticUsageResult,
-  SemanticWorkspaceEditPlan,
-  SemanticUnsupportedResult,
 } from "../protocol.js"
 import type { SemanticWorkspaceView } from "../workspace/document-store.js"
 import { TypeScriptLanguageServiceEngine } from "./typescript-language-service.js"
@@ -41,16 +39,34 @@ export interface SemanticResolvedCodeFix extends SemanticCodeFixCandidate {
   }>
 }
 
+export type SemanticGlobalQueryFailureReason =
+  | "project-membership-incomplete"
+  | "source-outside-workspace"
+  | "source-unavailable"
+  | "source-unmappable"
+
 export type SemanticReferenceQueryResult =
   | { status: "complete"; references: SemanticDefinitionCandidate[] }
+  | { status: "incomplete"; reason: SemanticGlobalQueryFailureReason }
+
+export type SemanticPrepareRenameQueryResult =
+  | { status: "ready"; range: SemanticTextRange; placeholder: string }
+  | { status: "unavailable" }
+  | { status: "incomplete"; reason: SemanticGlobalQueryFailureReason }
+
+export type SemanticRenameQueryResult =
   | {
-      status: "incomplete"
-      reason:
-        | "project-membership-incomplete"
-        | "source-outside-workspace"
-        | "source-unavailable"
-        | "source-unmappable"
+      status: "complete"
+      edits: Array<{
+        path: string
+        range: SemanticTextRange
+        newText: string
+        expectedVersion: number | null
+      }>
     }
+  | { status: "invalid-name" }
+  | { status: "unavailable" }
+  | { status: "incomplete"; reason: SemanticGlobalQueryFailureReason }
 
 export type SemanticSignatureHelpTriggerReason =
   | { kind: "invoked" }
@@ -66,6 +82,8 @@ export interface SemanticTypeQueryContext {
     position: SemanticDocumentPosition,
     includeDeclaration: boolean,
   ): SemanticReferenceQueryResult
+  prepareRename(position: SemanticDocumentPosition): SemanticPrepareRenameQueryResult
+  rename(position: SemanticDocumentPosition, newName: string): SemanticRenameQueryResult
   usages(position: SemanticDocumentPosition): SemanticUsageResult[]
   diagnostics(position: SemanticDocumentPosition): SemanticDiagnostic[]
   codeActions(
@@ -79,7 +97,6 @@ export interface SemanticTypeQueryContext {
   ): SemanticResolvedCodeFix | null
   documentSymbols(position: SemanticDocumentPosition): SemanticDocumentSymbolInfo[]
   hover(position: SemanticDocumentPosition): SemanticHoverInfo | null
-  rename(position: SemanticDocumentPosition, newName: string): SemanticWorkspaceEditPlan | SemanticUnsupportedResult
   signatureHelp(
     position: SemanticDocumentPosition,
     triggerReason: SemanticSignatureHelpTriggerReason,
@@ -119,6 +136,7 @@ export class SemanticTypeEngineRegistry {
       references: (position, includeDeclaration) => (
         entry.engine.references(position, includeDeclaration)
       ),
+      prepareRename: (position) => entry.engine.prepareRename(position),
       usages: (position) => entry.engine.usages(position),
       diagnostics: (position) => entry.engine.diagnostics(position),
       codeActions: (position, range) => entry.engine.codeActions(position, range),

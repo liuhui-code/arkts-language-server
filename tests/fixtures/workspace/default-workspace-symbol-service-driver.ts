@@ -250,6 +250,14 @@ class ScenarioSemanticEngine implements SemanticEnginePort {
     return versioned(query, { status: "complete" as const, references: [] })
   }
 
+  async prepareRename(query: SemanticQuery) {
+    return versioned(query, { status: "unavailable" as const })
+  }
+
+  async rename(query: SemanticQuery) {
+    return versioned(query, { status: "unavailable" as const })
+  }
+
   async hover(query: SemanticQuery): Promise<VersionedSemanticResult<null>> {
     return versioned(query, null)
   }

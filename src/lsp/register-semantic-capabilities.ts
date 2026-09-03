@@ -20,7 +20,9 @@ import type {
   SemanticDocumentSymbol,
   SemanticEnginePort,
   SemanticHover,
+  SemanticPrepareRenameOutcome,
   SemanticReferencesOutcome,
+  SemanticRenameOutcome,
   SemanticSignatureHelp,
   SemanticSignatureHelpTriggerReason,
 } from "../contracts/semantic-engine.js"
@@ -110,6 +112,47 @@ export function registerSemanticCapabilities({
       )
     }
     return outcome.references
+  })
+
+  connection.onPrepareRename(async (params, token) => {
+    const outcome = await requests.run<SemanticPrepareRenameOutcome | { status: "stale" }>({
+      method: "textDocument/prepareRename",
+      documentUri: params.textDocument.uri,
+      token,
+      fallback: { status: "stale" },
+      execute: (document, signal) => semantic.prepareRename({
+        document,
+        position: params.position,
+        signal,
+      }),
+    })
+    if (outcome.status === "stale") throw staleRename()
+    if (outcome.status !== "ready") throw unavailableRename()
+    return { range: outcome.range, placeholder: outcome.placeholder }
+  })
+
+  connection.onRenameRequest(async (params, token) => {
+    const outcome = await requests.run<SemanticRenameOutcome | { status: "stale" }>({
+      method: "textDocument/rename",
+      documentUri: params.textDocument.uri,
+      token,
+      fallback: { status: "stale" },
+      execute: (document, signal) => semantic.rename({
+        document,
+        position: params.position,
+        newName: params.newName,
+        signal,
+      }),
+    })
+    if (outcome.status === "stale") throw staleRename()
+    if (outcome.status === "invalid-name") {
+      throw new ResponseError(
+        -32602,
+        "Rename requires a valid identifier.",
+      )
+    }
+    if (outcome.status !== "complete") throw unavailableRename()
+    return { documentChanges: groupRenameEdits(outcome.edits) }
   })
 
   connection.onDocumentSymbol(async (params, token) => {
@@ -245,6 +288,39 @@ function symbolKind(
     case "type": return SymbolKind.TypeParameter
     case "variable": return SymbolKind.Variable
   }
+}
+
+function groupRenameEdits(
+  edits: Extract<SemanticRenameOutcome, { status: "complete" }>["edits"],
+) {
+  const changes: Array<{
+    textDocument: { uri: string; version: number | null }
+    edits: Array<{ range: (typeof edits)[number]["range"]; newText: string }>
+  }> = []
+  for (const edit of edits) {
+    const current = changes.at(-1)
+    if (current?.textDocument.uri === edit.uri) {
+      if (current.textDocument.version !== edit.expectedVersion) throw unavailableRename()
+      current.edits.push({ range: edit.range, newText: edit.newText })
+      continue
+    }
+    changes.push({
+      textDocument: { uri: edit.uri, version: edit.expectedVersion },
+      edits: [{ range: edit.range, newText: edit.newText }],
+    })
+  }
+  return changes
+}
+
+function staleRename(): ResponseError<void> {
+  return new ResponseError(LSPErrorCodes.ContentModified, "Rename request is stale")
+}
+
+function unavailableRename(): ResponseError<void> {
+  return new ResponseError(
+    LSPErrorCodes.RequestFailed,
+    "Rename is not available at this position.",
+  )
 }
 
 function toLspHover(hover: SemanticHover) {
