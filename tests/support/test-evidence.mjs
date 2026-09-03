@@ -2,8 +2,16 @@ import fs from "node:fs/promises"
 import path from "node:path"
 
 const METADATA_KEYS = ["commit", "platform", "target"]
+const SAFE_ERROR_NAMES = new Set([
+  "Error",
+  "TypeError",
+  "RangeError",
+  "ReferenceError",
+  "SyntaxError",
+  "AggregateError",
+])
 
-export async function withTestEvidence({ root, caseId, metadata = {} }, run) {
+export async function withTestEvidence({ root, caseId, metadata = {}, captureFailure }, run) {
   await fs.mkdir(root, { recursive: true })
   const evidenceDirectory = await fs.mkdtemp(path.join(root, `${directoryPrefix(caseId)}-`))
 
@@ -11,6 +19,12 @@ export async function withTestEvidence({ root, caseId, metadata = {} }, run) {
   try {
     result = await run({ evidenceDirectory })
   } catch (error) {
+    let captureError
+    try {
+      if (captureFailure) await captureFailure({ evidenceDirectory })
+    } catch (providerError) {
+      captureError = providerError
+    }
     const failure = {
       schema: "arkts-language-server.test-failure",
       schemaVersion: 1,
@@ -18,6 +32,7 @@ export async function withTestEvidence({ root, caseId, metadata = {} }, run) {
       error: errorSummary(error),
       metadata: allowlistedMetadata(metadata),
     }
+    if (captureError) failure.captureFailure = captureFailureSummary(captureError)
     await fs.writeFile(
       path.join(evidenceDirectory, "failure.json"),
       `${JSON.stringify(failure, null, 2)}\n`,
@@ -27,6 +42,13 @@ export async function withTestEvidence({ root, caseId, metadata = {} }, run) {
 
   await fs.rm(evidenceDirectory, { recursive: true, force: true })
   return result
+}
+
+function captureFailureSummary(error) {
+  return {
+    name: SAFE_ERROR_NAMES.has(error?.name) ? error.name : "Error",
+    message: "Failure evidence provider did not complete",
+  }
 }
 
 function directoryPrefix(caseId) {
