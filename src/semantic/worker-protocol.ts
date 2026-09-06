@@ -1,4 +1,4 @@
-import { fileURLToPath } from "node:url"
+import { fileURLToPath, pathToFileURL } from "node:url"
 
 export const SEMANTIC_WORKER_PROTOCOL_VERSION = 1 as const
 export const MAX_SEMANTIC_WORKER_TEXT_BYTES = 4 * 1024 * 1024
@@ -296,7 +296,7 @@ export function decodeSemanticWorkerMutation(value: unknown): SemanticWorkerMuta
     || !isPositiveSafeInteger(input.epoch)
     || !isPositiveSafeInteger(input.revision)
     || (kind !== "open" && kind !== "change" && kind !== "close")
-    || !isCanonicalDocumentUri(input.uri)
+    || !isCanonicalSemanticWorkerFileUri(input.uri)
     || !isNonNegativeSafeInteger(input.documentVersion)
     || (kind !== "close" && typeof input.text !== "string")
   ) throw invalidMutation()
@@ -368,7 +368,7 @@ export function decodeSemanticWorkerRequest(value: unknown): SemanticWorkerReque
     || !isPositiveSafeInteger(input.id)
     || !isNonNegativeSafeInteger(input.requiredRevision)
     || !isSemanticWorkerMethod(input.method)
-    || !isCanonicalDocumentUri(input.uri)
+    || !isCanonicalSemanticWorkerFileUri(input.uri)
     || !isNonNegativeSafeInteger(input.expectedDocumentVersion)
   ) throw invalidRequest()
   const canonicalArgs = canonicalizeJson(
@@ -517,7 +517,7 @@ function decodeWorkspaceFilesChangedMutation(
     || input.protocol !== SEMANTIC_WORKER_PROTOCOL_VERSION
     || !isPositiveSafeInteger(input.epoch)
     || !isPositiveSafeInteger(input.revision)
-    || !isCanonicalDocumentUri(input.rootUri)
+    || !isCanonicalSemanticWorkerFileUri(input.rootUri)
     || typeof input.rootDirty !== "boolean"
     || typeof input.resourceDirty !== "boolean"
     || typeof input.resourceChanged !== "boolean"
@@ -582,7 +582,7 @@ function decodeWorkspaceFileChanges(
     if (
       !change
       || !hasExactKeys(change, ["uri", "kind"])
-      || !isCanonicalDocumentUri(change.uri)
+      || !isCanonicalSemanticWorkerFileUri(change.uri)
       || !isUriWithinRoot(change.uri, rootUri)
       || (change.kind !== "created" && change.kind !== "changed" && change.kind !== "deleted")
     ) throw invalidMutation()
@@ -1154,7 +1154,7 @@ function isNonNegativeSafeInteger(value: unknown): value is number {
   return Number.isSafeInteger(value) && (value as number) >= 0
 }
 
-function isCanonicalDocumentUri(value: unknown): value is string {
+export function isCanonicalSemanticWorkerFileUri(value: unknown): value is string {
   if (typeof value !== "string" || /%(?:2f|5c)/i.test(value)) return false
   try {
     stringByteMetrics(
@@ -1167,6 +1167,7 @@ function isCanonicalDocumentUri(value: unknown): value is string {
     const uri = new URL(value)
     const filePath = fileURLToPath(uri)
     return uri.protocol === "file:"
+      && uri.host === ""
       && uri.username === ""
       && uri.password === ""
       && uri.search === ""
@@ -1174,6 +1175,7 @@ function isCanonicalDocumentUri(value: unknown): value is string {
       && uri.pathname.length > 0
       && !filePath.includes("\0")
       && uri.href === value
+      && pathToFileURL(filePath).href === value
   } catch {
     return false
   }

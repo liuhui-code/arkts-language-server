@@ -28,9 +28,12 @@ without invoking getters. Returned containers are fresh and deeply frozen; the
 four-byte `SharedArrayBuffer` is the intentional exception at the data layer,
 because its single `Int32` state remains atomically mutable.
 
-Canonical file URIs must round-trip through `URL` and `fileURLToPath`. NUL,
-malformed percent escapes and percent-encoded slash/backslash are rejected.
-This is lexical validation only; it is not filesystem realpath containment.
+Canonical file URIs must have one lexical identity: the original string must equal
+`pathToFileURL(fileURLToPath(new URL(value))).href`. The exported no-throw
+`isCanonicalSemanticWorkerFileUri` predicate is the single decoder entry point for this rule.
+NUL, malformed percent escapes, encoded aliases of unreserved characters, percent-encoded
+slash/backslash, remote authorities, queries and fragments are rejected. Canonical escapes such as
+`%20` remain valid. This is lexical validation only; it is not filesystem realpath containment.
 
 Hard limits are part of the exported protocol:
 
@@ -79,6 +82,15 @@ ceiling and acceptance of encoded NUL/path separators. A pre-refactor
 characterization proved sender canonicalization, real `MessageChannel`
 structured clone, receiver revalidation and shared cancellation-state identity.
 
+The canonical-identity follow-up started from
+`3b12000db1bcba84165cdca573bce888a55d63c4`. Its first RED was `20/21`: the document
+decoder accepted `file:///workspace/%41.ets`, even though it resolves to the same local path as
+`file:///workspace/A.ets`. After that tracer became GREEN, the exported predicate test produced a
+second RED at `21/22` with `TypeError: isCanonicalSemanticWorkerFileUri is not a function`.
+The minimal implementation exported the predicate and routed document, request, workspace-root and
+workspace-change decoding through it; a root `%77orkspace` alias is now rejected by the workspace
+mutation boundary as well.
+
 ## GREEN
 
 Focused behavior gate:
@@ -87,7 +99,7 @@ Focused behavior gate:
 node --test tests/semantic-worker-protocol.test.mjs
 ```
 
-Result: `21/21` passing, with no skipped, todo, cancelled or failed tests.
+Result: `22/22` passing, with no skipped, todo, cancelled or failed tests.
 The cases include the exact 65,536-node and depth-32 boundaries, pathological
 over-limit values, 1,000 inlay hints, 5,000 folding ranges, 4,096 formatting
 edits, and representative completion/document-symbol graphs under 8 MiB.

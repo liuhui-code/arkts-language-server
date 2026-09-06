@@ -108,6 +108,7 @@ test("accepts only canonical file URIs that safely convert to local paths", (t) 
     assert.equal(protocol.decodeSemanticWorkerMutation(mutation(uri)).uri, uri)
   }
   for (const uri of [
+    "file:///workspace/%41.ets",
     "file:///workspace/Main%00.ets",
     "file:///workspace/encoded%2Fslash.ets",
     "file:///workspace/encoded%2fslash.ets",
@@ -121,6 +122,34 @@ test("accepts only canonical file URIs that safely convert to local paths", (t) 
       () => protocol.decodeSemanticWorkerMutation(mutation(uri)),
       /Invalid semantic worker mutation/,
     )
+  }
+})
+
+test("classifies one canonical local file URI identity without throwing", (t) => {
+  const { isCanonicalSemanticWorkerFileUri } = buildDriver(t)
+
+  for (const uri of [
+    "file:///workspace/",
+    "file:///workspace/Main.ets",
+    "file:///workspace/My%20Page.ets",
+  ]) {
+    assert.equal(isCanonicalSemanticWorkerFileUri(uri), true)
+  }
+  for (const value of [
+    "file:///workspace/%41.ets",
+    "file:///%77orkspace/",
+    "file:///workspace/Main%00.ets",
+    "file:///workspace/encoded%2Fslash.ets",
+    "file:///workspace/encoded%5cbackslash.ets",
+    "file://remote-host/workspace/Main.ets",
+    "file:///workspace/Main.ets?query",
+    "file:///workspace/Main.ets#fragment",
+    `file:///workspace/raw${String.fromCharCode(0)}nul.ets`,
+    "file:///workspace/bad%ZZescape.ets",
+    null,
+    {},
+  ]) {
+    assert.equal(isCanonicalSemanticWorkerFileUri(value), false)
   }
 })
 
@@ -813,6 +842,7 @@ test("rejects non-canonical, cross-root, and over-budget workspace invalidations
     },
   })
   const invalid = [
+    { ...valid, rootUri: "file:///%77orkspace/" },
     { ...valid, rootDirty: false, resourceDirty: false, resourceChanged: false, changes: [] },
     { ...valid, resourceDirty: true, resourceChanged: false },
     { ...valid, changes: [{ uri: "file:///other/Changed.ets", kind: "changed" }] },
