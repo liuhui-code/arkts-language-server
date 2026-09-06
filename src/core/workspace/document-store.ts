@@ -51,8 +51,10 @@ interface DependencyClosureResult {
 
 interface DocumentCacheTransaction {
   records: Map<string, DocumentRecord | undefined>
+  closures: Map<string, DependencyClosureCacheEntry | undefined>
   cachedBytes: number
   accessClock: number
+  committed: boolean
 }
 
 export interface ProjectMembershipSnapshot {
@@ -482,21 +484,28 @@ export class SemanticDocumentStore {
 
   prepare(position: SemanticDocumentPosition, includeWorkspaceFiles = false): SemanticWorkspaceView {
     this.operationControl.checkpoint()
-    const currentPath = path.resolve(position.path)
-    const rootPath = position.workspaceRoot
-      ? path.resolve(position.workspaceRoot)
-      : resolveWorkspaceRoot(currentPath)
-    const canonicalRoot = canonicalWorkspaceRoot(rootPath)
-    const previousCurrent = this.documents.get(currentPath)
-    const current = this.loadCurrent(currentPath, position)
-    return this.prepareFromCurrent(
-      currentPath,
-      rootPath,
-      canonicalRoot,
-      previousCurrent,
-      current,
-      includeWorkspaceFiles,
-    )
+    const transaction = this.beginDocumentCacheTransaction()
+    try {
+      const currentPath = path.resolve(position.path)
+      const rootPath = position.workspaceRoot
+        ? path.resolve(position.workspaceRoot)
+        : resolveWorkspaceRoot(currentPath)
+      const canonicalRoot = canonicalWorkspaceRoot(rootPath)
+      const previousCurrent = this.documents.get(currentPath)
+      const current = this.loadCurrent(currentPath, position, transaction)
+      return this.prepareFromCurrent(
+        currentPath,
+        rootPath,
+        canonicalRoot,
+        previousCurrent,
+        current,
+        includeWorkspaceFiles,
+        transaction,
+      )
+    } catch (error) {
+      this.rollbackDocumentCacheTransaction(transaction)
+      throw error
+    }
   }
 
   prepareDiskSnapshot(
@@ -508,41 +517,49 @@ export class SemanticDocumentStore {
     if (Buffer.byteLength(content) > MAX_DISK_SNAPSHOT_BYTES) {
       throw new RangeError(`Disk snapshot exceeds ${MAX_DISK_SNAPSHOT_BYTES} bytes`)
     }
-    const currentPath = path.resolve(position.path)
-    const rootPath = position.workspaceRoot
-      ? path.resolve(position.workspaceRoot)
-      : resolveWorkspaceRoot(currentPath)
-    const canonicalRoot = canonicalWorkspaceRoot(rootPath)
-    const previousCurrent = this.documents.get(currentPath)
-    if (previousCurrent?.overlay) {
-      throw new Error(`Cannot replace open overlay with disk snapshot for ${currentPath}`)
-    }
-    let current: DocumentRecord
-    if (previousCurrent?.available && previousCurrent.content === content) {
-      previousCurrent.lastAccess = ++this.accessClock
-      previousCurrent.workspaceRoot = canonicalRoot
-      previousCurrent.diskFingerprint = null
-      current = previousCurrent
-    } else {
-      current = this.store(
+    const transaction = this.beginDocumentCacheTransaction()
+    try {
+      const currentPath = path.resolve(position.path)
+      const rootPath = position.workspaceRoot
+        ? path.resolve(position.workspaceRoot)
+        : resolveWorkspaceRoot(currentPath)
+      const canonicalRoot = canonicalWorkspaceRoot(rootPath)
+      const previousCurrent = this.documents.get(currentPath)
+      if (previousCurrent?.overlay) {
+        throw new Error(`Cannot replace open overlay with disk snapshot for ${currentPath}`)
+      }
+      this.captureDocumentRecord(transaction, currentPath)
+      let current: DocumentRecord
+      if (previousCurrent?.available && previousCurrent.content === content) {
+        previousCurrent.lastAccess = ++this.accessClock
+        previousCurrent.workspaceRoot = canonicalRoot
+        previousCurrent.diskFingerprint = null
+        current = previousCurrent
+      } else {
+        current = this.store(
+          currentPath,
+          content,
+          (previousCurrent?.contentGeneration ?? 0) + 1,
+          null,
+          true,
+          undefined,
+          false,
+          canonicalRoot,
+        )
+      }
+      return this.prepareFromCurrent(
         currentPath,
-        content,
-        (previousCurrent?.contentGeneration ?? 0) + 1,
-        null,
-        true,
-        undefined,
-        false,
+        rootPath,
         canonicalRoot,
+        previousCurrent,
+        current,
+        includeWorkspaceFiles,
+        transaction,
       )
+    } catch (error) {
+      this.rollbackDocumentCacheTransaction(transaction)
+      throw error
     }
-    return this.prepareFromCurrent(
-      currentPath,
-      rootPath,
-      canonicalRoot,
-      previousCurrent,
-      current,
-      includeWorkspaceFiles,
-    )
   }
 
   private prepareFromCurrent(
@@ -552,11 +569,13 @@ export class SemanticDocumentStore {
     previousCurrent: DocumentRecord | undefined,
     current: DocumentRecord,
     includeWorkspaceFiles: boolean,
+    transaction: DocumentCacheTransaction,
   ): SemanticWorkspaceView {
     const closureResult = this.collectDependencyClosure(
       current,
       previousCurrent === current,
       canonicalRoot,
+      transaction,
     )
     const closure = closureResult.entries
     const loadedPaths = new Set(closure.map(({ record }) => record.path))
@@ -573,7 +592,7 @@ export class SemanticDocumentStore {
       for (const sourcePath of projectMembership.paths) {
         if (loadedPaths.has(sourcePath) || closure.length >= MAX_CLOSURE_DOCUMENTS) continue
         const before = this.documents.get(sourcePath)
-        const record = this.loadFromDisk(sourcePath, before)
+        const record = this.loadFromDiskWithinTransaction(sourcePath, before, transaction)
         const bytes = Buffer.byteLength(record.content)
         if (!record.available || totalBytes + bytes > MAX_CLOSURE_BYTES) continue
         closure.push({ record, cacheHit: before === record })
@@ -588,6 +607,7 @@ export class SemanticDocumentStore {
       overlay: record.overlay,
     }))
     this.operationControl.checkpoint()
+    transaction.committed = true
     const dependencyGeneration = this.updateDependencyGeneration(rootPath, closure)
     this.evict(currentPath, new Set(documents.map((document) => document.path)))
     const watchedRemovedPaths = this.watchedRemovedPaths.get(canonicalRoot)
@@ -629,7 +649,12 @@ export class SemanticDocumentStore {
       .sort((left, right) => left.path.localeCompare(right.path))
   }
 
-  private loadCurrent(filePath: string, position: SemanticDocumentPosition): DocumentRecord {
+  private loadCurrent(
+    filePath: string,
+    position: SemanticDocumentPosition,
+    transaction: DocumentCacheTransaction,
+  ): DocumentRecord {
+    this.captureDocumentRecord(transaction, filePath)
     const cached = this.documents.get(filePath)
     const requestedGeneration = position.contentGeneration
     const requestedVersion = position.documentVersion
@@ -678,7 +703,7 @@ export class SemanticDocumentStore {
       if (position.workspaceRoot) cached.workspaceRoot = canonicalWorkspaceRoot(position.workspaceRoot)
       return cached
     }
-    return this.loadFromDisk(filePath, cached)
+    return this.loadFromDiskWithinTransaction(filePath, cached, transaction)
   }
 
   private projectMembership(rootPath: string): ProjectMembershipSnapshot {
@@ -804,8 +829,39 @@ export class SemanticDocumentStore {
     entry.revision = ++this.projectMembershipRevision
   }
 
-  private loadFromDisk(filePath: string, cached?: DocumentRecord): DocumentRecord {
-    return this.loadFromDiskWithinTransaction(filePath, cached)
+  private beginDocumentCacheTransaction(): DocumentCacheTransaction {
+    return {
+      records: new Map(),
+      closures: new Map(),
+      cachedBytes: this.cachedBytes,
+      accessClock: this.accessClock,
+      committed: false,
+    }
+  }
+
+  private captureDocumentRecord(transaction: DocumentCacheTransaction, filePath: string): void {
+    if (transaction.records.has(filePath)) return
+    const previous = this.documents.get(filePath)
+    transaction.records.set(filePath, previous ? { ...previous } : undefined)
+  }
+
+  private captureDependencyClosure(transaction: DocumentCacheTransaction, ownerPath: string): void {
+    if (transaction.closures.has(ownerPath)) return
+    transaction.closures.set(ownerPath, this.dependencyClosures.get(ownerPath))
+  }
+
+  private rollbackDocumentCacheTransaction(transaction: DocumentCacheTransaction): void {
+    if (transaction.committed) return
+    for (const [filePath, record] of transaction.records) {
+      if (record) this.documents.set(filePath, record)
+      else this.documents.delete(filePath)
+    }
+    for (const [ownerPath, closure] of transaction.closures) {
+      if (closure) this.dependencyClosures.set(ownerPath, closure)
+      else this.dependencyClosures.delete(ownerPath)
+    }
+    this.cachedBytes = transaction.cachedBytes
+    this.accessClock = transaction.accessClock
   }
 
   private loadFromDiskWithinTransaction(
@@ -813,10 +869,7 @@ export class SemanticDocumentStore {
     cached?: DocumentRecord,
     transaction?: DocumentCacheTransaction,
   ): DocumentRecord {
-    if (transaction && !transaction.records.has(filePath)) {
-      const previous = this.documents.get(filePath)
-      transaction.records.set(filePath, previous ? { ...previous } : undefined)
-    }
+    if (transaction) this.captureDocumentRecord(transaction, filePath)
     if (cached?.overlay) {
       cached.lastAccess = ++this.accessClock
       return cached
@@ -849,43 +902,9 @@ export class SemanticDocumentStore {
     current: DocumentRecord,
     currentCacheHit: boolean,
     workspaceRoot: string,
-  ): DependencyClosureResult {
-    const transaction: DocumentCacheTransaction = {
-      records: new Map(),
-      cachedBytes: this.cachedBytes,
-      accessClock: this.accessClock,
-    }
-    const hadCachedClosure = this.dependencyClosures.has(current.path)
-    const cachedClosure = this.dependencyClosures.get(current.path)
-    try {
-      return this.collectDependencyClosureWithinTransaction(
-        current,
-        currentCacheHit,
-        workspaceRoot,
-        transaction,
-      )
-    } catch (error) {
-      for (const [filePath, record] of transaction.records) {
-        if (record) this.documents.set(filePath, record)
-        else this.documents.delete(filePath)
-      }
-      this.cachedBytes = transaction.cachedBytes
-      this.accessClock = transaction.accessClock
-      if (hadCachedClosure && cachedClosure) {
-        this.dependencyClosures.set(current.path, cachedClosure)
-      } else {
-        this.dependencyClosures.delete(current.path)
-      }
-      throw error
-    }
-  }
-
-  private collectDependencyClosureWithinTransaction(
-    current: DocumentRecord,
-    currentCacheHit: boolean,
-    workspaceRoot: string,
     transaction: DocumentCacheTransaction,
   ): DependencyClosureResult {
+    this.captureDependencyClosure(transaction, current.path)
     this.operationControl.checkpoint()
     const changedPaths = new Set<string>()
     const removedPaths = new Set<string>()

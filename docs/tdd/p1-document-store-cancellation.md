@@ -164,14 +164,57 @@ exit barrier. That final barrier is before dependency-generation updates,
 eviction, and one-shot changed/removed consumption; no cancellation point is
 inserted inside that commit section.
 
+## Adversarial P1: removed delta lost at the exit barrier
+
+Owned-file parent revision: `5f960fda6e7a214dd15190f6ed63b143d7a1a732`.
+
+The first undo-log implementation ended its transaction when dependency
+collection returned. The final workspace-assembly checkpoint could therefore
+cancel after a missing warm dependency had deleted the old closure and computed
+its local removal, but before the view exposed that removal. Both retries then
+started without the old closure, so neither could infer the deletion.
+
+The regression warms Main -> A, deletes A, and uses five real failed stats plus
+the subsequent checkpoint sequence to cancel precisely at that final barrier.
+Both retry views are passed to a real `TypeScriptLanguageServiceEngine`:
+
+```text
+node --test tests/document-store-cancellation.test.mjs
+not ok 7 - cancellation at workspace assembly preserves a removed dependency delta for TypeScript retry
+retryOneRemovedPaths: []
+retryTwoRemovedPaths: []
+definitionPaths: [".../A.ets"]
+tests 7; pass 6; fail 1
+```
+
+GREEN starts one transaction at each public `prepare` or
+`prepareDiskSnapshot` entry. Its bounded undo log now covers the current record,
+every touched dependency/workspace record, the relevant closure, cached bytes,
+and the access clock through the final cancellable checkpoint. Cancellation
+there restores the old closure and records. The first retry consequently emits
+`removedPaths: [A]`, the second emits no duplicate, and TypeScript no longer
+returns deleted A as the definition target.
+
+After the final checkpoint the transaction is committed. Dependency generation,
+eviction, watched-delta consumption, and response construction form one
+non-interruptible synchronous section with no later checkpoint.
+
+This closes the concrete store-side loss window. Before a future cancellable
+TypeScript `engine.prepare` is composed after the store, changed/removed delivery
+must become revisioned peek/ack so engine cancellation cannot consume a delta
+without acknowledging it. That broader protocol is deliberately not part of
+this fix.
+
 ## Regression evidence
 
 ```text
 node --test tests/document-store-cancellation.test.mjs
-tests 6; pass 6; fail 0; skipped 0; todo 0; cancelled 0
+tests 7; pass 7; fail 0; skipped 0; todo 0; cancelled 0
 
-node --test tests/project-file-set-cache.test.mjs tests/workspace-file-change-coordinator.test.mjs
-tests 37; pass 37; fail 0
+node --test tests/project-file-set-cache.test.mjs \
+  tests/workspace-file-change-coordinator.test.mjs \
+  tests/semantic/project-membership-language-service.test.mjs
+tests 43; pass 43; fail 0
 
 node --test tests/lsp-call-hierarchy.test.mjs
 tests 34; pass 34; fail 0

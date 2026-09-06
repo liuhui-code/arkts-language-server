@@ -1,10 +1,14 @@
 import assert from "node:assert/strict"
 import fs from "node:fs"
+import { createRequire } from "node:module"
 import os from "node:os"
 import path from "node:path"
 import test from "node:test"
 
+import { buildSync } from "esbuild"
+
 import { buildDocumentStoreDriver } from "./support/build-document-store-driver.mjs"
+import { projectRoot } from "./support/lsp-process.mjs"
 
 test("membership cancellation closes enumeration, preserves cancellation, and retries completely", (t) => {
   const workspace = createWorkspace(t, {
@@ -470,6 +474,103 @@ test("warm closure validation cancels after A stat, preserves the closure, and l
   assert.equal(store.prepare(position).state.dependencyClosureCacheHit, true)
 })
 
+test("cancellation at workspace assembly preserves a removed dependency delta for TypeScript retry", (t) => {
+  const mainContent = [
+    'import { target } from "./A"',
+    "export const result = target()",
+    "",
+  ].join("\n")
+  const aContent = "export function target(): number { return 1 }\n"
+  const workspace = createWorkspace(t, {
+    "Main.ets": mainContent,
+    "A.ets": aContent,
+  })
+  const mainPath = path.join(workspace, "Main.ets")
+  const aPath = path.join(workspace, "A.ets")
+  const cancellation = new Error("cancel final workspace assembly")
+  const driverRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-removed-delta-driver-"))
+  t.after(() => fs.rmSync(driverRoot, { recursive: true, force: true }))
+  const { SemanticDocumentStore } = buildDocumentStoreDriver(driverRoot)
+  const { TypeScriptLanguageServiceEngine } = buildTypeEngineDriver(t)
+  let cancellationEnabled = false
+  let cancelled = false
+  let missingStatCalls = 0
+  let checkpointsAfterAllMisses = 0
+  const store = new SemanticDocumentStore({
+    operationControl: {
+      checkpoint() {
+        if (cancelled) throw cancellation
+        if (!cancellationEnabled || missingStatCalls < 5) return
+        checkpointsAfterAllMisses += 1
+        if (checkpointsAfterAllMisses === 3) {
+          cancelled = true
+          throw cancellation
+        }
+      },
+    },
+  })
+  const engine = new TypeScriptLanguageServiceEngine(workspace)
+  t.after(() => {
+    store.dispose()
+    engine.dispose()
+  })
+  const position = {
+    path: mainPath,
+    line: 2,
+    column: "export const result = ".length + 2,
+    workspaceRoot: workspace,
+  }
+  const initial = store.prepare(position)
+  engine.prepare(initial)
+  assert.deepEqual(definitionPaths(engine.define(position)), [aPath])
+
+  fs.unlinkSync(aPath)
+  const originalStat = fs.statSync
+  fs.statSync = (filePath, ...args) => {
+    try {
+      return originalStat(filePath, ...args)
+    } catch (error) {
+      const resolvedPath = path.resolve(String(filePath))
+      if (
+        resolvedPath === aPath
+        || resolvedPath === path.join(workspace, "A.ts")
+        || resolvedPath === path.join(workspace, "A", "index.ets")
+        || resolvedPath === path.join(workspace, "A", "index.ts")
+      ) missingStatCalls += 1
+      throw error
+    }
+  }
+  t.after(() => { fs.statSync = originalStat })
+  cancellationEnabled = true
+
+  assert.throws(
+    () => store.prepare(position),
+    (error) => error === cancellation,
+  )
+  assert.equal(missingStatCalls, 5)
+  assert.equal(checkpointsAfterAllMisses, 3)
+
+  cancellationEnabled = false
+  cancelled = false
+  const retryOne = store.prepare(position)
+  const retryTwo = store.prepare(position)
+  engine.prepare(retryOne)
+  engine.prepare(retryTwo)
+
+  assert.deepEqual({
+    retryOneRemovedPaths: retryOne.removedPaths,
+    retryTwoRemovedPaths: retryTwo.removedPaths,
+  }, {
+    retryOneRemovedPaths: [aPath],
+    retryTwoRemovedPaths: [],
+  })
+  assert.equal(
+    definitionPaths(engine.define(position)).includes(aPath),
+    false,
+    "TypeScript must not retain the deleted dependency as a definition target",
+  )
+})
+
 function createWorkspace(t, files) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-document-store-cancel-"))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
@@ -500,4 +601,23 @@ function syncPosition(store, workspaceRoot, documentPath) {
 
 function documentContent(view, documentPath) {
   return view.documents.find((document) => document.path === documentPath)?.content
+}
+
+function buildTypeEngineDriver(t) {
+  const outputRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-store-type-engine-driver-"))
+  t.after(() => fs.rmSync(outputRoot, { recursive: true, force: true }))
+  const outfile = path.join(outputRoot, "typescript-language-service.cjs")
+  buildSync({
+    entryPoints: [path.join(projectRoot, "src", "core", "types", "typescript-language-service.ts")],
+    bundle: true,
+    platform: "node",
+    target: "node20",
+    format: "cjs",
+    outfile,
+  })
+  return createRequire(import.meta.url)(outfile)
+}
+
+function definitionPaths(definitions) {
+  return [...new Set(definitions.map((definition) => path.resolve(definition.path)))].sort()
 }
