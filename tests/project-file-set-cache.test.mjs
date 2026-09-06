@@ -1217,6 +1217,50 @@ test("closing an overlay invalidates disk aliases by its captured physical ident
   assert.equal(targetAfterClose.contentRevision, 1)
 })
 
+test("closing a retargeted overlay symlink invalidates aliases of its current physical identity", (t) => {
+  const oldDiskContent = "export function target(): string { return 'x' }\n"
+  const newDiskContent = "export function target(): number { return 123 }\n"
+  assert.equal(Buffer.byteLength(newDiskContent), Buffer.byteLength(oldDiskContent))
+  const workspace = createWorkspace(t, "close-retargeted-overlay", {
+    "Main.ets": "import { target } from './Alias'\nexport const main = target()\n",
+    "First.ets": "export function first(): string { return 'first' }\n",
+    "Second.ets": oldDiskContent,
+  })
+  const mainPath = path.join(workspace, "Main.ets")
+  const firstPath = path.join(workspace, "First.ets")
+  const secondPath = path.join(workspace, "Second.ets")
+  const openPath = path.join(workspace, "Open.ets")
+  const aliasPath = path.join(workspace, "Alias.ets")
+  fs.symlinkSync(firstPath, openPath, "file")
+  fs.symlinkSync(secondPath, aliasPath, "file")
+  const stableTimestamp = new Date("2020-01-02T03:04:05.000Z")
+  fs.utimesSync(secondPath, stableTimestamp, stableTimestamp)
+  const store = new SemanticDocumentStore()
+  t.after(() => store.dispose?.())
+  store.sync({
+    path: openPath,
+    content: "export function unsaved(): boolean { return true }\n",
+    documentVersion: 1,
+    workspaceRoot: workspace,
+  })
+  const position = syncPosition(store, workspace, mainPath)
+  const warm = store.prepare(position)
+  assert.equal(documentContent(warm, aliasPath), oldDiskContent)
+
+  fs.writeFileSync(secondPath, newDiskContent, "utf8")
+  fs.utimesSync(secondPath, stableTimestamp, stableTimestamp)
+  fs.unlinkSync(openPath)
+  fs.symlinkSync(secondPath, openPath, "file")
+  store.close(openPath)
+  const changed = store.prepare(position)
+
+  assert.equal(documentContent(changed, aliasPath), newDiskContent)
+  assert.deepEqual(changed.changedPaths, [openPath, aliasPath])
+  assert.equal(changed.contentRevision, 1, "old/current physical matches must advance the root once")
+  assert.equal(changed.resetTypeEngine, true)
+  assert.equal(changed.state.dependencyClosureCacheHit, false)
+})
+
 test("restores disk truth and advances the workspace content revision after close", (t) => {
   const diskTarget = "export class DiskTarget {}\n"
   const overlayTarget = "export class OverlayTarget {}\n"

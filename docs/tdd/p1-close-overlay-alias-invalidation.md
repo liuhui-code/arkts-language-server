@@ -17,3 +17,13 @@ RED returned Alias's old string. GREEN reloads Alias from disk, publishes Alias 
 ## Rule
 
 Close captures the overlay record's physical identity before removal, then passes raw plus captured physical identity through the same batched invalidator used by watcher events. Other open overlays remain protected per record; only disk aliases and dependent closures are cleared.
+
+## Retargeted overlay symlink
+
+A follow-up RED retargeted the open overlay's lexical symlink from First to Second before close. An Alias of Second retained equal-size/equal-mtime stale bytes because the captured identity named only First.
+
+Close now submits raw, captured physical, and close-time physical identities together to one invalidation batch. The closure set is still scanned once, matching roots advance once, and both the original close regression and the retargeted case remain GREEN:
+
+```text
+node --test --test-name-pattern "closing a retargeted overlay symlink|closing an overlay invalidates disk aliases|restores disk truth" tests/project-file-set-cache.test.mjs
+```

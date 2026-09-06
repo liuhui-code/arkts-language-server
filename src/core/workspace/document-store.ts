@@ -278,10 +278,13 @@ export class SemanticDocumentStore {
     if (cached.overlay) {
       const canonicalRoot = cached.workspaceRoot
         ?? canonicalWorkspaceRoot(resolveWorkspaceRoot(resolved))
-      const invalidationMatches = this.invalidateDiskDocuments([{
-        path: resolved,
-        physicalPath,
-      }])
+      const currentPhysicalPath = canonicalSourcePath(resolved)
+      const invalidationMatches = this.invalidateDiskDocuments(
+        [...new Set([physicalPath, currentPhysicalPath])].map((identity) => ({
+          path: resolved,
+          physicalPath: identity,
+        })),
+      )
       const changedRoots = new Set([canonicalRoot])
       const resetRoots = new Set<string>()
       this.markWatchedChanged(canonicalRoot, resolved)
