@@ -199,6 +199,95 @@ test("cancels inlay hints after the TypeScript provider before reading its first
   assert.equal(hintAccessed, true)
 })
 
+test("cancels inlay hints during display-part label mapping", async (t) => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-ts-inlay-parts-cancel-"))
+  t.after(() => fs.rmSync(workspaceRoot, { recursive: true, force: true }))
+
+  const mainPath = path.join(workspaceRoot, "Main.ts")
+  const mainSource = "const value = source\n"
+  const {
+    ParameterInlayHintKind,
+    SemanticCancellationScope,
+    SemanticWorkerCancelState,
+    TypeScriptLanguageServiceEngine,
+    TypeScriptOperationCanceledException,
+  } = buildDriver(t)
+  const scope = new SemanticCancellationScope()
+  const cancellationCell = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT)
+  const cancellationView = new Int32Array(cancellationCell)
+  let sixtyFifthPartAccessed = false
+
+  const engine = new TypeScriptLanguageServiceEngine(workspaceRoot, {
+    hostCancellationToken: scope.hostToken,
+    checkpoint: () => scope.checkpoint(),
+  })
+  t.after(() => engine.dispose())
+  prepareSingleDocument(engine, workspaceRoot, mainPath, mainSource)
+
+  const displayParts = Array.from({ length: 130 }, (_, index) => controlledDisplayPart({
+    index,
+    onSixtyFourthPart() {
+      Atomics.store(cancellationView, 0, SemanticWorkerCancelState.clientCancelled)
+    },
+    onSixtyFifthPart() {
+      sixtyFifthPartAccessed = true
+    },
+  }))
+  const rawHint = {
+    displayParts,
+    kind: ParameterInlayHintKind,
+    position: mainSource.indexOf("value"),
+  }
+  const realService = engine.service
+  engine.service = new Proxy(realService, {
+    get(target, property, receiver) {
+      if (property === "provideInlayHints") return () => [rawHint]
+      const value = Reflect.get(target, property, receiver)
+      return typeof value === "function" ? value.bind(target) : value
+    },
+  })
+
+  const position = {
+    path: mainPath,
+    line: 1,
+    column: 1,
+    documentVersion: 1,
+    workspaceRoot,
+  }
+  const requestedRange = {
+    startLine: 1,
+    startColumn: 1,
+    endLine: 2,
+    endColumn: 1,
+  }
+  let errorCaughtInsideInlayHints
+  let publishedResult
+  await assert.rejects(
+    scope.run(cancellationCell, () => {
+      try {
+        publishedResult = engine.inlayHints(position, requestedRange)
+        return publishedResult
+      } catch (error) {
+        errorCaughtInsideInlayHints = error
+        throw error
+      }
+    }),
+    (error) => error instanceof TypeScriptOperationCanceledException,
+  )
+
+  assert.equal(errorCaughtInsideInlayHints instanceof TypeScriptOperationCanceledException, true)
+  assert.equal(sixtyFifthPartAccessed, false)
+  assert.equal(publishedResult, undefined)
+
+  const retryCell = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT)
+  const retry = await scope.run(retryCell, () => engine.inlayHints(position, requestedRange))
+  assert.equal(retry.length, 1)
+  assert.equal(
+    retry[0].label,
+    Array.from({ length: 130 }, (_, index) => `part${index}`).join(""),
+  )
+})
+
 function controlledInlayHint({
   index,
   kind,
@@ -222,6 +311,20 @@ function controlledInlayHint({
     },
   })
   return hint
+}
+
+function controlledDisplayPart({ index, onSixtyFourthPart, onSixtyFifthPart }) {
+  const part = {}
+  Object.defineProperty(part, "text", {
+    configurable: false,
+    enumerable: true,
+    get() {
+      if (index === 63) onSixtyFourthPart()
+      if (index === 64) onSixtyFifthPart()
+      return `part${index}`
+    },
+  })
+  return part
 }
 
 function prepareSingleDocument(engine, workspaceRoot, mainPath, mainSource) {

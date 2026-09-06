@@ -556,7 +556,7 @@ export class TypeScriptLanguageServiceEngine {
           ? "type" as const
           : undefined
       if (kind) {
-        const label = hint.text || hint.displayParts?.map((part) => part.text).join("") || ""
+        const label = hint.text || inlayHintDisplayText(hint.displayParts, work)
         if (label.length > 0) {
           const sourceOffset = exactSourcePosition(script, hint.position)
           if (
@@ -1543,6 +1543,18 @@ function documentEol(content: string): string {
 function optionalDisplayParts(parts: ts.SymbolDisplayPart[]) {
   const value = ts.displayPartsToString(parts)
   return value || undefined
+}
+
+function inlayHintDisplayText(
+  parts: readonly { text: string }[] | undefined,
+  work: CooperativeWork,
+): string {
+  const mapped: string[] = []
+  for (const part of parts ?? []) {
+    mapped.push(part.text)
+    work.item()
+  }
+  return mapped.join("")
 }
 
 function discoverSdkAmbientDeclarations(): string[] {
