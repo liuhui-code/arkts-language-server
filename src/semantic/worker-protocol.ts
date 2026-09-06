@@ -1,3 +1,5 @@
+import { fileURLToPath } from "node:url"
+
 export const SEMANTIC_WORKER_PROTOCOL_VERSION = 1 as const
 export const MAX_SEMANTIC_WORKER_TEXT_BYTES = 4 * 1024 * 1024
 export const MAX_SEMANTIC_WORKER_ARGS_BYTES = 256 * 1024
@@ -5,7 +7,7 @@ export const MAX_SEMANTIC_WORKER_MESSAGE_BYTES = 8 * 1024 * 1024
 export const MAX_SEMANTIC_WORKER_FILE_CHANGES = 1_024
 export const MAX_SEMANTIC_WORKER_URI_BYTES = 16 * 1024
 export const MAX_SEMANTIC_WORKER_VALUE_DEPTH = 32
-export const MAX_SEMANTIC_WORKER_VALUE_NODES = 4_096
+export const MAX_SEMANTIC_WORKER_VALUE_NODES = 65_536
 
 export const SemanticWorkerCancelState = Object.freeze({
   active: 0,
@@ -298,9 +300,15 @@ export function decodeSemanticWorkerMutation(value: unknown): SemanticWorkerMuta
     || !isNonNegativeSafeInteger(input.documentVersion)
     || (kind !== "close" && typeof input.text !== "string")
   ) throw invalidMutation()
-  if (kind !== "close" && Buffer.byteLength(input.text as string) > MAX_SEMANTIC_WORKER_TEXT_BYTES) {
-    throw new SemanticWorkerProtocolError("Semantic worker document text exceeds byte limit")
-  }
+  const textMetrics = kind === "close"
+    ? undefined
+    : stringByteMetrics(
+        input.text as string,
+        MAX_SEMANTIC_WORKER_TEXT_BYTES,
+        MAX_SEMANTIC_WORKER_MESSAGE_BYTES,
+        documentTextTooLarge,
+        messageTooLarge,
+      )
   const mutation: SemanticWorkerDocumentMutation = {
     protocol: SEMANTIC_WORKER_PROTOCOL_VERSION,
     epoch: input.epoch as number,
@@ -310,7 +318,15 @@ export function decodeSemanticWorkerMutation(value: unknown): SemanticWorkerMuta
     documentVersion: input.documentVersion as number,
     ...(kind === "close" ? {} : { text: input.text as string }),
   }
-  assertMessageByteLimit(mutation)
+  assertMessageEnvelope([
+    ["protocol", numberWireBytes(SEMANTIC_WORKER_PROTOCOL_VERSION)],
+    ["epoch", numberWireBytes(mutation.epoch)],
+    ["revision", numberWireBytes(mutation.revision)],
+    ["kind", messageStringWireBytes(mutation.kind)],
+    ["uri", messageStringWireBytes(mutation.uri)],
+    ["documentVersion", numberWireBytes(mutation.documentVersion)],
+    ...(textMetrics ? [["text", textMetrics.wireBytes] as const] : []),
+  ])
   return Object.freeze(mutation)
 }
 
@@ -355,10 +371,18 @@ export function decodeSemanticWorkerRequest(value: unknown): SemanticWorkerReque
     || !isCanonicalDocumentUri(input.uri)
     || !isNonNegativeSafeInteger(input.expectedDocumentVersion)
   ) throw invalidRequest()
-  const args = decodeRequestArgs(input.method, input.args)
-  if (Buffer.byteLength(JSON.stringify(args)) > MAX_SEMANTIC_WORKER_ARGS_BYTES) {
-    throw new SemanticWorkerProtocolError("Semantic worker request args exceed byte limit")
-  }
+  const canonicalArgs = canonicalizeJson(
+    input.args,
+    MAX_SEMANTIC_WORKER_ARGS_BYTES,
+    invalidRequest,
+    requestArgsTooLarge,
+  )
+  if (
+    canonicalArgs.value === null
+    || typeof canonicalArgs.value !== "object"
+    || Array.isArray(canonicalArgs.value)
+  ) throw invalidRequest()
+  const args = decodeRequestArgs(input.method, canonicalArgs.value)
   readSemanticWorkerCancellationState(input.cancelCell)
   Object.freeze(input.cancelCell as SharedArrayBuffer)
   const request = {
@@ -372,7 +396,17 @@ export function decodeSemanticWorkerRequest(value: unknown): SemanticWorkerReque
     args,
     cancelCell: input.cancelCell as SharedArrayBuffer,
   }
-  assertMessageByteLimit(request)
+  assertMessageEnvelope([
+    ["protocol", numberWireBytes(SEMANTIC_WORKER_PROTOCOL_VERSION)],
+    ["epoch", numberWireBytes(request.epoch)],
+    ["id", numberWireBytes(request.id)],
+    ["requiredRevision", numberWireBytes(request.requiredRevision)],
+    ["method", messageStringWireBytes(request.method)],
+    ["uri", messageStringWireBytes(request.uri)],
+    ["expectedDocumentVersion", numberWireBytes(request.expectedDocumentVersion)],
+    ["args", canonicalArgs.wireBytes],
+    ["cancelCell", Int32Array.BYTES_PER_ELEMENT],
+  ])
   return Object.freeze(request) as SemanticWorkerRequest
 }
 
@@ -397,6 +431,12 @@ export function decodeSemanticWorkerResponse(value: unknown): SemanticWorkerResp
       "ok",
       "value",
     ])) throw invalidResponse()
+    const canonicalValue = canonicalizeJson(
+      input.value,
+      MAX_SEMANTIC_WORKER_MESSAGE_BYTES,
+      invalidResponse,
+      messageTooLarge,
+    )
     const response: SemanticWorkerSuccessResponse = {
       protocol: SEMANTIC_WORKER_PROTOCOL_VERSION,
       epoch: input.epoch,
@@ -404,9 +444,17 @@ export function decodeSemanticWorkerResponse(value: unknown): SemanticWorkerResp
       appliedRevision: input.appliedRevision,
       documentVersion: input.documentVersion,
       ok: true,
-      value: decodeJsonValue(input.value, 0, { nodes: 0 }, invalidResponse),
+      value: canonicalValue.value,
     }
-    assertMessageByteLimit(response)
+    assertMessageEnvelope([
+      ["protocol", numberWireBytes(SEMANTIC_WORKER_PROTOCOL_VERSION)],
+      ["epoch", numberWireBytes(response.epoch)],
+      ["id", numberWireBytes(response.id)],
+      ["appliedRevision", numberWireBytes(response.appliedRevision)],
+      ["documentVersion", numberWireBytes(response.documentVersion)],
+      ["ok", booleanWireBytes(true)],
+      ["value", canonicalValue.wireBytes],
+    ])
     return Object.freeze(response)
   }
   if (!hasExactKeys(input, [
@@ -427,12 +475,28 @@ export function decodeSemanticWorkerResponse(value: unknown): SemanticWorkerResp
     ok: false,
     error: decodeSemanticWorkerError(input.error),
   }
-  assertMessageByteLimit(response)
+  const errorBytes = jsonObjectWireBytes([
+    ["code", messageStringWireBytes(response.error.code)],
+    ["message", messageStringWireBytes(response.error.message)],
+  ], MAX_SEMANTIC_WORKER_MESSAGE_BYTES, messageTooLarge)
+  assertMessageEnvelope([
+    ["protocol", numberWireBytes(SEMANTIC_WORKER_PROTOCOL_VERSION)],
+    ["epoch", numberWireBytes(response.epoch)],
+    ["id", numberWireBytes(response.id)],
+    ["appliedRevision", numberWireBytes(response.appliedRevision)],
+    ["documentVersion", numberWireBytes(response.documentVersion)],
+    ["ok", booleanWireBytes(false)],
+    ["error", errorBytes],
+  ])
   return Object.freeze(response)
 }
 
 function invalidMutation(): SemanticWorkerProtocolError {
   return new SemanticWorkerProtocolError("Invalid semantic worker mutation")
+}
+
+function documentTextTooLarge(): SemanticWorkerProtocolError {
+  return new SemanticWorkerProtocolError("Semantic worker document text exceeds byte limit")
 }
 
 function decodeWorkspaceFilesChangedMutation(
@@ -459,8 +523,10 @@ function decodeWorkspaceFilesChangedMutation(
     || typeof input.resourceChanged !== "boolean"
     || (input.resourceDirty === true && input.resourceChanged !== true)
   ) throw invalidMutation()
-  const changes = decodeWorkspaceFileChanges(input.changes, input.rootUri)
-  if (!input.rootDirty && !input.resourceChanged && changes.length === 0) throw invalidMutation()
+  const decodedChanges = decodeWorkspaceFileChanges(input.changes, input.rootUri)
+  if (!input.rootDirty && !input.resourceChanged && decodedChanges.value.length === 0) {
+    throw invalidMutation()
+  }
   const mutation: SemanticWorkerWorkspaceFilesChangedMutation = {
     protocol: SEMANTIC_WORKER_PROTOCOL_VERSION,
     epoch: input.epoch,
@@ -470,16 +536,31 @@ function decodeWorkspaceFilesChangedMutation(
     rootDirty: input.rootDirty,
     resourceDirty: input.resourceDirty,
     resourceChanged: input.resourceChanged,
-    changes,
+    changes: decodedChanges.value,
   }
-  assertMessageByteLimit(mutation)
+  assertMessageEnvelope([
+    ["protocol", numberWireBytes(SEMANTIC_WORKER_PROTOCOL_VERSION)],
+    ["epoch", numberWireBytes(mutation.epoch)],
+    ["revision", numberWireBytes(mutation.revision)],
+    ["kind", messageStringWireBytes(mutation.kind)],
+    ["rootUri", messageStringWireBytes(mutation.rootUri)],
+    ["rootDirty", booleanWireBytes(mutation.rootDirty)],
+    ["resourceDirty", booleanWireBytes(mutation.resourceDirty)],
+    ["resourceChanged", booleanWireBytes(mutation.resourceChanged)],
+    ["changes", decodedChanges.wireBytes],
+  ])
   return Object.freeze(mutation)
+}
+
+interface DecodedWorkspaceFileChanges {
+  readonly value: readonly SemanticWorkerWorkspaceFileChange[]
+  readonly wireBytes: number
 }
 
 function decodeWorkspaceFileChanges(
   value: unknown,
   rootUri: string,
-): readonly SemanticWorkerWorkspaceFileChange[] {
+): DecodedWorkspaceFileChanges {
   if (
     !Array.isArray(value)
     || Object.getPrototypeOf(value) !== Array.prototype
@@ -493,6 +574,7 @@ function decodeWorkspaceFileChanges(
       : key !== "length")
   ) throw invalidMutation()
   const changes: SemanticWorkerWorkspaceFileChange[] = []
+  let wireBytes = 2 + Math.max(0, value.length - 1)
   for (let index = 0; index < value.length; index += 1) {
     const descriptor = Object.getOwnPropertyDescriptor(value, String(index))
     if (!descriptor?.enumerable || !("value" in descriptor)) throw invalidMutation()
@@ -504,17 +586,31 @@ function decodeWorkspaceFileChanges(
       || !isUriWithinRoot(change.uri, rootUri)
       || (change.kind !== "created" && change.kind !== "changed" && change.kind !== "deleted")
     ) throw invalidMutation()
-    changes.push(Object.freeze({ uri: change.uri, kind: change.kind }))
+    const decoded = Object.freeze({ uri: change.uri, kind: change.kind })
+    changes.push(decoded)
+    wireBytes += jsonObjectWireBytes([
+      ["uri", messageStringWireBytes(decoded.uri)],
+      ["kind", messageStringWireBytes(decoded.kind)],
+    ], MAX_SEMANTIC_WORKER_MESSAGE_BYTES - wireBytes, messageTooLarge)
+    if (wireBytes > MAX_SEMANTIC_WORKER_MESSAGE_BYTES) throw messageTooLarge()
   }
-  return Object.freeze(changes)
+  return Object.freeze({ value: Object.freeze(changes), wireBytes })
 }
 
 function invalidRequest(): SemanticWorkerProtocolError {
   return new SemanticWorkerProtocolError("Invalid semantic worker request")
 }
 
+function requestArgsTooLarge(): SemanticWorkerProtocolError {
+  return new SemanticWorkerProtocolError("Semantic worker request args exceed byte limit")
+}
+
 function invalidResponse(): SemanticWorkerProtocolError {
   return new SemanticWorkerProtocolError("Invalid semantic worker response")
+}
+
+function messageTooLarge(): SemanticWorkerProtocolError {
+  return new SemanticWorkerProtocolError("Semantic worker message exceeds byte limit")
 }
 
 function isSemanticWorkerErrorCode(value: unknown): value is SemanticWorkerErrorCode {
@@ -588,7 +684,7 @@ function decodePositionAndJsonArgs(
   if (!args || !hasExactKeys(args, ["position", field])) throw invalidRequest()
   return Object.freeze({
     position: decodePosition(args.position),
-    [field]: decodeJsonObject(args[field]),
+    [field]: canonicalJsonObject(args[field]),
   }) as SemanticWorkerRequestArgsByMethod["resolveCompletion"]
 }
 
@@ -598,7 +694,7 @@ function decodeJsonFieldArgs(
 ): SemanticWorkerRequestArgsByMethod["resolveCodeAction"] {
   const args = ownDataRecord(value)
   if (!args || !hasExactKeys(args, [field])) throw invalidRequest()
-  return Object.freeze({ [field]: decodeJsonObject(args[field]) }) as unknown as (
+  return Object.freeze({ [field]: canonicalJsonObject(args[field]) }) as unknown as (
     SemanticWorkerRequestArgsByMethod["resolveCodeAction"]
   )
 }
@@ -748,63 +844,260 @@ function decodePosition(value: unknown): SemanticWorkerPosition {
   return Object.freeze({ line: position.line, character: position.character })
 }
 
-function decodeJsonObject(value: unknown): SemanticWorkerJsonObject {
-  const budget = { nodes: 0 }
-  const decoded = decodeJsonValue(value, 0, budget)
-  if (decoded === null || typeof decoded !== "object" || Array.isArray(decoded)) {
-    throw invalidRequest()
-  }
-  return decoded as SemanticWorkerJsonObject
+interface CanonicalJsonResult {
+  readonly value: SemanticWorkerJsonValue
+  readonly wireBytes: number
+  readonly nodes: number
 }
 
-function decodeJsonValue(
-  value: unknown,
-  depth: number,
-  budget: { nodes: number },
-  onInvalid: () => SemanticWorkerProtocolError = invalidRequest,
-): SemanticWorkerJsonValue {
-  if (
-    depth > MAX_SEMANTIC_WORKER_VALUE_DEPTH
-    || ++budget.nodes > MAX_SEMANTIC_WORKER_VALUE_NODES
-  ) throw onInvalid()
-  if (
-    value === null
-    || typeof value === "string"
-    || typeof value === "boolean"
-  ) return value
-  if (typeof value === "number") {
-    if (!Number.isFinite(value)) throw onInvalid()
-    return value
-  }
-  if (Array.isArray(value)) {
-    if (Object.getPrototypeOf(value) !== Array.prototype) throw onInvalid()
-    const keys = Reflect.ownKeys(value)
-    if (
-      keys.length !== value.length + 1
-      || keys.some((key, index) => index < value.length
-        ? key !== String(index)
-        : key !== "length")
-    ) throw onInvalid()
-    const result: SemanticWorkerJsonValue[] = []
-    for (let index = 0; index < value.length; index += 1) {
-      const descriptor = Object.getOwnPropertyDescriptor(value, String(index))
-      if (!descriptor?.enumerable || !("value" in descriptor)) throw onInvalid()
-      result.push(decodeJsonValue(descriptor.value, depth + 1, budget, onInvalid))
+interface CanonicalJsonState {
+  readonly maxBytes: number
+  readonly onInvalid: () => SemanticWorkerProtocolError
+  readonly onByteLimit: () => SemanticWorkerProtocolError
+  readonly seen: WeakSet<object>
+  wireBytes: number
+  nodes: number
+}
+
+type CanonicalJsonWork =
+  | {
+      readonly kind: "value"
+      readonly input: unknown
+      readonly depth: number
+      readonly assign: (value: SemanticWorkerJsonValue) => void
     }
-    return Object.freeze(result)
+  | { readonly kind: "freeze"; readonly value: object }
+
+function canonicalJsonObject(value: unknown): SemanticWorkerJsonObject {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw invalidRequest()
   }
-  const record = ownDataRecord(value)
-  if (!record) throw onInvalid()
-  const result: Record<string, SemanticWorkerJsonValue> = {}
-  for (const [key, nested] of Object.entries(record)) {
-    Object.defineProperty(result, key, {
-      value: decodeJsonValue(nested, depth + 1, budget, onInvalid),
-      enumerable: true,
-      configurable: false,
-      writable: false,
+  return value as SemanticWorkerJsonObject
+}
+
+function canonicalizeJson(
+  input: unknown,
+  maxBytes: number,
+  onInvalid: () => SemanticWorkerProtocolError,
+  onByteLimit: () => SemanticWorkerProtocolError,
+): CanonicalJsonResult {
+  const state: CanonicalJsonState = {
+    maxBytes,
+    onInvalid,
+    onByteLimit,
+    seen: new WeakSet(),
+    wireBytes: 0,
+    nodes: 0,
+  }
+  let result: SemanticWorkerJsonValue | undefined
+  const work: CanonicalJsonWork[] = [{
+    kind: "value",
+    input,
+    depth: 0,
+    assign: value => { result = value },
+  }]
+  while (work.length > 0) {
+    const current = work.pop() as CanonicalJsonWork
+    if (current.kind === "freeze") {
+      Object.freeze(current.value)
+      continue
+    }
+    claimJsonNode(state, current.depth)
+    const value = current.input
+    if (value === null) {
+      addWireBytes(state, 4)
+      current.assign(null)
+    } else if (typeof value === "string") {
+      addWireBytes(state, jsonStringWireBytes(
+        value,
+        state.maxBytes - state.wireBytes,
+        state.onByteLimit,
+      ))
+      current.assign(value)
+    } else if (typeof value === "boolean") {
+      addWireBytes(state, value ? 4 : 5)
+      current.assign(value)
+    } else if (typeof value === "number") {
+      if (!Number.isFinite(value)) throw state.onInvalid()
+      addWireBytes(state, String(Object.is(value, -0) ? 0 : value).length)
+      current.assign(value)
+    } else if (Array.isArray(value)) {
+      canonicalizeJsonArray(value, current, state, work)
+    } else if (typeof value === "object") {
+      canonicalizeJsonRecord(value, current, state, work)
+    } else {
+      throw state.onInvalid()
+    }
+  }
+  if (result === undefined) throw onInvalid()
+  return Object.freeze({ value: result, wireBytes: state.wireBytes, nodes: state.nodes })
+}
+
+function canonicalizeJsonArray(
+  input: unknown[],
+  current: Extract<CanonicalJsonWork, { kind: "value" }>,
+  state: CanonicalJsonState,
+  work: CanonicalJsonWork[],
+): void {
+  if (Object.getPrototypeOf(input) !== Array.prototype || state.seen.has(input)) {
+    throw state.onInvalid()
+  }
+  state.seen.add(input)
+  if (input.length > MAX_SEMANTIC_WORKER_VALUE_NODES - state.nodes) {
+    throw state.onInvalid()
+  }
+  const keys = Reflect.ownKeys(input)
+  if (
+    keys.length !== input.length + 1
+    || keys.some((key, index) => index < input.length
+      ? key !== String(index)
+      : key !== "length")
+  ) throw state.onInvalid()
+  addWireBytes(state, 2 + Math.max(0, input.length - 1))
+  const result: SemanticWorkerJsonValue[] = new Array(input.length)
+  current.assign(result)
+  work.push({ kind: "freeze", value: result })
+  for (let index = input.length - 1; index >= 0; index -= 1) {
+    const descriptor = Object.getOwnPropertyDescriptor(input, String(index))
+    if (!descriptor?.enumerable || !("value" in descriptor) || descriptor.value === undefined) {
+      throw state.onInvalid()
+    }
+    work.push({
+      kind: "value",
+      input: descriptor.value,
+      depth: current.depth + 1,
+      assign: value => { result[index] = value },
     })
   }
-  return Object.freeze(result)
+}
+
+function canonicalizeJsonRecord(
+  input: object,
+  current: Extract<CanonicalJsonWork, { kind: "value" }>,
+  state: CanonicalJsonState,
+  work: CanonicalJsonWork[],
+): void {
+  const prototype = Object.getPrototypeOf(input)
+  if (
+    (prototype !== Object.prototype && prototype !== null)
+    || state.seen.has(input)
+  ) throw state.onInvalid()
+  state.seen.add(input)
+  const keys = Reflect.ownKeys(input)
+  if (keys.length > MAX_SEMANTIC_WORKER_VALUE_NODES - state.nodes) {
+    throw state.onInvalid()
+  }
+  const entries: Array<readonly [string, unknown]> = []
+  for (const key of keys) {
+    if (typeof key !== "string") throw state.onInvalid()
+    const descriptor = Object.getOwnPropertyDescriptor(input, key)
+    if (!descriptor?.enumerable || !("value" in descriptor)) throw state.onInvalid()
+    if (descriptor.value === undefined) {
+      claimJsonNode(state, current.depth + 1)
+      continue
+    }
+    entries.push([key, descriptor.value])
+  }
+  addWireBytes(state, 2 + Math.max(0, entries.length - 1))
+  const result: Record<string, SemanticWorkerJsonValue> = {}
+  current.assign(result)
+  work.push({ kind: "freeze", value: result })
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const [key, value] = entries[index]
+    addWireBytes(state, jsonStringWireBytes(
+      key,
+      state.maxBytes - state.wireBytes - 1,
+      state.onByteLimit,
+    ) + 1)
+    work.push({
+      kind: "value",
+      input: value,
+      depth: current.depth + 1,
+      assign: canonical => {
+        Object.defineProperty(result, key, {
+          value: canonical,
+          enumerable: true,
+          configurable: false,
+          writable: false,
+        })
+      },
+    })
+  }
+}
+
+function claimJsonNode(state: CanonicalJsonState, depth: number): void {
+  state.nodes += 1
+  if (
+    depth > MAX_SEMANTIC_WORKER_VALUE_DEPTH
+    || state.nodes > MAX_SEMANTIC_WORKER_VALUE_NODES
+  ) throw state.onInvalid()
+}
+
+function addWireBytes(state: CanonicalJsonState, bytes: number): void {
+  state.wireBytes += bytes
+  if (state.wireBytes > state.maxBytes) throw state.onByteLimit()
+}
+
+function jsonStringWireBytes(
+  value: string,
+  maxBytes: number,
+  onByteLimit: () => SemanticWorkerProtocolError,
+): number {
+  return stringByteMetrics(
+    value,
+    Number.MAX_SAFE_INTEGER,
+    maxBytes,
+    onByteLimit,
+    onByteLimit,
+  ).wireBytes
+}
+
+function stringByteMetrics(
+  value: string,
+  maxRawBytes: number,
+  maxWireBytes: number,
+  onRawLimit: () => SemanticWorkerProtocolError,
+  onWireLimit: () => SemanticWorkerProtocolError,
+): { readonly rawBytes: number; readonly wireBytes: number } {
+  let rawBytes = 0
+  let wireBytes = 2
+  if (wireBytes > maxWireBytes) throw onWireLimit()
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index)
+    if (code === 0x22 || code === 0x5c || code === 0x08 || code === 0x09
+      || code === 0x0a || code === 0x0c || code === 0x0d) {
+      rawBytes += 1
+      wireBytes += 2
+    } else if (code < 0x20) {
+      rawBytes += 1
+      wireBytes += 6
+    } else if (code < 0x80) {
+      rawBytes += 1
+      wireBytes += 1
+    } else if (code < 0x800) {
+      rawBytes += 2
+      wireBytes += 2
+    } else if (code >= 0xd800 && code <= 0xdbff) {
+      const next = value.charCodeAt(index + 1)
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        rawBytes += 4
+        wireBytes += 4
+        index += 1
+      } else {
+        rawBytes += 3
+        wireBytes += 6
+      }
+    } else if (code >= 0xdc00 && code <= 0xdfff) {
+      rawBytes += 3
+      wireBytes += 6
+    } else {
+      rawBytes += 3
+      wireBytes += 3
+    }
+    if (rawBytes > maxRawBytes) throw onRawLimit()
+    if (wireBytes > maxWireBytes) throw onWireLimit()
+  }
+  return Object.freeze({ rawBytes, wireBytes })
 }
 
 function cancellationView(cell: unknown): Int32Array<SharedArrayBuffer> {
@@ -862,22 +1155,32 @@ function isNonNegativeSafeInteger(value: unknown): value is number {
 }
 
 function isCanonicalDocumentUri(value: unknown): value is string {
-  if (
-    typeof value !== "string"
-    || Buffer.byteLength(value) > MAX_SEMANTIC_WORKER_URI_BYTES
-  ) return false
+  if (typeof value !== "string" || /%(?:2f|5c)/i.test(value)) return false
   try {
+    stringByteMetrics(
+      value,
+      MAX_SEMANTIC_WORKER_URI_BYTES,
+      MAX_SEMANTIC_WORKER_MESSAGE_BYTES,
+      invalidUri,
+      invalidUri,
+    )
     const uri = new URL(value)
+    const filePath = fileURLToPath(uri)
     return uri.protocol === "file:"
       && uri.username === ""
       && uri.password === ""
       && uri.search === ""
       && uri.hash === ""
       && uri.pathname.length > 0
+      && !filePath.includes("\0")
       && uri.href === value
   } catch {
     return false
   }
+}
+
+function invalidUri(): SemanticWorkerProtocolError {
+  return new SemanticWorkerProtocolError("Invalid semantic worker URI")
 }
 
 function isUriWithinRoot(uriValue: string, rootValue: string): boolean {
@@ -888,8 +1191,36 @@ function isUriWithinRoot(uriValue: string, rootValue: string): boolean {
     && (uri.pathname === root.pathname || uri.pathname.startsWith(rootPath))
 }
 
-function assertMessageByteLimit(value: unknown): void {
-  if (Buffer.byteLength(JSON.stringify(value)) > MAX_SEMANTIC_WORKER_MESSAGE_BYTES) {
-    throw new SemanticWorkerProtocolError("Semantic worker message exceeds byte limit")
+type JsonWireField = readonly [name: string, valueBytes: number]
+
+function assertMessageEnvelope(fields: readonly JsonWireField[]): void {
+  jsonObjectWireBytes(fields, MAX_SEMANTIC_WORKER_MESSAGE_BYTES, messageTooLarge)
+}
+
+function jsonObjectWireBytes(
+  fields: readonly JsonWireField[],
+  maxBytes: number,
+  onByteLimit: () => SemanticWorkerProtocolError,
+): number {
+  let bytes = 2 + Math.max(0, fields.length - 1)
+  if (bytes > maxBytes) throw onByteLimit()
+  for (const [name, valueBytes] of fields) {
+    if (valueBytes < 0 || valueBytes > maxBytes - bytes - 1) throw onByteLimit()
+    bytes += jsonStringWireBytes(name, maxBytes - bytes - 1 - valueBytes, onByteLimit)
+      + 1
+      + valueBytes
   }
+  return bytes
+}
+
+function messageStringWireBytes(value: string): number {
+  return jsonStringWireBytes(value, MAX_SEMANTIC_WORKER_MESSAGE_BYTES, messageTooLarge)
+}
+
+function numberWireBytes(value: number): number {
+  return String(Object.is(value, -0) ? 0 : value).length
+}
+
+function booleanWireBytes(value: boolean): number {
+  return value ? 4 : 5
 }

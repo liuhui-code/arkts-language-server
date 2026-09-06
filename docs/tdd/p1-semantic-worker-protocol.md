@@ -14,16 +14,23 @@ families:
 - document `open`/`change`/`close` and per-root `workspaceFilesChanged`
   mutations;
 - mutation acknowledgements carrying the exact applied revision;
-- query-by-URI/version requests for all 18 `SemanticEnginePort` query methods;
+- query-by-URI/version requests for the original 18-method allowlist;
 - success responses with clone-safe values and error responses selected from a
   fixed code/message table.
 
 The codec rejects extra/accessor/symbol properties, executable values,
 `AbortSignal`, non-file or non-canonical URIs, cross-root file changes, invalid
 numeric identities and malformed method-specific arguments. Query messages do
-not carry document text. Returned containers are fresh and deeply frozen; the
+not carry document text. Enumerable data properties whose value is `undefined`
+are omitted from JSON-like objects; root/array `undefined`, sparse arrays,
+functions, symbols, bigint, accessors and non-plain prototypes fail closed
+without invoking getters. Returned containers are fresh and deeply frozen; the
 four-byte `SharedArrayBuffer` is the intentional exception at the data layer,
 because its single `Int32` state remains atomically mutable.
+
+Canonical file URIs must round-trip through `URL` and `fileURLToPath`. NUL,
+malformed percent escapes and percent-encoded slash/backslash are rejected.
+This is lexical validation only; it is not filesystem realpath containment.
 
 Hard limits are part of the exported protocol:
 
@@ -32,7 +39,14 @@ Hard limits are part of the exported protocol:
 - serialized message: 8 MiB;
 - URI: 16 KiB;
 - workspace changes per root: 1,024;
-- generic value depth/nodes: 32 / 4,096.
+- generic value depth/nodes: 32 / 65,536.
+
+JSON-like args/results are canonicalized, deeply frozen and conservatively
+measured in one iterative traversal. The envelope reuses the measured inner
+wire byte count instead of serializing the full graph again. Text is scanned
+once for raw UTF-8 and escaped JSON bytes, and a cancellation SAB contributes
+its exact four data bytes. Oversized dense arrays are rejected from their
+length before allocating an internal output array.
 
 Cancellation states are `active`, `clientCancelled`, `contentModified` and
 `supervisorDisposing`. Each request owns one exact four-byte shared cell. The
@@ -59,6 +73,12 @@ executable/accessor rejection, the args budget, success/error response codecs,
 response-boundary errors, mutation ACKs, and bounded workspace invalidation.
 Each RED was made GREEN before the next behavior was introduced.
 
+The adversarial follow-up started from `dce6b63c7195dc5b4706bff5192abcd707ac3501`.
+REDs captured undefined object-property rejection, the too-small 4,096-node
+ceiling and acceptance of encoded NUL/path separators. A pre-refactor
+characterization proved sender canonicalization, real `MessageChannel`
+structured clone, receiver revalidation and shared cancellation-state identity.
+
 ## GREEN
 
 Focused behavior gate:
@@ -67,7 +87,10 @@ Focused behavior gate:
 node --test tests/semantic-worker-protocol.test.mjs
 ```
 
-Result: `14/14` passing, with no skipped, todo, cancelled or failed tests.
+Result: `21/21` passing, with no skipped, todo, cancelled or failed tests.
+The cases include the exact 65,536-node and depth-32 boundaries, pathological
+over-limit values, 1,000 inlay hints, 5,000 folding ranges, 4,096 formatting
+edits, and representative completion/document-symbol graphs under 8 MiB.
 
 Type gate:
 
@@ -89,3 +112,11 @@ Restore begin/chunk/commit, overlay replay and non-replayable state remain T7.
 The codec provides workspace source/resource invalidation, but T5 still owns
 mapping `SemanticWorkspaceFileChangeBatch` to the per-root wire mutation and
 applying it inside the worker.
+
+The generic success-response codec proves clone safety, immutability and
+budgets; it does **not** validate a result schema per semantic method. T5/T6
+must add method/result correlation before trusting worker values. Realpath and
+symlink containment also remain a T5/T6 filesystem-boundary responsibility.
+Call-hierarchy methods were added after the original allowlist; CH/T6 must add
+their request/result schemas with a protocol-version decision before routing
+them through this worker. None of those follow-ups is claimed complete here.

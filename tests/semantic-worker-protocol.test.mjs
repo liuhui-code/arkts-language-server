@@ -4,6 +4,7 @@ import os from "node:os"
 import path from "node:path"
 import { createRequire } from "node:module"
 import test from "node:test"
+import { MessageChannel } from "node:worker_threads"
 
 import { buildSync } from "esbuild"
 
@@ -86,6 +87,41 @@ test("rejects non-canonical mutation envelopes without reflecting hostile input"
     uri: "file:///workspace/Main.ets",
     documentVersion: 0,
   })
+})
+
+test("accepts only canonical file URIs that safely convert to local paths", (t) => {
+  const protocol = buildDriver(t)
+  const mutation = (uri) => ({
+    protocol: protocol.SEMANTIC_WORKER_PROTOCOL_VERSION,
+    epoch: 1,
+    revision: 1,
+    kind: "open",
+    uri,
+    documentVersion: 1,
+    text: "struct Main {}\n",
+  })
+
+  for (const uri of [
+    "file:///workspace/Main.ets",
+    "file:///workspace/My%20Page.ets",
+  ]) {
+    assert.equal(protocol.decodeSemanticWorkerMutation(mutation(uri)).uri, uri)
+  }
+  for (const uri of [
+    "file:///workspace/Main%00.ets",
+    "file:///workspace/encoded%2Fslash.ets",
+    "file:///workspace/encoded%2fslash.ets",
+    "file:///workspace/encoded%5Cbackslash.ets",
+    "file:///workspace/encoded%5cbackslash.ets",
+    "file:///workspace/bad%ZZescape.ets",
+    "file://remote-host/workspace/Main.ets",
+    `file:///workspace/raw${String.fromCharCode(0)}nul.ets`,
+  ]) {
+    assert.throws(
+      () => protocol.decodeSemanticWorkerMutation(mutation(uri)),
+      /Invalid semantic worker mutation/,
+    )
+  }
 })
 
 test("enforces independent document-text and serialized-message byte caps", (t) => {
@@ -197,7 +233,7 @@ test("decodes a query-by-reference request as a deeply immutable transport snaps
   assert.equal(request.args.position.line, 7)
 })
 
-test("accepts only the complete semantic method allowlist with exact argument families", (t) => {
+test("accepts only the version-1 semantic method allowlist with exact argument families", (t) => {
   const protocol = buildDriver(t)
   const position = { position: { line: 1, character: 2 } }
   const range = {
@@ -248,6 +284,39 @@ test("accepts only the complete semantic method allowlist with exact argument fa
     }))
     assert.equal(decoded.method, method)
     assert.deepEqual(decoded.args, args)
+  }
+})
+
+test("canonicalizes representative editor request argument shapes", (t) => {
+  const protocol = buildDriver(t)
+  const cases = [
+    ["complete", { position: { line: 1, character: 2 } }],
+    ["foldingRanges", { lineFoldingOnly: true, rangeLimit: 5_000, omitted: undefined }],
+    ["formatDocument", {
+      options: {
+        tabSize: 2,
+        insertSpaces: true,
+        trimTrailingWhitespace: undefined,
+        insertFinalNewline: true,
+      },
+    }],
+    ["inlayHints", {
+      range: {
+        start: { line: 0, character: 0 },
+        end: { line: 100, character: 0 },
+      },
+    }],
+    ["documentSymbols", { omitted: undefined }],
+  ]
+
+  for (const [index, [method, args]] of cases.entries()) {
+    const request = protocol.decodeSemanticWorkerRequest(requestEnvelope(protocol, {
+      id: index + 1,
+      method,
+      args,
+    }))
+    assert.deepEqual(request.args, JSON.parse(JSON.stringify(args)))
+    assertDeepFrozen(request.args)
   }
 })
 
@@ -337,6 +406,226 @@ test("bounds cloned query arguments independently from the whole worker message"
     () => protocol.decodeSemanticWorkerRequest(request),
     /Semantic worker request args exceed byte limit/,
   )
+})
+
+test("omits undefined object properties while rejecting non-data JSON values", (t) => {
+  const protocol = buildDriver(t)
+  const request = protocol.decodeSemanticWorkerRequest(requestEnvelope(protocol, {
+    method: "resolveCompletion",
+    args: {
+      position: { line: 0, character: 0 },
+      completion: {
+        label: "value",
+        optional: undefined,
+        data: { source: "sdk", detail: undefined },
+      },
+    },
+  }))
+  assert.deepEqual(request.args.completion, {
+    label: "value",
+    data: { source: "sdk" },
+  })
+  assert.equal(Object.isFrozen(request.args.completion.data), true)
+
+  let getterCalled = false
+  const accessor = {}
+  Object.defineProperty(accessor, "secret", {
+    enumerable: true,
+    get() {
+      getterCalled = true
+      return "executed"
+    },
+  })
+  const symbolValue = { label: "value" }
+  symbolValue[Symbol("hidden")] = "secret"
+  const sparse = []
+  sparse.length = 1
+  const nonPlain = Object.create({ inherited: true })
+  nonPlain.label = "value"
+  const invalidValues = [
+    undefined,
+    [undefined],
+    sparse,
+    () => undefined,
+    Symbol("value"),
+    1n,
+    accessor,
+    symbolValue,
+    nonPlain,
+  ]
+  const responseBase = {
+    protocol: protocol.SEMANTIC_WORKER_PROTOCOL_VERSION,
+    epoch: 1,
+    id: 1,
+    appliedRevision: 1,
+    documentVersion: 1,
+    ok: true,
+  }
+  for (const value of invalidValues) {
+    assert.throws(
+      () => protocol.decodeSemanticWorkerResponse({ ...responseBase, value }),
+      /Invalid semantic worker response/,
+    )
+  }
+  assert.equal(getterCalled, false)
+})
+
+test("canonicalizes, clones, and revalidates a request across a real MessageChannel", async (t) => {
+  const protocol = buildDriver(t)
+  const channel = new MessageChannel()
+  t.after(() => {
+    channel.port1.close()
+    channel.port2.close()
+  })
+  const sourceCell = protocol.createSemanticWorkerCancellationCell()
+  const sender = protocol.decodeSemanticWorkerRequest(requestEnvelope(protocol, {
+    method: "resolveCompletion",
+    args: {
+      position: { line: 2, character: 3 },
+      completion: {
+        label: "Button",
+        optional: undefined,
+        data: { source: "arkui" },
+      },
+    },
+    cancelCell: sourceCell,
+  }))
+  const clonedMessage = new Promise((resolve) => channel.port2.once("message", resolve))
+
+  channel.port1.postMessage(sender)
+  const receiver = protocol.decodeSemanticWorkerRequest(await clonedMessage)
+
+  assert.deepEqual(receiver.args, sender.args)
+  assert.notEqual(receiver, sender)
+  assert.notEqual(receiver.args, sender.args)
+  assert.notEqual(receiver.cancelCell, sender.cancelCell)
+  assert.equal(Object.isFrozen(receiver), true)
+  assert.equal(Object.isFrozen(receiver.args.completion.data), true)
+  protocol.cancelSemanticWorkerRequest(
+    sender.cancelCell,
+    protocol.SemanticWorkerCancelState.clientCancelled,
+  )
+  assert.equal(
+    protocol.readSemanticWorkerCancellationState(receiver.cancelCell),
+    protocol.SemanticWorkerCancelState.clientCancelled,
+  )
+})
+
+test("keeps the node budget above every currently bounded editor provider result", (t) => {
+  const protocol = buildDriver(t)
+  assert.ok(protocol.MAX_SEMANTIC_WORKER_VALUE_NODES >= 65_536)
+  const hints = Array.from({ length: 1_000 }, (_, index) => ({
+    position: { line: index, character: 0 },
+    label: `: Type${index}`,
+    kind: "type",
+  }))
+  const folds = Array.from({ length: 5_000 }, (_, index) => ({
+    startLine: index * 2,
+    endLine: index * 2 + 1,
+    kind: "region",
+  }))
+  const edits = Array.from({ length: 4_096 }, (_, index) => ({
+    range: {
+      start: { line: index, character: 0 },
+      end: { line: index, character: 1 },
+    },
+    newText: " ",
+  }))
+
+  for (const [value, expectedLength] of [
+    [hints, 1_000],
+    [folds, 5_000],
+    [edits, 4_096],
+  ]) {
+    assert.ok(Buffer.byteLength(JSON.stringify(value)) < protocol.MAX_SEMANTIC_WORKER_MESSAGE_BYTES)
+    const decoded = protocol.decodeSemanticWorkerResponse(successEnvelope(protocol, value))
+    assert.equal(decoded.value.length, expectedLength)
+    assert.equal(Object.isFrozen(decoded.value), true)
+    assert.equal(Object.isFrozen(decoded.value.at(-1)), true)
+  }
+})
+
+test("accepts the exact node/depth boundaries and rejects the next pathological value", (t) => {
+  const protocol = buildDriver(t)
+  const exactNodes = new Array(protocol.MAX_SEMANTIC_WORKER_VALUE_NODES - 1).fill(null)
+  const decodedNodes = protocol.decodeSemanticWorkerResponse(successEnvelope(protocol, exactNodes))
+  assert.equal(decodedNodes.value.length, exactNodes.length)
+
+  const overNodes = new Array(protocol.MAX_SEMANTIC_WORKER_VALUE_NODES).fill(null)
+  assert.throws(
+    () => protocol.decodeSemanticWorkerResponse(successEnvelope(protocol, overNodes)),
+    /Invalid semantic worker response/,
+  )
+
+  let exactDepth = null
+  for (let index = 0; index < protocol.MAX_SEMANTIC_WORKER_VALUE_DEPTH; index += 1) {
+    exactDepth = [exactDepth]
+  }
+  assert.deepEqual(
+    protocol.decodeSemanticWorkerResponse(successEnvelope(protocol, exactDepth)).value,
+    exactDepth,
+  )
+  assert.throws(
+    () => protocol.decodeSemanticWorkerResponse(successEnvelope(protocol, [exactDepth])),
+    /Invalid semantic worker response/,
+  )
+})
+
+test("preserves representative completion, folding, formatting, inlay, and symbol values", (t) => {
+  const protocol = buildDriver(t)
+  const values = [
+    [{
+      label: "Button",
+      detail: "ArkUI component",
+      kind: "class",
+      documentation: undefined,
+      replacementRange: {
+        start: { line: 2, character: 4 },
+        end: { line: 2, character: 6 },
+      },
+      data: { source: "arkui" },
+    }],
+    [{ startLine: 0, endLine: 8, kind: "region" }],
+    [{
+      range: {
+        start: { line: 1, character: 0 },
+        end: { line: 1, character: 2 },
+      },
+      newText: "  ",
+    }],
+    [{ position: { line: 3, character: 9 }, label: ": string", kind: "type" }],
+    [{
+      name: "Page",
+      kind: "struct",
+      range: {
+        start: { line: 0, character: 0 },
+        end: { line: 8, character: 1 },
+      },
+      selectionRange: {
+        start: { line: 0, character: 7 },
+        end: { line: 0, character: 11 },
+      },
+      children: [{
+        name: "build",
+        kind: "method",
+        range: {
+          start: { line: 2, character: 2 },
+          end: { line: 7, character: 3 },
+        },
+        selectionRange: {
+          start: { line: 2, character: 2 },
+          end: { line: 2, character: 7 },
+        },
+      }],
+    }],
+  ]
+
+  for (const value of values) {
+    const response = protocol.decodeSemanticWorkerResponse(successEnvelope(protocol, value))
+    const expected = JSON.parse(JSON.stringify(value))
+    assert.deepEqual(response.value, expected)
+    assertDeepFrozen(response.value)
+  }
 })
 
 test("decodes a successful response into a deeply immutable bounded value snapshot", (t) => {
@@ -560,6 +849,25 @@ function requestEnvelope(protocol, overrides = {}) {
     cancelCell: protocol.createSemanticWorkerCancellationCell(),
     ...overrides,
   }
+}
+
+function successEnvelope(protocol, value, overrides = {}) {
+  return {
+    protocol: protocol.SEMANTIC_WORKER_PROTOCOL_VERSION,
+    epoch: 1,
+    id: 1,
+    appliedRevision: 1,
+    documentVersion: 1,
+    ok: true,
+    value,
+    ...overrides,
+  }
+}
+
+function assertDeepFrozen(value) {
+  if (value === null || typeof value !== "object") return
+  assert.equal(Object.isFrozen(value), true)
+  for (const nested of Object.values(value)) assertDeepFrozen(nested)
 }
 
 function buildDriver(t) {
