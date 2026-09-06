@@ -68,10 +68,12 @@ interface CompletionResolutionData {
 
 interface CompletionClientProfile {
   commitCharacters: boolean
+  insertReplaceEdits: boolean
 }
 
 const DEFAULT_COMPLETION_CLIENT_PROFILE: CompletionClientProfile = Object.freeze({
   commitCharacters: false,
+  insertReplaceEdits: false,
 })
 
 class CompletionResolutionStore {
@@ -193,6 +195,8 @@ export function runLanguageServer(services?: LanguageServerServices): void {
     completionClientProfile = Object.freeze({
       commitCharacters: params.capabilities.textDocument?.completion
         ?.completionItem?.commitCharactersSupport === true,
+      insertReplaceEdits: params.capabilities.textDocument?.completion
+        ?.completionItem?.insertReplaceSupport === true,
     })
     semanticCapabilities.configure(params.capabilities)
     logger.info("lsp.initialized", {
@@ -373,6 +377,7 @@ export function runLanguageServer(services?: LanguageServerServices): void {
         completion,
       }),
       completionClientProfile,
+      params.position,
     ))
     return {
       isIncomplete: result.isIncomplete || result.items.length > bounded.length,
@@ -620,7 +625,11 @@ function toLspCompletionItem(
   item: SemanticCompletion,
   data: CompletionResolutionData,
   profile: CompletionClientProfile,
+  position?: { line: number; character: number },
 ) {
+  const textEdit = item.replacementRange
+    ? toLspCompletionTextEdit(item.replacementRange, item.insertText ?? item.label, profile, position)
+    : undefined
   return {
     label: item.label,
     detail: item.detail,
@@ -631,12 +640,7 @@ function toLspCompletionItem(
     ...(profile.commitCharacters && item.commitCharacters !== undefined
       ? { commitCharacters: item.commitCharacters }
       : {}),
-    textEdit: item.replacementRange
-      ? {
-          range: item.replacementRange,
-          newText: item.insertText ?? item.label,
-        }
-      : undefined,
+    textEdit,
     data,
   }
 }
@@ -655,10 +659,42 @@ function toLspResolvedCompletionItem(
     return { range: edit.range, newText: edit.newText }
   })
   return {
-    ...toLspCompletionItem(item, data, profile),
+    ...toLspCompletionItem(item, data, profile, record.position),
     documentation: item.documentation,
     additionalTextEdits,
   }
+}
+
+function toLspCompletionTextEdit(
+  replacementRange: { start: { line: number; character: number }; end: { line: number; character: number } },
+  newText: string,
+  profile: CompletionClientProfile,
+  position: { line: number; character: number } | undefined,
+) {
+  if (
+    profile.insertReplaceEdits
+    && position
+    && replacementRange
+    && replacementRange.start.line === replacementRange.end.line
+    && replacementRange.start.line === position.line
+    && comparePositions(replacementRange.start, position) <= 0
+    && comparePositions(position, replacementRange.end) <= 0
+  ) {
+    return {
+      insert: { start: replacementRange.start, end: position },
+      replace: replacementRange,
+      newText,
+    }
+  }
+  return { range: replacementRange, newText }
+}
+
+function comparePositions(
+  left: { line: number; character: number },
+  right: { line: number; character: number },
+): number {
+  if (left.line !== right.line) return left.line - right.line
+  return left.character - right.character
 }
 
 function invalidCompletionResolution(): ResponseError<void> {

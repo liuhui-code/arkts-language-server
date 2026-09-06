@@ -48,11 +48,15 @@ export function applyWorkspaceEdit(documents, workspaceEdit, { documentVersions 
 }
 
 export function applyTextEdits(source, edits) {
-  const located = edits.map((edit) => ({
-    ...edit,
-    start: offsetAt(source, edit.range.start),
-    end: offsetAt(source, edit.range.end),
-  })).sort((left, right) => right.start - left.start || right.end - left.end)
+  const located = edits.map((edit) => {
+    const range = edit.range ?? edit.replace
+    if (!range) throw new TypeError("Text edit must provide range or replace")
+    return {
+      ...edit,
+      start: offsetAt(source, range.start),
+      end: offsetAt(source, range.end),
+    }
+  }).sort((left, right) => right.start - left.start || right.end - left.end)
 
   if (located.some((edit) => edit.start > edit.end)) {
     throw new RangeError("TextEdit range start is after its end")

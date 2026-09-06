@@ -615,8 +615,9 @@ Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产�
   - [x] C11e commit characters：贯通 entry override 与 list default，`[]` 不得被 default 覆盖，
     并尊重客户端 `commitCharactersSupport`；list/resolve 均按 immutable client profile
     fail-closed（`2f66e4c`、当前 LSP slice）。
-  - [ ] C11f InsertReplaceEdit：在客户端 `insertReplaceSupport` 下保留 insert/replace 双 range；
-    不支持时继续发布安全的完整 replacement TextEdit。
+  - [x] C11f InsertReplaceEdit：在客户端 `insertReplaceSupport` 下保留 insert/replace 双 range；
+    不支持时继续发布安全的完整 replacement TextEdit，并对非法/跨行 range 安全回退
+    （当前 LSP adapter slice）。
   - [ ] C11g snippets：仅在客户端 `snippetSupport` 下启用 TypeScript snippet preference，并贯通
     `isSnippet`/`insertTextFormat`，禁止把占位符当 PlainText 插入。
 - [x] W2 Workspace symbol kind：overlay 的 interface/enum/property/constructor/module/type/variable

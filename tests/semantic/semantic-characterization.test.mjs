@@ -514,6 +514,10 @@ test("replaces the complete identifier when completion is accepted mid-token", a
     start: positionAt(source, identifierStart),
     end: positionAt(source, identifierEnd),
   }
+  const insertRange = {
+    start: replacementRange.start,
+    end: positionAt(source, cursorOffset),
+  }
   const session = new LspSession({
     command: process.execPath,
     args: [path.join(projectRoot, "dist", "server.cjs"), "--stdio"],
@@ -528,7 +532,10 @@ test("replaces the complete identifier when completion is accepted mid-token", a
       general: { positionEncodings: ["utf-16"] },
       textDocument: {
         completion: {
-          completionItem: { commitCharactersSupport: true },
+          completionItem: {
+            commitCharactersSupport: true,
+            insertReplaceSupport: true,
+          },
         },
       },
     },
@@ -560,7 +567,11 @@ test("replaces the complete identifier when completion is accepted mid-token", a
   assert.equal(methods.length, 1, `Expected method in ${JSON.stringify(items)}`)
   assert.equal(methods[0].kind, CompletionItemKind.Method)
   assert.deepEqual(methods[0].commitCharacters, [".", ",", ";"])
-  assert.deepEqual(methods[0].textEdit, { range: replacementRange, newText: "method" })
+  assert.deepEqual(methods[0].textEdit, {
+    insert: insertRange,
+    replace: replacementRange,
+    newText: "method",
+  })
   assert.equal(applyTextEdits(source, [methods[0].textEdit]), source)
 
   const resolved = await session.request("completionItem/resolve", methods[0])
