@@ -736,6 +736,71 @@ test("a deleted symlink keeps lexical invalidation after physical identity disap
   assert.deepEqual(changed.removedPaths, [aliasPath])
 })
 
+test("a root-dirty event invalidates both sides of a retargeted workspace symlink", (t) => {
+  const physicalA = createWorkspace(t, "dirty-retarget-a", {
+    "Main.ets": "export const value = 'old'\n",
+  })
+  const physicalB = createWorkspace(t, "dirty-retarget-b", {
+    "Main.ets": "export const value = 'new'\n",
+  })
+  const unrelatedRoot = createWorkspace(t, "dirty-retarget-unrelated", {
+    "Main.ets": "export const unrelated = true\n",
+  })
+  const aliasRoot = `${physicalA}-alias`
+  fs.symlinkSync(physicalA, aliasRoot, "dir")
+  t.after(() => fs.rmSync(aliasRoot, { force: true }))
+  const aliasMain = path.join(aliasRoot, "Main.ets")
+  const physicalAMain = path.join(physicalA, "Main.ets")
+  const unrelatedMain = path.join(unrelatedRoot, "Main.ets")
+  const stableTimestamp = new Date("2020-01-02T03:04:05.000Z")
+  fs.utimesSync(physicalAMain, stableTimestamp, stableTimestamp)
+  fs.utimesSync(path.join(physicalB, "Main.ets"), stableTimestamp, stableTimestamp)
+  assert.equal(
+    fs.statSync(physicalAMain).size,
+    fs.statSync(path.join(physicalB, "Main.ets")).size,
+    "the regression requires a colliding size/mtime fingerprint",
+  )
+  const enumerationCounts = new Map()
+  const store = new SemanticDocumentStore({
+    enumerateWorkspaceSources(rootPath) {
+      const physicalRoot = fs.realpathSync(rootPath)
+      incrementCount(enumerationCounts, physicalRoot)
+      return [path.join(rootPath, "Main.ets")]
+    },
+  })
+  t.after(() => store.dispose?.())
+  const aliasPosition = viewPathPosition(aliasRoot, aliasMain)
+  const unrelatedPosition = syncPosition(store, unrelatedRoot, unrelatedMain)
+
+  const first = store.prepare(aliasPosition, true)
+  store.prepare(unrelatedPosition, true)
+  assert.equal(documentContent(first, aliasMain)?.includes("'old'"), true)
+  assert.equal(store.prepare(aliasPosition, true).state.dependencyClosureCacheHit, true)
+  assert.equal(store.prepare(unrelatedPosition).state.dependencyClosureCacheHit, true)
+
+  fs.unlinkSync(aliasRoot)
+  fs.symlinkSync(physicalB, aliasRoot, "dir")
+  store.workspaceFilesChanged({ rootPath: aliasRoot, rootDirty: true, changes: [] })
+  const retargeted = store.prepare(aliasPosition, true)
+  const unrelatedAfter = store.prepare(unrelatedPosition)
+
+  assert.equal(documentContent(retargeted, aliasMain)?.includes("'new'"), true)
+  assert.equal(retargeted.resetTypeEngine, true)
+  assert.equal(retargeted.contentRevision, 1)
+  assert.equal(retargeted.state.dependencyClosureCacheHit, false)
+  assert.equal(unrelatedAfter.resetTypeEngine, false)
+  assert.equal(unrelatedAfter.contentRevision, 0)
+  assert.equal(unrelatedAfter.state.dependencyClosureCacheHit, true)
+
+  const oldPhysical = store.prepare(viewPathPosition(physicalA, physicalAMain), true)
+  assert.equal(oldPhysical.resetTypeEngine, true)
+  assert.equal(
+    enumerationCounts.get(fs.realpathSync(physicalA)),
+    2,
+    "the old canonical membership must be invalidated",
+  )
+})
+
 test("a nested root-dirty reset reaches only closure owners without snapshot I/O", (t) => {
   const outerRoot = createWorkspace(t, "dirty-cross-root-outer", {
     "Main.ets": "import { target } from './nested/Target'\nexport const main = target()\n",
@@ -1392,4 +1457,8 @@ function documentPaths(view) {
 
 function documentContent(view, documentPath) {
   return view.documents.find((document) => document.path === documentPath)?.content
+}
+
+function incrementCount(counts, key) {
+  counts.set(key, (counts.get(key) ?? 0) + 1)
 }

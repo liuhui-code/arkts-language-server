@@ -350,11 +350,25 @@ export class SemanticDocumentStore {
   }
 
   workspaceFilesChanged(batch: WorkspaceFileChangeBatch): void {
+    const lexicalRoot = path.resolve(batch.rootPath)
     const canonicalRoot = canonicalWorkspaceRoot(batch.rootPath)
     if (batch.rootDirty) {
-      const knownPaths = new Set(this.projectFileSets.get(canonicalRoot)?.paths ?? [])
+      const dirtyProjectRoots = new Set([canonicalRoot])
+      const knownPaths = new Set<string>()
+      for (const [projectRoot, projectFileSet] of this.projectFileSets) {
+        const matchingPaths = projectFileSet.paths.filter((sourcePath) => (
+          isInside(lexicalRoot, path.resolve(sourcePath))
+          || (projectRoot === canonicalRoot && isInside(canonicalRoot, path.resolve(sourcePath)))
+        ))
+        if (matchingPaths.length === 0 && projectRoot !== canonicalRoot) continue
+        dirtyProjectRoots.add(projectRoot)
+        for (const matchingPath of matchingPaths) knownPaths.add(matchingPath)
+      }
       for (const [documentPath, document] of this.documents) {
-        if (isInside(canonicalRoot, document.physicalPath)) knownPaths.add(documentPath)
+        if (
+          isInside(canonicalRoot, document.physicalPath)
+          || isInside(lexicalRoot, documentPath)
+        ) knownPaths.add(documentPath)
       }
       const invalidatedPaths = [...knownPaths].filter((knownPath) => (
         !this.documents.get(knownPath)?.overlay
@@ -362,15 +376,15 @@ export class SemanticDocumentStore {
       const invalidationMatches = this.invalidateDiskDocuments(invalidatedPaths, {
         canonicalizeInputs: false,
         dirtyRoot: canonicalRoot,
+        lexicalDirtyRoot: lexicalRoot,
       })
       for (const knownPath of invalidatedPaths) {
         this.markWatchedRemoved(canonicalRoot, knownPath)
         if (this.typeEngineResetRoots.has(canonicalRoot)) break
       }
-      const affectedRoots = new Set<string>()
+      const affectedRoots = new Set(dirtyProjectRoots)
       for (const pathsByRoot of invalidationMatches.values()) {
         for (const affectedRoot of pathsByRoot.keys()) {
-          if (affectedRoot === canonicalRoot) continue
           affectedRoots.add(affectedRoot)
         }
       }
@@ -381,12 +395,9 @@ export class SemanticDocumentStore {
         )
         this.typeEngineResetRoots.add(affectedRoot)
       }
-      this.projectFileSets.delete(canonicalRoot)
-      this.contentRevisions.set(
-        canonicalRoot,
-        (this.contentRevisions.get(canonicalRoot) ?? 0) + 1,
-      )
-      this.typeEngineResetRoots.add(canonicalRoot)
+      for (const dirtyProjectRoot of dirtyProjectRoots) {
+        this.projectFileSets.delete(dirtyProjectRoot)
+      }
       return
     }
     const entry = this.projectFileSets.get(canonicalRoot)
@@ -515,7 +526,12 @@ export class SemanticDocumentStore {
     {
       canonicalizeInputs = true,
       dirtyRoot,
-    }: { canonicalizeInputs?: boolean; dirtyRoot?: string } = {},
+      lexicalDirtyRoot,
+    }: {
+      canonicalizeInputs?: boolean
+      dirtyRoot?: string
+      lexicalDirtyRoot?: string
+    } = {},
   ): DiskInvalidationMatches {
     const inputPathsByIdentity = new Map<string, Set<string>>()
     const invalidationMatches: DiskInvalidationMatches = new Map()
@@ -539,6 +555,7 @@ export class SemanticDocumentStore {
         inputPathsByIdentity.has(documentPath)
         || inputPathsByIdentity.has(document.physicalPath)
         || (dirtyRoot !== undefined && isInside(dirtyRoot, document.physicalPath))
+        || (lexicalDirtyRoot !== undefined && isInside(lexicalDirtyRoot, documentPath))
       ) {
         invalidatedDocumentPaths.add(documentPath)
       }
@@ -554,6 +571,9 @@ export class SemanticDocumentStore {
         )
         const physicalPath = closure.physicalPaths?.[index] ?? closurePath
         if (dirtyRoot !== undefined && isInside(dirtyRoot, physicalPath)) {
+          matchingInputs.push(closurePath)
+        }
+        if (lexicalDirtyRoot !== undefined && isInside(lexicalDirtyRoot, closurePath)) {
           matchingInputs.push(closurePath)
         }
         if (matchingInputs.length === 0) return false
