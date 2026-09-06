@@ -271,14 +271,35 @@ export class SemanticDocumentStore {
     const resolved = path.resolve(filePath)
     const cached = this.documents.get(resolved)
     if (!cached) return
+    const physicalPath = cached.physicalPath
     this.documents.delete(resolved)
     this.dependencyClosures.delete(resolved)
     this.cachedBytes -= Buffer.byteLength(cached.content)
     if (cached.overlay) {
       const canonicalRoot = cached.workspaceRoot
         ?? canonicalWorkspaceRoot(resolveWorkspaceRoot(resolved))
+      const invalidationMatches = this.invalidateDiskDocuments([{
+        path: resolved,
+        physicalPath,
+      }])
+      const changedRoots = new Set([canonicalRoot])
+      const resetRoots = new Set<string>()
       this.markWatchedChanged(canonicalRoot, resolved)
-      this.contentRevisions.set(canonicalRoot, (this.contentRevisions.get(canonicalRoot) ?? 0) + 1)
+      for (const [affectedRoot, affectedPaths] of invalidationMatches.get(resolved) ?? []) {
+        let physicalAliasAffected = false
+        for (const affectedPath of affectedPaths) {
+          this.markWatchedChanged(affectedRoot, affectedPath)
+          physicalAliasAffected ||= affectedPath !== resolved
+        }
+        changedRoots.add(affectedRoot)
+        if (affectedRoot !== canonicalRoot || physicalAliasAffected) {
+          resetRoots.add(affectedRoot)
+        }
+      }
+      for (const resetRoot of resetRoots) this.typeEngineResetRoots.add(resetRoot)
+      for (const changedRoot of changedRoots) {
+        this.contentRevisions.set(changedRoot, (this.contentRevisions.get(changedRoot) ?? 0) + 1)
+      }
     }
   }
 

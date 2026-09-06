@@ -1172,6 +1172,51 @@ test("keeps open overlays pinned while another workspace is prepared", (t) => {
   )
 })
 
+test("closing an overlay invalidates disk aliases by its captured physical identity", (t) => {
+  const oldDiskContent = "export function target(): string { return 'x' }\n"
+  const newDiskContent = "export function target(): number { return 123 }\n"
+  const overlayContent = "export function target(): boolean { return true }\n"
+  assert.equal(Buffer.byteLength(newDiskContent), Buffer.byteLength(oldDiskContent))
+  const outerRoot = createWorkspace(t, "close-alias-outer", {
+    "Main.ets": "import { target } from './Alias'\nexport const main = target()\n",
+  })
+  const targetRoot = createWorkspace(t, "close-alias-target", {
+    "Target.ets": oldDiskContent,
+  })
+  const mainPath = path.join(outerRoot, "Main.ets")
+  const targetPath = path.join(targetRoot, "Target.ets")
+  const aliasPath = path.join(outerRoot, "Alias.ets")
+  fs.symlinkSync(targetPath, aliasPath, "file")
+  const stableTimestamp = new Date("2020-01-02T03:04:05.000Z")
+  fs.utimesSync(targetPath, stableTimestamp, stableTimestamp)
+  const store = new SemanticDocumentStore()
+  t.after(() => store.dispose?.())
+  store.sync({
+    path: targetPath,
+    content: overlayContent,
+    documentVersion: 1,
+    workspaceRoot: targetRoot,
+  })
+  const outerPosition = syncPosition(store, outerRoot, mainPath)
+  const warm = store.prepare(outerPosition)
+  assert.equal(documentContent(warm, aliasPath), oldDiskContent)
+
+  fs.writeFileSync(targetPath, newDiskContent, "utf8")
+  fs.utimesSync(targetPath, stableTimestamp, stableTimestamp)
+  store.close(targetPath)
+  const outerAfterClose = store.prepare(outerPosition)
+  const targetAfterClose = store.prepare(viewPathPosition(targetRoot, targetPath))
+
+  assert.equal(documentContent(outerAfterClose, aliasPath), newDiskContent)
+  assert.deepEqual(outerAfterClose.changedPaths, [aliasPath])
+  assert.equal(outerAfterClose.contentRevision, 1)
+  assert.equal(outerAfterClose.resetTypeEngine, true)
+  assert.equal(outerAfterClose.state.dependencyClosureCacheHit, false)
+  assert.equal(documentContent(targetAfterClose, targetPath), newDiskContent)
+  assert.deepEqual(targetAfterClose.changedPaths, [targetPath])
+  assert.equal(targetAfterClose.contentRevision, 1)
+})
+
 test("restores disk truth and advances the workspace content revision after close", (t) => {
   const diskTarget = "export class DiskTarget {}\n"
   const overlayTarget = "export class OverlayTarget {}\n"
