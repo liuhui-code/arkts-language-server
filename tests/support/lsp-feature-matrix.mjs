@@ -339,11 +339,18 @@ export const CURRENT_LSP_FEATURE_MATRIX = Object.freeze({
     enabledFeature({
       id: "document-highlight",
       requiredCapabilities: [capability("documentHighlightProvider", true)],
-      protocol: [evidence(
-        "tests/lsp-semantic-request-reliability.test.mjs",
-        "maps cancellation for every advertised semantic request to RequestCancelled",
-        "document-highlight.protocol.cancellation",
-      )],
+      protocol: [
+        evidence(
+          "tests/lsp-semantic-request-reliability.test.mjs",
+          "maps cancellation for every advertised semantic request to RequestCancelled",
+          "document-highlight.protocol.cancellation",
+        ),
+        evidence(
+          "tests/lsp-semantic-request-reliability.test.mjs",
+          "drops stale results for every advertised semantic request after didChange",
+          "document-highlight.protocol.document-freshness",
+        ),
+      ],
       bundle: [evidence(
         "tests/semantic/document-highlight-depth.test.mjs",
         "highlights declaration writes and reads from the current changed overlay",
@@ -359,11 +366,18 @@ export const CURRENT_LSP_FEATURE_MATRIX = Object.freeze({
     enabledFeature({
       id: "folding-range",
       requiredCapabilities: [capability("foldingRangeProvider", true)],
-      protocol: [evidence(
-        "tests/lsp-semantic-request-reliability.test.mjs",
-        "maps cancellation for every advertised semantic request to RequestCancelled",
-        "folding-range.protocol.cancellation",
-      )],
+      protocol: [
+        evidence(
+          "tests/lsp-semantic-request-reliability.test.mjs",
+          "maps cancellation for every advertised semantic request to RequestCancelled",
+          "folding-range.protocol.cancellation",
+        ),
+        evidence(
+          "tests/lsp-semantic-request-reliability.test.mjs",
+          "drops stale results for every advertised semantic request after didChange",
+          "folding-range.protocol.document-freshness",
+        ),
+      ],
       bundle: [
         evidence(
           "tests/semantic/folding-range.test.mjs",
@@ -386,11 +400,18 @@ export const CURRENT_LSP_FEATURE_MATRIX = Object.freeze({
     enabledFeature({
       id: "document-formatting",
       requiredCapabilities: [capability("documentFormattingProvider", true)],
-      protocol: [evidence(
-        "tests/lsp-semantic-request-reliability.test.mjs",
-        "maps cancellation for every advertised semantic request to RequestCancelled",
-        "document-formatting.protocol.cancellation",
-      )],
+      protocol: [
+        evidence(
+          "tests/lsp-semantic-request-reliability.test.mjs",
+          "maps cancellation for every advertised semantic request to RequestCancelled",
+          "document-formatting.protocol.cancellation",
+        ),
+        evidence(
+          "tests/lsp-semantic-request-reliability.test.mjs",
+          "drops stale results for every advertised semantic request after didChange",
+          "document-formatting.protocol.document-freshness",
+        ),
+      ],
       bundle: [evidence(
         "tests/semantic/document-formatting.test.mjs",
         "formats an ArkUI document without changing diagnostics or symbol identity",

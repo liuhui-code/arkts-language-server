@@ -187,11 +187,18 @@ test("maps the complete public capability contract to executable feature evidenc
     assert.equal(feature?.state, "enabled")
     assert.deepEqual(feature?.requiredCapabilities, [{ path: expected.provider, expected: true }])
     assert.deepEqual(feature?.absentCapabilities, [])
-    assert.deepEqual(feature?.evidence.protocol, [{
-      entry: "tests/lsp-semantic-request-reliability.test.mjs",
-      test: "maps cancellation for every advertised semantic request to RequestCancelled",
-      claim: `${featureId}.protocol.cancellation`,
-    }])
+    assert.deepEqual(feature?.evidence.protocol, [
+      {
+        entry: "tests/lsp-semantic-request-reliability.test.mjs",
+        test: "maps cancellation for every advertised semantic request to RequestCancelled",
+        claim: `${featureId}.protocol.cancellation`,
+      },
+      {
+        entry: "tests/lsp-semantic-request-reliability.test.mjs",
+        test: "drops stale results for every advertised semantic request after didChange",
+        claim: `${featureId}.protocol.document-freshness`,
+      },
+    ])
     assert.deepEqual(feature?.evidence.bundle, expected.bundle)
     assert.deepEqual(feature?.evidence.artifact, [{
       entry: "tests/release/portable-install.acceptance.mjs",
