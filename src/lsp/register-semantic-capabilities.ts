@@ -20,6 +20,7 @@ import {
 import type {
   SemanticDocumentSymbol,
   SemanticDocumentHighlight,
+  SemanticDocumentTextEdit,
   SemanticEnginePort,
   SemanticFoldingRange,
   SemanticHover,
@@ -55,6 +56,7 @@ export function registerSemanticCapabilities({
   let foldingRangeKinds: ReadonlySet<string> | undefined
   const capabilities: ServerCapabilities = {
     documentHighlightProvider: true,
+    documentFormattingProvider: true,
     documentSymbolProvider: true,
     foldingRangeProvider: true,
     hoverProvider: true,
@@ -135,6 +137,24 @@ export function registerSemanticCapabilities({
         ? range.kind
         : undefined,
     }))
+  })
+
+  connection.onDocumentFormatting(async (params, token) => {
+    return requests.run({
+      method: "textDocument/formatting",
+      documentUri: params.textDocument.uri,
+      token,
+      fallback: [] as SemanticDocumentTextEdit[],
+      execute: (document, signal) => semantic.formatDocument({
+        document,
+        options: {
+          tabSize: params.options.tabSize,
+          insertSpaces: params.options.insertSpaces,
+          trimTrailingWhitespace: params.options.trimTrailingWhitespace,
+        },
+        signal,
+      }),
+    })
   })
 
   connection.onReferences(async (params, token) => {

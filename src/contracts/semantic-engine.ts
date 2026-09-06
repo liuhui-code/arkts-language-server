@@ -123,6 +123,21 @@ export interface SemanticFoldingRangeQuery extends SemanticDocumentQuery {
   rangeLimit?: number
 }
 
+export interface SemanticDocumentFormattingOptions {
+  tabSize: number
+  insertSpaces: boolean
+  trimTrailingWhitespace?: boolean
+}
+
+export interface SemanticDocumentFormattingQuery extends SemanticDocumentQuery {
+  options: SemanticDocumentFormattingOptions
+}
+
+export interface SemanticDocumentTextEdit {
+  range: TextRange
+  newText: string
+}
+
 export type SemanticDocumentSymbolKind =
   | "struct"
   | "class"
@@ -249,6 +264,9 @@ export interface SemanticEnginePort {
   foldingRanges(
     query: SemanticFoldingRangeQuery,
   ): Promise<VersionedSemanticResult<SemanticFoldingRange[]>>
+  formatDocument(
+    query: SemanticDocumentFormattingQuery,
+  ): Promise<VersionedSemanticResult<SemanticDocumentTextEdit[]>>
   documentSymbols(query: SemanticDocumentQuery): Promise<VersionedSemanticResult<SemanticDocumentSymbol[]>>
   diagnose(query: SemanticDocumentQuery): Promise<VersionedSemanticResult<SemanticDiagnostic[]>>
   codeActions(query: SemanticCodeActionQuery): Promise<VersionedSemanticResult<SemanticCodeAction[]>>
