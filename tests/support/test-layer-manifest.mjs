@@ -27,6 +27,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/resource-sampler.test.mjs",
       "tests/sdk-discovery.test.mjs",
       "tests/semantic-worker-protocol.test.mjs",
+      "tests/semantic-worker-supervisor.test.mjs",
       "tests/test-evidence.test.mjs",
       "tests/test-layer-manifest.test.mjs",
       "tests/test-layer-runner.test.mjs",
@@ -48,6 +49,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
     layer("bundle-e2e", true, [
       "tests/conformance-scenario.test.mjs",
       "tests/lsp-capability-contract.test.mjs",
+      "tests/lsp-call-hierarchy.test.mjs",
       "tests/lsp-diagnostics.test.mjs",
       "tests/lsp-document-lifecycle.test.mjs",
       "tests/lsp-production-index.test.mjs",

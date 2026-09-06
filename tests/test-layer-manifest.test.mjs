@@ -15,7 +15,7 @@ const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 test("classifies every executable test entry exactly once in an explicit layer", () => {
   const audit = validateTestLayerManifest({ root: projectRoot, manifest: TEST_LAYER_MANIFEST })
 
-  assert.equal(audit.entryCount, 67)
+  assert.equal(audit.entryCount, 69)
   assert.equal(audit.assignments["tests/arkts-document-formatter.test.mjs"], "unit-contract")
   assert.equal(audit.assignments["tests/build-test-server.test.mjs"], "unit-contract")
   assert.equal(
@@ -28,6 +28,7 @@ test("classifies every executable test entry exactly once in an explicit layer",
   assert.equal(audit.assignments["tests/portable-artifact-builder.test.mjs"], "unit-contract")
   assert.equal(audit.assignments["tests/process-resource-probe.test.mjs"], "unit-contract")
   assert.equal(audit.assignments["tests/semantic-worker-protocol.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/semantic-worker-supervisor.test.mjs"], "unit-contract")
   assert.equal(
     audit.assignments["tests/release/index-sidecar.acceptance.mjs"],
     "artifact-e2e",
@@ -43,6 +44,7 @@ test("classifies every executable test entry exactly once in an explicit layer",
     audit.assignments["tests/semantic/document-formatting.test.mjs"],
     "bundle-e2e",
   )
+  assert.equal(audit.assignments["tests/lsp-call-hierarchy.test.mjs"], "bundle-e2e")
   assert.equal(
     audit.assignments["tests/semantic/document-highlight-core.test.mjs"],
     "unit-contract",
@@ -95,9 +97,9 @@ test("classifies every executable test entry exactly once in an explicit layer",
     "bundle-e2e",
   )
   assert.deepEqual(audit.layerCounts, {
-    "unit-contract": 29,
+    "unit-contract": 30,
     protocol: 7,
-    "bundle-e2e": 26,
+    "bundle-e2e": 27,
     "artifact-e2e": 3,
     "sealed-artifact-e2e": 1,
     large: 1,
