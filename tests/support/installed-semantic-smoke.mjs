@@ -118,6 +118,25 @@ export async function assertInstalledSemanticSmoke({
   const resourcePageSource = fs.readFileSync(fileURLToPath(resourceCompletion.uri), "utf8")
   const builderPageSource = fs.readFileSync(fileURLToPath(builderWidth.uri), "utf8")
   const documentHighlightSource = fs.readFileSync(fileURLToPath(documentHighlight.uri), "utf8")
+  const symbolKindsPath = path.join(
+    materialized.workspaceRoot,
+    "entry",
+    "src",
+    "main",
+    "ets",
+    "pages",
+    "SymbolKinds.ets",
+  )
+  const symbolKindsUri = pathToFileURL(symbolKindsPath).href
+  const symbolKindsSource = fs.readFileSync(symbolKindsPath, "utf8")
+  const negotiatedSymbolKinds = [
+    { name: "InstalledSymbolReady", modernKind: 22, legacyKind: 10 },
+    { name: "InstalledSymbolType", modernKind: 26, legacyKind: 13 },
+    { name: "InstalledSymbolStruct", modernKind: 23, legacyKind: 5 },
+  ].map((scenario) => ({
+    ...scenario,
+    range: rangeInAnchor(symbolKindsSource, scenario.name, scenario.name),
+  }))
   const arkuiSdkCompletionUri = arkuiSdkScenarios[0].completion.uri
   const arkuiSdkCompletionSource = fs.readFileSync(
     fileURLToPath(arkuiSdkCompletionUri),
@@ -184,6 +203,10 @@ export async function assertInstalledSemanticSmoke({
   assert.equal(textInRange(resourcePageSource, missingResource.range), "missing_title")
   assert.equal(textInRange(builderPageSource, builderWidth.range), "width")
   assert.equal(textInRange(documentHighlightSource, documentHighlight.range), "tracked")
+  assert.deepEqual(
+    negotiatedSymbolKinds.map(({ name }) => name),
+    ["InstalledSymbolReady", "InstalledSymbolType", "InstalledSymbolStruct"],
+  )
   for (const scenario of arkuiSdkScenarios) {
     assert.equal(scenario.completion.uri, arkuiSdkCompletionUri)
     assert.deepEqual(scenario.completion.position, scenario.completion.range.end)
@@ -1351,7 +1374,6 @@ export async function assertInstalledSemanticSmoke({
       )
     }
     verifiedClaims.push("definition.artifact.immutable-typescript-arkui-sdk-resource-builder-ranges")
-    verifiedClaims.push("hover.artifact.immutable-markdown-typescript-arkui-sdk-builder-range")
 
     const expectedWorkspaceSymbols = [
       {
@@ -1387,7 +1409,6 @@ export async function assertInstalledSemanticSmoke({
       actual: actualWorkspaceSymbols,
       expected: expectedWorkspaceSymbols,
     }
-    verifiedClaims.push("workspace-symbol.artifact.immutable-index-kind-uri-name-range")
     const firstDocumentSymbols = await session.request("textDocument/documentSymbol", {
       textDocument: { uri: documentSymbolPage.uri },
     }, { timeoutMs })
@@ -1428,7 +1449,94 @@ export async function assertInstalledSemanticSmoke({
       { name: "title", kind: 7, selectionRange: documentSymbolTitle.range },
       { name: "build", kind: 6, selectionRange: documentSymbolBuild.range },
     ])
-    verifiedClaims.push("document-symbol.artifact.immutable-arkui-hierarchy")
+
+    session.openDocument({
+      uri: symbolKindsUri,
+      languageId: "arkts",
+      version: 1,
+      text: symbolKindsSource,
+    })
+    const modernDocumentSymbolResponse = await session.request("textDocument/documentSymbol", {
+      textDocument: { uri: symbolKindsUri },
+    }, { timeoutMs })
+    assert.equal(
+      modernDocumentSymbolResponse.error,
+      undefined,
+      JSON.stringify(modernDocumentSymbolResponse.error),
+    )
+    assert.ok(Array.isArray(modernDocumentSymbolResponse.result))
+    const modernDocumentSymbols = flattenDocumentSymbols(modernDocumentSymbolResponse.result)
+    assert.deepEqual(
+      negotiatedSymbolKinds.map(({ name, modernKind, range }) => {
+        const symbol = modernDocumentSymbols.find((candidate) => candidate.name === name)
+        return { name: symbol?.name, kind: symbol?.kind, selectionRange: symbol?.selectionRange }
+      }),
+      negotiatedSymbolKinds.map(({ name, modernKind, range }) => ({
+        name,
+        kind: modernKind,
+        selectionRange: range,
+      })),
+    )
+    const modernMode = modernDocumentSymbolResponse.result.find(
+      ({ name }) => name === "InstalledSymbolMode",
+    )
+    assert.deepEqual(
+      modernMode?.children?.map(({ name, kind }) => ({ name, kind })),
+      [{ name: "InstalledSymbolReady", kind: 22 }],
+    )
+
+    const expectedModernWorkspaceKinds = negotiatedSymbolKinds.map(({
+      name,
+      modernKind,
+      range,
+    }) => ({
+      name,
+      kind: modernKind,
+      location: { uri: symbolKindsUri, range },
+    }))
+    const actualModernWorkspaceKinds = []
+    for (const expectedSymbol of expectedModernWorkspaceKinds) {
+      const response = await session.request("workspace/symbol", {
+        query: expectedSymbol.name,
+      }, { timeoutMs })
+      assert.equal(response.error, undefined, JSON.stringify(response.error))
+      actualModernWorkspaceKinds.push(...exactWorkspaceSymbolDetails(
+        response.result,
+        symbolKindsUri,
+        expectedSymbol.name,
+      ))
+    }
+    assert.deepEqual(actualModernWorkspaceKinds, expectedModernWorkspaceKinds)
+    workspaceSymbolKindUriNameRange = {
+      actual: [...workspaceSymbolKindUriNameRange.actual, ...actualModernWorkspaceKinds],
+      expected: [...workspaceSymbolKindUriNameRange.expected, ...expectedModernWorkspaceKinds],
+    }
+    session.transport.send({
+      jsonrpc: "2.0",
+      method: "textDocument/didClose",
+      params: { textDocument: { uri: symbolKindsUri } },
+    })
+
+    await assertInstalledLegacyNegotiation({
+      installedCommand,
+      externalCwd,
+      env,
+      materialized,
+      hoverUri: documentSymbolPage.uri,
+      hoverSource: documentSymbolSource,
+      hoverRange: rangeInAnchor(documentSymbolSource, '.width("100%")', "width"),
+      symbolKindsUri,
+      symbolKindsSource,
+      negotiatedSymbolKinds,
+      timeoutMs,
+    })
+    verifiedClaims.push(
+      "hover.artifact.immutable-negotiated-markdown-plaintext-typescript-arkui-range",
+    )
+    verifiedClaims.push(
+      "workspace-symbol.artifact.immutable-modern-legacy-kind-uri-name-range",
+    )
+    verifiedClaims.push("document-symbol.artifact.immutable-modern-legacy-kind-hierarchy")
   } finally {
     try {
       await session.close({ timeoutMs })
@@ -1439,6 +1547,140 @@ export async function assertInstalledSemanticSmoke({
   return {
     verifiedClaims: Object.freeze([...verifiedClaims]),
     workspaceSymbolKindUriNameRange,
+  }
+}
+
+async function assertInstalledLegacyNegotiation({
+  installedCommand,
+  externalCwd,
+  env,
+  materialized,
+  hoverUri,
+  hoverSource,
+  hoverRange,
+  symbolKindsUri,
+  symbolKindsSource,
+  negotiatedSymbolKinds,
+  timeoutMs,
+}) {
+  const legacySession = new LspSession({
+    command: installedCommand,
+    args: ["--stdio"],
+    cwd: externalCwd,
+    env: {
+      ...env,
+      HOME: env.HOME ?? path.join(materialized.root, "missing-legacy-home"),
+      DEVECO_SDK_HOME: path.join(materialized.root, "missing-legacy-deveco"),
+      ARKLINE_HARMONY_SDK_PATH: path.join(materialized.corpusRoot, "sdk", "openharmony"),
+      ARKTS_INDEX_SIDECAR_PATH: "",
+      ARKTS_INDEX_CACHE_DIR: path.join(materialized.root, "legacy-index-cache"),
+    },
+    rootUri: pathToFileURL(materialized.workspaceRoot).href,
+    capabilities: {
+      general: { positionEncodings: ["utf-16"] },
+      workspace: { symbol: {} },
+      textDocument: {
+        hover: { contentFormat: ["plaintext"] },
+        documentSymbol: { hierarchicalDocumentSymbolSupport: true },
+      },
+    },
+  })
+
+  try {
+    const initialized = await legacySession.initialize({ timeoutMs })
+    assert.equal(initialized.result.capabilities.hoverProvider, true)
+    assert.equal(initialized.result.capabilities.documentSymbolProvider, true)
+    assert.equal(initialized.result.capabilities.workspaceSymbolProvider, true)
+
+    legacySession.openDocument({
+      uri: hoverUri,
+      languageId: "arkts",
+      version: 1,
+      text: hoverSource,
+    })
+    const plaintextHover = await legacySession.request("textDocument/hover", {
+      textDocument: { uri: hoverUri },
+      position: midpoint(hoverRange),
+    }, { timeoutMs })
+    assert.equal(plaintextHover.error, undefined, JSON.stringify(plaintextHover.error))
+    assert.deepEqual(plaintextHover.result?.contents, {
+      kind: "plaintext",
+      value: "(method) ArkUICommonAttribute.width(value: ArkUILength): ArkUITextAttribute",
+    })
+    assert.doesNotMatch(plaintextHover.result.contents.value, /```/)
+    assert.deepEqual(plaintextHover.result.range, hoverRange)
+    legacySession.transport.send({
+      jsonrpc: "2.0",
+      method: "textDocument/didClose",
+      params: { textDocument: { uri: hoverUri } },
+    })
+
+    legacySession.openDocument({
+      uri: symbolKindsUri,
+      languageId: "arkts",
+      version: 1,
+      text: symbolKindsSource,
+    })
+    const documentSymbolResponse = await legacySession.request("textDocument/documentSymbol", {
+      textDocument: { uri: symbolKindsUri },
+    }, { timeoutMs })
+    assert.equal(
+      documentSymbolResponse.error,
+      undefined,
+      JSON.stringify(documentSymbolResponse.error),
+    )
+    assert.ok(Array.isArray(documentSymbolResponse.result))
+    const legacyDocumentSymbols = flattenDocumentSymbols(documentSymbolResponse.result)
+    assert.ok(legacyDocumentSymbols.every(({ kind }) => kind >= 1 && kind <= 18))
+    assert.deepEqual(
+      negotiatedSymbolKinds.map(({ name }) => {
+        const symbol = legacyDocumentSymbols.find((candidate) => candidate.name === name)
+        return { name: symbol?.name, kind: symbol?.kind, selectionRange: symbol?.selectionRange }
+      }),
+      negotiatedSymbolKinds.map(({ name, legacyKind, range }) => ({
+        name,
+        kind: legacyKind,
+        selectionRange: range,
+      })),
+    )
+    const legacyMode = documentSymbolResponse.result.find(
+      ({ name }) => name === "InstalledSymbolMode",
+    )
+    assert.deepEqual(
+      legacyMode?.children?.map(({ name, kind }) => ({ name, kind })),
+      [{ name: "InstalledSymbolReady", kind: 10 }],
+    )
+
+    const expectedLegacyWorkspaceKinds = negotiatedSymbolKinds.map(({
+      name,
+      legacyKind,
+      range,
+    }) => ({
+      name,
+      kind: legacyKind,
+      location: { uri: symbolKindsUri, range },
+    }))
+    const actualLegacyWorkspaceKinds = []
+    for (const expectedSymbol of expectedLegacyWorkspaceKinds) {
+      const response = await legacySession.request("workspace/symbol", {
+        query: expectedSymbol.name,
+      }, { timeoutMs })
+      assert.equal(response.error, undefined, JSON.stringify(response.error))
+      assert.ok(response.result.every(({ kind }) => kind >= 1 && kind <= 18))
+      actualLegacyWorkspaceKinds.push(...exactWorkspaceSymbolDetails(
+        response.result,
+        symbolKindsUri,
+        expectedSymbol.name,
+      ))
+    }
+    assert.deepEqual(actualLegacyWorkspaceKinds, expectedLegacyWorkspaceKinds)
+    legacySession.transport.send({
+      jsonrpc: "2.0",
+      method: "textDocument/didClose",
+      params: { textDocument: { uri: symbolKindsUri } },
+    })
+  } finally {
+    await legacySession.close({ timeoutMs })
   }
 }
 
@@ -1547,6 +1789,13 @@ function exactWorkspaceSymbolDetails(symbols, uri, name) {
         range: symbol.location.range,
       },
     }))
+}
+
+function flattenDocumentSymbols(symbols) {
+  return symbols.flatMap((symbol) => [
+    symbol,
+    ...flattenDocumentSymbols(symbol.children ?? []),
+  ])
 }
 
 function hoverSignature(markdown) {

@@ -99,7 +99,7 @@ export const CURRENT_LSP_FEATURE_MATRIX = Object.freeze({
       artifact: [evidence(
         "tests/release/portable-install.acceptance.mjs",
         "installs one verified artifact without source dependencies or a rebuild",
-        "hover.artifact.immutable-markdown-typescript-arkui-sdk-builder-range",
+        "hover.artifact.immutable-negotiated-markdown-plaintext-typescript-arkui-range",
       )],
       artifactGap: null,
     }),
@@ -149,7 +149,7 @@ export const CURRENT_LSP_FEATURE_MATRIX = Object.freeze({
       artifact: [evidence(
         "tests/release/portable-install.acceptance.mjs",
         "installs one verified artifact without source dependencies or a rebuild",
-        "document-symbol.artifact.immutable-arkui-hierarchy",
+        "document-symbol.artifact.immutable-modern-legacy-kind-hierarchy",
       )],
       artifactGap: null,
     }),
@@ -176,7 +176,7 @@ export const CURRENT_LSP_FEATURE_MATRIX = Object.freeze({
       artifact: [evidence(
         "tests/release/portable-install.acceptance.mjs",
         "installs one verified artifact without source dependencies or a rebuild",
-        "workspace-symbol.artifact.immutable-index-kind-uri-name-range",
+        "workspace-symbol.artifact.immutable-modern-legacy-kind-uri-name-range",
       )],
       artifactGap: null,
     }),

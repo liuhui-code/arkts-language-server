@@ -75,10 +75,10 @@ test("binds the installed semantic umbrella to its exact verified claim set", ()
     "document-sync.artifact.immutable-incremental-overlay-lifecycle",
     "completion.artifact.immutable-typescript-arkui-sdk-resource-builder",
     "definition.artifact.immutable-typescript-arkui-sdk-resource-builder-ranges",
-    "hover.artifact.immutable-markdown-typescript-arkui-sdk-builder-range",
+    "hover.artifact.immutable-negotiated-markdown-plaintext-typescript-arkui-range",
     "signature-help.artifact.immutable-unopened-overload",
-    "document-symbol.artifact.immutable-arkui-hierarchy",
-    "workspace-symbol.artifact.immutable-index-kind-uri-name-range",
+    "document-symbol.artifact.immutable-modern-legacy-kind-hierarchy",
+    "workspace-symbol.artifact.immutable-modern-legacy-kind-uri-name-range",
     "diagnostics.artifact.immutable-versioned-arkui-resource-builder",
     "completion-resolve.artifact.immutable-auto-import",
     "references.artifact.immutable-unopened-barrel-declaration-policy",
@@ -213,7 +213,7 @@ test("maps the complete public capability contract to executable feature evidenc
   assert.deepEqual(hover?.evidence.artifact, [{
     entry: "tests/release/portable-install.acceptance.mjs",
     test: "installs one verified artifact without source dependencies or a rebuild",
-    claim: "hover.artifact.immutable-markdown-typescript-arkui-sdk-builder-range",
+    claim: "hover.artifact.immutable-negotiated-markdown-plaintext-typescript-arkui-range",
   }])
   assert.equal(hover?.artifactGap, null)
   const signatureHelp = CURRENT_LSP_FEATURE_MATRIX.features.find(
@@ -231,7 +231,7 @@ test("maps the complete public capability contract to executable feature evidenc
   assert.deepEqual(documentSymbol?.evidence.artifact, [{
     entry: "tests/release/portable-install.acceptance.mjs",
     test: "installs one verified artifact without source dependencies or a rebuild",
-    claim: "document-symbol.artifact.immutable-arkui-hierarchy",
+    claim: "document-symbol.artifact.immutable-modern-legacy-kind-hierarchy",
   }])
   assert.equal(documentSymbol?.artifactGap, null)
   const workspaceSymbol = CURRENT_LSP_FEATURE_MATRIX.features.find(
@@ -252,7 +252,7 @@ test("maps the complete public capability contract to executable feature evidenc
   assert.deepEqual(workspaceSymbol?.evidence.artifact, [{
     entry: "tests/release/portable-install.acceptance.mjs",
     test: "installs one verified artifact without source dependencies or a rebuild",
-    claim: "workspace-symbol.artifact.immutable-index-kind-uri-name-range",
+    claim: "workspace-symbol.artifact.immutable-modern-legacy-kind-uri-name-range",
   }])
   const references = CURRENT_LSP_FEATURE_MATRIX.features.find(
     ({ id }) => id === "references",

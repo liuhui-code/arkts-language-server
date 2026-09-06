@@ -324,6 +324,24 @@ test("installs one verified artifact without source dependencies or a rebuild", 
     ),
     "installed smoke must verify formatting edits, application, idempotence, and semantics",
   )
+  assert.ok(
+    semanticEvidence.verifiedClaims.includes(
+      "hover.artifact.immutable-negotiated-markdown-plaintext-typescript-arkui-range",
+    ),
+    "installed smoke must verify Markdown and plaintext hover negotiation",
+  )
+  assert.ok(
+    semanticEvidence.verifiedClaims.includes(
+      "document-symbol.artifact.immutable-modern-legacy-kind-hierarchy",
+    ),
+    "installed smoke must verify modern and legacy document-symbol kinds",
+  )
+  assert.ok(
+    semanticEvidence.verifiedClaims.includes(
+      "workspace-symbol.artifact.immutable-modern-legacy-kind-uri-name-range",
+    ),
+    "installed smoke must verify modern and legacy workspace-symbol kinds",
+  )
   assertExactVerifiedArtifactClaims({
     matrix: CURRENT_LSP_FEATURE_MATRIX,
     entry: "tests/release/portable-install.acceptance.mjs",
