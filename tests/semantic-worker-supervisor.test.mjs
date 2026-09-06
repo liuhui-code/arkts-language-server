@@ -610,7 +610,11 @@ test("turns a synchronous terminate throw into one stable rejected dispose", asy
 
   const first = supervisor.dispose()
   deadline.resolve()
-  await assert.rejects(first, /deterministic terminate failure/)
+  await assert.rejects(first, error => (
+    error instanceof protocol.SemanticWorkerSupervisorError
+    && error.code === "worker-unavailable"
+    && error.message === "Semantic worker unavailable"
+  ))
   assert.equal(supervisor.dispose(), first)
   await assert.rejects(request.result, error => error.code === "worker-unavailable")
   assert.equal(endpoint.terminateCalls, 1)
@@ -747,22 +751,582 @@ test("degrades the root instead of dropping one individually over-bound mutation
   assert.equal(endpoint.terminateCalls, 1)
 })
 
+test("rejects hostile top-level inputs without executing accessors", async (t) => {
+  const protocol = buildDriver(t)
+  const endpoint = new FakeEndpoint()
+  const supervisor = createSupervisor(protocol, endpoint)
+  let getterCalls = 0
+  const accessorMutation = {}
+  Object.defineProperty(accessorMutation, "kind", {
+    enumerable: true,
+    get() {
+      getterCalls += 1
+      throw new Error("must not execute")
+    },
+  })
+  const accessorRequest = {}
+  Object.defineProperty(accessorRequest, "method", {
+    enumerable: true,
+    get() {
+      getterCalls += 1
+      throw new Error("must not execute")
+    },
+  })
+  const symbol = Symbol("hostile")
+  const validMutation = changeMutation(1, "const value = 1\n")
+  const validRequest = {
+    method: "hover",
+    uri: "file:///workspace/Main.ets",
+    expectedDocumentVersion: 1,
+    args: { position: { line: 0, character: 0 } },
+  }
+  const mutationInputs = [
+    Object.assign(Object.create({ inherited: true }), validMutation),
+    accessorMutation,
+    { ...validMutation, extra: true },
+    Object.assign({ ...validMutation }, { [symbol]: true }),
+  ]
+  const requestInputs = [
+    Object.assign(Object.create(null), validRequest),
+    accessorRequest,
+    { ...validRequest, extra: true },
+    Object.assign({ ...validRequest }, { [symbol]: true }),
+  ]
+
+  for (const input of mutationInputs) {
+    assert.throws(
+      () => supervisor.mutate(input),
+      error => fixedSupervisorError(protocol, error, "invalid-request"),
+    )
+  }
+  for (const input of requestInputs) {
+    assert.throws(
+      () => supervisor.request(input),
+      error => fixedSupervisorError(protocol, error, "invalid-request"),
+    )
+  }
+  assert.equal(getterCalls, 0)
+  assert.equal(endpoint.sent.length, 0)
+
+  const healthy = supervisor.request(validRequest)
+  endpoint.message(successResponse(protocol, endpoint.sent[0], null))
+  assert.equal(await healthy.result, null)
+  await supervisor.dispose()
+})
+
+test("bounds idle disposal when terminate never settles and observes a late rejection", async (t) => {
+  const protocol = buildDriver(t)
+  const endpoint = new FakeEndpoint()
+  endpoint.terminateGate = testDeferred()
+  const deadline = testDeferred()
+  const supervisor = createSupervisor(protocol, endpoint, {
+    waitForDisposeDeadline: () => deadline.promise,
+  })
+
+  const disposal = supervisor.dispose()
+  const settlement = observeSettlement(disposal)
+  await Promise.resolve()
+  assert.equal(endpoint.terminateCalls, 1)
+  assert.equal(settlement.state, "pending")
+
+  deadline.resolve()
+  await disposal
+  assert.equal(settlement.state, "fulfilled")
+  assert.equal(endpoint.terminateCalls, 1)
+
+  endpoint.terminateGate.reject(new Error("late orphan rejection"))
+  await Promise.resolve()
+  await Promise.resolve()
+  assert.equal(endpoint.terminateCalls, 1)
+})
+
+test("bounds active disposal when terminate never settles after the grace deadline", async (t) => {
+  const protocol = buildDriver(t)
+  const endpoint = new FakeEndpoint()
+  endpoint.terminateGate = testDeferred()
+  const deadline = testDeferred()
+  const supervisor = createSupervisor(protocol, endpoint, {
+    waitForDisposeDeadline: () => deadline.promise,
+  })
+  const request = supervisor.request({
+    method: "hover",
+    uri: "file:///workspace/Main.ets",
+    expectedDocumentVersion: 1,
+    args: { position: { line: 0, character: 0 } },
+  })
+  const requestSettlement = observeSettlement(request.result)
+
+  const disposal = supervisor.dispose()
+  await Promise.resolve()
+  assert.equal(endpoint.terminateCalls, 0)
+  assert.equal(requestSettlement.state, "pending")
+
+  deadline.resolve()
+  await disposal
+  await assert.rejects(request.result, error => error.code === "worker-unavailable")
+  assert.equal(endpoint.terminateCalls, 1)
+
+  endpoint.terminateGate.reject(new Error("late active orphan rejection"))
+  await Promise.resolve()
+  await Promise.resolve()
+  assert.equal(endpoint.terminateCalls, 1)
+})
+
+test("preserves a client cancellation that wins before disposal times out", async (t) => {
+  const protocol = buildDriver(t)
+  const endpoint = new FakeEndpoint()
+  endpoint.terminateGate = testDeferred()
+  const deadline = testDeferred()
+  const supervisor = createSupervisor(protocol, endpoint, {
+    waitForDisposeDeadline: () => deadline.promise,
+  })
+  const request = supervisor.request({
+    method: "hover",
+    uri: "file:///workspace/Main.ets",
+    expectedDocumentVersion: 1,
+    args: { position: { line: 0, character: 0 } },
+  })
+
+  assert.equal(
+    request.cancel(protocol.SemanticWorkerCancelState.clientCancelled),
+    protocol.SemanticWorkerCancelState.clientCancelled,
+  )
+  const disposal = supervisor.dispose()
+  deadline.resolve()
+
+  await disposal
+  await assert.rejects(request.result, error => error.code === "client-cancelled")
+  assert.equal(
+    Atomics.load(new Int32Array(endpoint.sent[0].cancelCell), 0),
+    protocol.SemanticWorkerCancelState.clientCancelled,
+  )
+  assert.equal(endpoint.terminateCalls, 1)
+  endpoint.terminateGate.resolve()
+})
+
+test("preserves content-modified when a later protocol fault closes the root", async (t) => {
+  const protocol = buildDriver(t)
+  const endpoint = new FakeEndpoint()
+  endpoint.terminateGate = testDeferred()
+  const supervisor = createSupervisor(protocol, endpoint)
+  const request = supervisor.request({
+    method: "hover",
+    uri: "file:///workspace/Main.ets",
+    expectedDocumentVersion: 1,
+    args: { position: { line: 0, character: 0 } },
+  })
+  const mutation = supervisor.mutate(changeMutation(2, "const value = 2\n"))
+  mutation.catch(() => {})
+
+  endpoint.message({
+    ...successResponse(protocol, endpoint.sent[0], null),
+    id: endpoint.sent[0].id + 1,
+  })
+  endpoint.terminateGate.resolve()
+
+  await assert.rejects(request.result, error => error.code === "content-modified")
+  await assert.rejects(mutation, error => error.code === "worker-unavailable")
+  assert.equal(endpoint.terminateCalls, 1)
+})
+
+test("preserves content-modified when overflow reaches the termination deadline", async (t) => {
+  const protocol = buildDriver(t)
+  const endpoint = new FakeEndpoint()
+  endpoint.terminateGate = testDeferred()
+  const deadline = testDeferred()
+  const supervisor = createSupervisor(protocol, endpoint, {
+    waitForDisposeDeadline: () => deadline.promise,
+  })
+  const request = supervisor.request({
+    method: "hover",
+    uri: "file:///workspace/Main.ets",
+    expectedDocumentVersion: 1,
+    args: { position: { line: 0, character: 0 } },
+  })
+  const requestSettlement = observeSettlement(request.result)
+  const queued = [supervisor.mutate(changeMutation(2, "const value = 2\n"))]
+  for (let index = 1; index < 32; index += 1) {
+    queued.push(supervisor.mutate({
+      kind: "close",
+      uri: `file:///workspace/Queued${index}.ets`,
+      documentVersion: 1,
+    }))
+  }
+  for (const mutation of queued) mutation.catch(() => {})
+
+  const overflow = supervisor.mutate({
+    kind: "close",
+    uri: "file:///workspace/Overflow.ets",
+    documentVersion: 1,
+  })
+  await assert.rejects(overflow, error => error.code === "restart-required")
+  await Promise.resolve()
+  assert.equal(requestSettlement.state, "pending")
+
+  deadline.resolve()
+  await assert.rejects(request.result, error => error.code === "content-modified")
+  assert.ok((await Promise.allSettled(queued)).every(result => (
+    result.status === "rejected" && result.reason.code === "restart-required"
+  )))
+  assert.equal(endpoint.terminateCalls, 1)
+  endpoint.terminateGate.resolve()
+})
+
+test("still terminates once and reports a fixed error when listener cleanup throws", async (t) => {
+  const protocol = buildDriver(t)
+  const endpoint = new FakeEndpoint()
+  endpoint.throwOnUnlisten = true
+  endpoint.unlistenError = new Error("hostile listener cleanup")
+  const supervisor = createSupervisor(protocol, endpoint)
+
+  const first = supervisor.dispose()
+  assert.equal(supervisor.dispose(), first)
+  await assert.rejects(first, error => (
+    error instanceof protocol.SemanticWorkerSupervisorError
+    && error.code === "worker-unavailable"
+    && error.message === "Semantic worker unavailable"
+  ))
+  assert.equal(endpoint.unlistenCalls, 1)
+  assert.equal(endpoint.terminateCalls, 1)
+})
+
+test("keeps a protocol-faulted request fenced until termination or deadline", async (t) => {
+  const protocol = buildDriver(t)
+  const endpoint = new FakeEndpoint()
+  endpoint.terminateGate = testDeferred()
+  const deadline = testDeferred()
+  const supervisor = createSupervisor(protocol, endpoint, {
+    waitForDisposeDeadline: () => deadline.promise,
+  })
+  const request = supervisor.request({
+    method: "hover",
+    uri: "file:///workspace/Main.ets",
+    expectedDocumentVersion: 1,
+    args: { position: { line: 0, character: 0 } },
+  })
+  const settlement = observeSettlement(request.result)
+
+  endpoint.message({
+    ...successResponse(protocol, endpoint.sent[0], null),
+    id: endpoint.sent[0].id + 1,
+  })
+  await Promise.resolve()
+  assert.equal(endpoint.terminateCalls, 1)
+  assert.equal(settlement.state, "pending")
+
+  deadline.resolve()
+  await assert.rejects(request.result, error => error.code === "worker-unavailable")
+  assert.equal(endpoint.terminateCalls, 1)
+  endpoint.terminateGate.reject(new Error("late protocol-fault orphan rejection"))
+  await Promise.resolve()
+  await Promise.resolve()
+})
+
+test("ignores post-fault messages when listener cleanup could not detach", async (t) => {
+  const protocol = buildDriver(t)
+  const endpoint = new FakeEndpoint()
+  endpoint.throwOnUnlisten = true
+  endpoint.terminateGate = testDeferred()
+  const deadline = testDeferred()
+  const supervisor = createSupervisor(protocol, endpoint, {
+    waitForDisposeDeadline: () => deadline.promise,
+  })
+  const request = supervisor.request({
+    method: "hover",
+    uri: "file:///workspace/Main.ets",
+    expectedDocumentVersion: 1,
+    args: { position: { line: 0, character: 0 } },
+  })
+  const wire = endpoint.sent[0]
+  const settlement = observeSettlement(request.result)
+
+  endpoint.message({ ...successResponse(protocol, wire, null), id: wire.id + 1 })
+  await Promise.resolve()
+  assert.equal(endpoint.terminateCalls, 1)
+  endpoint.message(successResponse(protocol, wire, { contents: "untrusted" }))
+  await Promise.resolve()
+  assert.equal(settlement.state, "pending")
+
+  deadline.resolve()
+  await assert.rejects(request.result, error => error.code === "worker-unavailable")
+  endpoint.terminateGate.resolve()
+})
+
+test("fences send and decode faults until termination completes", async (t) => {
+  const protocol = buildDriver(t)
+  for (const fault of ["send", "decode"]) {
+    const endpoint = new FakeEndpoint()
+    endpoint.terminateGate = testDeferred()
+    if (fault === "send") endpoint.sendError = new Error("send failed")
+    const supervisor = createSupervisor(protocol, endpoint)
+    const request = supervisor.request({
+      method: "hover",
+      uri: "file:///workspace/Main.ets",
+      expectedDocumentVersion: 1,
+      args: { position: { line: 0, character: 0 } },
+    })
+    const settlement = observeSettlement(request.result)
+    if (fault === "decode") endpoint.message({ malformed: true })
+
+    await Promise.resolve()
+    assert.equal(endpoint.terminateCalls, 1, fault)
+    assert.equal(settlement.state, "pending", fault)
+
+    endpoint.terminateGate.resolve()
+    await assert.rejects(
+      request.result,
+      error => error.code === "worker-unavailable",
+      fault,
+    )
+    assert.equal(endpoint.terminateCalls, 1, fault)
+  }
+})
+
+test("treats endpoint error as terminal without waiting for terminate", async (t) => {
+  const protocol = buildDriver(t)
+  const endpoint = new FakeEndpoint()
+  endpoint.terminateGate = testDeferred()
+  const deadline = testDeferred()
+  const supervisor = createSupervisor(protocol, endpoint, {
+    waitForDisposeDeadline: () => deadline.promise,
+  })
+  const request = supervisor.request({
+    method: "hover",
+    uri: "file:///workspace/Main.ets",
+    expectedDocumentVersion: 1,
+    args: { position: { line: 0, character: 0 } },
+  })
+
+  endpoint.error(new Error("terminal endpoint error"))
+  await assert.rejects(request.result, error => error.code === "worker-unavailable")
+  await Promise.resolve()
+  assert.equal(endpoint.terminateCalls, 1)
+
+  deadline.resolve()
+  endpoint.terminateGate.resolve()
+})
+
+test("does not coalesce across document and workspace mutation barriers", async (t) => {
+  const protocol = buildDriver(t)
+  const documentEndpoint = new FakeEndpoint()
+  const documentSupervisor = createSupervisor(protocol, documentEndpoint)
+  const activeDocument = documentSupervisor.mutate(changeMutation(
+    1,
+    "const active = true\n",
+    "file:///workspace/Active.ets",
+  ))
+  const beforeWorkspace = documentSupervisor.mutate(changeMutation(
+    1,
+    "const value = 1\n",
+    "file:///workspace/A.ets",
+  ))
+  const workspaceBarrier = documentSupervisor.mutate(workspaceMutation([
+    { uri: "file:///workspace/A.ets", kind: "deleted" },
+  ]))
+  const afterWorkspace = documentSupervisor.mutate({
+    kind: "close",
+    uri: "file:///workspace/A.ets",
+    documentVersion: 2,
+  })
+
+  documentEndpoint.message(mutationAck(protocol, 1))
+  await activeDocument
+  assert.equal(documentEndpoint.sent[1].kind, "change")
+  documentEndpoint.message(mutationAck(protocol, 2))
+  await beforeWorkspace
+  assert.equal(documentEndpoint.sent[2].kind, "workspaceFilesChanged")
+  documentEndpoint.message(mutationAck(protocol, 3))
+  await workspaceBarrier
+  assert.equal(documentEndpoint.sent[3].kind, "close")
+  documentEndpoint.message(mutationAck(protocol, 4))
+  await afterWorkspace
+  await documentSupervisor.dispose()
+
+  const workspaceEndpoint = new FakeEndpoint()
+  const workspaceSupervisor = createSupervisor(protocol, workspaceEndpoint)
+  const activeWorkspace = workspaceSupervisor.mutate(changeMutation(
+    1,
+    "const active = true\n",
+    "file:///workspace/Active.ets",
+  ))
+  const beforeDocument = workspaceSupervisor.mutate(workspaceMutation([
+    { uri: "file:///workspace/A.ets", kind: "changed" },
+  ]))
+  const documentBarrier = workspaceSupervisor.mutate({
+    kind: "close",
+    uri: "file:///workspace/B.ets",
+    documentVersion: 1,
+  })
+  const afterDocument = workspaceSupervisor.mutate(workspaceMutation([
+    { uri: "file:///workspace/C.ets", kind: "created" },
+  ]))
+
+  workspaceEndpoint.message(mutationAck(protocol, 1))
+  await activeWorkspace
+  assert.equal(workspaceEndpoint.sent[1].kind, "workspaceFilesChanged")
+  assert.deepEqual(workspaceEndpoint.sent[1].changes, [
+    { uri: "file:///workspace/A.ets", kind: "changed" },
+  ])
+  workspaceEndpoint.message(mutationAck(protocol, 2))
+  await beforeDocument
+  assert.equal(workspaceEndpoint.sent[2].kind, "close")
+  workspaceEndpoint.message(mutationAck(protocol, 3))
+  await documentBarrier
+  assert.equal(workspaceEndpoint.sent[3].kind, "workspaceFilesChanged")
+  assert.deepEqual(workspaceEndpoint.sent[3].changes, [
+    { uri: "file:///workspace/C.ets", kind: "created" },
+  ])
+  workspaceEndpoint.message(mutationAck(protocol, 4))
+  await afterDocument
+  await workspaceSupervisor.dispose()
+})
+
+test("counts barrier-separated workspace invalidations in the mutation queue bound", async (t) => {
+  const protocol = buildDriver(t)
+  assert.equal(protocol.RootSemanticWorkerSupervisor.maxQueuedMutationRecords, 32)
+  const endpoint = new FakeEndpoint()
+  endpoint.terminateGate = testDeferred()
+  const supervisor = createSupervisor(protocol, endpoint)
+  const active = supervisor.mutate(changeMutation(
+    1,
+    "const active = true\n",
+    "file:///workspace/Active.ets",
+  ))
+  active.catch(() => {})
+  const queued = []
+  for (let index = 0; index < 16; index += 1) {
+    queued.push(supervisor.mutate(workspaceMutation([
+      { uri: `file:///workspace/External${index}.ets`, kind: "changed" },
+    ])))
+    queued.push(supervisor.mutate({
+      kind: "close",
+      uri: `file:///workspace/Open${index}.ets`,
+      documentVersion: 1,
+    }))
+  }
+  for (const mutation of queued) mutation.catch(() => {})
+
+  const overflow = supervisor.mutate(workspaceMutation([
+    { uri: "file:///workspace/Overflow.ets", kind: "created" },
+  ]))
+  await assert.rejects(overflow, error => error.code === "restart-required")
+  assert.throws(
+    () => supervisor.mutate(changeMutation(2, "const value = 2\n")),
+    error => error.code === "restart-required",
+  )
+  assert.equal(endpoint.terminateCalls, 1)
+
+  endpoint.terminateGate.resolve()
+  await Promise.allSettled([active, ...queued])
+})
+
+test("rejects malformed over-bound workspace changes without poisoning the root", async (t) => {
+  const protocol = buildDriver(t)
+  const endpoint = new FakeEndpoint()
+  const supervisor = createSupervisor(protocol, endpoint)
+  let getterCalls = 0
+  const malformedChange = { kind: "changed" }
+  Object.defineProperty(malformedChange, "uri", {
+    enumerable: true,
+    get() {
+      getterCalls += 1
+      throw new Error("must not execute")
+    },
+  })
+  const changes = Array.from(
+    { length: 1_025 },
+    (_, index) => index === 1_024
+      ? malformedChange
+      : { uri: `file:///workspace/External${index}.ets`, kind: "changed" },
+  )
+
+  await assert.rejects(
+    Promise.resolve().then(() => supervisor.mutate(workspaceMutation(changes))),
+    error => fixedSupervisorError(protocol, error, "invalid-request"),
+  )
+  assert.equal(getterCalls, 0)
+  assert.equal(endpoint.terminateCalls, 0)
+
+  const healthy = supervisor.request({
+    method: "hover",
+    uri: "file:///workspace/Main.ets",
+    expectedDocumentVersion: 1,
+    args: { position: { line: 0, character: 0 } },
+  })
+  endpoint.message(successResponse(protocol, endpoint.sent[0], null))
+  assert.equal(await healthy.result, null)
+  await supervisor.dispose()
+})
+
+test("rejects lexical file URI aliases before they become scheduler keys", async (t) => {
+  const protocol = buildDriver(t)
+  const endpoint = new FakeEndpoint()
+  const supervisor = createSupervisor(protocol, endpoint)
+  const alias = "file:///workspace/%41.ets"
+
+  assert.throws(
+    () => supervisor.request({
+      method: "hover",
+      uri: alias,
+      expectedDocumentVersion: 1,
+      args: { position: { line: 0, character: 0 } },
+    }),
+    error => fixedSupervisorError(protocol, error, "invalid-request"),
+  )
+  assert.throws(
+    () => supervisor.mutate(changeMutation(1, "const value = 1\n", alias)),
+    error => fixedSupervisorError(protocol, error, "invalid-request"),
+  )
+  assert.throws(
+    () => supervisor.mutate(workspaceMutation([
+      { uri: alias, kind: "changed" },
+    ])),
+    error => fixedSupervisorError(protocol, error, "invalid-request"),
+  )
+  assert.throws(
+    () => createSupervisor(protocol, new FakeEndpoint(), {
+      rootUri: "file:///%77orkspace",
+    }),
+    error => fixedSupervisorError(protocol, error, "invalid-request"),
+  )
+  assert.equal(endpoint.sent.length, 0)
+
+  const healthy = supervisor.request({
+    method: "hover",
+    uri: "file:///workspace/A.ets",
+    expectedDocumentVersion: 1,
+    args: { position: { line: 0, character: 0 } },
+  })
+  endpoint.message(successResponse(protocol, endpoint.sent[0], null))
+  assert.equal(await healthy.result, null)
+  await supervisor.dispose()
+})
+
 class FakeEndpoint {
   sent = []
   terminateCalls = 0
+  unlistenCalls = 0
   terminateGate
   terminateError
+  sendError
   throwOnTerminate = false
+  throwOnUnlisten = false
+  unlistenError
   #handlers
 
   listen(handlers) {
     this.#handlers = handlers
     return () => {
+      this.unlistenCalls += 1
+      if (this.throwOnUnlisten) {
+        throw this.unlistenError ?? new Error("unlisten failed")
+      }
       if (this.#handlers === handlers) this.#handlers = undefined
     }
   }
 
   send(message) {
+    if (this.sendError) throw this.sendError
     this.sent.push(message)
   }
 
@@ -788,6 +1352,23 @@ class FakeEndpoint {
 
 function changeMutation(documentVersion, text, uri = "file:///workspace/Main.ets") {
   return { kind: "change", uri, documentVersion, text }
+}
+
+function workspaceMutation(changes) {
+  return {
+    kind: "workspaceFilesChanged",
+    rootUri: "file:///workspace",
+    rootDirty: false,
+    resourceDirty: false,
+    resourceChanged: false,
+    changes,
+  }
+}
+
+function fixedSupervisorError(protocol, error, code) {
+  return error instanceof protocol.SemanticWorkerSupervisorError
+    && error.code === code
+    && error.message === "Invalid semantic worker request"
 }
 
 function createSupervisor(protocol, endpoint, overrides = {}) {
@@ -835,8 +1416,12 @@ function observeSettlement(promise) {
 
 function testDeferred() {
   let resolve
-  const promise = new Promise(onResolve => { resolve = onResolve })
-  return { promise, resolve }
+  let reject
+  const promise = new Promise((onResolve, onReject) => {
+    resolve = onResolve
+    reject = onReject
+  })
+  return { promise, resolve, reject }
 }
 
 function buildDriver(t) {
