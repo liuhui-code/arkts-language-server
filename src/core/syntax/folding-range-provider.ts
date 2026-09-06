@@ -205,15 +205,14 @@ function scanSource(
     }
     if (current === "/" && expressionExpected) {
       const regularExpressionEnd = scanRegularExpressionLiteral(source, offset)
-      if (regularExpressionEnd !== undefined) {
-        if (!acceptToken()) return undefined
-        column += regularExpressionEnd - offset
-        offset = regularExpressionEnd
-        if (currentImport && !currentImport.sawFollower) currentImport.sawFollower = true
-        lineHasCode = true
-        expressionExpected = false
-        continue
-      }
+      if (regularExpressionEnd === undefined) return undefined
+      if (!acceptToken()) return undefined
+      column += regularExpressionEnd - offset
+      offset = regularExpressionEnd
+      if (currentImport && !currentImport.sawFollower) currentImport.sawFollower = true
+      lineHasCode = true
+      expressionExpected = false
+      continue
     }
     if (current === '"' || current === "'" || current === "`") {
       if (!acceptToken()) return undefined
@@ -321,9 +320,24 @@ function scanSource(
     lineHasCode = true
   }
 
-  if (delimiters.length > 0) return undefined
+  if (delimiters.length > 0) {
+    const recoveryBoundary = delimiters[0]
+    if (!recoveryBoundary) return undefined
+    return {
+      ranges: ranges.filter((range) => endsAtOrBefore(range, recoveryBoundary)),
+      imports: imports.filter((statement) => endsAtOrBefore(statement, recoveryBoundary)),
+    }
+  }
   if (!finishImport(line, column)) return undefined
   return { ranges, imports }
+}
+
+function endsAtOrBefore(
+  range: MutableFoldingRange,
+  boundary: SourcePosition,
+): boolean {
+  return range.endLine < boundary.line
+    || (range.endLine === boundary.line && range.endCharacter <= boundary.character)
 }
 
 function scanRegularExpressionLiteral(source: string, start: number): number | undefined {

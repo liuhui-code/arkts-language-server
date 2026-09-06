@@ -108,6 +108,44 @@ test("ignores structural delimiters inside regular-expression literals", (t) => 
   )
 })
 
+test("preserves completed sibling folds while the edited tail is incomplete", (t) => {
+  const { FoldingRangeProvider } = buildDriver(t)
+  const source = [
+    "function completed() {",
+    "  if (ready) {",
+    "    return value",
+    "  }",
+    "}",
+    "",
+    "struct Editing {",
+    "  build() {",
+    "",
+  ].join("\n")
+
+  assert.deepEqual(
+    new FoldingRangeProvider().provide(source, { lineFoldingOnly: true }),
+    [
+      { startLine: 0, endLine: 4 },
+      { startLine: 1, endLine: 3 },
+    ],
+  )
+})
+
+test("fails closed after mismatched delimiters and unterminated literals", (t) => {
+  const { FoldingRangeProvider } = buildDriver(t)
+  const provider = new FoldingRangeProvider()
+  const completed = [
+    "function completed() {",
+    "  return value",
+    "}",
+    "",
+  ].join("\n")
+
+  assert.deepEqual(provider.provide(`${completed}struct Broken {\n]\n`, {}), [])
+  assert.deepEqual(provider.provide(`${completed}const broken = \"unterminated\n`, {}), [])
+  assert.deepEqual(provider.provide(`${completed}const broken = /unterminated{\n`, {}), [])
+})
+
 function buildDriver(t) {
   const outputRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-folding-provider-"))
   t.after(() => fs.rmSync(outputRoot, { recursive: true, force: true }))
