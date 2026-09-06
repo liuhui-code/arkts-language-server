@@ -91,6 +91,93 @@ test("rejects every advertised semantic request after shutdown", async (t) => {
   }
 })
 
+test("rejects malformed editor feature params as InvalidParams", async (t) => {
+  const server = await openScriptedServer(
+    t,
+    "MalformedEditorFeatureParams.ets",
+    "struct MalformedEditorFeatureParams {}",
+  )
+  const cases = [
+    {
+      label: "document highlight negative position",
+      method: "textDocument/documentHighlight",
+      params: {
+        textDocument: { uri: server.documentUri },
+        position: { line: -1, character: 0 },
+      },
+      message: "Invalid document highlight parameters.",
+    },
+    {
+      label: "document highlight non-integer position",
+      method: "textDocument/documentHighlight",
+      params: {
+        textDocument: { uri: server.documentUri },
+        position: { line: 0, character: 0.5 },
+      },
+      message: "Invalid document highlight parameters.",
+    },
+    {
+      label: "folding range missing textDocument",
+      method: "textDocument/foldingRange",
+      params: {},
+      message: "Invalid folding range parameters.",
+    },
+    {
+      label: "folding range invalid textDocument",
+      method: "textDocument/foldingRange",
+      params: { textDocument: { uri: 42 } },
+      message: "Invalid folding range parameters.",
+    },
+    {
+      label: "formatting missing options",
+      method: "textDocument/formatting",
+      params: { textDocument: { uri: server.documentUri } },
+      message: "Invalid document formatting parameters.",
+    },
+    {
+      label: "formatting zero tabSize",
+      method: "textDocument/formatting",
+      params: formattingParams(server.documentUri, 0, true),
+      message: "Invalid document formatting parameters.",
+    },
+    {
+      label: "formatting negative tabSize",
+      method: "textDocument/formatting",
+      params: formattingParams(server.documentUri, -1, true),
+      message: "Invalid document formatting parameters.",
+    },
+    {
+      label: "formatting non-integer tabSize",
+      method: "textDocument/formatting",
+      params: formattingParams(server.documentUri, 1.5, true),
+      message: "Invalid document formatting parameters.",
+    },
+    {
+      label: "formatting non-boolean insertSpaces",
+      method: "textDocument/formatting",
+      params: formattingParams(server.documentUri, 2, "yes"),
+      message: "Invalid document formatting parameters.",
+    },
+  ]
+
+  for (const [offset, current] of cases.entries()) {
+    const id = 350 + offset
+    server.send({
+      jsonrpc: "2.0",
+      id,
+      method: current.method,
+      params: current.params,
+    })
+
+    const response = await server.response(id)
+    assert.equal(response.result, undefined, `${current.label} must not return a result`)
+    assert.deepEqual(response.error, {
+      code: -32602,
+      message: current.message,
+    }, current.label)
+  }
+})
+
 test("maps LSP signature-help context to bounded semantic trigger reasons", async (t) => {
   const server = await openScriptedServer(t, "SignatureContext.ets", "scripted(1)")
   const cases = [
@@ -289,6 +376,13 @@ function renameRequest(id, method, documentUri, overrides = {}) {
       ...(method === "textDocument/rename" ? { newName: "Renamed" } : {}),
       ...overrides,
     },
+  }
+}
+
+function formattingParams(documentUri, tabSize, insertSpaces) {
+  return {
+    textDocument: { uri: documentUri },
+    options: { tabSize, insertSpaces },
   }
 }
 

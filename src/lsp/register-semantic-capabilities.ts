@@ -98,6 +98,7 @@ export function registerSemanticCapabilities({
   })
 
   connection.onDocumentHighlight(async (params, token) => {
+    assertValidDocumentHighlightParams(params)
     const result = await requests.run({
       method: "textDocument/documentHighlight",
       documentUri: params.textDocument.uri,
@@ -116,6 +117,7 @@ export function registerSemanticCapabilities({
   })
 
   connection.onFoldingRanges(async (params, token) => {
+    assertValidFoldingRangeParams(params)
     const result = await requests.run({
       method: "textDocument/foldingRange",
       documentUri: params.textDocument.uri,
@@ -140,6 +142,7 @@ export function registerSemanticCapabilities({
   })
 
   connection.onDocumentFormatting(async (params, token) => {
+    assertValidDocumentFormattingParams(params)
     return requests.run({
       method: "textDocument/formatting",
       documentUri: params.textDocument.uri,
@@ -321,6 +324,59 @@ function isSignatureHelpRetriggerCharacter(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
+}
+
+function assertValidDocumentHighlightParams(params: unknown): void {
+  if (
+    !isRecord(params)
+    || !isTextDocumentIdentifier(params.textDocument)
+    || !isProtocolPosition(params.position)
+  ) {
+    throw invalidParams("Invalid document highlight parameters.")
+  }
+}
+
+function assertValidFoldingRangeParams(params: unknown): void {
+  if (!isRecord(params) || !isTextDocumentIdentifier(params.textDocument)) {
+    throw invalidParams("Invalid folding range parameters.")
+  }
+}
+
+function assertValidDocumentFormattingParams(params: unknown): void {
+  if (
+    !isRecord(params)
+    || !isTextDocumentIdentifier(params.textDocument)
+    || !isRecord(params.options)
+    || !isPositiveProtocolInteger(params.options.tabSize)
+    || typeof params.options.insertSpaces !== "boolean"
+  ) {
+    throw invalidParams("Invalid document formatting parameters.")
+  }
+}
+
+function isTextDocumentIdentifier(value: unknown): boolean {
+  return isRecord(value) && typeof value.uri === "string" && value.uri.length > 0
+}
+
+function isProtocolPosition(value: unknown): boolean {
+  return isRecord(value)
+    && isProtocolInteger(value.line)
+    && isProtocolInteger(value.character)
+}
+
+function isProtocolInteger(value: unknown): boolean {
+  return typeof value === "number"
+    && Number.isSafeInteger(value)
+    && value >= 0
+    && value <= 2_147_483_647
+}
+
+function isPositiveProtocolInteger(value: unknown): boolean {
+  return isProtocolInteger(value) && (value as number) > 0
+}
+
+function invalidParams(message: string): ResponseError<void> {
+  return new ResponseError(-32602, message)
 }
 
 function preferredHoverMarkupKind(clientCapabilities: ClientCapabilities): MarkupKind {
