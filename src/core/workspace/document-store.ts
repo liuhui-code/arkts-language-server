@@ -13,6 +13,7 @@ const MAX_CACHED_DOCUMENTS = 512
 const MAX_CACHED_BYTES = 16 * 1024 * 1024
 const MAX_CLOSURE_DOCUMENTS = 256
 const MAX_CLOSURE_BYTES = 8 * 1024 * 1024
+const MAX_CLOSURE_CREATION_CANDIDATES = MAX_CLOSURE_DOCUMENTS * 4
 const MAX_PROJECT_FILE_SET_ROOTS = 4
 const MAX_PROJECT_FILE_SET_PATHS = 20_000
 const MAX_PROJECT_FILE_SET_PATH_BYTES = 4 * 1024 * 1024
@@ -37,6 +38,9 @@ interface DocumentRecord extends WorkspaceDocument {
 interface DependencyClosureCacheEntry {
   contentGeneration: number
   paths: string[]
+  workspaceRoot: string
+  creationCandidatePaths: string[]
+  creationCandidatesComplete: boolean
 }
 
 interface DependencyClosureResult {
@@ -320,7 +324,7 @@ export class SemanticDocumentStore {
     const paths = entry?.paths
     let membershipChanged = false
     let contentChanged = false
-    let dependencyResolutionChanged = false
+    const createdPaths: string[] = []
     for (const change of batch.changes) {
       const sourcePath = path.resolve(change.path)
       if (!SOURCE_EXTENSIONS.includes(path.extname(sourcePath))) continue
@@ -350,7 +354,7 @@ export class SemanticDocumentStore {
           this.markWatchedChanged(canonicalRoot, sourcePath)
           contentChanged = true
         } else {
-          dependencyResolutionChanged = true
+          createdPaths.push(sourcePath)
         }
       }
       if (change.kind !== "created" || !paths) continue
@@ -380,17 +384,15 @@ export class SemanticDocumentStore {
       }
       membershipChanged = true
     }
-    if (dependencyResolutionChanged) {
-      for (const ownerPath of this.dependencyClosures.keys()) {
-        if (isInside(canonicalRoot, canonicalSourcePath(ownerPath))) {
-          this.dependencyClosures.delete(ownerPath)
-        }
-      }
-      this.typeEngineResetRoots.add(canonicalRoot)
-    }
     if (entry && membershipChanged) entry.revision = ++this.projectMembershipRevision
-    if (contentChanged || dependencyResolutionChanged) {
-      this.contentRevisions.set(canonicalRoot, (this.contentRevisions.get(canonicalRoot) ?? 0) + 1)
+    const changedRoots = new Set<string>()
+    if (contentChanged || createdPaths.length > 0) changedRoots.add(canonicalRoot)
+    for (const affectedRoot of this.invalidateCreatedResolutionCandidates(createdPaths)) {
+      changedRoots.add(affectedRoot)
+      this.typeEngineResetRoots.add(affectedRoot)
+    }
+    for (const changedRoot of changedRoots) {
+      this.contentRevisions.set(changedRoot, (this.contentRevisions.get(changedRoot) ?? 0) + 1)
     }
   }
 
@@ -418,6 +420,20 @@ export class SemanticDocumentStore {
         this.dependencyClosures.delete(ownerPath)
       }
     }
+  }
+
+  private invalidateCreatedResolutionCandidates(filePaths: readonly string[]): Set<string> {
+    const createdPaths = new Set(filePaths.map(canonicalSourcePath))
+    const affectedRoots = new Set<string>()
+    if (createdPaths.size === 0) return affectedRoots
+    for (const [ownerPath, closure] of this.dependencyClosures) {
+      const affected = closure.creationCandidatesComplete !== true
+        || closure.creationCandidatePaths.some((candidatePath) => createdPaths.has(candidatePath))
+      if (!affected) continue
+      this.dependencyClosures.delete(ownerPath)
+      affectedRoots.add(closure.workspaceRoot)
+    }
+    return affectedRoots
   }
 
   private markWatchedRemoved(canonicalRoot: string, filePath: string): void {
@@ -537,7 +553,11 @@ export class SemanticDocumentStore {
     current: DocumentRecord,
     includeWorkspaceFiles: boolean,
   ): SemanticWorkspaceView {
-    const closureResult = this.collectDependencyClosure(current, previousCurrent === current)
+    const closureResult = this.collectDependencyClosure(
+      current,
+      previousCurrent === current,
+      canonicalRoot,
+    )
     const closure = closureResult.entries
     const loadedPaths = new Set(closure.map(({ record }) => record.path))
     for (const record of this.openOverlays(canonicalRoot)) {
@@ -828,6 +848,7 @@ export class SemanticDocumentStore {
   private collectDependencyClosure(
     current: DocumentRecord,
     currentCacheHit: boolean,
+    workspaceRoot: string,
   ): DependencyClosureResult {
     const transaction: DocumentCacheTransaction = {
       records: new Map(),
@@ -840,6 +861,7 @@ export class SemanticDocumentStore {
       return this.collectDependencyClosureWithinTransaction(
         current,
         currentCacheHit,
+        workspaceRoot,
         transaction,
       )
     } catch (error) {
@@ -861,6 +883,7 @@ export class SemanticDocumentStore {
   private collectDependencyClosureWithinTransaction(
     current: DocumentRecord,
     currentCacheHit: boolean,
+    workspaceRoot: string,
     transaction: DocumentCacheTransaction,
   ): DependencyClosureResult {
     this.operationControl.checkpoint()
@@ -869,6 +892,7 @@ export class SemanticDocumentStore {
     const cached = this.reuseDependencyClosure(
       current,
       currentCacheHit,
+      workspaceRoot,
       changedPaths,
       removedPaths,
       transaction,
@@ -882,6 +906,8 @@ export class SemanticDocumentStore {
     const visited = new Set([current.path])
     let totalBytes = Buffer.byteLength(current.content)
     let complete = true
+    let creationCandidatesComplete = true
+    const creationCandidatePaths = new Set<string>()
 
     while (queued.length > 0 && result.length < MAX_CLOSURE_DOCUMENTS) {
       this.operationControl.checkpoint()
@@ -893,6 +919,14 @@ export class SemanticDocumentStore {
         this.operationControl,
       )
       complete &&= resolved.complete
+      for (const candidatePath of resolved.creationCandidatePaths) {
+        if (creationCandidatePaths.has(candidatePath)) continue
+        if (creationCandidatePaths.size >= MAX_CLOSURE_CREATION_CANDIDATES) {
+          creationCandidatesComplete = false
+          break
+        }
+        creationCandidatePaths.add(candidatePath)
+      }
       for (const dependencyPath of resolved.paths) {
         this.operationControl.checkpoint()
         if (visited.has(dependencyPath)) continue
@@ -905,7 +939,10 @@ export class SemanticDocumentStore {
         )
         this.operationControl.checkpoint()
         const bytes = Buffer.byteLength(dependency.content)
-        if (totalBytes + bytes > MAX_CLOSURE_BYTES) continue
+        if (totalBytes + bytes > MAX_CLOSURE_BYTES) {
+          creationCandidatesComplete = false
+          continue
+        }
         totalBytes += bytes
         result.push({
           record: dependency,
@@ -915,11 +952,15 @@ export class SemanticDocumentStore {
         if (result.length >= MAX_CLOSURE_DOCUMENTS) break
       }
     }
+    if (queued.length > 0) creationCandidatesComplete = false
     this.operationControl.checkpoint()
     if (complete) {
       this.dependencyClosures.set(current.path, {
         contentGeneration: current.contentGeneration,
         paths: result.map(({ record }) => record.path),
+        workspaceRoot,
+        creationCandidatePaths: [...creationCandidatePaths].sort(),
+        creationCandidatesComplete,
       })
     } else {
       this.dependencyClosures.delete(current.path)
@@ -930,12 +971,17 @@ export class SemanticDocumentStore {
   private reuseDependencyClosure(
     current: DocumentRecord,
     currentCacheHit: boolean,
+    workspaceRoot: string,
     changedPaths: Set<string>,
     removedPaths: Set<string>,
     transaction: DocumentCacheTransaction,
   ): Array<{ record: DocumentRecord; cacheHit: boolean }> | null {
     const cached = this.dependencyClosures.get(current.path)
-    if (!currentCacheHit || cached?.contentGeneration !== current.contentGeneration) return null
+    if (
+      !currentCacheHit
+      || cached?.contentGeneration !== current.contentGeneration
+      || cached.workspaceRoot !== workspaceRoot
+    ) return null
 
     const entries = [{ record: current, cacheHit: true }]
     for (const dependencyPath of cached.paths.slice(1)) {
@@ -1100,7 +1146,7 @@ function resolveRelativeImports(
   documentPath: string,
   content: string,
   operationControl: SemanticOperationControl,
-): { paths: string[]; complete: boolean } {
+): { paths: string[]; creationCandidatePaths: string[]; complete: boolean } {
   const specifiers = [...content.matchAll(/(?:import|export)\s+(?:type\s+)?(?:[^'";]+?\s+from\s+)?['"]([^'"]+)['"]/g)]
     .map((match) => match[1])
     .filter((specifier): specifier is string => Boolean(specifier?.startsWith(".")))
@@ -1108,8 +1154,11 @@ function resolveRelativeImports(
     resolveImportPath(documentPath, specifier, operationControl)
   ))
   return {
-    paths: resolved.flat(),
-    complete: resolved.every((matches) => matches.length > 0),
+    paths: resolved.flatMap(({ paths }) => paths),
+    creationCandidatePaths: resolved.flatMap(({ creationCandidatePaths }) => (
+      creationCandidatePaths
+    )),
+    complete: resolved.every(({ paths }) => paths.length > 0),
   }
 }
 
@@ -1117,17 +1166,29 @@ function resolveImportPath(
   documentPath: string,
   specifier: string,
   operationControl: SemanticOperationControl,
-): string[] {
+): { paths: string[]; creationCandidatePaths: string[] } {
   const basePath = path.resolve(path.dirname(documentPath), specifier)
-  const candidates = path.extname(basePath)
+  const rawCandidates = path.extname(basePath)
     ? [basePath]
     : [
         ...SOURCE_EXTENSIONS.map((extension) => `${basePath}${extension}`),
         ...SOURCE_EXTENSIONS.map((extension) => path.join(basePath, `index${extension}`)),
       ]
-  return candidates.filter((candidate, index) => index === candidates.findIndex((value) => value === candidate))
-    .filter((candidate) => safeStat(candidate, operationControl)?.isFile())
-    .slice(0, 1)
+  const candidates = rawCandidates.filter((candidate, index) => (
+    index === rawCandidates.findIndex((value) => value === candidate)
+  ))
+  for (let index = 0; index < candidates.length; index += 1) {
+    const candidate = candidates[index]
+    if (!candidate || !safeStat(candidate, operationControl)?.isFile()) continue
+    return {
+      paths: [candidate],
+      creationCandidatePaths: candidates.slice(0, index).map(canonicalSourcePath),
+    }
+  }
+  return {
+    paths: [],
+    creationCandidatePaths: candidates.map(canonicalSourcePath),
+  }
 }
 
 function safeRead(filePath: string, operationControl: SemanticOperationControl): string | null {

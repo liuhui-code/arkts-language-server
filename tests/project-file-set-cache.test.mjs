@@ -265,6 +265,53 @@ test("a watched source creation invalidates dependency resolution only in its wo
   assert.equal(untouchedSecond.state.dependencyClosureCacheHit, true)
 })
 
+test("a nested watched create invalidates only dependency closures that can select it", (t) => {
+  const outerRoot = createWorkspace(t, "created-cross-root-outer", {
+    "Main.ets": "import { target } from './nested/Target'\nexport const main = target()\n",
+    "nested/Target.ts": "export function target(): string { return 'ts' }\n",
+  })
+  const nestedRoot = path.join(outerRoot, "nested")
+  const unrelatedRoot = createWorkspace(t, "created-cross-root-unrelated", {
+    "Main.ets": "import { kept } from './Kept'\nexport const main = kept()\n",
+    "Kept.ets": "export function kept(): string { return 'kept' }\n",
+  })
+  const outerMain = path.join(outerRoot, "Main.ets")
+  const targetTsPath = path.join(nestedRoot, "Target.ts")
+  const targetEtsPath = path.join(nestedRoot, "Target.ets")
+  const unrelatedMain = path.join(unrelatedRoot, "Main.ets")
+  const store = new SemanticDocumentStore()
+  t.after(() => store.dispose?.())
+  const outerPosition = syncPosition(store, outerRoot, outerMain)
+  const unrelatedPosition = syncPosition(store, unrelatedRoot, unrelatedMain)
+
+  store.prepare(outerPosition)
+  store.prepare(unrelatedPosition)
+  assert.equal(store.prepare(outerPosition).state.dependencyClosureCacheHit, true)
+  assert.equal(store.prepare(unrelatedPosition).state.dependencyClosureCacheHit, true)
+
+  fs.writeFileSync(
+    targetEtsPath,
+    "export function target(): string { return 'ets' }\n",
+    "utf8",
+  )
+  store.workspaceFilesChanged({
+    rootPath: nestedRoot,
+    rootDirty: false,
+    changes: [{ path: targetEtsPath, kind: "created" }],
+  })
+  const outerAfterCreate = store.prepare(outerPosition)
+  const unrelatedAfterCreate = store.prepare(unrelatedPosition)
+
+  assert.equal(outerAfterCreate.resetTypeEngine, true)
+  assert.equal(outerAfterCreate.contentRevision, 1)
+  assert.equal(outerAfterCreate.state.dependencyClosureCacheHit, false)
+  assert.ok(documentPaths(outerAfterCreate).includes(targetEtsPath))
+  assert.equal(documentPaths(outerAfterCreate).includes(targetTsPath), false)
+  assert.equal(unrelatedAfterCreate.resetTypeEngine, false)
+  assert.equal(unrelatedAfterCreate.contentRevision, 0)
+  assert.equal(unrelatedAfterCreate.state.dependencyClosureCacheHit, true)
+})
+
 test("a watched source change keeps exact invalidation without resetting either workspace", (t) => {
   const firstRoot = createWorkspace(t, "changed-resolution-first", {
     "Main.ets": "import { target } from './Target'\nexport const main = target()\n",
