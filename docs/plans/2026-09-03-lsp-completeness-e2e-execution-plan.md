@@ -598,9 +598,21 @@ Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产�
 - [x] C10 Contextual manual completion：移除 core 的 ASCII-prefix 前置拒绝，让手动 Ctrl+Space 在
   typed object literal 零前缀位置返回上下文成员；两字符 module-export 门槛、128 quota 与取消语义
   保持不变（`02f8719`）。
-- [ ] C11 Completion fidelity：分别以真实 LSP RED 固化 Unicode identifier prefix、camel/fuzzy
-  filtering、object-property kind、commit characters 与 snippet/insertTextFormat；每项独立切片，
-  禁止一次性改写 completion pipeline。
+- [ ] C11 Completion fidelity（逐项真实 LSP RED，禁止一次性改写 pipeline）：
+  - [x] C11a mid-token replacement：遵循 entry span → list optional span → prefix fallback，
+    `this.meth|od` 接受后仍精确为 `this.method`，list→resolve 保持同一 UTF-16 edit（`5765345`）。
+  - [ ] C11b Unicode identifier prefix：在 provider quota 前识别完整 Unicode identifier，生成精确
+    replacement range，并按 code point 执行两字符 module-export 门槛。
+  - [ ] C11c camel/fuzzy filtering：以有序 subsequence admission 取代 `startsWith`，保留 TypeScript
+    provider 顺序、`filterText`/`sortText`、128 accepted-item quota 与取消 cadence。
+  - [ ] C11d completion kind families：typed object property 不误报 Field；Enum/EnumMember/Module
+    分片贯通 core → public → Legacy → LSP，class field/method 合同不得回归。
+  - [ ] C11e commit characters：贯通 entry override 与 list default，`[]` 不得被 default 覆盖，
+    并尊重客户端 `commitCharactersSupport`。
+  - [ ] C11f InsertReplaceEdit：在客户端 `insertReplaceSupport` 下保留 insert/replace 双 range；
+    不支持时继续发布安全的完整 replacement TextEdit。
+  - [ ] C11g snippets：仅在客户端 `snippetSupport` 下启用 TypeScript snippet preference，并贯通
+    `isSnippet`/`insertTextFormat`，禁止把占位符当 PlainText 插入。
 - [x] W2 Workspace symbol kind：overlay 的 interface/enum/property/constructor/module/type/variable
   不再统一降级为 Variable；未知 sidecar kind 保守降级为 Variable（`eb0ef8c`）。
 - [x] E1 Hover depth：unopened dependency、import alias、JSDoc tags、emoji UTF-16 range，并加入
