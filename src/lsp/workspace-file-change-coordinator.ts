@@ -43,7 +43,6 @@ interface WorkspaceRoot {
 
 interface PendingChange extends WorkspaceFileChange {
   root: WorkspaceRoot
-  canonicalPath: string
   domain: WorkspaceFileDomain
 }
 
@@ -122,11 +121,12 @@ export class WorkspaceFileChangeCoordinator {
     if (candidatePath === undefined || kind === undefined) return
     const domain = workspaceFileDomain(candidatePath)
     if (!domain) return
+    const candidateLexicalPath = path.resolve(candidatePath)
     const candidateCanonicalPath = canonicalPath(candidatePath)
     const root = this.roots.find((entry) => isInside(entry.canonicalPath, candidateCanonicalPath))
     if (!root || this.isDirty(root, domain)) return
 
-    const key = `${root.canonicalPath}\0${candidateCanonicalPath}`
+    const key = `${root.canonicalPath}\0${candidateLexicalPath}`
     const existing = this.pending.get(key)
     if (existing) {
       existing.uri = event.uri
@@ -139,7 +139,6 @@ export class WorkspaceFileChangeCoordinator {
     }
     this.pending.set(key, {
       root,
-      canonicalPath: candidateCanonicalPath,
       domain,
       uri: event.uri,
       kind,

@@ -48,6 +48,36 @@ test("keeps only supported in-root file events with last-event-wins ordering", (
   assert.deepEqual(coordinator.drain(), [])
 })
 
+test("keeps distinct lexical create events that resolve to the same physical source", (t) => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-watched-create-aliases-"))
+  t.after(() => fs.rmSync(workspaceRoot, { recursive: true, force: true }))
+  const targetPath = path.join(workspaceRoot, "Target.ets")
+  const firstPath = path.join(workspaceRoot, "First.ets")
+  const secondPath = path.join(workspaceRoot, "Second.ets")
+  fs.writeFileSync(targetPath, "export const target = 1\n", "utf8")
+  fs.symlinkSync(targetPath, firstPath, "file")
+  fs.symlinkSync(targetPath, secondPath, "file")
+  const rootUri = pathToFileURL(workspaceRoot).href
+  const firstUri = pathToFileURL(firstPath).href
+  const secondUri = pathToFileURL(secondPath).href
+  const { WorkspaceFileChangeCoordinator } = buildDriver(t)
+  const coordinator = new WorkspaceFileChangeCoordinator({ rootUris: [rootUri] })
+
+  coordinator.accept([
+    { uri: firstUri, type: 1 },
+    { uri: secondUri, type: 1 },
+  ])
+
+  assert.deepEqual(coordinator.drain(), [{
+    rootUri,
+    rootDirty: false,
+    changes: [
+      { uri: firstUri, kind: "created" },
+      { uri: secondUri, kind: "created" },
+    ],
+  }])
+})
+
 test("bounds pending paths and degrades only the overloaded root to dirty", (t) => {
   const firstRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-watched-first-"))
   const secondRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-watched-second-"))
