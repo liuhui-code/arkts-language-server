@@ -18,6 +18,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/logging.test.mjs",
       "tests/lsp-feature-matrix.test.mjs",
       "tests/lsp-edits.test.mjs",
+      "tests/portable-artifact-builder.test.mjs",
       "tests/project-file-set-cache.test.mjs",
       "tests/project-resolver.test.mjs",
       "tests/resource-sampler.test.mjs",

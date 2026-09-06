@@ -2,13 +2,8 @@
 
 import fs from "node:fs/promises"
 import path from "node:path"
-import { fileURLToPath } from "node:url"
 
 import { createArtifactManifest } from "../../tests/support/artifact-manifest.mjs"
-
-const scriptDirectory = path.dirname(fileURLToPath(import.meta.url))
-const repositoryRoot = path.resolve(scriptDirectory, "../..")
-
 try {
   const options = parseArguments(process.argv.slice(2))
   await buildPortableArtifact(options)
@@ -20,33 +15,41 @@ try {
 async function buildPortableArtifact({ sourceRoot, output, version, commit, toolchains }) {
   const outputRoot = path.resolve(output)
   const source = path.resolve(sourceRoot)
-  await fs.mkdir(outputRoot)
 
   const sidecarName = process.platform === "win32"
     ? "arkts-index-sidecar.exe"
     : "arkts-index-sidecar"
-  const files = [
+  const inputs = [
     {
-      source: path.join(source, "bin", "arkts-language-server"),
+      source: "bin/arkts-language-server",
       destination: "bin/arkts-language-server",
     },
     {
-      source: path.join(source, "dist", "server.cjs"),
+      source: "dist/server.cjs",
       destination: "dist/server.cjs",
     },
     {
-      source: path.join(source, "target", "release", sidecarName),
+      source: `target/release/${sidecarName}`,
       destination: `target/release/${sidecarName}`,
     },
     {
-      source: path.join(repositoryRoot, "scripts", "install-local.sh"),
+      source: "scripts/install-local.sh",
       destination: "scripts/install-local.sh",
     },
     {
-      source: path.join(scriptDirectory, "install-from-manifest.mjs"),
+      source: "scripts/artifact/install-from-manifest.mjs",
       destination: "scripts/artifact/install-from-manifest.mjs",
     },
   ]
+  const files = []
+  for (const input of inputs) {
+    files.push({
+      source: await resolvePortableInput(source, input.source),
+      destination: input.destination,
+    })
+  }
+
+  await fs.mkdir(outputRoot)
 
   for (const file of files) {
     await copyRegularFile(file.source, path.join(outputRoot, ...file.destination.split("/")))
@@ -64,6 +67,39 @@ async function buildPortableArtifact({ sourceRoot, output, version, commit, tool
     `${JSON.stringify(manifest, null, 2)}\n`,
     { flag: "wx", mode: 0o644 },
   )
+}
+
+async function resolvePortableInput(sourceRoot, relativePath) {
+  const rootStat = await fs.lstat(sourceRoot)
+  if (rootStat.isSymbolicLink() || !rootStat.isDirectory()) {
+    throw new Error(`portable artifact source root must be a regular directory: ${sourceRoot}`)
+  }
+
+  let current = sourceRoot
+  const segments = relativePath.split("/")
+  for (let index = 0; index < segments.length; index += 1) {
+    current = path.join(current, segments[index])
+    const stat = await fs.lstat(current)
+    if (stat.isSymbolicLink()) {
+      throw new Error(`portable artifact input path contains a symbolic link: ${current}`)
+    }
+    if (index < segments.length - 1 && !stat.isDirectory()) {
+      throw new Error(`portable artifact input parent must be a directory: ${current}`)
+    }
+    if (index === segments.length - 1 && !stat.isFile()) {
+      throw new Error(`portable artifact input must be a regular file: ${current}`)
+    }
+  }
+
+  const [resolvedRoot, resolvedInput] = await Promise.all([
+    fs.realpath(sourceRoot),
+    fs.realpath(current),
+  ])
+  const relative = path.relative(resolvedRoot, resolvedInput)
+  if (relative.startsWith(`..${path.sep}`) || relative === ".." || path.isAbsolute(relative)) {
+    throw new Error(`portable artifact input is outside source root: ${current}`)
+  }
+  return current
 }
 
 async function copyRegularFile(source, destination) {

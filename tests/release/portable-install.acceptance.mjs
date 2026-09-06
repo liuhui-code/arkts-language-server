@@ -134,8 +134,12 @@ test("installs one verified artifact without source dependencies or a rebuild", 
     "dist/server.cjs",
     `target/release/${sidecarName}`,
   ]
+  const installerPaths = [
+    "scripts/install-local.sh",
+    "scripts/artifact/install-from-manifest.mjs",
+  ]
 
-  for (const relativePath of runtimePaths) {
+  for (const relativePath of [...runtimePaths, ...installerPaths]) {
     const source = path.join(projectRoot, ...relativePath.split("/"))
     const destination = path.join(buildInput, ...relativePath.split("/"))
     fs.mkdirSync(path.dirname(destination), { recursive: true })
