@@ -658,6 +658,7 @@ function completionKind(kind: SemanticCompletion["kind"]): CompletionItemKind {
     case "function": return CompletionItemKind.Function
     case "class": return CompletionItemKind.Class
     case "enum": return CompletionItemKind.Enum
+    case "enumMember": return CompletionItemKind.EnumMember
     case "interface": return CompletionItemKind.Interface
     case "keyword": return CompletionItemKind.Keyword
     case "variable": return CompletionItemKind.Variable

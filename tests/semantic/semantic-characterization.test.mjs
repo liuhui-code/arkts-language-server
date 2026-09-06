@@ -369,7 +369,7 @@ test("completes contextual object properties without a prefix", async (t) => {
   assert.equal(unfinishedTitle[0].kind, CompletionItemKind.Property)
 })
 
-test("maps enum completion to the LSP enum kind", async (t) => {
+test("maps enum declaration and member completions to their LSP kinds", async (t) => {
   const materialized = await materializeConformanceWorkspace()
   const documentPath = path.join(
     materialized.workspaceRoot,
@@ -384,10 +384,12 @@ test("maps enum completion to the LSP enum kind", async (t) => {
   const source = [
     "enum RenderingMode { Compact, Expanded }",
     "const selected = RenderingMo",
+    "const member = RenderingMode.Com",
     "",
   ].join("\n")
   await fs.promises.writeFile(documentPath, source, "utf8")
-  const prefixStart = source.lastIndexOf("RenderingMo")
+  const prefixStart = source.indexOf("RenderingMo", source.indexOf("const selected"))
+  const memberPrefixStart = source.lastIndexOf("Com")
   const session = new LspSession({
     command: process.execPath,
     args: [path.join(projectRoot, "dist", "server.cjs"), "--stdio"],
@@ -425,6 +427,18 @@ test("maps enum completion to the LSP enum kind", async (t) => {
   const renderingMode = items.filter((item) => item.label === "RenderingMode")
   assert.equal(renderingMode.length, 1, `Expected RenderingMode in ${JSON.stringify(items)}`)
   assert.equal(renderingMode[0].kind, CompletionItemKind.Enum)
+
+  const memberResponse = await session.request("textDocument/completion", {
+    textDocument: { uri: documentUri },
+    position: positionAt(source, memberPrefixStart + "Com".length),
+  })
+  assert.equal(memberResponse.error, undefined, JSON.stringify(memberResponse.error))
+  const memberItems = Array.isArray(memberResponse.result)
+    ? memberResponse.result
+    : memberResponse.result?.items ?? []
+  const compact = memberItems.filter((item) => item.label === "Compact")
+  assert.equal(compact.length, 1, `Expected Compact in ${JSON.stringify(memberItems)}`)
+  assert.equal(compact[0].kind, CompletionItemKind.EnumMember)
 })
 
 test("replaces the complete identifier when completion is accepted mid-token", async (t) => {

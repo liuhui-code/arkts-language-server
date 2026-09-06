@@ -11,6 +11,7 @@ export type SemanticCompletionKind =
   | "function"
   | "class"
   | "enum"
+  | "enumMember"
   | "interface"
   | "keyword"
   | "variable"

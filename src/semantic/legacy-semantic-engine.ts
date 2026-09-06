@@ -563,6 +563,7 @@ function completionKind(kind: string): SemanticCompletionKind {
     case "function":
     case "class":
     case "enum":
+    case "enumMember":
     case "interface":
     case "keyword":
     case "variable":
