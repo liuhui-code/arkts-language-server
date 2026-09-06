@@ -67,3 +67,20 @@ budget-exceeded outcome neither enters the result nor publishes a byte-truncated
 dependency closure. After A shrinks and its exact watcher delta is applied, the
 same store reads C for the first time, publishes the now-complete closure, and
 the next prepare is a warm closure hit without another C read.
+
+### Truncated-closure mutation guard
+
+The first regression alone was not discriminating: deleting the
+`aggregateAdmissionComplete` cache guard could still pass because the test
+changed A before its next prepare. The strengthened test now prepares again
+immediately, without changing disk state. It requires another cold traversal
+and another exact C rejection:
+
+```text
+dependencyClosureCacheHit=false
+C repeated attempt: openSync=1, fstatSync=1, allocUnsafe=0, readSync=0, closeSync=1
+```
+
+With the production cache guard temporarily removed, this assertion was stably
+RED with `dependencyClosureCacheHit=true`. Restoring the guard makes the repeat
+GREEN and proves a byte-truncated frontier was not published as reusable state.

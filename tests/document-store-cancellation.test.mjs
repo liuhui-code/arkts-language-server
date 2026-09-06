@@ -511,6 +511,20 @@ test("cold dependency traversal admits aggregate bytes before reading and retrie
   assert.deepEqual(io, { open: 1, fstat: 1, alloc: 0, read: 0, close: 1 })
   assert.equal(first.state.dependencyClosureCacheHit, false)
 
+  Object.assign(io, { open: 0, fstat: 0, alloc: 0, read: 0, close: 0 })
+  const repeatedWhileFull = store.prepare(position)
+
+  assert.equal(
+    repeatedWhileFull.state.dependencyClosureCacheHit,
+    false,
+    "a byte-truncated dependency frontier must never become a warm closure",
+  )
+  assert.deepEqual(
+    repeatedWhileFull.documents.map(({ path: documentPath }) => documentPath),
+    [mainPath, aPath, bPath],
+  )
+  assert.deepEqual(io, { open: 1, fstat: 1, alloc: 0, read: 0, close: 1 })
+
   fs.writeFileSync(aPath, "export const a = 1\n", "utf8")
   store.workspaceFilesChanged({
     rootPath: workspace,
