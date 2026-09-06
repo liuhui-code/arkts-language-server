@@ -9,6 +9,15 @@ export const MAX_SEMANTIC_WORKER_URI_BYTES = 16 * 1024
 export const MAX_SEMANTIC_WORKER_VALUE_DEPTH = 32
 export const MAX_SEMANTIC_WORKER_VALUE_NODES = 65_536
 
+const sharedArrayBufferByteLengthGetter = Object.getOwnPropertyDescriptor(
+  SharedArrayBuffer.prototype,
+  "byteLength",
+)?.get
+const sharedArrayBufferMaxByteLengthGetter = Object.getOwnPropertyDescriptor(
+  SharedArrayBuffer.prototype,
+  "maxByteLength",
+)?.get
+
 export const SemanticWorkerCancelState = Object.freeze({
   active: 0,
   clientCancelled: 1,
@@ -1101,10 +1110,21 @@ function stringByteMetrics(
 }
 
 function cancellationView(cell: unknown): Int32Array<SharedArrayBuffer> {
-  if (!(cell instanceof SharedArrayBuffer) || cell.byteLength !== Int32Array.BYTES_PER_ELEMENT) {
+  let byteLength: unknown
+  let maxByteLength: unknown
+  try {
+    byteLength = sharedArrayBufferByteLengthGetter?.call(cell)
+    maxByteLength = sharedArrayBufferMaxByteLengthGetter?.call(cell) ?? byteLength
+  } catch {
     throw new SemanticWorkerProtocolError("Invalid semantic worker cancellation cell")
   }
-  return new Int32Array(cell)
+  if (
+    byteLength !== Int32Array.BYTES_PER_ELEMENT
+    || maxByteLength !== Int32Array.BYTES_PER_ELEMENT
+  ) {
+    throw new SemanticWorkerProtocolError("Invalid semantic worker cancellation cell")
+  }
+  return new Int32Array(cell as SharedArrayBuffer, 0, 1)
 }
 
 function isCancellationState(value: number): value is SemanticWorkerCancellationState {

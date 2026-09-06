@@ -90,6 +90,27 @@ node --test tests/semantic-cancellation-scope.test.mjs
 tests 8; pass 8; fail 0; skipped 0; todo 0; cancelled 0
 ```
 
+## Post-commit adversarial hardening
+
+An adversarial review found that reading `cell.byteLength` through ordinary
+property access trusted an overridable getter. A `SharedArrayBuffer` subclass
+could therefore report four bytes while its actual backing store contained
+eight, and `run` would enter the operation. The added regression was RED:
+
+```text
+node --test tests/semantic-cancellation-scope.test.mjs
+not ok 7 - accepts only a valid four-byte SharedArrayBuffer cancellation cell
+AssertionError: Missing expected rejection.
+tests 8; pass 7; fail 1
+```
+
+The protocol now invokes the captured intrinsic `SharedArrayBuffer` byte-length
+getters, rejects a growable cell whose maximum size is not exactly four bytes,
+and constructs a fixed one-element `Int32Array` view. The hostile getter is
+never executed, which also prevents validation-time reentrancy from replacing
+the active request. Focused protocol plus scope evidence is `30/30` GREEN with
+no skipped, todo, or cancelled tests.
+
 Type checking:
 
 ```text

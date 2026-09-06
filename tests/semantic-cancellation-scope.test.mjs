@@ -160,19 +160,40 @@ test("accepts only a valid four-byte SharedArrayBuffer cancellation cell", async
   const scope = new SemanticCancellationScope()
   const corrupt = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT)
   Atomics.store(new Int32Array(corrupt), 0, 99)
+  let forgedGetterCalls = 0
+  class ForgedByteLengthCell extends SharedArrayBuffer {
+    get byteLength() {
+      forgedGetterCalls += 1
+      return Int32Array.BYTES_PER_ELEMENT
+    }
+  }
+  const forgedOversized = new ForgedByteLengthCell(Int32Array.BYTES_PER_ELEMENT * 2)
+  const growable = typeof SharedArrayBuffer.prototype.grow === "function"
+    ? new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT, {
+        maxByteLength: Int32Array.BYTES_PER_ELEMENT * 2,
+      })
+    : undefined
+  let forgedOperationEntered = false
 
   for (const cell of [
     new ArrayBuffer(Int32Array.BYTES_PER_ELEMENT),
     new SharedArrayBuffer(0),
     new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT * 2),
+    forgedOversized,
+    ...(growable ? [growable] : []),
     corrupt,
   ]) {
     await assert.rejects(
-      scope.run(cell, () => "must not run"),
+      scope.run(cell, () => {
+        if (cell === forgedOversized) forgedOperationEntered = true
+        return "must not run"
+      }),
       (error) => error instanceof SemanticWorkerProtocolError,
     )
     assert.equal(scope.hostToken.isCancellationRequested(), false)
   }
+  assert.equal(forgedOperationEntered, false)
+  assert.equal(forgedGetterCalls, 0)
 
   assert.equal(
     await scope.run(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT), () => "valid"),
