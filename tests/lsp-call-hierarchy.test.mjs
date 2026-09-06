@@ -955,6 +955,97 @@ test("rejects raw duplicate work before any result-source filesystem validation"
   assert.equal(resultSourceLookups, 0)
 })
 
+test("rejects raw call work before result-source validation through production registration stdio", async (t) => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-call-hierarchy-raw-preflight-"))
+  t.after(() => fs.rmSync(workspace, { recursive: true, force: true }))
+  const outputDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-call-hierarchy-preflight-server-"))
+  t.after(() => fs.rmSync(outputDirectory, { recursive: true, force: true }))
+  const serverPath = path.join(outputDirectory, "server.cjs")
+  buildSync({
+    stdin: {
+      contents: [
+        "import path from 'node:path'",
+        "import { fileURLToPath, pathToFileURL } from 'node:url'",
+        "import { runLanguageServer } from './src/lsp/run-language-server.ts'",
+        "class Resolver {",
+        "  rootUri = pathToFileURL(process.cwd()).href",
+        "  configure(rootUris) { if (rootUris[0]) this.rootUri = rootUris[0] }",
+        "  projectFor() { return { id: 'raw-preflight-workspace', rootUri: this.rootUri } }",
+        "}",
+        "class Semantic {",
+        "  sync() {}",
+        "  close() {}",
+        "  dispose() {}",
+        "  async diagnose(query) { return { documentVersion: query.document.version, value: [] } }",
+        "  async outgoingCalls(query) {",
+        "    const missingUri = pathToFileURL(path.join(fileURLToPath(query.source.workspaceRootUri), 'Missing.ts')).href",
+        "    const duplicate = { to: {",
+        "      uri: missingUri, name: 'missingTarget', kind: 'function', sourceFingerprint: '0'.repeat(64),",
+        "      range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },",
+        "      selectionRange: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },",
+        "    }, fromRanges: [{ start: { line: 0, character: 0 }, end: { line: 0, character: 0 } }] }",
+        "    return { status: 'complete', calls: Array.from({ length: 257 }, () => duplicate) }",
+        "  }",
+        "  async incomingCalls() { return { status: 'complete', calls: [] } }",
+        "}",
+        "const projects = new Resolver()",
+        "runLanguageServer({ projects, semantic: new Semantic() })",
+      ].join("\n"),
+      resolveDir: projectRoot,
+      sourcefile: "raw-work-preflight-server.ts",
+      loader: "ts",
+    },
+    bundle: true,
+    platform: "node",
+    target: "node20",
+    format: "cjs",
+    outfile: serverPath,
+    logLevel: "silent",
+  })
+  const sourcePath = path.join(workspace, "Source.ets")
+  const sourceText = "export function rawWork(): void {}\n"
+  fs.writeFileSync(sourcePath, sourceText, "utf8")
+  const sourceUri = pathToFileURL(sourcePath).href
+  const rootUri = pathToFileURL(workspace).href
+  const server = new LspProcess({ serverPath })
+  t.after(() => server.close())
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 59,
+    method: "initialize",
+    params: {
+      processId: process.pid,
+      rootUri,
+      capabilities: { general: { positionEncodings: ["utf-16"] } },
+    },
+  })
+  const initialize = await server.response(59)
+  assert.equal(initialize.result.capabilities.callHierarchyProvider, true)
+  server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
+  server.send({
+    jsonrpc: "2.0",
+    id: 60,
+    method: "callHierarchy/outgoingCalls",
+    params: {
+      item: {
+        name: "rawWork",
+        kind: 12,
+        uri: sourceUri,
+        range: protocolRange(0),
+        selectionRange: protocolRange(0),
+        data: callHierarchyData(rootUri),
+      },
+    },
+  })
+  const response = await server.response(60)
+  assert.equal(response.result, undefined)
+  assert.deepEqual(response.error, {
+    code: -32803,
+    message: "Call hierarchy result is incomplete: result-limit-exceeded.",
+  })
+})
+
 test("returns one exact unopened caller with both UTF-16 incoming call sites", async (t) => {
   const server = new LspProcess()
   const openedUris = new Set()
@@ -1976,6 +2067,120 @@ test("validates exact UTF-8 result sources within an aggregate byte budget", asy
   }], rootUri), "result-limit-exceeded")
 })
 
+test("enforces aggregate result-source bytes through production registration stdio", async (t) => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-call-hierarchy-aggregate-stdio-"))
+  t.after(() => fs.rmSync(workspace, { recursive: true, force: true }))
+  const outputDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-call-hierarchy-aggregate-server-"))
+  t.after(() => fs.rmSync(outputDirectory, { recursive: true, force: true }))
+  const serverPath = path.join(outputDirectory, "server.cjs")
+  buildSync({
+    stdin: {
+      contents: [
+        "import { createHash } from 'node:crypto'",
+        "import fs from 'node:fs'",
+        "import path from 'node:path'",
+        "import { fileURLToPath, pathToFileURL } from 'node:url'",
+        "import { runLanguageServer } from './src/lsp/run-language-server.ts'",
+        "class Resolver {",
+        "  rootUri = pathToFileURL(process.cwd()).href",
+        "  configure(rootUris) { if (rootUris[0]) this.rootUri = rootUris[0] }",
+        "  projectFor() { return { id: 'aggregate-stdio-workspace', rootUri: this.rootUri } }",
+        "}",
+        "const fingerprint = (text) => createHash('sha256').update(text).digest('hex')",
+        "class Semantic {",
+        "  sync() {}",
+        "  close() {}",
+        "  dispose() {}",
+        "  async diagnose(query) { return { documentVersion: query.document.version, value: [] } }",
+        "  async outgoingCalls(query) {",
+        "    const rootPath = fileURLToPath(query.source.workspaceRootUri)",
+        "    const count = query.item.name === 'aggregateExact' ? 4 : 5",
+        "    const calls = Array.from({ length: count }, (_value, index) => {",
+        "      const targetPath = path.join(rootPath, index < 4 ? `Exact${index}.ts` : 'Overflow.ts')",
+        "      const bytes = fs.readFileSync(targetPath)",
+        "      return { to: {",
+        "        uri: pathToFileURL(targetPath).href, name: `target${index}`, kind: 'function',",
+        "        sourceFingerprint: fingerprint(bytes),",
+        "        range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },",
+        "        selectionRange: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },",
+        "      }, fromRanges: [{ start: { line: 0, character: index }, end: { line: 0, character: index } }] }",
+        "    })",
+        "    return { status: 'complete', calls }",
+        "  }",
+        "  async incomingCalls() { return { status: 'complete', calls: [] } }",
+        "}",
+        "const projects = new Resolver()",
+        "runLanguageServer({ projects, semantic: new Semantic() })",
+      ].join("\n"),
+      resolveDir: projectRoot,
+      sourcefile: "aggregate-result-source-server.ts",
+      loader: "ts",
+    },
+    bundle: true,
+    platform: "node",
+    target: "node20",
+    format: "cjs",
+    outfile: serverPath,
+    logLevel: "silent",
+  })
+  const exactBytes = Buffer.alloc(4 * 1_024 * 1_024, 0x78)
+  for (let index = 0; index < 4; index += 1) {
+    fs.writeFileSync(path.join(workspace, `Exact${index}.ts`), exactBytes)
+  }
+  fs.writeFileSync(path.join(workspace, "Overflow.ts"), "x", "utf8")
+  const sourcePath = path.join(workspace, "Source.ets")
+  fs.writeFileSync(sourcePath, "export function aggregateSource(): void {}\n", "utf8")
+  const sourceUri = pathToFileURL(sourcePath).href
+  const rootUri = pathToFileURL(workspace).href
+  const server = new LspProcess({ serverPath })
+  t.after(() => server.close())
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 165,
+    method: "initialize",
+    params: {
+      processId: process.pid,
+      rootUri,
+      capabilities: { general: { positionEncodings: ["utf-16"] } },
+    },
+  })
+  const initialize = await server.response(165)
+  assert.equal(initialize.result.capabilities.callHierarchyProvider, true)
+  server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
+  const item = (name) => ({
+    name,
+    kind: 12,
+    uri: sourceUri,
+    range: protocolRange(0),
+    selectionRange: protocolRange(0),
+    data: callHierarchyData(rootUri),
+  })
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 166,
+    method: "callHierarchy/outgoingCalls",
+    params: { item: item("aggregateExact") },
+  })
+  const exact = await server.response(166, 15_000)
+  assert.equal(exact.error, undefined, JSON.stringify(exact.error))
+  assert.equal(exact.result.length, 4)
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 167,
+    method: "callHierarchy/outgoingCalls",
+    params: { item: item("aggregateOverflow") },
+  })
+  const overflow = await server.response(167, 15_000)
+  assert.equal(overflow.result, undefined)
+  assert.deepEqual(overflow.error, {
+    code: -32803,
+    message: "Call hierarchy result is incomplete: result-limit-exceeded.",
+  })
+})
+
 test("fails an outgoing request atomically when a target resolves outside the workspace", async (t) => {
   const parent = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-call-hierarchy-outside-"))
   t.after(() => fs.rmSync(parent, { recursive: true, force: true }))
@@ -2046,24 +2251,68 @@ test("fails an outgoing request atomically when a target resolves outside the wo
   })
 })
 
-test("fails an outgoing request when a source symlink escapes the workspace", async (t) => {
+test("rejects a physically escaped result source through production registration stdio", async (t) => {
   const parent = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-call-hierarchy-symlink-"))
   t.after(() => fs.rmSync(parent, { recursive: true, force: true }))
   const workspace = path.join(parent, "workspace")
   fs.mkdirSync(workspace)
+  const outputDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-call-hierarchy-physical-server-"))
+  t.after(() => fs.rmSync(outputDirectory, { recursive: true, force: true }))
+  const serverPath = path.join(outputDirectory, "server.cjs")
+  buildSync({
+    stdin: {
+      contents: [
+        "import { createHash } from 'node:crypto'",
+        "import fs from 'node:fs'",
+        "import path from 'node:path'",
+        "import { fileURLToPath, pathToFileURL } from 'node:url'",
+        "import { runLanguageServer } from './src/lsp/run-language-server.ts'",
+        "class Resolver {",
+        "  rootUri = pathToFileURL(process.cwd()).href",
+        "  configure(rootUris) { if (rootUris[0]) this.rootUri = rootUris[0] }",
+        "  projectFor() { return { id: 'physical-result-workspace', rootUri: this.rootUri } }",
+        "}",
+        "class Semantic {",
+        "  sync() {}",
+        "  close() {}",
+        "  dispose() {}",
+        "  async diagnose(query) { return { documentVersion: query.document.version, value: [] } }",
+        "  async outgoingCalls(query) {",
+        "    const linkedPath = path.join(fileURLToPath(query.source.workspaceRootUri), 'Linked.ets')",
+        "    const bytes = fs.readFileSync(linkedPath)",
+        "    return { status: 'complete', calls: [{ to: {",
+        "      uri: pathToFileURL(linkedPath).href, name: 'escapedCall', kind: 'function',",
+        "      sourceFingerprint: createHash('sha256').update(bytes).digest('hex'),",
+        "      range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },",
+        "      selectionRange: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },",
+        "    }, fromRanges: [{ start: { line: 0, character: 0 }, end: { line: 0, character: 0 } }] }] }",
+        "  }",
+        "  async incomingCalls() { return { status: 'complete', calls: [] } }",
+        "}",
+        "const projects = new Resolver()",
+        "runLanguageServer({ projects, semantic: new Semantic() })",
+      ].join("\n"),
+      resolveDir: projectRoot,
+      sourcefile: "physical-result-source-server.ts",
+      loader: "ts",
+    },
+    bundle: true,
+    platform: "node",
+    target: "node20",
+    format: "cjs",
+    outfile: serverPath,
+    logLevel: "silent",
+  })
   const sourcePath = path.join(workspace, "Source.ets")
   const escapedPath = path.join(parent, "Escaped.ets")
   const linkedPath = path.join(workspace, "Linked.ets")
-  const sourceText = [
-    "import { escapedCall } from './Linked'",
-    "export function symlinkCaller(): string { return escapedCall() }",
-    "",
-  ].join("\n")
+  const sourceText = "export function symlinkCaller(): void {}\n"
   fs.writeFileSync(sourcePath, sourceText, "utf8")
   fs.writeFileSync(escapedPath, "export function escapedCall(): string { return 'escaped' }\n", "utf8")
   fs.symlinkSync(escapedPath, linkedPath)
   const sourceUri = pathToFileURL(sourcePath).href
-  const server = new LspProcess()
+  const rootUri = pathToFileURL(workspace).href
+  const server = new LspProcess({ serverPath })
   t.after(() => server.close())
 
   server.send({
@@ -2072,42 +2321,30 @@ test("fails an outgoing request when a source symlink escapes the workspace", as
     method: "initialize",
     params: {
       processId: process.pid,
-      rootUri: pathToFileURL(workspace).href,
+      rootUri,
       capabilities: { general: { positionEncodings: ["utf-16"] } },
     },
   })
-  await server.response(93)
+  const initialize = await server.response(93)
+  assert.equal(initialize.result.capabilities.callHierarchyProvider, true)
   server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
   server.send({
     jsonrpc: "2.0",
-    method: "textDocument/didOpen",
+    id: 94,
+    method: "callHierarchy/outgoingCalls",
     params: {
-      textDocument: {
+      item: {
+        name: "symlinkCaller",
+        kind: 12,
         uri: sourceUri,
-        languageId: "arkts",
-        version: 1,
-        text: sourceText,
+        range: protocolRange(0),
+        selectionRange: protocolRange(0),
+        data: callHierarchyData(rootUri),
       },
     },
   })
-  server.send({
-    jsonrpc: "2.0",
-    id: 94,
-    method: "textDocument/prepareCallHierarchy",
-    params: {
-      textDocument: { uri: sourceUri },
-      position: midpoint(exactTextRange(sourceText, "symlinkCaller")),
-    },
-  })
-  const prepared = await server.response(94)
-  assert.equal(prepared.error, undefined, JSON.stringify(prepared.error))
-  server.send({
-    jsonrpc: "2.0",
-    id: 95,
-    method: "callHierarchy/outgoingCalls",
-    params: { item: prepared.result[0] },
-  })
-  const outgoing = await server.response(95)
+  const outgoing = await server.response(94)
+  assert.equal(outgoing.result, undefined)
   assert.deepEqual(outgoing.error, {
     code: -32803,
     message: "Call hierarchy result is incomplete: source-outside-workspace.",

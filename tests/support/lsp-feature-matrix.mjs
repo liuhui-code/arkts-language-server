@@ -190,18 +190,18 @@ export const CURRENT_LSP_FEATURE_MATRIX = Object.freeze({
         ),
         evidence(
           "tests/lsp-call-hierarchy.test.mjs",
-          "enforces physical root ownership and open-source identity in the source authority",
-          "call-hierarchy.bundle.physical-root-open-source-identity",
+          "rejects a physically escaped result source through production registration stdio",
+          "call-hierarchy.bundle.stdio-production-wiring-physical-result-source-validation",
         ),
         evidence(
           "tests/lsp-call-hierarchy.test.mjs",
-          "rejects raw duplicate work before any result-source filesystem validation",
-          "call-hierarchy.bundle.raw-work-preflight",
+          "rejects raw call work before result-source validation through production registration stdio",
+          "call-hierarchy.bundle.stdio-production-wiring-raw-work-preflight-before-source-validation",
         ),
         evidence(
           "tests/lsp-call-hierarchy.test.mjs",
-          "validates exact UTF-8 result sources within an aggregate byte budget",
-          "call-hierarchy.bundle.aggregate-result-source-budget",
+          "enforces aggregate result-source bytes through production registration stdio",
+          "call-hierarchy.bundle.stdio-production-wiring-aggregate-result-source-budget",
         ),
       ],
       artifact: [evidence(
