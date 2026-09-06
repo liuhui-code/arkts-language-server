@@ -35,6 +35,7 @@ import type {
   ProjectMembershipSnapshot,
   SemanticWorkspaceView,
 } from "../workspace/document-store.js"
+import { CooperativeWork } from "./cooperative-work.js"
 import type {
   SemanticCodeFixCandidate,
   SemanticPrepareRenameQueryResult,
@@ -97,6 +98,7 @@ type RenameConflictPreflight =
   | "indeterminate"
 
 export interface TypeScriptLanguageServiceEngineOptions {
+  checkpoint?: () => void
   hostCancellationToken?: ts.HostCancellationToken
   readSourceFile?: (filePath: string) => string | null
   lazySnapshotLimits?: {
@@ -115,6 +117,7 @@ export class TypeScriptLanguageServiceEngine {
   private combinedFileNames: string[] | undefined
   private readonly options: ts.CompilerOptions
   private readonly service: ts.LanguageService
+  private readonly checkpoint: (() => void) | undefined
   private readonly readSourceFile: (filePath: string) => string | null
   private readonly maxLazySnapshots: number
   private readonly maxLazySnapshotBytes: number
@@ -130,11 +133,13 @@ export class TypeScriptLanguageServiceEngine {
   constructor(
     private readonly rootPath: string,
     {
+      checkpoint,
       hostCancellationToken,
       readSourceFile = safeRead,
       lazySnapshotLimits = {},
     }: TypeScriptLanguageServiceEngineOptions = {},
   ) {
+    this.checkpoint = checkpoint
     this.readSourceFile = readSourceFile
     this.maxLazySnapshots = cacheLimit(
       lazySnapshotLimits.maxFiles,
@@ -727,52 +732,69 @@ export class TypeScriptLanguageServiceEngine {
     position: SemanticDocumentPosition,
     includeDeclaration: boolean,
   ): SemanticReferenceQueryResult {
+    const work = new CooperativeWork(this.checkpoint)
+    work.boundary()
     if (this.projectMembershipStatus !== "complete") {
-      return { status: "incomplete", reason: "project-membership-incomplete" }
+      return work.finish({ status: "incomplete", reason: "project-membership-incomplete" })
     }
     const filePath = path.resolve(position.path)
     const script = this.scripts.get(filePath)
-    if (!script) return { status: "incomplete", reason: "source-unavailable" }
+    if (!script) return work.finish({ status: "incomplete", reason: "source-unavailable" })
     script.lastAccess = ++this.accessClock
     const sourceOffset = lineColumnToOffset(script.sourceContent, position.line, position.column)
     const offset = script.virtualDocument.toGeneratedOffset(sourceOffset)
+    work.boundary()
     const definitions = this.service.getDefinitionAtPosition(filePath, offset) ?? []
-    if (definitions.length === 0) return { status: "complete", references: [] }
+    work.boundary()
+    if (definitions.length === 0) return work.finish({ status: "complete", references: [] })
 
-    const referencedSymbols = definitions.flatMap((definition) => (
-      this.service.findReferences(definition.fileName, definition.textSpan.start) ?? []
-    ))
-    const canonicalDefinitionKeys = new Set(definitions.map((definition) => (
-      typescriptSpanKey(path.resolve(definition.fileName), definition.textSpan)
-    )))
+    const canonicalDefinitionKeys = new Set<string>()
+    for (const definition of definitions) {
+      canonicalDefinitionKeys.add(
+        typescriptSpanKey(path.resolve(definition.fileName), definition.textSpan),
+      )
+      work.item()
+    }
     const sourceViews = new Map<string, ScriptRecord | LazySnapshotRecord>()
     const references: SemanticDefinitionCandidate[] = []
     const seen = new Set<string>()
-    for (const symbol of referencedSymbols) {
-      for (const reference of symbol.references) {
-        const targetPath = path.resolve(reference.fileName)
-        const isCanonicalDefinition = reference.isDefinition === true
-          || canonicalDefinitionKeys.has(typescriptSpanKey(targetPath, reference.textSpan))
-        if (!includeDeclaration && isCanonicalDefinition) continue
-        if (!isWithinRoot(this.rootPath, targetPath)) {
-          return { status: "incomplete", reason: "source-outside-workspace" }
+    for (const definition of definitions) {
+      work.boundary()
+      const symbols = this.service.findReferences(
+        definition.fileName,
+        definition.textSpan.start,
+      ) ?? []
+      work.boundary()
+      for (const symbol of symbols) {
+        for (const reference of symbol.references) {
+          const targetPath = path.resolve(reference.fileName)
+          work.item()
+          const isCanonicalDefinition = reference.isDefinition === true
+            || canonicalDefinitionKeys.has(typescriptSpanKey(targetPath, reference.textSpan))
+          if (!includeDeclaration && isCanonicalDefinition) continue
+          if (!isWithinRoot(this.rootPath, targetPath)) {
+            return work.finish({ status: "incomplete", reason: "source-outside-workspace" })
+          }
+          let sourceView = sourceViews.get(targetPath)
+          if (!sourceView) {
+            sourceView = this.scripts.get(targetPath) ?? this.loadLazySnapshot(targetPath)
+            if (!sourceView) {
+              return work.finish({ status: "incomplete", reason: "source-unavailable" })
+            }
+            sourceViews.set(targetPath, sourceView)
+          }
+          const range = exactSourceRange(sourceView, reference.textSpan)
+          if (!range) return work.finish({ status: "incomplete", reason: "source-unmappable" })
+          const key = semanticLocationKey(targetPath, range)
+          if (seen.has(key)) continue
+          seen.add(key)
+          references.push({ path: targetPath, range })
         }
-        let sourceView = sourceViews.get(targetPath)
-        if (!sourceView) {
-          sourceView = this.scripts.get(targetPath) ?? this.loadLazySnapshot(targetPath)
-          if (!sourceView) return { status: "incomplete", reason: "source-unavailable" }
-          sourceViews.set(targetPath, sourceView)
-        }
-        const range = exactSourceRange(sourceView, reference.textSpan)
-        if (!range) return { status: "incomplete", reason: "source-unmappable" }
-        const key = semanticLocationKey(targetPath, range)
-        if (seen.has(key)) continue
-        seen.add(key)
-        references.push({ path: targetPath, range })
       }
     }
-    references.sort(compareSemanticLocations)
-    return { status: "complete", references }
+    work.boundary()
+    references.sort(work.comparator(compareSemanticLocations))
+    return work.finish({ status: "complete", references })
   }
 
   diagnostics(position: SemanticDocumentPosition): SemanticDiagnostic[] {
