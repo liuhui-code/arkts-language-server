@@ -26,6 +26,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/release-artifact-topology.test.mjs",
       "tests/resource-sampler.test.mjs",
       "tests/sdk-discovery.test.mjs",
+      "tests/semantic-cancellation-scope.test.mjs",
       "tests/semantic-worker-protocol.test.mjs",
       "tests/semantic-worker-supervisor.test.mjs",
       "tests/test-evidence.test.mjs",
