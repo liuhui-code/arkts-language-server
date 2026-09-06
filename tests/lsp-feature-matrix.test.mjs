@@ -84,6 +84,9 @@ test("binds the installed semantic umbrella to its exact verified claim set", ()
     "references.artifact.immutable-unopened-barrel-declaration-policy",
     "rename.artifact.immutable-versioned-alias-conflict-applied-semantic-recheck",
     "code-actions.artifact.immutable-list-resolve-apply",
+    "document-highlight.artifact.immutable-versioned-write-read-ranges",
+    "folding-range.artifact.immutable-client-options-line-only-range-limit",
+    "document-formatting.artifact.immutable-edits-apply-idempotent-semantics",
   ]
   const audit = featureMatrixSupport.assertExactVerifiedArtifactClaims({
     matrix: CURRENT_LSP_FEATURE_MATRIX,
@@ -93,7 +96,7 @@ test("binds the installed semantic umbrella to its exact verified claim set", ()
   })
 
   assert.deepEqual(audit.verifiedClaims, [...verifiedClaims].sort())
-  assert.equal(audit.expectedClaims.length, 12)
+  assert.equal(audit.expectedClaims.length, 15)
 })
 
 test("maps the complete public capability contract to executable feature evidence", () => {
@@ -118,14 +121,13 @@ test("maps the complete public capability contract to executable feature evidenc
     "references",
     "rename",
     "code-actions",
-  ])
-  assert.deepEqual(audit.plannedFeatureIds, [
     "document-highlight",
     "folding-range",
     "document-formatting",
   ])
-  assert.equal(audit.requiredCapabilityCount, 14)
-  assert.equal(audit.absentCapabilityCount, 3)
+  assert.deepEqual(audit.plannedFeatureIds, [])
+  assert.equal(audit.requiredCapabilityCount, 17)
+  assert.equal(audit.absentCapabilityCount, 0)
   assert.deepEqual(audit.artifactCoveredFeatureIds, [
     "document-sync",
     "completion",
@@ -139,24 +141,64 @@ test("maps the complete public capability contract to executable feature evidenc
     "references",
     "rename",
     "code-actions",
-  ])
-  assert.deepEqual(audit.artifactGapFeatureIds, [
     "document-highlight",
     "folding-range",
     "document-formatting",
   ])
-  const plannedProviders = new Map([
-    ["document-highlight", "documentHighlightProvider"],
-    ["folding-range", "foldingRangeProvider"],
-    ["document-formatting", "documentFormattingProvider"],
+  assert.deepEqual(audit.artifactGapFeatureIds, [])
+  const editorFeatures = new Map([
+    ["document-highlight", {
+      provider: "documentHighlightProvider",
+      bundle: [{
+        entry: "tests/semantic/document-highlight-depth.test.mjs",
+        test: "highlights declaration writes and reads from the current changed overlay",
+        claim: "document-highlight.bundle.versioned-write-read-ranges",
+      }],
+      artifactClaim: "document-highlight.artifact.immutable-versioned-write-read-ranges",
+    }],
+    ["folding-range", {
+      provider: "foldingRangeProvider",
+      bundle: [
+        {
+          entry: "tests/semantic/folding-range.test.mjs",
+          test: "returns ArkUI, import, comment, and group folds for a line-only client",
+          claim: "folding-range.bundle.arkui-import-comment-group-line-only",
+        },
+        {
+          entry: "tests/semantic/folding-range.test.mjs",
+          test: "honors rangeLimit with deterministic bounded character ranges",
+          claim: "folding-range.bundle.client-range-limit-character-ranges",
+        },
+      ],
+      artifactClaim: "folding-range.artifact.immutable-client-options-line-only-range-limit",
+    }],
+    ["document-formatting", {
+      provider: "documentFormattingProvider",
+      bundle: [{
+        entry: "tests/semantic/document-formatting.test.mjs",
+        test: "formats an ArkUI document without changing diagnostics or symbol identity",
+        claim: "document-formatting.bundle.apply-idempotent-semantics",
+      }],
+      artifactClaim: "document-formatting.artifact.immutable-edits-apply-idempotent-semantics",
+    }],
   ])
-  for (const [featureId, provider] of plannedProviders) {
+  for (const [featureId, expected] of editorFeatures) {
     const feature = CURRENT_LSP_FEATURE_MATRIX.features.find(({ id }) => id === featureId)
-    assert.equal(feature?.state, "planned")
-    assert.deepEqual(feature?.absentCapabilities, [provider])
-    assert.deepEqual(feature?.evidence, { protocol: [], bundle: [], artifact: [] })
-    assert.equal(typeof feature?.artifactGap, "string")
-    assert.ok(feature.artifactGap.length > 0)
+    assert.equal(feature?.state, "enabled")
+    assert.deepEqual(feature?.requiredCapabilities, [{ path: expected.provider, expected: true }])
+    assert.deepEqual(feature?.absentCapabilities, [])
+    assert.deepEqual(feature?.evidence.protocol, [{
+      entry: "tests/lsp-semantic-request-reliability.test.mjs",
+      test: "maps cancellation for every advertised semantic request to RequestCancelled",
+      claim: `${featureId}.protocol.cancellation`,
+    }])
+    assert.deepEqual(feature?.evidence.bundle, expected.bundle)
+    assert.deepEqual(feature?.evidence.artifact, [{
+      entry: "tests/release/portable-install.acceptance.mjs",
+      test: "installs one verified artifact without source dependencies or a rebuild",
+      claim: expected.artifactClaim,
+    }])
+    assert.equal(feature?.artifactGap, null)
   }
   const diagnostics = CURRENT_LSP_FEATURE_MATRIX.features.find(({ id }) => id === "diagnostics")
   assert.deepEqual(diagnostics?.knownGaps, [])
@@ -281,14 +323,14 @@ test("maps the complete public capability contract to executable feature evidenc
   assert.equal(rename?.artifactGap, null)
 })
 
-test("cannot silently drop a planned absent capability baseline", () => {
-  const plannedProviders = new Map([
+test("cannot silently drop an enabled editor capability evidence slice", () => {
+  const requiredProviders = new Map([
     ["document-highlight", "documentHighlightProvider"],
     ["folding-range", "foldingRangeProvider"],
     ["document-formatting", "documentFormattingProvider"],
   ])
 
-  for (const [featureId, provider] of plannedProviders) {
+  for (const [featureId, provider] of requiredProviders) {
     const matrix = structuredClone(CURRENT_LSP_FEATURE_MATRIX)
     matrix.features = matrix.features.filter(({ id }) => id !== featureId)
     assert.throws(
@@ -298,7 +340,7 @@ test("cannot silently drop a planned absent capability baseline", () => {
         capabilityContract: CURRENT_LSP_CAPABILITY_CONTRACT,
         layerManifest: TEST_LAYER_MANIFEST,
       }),
-      new RegExp(`${provider}: absent capability must be covered once; covered by none`),
+      new RegExp(`${provider}: required capability must be covered once; covered by none`),
       featureId,
     )
   }

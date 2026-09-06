@@ -5,7 +5,10 @@ export const CURRENT_LSP_CAPABILITY_CONTRACT = Object.freeze({
     "codeActionProvider",
     "completionProvider",
     "definitionProvider",
+    "documentFormattingProvider",
+    "documentHighlightProvider",
     "documentSymbolProvider",
+    "foldingRangeProvider",
     "hoverProvider",
     "positionEncoding",
     "referencesProvider",
@@ -25,6 +28,9 @@ export const CURRENT_LSP_CAPABILITY_CONTRACT = Object.freeze({
       expected: { codeActionKinds: ["quickfix"], resolveProvider: true },
     },
     { path: "definitionProvider", expected: true },
+    { path: "documentFormattingProvider", expected: true },
+    { path: "documentHighlightProvider", expected: true },
+    { path: "foldingRangeProvider", expected: true },
     { path: "referencesProvider", expected: true },
     { path: "renameProvider", expected: { prepareProvider: true } },
     { path: "hoverProvider", expected: true },
@@ -33,11 +39,7 @@ export const CURRENT_LSP_CAPABILITY_CONTRACT = Object.freeze({
     { path: "documentSymbolProvider", expected: true },
     { path: "workspaceSymbolProvider", expected: true },
   ]),
-  absent: Object.freeze([
-    "documentHighlightProvider",
-    "foldingRangeProvider",
-    "documentFormattingProvider",
-  ]),
+  absent: Object.freeze([]),
 })
 
 export function assertLspCapabilityContract(capabilities, contract) {

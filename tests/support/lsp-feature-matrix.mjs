@@ -336,21 +336,73 @@ export const CURRENT_LSP_FEATURE_MATRIX = Object.freeze({
       )],
       artifactGap: null,
     }),
-    plannedFeature(
-      "document-highlight",
-      "documentHighlightProvider",
-      "No protocol, bundle, or installed-artifact E2E exists; keep the provider absent.",
-    ),
-    plannedFeature(
-      "folding-range",
-      "foldingRangeProvider",
-      "No protocol, bundle, or installed-artifact E2E exists; keep the provider absent.",
-    ),
-    plannedFeature(
-      "document-formatting",
-      "documentFormattingProvider",
-      "No protocol, bundle, or installed-artifact E2E exists; keep the provider absent.",
-    ),
+    enabledFeature({
+      id: "document-highlight",
+      requiredCapabilities: [capability("documentHighlightProvider", true)],
+      protocol: [evidence(
+        "tests/lsp-semantic-request-reliability.test.mjs",
+        "maps cancellation for every advertised semantic request to RequestCancelled",
+        "document-highlight.protocol.cancellation",
+      )],
+      bundle: [evidence(
+        "tests/semantic/document-highlight-depth.test.mjs",
+        "highlights declaration writes and reads from the current changed overlay",
+        "document-highlight.bundle.versioned-write-read-ranges",
+      )],
+      artifact: [evidence(
+        "tests/release/portable-install.acceptance.mjs",
+        "installs one verified artifact without source dependencies or a rebuild",
+        "document-highlight.artifact.immutable-versioned-write-read-ranges",
+      )],
+      artifactGap: null,
+    }),
+    enabledFeature({
+      id: "folding-range",
+      requiredCapabilities: [capability("foldingRangeProvider", true)],
+      protocol: [evidence(
+        "tests/lsp-semantic-request-reliability.test.mjs",
+        "maps cancellation for every advertised semantic request to RequestCancelled",
+        "folding-range.protocol.cancellation",
+      )],
+      bundle: [
+        evidence(
+          "tests/semantic/folding-range.test.mjs",
+          "returns ArkUI, import, comment, and group folds for a line-only client",
+          "folding-range.bundle.arkui-import-comment-group-line-only",
+        ),
+        evidence(
+          "tests/semantic/folding-range.test.mjs",
+          "honors rangeLimit with deterministic bounded character ranges",
+          "folding-range.bundle.client-range-limit-character-ranges",
+        ),
+      ],
+      artifact: [evidence(
+        "tests/release/portable-install.acceptance.mjs",
+        "installs one verified artifact without source dependencies or a rebuild",
+        "folding-range.artifact.immutable-client-options-line-only-range-limit",
+      )],
+      artifactGap: null,
+    }),
+    enabledFeature({
+      id: "document-formatting",
+      requiredCapabilities: [capability("documentFormattingProvider", true)],
+      protocol: [evidence(
+        "tests/lsp-semantic-request-reliability.test.mjs",
+        "maps cancellation for every advertised semantic request to RequestCancelled",
+        "document-formatting.protocol.cancellation",
+      )],
+      bundle: [evidence(
+        "tests/semantic/document-formatting.test.mjs",
+        "formats an ArkUI document without changing diagnostics or symbol identity",
+        "document-formatting.bundle.apply-idempotent-semantics",
+      )],
+      artifact: [evidence(
+        "tests/release/portable-install.acceptance.mjs",
+        "installs one verified artifact without source dependencies or a rebuild",
+        "document-formatting.artifact.immutable-edits-apply-idempotent-semantics",
+      )],
+      artifactGap: null,
+    }),
   ]),
 })
 
@@ -709,18 +761,5 @@ function enabledFeature({
     evidence: { protocol, bundle, artifact },
     artifactGap,
     knownGaps,
-  }
-}
-
-function plannedFeature(id, absentCapability, artifactGap) {
-  return {
-    id,
-    state: "planned",
-    requiredCapabilities: [],
-    absentCapabilities: [absentCapability],
-    protocolEvidenceRequired: false,
-    evidence: { protocol: [], bundle: [], artifact: [] },
-    artifactGap,
-    knownGaps: [],
   }
 }

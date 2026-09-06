@@ -42,17 +42,23 @@ test("production initialize advertises exactly the implemented LSP capability co
   )
 })
 
-test("records mature editor providers as an explicit absent baseline", () => {
-  assert.deepEqual(CURRENT_LSP_CAPABILITY_CONTRACT.absent, [
+test("records mature editor providers as required public capabilities", () => {
+  const providers = [
+    "documentFormattingProvider",
     "documentHighlightProvider",
     "foldingRangeProvider",
-    "documentFormattingProvider",
-  ])
-  for (const provider of CURRENT_LSP_CAPABILITY_CONTRACT.absent) {
+  ]
+  assert.deepEqual(CURRENT_LSP_CAPABILITY_CONTRACT.absent, [])
+  for (const provider of providers) {
     assert.equal(
       CURRENT_LSP_CAPABILITY_CONTRACT.allowedTopLevel.includes(provider),
-      false,
-      `${provider} must remain fail-closed until executable evidence exists`,
+      true,
+      `${provider} must be part of the exact public capability surface`,
+    )
+    assert.deepEqual(
+      CURRENT_LSP_CAPABILITY_CONTRACT.required.find(({ path }) => path === provider),
+      { path: provider, expected: true },
+      `${provider} must remain required once executable evidence exists`,
     )
   }
 })
