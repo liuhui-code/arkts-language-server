@@ -369,6 +369,64 @@ test("completes contextual object properties without a prefix", async (t) => {
   assert.equal(unfinishedTitle[0].kind, CompletionItemKind.Property)
 })
 
+test("maps enum completion to the LSP enum kind", async (t) => {
+  const materialized = await materializeConformanceWorkspace()
+  const documentPath = path.join(
+    materialized.workspaceRoot,
+    "entry",
+    "src",
+    "main",
+    "ets",
+    "pages",
+    "CompletionKinds.ets",
+  )
+  const documentUri = pathToFileURL(documentPath).href
+  const source = [
+    "enum RenderingMode { Compact, Expanded }",
+    "const selected = RenderingMo",
+    "",
+  ].join("\n")
+  await fs.promises.writeFile(documentPath, source, "utf8")
+  const prefixStart = source.lastIndexOf("RenderingMo")
+  const session = new LspSession({
+    command: process.execPath,
+    args: [path.join(projectRoot, "dist", "server.cjs"), "--stdio"],
+    cwd: projectRoot,
+    env: {
+      HOME: path.join(materialized.root, "missing-home"),
+      DEVECO_SDK_HOME: path.join(materialized.root, "missing-deveco"),
+      ARKLINE_HARMONY_SDK_PATH: path.join(materialized.corpusRoot, "sdk", "openharmony"),
+    },
+    rootUri: pathToFileURL(materialized.workspaceRoot).href,
+    capabilities: { general: { positionEncodings: ["utf-16"] } },
+  })
+  t.after(async () => {
+    try {
+      await session.close()
+    } finally {
+      await fs.promises.rm(materialized.root, { recursive: true, force: true })
+    }
+  })
+
+  await session.initialize()
+  session.openDocument({
+    uri: documentUri,
+    languageId: "arkts",
+    version: 1,
+    text: source,
+  })
+  const response = await session.request("textDocument/completion", {
+    textDocument: { uri: documentUri },
+    position: positionAt(source, prefixStart + "RenderingMo".length),
+  })
+
+  assert.equal(response.error, undefined, JSON.stringify(response.error))
+  const items = Array.isArray(response.result) ? response.result : response.result?.items ?? []
+  const renderingMode = items.filter((item) => item.label === "RenderingMode")
+  assert.equal(renderingMode.length, 1, `Expected RenderingMode in ${JSON.stringify(items)}`)
+  assert.equal(renderingMode[0].kind, CompletionItemKind.Enum)
+})
+
 test("replaces the complete identifier when completion is accepted mid-token", async (t) => {
   const materialized = await materializeConformanceWorkspace()
   const documentPath = path.join(

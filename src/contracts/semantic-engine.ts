@@ -10,6 +10,7 @@ export type SemanticCompletionKind =
   | "field"
   | "function"
   | "class"
+  | "enum"
   | "interface"
   | "keyword"
   | "variable"

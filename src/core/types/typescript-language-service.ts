@@ -1709,6 +1709,7 @@ function completionKind(
   }
   if (kind === ts.ScriptElementKind.functionElement) return "function"
   if (kind === ts.ScriptElementKind.classElement) return "class"
+  if (kind === ts.ScriptElementKind.enumElement) return "enum"
   if (kind === ts.ScriptElementKind.interfaceElement) return "interface"
   if (kind === ts.ScriptElementKind.keyword) return "keyword"
   if (kind === ts.ScriptElementKind.constElement || kind === ts.ScriptElementKind.letElement) return "variable"
