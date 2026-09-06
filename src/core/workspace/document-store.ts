@@ -313,6 +313,7 @@ export class SemanticDocumentStore {
     const paths = entry?.paths
     let membershipChanged = false
     let contentChanged = false
+    let dependencyResolutionChanged = false
     for (const change of batch.changes) {
       const sourcePath = path.resolve(change.path)
       if (!SOURCE_EXTENSIONS.includes(path.extname(sourcePath))) continue
@@ -341,6 +342,8 @@ export class SemanticDocumentStore {
         if (change.kind === "changed") {
           this.markWatchedChanged(canonicalRoot, sourcePath)
           contentChanged = true
+        } else {
+          dependencyResolutionChanged = true
         }
       }
       if (change.kind !== "created" || !paths) continue
@@ -370,8 +373,16 @@ export class SemanticDocumentStore {
       }
       membershipChanged = true
     }
+    if (dependencyResolutionChanged) {
+      for (const ownerPath of this.dependencyClosures.keys()) {
+        if (isInside(canonicalRoot, canonicalSourcePath(ownerPath))) {
+          this.dependencyClosures.delete(ownerPath)
+        }
+      }
+      this.typeEngineResetRoots.add(canonicalRoot)
+    }
     if (entry && membershipChanged) entry.revision = ++this.projectMembershipRevision
-    if (contentChanged) {
+    if (contentChanged || dependencyResolutionChanged) {
       this.contentRevisions.set(canonicalRoot, (this.contentRevisions.get(canonicalRoot) ?? 0) + 1)
     }
   }

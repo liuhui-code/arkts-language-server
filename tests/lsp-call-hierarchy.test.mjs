@@ -1,4 +1,5 @@
 import assert from "node:assert/strict"
+import { execFileSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import fs from "node:fs"
 import { createRequire } from "node:module"
@@ -138,6 +139,111 @@ test("prepares a callable and returns its exact cross-file outgoing calls over p
   const unopenedFollowup = await server.response(4)
   assert.equal(unopenedFollowup.error, undefined, JSON.stringify(unopenedFollowup.error))
   assert.deepEqual(unopenedFollowup.result, [])
+})
+
+test("a watched higher-priority source replaces a warm outgoing-call dependency", async (t) => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-call-hierarchy-created-priority-"))
+  t.after(() => fs.rmSync(workspace, { recursive: true, force: true }))
+  const mainPath = path.join(workspace, "Main.ets")
+  const targetTsPath = path.join(workspace, "Target.ts")
+  const targetEtsPath = path.join(workspace, "Target.ets")
+  const mainText = [
+    "import { chosenTarget } from './Target'",
+    "",
+    "export function chooseTarget(): string {",
+    "  return chosenTarget()",
+    "}",
+    "",
+  ].join("\n")
+  fs.writeFileSync(mainPath, mainText, "utf8")
+  fs.writeFileSync(
+    targetTsPath,
+    "export function chosenTarget(): string { return 'ts' }\n",
+    "utf8",
+  )
+  const rootUri = pathToFileURL(workspace).href
+  const mainUri = pathToFileURL(mainPath).href
+  const targetTsUri = pathToFileURL(targetTsPath).href
+  const targetEtsUri = pathToFileURL(targetEtsPath).href
+  const firstServer = new LspProcess({
+    env: { ARKTS_LSP_LOG_DIR: path.join(workspace, "first-logs") },
+  })
+  const freshServer = new LspProcess({
+    env: { ARKTS_LSP_LOG_DIR: path.join(workspace, "fresh-logs") },
+  })
+  t.after(() => firstServer.close())
+  t.after(() => freshServer.close())
+
+  const initializeAndPrepare = async (server, initializeId, prepareId) => {
+    server.send({
+      jsonrpc: "2.0",
+      id: initializeId,
+      method: "initialize",
+      params: {
+        processId: process.pid,
+        rootUri,
+        capabilities: { general: { positionEncodings: ["utf-16"] } },
+      },
+    })
+    await server.response(initializeId)
+    server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
+    server.send({
+      jsonrpc: "2.0",
+      method: "textDocument/didOpen",
+      params: {
+        textDocument: {
+          uri: mainUri,
+          languageId: "arkts",
+          version: 1,
+          text: mainText,
+        },
+      },
+    })
+    server.send({
+      jsonrpc: "2.0",
+      id: prepareId,
+      method: "textDocument/prepareCallHierarchy",
+      params: {
+        textDocument: { uri: mainUri },
+        position: midpoint(exactTextRange(mainText, "chooseTarget")),
+      },
+    })
+    const prepared = await server.response(prepareId)
+    assert.equal(prepared.error, undefined, JSON.stringify(prepared.error))
+    return prepared.result[0]
+  }
+  const outgoingTargetUri = async (server, id, item) => {
+    server.send({
+      jsonrpc: "2.0",
+      id,
+      method: "callHierarchy/outgoingCalls",
+      params: { item },
+    })
+    const outgoing = await server.response(id)
+    assert.equal(outgoing.error, undefined, JSON.stringify(outgoing.error))
+    assert.equal(outgoing.result.length, 1)
+    return outgoing.result[0].to.uri
+  }
+
+  const firstItem = await initializeAndPrepare(firstServer, 5, 6)
+  assert.equal(await outgoingTargetUri(firstServer, 7, firstItem), targetTsUri)
+
+  fs.writeFileSync(
+    targetEtsPath,
+    "export function chosenTarget(): string { return 'ets' }\n",
+    "utf8",
+  )
+  firstServer.send({
+    jsonrpc: "2.0",
+    method: "workspace/didChangeWatchedFiles",
+    params: { changes: [{ uri: targetEtsUri, type: 1 }] },
+  })
+  const afterCreateUri = await outgoingTargetUri(firstServer, 8, firstItem)
+
+  const freshItem = await initializeAndPrepare(freshServer, 9, 10)
+  const freshUri = await outgoingTargetUri(freshServer, 11, freshItem)
+  assert.equal(freshUri, targetEtsUri)
+  assert.equal(afterCreateUri, freshUri, "warm resolution must match a fresh language service")
 })
 
 test("widens a TypeScript arrow span so the exact selection stays inside its range", async (t) => {
@@ -1662,6 +1768,51 @@ test("rejects an unopened result URI that names a directory with a source extens
     await authority.resolve(pathToFileURL(directoryPath).href, rootUri),
     { status: "incomplete", reason: "source-unavailable" },
   )
+})
+
+test("fails a FIFO call hierarchy follow-up without blocking production stdio", async (t) => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-call-hierarchy-fifo-"))
+  t.after(() => fs.rmSync(workspace, { recursive: true, force: true }))
+  const pipePath = path.join(workspace, "Pipe.ts")
+  execFileSync("mkfifo", [pipePath])
+  const rootUri = pathToFileURL(workspace).href
+  const server = new LspProcess()
+  t.after(() => server.close({ graceMs: 100 }))
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 163,
+    method: "initialize",
+    params: {
+      processId: process.pid,
+      rootUri,
+      capabilities: { general: { positionEncodings: ["utf-16"] } },
+    },
+  })
+  await server.response(163)
+  server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
+  server.send({
+    jsonrpc: "2.0",
+    id: 164,
+    method: "callHierarchy/outgoingCalls",
+    params: {
+      item: {
+        name: "pipeCall",
+        kind: 12,
+        uri: pathToFileURL(pipePath).href,
+        range: protocolRange(0),
+        selectionRange: protocolRange(0),
+        data: callHierarchyData(rootUri),
+      },
+    },
+  })
+
+  const response = await server.response(164, 750)
+  assert.equal(response.result, undefined)
+  assert.deepEqual(response.error, {
+    code: -32803,
+    message: "Call hierarchy result is incomplete: source-unavailable.",
+  })
 })
 
 test("enforces physical root ownership and open-source identity in the source authority", async (t) => {

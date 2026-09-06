@@ -1,4 +1,4 @@
-import { promises as fs, type Stats } from "node:fs"
+import { constants, promises as fs, type Stats } from "node:fs"
 import { createHash } from "node:crypto"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
@@ -135,7 +135,17 @@ export class CallHierarchySourceAuthority {
     }
     let handle: Awaited<ReturnType<typeof fs.open>> | undefined
     try {
-      handle = await fs.open(contained.sourceRealPath, "r")
+      const candidate = await fs.stat(contained.sourceRealPath)
+      if (!candidate.isFile() || !isBoundedSize(candidate.size)) {
+        return { status: "incomplete", reason: "source-unavailable" }
+      }
+      if (candidate.size > maxBytes) {
+        return { status: "incomplete", reason: "result-limit-exceeded" }
+      }
+      handle = await fs.open(
+        contained.sourceRealPath,
+        constants.O_RDONLY | constants.O_NONBLOCK,
+      )
       const before = await handle.stat()
       if (!before.isFile() || !isBoundedSize(before.size)) {
         return { status: "incomplete", reason: "source-unavailable" }

@@ -220,6 +220,92 @@ test("invalidates only the requested workspace source-path set", (t) => {
   assert.equal(enumerationCounts.get(fs.realpathSync(secondRoot)), 1)
 })
 
+test("a watched source creation invalidates dependency resolution only in its workspace", (t) => {
+  const firstRoot = createWorkspace(t, "created-resolution-first", {
+    "Main.ets": "import { target } from './Target'\nexport const main = target()\n",
+    "Target.ts": "export function target(): string { return 'ts' }\n",
+  })
+  const secondRoot = createWorkspace(t, "created-resolution-second", {
+    "Main.ets": "import { kept } from './Kept'\nexport const main = kept()\n",
+    "Kept.ets": "export function kept(): string { return 'kept' }\n",
+  })
+  const firstMain = path.join(firstRoot, "Main.ets")
+  const secondMain = path.join(secondRoot, "Main.ets")
+  const targetTsPath = path.join(firstRoot, "Target.ts")
+  const targetEtsPath = path.join(firstRoot, "Target.ets")
+  const store = new SemanticDocumentStore()
+  t.after(() => store.dispose?.())
+  const firstPosition = syncPosition(store, firstRoot, firstMain)
+  const secondPosition = syncPosition(store, secondRoot, secondMain)
+  store.prepare(firstPosition)
+  store.prepare(secondPosition)
+  assert.equal(store.prepare(firstPosition).state.dependencyClosureCacheHit, true)
+  assert.equal(store.prepare(secondPosition).state.dependencyClosureCacheHit, true)
+
+  fs.writeFileSync(
+    targetEtsPath,
+    "export function target(): string { return 'ets' }\n",
+    "utf8",
+  )
+  store.workspaceFilesChanged({
+    rootPath: firstRoot,
+    rootDirty: false,
+    changes: [{ path: targetEtsPath, kind: "created" }],
+  })
+  const firstAfterCreate = store.prepare(firstPosition)
+  const untouchedSecond = store.prepare(secondPosition)
+
+  assert.equal(firstAfterCreate.resetTypeEngine, true)
+  assert.equal(firstAfterCreate.contentRevision, 1)
+  assert.equal(firstAfterCreate.state.dependencyClosureCacheHit, false)
+  assert.ok(documentPaths(firstAfterCreate).includes(targetEtsPath))
+  assert.equal(documentPaths(firstAfterCreate).includes(targetTsPath), false)
+  assert.equal(untouchedSecond.resetTypeEngine, false)
+  assert.equal(untouchedSecond.contentRevision, 0)
+  assert.equal(untouchedSecond.state.dependencyClosureCacheHit, true)
+})
+
+test("a watched source change keeps exact invalidation without resetting either workspace", (t) => {
+  const firstRoot = createWorkspace(t, "changed-resolution-first", {
+    "Main.ets": "import { target } from './Target'\nexport const main = target()\n",
+    "Target.ets": "export function target(): string { return 'old' }\n",
+  })
+  const secondRoot = createWorkspace(t, "changed-resolution-second", {
+    "Main.ets": "import { kept } from './Kept'\nexport const main = kept()\n",
+    "Kept.ets": "export function kept(): string { return 'kept' }\n",
+  })
+  const firstMain = path.join(firstRoot, "Main.ets")
+  const secondMain = path.join(secondRoot, "Main.ets")
+  const targetPath = path.join(firstRoot, "Target.ets")
+  const store = new SemanticDocumentStore()
+  t.after(() => store.dispose?.())
+  const firstPosition = syncPosition(store, firstRoot, firstMain)
+  const secondPosition = syncPosition(store, secondRoot, secondMain)
+  store.prepare(firstPosition)
+  store.prepare(secondPosition)
+
+  fs.writeFileSync(
+    targetPath,
+    "export function target(): string { return 'new' }\n",
+    "utf8",
+  )
+  store.workspaceFilesChanged({
+    rootPath: firstRoot,
+    rootDirty: false,
+    changes: [{ path: targetPath, kind: "changed" }],
+  })
+  const firstAfterChange = store.prepare(firstPosition)
+  const untouchedSecond = store.prepare(secondPosition)
+
+  assert.equal(firstAfterChange.resetTypeEngine, false)
+  assert.deepEqual(firstAfterChange.changedPaths, [targetPath])
+  assert.equal(firstAfterChange.state.dependencyClosureCacheHit, false)
+  assert.equal(documentContent(firstAfterChange, targetPath)?.includes("'new'"), true)
+  assert.equal(untouchedSecond.resetTypeEngine, false)
+  assert.deepEqual(untouchedSecond.changedPaths, [])
+  assert.equal(untouchedSecond.state.dependencyClosureCacheHit, true)
+})
+
 test("advances membership revision across invalidation and watched membership changes", (t) => {
   const workspace = createWorkspace(t, "membership-revision", {
     "Main.ets": "export const main = 1\n",
