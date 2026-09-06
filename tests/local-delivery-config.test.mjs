@@ -130,6 +130,7 @@ exit 0
 `)
   fs.writeFileSync(path.join(fakeBin, "cargo"), `#!/bin/sh
 printf 'cargo %s\\n' "$*" >> "$ARKTS_INSTALL_TEST_LOG"
+printf 'cargo-cwd %s\\n' "$(pwd -P)" >> "$ARKTS_INSTALL_TEST_LOG"
 case "$CARGO_TARGET_DIR" in
   */editors/zed/target)
     mkdir -p "$CARGO_TARGET_DIR/wasm32-wasip2/release"
@@ -222,6 +223,17 @@ exit 0
     for (const command of cargoBuilds) assert.match(command, /^cargo build --locked /)
     assert.equal(cargoBuilds.filter((command) => command.includes("--package arkts-index-sidecar")).length, 4)
     assert.equal(cargoBuilds.filter((command) => command.includes("--target wasm32-wasip2")).length, 4)
+
+    const cargoWorkingDirectories = fs.readFileSync(log, "utf8")
+      .trim()
+      .split("\n")
+      .filter((command) => command.startsWith("cargo-cwd "))
+      .map((command) => command.slice("cargo-cwd ".length))
+    assert.deepEqual(
+      cargoWorkingDirectories,
+      Array(8).fill(fs.realpathSync(fixture)),
+      "cargo must resolve the checked-in Rust toolchain from the project root",
+    )
   } finally {
     fs.rmSync(fixture, { recursive: true, force: true })
   }
