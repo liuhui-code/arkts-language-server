@@ -15,7 +15,7 @@ const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 test("classifies every executable test entry exactly once in an explicit layer", () => {
   const audit = validateTestLayerManifest({ root: projectRoot, manifest: TEST_LAYER_MANIFEST })
 
-  assert.equal(audit.entryCount, 63)
+  assert.equal(audit.entryCount, 65)
   assert.equal(audit.assignments["tests/arkts-document-formatter.test.mjs"], "unit-contract")
   assert.equal(audit.assignments["tests/build-test-server.test.mjs"], "unit-contract")
   assert.equal(
@@ -24,7 +24,9 @@ test("classifies every executable test entry exactly once in an explicit layer",
   )
   assert.equal(audit.assignments["tests/index-adapter.test.mjs"], "unit-contract")
   assert.equal(audit.assignments["tests/folding-range-provider.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/performance-evidence.test.mjs"], "unit-contract")
   assert.equal(audit.assignments["tests/portable-artifact-builder.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/process-resource-probe.test.mjs"], "unit-contract")
   assert.equal(
     audit.assignments["tests/release/index-sidecar.acceptance.mjs"],
     "artifact-e2e",
@@ -91,7 +93,7 @@ test("classifies every executable test entry exactly once in an explicit layer",
     "bundle-e2e",
   )
   assert.deepEqual(audit.layerCounts, {
-    "unit-contract": 26,
+    "unit-contract": 28,
     protocol: 6,
     "bundle-e2e": 26,
     "artifact-e2e": 3,
