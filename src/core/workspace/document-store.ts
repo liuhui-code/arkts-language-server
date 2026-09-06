@@ -307,15 +307,39 @@ export class SemanticDocumentStore {
     current.revision = membershipUnchanged
       ? previous.revision
       : ++this.projectMembershipRevision
-    this.invalidateDiskDocuments([...removedPaths, ...changedPaths])
+    const invalidationMatches = this.invalidateDiskDocuments([...removedPaths, ...changedPaths])
+    const changedRoots = new Set<string>()
+    const resetRoots = new Set<string>()
     for (const filePath of removedPaths) {
       this.markWatchedRemoved(canonicalRoot, filePath)
+      for (const [affectedRoot, affectedPaths] of invalidationMatches.get(filePath) ?? []) {
+        for (const affectedPath of affectedPaths) {
+          this.markWatchedRemoved(affectedRoot, affectedPath)
+        }
+        changedRoots.add(affectedRoot)
+        resetRoots.add(affectedRoot)
+      }
     }
     for (const filePath of changedPaths) {
       this.markWatchedChanged(canonicalRoot, filePath)
+      for (const [affectedRoot, affectedPaths] of invalidationMatches.get(filePath) ?? []) {
+        let physicalAliasAffected = false
+        for (const affectedPath of affectedPaths) {
+          this.markWatchedChanged(affectedRoot, affectedPath)
+          physicalAliasAffected ||= affectedPath !== filePath
+        }
+        changedRoots.add(affectedRoot)
+        if (affectedRoot !== canonicalRoot || physicalAliasAffected) {
+          resetRoots.add(affectedRoot)
+        }
+      }
     }
     if (removedPaths.length > 0 || changedPaths.length > 0) {
-      this.contentRevisions.set(canonicalRoot, (this.contentRevisions.get(canonicalRoot) ?? 0) + 1)
+      changedRoots.add(canonicalRoot)
+    }
+    for (const resetRoot of resetRoots) this.typeEngineResetRoots.add(resetRoot)
+    for (const changedRoot of changedRoots) {
+      this.contentRevisions.set(changedRoot, (this.contentRevisions.get(changedRoot) ?? 0) + 1)
     }
     this.publishProjectMembership(canonicalRoot, current)
     return {

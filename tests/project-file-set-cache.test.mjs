@@ -148,6 +148,54 @@ test("does not infer removals from a partial membership refresh", (t) => {
   assert.deepEqual(refreshed.removedPaths, [])
 })
 
+test("refreshing a nested membership propagates a removed dependency to cross-root closure owners", (t) => {
+  const outerRoot = createWorkspace(t, "refresh-cross-root-outer", {
+    "Main.ets": "import { target } from './nested/Target'\nexport const main = target()\n",
+    "nested/NestedMain.ets": "export const nested = 1\n",
+    "nested/Target.ets": "export function target(): string { return 'target' }\n",
+  })
+  const nestedRoot = path.join(outerRoot, "nested")
+  const unrelatedRoot = createWorkspace(t, "refresh-cross-root-unrelated", {
+    "Main.ets": "import { kept } from './Kept'\nexport const main = kept()\n",
+    "Kept.ets": "export function kept(): string { return 'kept' }\n",
+  })
+  const outerMain = path.join(outerRoot, "Main.ets")
+  const nestedMain = path.join(nestedRoot, "NestedMain.ets")
+  const targetPath = path.join(nestedRoot, "Target.ets")
+  const unrelatedMain = path.join(unrelatedRoot, "Main.ets")
+  const store = new SemanticDocumentStore()
+  t.after(() => store.dispose?.())
+  const outerPosition = syncPosition(store, outerRoot, outerMain)
+  const nestedPosition = syncPosition(store, nestedRoot, nestedMain)
+  const unrelatedPosition = syncPosition(store, unrelatedRoot, unrelatedMain)
+
+  store.prepare(nestedPosition, true)
+  store.prepare(outerPosition)
+  store.prepare(unrelatedPosition)
+  assert.equal(store.prepare(outerPosition).state.dependencyClosureCacheHit, true)
+  assert.equal(store.prepare(unrelatedPosition).state.dependencyClosureCacheHit, true)
+
+  fs.unlinkSync(targetPath)
+  assert.deepEqual(store.refreshProjectMembership(nestedRoot), {
+    changed: true,
+    removedPaths: [targetPath],
+  })
+  const outerAfter = store.prepare(outerPosition)
+  const nestedAfter = store.prepare(nestedPosition, true)
+  const unrelatedAfter = store.prepare(unrelatedPosition)
+
+  assert.deepEqual(outerAfter.removedPaths, [targetPath])
+  assert.equal(outerAfter.contentRevision, 1)
+  assert.equal(outerAfter.resetTypeEngine, true)
+  assert.equal(outerAfter.state.dependencyClosureCacheHit, false)
+  assert.equal(documentPaths(outerAfter).includes(targetPath), false)
+  assert.deepEqual(nestedAfter.removedPaths, [targetPath])
+  assert.equal(nestedAfter.contentRevision, 1)
+  assert.equal(unrelatedAfter.contentRevision, 0)
+  assert.equal(unrelatedAfter.resetTypeEngine, false)
+  assert.equal(unrelatedAfter.state.dependencyClosureCacheHit, true)
+})
+
 test("batches changed-source invalidation across dependency closures", (t) => {
   const workspace = createWorkspace(t, "refresh-batched-invalidation", {
     "Main.ets": "export const main = 1\n",
