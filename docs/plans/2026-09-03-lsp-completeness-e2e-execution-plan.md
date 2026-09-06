@@ -569,6 +569,8 @@ Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产�
     overflow 统一 OR，冻结输入/identity/no-refill/mixed-provider 已覆盖（`5d039d0`）。
   - [ ] S5 completion range cost：把相同 fallback range 提出 per-item loop，并以 line-start index
     消除最多 128 次 `O(file size)` 坐标扫描；在 T9 记录大文件 p95/RSS/cancel latency。
+    - [x] S5a 虚拟文档复用 immutable line-start index，并以二分查找完成 span→range 映射
+      （T9 基准与报告仍待补齐）。
   - [ ] S6 TypeScript native incomplete continuation：加入 version-aware LSP context、
     `allowIncompleteCompletions` 与有界 continuation cache；不得把本地 truthful truncation 误报为
     已支持 continuation。

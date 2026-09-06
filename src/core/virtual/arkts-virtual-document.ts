@@ -1,7 +1,7 @@
 import ts from "typescript"
 
 import type { SemanticTextRange } from "../protocol.js"
-import { offsetToLineColumn } from "../types/text-position.js"
+import { createLineStartIndex, offsetToLineColumn } from "../types/text-position.js"
 
 const MAX_ARKUI_BUILDER_TRANSFORMS = 512
 const MAX_ARKUI_GENERATED_EXPANSION = 8 * 1024
@@ -35,6 +35,7 @@ export function createArktsVirtualDocument(
     ? collectArktsRewrites(sourceContent)
     : []
   const { generatedContent, segments } = applyRewrites(sourceContent, rewrites)
+  const sourceLineStarts = createLineStartIndex(sourceContent)
 
   const toGeneratedOffset = (offset: number) => mapOffset(
     bounded(offset, sourceContent.length),
@@ -55,8 +56,8 @@ export function createArktsVirtualDocument(
     generatedSpanToSourceRange(start, length) {
       const sourceStart = toSourceOffset(start)
       const sourceEnd = toSourceOffset(start + length)
-      const from = offsetToLineColumn(sourceContent, sourceStart)
-      const to = offsetToLineColumn(sourceContent, sourceEnd)
+      const from = offsetToLineColumn(sourceContent, sourceStart, sourceLineStarts)
+      const to = offsetToLineColumn(sourceContent, sourceEnd, sourceLineStarts)
       return {
         startLine: from.line,
         startColumn: from.column,

@@ -148,6 +148,14 @@ test("cancels references during result mapping without publishing partial result
   )
 })
 
+test("maps large-file offsets through a reusable line-start index", (t) => {
+  const { createLineStartIndex, offsetToLineColumn } = buildDriver(t)
+  const source = `${Array.from({ length: 10000 }, (_, index) => `line${index}`).join("\n")}\nlast`
+  const index = createLineStartIndex(source)
+  const offset = source.lastIndexOf("last") + 2
+  assert.deepEqual(offsetToLineColumn(source, offset, index), { line: 10001, column: 3 })
+})
+
 test("cancels completion during the bounded raw entry scan without publishing partial results", async (t) => {
   const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-ts-completion-cancel-"))
   t.after(() => fs.rmSync(workspaceRoot, { recursive: true, force: true }))
@@ -1145,6 +1153,7 @@ function buildDriver(t) {
         'export { TypeScriptLanguageServiceEngine } from "./src/core/types/typescript-language-service.ts"',
         'export { SemanticCancellationScope } from "./src/semantic/semantic-cancellation-scope.ts"',
         'export { SemanticWorkerCancelState } from "./src/semantic/worker-protocol.ts"',
+        'export { createLineStartIndex, offsetToLineColumn } from "./src/core/types/text-position.ts"',
         'export const TypeScriptOperationCanceledException = ts.OperationCanceledException',
       ].join("\n"),
       resolveDir: projectRoot,
