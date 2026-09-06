@@ -126,19 +126,105 @@ in one closure pass, and then routes each returned path to its affected roots.
 The cost is therefore proportional to one bounded closure scan plus the small
 set of affected workspace roots, rather than changes multiplied by closures.
 
+## Root-dirty and physical-identity follow-up
+
+Follow-up baseline: `2c690c3865fbd2dc32510a511e16020d8f09f8c0` (the
+document-store behavior under review was introduced by `848d874`).
+
+Three public stdio tracers exposed separate stale-cache paths.
+
+First, an outer `textDocument/references` request warmed a declaration in a
+nested workspace. Deleting that declaration and sending 1,025 distinct nested
+source events crossed the coordinator's 1,024-path bound, so the exact events
+were intentionally replaced by `rootDirty`. The warm outer engine retained the
+deleted URI although a fresh server did not:
+
+```text
+node --test --test-name-pattern="overflowed nested watched events" \
+  tests/lsp-workspace-file-changes.test.mjs
+not ok 4 - overflowed nested watched events remove a deleted dependency from warm outer references
+expected: [file:///.../outer/Main.ets, file:///.../outer/Main.ets]
+actual:   [file:///.../outer/Main.ets, file:///.../outer/Main.ets,
+           file:///.../outer/nested/Target.ets]
+```
+
+Second, `Main.ets` imported `Alias.ets`, a symlink to `Target.ets`. The target
+was rewritten from a `string` return to an equal-byte `number` return and its
+mtime was restored to the exact pre-warm value. A watched change using the
+physical `Target.ets` spelling left the warm hover stale because the closure
+contained only the lexical alias:
+
+```text
+node --test --test-name-pattern="physical-path watched change" \
+  tests/lsp-workspace-file-changes.test.mjs
+not ok 5 - a physical-path watched change invalidates a warm symlink-alias hover
+expected: (alias) target(): number
+actual:   (alias) target(): string
+```
+
+Third, a warm import selected `Target.ts` while the higher-priority
+`Target.ets` candidate was absent. Creating `Target.ets` as a symlink to
+`Elsewhere.ets` exposed the inverse identity problem: physical-only event
+matching lost the lexical candidate name, so the warm server kept `Target.ts`:
+
+```text
+node --test --test-name-pattern="watched symlink create" \
+  tests/lsp-workspace-file-changes.test.mjs
+not ok 3 - a watched symlink create invalidates its lexical module candidate
+expected: file:///.../nested/Target.ets
+actual:   file:///.../nested/Target.ts
+```
+
+The cache now records the physical identity of every bounded document and the
+parallel physical identities of each at-most-256-document dependency closure.
+An exact watched batch canonicalizes its root once and every accepted source
+path once, builds raw-and-physical lookup keys, scans resident documents and
+dependency closures once, and reports the closure's original script spelling
+to its owner. This keeps TypeScript deltas aligned with the keys it has already
+seen. A same-root physical alias conservatively receives a one-shot engine
+reset because TypeScript also caches module resolution by script path; ordinary
+same-spelling changes remain incremental.
+
+Missing module candidates retain both bounded lexical and prospective
+canonical identities. Created symlinks therefore match the import-visible name
+as well as their target. Deleting a symlink still matches its lexical name after
+`realpath` is no longer available. A case-insensitive-volume characterization
+proves that a differently cased spelling maps through the same physical
+identity. Open overlays remain authoritative and are never evicted by a disk
+identity match.
+
+Root-dirty recovery does not perform a synchronous filesystem sweep. It uses
+the physical identities captured while the bounded closures were built,
+invalidates each closure once, advances the dirty root and only its affected
+closure-owner roots, and gives each one a one-shot reset. Because overflow has
+discarded the event kinds, an outer owner receives a full reset rather than a
+fabricated removal delta; its next lazy prepare reconstructs the exact closure.
+The dirty root retains the existing bounded removal/reset contract. Unrelated
+roots remain warm.
+
+The I/O assertion measures only the synchronous
+`workspaceFilesChanged({ rootDirty: true })` call, after all three closures are
+warm and after the target is deleted; it excludes the subsequent lazy
+`prepare`. Instrumented `fs.statSync` observed `0` calls and
+`fs.realpathSync.native` observed exactly `1` call for the dirty root. The same
+test observed one `paths.some` traversal per cached closure. A separate
+two-event test observes three realpath calls total: one root plus one per event,
+not another event-by-closure multiplier.
+
 ## GREEN evidence
 
 ```text
-node --test tests/lsp-workspace-file-changes.test.mjs
-tests 4; pass 4; fail 0
-
-node --test tests/document-store-cancellation.test.mjs \
+node --test --test-concurrency=1 \
+  tests/lsp-workspace-file-changes.test.mjs \
   tests/project-file-set-cache.test.mjs \
+  tests/document-store-cancellation.test.mjs \
   tests/workspace-file-change-coordinator.test.mjs
-tests 48; pass 48; fail 0
+tests 60; pass 60; fail 0
 
-node --test tests/lsp-call-hierarchy.test.mjs
-tests 34; pass 34; fail 0
+node --test --test-concurrency=1 \
+  tests/lsp-call-hierarchy.test.mjs \
+  tests/lsp-workspace-global-freshness.test.mjs
+tests 47; pass 47; fail 0
 
 pnpm check
 tsc --noEmit -p tsconfig.json: PASS

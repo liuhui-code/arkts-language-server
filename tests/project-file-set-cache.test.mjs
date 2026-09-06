@@ -177,6 +177,10 @@ test("batches changed-source invalidation across dependency closures", (t) => {
     store.dependencyClosures.set(path.join(workspace, `Owner${index}.ets`), {
       contentGeneration: 1,
       paths,
+      physicalPaths: [...paths],
+      workspaceRoot: workspace,
+      creationCandidatePaths: [],
+      creationCandidatesComplete: true,
     })
   }
   fs.writeFileSync(firstPath, "export const first = 100\n", "utf8")
@@ -215,6 +219,7 @@ test("batches watched exact invalidation across dependency closures", (t) => {
     store.dependencyClosures.set(path.join(workspace, `Owner${index}.ets`), {
       contentGeneration: 1,
       paths,
+      physicalPaths: [...paths],
       workspaceRoot: workspace,
       creationCandidatePaths: [],
       creationCandidatesComplete: true,
@@ -223,19 +228,34 @@ test("batches watched exact invalidation across dependency closures", (t) => {
   fs.writeFileSync(firstPath, "export const first = 100\n", "utf8")
   fs.writeFileSync(secondPath, "export const second = 200\n", "utf8")
 
-  store.workspaceFilesChanged({
-    rootPath: workspace,
-    rootDirty: false,
-    changes: [
-      { path: firstPath, kind: "changed" },
-      { path: secondPath, kind: "changed" },
-    ],
-  })
+  const originalRealpathNative = fs.realpathSync.native
+  let realpathCalls = 0
+  fs.realpathSync.native = (...args) => {
+    realpathCalls += 1
+    return originalRealpathNative(...args)
+  }
+  try {
+    store.workspaceFilesChanged({
+      rootPath: workspace,
+      rootDirty: false,
+      changes: [
+        { path: firstPath, kind: "changed" },
+        { path: secondPath, kind: "changed" },
+      ],
+    })
+  } finally {
+    fs.realpathSync.native = originalRealpathNative
+  }
 
   assert.equal(
     closureScans,
     3,
     "one watched batch must inspect each dependency closure at most once",
+  )
+  assert.equal(
+    realpathCalls,
+    3,
+    "the root and each watched path must be canonicalized once per batch",
   )
 })
 
@@ -358,6 +378,43 @@ test("a nested watched create invalidates only dependency closures that can sele
   assert.equal(unrelatedAfterCreate.resetTypeEngine, false)
   assert.equal(unrelatedAfterCreate.contentRevision, 0)
   assert.equal(unrelatedAfterCreate.state.dependencyClosureCacheHit, true)
+})
+
+test("a watched symlink create matches its missing lexical resolution candidate", (t) => {
+  const outerRoot = createWorkspace(t, "created-symlink-candidate", {
+    "Main.ets": "import { target } from './nested/Target'\nexport const main = target()\n",
+    "nested/Target.ts": "export function target(): string { return 'ts' }\n",
+    "nested/Elsewhere.ets": "export function target(): string { return 'elsewhere' }\n",
+  })
+  const nestedRoot = path.join(outerRoot, "nested")
+  const mainPath = path.join(outerRoot, "Main.ets")
+  const targetTsPath = path.join(nestedRoot, "Target.ts")
+  const targetEtsPath = path.join(nestedRoot, "Target.ets")
+  const elsewherePath = path.join(nestedRoot, "Elsewhere.ets")
+  const store = new SemanticDocumentStore()
+  t.after(() => store.dispose?.())
+  const position = syncPosition(store, outerRoot, mainPath)
+  const warm = store.prepare(position)
+  assert.equal(documentPaths(warm).includes(targetTsPath), true)
+  assert.equal(
+    [...store.dependencyClosures.values()].some((closure) => (
+      closure.creationCandidatePaths.includes(targetEtsPath)
+    )),
+    true,
+  )
+
+  fs.symlinkSync(elsewherePath, targetEtsPath, "file")
+  store.workspaceFilesChanged({
+    rootPath: nestedRoot,
+    rootDirty: false,
+    changes: [{ path: targetEtsPath, kind: "created" }],
+  })
+  const changed = store.prepare(position)
+
+  assert.equal(changed.resetTypeEngine, true)
+  assert.equal(changed.state.dependencyClosureCacheHit, false)
+  assert.equal(documentPaths(changed).includes(targetEtsPath), true)
+  assert.equal(documentPaths(changed).includes(targetTsPath), false)
 })
 
 test("a nested watched delete propagates the exact removal only to closure owners", (t) => {
@@ -489,6 +546,178 @@ test("a watched source change keeps exact invalidation without resetting either 
   assert.equal(untouchedSecond.resetTypeEngine, false)
   assert.deepEqual(untouchedSecond.changedPaths, [])
   assert.equal(untouchedSecond.state.dependencyClosureCacheHit, true)
+})
+
+test("a physical watched change invalidates a cached symlink dependency identity", (t) => {
+  const workspace = createWorkspace(t, "changed-symlink-identity", {
+    "Main.ets": "import { target } from './Alias'\nexport const main = target()\n",
+    "Target.ets": "export function target(): string { return 'old' }\n",
+  })
+  const mainPath = path.join(workspace, "Main.ets")
+  const targetPath = path.join(workspace, "Target.ets")
+  const aliasPath = path.join(workspace, "Alias.ets")
+  fs.symlinkSync(targetPath, aliasPath, "file")
+  const stableTimestamp = new Date("2020-01-02T03:04:05.000Z")
+  fs.utimesSync(targetPath, stableTimestamp, stableTimestamp)
+  const store = new SemanticDocumentStore()
+  t.after(() => store.dispose?.())
+  const position = syncPosition(store, workspace, mainPath)
+  const warm = store.prepare(position)
+  assert.equal(documentContent(warm, aliasPath)?.includes(": string"), true)
+
+  fs.writeFileSync(
+    targetPath,
+    "export function target(): number { return 12345 }\n",
+    "utf8",
+  )
+  fs.utimesSync(targetPath, stableTimestamp, stableTimestamp)
+  store.workspaceFilesChanged({
+    rootPath: workspace,
+    rootDirty: false,
+    changes: [{ path: targetPath, kind: "changed" }],
+  })
+  const changed = store.prepare(position)
+
+  assert.equal(documentContent(changed, aliasPath)?.includes(": number"), true)
+  assert.deepEqual(changed.changedPaths, [targetPath, aliasPath])
+  assert.equal(changed.state.dependencyClosureCacheHit, false)
+})
+
+test("a watched change matches a dependency through a case-insensitive path alias", (t) => {
+  const workspace = createWorkspace(t, "changed-case-identity", {
+    "Main.ets": "import { target } from './target'\nexport const main = target()\n",
+    "Target.ets": "export function target(): string { return 'old' }\n",
+  })
+  const mainPath = path.join(workspace, "Main.ets")
+  const targetPath = path.join(workspace, "Target.ets")
+  const aliasPath = path.join(workspace, "target.ets")
+  if (!fs.existsSync(aliasPath)) fs.symlinkSync(targetPath, aliasPath, "file")
+  const stableTimestamp = new Date("2020-01-02T03:04:05.000Z")
+  fs.utimesSync(targetPath, stableTimestamp, stableTimestamp)
+  const store = new SemanticDocumentStore()
+  t.after(() => store.dispose?.())
+  const position = syncPosition(store, workspace, mainPath)
+  const warm = store.prepare(position)
+  assert.equal(documentContent(warm, aliasPath)?.includes(": string"), true)
+
+  fs.writeFileSync(
+    targetPath,
+    "export function target(): number { return 12345 }\n",
+    "utf8",
+  )
+  fs.utimesSync(targetPath, stableTimestamp, stableTimestamp)
+  store.workspaceFilesChanged({
+    rootPath: workspace,
+    rootDirty: false,
+    changes: [{ path: targetPath, kind: "changed" }],
+  })
+  const changed = store.prepare(position)
+
+  assert.equal(documentContent(changed, aliasPath)?.includes(": number"), true)
+  assert.deepEqual(changed.changedPaths, [targetPath, aliasPath])
+  assert.equal(changed.resetTypeEngine, true)
+})
+
+test("a deleted symlink keeps lexical invalidation after physical identity disappears", (t) => {
+  const workspace = createWorkspace(t, "deleted-symlink-identity", {
+    "Main.ets": "import { target } from './Alias'\nexport const main = target()\n",
+    "Target.ets": "export function target(): string { return 'target' }\n",
+  })
+  const mainPath = path.join(workspace, "Main.ets")
+  const targetPath = path.join(workspace, "Target.ets")
+  const aliasPath = path.join(workspace, "Alias.ets")
+  fs.symlinkSync(targetPath, aliasPath, "file")
+  const store = new SemanticDocumentStore()
+  t.after(() => store.dispose?.())
+  const position = syncPosition(store, workspace, mainPath)
+  assert.equal(documentPaths(store.prepare(position)).includes(aliasPath), true)
+
+  fs.unlinkSync(aliasPath)
+  store.workspaceFilesChanged({
+    rootPath: workspace,
+    rootDirty: false,
+    changes: [{ path: aliasPath, kind: "deleted" }],
+  })
+  const changed = store.prepare(position)
+
+  assert.equal(changed.state.dependencyClosureCacheHit, false)
+  assert.equal(documentPaths(changed).includes(aliasPath), false)
+  assert.deepEqual(changed.removedPaths, [aliasPath])
+})
+
+test("a nested root-dirty reset reaches only closure owners without snapshot I/O", (t) => {
+  const outerRoot = createWorkspace(t, "dirty-cross-root-outer", {
+    "Main.ets": "import { target } from './nested/Target'\nexport const main = target()\n",
+    "nested/NestedMain.ets": "import { target } from './Target'\nexport const nested = target()\n",
+    "nested/Target.ets": "export function target(): string { return 'ets' }\n",
+    "nested/Target.ts": "export function target(): string { return 'ts' }\n",
+  })
+  const nestedRoot = path.join(outerRoot, "nested")
+  const unrelatedRoot = createWorkspace(t, "dirty-cross-root-unrelated", {
+    "Main.ets": "import { kept } from './Kept'\nexport const main = kept()\n",
+    "Kept.ets": "export function kept(): string { return 'kept' }\n",
+  })
+  const store = new SemanticDocumentStore()
+  t.after(() => store.dispose?.())
+  const outerPosition = syncPosition(store, outerRoot, path.join(outerRoot, "Main.ets"))
+  const nestedPosition = syncPosition(store, nestedRoot, path.join(nestedRoot, "NestedMain.ets"))
+  const unrelatedPosition = syncPosition(store, unrelatedRoot, path.join(unrelatedRoot, "Main.ets"))
+  const targetEtsPath = path.join(nestedRoot, "Target.ets")
+  const targetTsPath = path.join(nestedRoot, "Target.ts")
+  store.prepare(outerPosition)
+  store.prepare(nestedPosition)
+  store.prepare(unrelatedPosition)
+  assert.equal(store.prepare(outerPosition).state.dependencyClosureCacheHit, true)
+  assert.equal(store.prepare(nestedPosition).state.dependencyClosureCacheHit, true)
+  assert.equal(store.prepare(unrelatedPosition).state.dependencyClosureCacheHit, true)
+
+  let closureScans = 0
+  const closureCount = store.dependencyClosures.size
+  for (const closure of store.dependencyClosures.values()) {
+    const originalSome = closure.paths.some
+    closure.paths.some = function some(...args) {
+      closureScans += 1
+      return originalSome.apply(this, args)
+    }
+  }
+  fs.unlinkSync(targetEtsPath)
+  const originalStat = fs.statSync
+  const originalRealpathNative = fs.realpathSync.native
+  let statCalls = 0
+  let realpathCalls = 0
+  fs.statSync = (...args) => {
+    statCalls += 1
+    return originalStat(...args)
+  }
+  fs.realpathSync.native = (...args) => {
+    realpathCalls += 1
+    return originalRealpathNative(...args)
+  }
+  try {
+    store.workspaceFilesChanged({ rootPath: nestedRoot, rootDirty: true, changes: [] })
+  } finally {
+    fs.statSync = originalStat
+    fs.realpathSync.native = originalRealpathNative
+  }
+
+  assert.equal(statCalls, 0, "overflow recovery must not stat every cached source")
+  assert.equal(realpathCalls, 1, "only the dirty workspace root is canonicalized")
+  assert.equal(closureScans, closureCount, "each dependency closure is scanned once")
+  const outerAfter = store.prepare(outerPosition)
+  const nestedAfter = store.prepare(nestedPosition)
+  const unrelatedAfter = store.prepare(unrelatedPosition)
+  assert.equal(outerAfter.resetTypeEngine, true)
+  assert.equal(outerAfter.contentRevision, 1)
+  assert.deepEqual(outerAfter.removedPaths, [])
+  assert.equal(outerAfter.state.dependencyClosureCacheHit, false)
+  assert.equal(documentPaths(outerAfter).includes(targetEtsPath), false)
+  assert.equal(documentPaths(outerAfter).includes(targetTsPath), true)
+  assert.equal(nestedAfter.resetTypeEngine, true)
+  assert.equal(nestedAfter.contentRevision, 1)
+  assert.equal(unrelatedAfter.resetTypeEngine, false)
+  assert.equal(unrelatedAfter.contentRevision, 0)
+  assert.equal(unrelatedAfter.state.dependencyClosureCacheHit, true)
+  assert.equal(store.prepare(outerPosition).resetTypeEngine, false)
 })
 
 test("advances membership revision across invalidation and watched membership changes", (t) => {
