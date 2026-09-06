@@ -56,7 +56,8 @@ test("the package delegates every release check to one serialized driver", () =>
     "./scripts/check-zed-queries.sh",
     "cargo fmt --manifest-path editors/zed/Cargo.toml -- --check",
     "cargo build --manifest-path editors/zed/Cargo.toml --locked --target wasm32-wasip2 --release",
-    "node --test --test-concurrency=1 tests/release/*.acceptance.mjs",
+    "pnpm test:e2e:artifact",
+    "pnpm test:e2e:large",
   ]
   let previousGate = -1
   for (const gate of orderedGates) {
@@ -64,6 +65,12 @@ test("the package delegates every release check to one serialized driver", () =>
     assert.ok(gatePosition > previousGate, `${gate} must follow the preceding release gate`)
     previousGate = gatePosition
   }
+
+  assert.doesNotMatch(releaseDriver, /node --test|tests\/release\/.*acceptance\.mjs/)
+  assert.equal(releaseDriver.match(/^pnpm check:fast$/gm)?.length, 1)
+  assert.equal(releaseDriver.match(/^pnpm build(?:\s|$)/gm)?.length ?? 0, 0)
+  assert.equal(releaseDriver.match(/^pnpm test:e2e:artifact$/gm)?.length, 1)
+  assert.equal(releaseDriver.match(/^pnpm test:e2e:large$/gm)?.length, 1)
 })
 
 test("the ArkTS language config enables comments, autoclosing, and ArkTS identifier characters", () => {
@@ -123,6 +130,7 @@ exit 0
 `)
   fs.writeFileSync(path.join(fakeBin, "cargo"), `#!/bin/sh
 printf 'cargo %s\\n' "$*" >> "$ARKTS_INSTALL_TEST_LOG"
+printf 'cargo-cwd %s\\n' "$(pwd -P)" >> "$ARKTS_INSTALL_TEST_LOG"
 case "$CARGO_TARGET_DIR" in
   */editors/zed/target)
     mkdir -p "$CARGO_TARGET_DIR/wasm32-wasip2/release"
@@ -215,6 +223,17 @@ exit 0
     for (const command of cargoBuilds) assert.match(command, /^cargo build --locked /)
     assert.equal(cargoBuilds.filter((command) => command.includes("--package arkts-index-sidecar")).length, 4)
     assert.equal(cargoBuilds.filter((command) => command.includes("--target wasm32-wasip2")).length, 4)
+
+    const cargoWorkingDirectories = fs.readFileSync(log, "utf8")
+      .trim()
+      .split("\n")
+      .filter((command) => command.startsWith("cargo-cwd "))
+      .map((command) => command.slice("cargo-cwd ".length))
+    assert.deepEqual(
+      cargoWorkingDirectories,
+      Array(8).fill(fs.realpathSync(fixture)),
+      "cargo must resolve the checked-in Rust toolchain from the project root",
+    )
   } finally {
     fs.rmSync(fixture, { recursive: true, force: true })
   }

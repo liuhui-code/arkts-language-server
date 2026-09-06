@@ -1,10 +1,16 @@
+import { randomUUID } from "node:crypto"
 import { pathToFileURL } from "node:url"
 
 import {
+  CodeActionKind,
   CompletionItemKind,
+  InsertTextFormat,
   createConnection,
+  DiagnosticSeverity,
+  DidChangeWatchedFilesNotification,
   ErrorCodes,
   type InitializeParams,
+  LSPErrorCodes,
   PositionEncodingKind,
   ProposedFeatures,
   ResponseError,
@@ -16,19 +22,98 @@ import { TextDocument } from "vscode-languageserver-textdocument"
 
 import { ARKTS_LANGUAGE_SERVER_IDENTITY } from "../build-identity.js"
 import type { DocumentSnapshot } from "../contracts/document.js"
-import type { SemanticCompletion, SemanticEnginePort } from "../contracts/semantic-engine.js"
+import type {
+  SemanticCodeAction,
+  SemanticCompletion,
+  SemanticCompletionList,
+  SemanticEnginePort,
+  SemanticResolvedCodeAction,
+} from "../contracts/semantic-engine.js"
 import type { ProjectResolverPort } from "../contracts/project-resolver.js"
 import type {
   WorkspaceIndexProgress,
   WorkspaceSymbolServicePort,
 } from "../contracts/workspace-symbol-service.js"
+import { ARKUI_STRING_RESOURCE_GLOB } from "../core/arkui/resource-path.js"
 import { SingleRootProjectResolver } from "../project/single-root-project-resolver.js"
-import { LegacySemanticEngine } from "../semantic/legacy-semantic-engine.js"
 import { createStructuredLogger } from "../observability/logger.js"
+import { LegacySemanticEngine } from "../semantic/legacy-semantic-engine.js"
 import { createDocumentDiagnostics } from "./document-diagnostics.js"
+import {
+  CodeActionResolutionStore,
+  type CodeActionResolutionData,
+} from "./code-action-resolution-store.js"
+import { CallHierarchySourceAuthority } from "./call-hierarchy-source-authority.js"
+import { toLspDiagnostic } from "./diagnostic-mapper.js"
 import { RequestFreshness } from "./request-freshness.js"
-import { registerSemanticCapabilities } from "./register-semantic-capabilities.js"
+import {
+  negotiatedSymbolKind,
+  registerSemanticCapabilities,
+} from "./register-semantic-capabilities.js"
 import { requestCancelled, SemanticRequestRunner } from "./semantic-request-runner.js"
+import { WorkspaceFileChangeCoordinator } from "./workspace-file-change-coordinator.js"
+
+const MAX_COMPLETION_ITEMS = 256
+const MAX_COMPLETION_RESOLUTIONS = 512
+
+interface CompletionResolutionRecord {
+  documentUri: string
+  documentVersion: number
+  position: { line: number; character: number }
+  completion: SemanticCompletion
+}
+
+interface CompletionResolutionData {
+  arktsCompletionId: string
+}
+
+interface CompletionClientProfile {
+  commitCharacters: boolean
+  insertReplaceEdits: boolean
+  snippets: boolean
+}
+
+const DEFAULT_COMPLETION_CLIENT_PROFILE: CompletionClientProfile = Object.freeze({
+  commitCharacters: false,
+  insertReplaceEdits: false,
+  snippets: false,
+})
+
+class CompletionResolutionStore {
+  private readonly entries = new Map<string, CompletionResolutionRecord>()
+
+  remember(record: CompletionResolutionRecord): CompletionResolutionData {
+    const id = randomUUID()
+    this.entries.set(id, record)
+    while (this.entries.size > MAX_COMPLETION_RESOLUTIONS) {
+      const oldest = this.entries.keys().next().value
+      if (oldest === undefined) break
+      this.entries.delete(oldest)
+    }
+    return { arktsCompletionId: id }
+  }
+
+  find(data: unknown): CompletionResolutionRecord | undefined {
+    if (
+      data === null
+      || typeof data !== "object"
+      || Array.isArray(data)
+      || Object.keys(data).length !== 1
+      || typeof (data as { arktsCompletionId?: unknown }).arktsCompletionId !== "string"
+    ) return undefined
+    return this.entries.get((data as CompletionResolutionData).arktsCompletionId)
+  }
+
+  forgetDocument(documentUri: string): void {
+    for (const [id, record] of this.entries) {
+      if (record.documentUri === documentUri) this.entries.delete(id)
+    }
+  }
+
+  clear(): void {
+    this.entries.clear()
+  }
+}
 
 export interface LanguageServerServices {
   projects: ProjectResolverPort
@@ -45,15 +130,23 @@ export function runLanguageServer(services?: LanguageServerServices): void {
   const semantic = services?.semantic ?? new LegacySemanticEngine(projects)
   const workspaceSymbols = services?.workspaceSymbols
   const freshness = new RequestFreshness()
+  const completionResolutions = new CompletionResolutionStore()
+  const codeActionResolutions = new CodeActionResolutionStore()
   let shuttingDown = false
   let disposed = false
   let workspaceRoots: { id: string; rootUri: string }[] = []
+  let workspaceFileChanges = new WorkspaceFileChangeCoordinator({ rootUris: [] })
+  let supportsWatchedFileRegistration = false
+  let workspaceSymbolKindValueSet: readonly SymbolKind[] | undefined
   let workspaceIndexAbort: AbortController | undefined
+  let completionClientProfile: CompletionClientProfile = DEFAULT_COMPLETION_CLIENT_PROFILE
 
   const disposeOnce = (reason: "shutdown" | "exit") => {
     if (disposed) return
     disposed = true
     workspaceIndexAbort?.abort(new Error("Language server stopped"))
+    completionResolutions.clear()
+    codeActionResolutions.clear()
     semantic.dispose()
     workspaceSymbols?.dispose()
     logger.info("server.stopped", { reason })
@@ -64,10 +157,16 @@ export function runLanguageServer(services?: LanguageServerServices): void {
       throw new ResponseError(ErrorCodes.InvalidRequest, "Language server is shutting down")
     }
   }
+  const callHierarchySources = new CallHierarchySourceAuthority({
+    documents,
+    snapshot: (document) => snapshot(document, projects),
+    workspaceRoots: () => workspaceRoots,
+  })
   const requests = new SemanticRequestRunner({
     documents,
     freshness,
     logger,
+    callHierarchySources,
     assertRunning,
     snapshot: (document) => snapshot(document, projects),
   })
@@ -87,7 +186,23 @@ export function runLanguageServer(services?: LanguageServerServices): void {
   connection.onInitialize((params: InitializeParams) => {
     const rootUris = initialRootUris(params)
     projects.configure(rootUris)
-    workspaceRoots = rootUris.map((rootUri) => ({ id: rootUri, rootUri }))
+    workspaceRoots = rootUris.map((rootUri) => ({
+      id: projects.projectFor(rootUri).id,
+      rootUri,
+    }))
+    workspaceFileChanges = new WorkspaceFileChangeCoordinator({ rootUris })
+    supportsWatchedFileRegistration = params.capabilities.workspace
+      ?.didChangeWatchedFiles?.dynamicRegistration === true
+    workspaceSymbolKindValueSet = params.capabilities.workspace?.symbol
+      ?.symbolKind?.valueSet
+    completionClientProfile = Object.freeze({
+      commitCharacters: params.capabilities.textDocument?.completion
+        ?.completionItem?.commitCharactersSupport === true,
+      insertReplaceEdits: params.capabilities.textDocument?.completion
+        ?.completionItem?.insertReplaceSupport === true,
+      snippets: params.capabilities.textDocument?.completion
+        ?.completionItem?.snippetSupport === true,
+    })
     semanticCapabilities.configure(params.capabilities)
     logger.info("lsp.initialized", {
       workspaceCount: initialRootUris(params).length,
@@ -103,7 +218,7 @@ export function runLanguageServer(services?: LanguageServerServices): void {
           openClose: true,
           change: TextDocumentSyncKind.Incremental,
         },
-        completionProvider: { triggerCharacters: ["."] },
+        completionProvider: { triggerCharacters: ["."], resolveProvider: true },
         definitionProvider: true,
         ...(workspaceSymbols ? { workspaceSymbolProvider: true } : {}),
         ...semanticCapabilities.capabilities,
@@ -112,6 +227,18 @@ export function runLanguageServer(services?: LanguageServerServices): void {
   })
 
   connection.onInitialized(async () => {
+    if (shuttingDown) return
+    if (supportsWatchedFileRegistration) {
+      void connection.client.register(DidChangeWatchedFilesNotification.type, {
+        watchers: [
+          { globPattern: "**/*.ets" },
+          { globPattern: "**/*.ts" },
+          { globPattern: ARKUI_STRING_RESOURCE_GLOB },
+        ],
+      }).catch(() => {
+        logger.error("workspace.watch.registration.failed", { outcome: "disabled" })
+      })
+    }
     if (!workspaceSymbols || shuttingDown) return
     const progress = await connection.window.createWorkDoneProgress()
     if (shuttingDown) return
@@ -175,19 +302,57 @@ export function runLanguageServer(services?: LanguageServerServices): void {
 
   documents.onDidOpen(({ document }) => {
     const opened = snapshot(document, projects)
+    freshness.cancelWorkspace(opened.workspaceId)
     semantic.sync(opened)
     workspaceSymbols?.sync(opened)
     diagnostics.update(document)
   })
+  connection.onDidChangeWatchedFiles(({ changes }) => {
+    workspaceFileChanges.accept(changes)
+    const batches = workspaceFileChanges.drain()
+    if (batches.length > 0) {
+      for (const batch of batches) {
+        freshness.cancelWorkspace(projects.projectFor(batch.rootUri).id)
+      }
+      semantic.workspaceFilesChanged?.(batches)
+      const resourceWorkspaceIds = new Set(
+        batches
+          .filter((batch) => batch.resourceChanged)
+          .map((batch) => projects.projectFor(batch.rootUri).id),
+      )
+      if (resourceWorkspaceIds.size > 0) {
+        let scheduledDocuments = 0
+        for (const document of documents.all()) {
+          if (
+            document.getText().includes("$r")
+            && resourceWorkspaceIds.has(projects.projectFor(document.uri).id)
+          ) {
+            scheduledDocuments += 1
+            diagnostics.update(document)
+          }
+        }
+        logger.info("diagnostics.resource.refresh.scheduled", {
+          workspaceCount: resourceWorkspaceIds.size,
+          documentCount: scheduledDocuments,
+        })
+      }
+    }
+  })
   documents.onDidChangeContent(({ document }) => {
-    freshness.cancelDocument(document.uri)
     const changed = snapshot(document, projects)
+    freshness.cancelDocument(document.uri)
+    freshness.cancelWorkspace(changed.workspaceId)
+    completionResolutions.forgetDocument(document.uri)
+    codeActionResolutions.forgetDocument(document.uri)
     semantic.sync(changed)
     workspaceSymbols?.sync(changed)
     diagnostics.update(document)
   })
   documents.onDidClose(({ document }) => {
     freshness.cancelDocument(document.uri)
+    freshness.cancelWorkspace(projects.projectFor(document.uri).id)
+    completionResolutions.forgetDocument(document.uri)
+    codeActionResolutions.forgetDocument(document.uri)
     semantic.close(document.uri)
     workspaceSymbols?.closeDocument(document.uri)
     diagnostics.close(document.uri)
@@ -198,14 +363,171 @@ export function runLanguageServer(services?: LanguageServerServices): void {
       method: "textDocument/completion",
       documentUri: params.textDocument.uri,
       token,
-      fallback: [] as SemanticCompletion[],
+      fallback: { items: [], isIncomplete: false } as SemanticCompletionList,
       execute: (document, signal) => semantic.complete({
         document,
         position: params.position,
+        completionOptions: { snippets: completionClientProfile.snippets },
         signal,
       }),
     })
-    return result.map(toLspCompletionItem)
+    const document = documents.get(params.textDocument.uri)
+    if (!document) return { isIncomplete: false, items: [] }
+    const bounded = result.items.slice(0, MAX_COMPLETION_ITEMS)
+    const items = bounded.map((completion) => toLspCompletionItem(
+      completion,
+      completionResolutions.remember({
+        documentUri: document.uri,
+        documentVersion: document.version,
+        position: { ...params.position },
+        completion,
+      }),
+      completionClientProfile,
+      params.position,
+    ))
+    return {
+      isIncomplete: result.isIncomplete || result.items.length > bounded.length,
+      items,
+    }
+  })
+
+  connection.onCompletionResolve(async (clientItem, token) => {
+    assertRunning()
+    const record = completionResolutions.find(clientItem.data)
+    const currentDocument = record ? documents.get(record.documentUri) : undefined
+    if (!record || !currentDocument || currentDocument.version !== record.documentVersion) {
+      throw invalidCompletionResolution()
+    }
+    const resolved = await requests.run<SemanticCompletion | null>({
+      method: "completionItem/resolve",
+      documentUri: record.documentUri,
+      token,
+      fallback: null,
+      execute: (document, signal) => semantic.resolveCompletion({
+        document,
+        position: record.position,
+        completionOptions: { snippets: completionClientProfile.snippets },
+        completion: record.completion,
+        signal,
+      }),
+    })
+    if (!resolved) throw invalidCompletionResolution()
+    return toLspResolvedCompletionItem(
+      resolved,
+      clientItem.data as CompletionResolutionData,
+      record,
+      completionClientProfile,
+    )
+  })
+
+  connection.onCodeAction(async (params, token) => {
+    if (!includesQuickFix(params.context.only)) return []
+    const actions = await requests.run({
+      method: "textDocument/codeAction",
+      documentUri: params.textDocument.uri,
+      token,
+      fallback: [] as SemanticCodeAction[],
+      execute: (document, signal) => semantic.codeActions({
+        document,
+        range: params.range,
+        signal,
+      }),
+    })
+    const document = documents.get(params.textDocument.uri)
+    if (!document) return []
+    return actions.map((action) => {
+      const diagnostic = toLspDiagnostic(action.diagnostic)
+      const data = codeActionResolutions.remember({
+        documentUri: document.uri,
+        documentVersion: document.version,
+        action: {
+          title: action.title,
+          kind: "quickfix",
+          diagnostic: {
+            range: action.diagnostic.range,
+            severity: diagnostic.severity,
+            code: action.diagnostic.code,
+            source: action.diagnostic.source,
+            message: action.diagnostic.message,
+          },
+        },
+        fingerprint: action.fingerprint,
+      })
+      return {
+        title: action.title,
+        kind: CodeActionKind.QuickFix,
+        diagnostics: [diagnostic],
+        data,
+      }
+    })
+  })
+
+  connection.onCodeActionResolve(async (clientAction, token) => {
+    assertRunning()
+    const lookup = codeActionResolutions.lookup(clientAction.data)
+    if (lookup.status !== "active") throw invalidCodeActionResolution(lookup.status)
+    const { record } = lookup
+    const currentDocument = documents.get(record.documentUri)
+    if (!currentDocument || currentDocument.version !== record.documentVersion) {
+      codeActionResolutions.forgetDocument(record.documentUri)
+      throw invalidCodeActionResolution("stale")
+    }
+    const resolved = await requests.run<SemanticResolvedCodeAction | null>({
+      method: "codeAction/resolve",
+      documentUri: record.documentUri,
+      token,
+      fallback: null,
+      execute: (document, signal) => semantic.resolveCodeAction({
+        document,
+        action: {
+          title: record.action.title,
+          kind: record.action.kind,
+          diagnostic: {
+            range: record.action.diagnostic.range,
+            severity: record.action.diagnostic.severity === DiagnosticSeverity.Error
+              ? "error"
+              : "warning",
+            code: record.action.diagnostic.code,
+            message: record.action.diagnostic.message,
+            source: "arkts",
+          },
+          fingerprint: record.fingerprint,
+        },
+        signal,
+      }),
+    })
+    if (
+      !resolved
+      || resolved.edits.length === 0
+      || resolved.edits.some((edit) => (
+        edit.uri !== record.documentUri || edit.expectedVersion !== record.documentVersion
+      ))
+    ) throw invalidCodeActionResolution("stale")
+    const resolutionData = clientAction.data as CodeActionResolutionData
+    const diagnostic = {
+      ...record.action.diagnostic,
+      severity: record.action.diagnostic.severity === DiagnosticSeverity.Error
+        ? DiagnosticSeverity.Error
+        : DiagnosticSeverity.Warning,
+    }
+    return {
+      title: record.action.title,
+      kind: CodeActionKind.QuickFix,
+      diagnostics: [diagnostic],
+      data: { arktsCodeActionId: resolutionData.arktsCodeActionId },
+      edit: {
+        documentChanges: [{
+          textDocument: {
+            uri: record.documentUri,
+            version: record.documentVersion,
+          },
+          edits: resolved.edits.map((edit) => ({
+            range: edit.range,
+            newText: edit.newText,
+          })),
+        }],
+      },
+    }
   })
 
   connection.onDefinition(async (params, token) => {
@@ -225,7 +547,11 @@ export function runLanguageServer(services?: LanguageServerServices): void {
   connection.onWorkspaceSymbol(async (params, token) => {
     const startedAt = performance.now()
     let outcome = "error"
-    const request = freshness.start("workspace/symbol", token)
+    const request = freshness.start(
+      "workspace/symbol",
+      token,
+      { kind: "independent" },
+    )
     try {
       assertRunning()
       if (!workspaceSymbols) {
@@ -244,7 +570,7 @@ export function runLanguageServer(services?: LanguageServerServices): void {
       outcome = "ok"
       return result.items.map((item) => ({
         name: item.name,
-        kind: workspaceSymbolKind(item.kind),
+        kind: negotiatedSymbolKind(item.kind, workspaceSymbolKindValueSet),
         location: { uri: item.uri, range: item.range },
         containerName: item.containerName,
       }))
@@ -302,37 +628,135 @@ function snapshot(document: TextDocument, projects: ProjectResolverPort): Docume
   }
 }
 
-function toLspCompletionItem(item: SemanticCompletion) {
+function toLspCompletionItem(
+  item: SemanticCompletion,
+  data: CompletionResolutionData,
+  profile: CompletionClientProfile,
+  position?: { line: number; character: number },
+) {
+  const insertText = clientInsertText(item, profile)
+  const textEdit = item.replacementRange
+    ? toLspCompletionTextEdit(item.replacementRange, insertText, profile, position)
+    : undefined
   return {
     label: item.label,
     detail: item.detail,
     kind: completionKind(item.kind),
-    insertText: item.insertText,
+    insertText,
     filterText: item.filterText,
     sortText: item.sortText,
+    ...(profile.commitCharacters && item.commitCharacters !== undefined
+      ? { commitCharacters: item.commitCharacters }
+      : {}),
+    ...(profile.snippets && item.isSnippet === true
+      ? { insertTextFormat: InsertTextFormat.Snippet }
+      : {}),
+    textEdit,
+    data,
   }
+}
+
+function clientInsertText(item: SemanticCompletion, profile: CompletionClientProfile): string {
+  const insertText = item.insertText ?? item.label
+  return profile.snippets && item.isSnippet === true
+    ? insertText
+    : stripSnippetPlaceholders(insertText)
+}
+
+function stripSnippetPlaceholders(text: string): string {
+  return text
+    .replace(/\$\{\d+:([^}]*)\}/g, "$1")
+    .replace(/\$\{\d+\}/g, "")
+    .replace(/\$\d+/g, "")
+}
+
+function toLspResolvedCompletionItem(
+  item: SemanticCompletion,
+  data: CompletionResolutionData,
+  record: CompletionResolutionRecord,
+  profile: CompletionClientProfile,
+) {
+  const additionalTextEdits = item.additionalTextEdits?.map((edit) => {
+    if (
+      edit.uri !== record.documentUri
+      || edit.expectedVersion !== record.documentVersion
+    ) throw invalidCompletionResolution()
+    return { range: edit.range, newText: edit.newText }
+  })
+  return {
+    ...toLspCompletionItem(item, data, profile, record.position),
+    documentation: item.documentation,
+    additionalTextEdits,
+  }
+}
+
+function toLspCompletionTextEdit(
+  replacementRange: { start: { line: number; character: number }; end: { line: number; character: number } },
+  newText: string,
+  profile: CompletionClientProfile,
+  position: { line: number; character: number } | undefined,
+) {
+  if (
+    profile.insertReplaceEdits
+    && position
+    && replacementRange
+    && replacementRange.start.line === replacementRange.end.line
+    && replacementRange.start.line === position.line
+    && comparePositions(replacementRange.start, position) <= 0
+    && comparePositions(position, replacementRange.end) <= 0
+  ) {
+    return {
+      insert: { start: replacementRange.start, end: position },
+      replace: replacementRange,
+      newText,
+    }
+  }
+  return { range: replacementRange, newText }
+}
+
+function comparePositions(
+  left: { line: number; character: number },
+  right: { line: number; character: number },
+): number {
+  if (left.line !== right.line) return left.line - right.line
+  return left.character - right.character
+}
+
+function invalidCompletionResolution(): ResponseError<void> {
+  return new ResponseError(
+    ErrorCodes.InvalidParams,
+    "Completion item is unknown or stale",
+  )
+}
+
+function invalidCodeActionResolution(status: "stale" | "unknown"): ResponseError<void> {
+  return new ResponseError(
+    status === "stale" ? LSPErrorCodes.ContentModified : ErrorCodes.InvalidParams,
+    status === "stale" ? "Code action is stale" : "Code action is unknown",
+  )
 }
 
 function completionKind(kind: SemanticCompletion["kind"]): CompletionItemKind {
   switch (kind) {
     case "method": return CompletionItemKind.Method
+    case "field": return CompletionItemKind.Field
     case "function": return CompletionItemKind.Function
     case "class": return CompletionItemKind.Class
+    case "enum": return CompletionItemKind.Enum
+    case "enumMember": return CompletionItemKind.EnumMember
     case "interface": return CompletionItemKind.Interface
     case "keyword": return CompletionItemKind.Keyword
+    case "module": return CompletionItemKind.Module
     case "variable": return CompletionItemKind.Variable
     default: return CompletionItemKind.Property
   }
 }
 
-function workspaceSymbolKind(kind: string): SymbolKind {
-  switch (kind) {
-    case "class": return SymbolKind.Class
-    case "method": return SymbolKind.Method
-    case "function": return SymbolKind.Function
-    case "struct": return SymbolKind.Struct
-    default: return SymbolKind.Variable
-  }
+function includesQuickFix(only: readonly string[] | undefined): boolean {
+  if (!only || only.length === 0) return true
+  return only.some((kind) => (
+    kind === "" || kind === CodeActionKind.QuickFix || CodeActionKind.QuickFix.startsWith(`${kind}.`)
+  ))
 }
 
 function indexPercentage(status: WorkspaceIndexProgress): number | undefined {

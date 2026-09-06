@@ -1,0 +1,4 @@
+/* 😀 */ @Componet
+struct MisspelledDecoratorPage {
+  build() {}
+}

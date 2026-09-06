@@ -98,7 +98,7 @@ export class DefaultWorkspaceSymbolService implements WorkspaceSymbolServicePort
         const current = this.openDocuments.get(document.uri)
         return {
           items: current?.version === document.version && result.documentVersion === document.version
-            ? flattenDocumentSymbols(result.value, document.uri)
+            ? flattenDocumentSymbols(result.value, document.uri, document.text.split(/\r?\n/))
             : [],
           failed: false,
         }
@@ -242,15 +242,34 @@ function sum(
 function flattenDocumentSymbols(
   symbols: readonly SemanticDocumentSymbol[],
   uri: DocumentUri,
+  sourceLines: readonly string[],
   containerName?: string,
 ): WorkspaceSymbol[] {
   return symbols.flatMap((symbol) => [{
     name: symbol.name,
     kind: symbol.kind,
     uri,
-    range: symbol.selectionRange,
+    range: exactWorkspaceSymbolRange(symbol, sourceLines),
     ...(containerName ? { containerName } : {}),
-  }, ...flattenDocumentSymbols(symbol.children ?? [], uri, symbol.name)])
+  }, ...flattenDocumentSymbols(symbol.children ?? [], uri, sourceLines, symbol.name)])
+}
+
+function exactWorkspaceSymbolRange(
+  symbol: SemanticDocumentSymbol,
+  sourceLines: readonly string[],
+): SemanticDocumentSymbol["selectionRange"] {
+  const { start, end } = symbol.selectionRange
+  if (start.line !== end.line || start.character !== end.character) {
+    return symbol.selectionRange
+  }
+  const line = sourceLines[start.line]
+  if (line?.slice(start.character, start.character + symbol.name.length) !== symbol.name) {
+    return symbol.selectionRange
+  }
+  return {
+    start,
+    end: { line: start.line, character: start.character + symbol.name.length },
+  }
 }
 
 function rankAndLimit(

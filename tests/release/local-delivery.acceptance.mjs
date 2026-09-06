@@ -7,6 +7,7 @@ import path from "node:path"
 import test from "node:test"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
+import { assertInstalledSemanticSmoke } from "../support/installed-semantic-smoke.mjs"
 import { LspProcess } from "../support/lsp-process.mjs"
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
@@ -82,6 +83,8 @@ test("one local command builds and idempotently installs a working Zed language 
   const response = await initialize(installedCommand, os.tmpdir())
   assert.equal(response.result.serverInfo.name, "arkts-language-server")
 
+  await assertInstalledSemanticSmoke({ installedCommand, temporaryRoot })
+
   const workspace = path.join(temporaryRoot, "workspace")
   fs.mkdirSync(workspace)
   const source = "class InstalledProductionType { runTask() {} }\n"
@@ -114,17 +117,17 @@ test("one local command builds and idempotently installs a working Zed language 
   const productionInitialize = await server.response(20, 15_000)
   assert.equal(productionInitialize.result.capabilities.workspaceSymbolProvider, true)
   server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
-  const create = await server.notification("window/workDoneProgress/create", () => true, 15_000)
+  const create = await server.serverRequest("window/workDoneProgress/create", () => true, 15_000)
   server.send({ jsonrpc: "2.0", id: create.id, result: null })
-  const ready = await server.notification(
-    "$/progress",
+  const ready = await server.progress(
+    create.params.token,
     (message) => message.params.value.kind === "report"
       && message.params.value.percentage === 100,
     30_000,
   )
   assert.match(ready.params.value.message, /^Indexed 1\/1 files; skipped 0 entries$/)
-  await server.notification(
-    "$/progress",
+  await server.progress(
+    create.params.token,
     (message) => message.params.value.kind === "end",
     30_000,
   )
@@ -197,10 +200,10 @@ test("one local command builds and idempotently installs a working Zed language 
   })
   await warm.response(30, 15_000)
   warm.send({ jsonrpc: "2.0", method: "initialized", params: {} })
-  const warmCreate = await warm.notification("window/workDoneProgress/create", () => true, 15_000)
+  const warmCreate = await warm.serverRequest("window/workDoneProgress/create", () => true, 15_000)
   warm.send({ jsonrpc: "2.0", id: warmCreate.id, result: null })
-  await warm.notification(
-    "$/progress",
+  await warm.progress(
+    warmCreate.params.token,
     (message) => message.params.value.kind === "report"
       && message.params.value.percentage !== 100,
     15_000,

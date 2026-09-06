@@ -3,13 +3,10 @@ import { once } from "node:events"
 import test from "node:test"
 import { pathToFileURL } from "node:url"
 
-import {
-  buildScriptedSemanticServer,
-  scriptedServerPath,
-} from "./support/build-test-server.mjs"
+import { buildScriptedSemanticServer } from "./support/build-test-server.mjs"
 import { LspProcess, projectRoot, withTimeout } from "./support/lsp-process.mjs"
 
-buildScriptedSemanticServer()
+const scriptedServerPath = buildScriptedSemanticServer()
 
 test("runs injected semantic services and observes framed notifications", async (t) => {
   const server = new LspProcess({ serverPath: scriptedServerPath })
@@ -51,7 +48,8 @@ test("runs injected semantic services and observes framed notifications", async 
   })
 
   const response = await server.response(2)
-  assert.equal(response.result[0].label, "fixture-v3")
+  assert.equal(response.result.isIncomplete, false)
+  assert.equal(response.result.items[0].label, "fixture-v3")
   const notification = await server.notification("window/logMessage")
   assert.match(notification.params.message, /scripted completion v3/)
 })
@@ -105,9 +103,10 @@ test("a newer completion request supersedes the previous request in its lane", a
   })
 
   const latest = await server.response(11)
-  assert.equal(latest.result[0].label, "fixture-v1")
+  assert.equal(latest.result.isIncomplete, false)
+  assert.equal(latest.result.items[0].label, "fixture-v1")
   const superseded = await server.response(10)
-  assert.deepEqual(superseded.result, [])
+  assert.deepEqual(superseded.result, { isIncomplete: false, items: [] })
 })
 
 test("drops a semantic result for a superseded document version", async (t) => {
@@ -158,7 +157,7 @@ test("drops a semantic result for a superseded document version", async (t) => {
   })
 
   const stale = await server.response(20)
-  assert.deepEqual(stale.result, [])
+  assert.deepEqual(stale.result, { isIncomplete: false, items: [] })
   assert.match(server.stderr, /SCRIPTED_STALE_ABORT/)
 })
 
@@ -219,7 +218,539 @@ test("maps client cancellation to the semantic abort signal and RequestCancelled
     },
   })
   const next = await server.response(31)
-  assert.equal(next.result[0].label, "fixture-v1")
+  assert.equal(next.result.isIncomplete, false)
+  assert.equal(next.result.items[0].label, "fixture-v1")
+})
+
+test("maps completion resolve cancellation to the semantic abort signal", async (t) => {
+  const server = new LspProcess({ serverPath: scriptedServerPath })
+  t.after(() => server.close())
+  const uri = pathToFileURL(`${projectRoot}/fixtures/ResolveCancel.ets`).href
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: {
+      processId: process.pid,
+      rootUri: pathToFileURL(projectRoot).href,
+      capabilities: {},
+    },
+  })
+  await server.response(1)
+  server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
+  server.send({
+    jsonrpc: "2.0",
+    method: "textDocument/didOpen",
+    params: {
+      textDocument: {
+        uri,
+        languageId: "arkts",
+        version: 1,
+        text: "// RESOLVE_WAITS_FOR_ABORT",
+      },
+    },
+  })
+  server.send({
+    jsonrpc: "2.0",
+    id: 32,
+    method: "textDocument/completion",
+    params: {
+      textDocument: { uri },
+      position: { line: 0, character: 0 },
+    },
+  })
+  const completion = await server.response(32)
+  const item = completion.result.items[0]
+  assert.ok(item.data?.arktsCompletionId)
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 33,
+    method: "completionItem/resolve",
+    params: item,
+  })
+  server.send({
+    jsonrpc: "2.0",
+    method: "$/cancelRequest",
+    params: { id: 33 },
+  })
+
+  const cancelled = await server.response(33)
+  assert.equal(cancelled.error.code, -32800)
+})
+
+test("returns a bounded incomplete completion list whose edge items remain resolvable", async (t) => {
+  const server = new LspProcess({ serverPath: scriptedServerPath })
+  t.after(() => server.close())
+  const uri = pathToFileURL(`${projectRoot}/fixtures/BoundedCompletion.ets`).href
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: {
+      processId: process.pid,
+      rootUri: pathToFileURL(projectRoot).href,
+      capabilities: {},
+    },
+  })
+  await server.response(1)
+  server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
+  server.send({
+    jsonrpc: "2.0",
+    method: "textDocument/didOpen",
+    params: {
+      textDocument: {
+        uri,
+        languageId: "arkts",
+        version: 1,
+        text: "// COMPLETION_RESULT_513",
+      },
+    },
+  })
+  server.send({
+    jsonrpc: "2.0",
+    id: 34,
+    method: "textDocument/completion",
+    params: {
+      textDocument: { uri },
+      position: { line: 0, character: 0 },
+    },
+  })
+
+  const completion = await server.response(34)
+  assert.equal(completion.error, undefined, JSON.stringify(completion.error))
+  const items = completion.result.items
+  assert.equal(items.length > 0, true)
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 35,
+    method: "completionItem/resolve",
+    params: items[0],
+  })
+  const first = await server.response(35)
+  assert.equal(first.error, undefined, JSON.stringify(first.error))
+  assert.equal(first.result.label, "bulk-000")
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 36,
+    method: "completionItem/resolve",
+    params: items.at(-1),
+  })
+  const last = await server.response(36)
+  assert.equal(last.error, undefined, JSON.stringify(last.error))
+  assert.equal(last.result.label, "bulk-255")
+
+  assert.equal(Array.isArray(completion.result), false)
+  assert.equal(completion.result.isIncomplete, true)
+  assert.equal(items.length, 256)
+  assert.deepEqual(
+    [items[0].label, items.at(-1).label],
+    ["bulk-000", "bulk-255"],
+  )
+})
+
+for (const { count, incomplete } of [
+  { count: 256, incomplete: false },
+  { count: 257, incomplete: true },
+]) {
+  test(`treats ${count} completion items as ${incomplete ? "incomplete" : "complete"}`, async (t) => {
+    const server = new LspProcess({ serverPath: scriptedServerPath })
+    t.after(() => server.close())
+    const uri = pathToFileURL(`${projectRoot}/fixtures/CompletionBoundary${count}.ets`).href
+
+    server.send({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: {
+        processId: process.pid,
+        rootUri: pathToFileURL(projectRoot).href,
+        capabilities: {},
+      },
+    })
+    await server.response(1)
+    server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
+    server.send({
+      jsonrpc: "2.0",
+      method: "textDocument/didOpen",
+      params: {
+        textDocument: {
+          uri,
+          languageId: "arkts",
+          version: 1,
+          text: `// COMPLETION_RESULT_${count}`,
+        },
+      },
+    })
+    server.send({
+      jsonrpc: "2.0",
+      id: 37,
+      method: "textDocument/completion",
+      params: {
+        textDocument: { uri },
+        position: { line: 0, character: 0 },
+      },
+    })
+
+    const completion = await server.response(37)
+    assert.equal(completion.error, undefined, JSON.stringify(completion.error))
+    assert.equal(Array.isArray(completion.result), false)
+    assert.equal(completion.result.isIncomplete, incomplete)
+    const items = completion.result.items
+    assert.equal(items.length, 256)
+
+    server.send({
+      jsonrpc: "2.0",
+      id: 38,
+      method: "completionItem/resolve",
+      params: items[0],
+    })
+    const first = await server.response(38)
+    assert.equal(first.error, undefined, JSON.stringify(first.error))
+    assert.equal(first.result.label, "bulk-000")
+
+    server.send({
+      jsonrpc: "2.0",
+      id: 39,
+      method: "completionItem/resolve",
+      params: items.at(-1),
+    })
+    const last = await server.response(39)
+    assert.equal(last.error, undefined, JSON.stringify(last.error))
+    assert.equal(last.result.label, "bulk-255")
+  })
+}
+
+test("propagates an incomplete semantic completion list below the adapter limit", async (t) => {
+  const server = new LspProcess({ serverPath: scriptedServerPath })
+  t.after(() => server.close())
+  const uri = pathToFileURL(`${projectRoot}/fixtures/IncompleteCompletion.ets`).href
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: {
+      processId: process.pid,
+      rootUri: pathToFileURL(projectRoot).href,
+      capabilities: {},
+    },
+  })
+  await server.response(1)
+  server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
+  server.send({
+    jsonrpc: "2.0",
+    method: "textDocument/didOpen",
+    params: {
+      textDocument: {
+        uri,
+        languageId: "arkts",
+        version: 1,
+        text: "// COMPLETION_INCOMPLETE_SMALL",
+      },
+    },
+  })
+  server.send({
+    jsonrpc: "2.0",
+    id: 40,
+    method: "textDocument/completion",
+    params: {
+      textDocument: { uri },
+      position: { line: 0, character: 0 },
+    },
+  })
+
+  const completion = await server.response(40)
+  assert.equal(completion.error, undefined, JSON.stringify(completion.error))
+  assert.equal(Array.isArray(completion.result), false)
+  assert.equal(completion.result.isIncomplete, true)
+  assert.equal(completion.result.items.length, 1)
+  assert.equal(completion.result.items[0].label, "incomplete-small")
+})
+
+test("maps code-action resolve cancellation to RequestCancelled without leaking an edit", async (t) => {
+  const server = new LspProcess({ serverPath: scriptedServerPath })
+  t.after(() => server.close())
+  const uri = pathToFileURL(`${projectRoot}/fixtures/CodeActionResolveCancel.ets`).href
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: {
+      processId: process.pid,
+      rootUri: pathToFileURL(projectRoot).href,
+      capabilities: {},
+    },
+  })
+  await server.response(1)
+  server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
+  server.send({
+    jsonrpc: "2.0",
+    method: "textDocument/didOpen",
+    params: {
+      textDocument: {
+        uri,
+        languageId: "arkts",
+        version: 1,
+        text: "// CODE_ACTION_RESOLVE_WAITS_FOR_ABORT",
+      },
+    },
+  })
+  server.send({
+    jsonrpc: "2.0",
+    id: 43,
+    method: "textDocument/codeAction",
+    params: {
+      textDocument: { uri },
+      range: zeroLspRange(),
+      context: { diagnostics: [], only: ["quickfix"] },
+    },
+  })
+  const listed = await server.response(43)
+  assert.equal(listed.error, undefined, JSON.stringify(listed.error))
+  assert.equal(listed.result.length, 1)
+  const entered = server.notification(
+    "window/logMessage",
+    (message) => message.params.message.includes("scripted code-action resolve entered"),
+  )
+  server.send({
+    jsonrpc: "2.0",
+    id: 44,
+    method: "codeAction/resolve",
+    params: listed.result[0],
+  })
+  await entered
+  server.send({
+    jsonrpc: "2.0",
+    method: "$/cancelRequest",
+    params: { id: 44 },
+  })
+
+  const cancelled = await server.response(44)
+  assert.equal(cancelled.result, undefined)
+  assert.equal(cancelled.error.code, -32800)
+})
+
+test("a document change supersedes code-action resolve with ContentModified and no edit", async (t) => {
+  const server = new LspProcess({ serverPath: scriptedServerPath })
+  t.after(() => server.close())
+  const uri = pathToFileURL(`${projectRoot}/fixtures/CodeActionResolveStale.ets`).href
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: {
+      processId: process.pid,
+      rootUri: pathToFileURL(projectRoot).href,
+      capabilities: {},
+    },
+  })
+  await server.response(1)
+  server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
+  server.send({
+    jsonrpc: "2.0",
+    method: "textDocument/didOpen",
+    params: {
+      textDocument: {
+        uri,
+        languageId: "arkts",
+        version: 1,
+        text: "// CODE_ACTION_RESOLVE_WAITS_FOR_ABORT",
+      },
+    },
+  })
+  server.send({
+    jsonrpc: "2.0",
+    id: 45,
+    method: "textDocument/codeAction",
+    params: {
+      textDocument: { uri },
+      range: zeroLspRange(),
+      context: { diagnostics: [], only: ["quickfix"] },
+    },
+  })
+  const listed = await server.response(45)
+  assert.equal(listed.error, undefined, JSON.stringify(listed.error))
+  assert.equal(listed.result.length, 1)
+  const entered = server.notification(
+    "window/logMessage",
+    (message) => message.params.message.includes("scripted code-action resolve entered"),
+  )
+  server.send({
+    jsonrpc: "2.0",
+    id: 46,
+    method: "codeAction/resolve",
+    params: listed.result[0],
+  })
+  await entered
+  server.send({
+    jsonrpc: "2.0",
+    method: "textDocument/didChange",
+    params: {
+      textDocument: { uri, version: 2 },
+      contentChanges: [{ text: "// current version" }],
+    },
+  })
+
+  const stale = await server.response(46)
+  assert.equal(stale.result, undefined)
+  assert.equal(stale.error.code, -32801)
+})
+
+test("a newer code-action resolve suppresses a cancellation-resistant late edit", async (t) => {
+  const server = new LspProcess({ serverPath: scriptedServerPath })
+  t.after(() => server.close())
+  const uri = pathToFileURL(`${projectRoot}/fixtures/CodeActionResolveLatest.ets`).href
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: {
+      processId: process.pid,
+      rootUri: pathToFileURL(projectRoot).href,
+      capabilities: {},
+    },
+  })
+  await server.response(1)
+  server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
+  server.send({
+    jsonrpc: "2.0",
+    method: "textDocument/didOpen",
+    params: {
+      textDocument: {
+        uri,
+        languageId: "arkts",
+        version: 1,
+        text: "// CODE_ACTION_RESOLVE_IGNORES_ABORT",
+      },
+    },
+  })
+  server.send({
+    jsonrpc: "2.0",
+    id: 47,
+    method: "textDocument/codeAction",
+    params: {
+      textDocument: { uri },
+      range: zeroLspRange(),
+      context: { diagnostics: [], only: ["quickfix"] },
+    },
+  })
+  const listed = await server.response(47)
+  assert.equal(listed.error, undefined, JSON.stringify(listed.error))
+  assert.equal(listed.result.length, 1)
+  const entered = server.notification(
+    "window/logMessage",
+    (message) => message.params.message.includes("scripted resistant resolve entered"),
+  )
+  server.send({
+    jsonrpc: "2.0",
+    id: 48,
+    method: "codeAction/resolve",
+    params: listed.result[0],
+  })
+  await entered
+  server.send({
+    jsonrpc: "2.0",
+    id: 49,
+    method: "codeAction/resolve",
+    params: listed.result[0],
+  })
+
+  const current = await server.response(49)
+  assert.equal(current.error, undefined, JSON.stringify(current.error))
+  assert.equal(current.result.edit.documentChanges[0].textDocument.version, 1)
+  const superseded = await server.response(48)
+  assert.equal(superseded.result, undefined)
+  assert.equal(superseded.error.code, -32801)
+})
+
+test("rejects forged and stale completion resolve data", async (t) => {
+  const server = new LspProcess({ serverPath: scriptedServerPath })
+  t.after(() => server.close())
+  const uri = pathToFileURL(`${projectRoot}/fixtures/ResolveData.ets`).href
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: {
+      processId: process.pid,
+      rootUri: pathToFileURL(projectRoot).href,
+      capabilities: {},
+    },
+  })
+  await server.response(1)
+  server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
+  server.send({
+    jsonrpc: "2.0",
+    method: "textDocument/didOpen",
+    params: {
+      textDocument: {
+        uri,
+        languageId: "arkts",
+        version: 1,
+        text: "struct ResolveData {}",
+      },
+    },
+  })
+  server.send({
+    jsonrpc: "2.0",
+    id: 34,
+    method: "textDocument/completion",
+    params: {
+      textDocument: { uri },
+      position: { line: 0, character: 7 },
+    },
+  })
+  const completion = await server.response(34)
+  const item = completion.result.items[0]
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 35,
+    method: "completionItem/resolve",
+    params: { ...item, label: "FORGED-CLIENT-LABEL", detail: "FORGED-CLIENT-DETAIL" },
+  })
+  const serverBound = await server.response(35)
+  assert.equal(serverBound.result.label, item.label)
+  assert.equal(serverBound.result.detail, "Resolved scripted semantic completion")
+  assert.deepEqual(serverBound.result.data, item.data)
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 36,
+    method: "completionItem/resolve",
+    params: {
+      ...item,
+      data: { arktsCompletionId: `${item.data.arktsCompletionId}-forged` },
+    },
+  })
+  const forged = await server.response(36)
+  assert.equal(forged.error.code, -32602)
+
+  server.send({
+    jsonrpc: "2.0",
+    method: "textDocument/didChange",
+    params: {
+      textDocument: { uri, version: 2 },
+      contentChanges: [{ text: "struct ResolveDataV2 {}" }],
+    },
+  })
+  server.send({
+    jsonrpc: "2.0",
+    id: 37,
+    method: "completionItem/resolve",
+    params: item,
+  })
+  const stale = await server.response(37)
+  assert.equal(stale.error.code, -32602)
 })
 
 test("shutdown rejects later requests, disposes once, and waits for exit", async (t) => {
@@ -251,6 +782,16 @@ test("shutdown rejects later requests, disposes once, and waits for exit", async
       },
     },
   })
+  server.send({
+    jsonrpc: "2.0",
+    id: 39,
+    method: "textDocument/completion",
+    params: {
+      textDocument: { uri },
+      position: { line: 0, character: 0 },
+    },
+  })
+  const completion = await server.response(39)
   server.send({ jsonrpc: "2.0", id: 40, method: "shutdown", params: null })
   const shutdown = await server.response(40)
   assert.equal(shutdown.result, null)
@@ -267,6 +808,15 @@ test("shutdown rejects later requests, disposes once, and waits for exit", async
   })
   const rejected = await server.response(41)
   assert.equal(rejected.error.code, -32600)
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 42,
+    method: "completionItem/resolve",
+    params: completion.result.items[0],
+  })
+  const rejectedResolve = await server.response(42)
+  assert.equal(rejectedResolve.error.code, -32600)
 
   const exited = once(server.child, "exit")
   server.send({ jsonrpc: "2.0", method: "exit", params: null })
@@ -299,3 +849,10 @@ test("exit without shutdown disposes once and uses the failure exit code", async
   assert.equal(signal, null)
   assert.equal(server.stderr.match(/SCRIPTED_DISPOSE/g)?.length, 1)
 })
+
+function zeroLspRange() {
+  return {
+    start: { line: 0, character: 0 },
+    end: { line: 0, character: 0 },
+  }
+}

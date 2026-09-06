@@ -71,10 +71,10 @@ test("production composition exposes cached search and terminal catalog progress
   assert.equal(initialized.result.capabilities.workspaceSymbolProvider, true)
   server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
 
-  const create = await server.notification("window/workDoneProgress/create")
+  const create = await server.serverRequest("window/workDoneProgress/create")
   server.send({ jsonrpc: "2.0", id: create.id, result: null })
-  const begin = await server.notification(
-    "$/progress",
+  const begin = await server.progress(
+    create.params.token,
     (message) => message.params.value.kind === "begin",
   )
   assert.equal("percentage" in begin.params.value, false)
@@ -96,8 +96,8 @@ test("production composition exposes cached search and terminal catalog progress
     performance.now() - searchStartedAt < 400,
     "cached workspace search must stay interactive while cataloging",
   )
-  const end = await server.notification(
-    "$/progress",
+  const end = await server.progress(
+    create.params.token,
     (message) => message.params.value.kind === "end",
   )
   assert.equal(end.params.value.kind, "end")

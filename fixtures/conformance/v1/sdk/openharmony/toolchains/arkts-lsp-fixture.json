@@ -1,0 +1,4 @@
+{
+  "fixtureVersion": 1,
+  "purpose": "Marks a deterministic toolchains directory for SDK discovery tests"
+}

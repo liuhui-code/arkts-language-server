@@ -26,4 +26,5 @@ cargo build --locked --workspace --release
 ./scripts/check-zed-queries.sh
 cargo fmt --manifest-path editors/zed/Cargo.toml -- --check
 cargo build --manifest-path editors/zed/Cargo.toml --locked --target wasm32-wasip2 --release
-node --test --test-concurrency=1 tests/release/*.acceptance.mjs
+pnpm test:e2e:artifact
+pnpm test:e2e:large

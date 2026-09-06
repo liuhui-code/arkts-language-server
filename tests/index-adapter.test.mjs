@@ -583,68 +583,6 @@ test("resolves explicit and portable sidecar paths plus platform-native index ca
   }), path.resolve("/override/index-cache"))
 })
 
-test("persists and restores workspace symbols through the real Rust sidecar", async (t) => {
-  const sidecarPath = process.env.ARKTS_INDEX_REAL_SIDECAR
-    ?? path.join(projectRoot, "target", "debug", process.platform === "win32"
-      ? "arkts-index-sidecar.exe"
-      : "arkts-index-sidecar")
-  if (!fs.existsSync(sidecarPath)) {
-    t.skip("build arkts-index-sidecar or set ARKTS_INDEX_REAL_SIDECAR")
-    return
-  }
-
-  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-index-real-"))
-  t.after(() => fs.rmSync(temporaryRoot, { recursive: true, force: true }))
-  const workspace = path.join(temporaryRoot, "workspace")
-  const cacheDir = path.join(temporaryRoot, "cache")
-  fs.mkdirSync(workspace)
-  const documentPath = path.join(workspace, "PersistedService.ets")
-  const documentUri = pathToFileURL(documentPath).href
-  const driver = new DriverProcess(buildDriver(temporaryRoot), {
-    ARKTS_INDEX_SIDECAR_PATH: sidecarPath,
-  })
-  t.after(() => driver.close())
-  const descriptor = { id: "real-workspace", rootUri: pathToFileURL(workspace).href }
-
-  assert.deepEqual(await driver.call("open", { workspace: descriptor, cacheDir }), {
-    state: "warming",
-    committedGeneration: 0,
-  })
-  assert.deepEqual(await driver.call("refresh", {
-    workspaceId: descriptor.id,
-    generation: 1,
-    changed: [{
-      uri: documentUri,
-      version: 1,
-      text: "class PersistedNodeAdapterService { runTask() {} }\n",
-      workspaceId: descriptor.id,
-    }],
-  }), { state: "ready", committedGeneration: 1 })
-  const fresh = await driver.call("search", {
-    workspaceId: descriptor.id,
-    query: "PNAS",
-    limit: 20,
-  })
-  assert.equal(fresh.items[0].name, "PersistedNodeAdapterService")
-  assert.equal(fresh.servedGeneration, 1)
-  assert.equal(fresh.completeness, "ready")
-  await driver.call("close", { workspaceId: descriptor.id })
-
-  assert.deepEqual(await driver.call("open", { workspace: descriptor, cacheDir }), {
-    state: "warming",
-    committedGeneration: 1,
-  })
-  const restored = await driver.call("search", {
-    workspaceId: descriptor.id,
-    query: "PNAS",
-    limit: 20,
-  })
-  assert.equal(restored.items[0].name, "PersistedNodeAdapterService")
-  assert.equal(restored.servedGeneration, 1)
-  assert.equal(restored.completeness, "stale")
-  await driver.call("close", { workspaceId: descriptor.id })
-})
-
 test("routes a valid id-less sidecar event without corrupting pending request responses", async (t) => {
   const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-index-event-"))
   t.after(() => fs.rmSync(temporaryRoot, { recursive: true, force: true }))

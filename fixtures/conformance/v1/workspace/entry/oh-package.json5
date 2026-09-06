@@ -1,0 +1,11 @@
+{
+  "name": "entry",
+  "version": "1.0.0",
+  "description": "Deterministic entry module for language-server tests",
+  "main": "",
+  "author": "ArkTS Language Server maintainers",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "shared": "file:../shared"
+  },
+}

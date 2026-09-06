@@ -1,0 +1,21 @@
+import { Profile } from "./Api"
+
+const emojiMarker = "😀"; const selected: Profile = {
+  displayName: "Ada",
+}
+
+export function titleOf(value: string): string {
+  return value
+}
+
+export function cloneValue(): Profile {
+  const freshMarker = "🧭"; const fresh: Profile = {
+    displayName: "Grace",
+  }
+  return fresh
+}
+
+function shadowedName(): string {
+  const Profile = "local shadow"
+  return Profile
+}

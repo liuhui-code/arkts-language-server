@@ -1,8 +1,11 @@
 import assert from "node:assert/strict"
+import path from "node:path"
 import test from "node:test"
 import { pathToFileURL } from "node:url"
 
 import { LspProcess, projectRoot } from "./support/lsp-process.mjs"
+
+const basicFixtureRoot = path.join(projectRoot, "fixtures", "basic")
 
 test("advertises open/close incremental document synchronization", async (t) => {
   const server = new LspProcess()
@@ -14,7 +17,7 @@ test("advertises open/close incremental document synchronization", async (t) => 
     method: "initialize",
     params: {
       processId: process.pid,
-      rootUri: pathToFileURL(projectRoot).href,
+      rootUri: pathToFileURL(basicFixtureRoot).href,
       capabilities: {},
     },
   })
@@ -29,7 +32,7 @@ test("advertises open/close incremental document synchronization", async (t) => 
 test("applies ranged incremental changes before serving completion", async (t) => {
   const server = new LspProcess()
   t.after(() => server.close())
-  const uri = pathToFileURL(`${projectRoot}/fixtures/IncrementalProfile.ets`).href
+  const uri = pathToFileURL(path.join(basicFixtureRoot, "IncrementalProfile.ets")).href
 
   server.send({
     jsonrpc: "2.0",
@@ -37,7 +40,7 @@ test("applies ranged incremental changes before serving completion", async (t) =
     method: "initialize",
     params: {
       processId: process.pid,
-      rootUri: pathToFileURL(projectRoot).href,
+      rootUri: pathToFileURL(basicFixtureRoot).href,
       capabilities: { general: { positionEncodings: ["utf-16"] } },
     },
   })
@@ -95,7 +98,7 @@ test("applies ranged incremental changes before serving completion", async (t) =
 test("does not serve a stale overlay after the document closes", async (t) => {
   const server = new LspProcess()
   t.after(() => server.close())
-  const uri = pathToFileURL(`${projectRoot}/fixtures/UnsavedProfile.ets`).href
+  const uri = pathToFileURL(path.join(basicFixtureRoot, "UnsavedProfile.ets")).href
 
   server.send({
     jsonrpc: "2.0",
@@ -103,7 +106,7 @@ test("does not serve a stale overlay after the document closes", async (t) => {
     method: "initialize",
     params: {
       processId: process.pid,
-      rootUri: pathToFileURL(projectRoot).href,
+      rootUri: pathToFileURL(basicFixtureRoot).href,
       capabilities: {},
     },
   })
@@ -138,10 +141,8 @@ test("does not serve a stale overlay after the document closes", async (t) => {
     },
   })
   const beforeClose = await server.response(2)
-  const beforeItems = Array.isArray(beforeClose.result)
-    ? beforeClose.result
-    : beforeClose.result?.items ?? []
-  assert.ok(beforeItems.some((item) => item.label === "unsavedValue"))
+  assert.equal(beforeClose.result.isIncomplete, false)
+  assert.ok(beforeClose.result.items.some((item) => item.label === "unsavedValue"))
 
   server.send({
     jsonrpc: "2.0",
@@ -159,5 +160,5 @@ test("does not serve a stale overlay after the document closes", async (t) => {
   })
 
   const afterClose = await server.response(3)
-  assert.deepEqual(afterClose.result, [])
+  assert.deepEqual(afterClose.result, { isIncomplete: false, items: [] })
 })

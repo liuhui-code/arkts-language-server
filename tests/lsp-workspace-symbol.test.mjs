@@ -2,13 +2,17 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import { pathToFileURL } from "node:url"
 
-import {
-  buildScriptedSemanticServer,
-  scriptedServerPath,
-} from "./support/build-test-server.mjs"
+import { buildScriptedSemanticServer } from "./support/build-test-server.mjs"
 import { LspProcess, projectRoot } from "./support/lsp-process.mjs"
 
-buildScriptedSemanticServer()
+const scriptedServerPath = buildScriptedSemanticServer()
+const modernWorkspaceSymbolCapabilities = {
+  workspace: {
+    symbol: {
+      symbolKind: { valueSet: Array.from({ length: 26 }, (_, index) => index + 1) },
+    },
+  },
+}
 
 test("search stays live during catalog work and returns the unsaved overlay without status rows", async (t) => {
   const server = new LspProcess({ serverPath: scriptedServerPath })
@@ -20,7 +24,11 @@ test("search stays live during catalog work and returns the unsaved overlay with
     jsonrpc: "2.0",
     id: 1,
     method: "initialize",
-    params: { processId: process.pid, rootUri, capabilities: {} },
+    params: {
+      processId: process.pid,
+      rootUri,
+      capabilities: modernWorkspaceSymbolCapabilities,
+    },
   })
   const initialized = await server.response(1)
   assert.equal(initialized.result.capabilities.workspaceSymbolProvider, true)
@@ -52,6 +60,65 @@ test("search stays live during catalog work and returns the unsaved overlay with
     location: { uri, range: zeroRange() },
   }])
   assert.ok(response.result.every((item) => !item.name.startsWith("Partial workspace results")))
+})
+
+test("maps every workspace symbol contract kind and conservatively falls back for an unknown index kind", async (t) => {
+  const server = new LspProcess({ serverPath: scriptedServerPath })
+  t.after(() => server.close())
+  const rootUri = pathToFileURL(projectRoot).href
+  const uri = pathToFileURL(`${projectRoot}/fixtures/W2WorkspaceSymbolKinds.ets`).href
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: {
+      processId: process.pid,
+      rootUri,
+      capabilities: modernWorkspaceSymbolCapabilities,
+    },
+  })
+  await server.response(1)
+  server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
+  server.send({
+    jsonrpc: "2.0",
+    method: "textDocument/didOpen",
+    params: {
+      textDocument: {
+        uri,
+        languageId: "arkts",
+        version: 1,
+        text: "// WORKSPACE_SYMBOL_KIND_FIXTURE",
+      },
+    },
+  })
+  server.send({
+    jsonrpc: "2.0",
+    id: 2,
+    method: "workspace/symbol",
+    params: { query: "W2Symbol" },
+  })
+
+  const response = await server.response(2)
+  assert.equal(response.error, undefined, JSON.stringify(response.error))
+  assert.deepEqual(
+    Object.fromEntries(response.result.map(({ name, kind }) => [name, kind])),
+    {
+      W2Symbolclass: 5,
+      W2Symbolconstructor: 9,
+      W2Symbolenum: 10,
+      W2SymbolenumMember: 22,
+      W2Symbolfunction: 12,
+      W2Symbolinterface: 11,
+      W2Symbolmethod: 6,
+      W2Symbolmodule: 2,
+      W2Symbolproperty: 7,
+      W2Symbolstruct: 23,
+      W2Symboltype: 26,
+      W2SymbolUnknown: 13,
+      W2Symbolvariable: 13,
+    },
+  )
 })
 
 test("maps workspace symbol cancellation and rejects requests after shutdown", async (t) => {
@@ -119,16 +186,18 @@ test("reports discovery without fake zero percent and completes monotonic indexi
   await server.response(1)
   server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
 
-  const create = await server.notification("window/workDoneProgress/create")
+  const create = await server.serverRequest("window/workDoneProgress/create")
   server.send({ jsonrpc: "2.0", id: create.id, result: null })
-  const begin = await server.notification("$/progress", (message) => message.params.value.kind === "begin")
+  const begin = await server.progress(create.params.token, (message) => (
+    message.params.value.kind === "begin"
+  ))
   assert.equal(begin.params.value.message, "Discovering project files")
   assert.equal("percentage" in begin.params.value, false)
 
   const reports = []
   while (reports.length < 3) {
-    reports.push(await server.notification(
-      "$/progress",
+    reports.push(await server.progress(
+      create.params.token,
       (message) => message.params.value.kind === "report",
     ))
   }
@@ -139,7 +208,9 @@ test("reports discovery without fake zero percent and completes monotonic indexi
   assert.ok(percentages.every((value, index) => index === 0 || value >= percentages[index - 1]))
   assert.ok(reports.some((message) => /1\/3 files/.test(message.params.value.message)))
 
-  const end = await server.notification("$/progress", (message) => message.params.value.kind === "end")
+  const end = await server.progress(create.params.token, (message) => (
+    message.params.value.kind === "end"
+  ))
   assert.equal(end.params.value.kind, "end")
 })
 

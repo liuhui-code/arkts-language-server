@@ -1,0 +1,348 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "completion.unicode",
+      "kind": "completion",
+      "role": "query",
+      "file": "workspace/entry/src/main/ets/pages/Home.ets",
+      "shape": "point+range"
+    },
+    {
+      "id": "greeter.definition",
+      "kind": "completion",
+      "role": "auto-import-target",
+      "file": "workspace/entry/src/main/ets/services/Greeter.ets",
+      "shape": "range"
+    },
+    {
+      "id": "profile.definition",
+      "kind": "definition",
+      "role": "target",
+      "file": "workspace/entry/src/main/ets/model/Profile.ets",
+      "shape": "range"
+    },
+    {
+      "id": "profile.barrel",
+      "kind": "definition",
+      "role": "re-export",
+      "file": "workspace/entry/src/main/ets/model/index.ets",
+      "shape": "range"
+    },
+    {
+      "id": "profile.import",
+      "kind": "references",
+      "role": "import",
+      "file": "workspace/entry/src/main/ets/pages/OtherConsumer.ets",
+      "shape": "range"
+    },
+    {
+      "id": "profile.reference",
+      "kind": "references",
+      "role": "reference",
+      "file": "workspace/entry/src/main/ets/pages/OtherConsumer.ets",
+      "shape": "range"
+    },
+    {
+      "id": "profile.type-definition",
+      "kind": "type-definition",
+      "role": "query",
+      "file": "workspace/entry/src/main/ets/pages/OtherConsumer.ets",
+      "shape": "range"
+    },
+    {
+      "id": "implementation.interface",
+      "kind": "implementation",
+      "role": "interface-query",
+      "file": "workspace/entry/src/main/ets/model/NavigationContracts.ets",
+      "shape": "range"
+    },
+    {
+      "id": "implementation.interface-target",
+      "kind": "implementation",
+      "role": "concrete-target",
+      "file": "workspace/entry/src/main/ets/model/NavigationImplementations.ets",
+      "shape": "range"
+    },
+    {
+      "id": "implementation.abstract-class",
+      "kind": "implementation",
+      "role": "abstract-query",
+      "file": "workspace/entry/src/main/ets/model/NavigationContracts.ets",
+      "shape": "range"
+    },
+    {
+      "id": "implementation.abstract-class-target",
+      "kind": "implementation",
+      "role": "concrete-target",
+      "file": "workspace/entry/src/main/ets/model/NavigationImplementations.ets",
+      "shape": "range"
+    },
+    {
+      "id": "profile.shadow",
+      "kind": "references",
+      "role": "negative",
+      "file": "workspace/entry/src/main/ets/pages/OtherConsumer.ets",
+      "shape": "range"
+    },
+    {
+      "id": "rename.origin",
+      "kind": "rename",
+      "role": "origin",
+      "file": "workspace/entry/src/main/ets/model/Profile.ets",
+      "shape": "range"
+    },
+    {
+      "id": "rename.barrel",
+      "kind": "rename",
+      "role": "barrel",
+      "file": "workspace/entry/src/main/ets/model/index.ets",
+      "shape": "range"
+    },
+    {
+      "id": "rename.consumer-import",
+      "kind": "rename",
+      "role": "import",
+      "file": "workspace/entry/src/main/ets/pages/OtherConsumer.ets",
+      "shape": "range"
+    },
+    {
+      "id": "rename.consumer-reference",
+      "kind": "rename",
+      "role": "query",
+      "file": "workspace/entry/src/main/ets/pages/OtherConsumer.ets",
+      "shape": "range"
+    },
+    {
+      "id": "rename.conflict-origin",
+      "kind": "rename",
+      "role": "same-scope-conflict",
+      "file": "workspace/entry/src/main/ets/model/RenameConflict.ets",
+      "shape": "range"
+    },
+    {
+      "id": "cross-module.definition",
+      "kind": "definition",
+      "role": "target",
+      "file": "workspace/shared/src/main/ets/model/SharedProfile.ets",
+      "shape": "range"
+    },
+    {
+      "id": "cross-module.reference",
+      "kind": "definition",
+      "role": "reference",
+      "file": "workspace/entry/src/main/ets/pages/CrossModuleConsumer.ets",
+      "shape": "range"
+    },
+    {
+      "id": "quickfix.greeting",
+      "kind": "diagnostic",
+      "role": "spelling-quickfix",
+      "file": "workspace/entry/src/main/ets/pages/QuickFixConsumer.ets",
+      "shape": "range"
+    },
+    {
+      "id": "signature.format-call",
+      "kind": "signature-help",
+      "role": "query",
+      "file": "workspace/entry/src/main/ets/pages/SignatureConsumer.ets",
+      "shape": "point"
+    },
+    {
+      "id": "inlay-hint.type",
+      "kind": "inlay-hint",
+      "role": "inferred-type",
+      "file": "workspace/entry/src/main/ets/pages/InlayHints.ets",
+      "shape": "point"
+    },
+    {
+      "id": "inlay-hint.value",
+      "kind": "inlay-hint",
+      "role": "parameter-name",
+      "file": "workspace/entry/src/main/ets/pages/InlayHints.ets",
+      "shape": "point"
+    },
+    {
+      "id": "inlay-hint.count",
+      "kind": "inlay-hint",
+      "role": "parameter-name",
+      "file": "workspace/entry/src/main/ets/pages/InlayHints.ets",
+      "shape": "point"
+    },
+    {
+      "id": "arkui.decorator.entry",
+      "kind": "arkui",
+      "role": "decorator",
+      "file": "workspace/entry/src/main/ets/pages/ArkuiPage.ets",
+      "shape": "range"
+    },
+    {
+      "id": "document-symbol.arkui-page",
+      "kind": "document-symbol",
+      "role": "root",
+      "file": "workspace/entry/src/main/ets/pages/ArkuiPage.ets",
+      "shape": "range"
+    },
+    {
+      "id": "document-symbol.title",
+      "kind": "document-symbol",
+      "role": "field",
+      "file": "workspace/entry/src/main/ets/pages/ArkuiPage.ets",
+      "shape": "range"
+    },
+    {
+      "id": "document-symbol.build",
+      "kind": "document-symbol",
+      "role": "method",
+      "file": "workspace/entry/src/main/ets/pages/ArkuiPage.ets",
+      "shape": "range"
+    },
+    {
+      "id": "arkui.decorator.component",
+      "kind": "arkui",
+      "role": "decorator",
+      "file": "workspace/entry/src/main/ets/pages/ArkuiPage.ets",
+      "shape": "range"
+    },
+    {
+      "id": "arkui.decorator.state",
+      "kind": "arkui",
+      "role": "decorator",
+      "file": "workspace/entry/src/main/ets/pages/ArkuiPage.ets",
+      "shape": "range"
+    },
+    {
+      "id": "arkui.component.column",
+      "kind": "arkui",
+      "role": "component",
+      "file": "workspace/entry/src/main/ets/pages/ArkuiPage.ets",
+      "shape": "range"
+    },
+    {
+      "id": "arkui.component.text",
+      "kind": "arkui",
+      "role": "component",
+      "file": "workspace/entry/src/main/ets/pages/ArkuiPage.ets",
+      "shape": "range"
+    },
+    {
+      "id": "arkui.attribute.width",
+      "kind": "arkui",
+      "role": "attribute",
+      "file": "workspace/entry/src/main/ets/pages/ArkuiPage.ets",
+      "shape": "range"
+    },
+    {
+      "id": "arkui.resource.completion",
+      "kind": "completion",
+      "role": "arkui-resource-query",
+      "file": "workspace/entry/src/main/ets/pages/ArkuiResourcePage.ets",
+      "shape": "point+range"
+    },
+    {
+      "id": "arkui.resource.definition",
+      "kind": "definition",
+      "role": "arkui-resource-reference",
+      "file": "workspace/entry/src/main/ets/pages/ArkuiResourcePage.ets",
+      "shape": "range"
+    },
+    {
+      "id": "arkui.resource.missing",
+      "kind": "diagnostic",
+      "role": "arkui-missing-resource",
+      "file": "workspace/entry/src/main/ets/pages/ArkuiResourcePage.ets",
+      "shape": "range"
+    },
+    {
+      "id": "arkui.builder-tail.width",
+      "kind": "arkui",
+      "role": "nested-builder-attribute",
+      "file": "workspace/entry/src/main/ets/pages/ArkuiBuilderTailPage.ets",
+      "shape": "range"
+    },
+    {
+      "id": "arkui.sdk-completion.entry",
+      "kind": "completion",
+      "role": "arkui-sdk-completion",
+      "file": "workspace/entry/src/main/ets/pages/ArkuiSdkCompletion.ets",
+      "shape": "point+range"
+    },
+    {
+      "id": "arkui.sdk-completion.component",
+      "kind": "completion",
+      "role": "arkui-sdk-completion",
+      "file": "workspace/entry/src/main/ets/pages/ArkuiSdkCompletion.ets",
+      "shape": "point+range"
+    },
+    {
+      "id": "arkui.sdk-completion.state",
+      "kind": "completion",
+      "role": "arkui-sdk-completion",
+      "file": "workspace/entry/src/main/ets/pages/ArkuiSdkCompletion.ets",
+      "shape": "point+range"
+    },
+    {
+      "id": "arkui.sdk-completion.column",
+      "kind": "completion",
+      "role": "arkui-sdk-completion",
+      "file": "workspace/entry/src/main/ets/pages/ArkuiSdkCompletion.ets",
+      "shape": "point+range"
+    },
+    {
+      "id": "arkui.sdk-completion.text",
+      "kind": "completion",
+      "role": "arkui-sdk-completion",
+      "file": "workspace/entry/src/main/ets/pages/ArkuiSdkCompletion.ets",
+      "shape": "point+range"
+    },
+    {
+      "id": "document-highlight.tracked",
+      "kind": "document-highlight",
+      "role": "query",
+      "file": "workspace/entry/src/main/ets/pages/DocumentHighlight.ets",
+      "shape": "range"
+    },
+    {
+      "id": "call-hierarchy.caller-declaration",
+      "kind": "call-hierarchy",
+      "role": "caller-declaration",
+      "file": "workspace/entry/src/main/ets/pages/CallHierarchyCaller.ets",
+      "shape": "range"
+    },
+    {
+      "id": "call-hierarchy.caller-selection",
+      "kind": "call-hierarchy",
+      "role": "caller-selection",
+      "file": "workspace/entry/src/main/ets/pages/CallHierarchyCaller.ets",
+      "shape": "range"
+    },
+    {
+      "id": "call-hierarchy.target-declaration",
+      "kind": "call-hierarchy",
+      "role": "target-declaration",
+      "file": "workspace/entry/src/main/ets/services/CallHierarchyTarget.ets",
+      "shape": "range"
+    },
+    {
+      "id": "call-hierarchy.target-selection",
+      "kind": "call-hierarchy",
+      "role": "target-selection",
+      "file": "workspace/entry/src/main/ets/services/CallHierarchyTarget.ets",
+      "shape": "range"
+    },
+    {
+      "id": "call-hierarchy.outgoing-callsite",
+      "kind": "call-hierarchy",
+      "role": "outgoing-callsite",
+      "file": "workspace/entry/src/main/ets/pages/CallHierarchyCaller.ets",
+      "shape": "range"
+    },
+    {
+      "id": "call-hierarchy.incoming-callsite",
+      "kind": "call-hierarchy",
+      "role": "incoming-callsite",
+      "file": "workspace/entry/src/main/ets/pages/CallHierarchyCaller.ets",
+      "shape": "range"
+    }
+  ]
+}
