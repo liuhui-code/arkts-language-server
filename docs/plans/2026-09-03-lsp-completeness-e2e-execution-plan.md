@@ -543,6 +543,9 @@ Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产�
 - [x] 本批次集成门禁：最终源码 HEAD `0b4c18a` 的 fresh `pnpm check:fast` 为 594/594，
   0 failed、0 skipped、0 todo，耗时 283.3 s；随后 immutable portable acceptance 为 4/4。
   sealed artifact build/consume-only acceptance 必须在本计划文档提交、worktree clean 后继续执行。
+- [x] Sealed builder 的公开 pnpm 命令现由 package-runner separator 回归保护：父提交
+  `7160b9e` 上先复现 literal `--` 导致 usage 失败（6/7），再以仅接受一个可选 leading separator
+  的最小修复达到 7/7；unknown/duplicate/missing/misplaced 参数继续 fail closed。
 
 #### 下一批 P0 基本功能 checklist（按依赖执行）
 

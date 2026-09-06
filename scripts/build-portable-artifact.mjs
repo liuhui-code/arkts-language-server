@@ -331,10 +331,11 @@ async function removeTree(candidate) {
 }
 
 function parseArguments(argv) {
+  const normalizedArgv = argv[0] === "--" ? argv.slice(1) : argv
   const values = new Map()
-  for (let index = 0; index < argv.length; index += 2) {
-    const name = argv[index]
-    const value = argv[index + 1]
+  for (let index = 0; index < normalizedArgv.length; index += 2) {
+    const name = normalizedArgv[index]
+    const value = normalizedArgv[index + 1]
     if (!name?.startsWith("--") || value === undefined) usage()
     if (values.has(name)) throw new Error(`duplicate argument: ${name}`)
     values.set(name, value)

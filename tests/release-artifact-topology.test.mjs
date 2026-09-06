@@ -81,6 +81,25 @@ test("builds one portable release from one clean staged commit", (t) => {
   }
 })
 
+test("accepts the package-runner option separator at the public build boundary", (t) => {
+  const fixture = releaseFixture(t)
+  const output = path.join(fixture.root, "release-output")
+
+  const result = spawnSync(process.execPath, [
+    releaseBuilder,
+    "--",
+    "--source-root", fixture.sourceRoot,
+    "--output", output,
+  ], {
+    cwd: os.tmpdir(),
+    encoding: "utf8",
+    env: fixture.environment,
+  })
+
+  assert.equal(result.status, 0, result.stderr || result.error?.message)
+  assert.equal(fs.existsSync(path.join(output, "artifact-manifest.json")), true)
+})
+
 test("accepts the sealed archive without a direct or indirect build", (t) => {
   const fixture = releaseFixture(t)
   const output = path.join(fixture.root, "release-output")
