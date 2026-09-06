@@ -56,8 +56,17 @@ interface ProjectFileSetCacheEntry extends ProjectMembershipSnapshot {
   diskIdentities: Map<string, string>
 }
 
+export interface SemanticOperationControl {
+  checkpoint(): void
+}
+
+const NOOP_OPERATION_CONTROL: SemanticOperationControl = Object.freeze({
+  checkpoint(): void {},
+})
+
 export interface SemanticDocumentStoreOptions {
   enumerateWorkspaceSources?: (rootPath: string) => Iterable<string>
+  operationControl?: SemanticOperationControl
   projectFileSetLimits?: {
     maxRoots?: number
     maxPaths?: number
@@ -107,6 +116,7 @@ export class SemanticDocumentStore {
   private readonly contentRevisions = new Map<string, number>()
   private readonly typeEngineResetRoots = new Set<string>()
   private readonly enumerateWorkspaceSources: (rootPath: string) => Iterable<string>
+  private readonly operationControl: SemanticOperationControl
   private readonly maxProjectFileSetRoots: number
   private readonly maxProjectFileSetPaths: number
   private readonly maxProjectFileSetPathBytes: number
@@ -117,11 +127,14 @@ export class SemanticDocumentStore {
   private projectMembershipRevision = 0
 
   constructor({
-    enumerateWorkspaceSources = listWorkspaceSourcePaths,
+    enumerateWorkspaceSources,
+    operationControl = NOOP_OPERATION_CONTROL,
     projectFileSetLimits = {},
     watchedFileLimits = {},
   }: SemanticDocumentStoreOptions = {}) {
+    this.operationControl = operationControl
     this.enumerateWorkspaceSources = enumerateWorkspaceSources
+      ?? ((rootPath) => listWorkspaceSourcePaths(rootPath, this.operationControl))
     this.maxProjectFileSetRoots = boundedLimit(
       projectFileSetLimits.maxRoots,
       MAX_PROJECT_FILE_SET_ROOTS,
@@ -242,18 +255,15 @@ export class SemanticDocumentStore {
   }
 
   refreshProjectMembership(rootPath: string): ProjectMembershipRefresh {
+    this.operationControl.checkpoint()
     const canonicalRoot = canonicalWorkspaceRoot(rootPath)
     const previous = this.projectFileSets.get(canonicalRoot)
     if (!previous) return { changed: false, removedPaths: [] }
-    this.projectFileSets.delete(canonicalRoot)
-    this.projectMembership(rootPath)
-    const current = this.projectFileSets.get(canonicalRoot)
-    if (!current) return { changed: true, removedPaths: [...previous.paths] }
+    const current = this.scanProjectMembership(rootPath)
     const membershipUnchanged = current.status === previous.status
       && current.reason === previous.reason
       && current.paths.length === previous.paths.length
       && current.paths.every((filePath, index) => filePath === previous.paths[index])
-    if (membershipUnchanged) current.revision = previous.revision
     const currentPaths = new Set(current.paths)
     const removedPaths = current.status === "complete"
       ? previous.paths.filter((filePath) => !currentPaths.has(filePath))
@@ -261,6 +271,11 @@ export class SemanticDocumentStore {
     const changedPaths = current.paths.filter((filePath) => (
       current.diskIdentities.get(filePath) !== previous.diskIdentities.get(filePath)
     ))
+    this.operationControl.checkpoint()
+
+    current.revision = membershipUnchanged
+      ? previous.revision
+      : ++this.projectMembershipRevision
     this.invalidateDiskDocuments([...removedPaths, ...changedPaths])
     for (const filePath of removedPaths) {
       this.markWatchedRemoved(canonicalRoot, filePath)
@@ -271,6 +286,7 @@ export class SemanticDocumentStore {
     if (removedPaths.length > 0 || changedPaths.length > 0) {
       this.contentRevisions.set(canonicalRoot, (this.contentRevisions.get(canonicalRoot) ?? 0) + 1)
     }
+    this.publishProjectMembership(canonicalRoot, current)
     return {
       changed: !membershipUnchanged || removedPaths.length > 0 || changedPaths.length > 0,
       removedPaths,
@@ -625,6 +641,7 @@ export class SemanticDocumentStore {
   }
 
   private projectMembership(rootPath: string): ProjectMembershipSnapshot {
+    this.operationControl.checkpoint()
     const resolvedRoot = path.resolve(rootPath)
     const canonicalRoot = canonicalWorkspaceRoot(resolvedRoot)
     const cached = this.projectFileSets.get(canonicalRoot)
@@ -633,6 +650,15 @@ export class SemanticDocumentStore {
       this.projectFileSets.set(canonicalRoot, cached)
       return publicProjectMembership(cached)
     }
+    const entry = this.scanProjectMembership(resolvedRoot)
+    entry.revision = ++this.projectMembershipRevision
+    this.publishProjectMembership(canonicalRoot, entry)
+    return publicProjectMembership(entry)
+  }
+
+  private scanProjectMembership(rootPath: string): ProjectFileSetCacheEntry {
+    const resolvedRoot = path.resolve(rootPath)
+    const canonicalRoot = canonicalWorkspaceRoot(resolvedRoot)
     const overlayPaths = [...this.documents.values()]
       .filter((record) => record.overlay && isInside(canonicalRoot, canonicalSourcePath(record.path)))
       .map((record) => record.path)
@@ -668,6 +694,7 @@ export class SemanticDocumentStore {
     if (status === "complete") {
       try {
         for (const sourcePath of this.enumerateWorkspaceSources(resolvedRoot)) {
+          this.operationControl.checkpoint()
           const stat = safeStat(sourcePath)
           if (!stat?.isFile() || stat.size > MAX_DISK_SNAPSHOT_BYTES) {
             status = "partial"
@@ -678,6 +705,7 @@ export class SemanticDocumentStore {
           if (!accept(sourcePath)) break
         }
       } catch {
+        this.operationControl.checkpoint()
         status = "partial"
         reason = "enumeration-error"
       }
@@ -688,16 +716,21 @@ export class SemanticDocumentStore {
       pathBytes,
       status,
       ...(reason ? { reason } : {}),
-      revision: ++this.projectMembershipRevision,
+      revision: 0,
       diskIdentities,
     }
+    this.operationControl.checkpoint()
+    return entry
+  }
+
+  private publishProjectMembership(canonicalRoot: string, entry: ProjectFileSetCacheEntry): void {
+    this.projectFileSets.delete(canonicalRoot)
     this.projectFileSets.set(canonicalRoot, entry)
     while (this.projectFileSets.size > this.maxProjectFileSetRoots) {
       const oldestRoot = this.projectFileSets.keys().next().value
       if (oldestRoot === undefined) break
       this.projectFileSets.delete(oldestRoot)
     }
-    return publicProjectMembership(entry)
   }
 
   private includeOpenedProjectSource(rootPath: string | undefined, filePath: string): void {
@@ -938,7 +971,10 @@ function publicProjectMembership(entry: ProjectFileSetCacheEntry): ProjectMember
   }
 }
 
-function* listWorkspaceSourcePaths(rootPath: string): Generator<string> {
+function* listWorkspaceSourcePaths(
+  rootPath: string,
+  operationControl: SemanticOperationControl,
+): Generator<string> {
   const pending: Array<{ path: string; directory: fs.Dir }> = []
   try {
     pending.push({ path: rootPath, directory: fs.opendirSync(rootPath) })
@@ -950,6 +986,7 @@ function* listWorkspaceSourcePaths(rootPath: string): Generator<string> {
         current.directory.closeSync()
         continue
       }
+      operationControl.checkpoint()
       if (entry.name === ".arkline" || entry.name === ".git" || entry.name === "build"
         || entry.name === "node_modules" || entry.name === "oh_modules") continue
       const entryPath = path.resolve(current.path, entry.name)
