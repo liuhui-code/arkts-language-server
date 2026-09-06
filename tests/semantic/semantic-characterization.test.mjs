@@ -369,7 +369,7 @@ test("completes contextual object properties without a prefix", async (t) => {
   assert.equal(unfinishedTitle[0].kind, CompletionItemKind.Property)
 })
 
-test("maps enum declaration and member completions to their LSP kinds", async (t) => {
+test("maps enum and module completion families to their LSP kinds", async (t) => {
   const materialized = await materializeConformanceWorkspace()
   const documentPath = path.join(
     materialized.workspaceRoot,
@@ -383,13 +383,16 @@ test("maps enum declaration and member completions to their LSP kinds", async (t
   const documentUri = pathToFileURL(documentPath).href
   const source = [
     "enum RenderingMode { Compact, Expanded }",
+    "namespace LayoutTools { export const width = 1 }",
     "const selected = RenderingMo",
     "const member = RenderingMode.Com",
+    "const tools = LayoutTo",
     "",
   ].join("\n")
   await fs.promises.writeFile(documentPath, source, "utf8")
   const prefixStart = source.indexOf("RenderingMo", source.indexOf("const selected"))
   const memberPrefixStart = source.lastIndexOf("Com")
+  const modulePrefixStart = source.lastIndexOf("LayoutTo")
   const session = new LspSession({
     command: process.execPath,
     args: [path.join(projectRoot, "dist", "server.cjs"), "--stdio"],
@@ -439,6 +442,18 @@ test("maps enum declaration and member completions to their LSP kinds", async (t
   const compact = memberItems.filter((item) => item.label === "Compact")
   assert.equal(compact.length, 1, `Expected Compact in ${JSON.stringify(memberItems)}`)
   assert.equal(compact[0].kind, CompletionItemKind.EnumMember)
+
+  const moduleResponse = await session.request("textDocument/completion", {
+    textDocument: { uri: documentUri },
+    position: positionAt(source, modulePrefixStart + "LayoutTo".length),
+  })
+  assert.equal(moduleResponse.error, undefined, JSON.stringify(moduleResponse.error))
+  const moduleItems = Array.isArray(moduleResponse.result)
+    ? moduleResponse.result
+    : moduleResponse.result?.items ?? []
+  const layoutTools = moduleItems.filter((item) => item.label === "LayoutTools")
+  assert.equal(layoutTools.length, 1, `Expected LayoutTools in ${JSON.stringify(moduleItems)}`)
+  assert.equal(layoutTools[0].kind, CompletionItemKind.Module)
 })
 
 test("replaces the complete identifier when completion is accepted mid-token", async (t) => {

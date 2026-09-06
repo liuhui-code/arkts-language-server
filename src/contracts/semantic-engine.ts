@@ -14,6 +14,7 @@ export type SemanticCompletionKind =
   | "enumMember"
   | "interface"
   | "keyword"
+  | "module"
   | "variable"
   | "property"
 
