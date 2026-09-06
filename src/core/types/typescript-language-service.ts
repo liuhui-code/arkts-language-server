@@ -238,7 +238,7 @@ export class TypeScriptLanguageServiceEngine {
     work.boundary()
     const filePath = path.resolve(position.path)
     const script = this.scripts.get(filePath)
-    if (!script || !hasCompletionPrefix(script.sourceContent, position)) {
+    if (!script) {
       return work.finish({ items: [], isIncomplete: false })
     }
     script.lastAccess = ++this.accessClock
@@ -1508,14 +1508,6 @@ export class TypeScriptLanguageServiceEngine {
       this.generation += 1
     }
   }
-}
-
-function hasCompletionPrefix(content: string, position: SemanticDocumentPosition): boolean {
-  const offset = lineColumnToOffset(content, position.line, position.column)
-  const before = content.slice(0, offset)
-  return /\.[A-Za-z_$][A-Za-z0-9_$]*$/.test(before)
-    || before.endsWith(".")
-    || /\b[A-Za-z_$][A-Za-z0-9_$]*$/.test(before)
 }
 
 function completionPrefix(content: string, offset: number): string {

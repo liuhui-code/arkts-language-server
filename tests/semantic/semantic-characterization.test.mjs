@@ -178,6 +178,79 @@ test("completes a one-character non-member local with an exact replacement", asy
   })
 })
 
+test("completes contextual object properties without a prefix", async (t) => {
+  const materialized = await materializeConformanceWorkspace()
+  const documentPath = path.join(
+    materialized.workspaceRoot,
+    "entry",
+    "src",
+    "main",
+    "ets",
+    "pages",
+    "ContextualCompletion.ets",
+  )
+  const documentUri = pathToFileURL(documentPath).href
+  const source = [
+    "interface Options {",
+    "  title: string",
+    "  count: number",
+    "}",
+    "",
+    "function options(): Options {",
+    "  return {  }",
+    "}",
+    "",
+  ].join("\n")
+  await fs.promises.writeFile(documentPath, source, "utf8")
+  const cursorOffset = source.indexOf("{  }") + 2
+  const session = new LspSession({
+    command: process.execPath,
+    args: [path.join(projectRoot, "dist", "server.cjs"), "--stdio"],
+    cwd: projectRoot,
+    env: {
+      HOME: path.join(materialized.root, "missing-home"),
+      DEVECO_SDK_HOME: path.join(materialized.root, "missing-deveco"),
+      ARKLINE_HARMONY_SDK_PATH: path.join(materialized.corpusRoot, "sdk", "openharmony"),
+    },
+    rootUri: pathToFileURL(materialized.workspaceRoot).href,
+    capabilities: { general: { positionEncodings: ["utf-16"] } },
+  })
+  t.after(async () => {
+    try {
+      await session.close()
+    } finally {
+      await fs.promises.rm(materialized.root, { recursive: true, force: true })
+    }
+  })
+
+  await session.initialize()
+  session.openDocument({
+    uri: documentUri,
+    languageId: "arkts",
+    version: 1,
+    text: source,
+  })
+  const response = await session.request("textDocument/completion", {
+    textDocument: { uri: documentUri },
+    position: positionAt(source, cursorOffset),
+    context: { triggerKind: 1 },
+  })
+
+  assert.equal(response.error, undefined, JSON.stringify(response.error))
+  const items = Array.isArray(response.result) ? response.result : response.result?.items ?? []
+  const title = items.filter((item) => item.label === "title")
+  const count = items.filter((item) => item.label === "count")
+  assert.equal(title.length, 1, `Expected title in ${JSON.stringify(items)}`)
+  assert.equal(count.length, 1, `Expected count in ${JSON.stringify(items)}`)
+  assert.equal(title[0].kind, CompletionItemKind.Field)
+  assert.equal(count[0].kind, CompletionItemKind.Field)
+  assert.equal(
+    items.some((item) => item.label === "Greeter"),
+    false,
+    "zero-prefix contextual completion must not enable workspace module exports",
+  )
+})
+
 test("completes an unopened class from a two-character prefix", async (t) => {
   const materialized = await materializeConformanceWorkspace()
   const completion = materialized.cases["completion.unicode"]
