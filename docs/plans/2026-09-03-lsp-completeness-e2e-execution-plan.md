@@ -595,6 +595,12 @@ Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产�
   `Property(10)`）。
 - [x] C9 Completion ranking：local 优先于 auto-import，重复请求排序与 `sortText` 稳定；同名但
   语义不同的 auto-import 不误删，并以 workspace-relative module source 区分（`4b245df`）。
+- [x] C10 Contextual manual completion：移除 core 的 ASCII-prefix 前置拒绝，让手动 Ctrl+Space 在
+  typed object literal 零前缀位置返回上下文成员；两字符 module-export 门槛、128 quota 与取消语义
+  保持不变（`02f8719`）。
+- [ ] C11 Completion fidelity：分别以真实 LSP RED 固化 Unicode identifier prefix、camel/fuzzy
+  filtering、object-property kind、commit characters 与 snippet/insertTextFormat；每项独立切片，
+  禁止一次性改写 completion pipeline。
 - [x] W2 Workspace symbol kind：overlay 的 interface/enum/property/constructor/module/type/variable
   不再统一降级为 Variable；未知 sidecar kind 保守降级为 Variable（`eb0ef8c`）。
 - [x] E1 Hover depth：unopened dependency、import alias、JSDoc tags、emoji UTF-16 range，并加入
