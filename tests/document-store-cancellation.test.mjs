@@ -314,6 +314,103 @@ test("disk reads checkpoint between bounded chunks, close on cancellation, and r
   assert.equal(closedDescriptors, openedDescriptors)
 })
 
+test("workspace hydration admits aggregate bytes before reading and retries an uncommitted file", (t) => {
+  const maxDiskBytes = 4 * 1024 * 1024
+  const aContent = sourceWithExactBytes("a", maxDiskBytes)
+  const bContent = sourceWithExactBytes("b", maxDiskBytes)
+  const workspace = createWorkspace(t, {
+    "Main.ets": "export const main = 1\n",
+    "A.ets": aContent,
+    "B.ets": bContent,
+  })
+  const mainPath = path.join(workspace, "Main.ets")
+  const aPath = path.join(workspace, "A.ets")
+  const bPath = path.join(workspace, "B.ets")
+  const driverRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-hydration-admission-driver-"))
+  t.after(() => fs.rmSync(driverRoot, { recursive: true, force: true }))
+  const { SemanticDocumentStore } = buildDocumentStoreDriver(driverRoot)
+  const store = new SemanticDocumentStore({
+    enumerateWorkspaceSources: () => [mainPath, aPath, bPath],
+  })
+  t.after(() => store.dispose())
+  const position = syncPosition(store, workspace, mainPath)
+
+  const originalOpen = fs.openSync
+  const originalFstat = fs.fstatSync
+  const originalRead = fs.readSync
+  const originalClose = fs.closeSync
+  const descriptorPaths = new Map()
+  const openCounts = new Map()
+  const fstatCounts = new Map()
+  const readCounts = new Map()
+  const closeCounts = new Map()
+  fs.openSync = (filePath, ...args) => {
+    const descriptor = originalOpen(filePath, ...args)
+    const resolvedPath = path.resolve(String(filePath))
+    if (resolvedPath === aPath || resolvedPath === bPath) {
+      descriptorPaths.set(descriptor, resolvedPath)
+      incrementCount(openCounts, resolvedPath)
+    }
+    return descriptor
+  }
+  fs.fstatSync = (descriptor, ...args) => {
+    const descriptorPath = descriptorPaths.get(descriptor)
+    if (descriptorPath) incrementCount(fstatCounts, descriptorPath)
+    return originalFstat(descriptor, ...args)
+  }
+  fs.readSync = (descriptor, ...args) => {
+    const descriptorPath = descriptorPaths.get(descriptor)
+    if (descriptorPath) incrementCount(readCounts, descriptorPath)
+    return originalRead(descriptor, ...args)
+  }
+  fs.closeSync = (descriptor) => {
+    const descriptorPath = descriptorPaths.get(descriptor)
+    const result = originalClose(descriptor)
+    if (descriptorPath) {
+      descriptorPaths.delete(descriptor)
+      incrementCount(closeCounts, descriptorPath)
+    }
+    return result
+  }
+  t.after(() => {
+    fs.openSync = originalOpen
+    fs.fstatSync = originalFstat
+    fs.readSync = originalRead
+    fs.closeSync = originalClose
+  })
+
+  const first = store.prepare(position, true)
+
+  assert.deepEqual(
+    first.documents.map(({ path: documentPath }) => documentPath).sort(),
+    [mainPath, aPath].sort(),
+  )
+  assert.ok((readCounts.get(aPath) ?? 0) > 0, "the admitted A file must be read")
+  assert.equal(openCounts.get(bPath), 1, "B must be opened so its descriptor size can be admitted")
+  assert.equal(fstatCounts.get(bPath), 1, "B admission must use the opened descriptor identity")
+  assert.equal(readCounts.get(bPath) ?? 0, 0, "B must be rejected before allocation and read")
+  assert.equal(closeCounts.get(bPath), 1, "budget rejection must close B's descriptor")
+
+  fs.unlinkSync(aPath)
+  store.workspaceFilesChanged({
+    rootPath: workspace,
+    rootDirty: false,
+    changes: [{ path: aPath, kind: "deleted" }],
+  })
+  readCounts.set(bPath, 0)
+  const retried = store.prepare(position, true)
+
+  assert.deepEqual(
+    retried.documents.map(({ path: documentPath }) => documentPath).sort(),
+    [mainPath, bPath].sort(),
+  )
+  assert.ok(
+    (readCounts.get(bPath) ?? 0) > 0,
+    "a fresh retry must really read B; aggregate rejection must not pollute the cache",
+  )
+  assert.equal(Buffer.byteLength(documentContent(retried, bPath)), maxDiskBytes)
+})
+
 test("cold dependency traversal rolls back a loaded prefix and retries the full closure", (t) => {
   const mainContent = [
     'import { a } from "./A"',
@@ -601,6 +698,18 @@ function syncPosition(store, workspaceRoot, documentPath) {
 
 function documentContent(view, documentPath) {
   return view.documents.find((document) => document.path === documentPath)?.content
+}
+
+function sourceWithExactBytes(name, byteLength) {
+  const prefix = `export const ${name} = "`
+  const suffix = '"\n'
+  const paddingBytes = byteLength - Buffer.byteLength(prefix) - Buffer.byteLength(suffix)
+  assert.ok(paddingBytes >= 0)
+  return `${prefix}${"x".repeat(paddingBytes)}${suffix}`
+}
+
+function incrementCount(counts, key) {
+  counts.set(key, (counts.get(key) ?? 0) + 1)
 }
 
 function buildTypeEngineDriver(t) {

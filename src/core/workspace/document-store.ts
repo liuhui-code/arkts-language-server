@@ -58,6 +58,15 @@ interface DiskInvalidationInput {
   physicalPath?: string
 }
 
+type BudgetedDiskLoadResult =
+  | { status: "loaded"; record: DocumentRecord }
+  | { status: "budget-exceeded" }
+
+type DiskReadResult =
+  | { status: "loaded"; content: string }
+  | { status: "unavailable" }
+  | { status: "budget-exceeded" }
+
 interface DocumentCacheTransaction {
   records: Map<string, DocumentRecord | undefined>
   closures: Map<string, DependencyClosureCacheEntry | undefined>
@@ -735,7 +744,14 @@ export class SemanticDocumentStore {
       for (const sourcePath of projectMembership.paths) {
         if (loadedPaths.has(sourcePath) || closure.length >= MAX_CLOSURE_DOCUMENTS) continue
         const before = this.documents.get(sourcePath)
-        const record = this.loadFromDiskWithinTransaction(sourcePath, before, transaction)
+        const loaded = this.loadFromDiskWithinTransaction(
+          sourcePath,
+          before,
+          transaction,
+          Math.max(0, MAX_CLOSURE_BYTES - totalBytes),
+        )
+        if (loaded.status === "budget-exceeded") continue
+        const record = loaded.record
         const bytes = Buffer.byteLength(record.content)
         if (!record.available || totalBytes + bytes > MAX_CLOSURE_BYTES) continue
         closure.push({ record, cacheHit: before === record })
@@ -1011,24 +1027,47 @@ export class SemanticDocumentStore {
     filePath: string,
     cached?: DocumentRecord,
     transaction?: DocumentCacheTransaction,
-  ): DocumentRecord {
-    if (transaction) this.captureDocumentRecord(transaction, filePath)
+  ): DocumentRecord
+  private loadFromDiskWithinTransaction(
+    filePath: string,
+    cached: DocumentRecord | undefined,
+    transaction: DocumentCacheTransaction | undefined,
+    remainingBytes: number,
+  ): BudgetedDiskLoadResult
+  private loadFromDiskWithinTransaction(
+    filePath: string,
+    cached?: DocumentRecord,
+    transaction?: DocumentCacheTransaction,
+    remainingBytes?: number,
+  ): DocumentRecord | BudgetedDiskLoadResult {
+    const budgeted = remainingBytes !== undefined
+    const availableBytes = remainingBytes ?? Number.POSITIVE_INFINITY
+    const loaded = (record: DocumentRecord): DocumentRecord | BudgetedDiskLoadResult => (
+      budgeted ? { status: "loaded", record } : record
+    )
     if (cached?.overlay) {
+      if (transaction) this.captureDocumentRecord(transaction, filePath)
       cached.lastAccess = ++this.accessClock
-      return cached
+      return loaded(cached)
     }
     const stat = safeStat(filePath, this.operationControl)
     const fingerprint = stat ? `${stat.mtimeMs}:${stat.size}` : null
     if (cached && fingerprint !== null && cached.diskFingerprint === fingerprint) {
+      if (Buffer.byteLength(cached.content) > availableBytes) {
+        return { status: "budget-exceeded" }
+      }
+      if (transaction) this.captureDocumentRecord(transaction, filePath)
       cached.lastAccess = ++this.accessClock
-      return cached
+      return loaded(cached)
     }
-    const content = stat?.isFile() && stat.size <= MAX_DISK_SNAPSHOT_BYTES
-      ? safeRead(filePath, this.operationControl)
-      : null
-    if (content === null) {
-      if (cached && !cached.available && cached.diskFingerprint === fingerprint) return cached
-      return this.store(
+    const read = stat?.isFile() && stat.size <= MAX_DISK_SNAPSHOT_BYTES
+      ? safeRead(filePath, availableBytes, this.operationControl)
+      : { status: "unavailable" as const }
+    if (read.status === "budget-exceeded") return read
+    if (read.status === "unavailable") {
+      if (cached && !cached.available && cached.diskFingerprint === fingerprint) return loaded(cached)
+      if (transaction) this.captureDocumentRecord(transaction, filePath)
+      return loaded(this.store(
         filePath,
         "",
         (cached?.contentGeneration ?? 0) + 1,
@@ -1036,9 +1075,21 @@ export class SemanticDocumentStore {
         false,
         undefined,
         false,
-      )
+      ))
     }
-    return this.store(filePath, content, (cached?.contentGeneration ?? 0) + 1, fingerprint, true, undefined, false)
+    if (Buffer.byteLength(read.content) > availableBytes) {
+      return { status: "budget-exceeded" }
+    }
+    if (transaction) this.captureDocumentRecord(transaction, filePath)
+    return loaded(this.store(
+      filePath,
+      read.content,
+      (cached?.contentGeneration ?? 0) + 1,
+      fingerprint,
+      true,
+      undefined,
+      false,
+    ))
   }
 
   private collectDependencyClosure(
@@ -1403,18 +1454,23 @@ function sourcePathIdentities(filePath: string): string[] {
   return physical === resolved ? [resolved] : [resolved, physical]
 }
 
-function safeRead(filePath: string, operationControl: SemanticOperationControl): string | null {
+function safeRead(
+  filePath: string,
+  remainingBytes: number,
+  operationControl: SemanticOperationControl,
+): DiskReadResult {
   let descriptor: number | undefined
   try {
     operationControl.checkpoint()
     const initial = fs.lstatSync(filePath)
-    if (!initial.isFile() && !initial.isSymbolicLink()) return null
+    if (!initial.isFile() && !initial.isSymbolicLink()) return { status: "unavailable" }
     descriptor = fs.openSync(
       filePath,
       fs.constants.O_RDONLY | (fs.constants.O_NONBLOCK ?? 0),
     )
     const before = fs.fstatSync(descriptor)
-    if (!before.isFile() || before.size > MAX_DISK_SNAPSHOT_BYTES) return null
+    if (!before.isFile() || before.size > MAX_DISK_SNAPSHOT_BYTES) return { status: "unavailable" }
+    if (before.size > remainingBytes) return { status: "budget-exceeded" }
     const bytes = Buffer.allocUnsafe(before.size + 1)
     let offset = 0
     while (offset < bytes.length) {
@@ -1438,12 +1494,15 @@ function safeRead(filePath: string, operationControl: SemanticOperationControl):
       || before.size !== after.size
       || before.mtimeMs !== after.mtimeMs
       || before.ctimeMs !== after.ctimeMs
-    ) return null
-    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true })
-      .decode(bytes.subarray(0, offset))
+    ) return { status: "unavailable" }
+    return {
+      status: "loaded",
+      content: new TextDecoder("utf-8", { fatal: true, ignoreBOM: true })
+        .decode(bytes.subarray(0, offset)),
+    }
   } catch {
     operationControl.checkpoint()
-    return null
+    return { status: "unavailable" }
   } finally {
     if (descriptor !== undefined) {
       try {
