@@ -93,6 +93,18 @@ class ScriptedSemanticEngine implements SemanticEnginePort {
     ) {
       return waitForAbort(query.signal)
     }
+    const bulkCompletion = /COMPLETION_RESULT_(\d+)/u.exec(query.document.text)
+    if (bulkCompletion) {
+      const completionCount = Number.parseInt(bulkCompletion[1] ?? "0", 10)
+      return {
+        documentVersion: query.document.version,
+        value: Array.from({ length: completionCount }, (_, index) => ({
+          label: `bulk-${String(index).padStart(3, "0")}`,
+          detail: `Scripted bulk completion ${index}`,
+          kind: "property",
+        })),
+      }
+    }
     if (query.document.text.includes("DELAY_IGNORING_ABORT")) {
       query.signal?.addEventListener(
         "abort",

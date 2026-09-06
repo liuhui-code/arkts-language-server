@@ -51,6 +51,7 @@ import {
 import { requestCancelled, SemanticRequestRunner } from "./semantic-request-runner.js"
 import { WorkspaceFileChangeCoordinator } from "./workspace-file-change-coordinator.js"
 
+const MAX_COMPLETION_ITEMS = 256
 const MAX_COMPLETION_RESOLUTIONS = 512
 
 interface CompletionResolutionRecord {
@@ -348,7 +349,8 @@ export function runLanguageServer(services?: LanguageServerServices): void {
     })
     const document = documents.get(params.textDocument.uri)
     if (!document) return []
-    return result.map((completion) => toLspCompletionItem(
+    const bounded = result.slice(0, MAX_COMPLETION_ITEMS)
+    const items = bounded.map((completion) => toLspCompletionItem(
       completion,
       completionResolutions.remember({
         documentUri: document.uri,
@@ -357,6 +359,9 @@ export function runLanguageServer(services?: LanguageServerServices): void {
         completion,
       }),
     ))
+    return result.length > bounded.length
+      ? { isIncomplete: true, items }
+      : items
   })
 
   connection.onCompletionResolve(async (clientItem, token) => {
