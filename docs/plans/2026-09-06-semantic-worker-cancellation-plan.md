@@ -245,9 +245,12 @@ node --test tests/lsp-semantic-worker-responsiveness.test.mjs
     entries 检查并在收满 128 个匹配项后停止（`9e971f9`）。implementations 已用同一 request-local
     cadence 串起 definition/implementation provider boundaries、declaration Set、raw filter 和共享
     candidate mapper；三个隔离用例先在父实现下 3/3 RED，再达到 5/5 focused GREEN（`f8cb383`）。
-    这些仍只证明 TypeScript core；completion resolve、definition/typeDefinition activation、
-    inlay/highlight、Call Hierarchy cadence、Registry merge 与 Legacy/ArkUI/LSP 后段 owned loops 尚未
-    闭环，因此 T4d 保持未勾选。
+    inlay provider/raw mapping/displayParts 与 documentHighlight provider/group/span/sort 也已用隔离
+    RED 锁定 provider boundary 和每 64 单元 cadence（`39c052f`、`8c2a649`、`8d59011`）；LSP 的
+    排序后 1,000 项/256 KiB budget 未前移，避免改变完整结果。以上仍只证明 TypeScript core；
+    completion resolve、definition/typeDefinition activation、Call Hierarchy cadence、Registry merge，
+    以及 Legacy/ArkUI/LSP 后段 inlay/highlight mapping/sort/byte accounting 尚未闭环，因此 T4d 保持
+    未勾选。
 - [ ] T5 State：worker 独占 SemanticDocumentStore/TS engine，sync/query-by-reference 与无 gap ACK。
   Call Hierarchy 的 protocol v2 strict request/result codec 已先行完成（`1ef51ef`）；随后 supervisor
   已按可信 active method 做 method-aware response decode，超限 collection 在 element descriptor 扫描前
