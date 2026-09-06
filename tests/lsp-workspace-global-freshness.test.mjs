@@ -1,12 +1,15 @@
 import assert from "node:assert/strict"
 import fs from "node:fs"
+import { createRequire } from "node:module"
 import os from "node:os"
 import path from "node:path"
 import test from "node:test"
 import { pathToFileURL } from "node:url"
 
+import { buildSync } from "esbuild"
+
 import { buildScriptedSemanticServer } from "./support/build-test-server.mjs"
-import { LspProcess } from "./support/lsp-process.mjs"
+import { LspProcess, projectRoot } from "./support/lsp-process.mjs"
 
 const scriptedServerPath = buildScriptedSemanticServer()
 
@@ -147,6 +150,133 @@ test("every same-workspace mutation makes cancellation-resistant rename ContentM
     assert.equal(response.result, undefined, "a stale WorkspaceEdit must never be returned")
     assert.equal(response.error?.code, -32801, lifecycle)
   }
+})
+
+test("a client cancel arriving after didChange preserves ContentModified as the first cause", async (t) => {
+  const session = await openMultiRootServer(t)
+  const queryUri = session.uri("first", "MutationFirst.ets")
+  const changedUri = session.uri("first", "MutationFirstBarrier.ets")
+  openDocument(session.server, queryUri, "// RENAME_IGNORES_ABORT")
+  openDocument(
+    session.server,
+    changedUri,
+    "// WORKSPACE_MUTATION_PROBE\nstruct Before {}",
+  )
+
+  const entered = session.server.notification(
+    "window/logMessage",
+    ({ params }) => params.message.includes("scripted resistant rename entered"),
+  )
+  session.server.send(globalRequest(65, "textDocument/rename", queryUri))
+  await entered
+
+  const mutationObserved = mutationProcessed(session.server, `${changedUri}@2`)
+  changeDocument(
+    session.server,
+    changedUri,
+    "// WORKSPACE_MUTATION_PROBE\nstruct After {}",
+    2,
+  )
+  await mutationObserved
+
+  session.server.send({
+    jsonrpc: "2.0",
+    method: "$/cancelRequest",
+    params: { id: 65 },
+  })
+  session.server.send(completionRequest(66, changedUri))
+  assert.equal((await session.server.response(66)).error, undefined)
+
+  changeDocument(session.server, queryUri, "// RENAME_IGNORES_ABORT", 2)
+  const response = await session.server.response(65)
+  assert.equal(response.result, undefined, "a stale WorkspaceEdit must never be returned")
+  assert.deepEqual(response.error, {
+    code: -32801,
+    message: "Rename request is stale",
+  })
+})
+
+test("a didChange arriving after client cancel preserves RequestCancelled as the first cause", async (t) => {
+  const session = await openMultiRootServer(t)
+  const queryUri = session.uri("first", "ClientFirst.ets")
+  const changedUri = session.uri("first", "ClientFirstBarrier.ets")
+  openDocument(session.server, queryUri, "// RENAME_IGNORES_ABORT")
+  openDocument(
+    session.server,
+    changedUri,
+    "// WORKSPACE_MUTATION_PROBE\nstruct Before {}",
+  )
+
+  const entered = session.server.notification(
+    "window/logMessage",
+    ({ params }) => params.message.includes("scripted resistant rename entered"),
+  )
+  session.server.send(globalRequest(67, "textDocument/rename", queryUri))
+  await entered
+
+  session.server.send({
+    jsonrpc: "2.0",
+    method: "$/cancelRequest",
+    params: { id: 67 },
+  })
+  session.server.send(completionRequest(68, changedUri))
+  assert.equal((await session.server.response(68)).error, undefined)
+
+  const mutationObserved = mutationProcessed(session.server, `${changedUri}@2`)
+  changeDocument(
+    session.server,
+    changedUri,
+    "// WORKSPACE_MUTATION_PROBE\nstruct After {}",
+    2,
+  )
+  await mutationObserved
+
+  changeDocument(session.server, queryUri, "// RENAME_IGNORES_ABORT", 2)
+  const response = await session.server.response(67)
+  assert.equal(response.result, undefined, "a cancelled WorkspaceEdit must never be returned")
+  assert.deepEqual(response.error, {
+    code: -32800,
+    message: "Request cancelled by client",
+  })
+})
+
+test("the first cause is exposed as a typed request abort reason", (t) => {
+  const { RequestAbortError, RequestFreshness } = buildRequestFreshnessDriver(t)
+  let cancelFromClient
+  const token = {
+    isCancellationRequested: false,
+    onCancellationRequested(callback) {
+      cancelFromClient = callback
+      return { dispose() {} }
+    },
+  }
+  const mutationFirst = new RequestFreshness()
+  const staleRequest = mutationFirst.start(
+    "rename",
+    token,
+    { kind: "workspace", workspaceId: "file:///workspace" },
+  )
+
+  mutationFirst.cancelWorkspace("file:///workspace")
+  cancelFromClient()
+
+  assert.ok(staleRequest.signal.reason instanceof RequestAbortError)
+  assert.equal(staleRequest.signal.reason.kind, "content-modified")
+  assert.equal(staleRequest.clientCancelled(), false)
+
+  const clientFirst = new RequestFreshness()
+  const cancelledRequest = clientFirst.start(
+    "rename",
+    token,
+    { kind: "workspace", workspaceId: "file:///workspace" },
+  )
+
+  cancelFromClient()
+  clientFirst.cancelWorkspace("file:///workspace")
+
+  assert.ok(cancelledRequest.signal.reason instanceof RequestAbortError)
+  assert.equal(cancelledRequest.signal.reason.kind, "client-cancelled")
+  assert.equal(cancelledRequest.clientCancelled(), true)
 })
 
 test("mutations in another workspace do not invalidate workspace-global requests", async (t) => {
@@ -396,4 +526,19 @@ function renameCapableClientCapabilities() {
     },
     textDocument: { rename: { prepareSupport: true } },
   }
+}
+
+function buildRequestFreshnessDriver(t) {
+  const outputRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-request-freshness-"))
+  t.after(() => fs.rmSync(outputRoot, { recursive: true, force: true }))
+  const outfile = path.join(outputRoot, "request-freshness.cjs")
+  buildSync({
+    entryPoints: [path.join(projectRoot, "src", "lsp", "request-freshness.ts")],
+    bundle: true,
+    platform: "node",
+    target: "node20",
+    format: "cjs",
+    outfile,
+  })
+  return createRequire(import.meta.url)(outfile)
 }
