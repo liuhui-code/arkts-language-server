@@ -1,3 +1,4 @@
+import fs from "node:fs"
 import path from "node:path"
 
 import type {
@@ -132,6 +133,9 @@ export interface SemanticTypeQueryContext {
 interface WorkspaceEngineEntry {
   engine: TypeScriptLanguageServiceEngine
   arkui: ArkUIResourceLanguageProvider
+  ownerId: string
+  resetEpoch: number
+  appliedContentRevision: number
   lastAccess: number
 }
 
@@ -141,22 +145,56 @@ export class SemanticTypeEngineRegistry {
 
   prepare(workspace: SemanticWorkspaceView): SemanticTypeQueryContext {
     const rootPath = path.resolve(workspace.rootPath)
-    if (workspace.resetTypeEngine) {
-      this.workspaces.get(rootPath)?.engine.dispose()
-      this.workspaces.get(rootPath)?.arkui.dispose()
+    const ownerId = workspace.canonicalRootId ?? rootPath
+    const resetEpoch = workspace.typeEngineResetEpoch ?? 0
+    const contentRevision = workspace.contentRevision ?? 0
+    const previous = this.workspaces.get(rootPath)
+    const contentRevisionAdvanced = previous !== undefined
+      && contentRevision > previous.appliedContentRevision
+    const contentRevisionGap = previous !== undefined
+      && contentRevision !== previous.appliedContentRevision
+      && contentRevision !== previous.appliedContentRevision + 1
+    const carriesIncrementalDelta = workspace.resetTypeEngine === true
+      || (workspace.removedPaths?.length ?? 0) > 0
+      || (workspace.changedPaths?.length ?? 0) > 0
+    if (
+      workspace.resetTypeEngine
+      || previous?.ownerId !== ownerId
+      || previous?.resetEpoch !== resetEpoch
+      || contentRevisionGap
+      || (contentRevisionAdvanced && !carriesIncrementalDelta)
+    ) {
+      previous?.engine.dispose()
+      previous?.arkui.dispose()
       this.workspaces.delete(rootPath)
     }
     let entry = this.workspaces.get(rootPath)
+    const newEntry = !entry
     if (!entry) {
       entry = {
         engine: new TypeScriptLanguageServiceEngine(rootPath),
         arkui: new ArkUIResourceLanguageProvider(rootPath),
+        ownerId,
+        resetEpoch: -1,
+        appliedContentRevision: -1,
         lastAccess: 0,
       }
-      this.workspaces.set(rootPath, entry)
     }
+    let state: SemanticTypeEngineState
+    try {
+      state = entry.engine.prepare(workspace)
+    } catch (error) {
+      if (newEntry) {
+        entry.engine.dispose()
+        entry.arkui.dispose()
+      }
+      throw error
+    }
+    entry.ownerId = ownerId
+    entry.resetEpoch = resetEpoch
+    entry.appliedContentRevision = contentRevision
     entry.lastAccess = ++this.accessClock
-    const state = entry.engine.prepare(workspace)
+    if (newEntry) this.workspaces.set(rootPath, entry)
     const sourceContent = workspace.documents.find((document) => (
       document.path === workspace.state.path
     ))?.content
@@ -206,7 +244,11 @@ export class SemanticTypeEngineRegistry {
   }
 
   invalidateArkUIResources(rootPath: string): void {
-    this.workspaces.get(path.resolve(rootPath))?.arkui.invalidate()
+    const lexicalRoot = path.resolve(rootPath)
+    const ownerId = canonicalTypeEngineOwner(rootPath)
+    for (const [entryRoot, entry] of this.workspaces) {
+      if (entryRoot === lexicalRoot || entry.ownerId === ownerId) entry.arkui.invalidate()
+    }
   }
 
   dispose(): void {
@@ -227,6 +269,15 @@ export class SemanticTypeEngineRegistry {
       candidate[1].arkui.dispose()
       this.workspaces.delete(candidate[0])
     }
+  }
+}
+
+function canonicalTypeEngineOwner(rootPath: string): string {
+  const resolved = path.resolve(rootPath)
+  try {
+    return fs.realpathSync.native(resolved)
+  } catch {
+    return resolved
   }
 }
 

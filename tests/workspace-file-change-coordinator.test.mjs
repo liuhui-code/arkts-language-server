@@ -488,6 +488,7 @@ test("a root reset drops its stale type scripts without rebuilding another root"
   assert.ok(second.complete(completionPosition(secondMain, secondText)).some((item) => (
     item.label === "KeptType"
   )))
+  assert.equal(registry.workspaceCount(), 2)
 
   const resetFirst = registry.prepare({
     ...workspaceView(firstRoot, firstMain, firstText),
@@ -501,6 +502,195 @@ test("a root reset drops its stale type scripts without rebuilding another root"
   assert.ok(stillWarmSecond.complete(completionPosition(secondMain, secondText)).some((item) => (
     item.label === "KeptType"
   )))
+})
+
+test("rebuilds a stale lexical type engine after another alias consumes a root reset", (t) => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-watched-type-owner-alias-"))
+  t.after(() => fs.rmSync(base, { recursive: true, force: true }))
+  const physicalRoot = path.join(base, "physical")
+  const firstAlias = path.join(base, "first-alias")
+  const secondAlias = path.join(base, "second-alias")
+  fs.mkdirSync(physicalRoot)
+  fs.symlinkSync(physicalRoot, firstAlias, "dir")
+  fs.symlinkSync(physicalRoot, secondAlias, "dir")
+  const canonicalRootId = fs.realpathSync.native(physicalRoot)
+  const physicalTarget = path.join(physicalRoot, "Target.ets")
+  const firstMain = path.join(firstAlias, "Main.ets")
+  const firstTarget = path.join(firstAlias, "Target.ets")
+  const secondMain = path.join(secondAlias, "Main.ets")
+  const secondTarget = path.join(secondAlias, "Target.ets")
+  const mainText = [
+    'import { TargetType } from "./Target"',
+    "const value = new TargetType()",
+  ].join("\n")
+  fs.writeFileSync(path.join(physicalRoot, "Main.ets"), mainText, "utf8")
+  fs.writeFileSync(physicalTarget, "export class TargetType {}\n", "utf8")
+  const { SemanticDocumentStore } = buildDocumentStoreDriver(base)
+  const { SemanticTypeEngineRegistry } = buildTypeEngineDriver(t)
+  const store = new SemanticDocumentStore({
+    enumerateWorkspaceSources: (rootPath) => [
+      path.join(rootPath, "Main.ets"),
+      path.join(rootPath, "Target.ets"),
+    ].filter((filePath) => fs.existsSync(filePath)),
+  })
+  const registry = new SemanticTypeEngineRegistry()
+  t.after(() => store.dispose())
+  t.after(() => registry.dispose())
+  const firstPosition = syncPosition(store, firstAlias, firstMain)
+  const secondPosition = syncPosition(store, secondAlias, secondMain)
+  const firstDefinitionPosition = definitionPosition(firstMain, firstAlias, mainText, "TargetType")
+  const secondDefinitionPosition = definitionPosition(secondMain, secondAlias, mainText, "TargetType")
+
+  const firstView = store.prepare(firstPosition, true)
+  const secondView = store.prepare(secondPosition, true)
+  assert.equal(firstView.canonicalRootId, canonicalRootId)
+  assert.equal(secondView.canonicalRootId, canonicalRootId)
+  assert.equal(firstView.typeEngineResetEpoch, 0)
+  assert.equal(secondView.typeEngineResetEpoch, 0)
+  const first = registry.prepare(firstView)
+  const second = registry.prepare(secondView)
+  assert.ok(first.define(firstDefinitionPosition).some(({ path: definitionPath }) => (
+    definitionPath === firstTarget
+  )))
+  assert.ok(second.define(secondDefinitionPosition).some(({ path: definitionPath }) => (
+    definitionPath === secondTarget
+  )))
+  assert.equal(registry.workspaceCount(), 2, "lexical engines must remain isolated")
+
+  fs.unlinkSync(physicalTarget)
+  store.workspaceFilesChanged({
+    rootPath: firstAlias,
+    rootDirty: false,
+    changes: [{ path: firstTarget, kind: "deleted" }],
+  })
+  const firstAfterDelete = store.prepare(firstPosition, true)
+  registry.prepare(firstAfterDelete)
+  const secondAfterDelete = store.prepare(secondPosition, true)
+  const staleSecond = registry.prepare(secondAfterDelete)
+  const freshRegistry = new SemanticTypeEngineRegistry()
+  t.after(() => freshRegistry.dispose())
+  const freshSecond = freshRegistry.prepare(secondAfterDelete)
+  const staleDefinitions = staleSecond.define(secondDefinitionPosition)
+  const freshDefinitions = freshSecond.define(secondDefinitionPosition)
+
+  assert.equal(firstAfterDelete.resetTypeEngine, true)
+  assert.equal(secondAfterDelete.resetTypeEngine, false, "the Store reset delta is one-shot")
+  assert.equal(firstAfterDelete.typeEngineResetEpoch, 1)
+  assert.equal(secondAfterDelete.typeEngineResetEpoch, 1, "the reset epoch is persistent")
+  assert.deepEqual(secondAfterDelete.removedPaths, [])
+  assert.equal(staleDefinitions.some(({ path: definitionPath }) => (
+    definitionPath === secondTarget
+  )), false)
+  assert.deepEqual(staleDefinitions, freshDefinitions)
+  assert.equal(registry.workspaceCount(), 2)
+})
+
+test("rebuilds a lexical type engine that receives only the latest owner revision", (t) => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-watched-type-owner-revision-"))
+  t.after(() => fs.rmSync(base, { recursive: true, force: true }))
+  const physicalRoot = path.join(base, "physical")
+  const firstAlias = path.join(base, "first-alias")
+  const secondAlias = path.join(base, "second-alias")
+  fs.mkdirSync(physicalRoot)
+  fs.symlinkSync(physicalRoot, firstAlias, "dir")
+  fs.symlinkSync(physicalRoot, secondAlias, "dir")
+  const canonicalRootId = fs.realpathSync.native(physicalRoot)
+  const firstMain = path.join(firstAlias, "Main.ets")
+  const firstTarget = path.join(firstAlias, "Target.ets")
+  const secondMain = path.join(secondAlias, "Main.ets")
+  const secondTarget = path.join(secondAlias, "Target.ets")
+  const mainText = [
+    'import { TargetType } from "./Target"',
+    "const value = new TargetType()",
+  ].join("\n")
+  const targetText = "export class TargetType {}\n"
+  const { SemanticTypeEngineRegistry } = buildTypeEngineDriver(t)
+  const registry = new SemanticTypeEngineRegistry()
+  t.after(() => registry.dispose())
+  const firstPosition = definitionPosition(firstMain, firstAlias, mainText, "TargetType")
+  const secondPosition = definitionPosition(secondMain, secondAlias, mainText, "TargetType")
+  const ownerView = (rootPath, mainPath, targetPath, contentRevision, includeTarget) => ({
+    ...workspaceView(
+      rootPath,
+      mainPath,
+      mainText,
+      includeTarget ? [{ path: targetPath, content: targetText }] : [],
+    ),
+    canonicalRootId,
+    typeEngineResetEpoch: 0,
+    contentRevision,
+  })
+
+  registry.prepare(ownerView(firstAlias, firstMain, firstTarget, 0, true))
+  const second = registry.prepare(ownerView(secondAlias, secondMain, secondTarget, 0, true))
+  assert.ok(second.define(secondPosition).some(({ path: definitionPath }) => (
+    definitionPath === secondTarget
+  )))
+
+  registry.prepare({
+    ...ownerView(firstAlias, firstMain, firstTarget, 1, false),
+    removedPaths: [firstTarget],
+  })
+  registry.prepare({
+    ...ownerView(firstAlias, firstMain, firstTarget, 2, false),
+    changedPaths: [firstMain],
+  })
+  const secondAfterMissedDelta = registry.prepare(
+    {
+      ...ownerView(secondAlias, secondMain, secondTarget, 2, false),
+      changedPaths: [secondMain],
+    },
+  )
+
+  assert.equal(secondAfterMissedDelta.define(secondPosition).some(({ path: definitionPath }) => (
+    definitionPath === secondTarget
+  )), false)
+  assert.ok(registry.prepare(
+    ownerView(firstAlias, firstMain, firstTarget, 2, false),
+  ).define(firstPosition).every(({ path: definitionPath }) => definitionPath !== firstTarget))
+})
+
+test("rebuilds a lexical type engine when its canonical owner identity changes", (t) => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-watched-type-owner-retarget-"))
+  t.after(() => fs.rmSync(base, { recursive: true, force: true }))
+  const firstPhysical = path.join(base, "first-physical")
+  const secondPhysical = path.join(base, "second-physical")
+  const rootAlias = path.join(base, "workspace")
+  fs.mkdirSync(firstPhysical)
+  fs.mkdirSync(secondPhysical)
+  fs.symlinkSync(firstPhysical, rootAlias, "dir")
+  const mainPath = path.join(rootAlias, "Main.ets")
+  const stalePath = path.join(rootAlias, "Stale.ets")
+  const source = completionSource("Sta")
+  const { SemanticTypeEngineRegistry } = buildTypeEngineDriver(t)
+  const registry = new SemanticTypeEngineRegistry()
+  t.after(() => registry.dispose())
+
+  const initial = registry.prepare({
+    ...workspaceView(rootAlias, mainPath, source, [
+      { path: stalePath, content: "export class StaleType {}\n" },
+    ]),
+    canonicalRootId: fs.realpathSync.native(firstPhysical),
+    typeEngineResetEpoch: 0,
+    contentRevision: 0,
+  })
+  assert.ok(initial.complete(completionPosition(mainPath, source)).some(({ label }) => (
+    label === "StaleType"
+  )))
+
+  fs.unlinkSync(rootAlias)
+  fs.symlinkSync(secondPhysical, rootAlias, "dir")
+  const retargeted = registry.prepare({
+    ...workspaceView(rootAlias, mainPath, source),
+    canonicalRootId: fs.realpathSync.native(secondPhysical),
+    typeEngineResetEpoch: 0,
+    contentRevision: 0,
+  })
+
+  assert.equal(retargeted.complete(completionPosition(mainPath, source)).some(({ label }) => (
+    label === "StaleType"
+  )), false)
+  assert.equal(registry.workspaceCount(), 1)
 })
 
 test("invalidates only one workspace ArkUI snapshot without resetting TypeScript", (t) => {
@@ -539,6 +729,48 @@ test("invalidates only one workspace ArkUI snapshot without resetting TypeScript
   assert.deepEqual(arkuiLabels(secondAfter.complete(secondPosition)), ["second_old"])
   assert.equal(firstAfter.state.generation, first.state.generation)
   assert.equal(secondAfter.state.generation, second.state.generation)
+})
+
+test("fans out ArkUI invalidation to lexical engines with the same canonical owner", (t) => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-resource-owner-alias-"))
+  t.after(() => fs.rmSync(base, { recursive: true, force: true }))
+  const physicalRoot = path.join(base, "physical")
+  const firstAlias = path.join(base, "first-alias")
+  const secondAlias = path.join(base, "second-alias")
+  fs.mkdirSync(physicalRoot)
+  fs.symlinkSync(physicalRoot, firstAlias, "dir")
+  fs.symlinkSync(physicalRoot, secondAlias, "dir")
+  const canonicalRootId = fs.realpathSync.native(physicalRoot)
+  const source = 'const value = $r("app.string.")\n'
+  const physicalMain = path.join(physicalRoot, "Main.ets")
+  const firstMain = path.join(firstAlias, "Main.ets")
+  const secondMain = path.join(secondAlias, "Main.ets")
+  fs.writeFileSync(physicalMain, source, "utf8")
+  const resourcePath = writeStringResource(physicalRoot, "owner_old")
+  const { SemanticTypeEngineRegistry } = buildTypeEngineDriver(t)
+  const registry = new SemanticTypeEngineRegistry()
+  t.after(() => registry.dispose())
+  const ownerView = (rootPath, mainPath) => ({
+    ...workspaceView(rootPath, mainPath, source),
+    canonicalRootId,
+    typeEngineResetEpoch: 0,
+    contentRevision: 0,
+  })
+  const firstPosition = resourceCompletionPosition(firstMain, source, firstAlias)
+  const secondPosition = resourceCompletionPosition(secondMain, source, secondAlias)
+  const first = registry.prepare(ownerView(firstAlias, firstMain))
+  const second = registry.prepare(ownerView(secondAlias, secondMain))
+
+  assert.deepEqual(arkuiLabels(first.complete(firstPosition)), ["owner_old"])
+  assert.deepEqual(arkuiLabels(second.complete(secondPosition)), ["owner_old"])
+  fs.writeFileSync(resourcePath, resourceJson("owner_new"), "utf8")
+
+  registry.invalidateArkUIResources(firstAlias)
+  const firstAfter = registry.prepare(ownerView(firstAlias, firstMain))
+  const secondAfter = registry.prepare(ownerView(secondAlias, secondMain))
+
+  assert.deepEqual(arkuiLabels(firstAfter.complete(firstPosition)), ["owner_new"])
+  assert.deepEqual(arkuiLabels(secondAfter.complete(secondPosition)), ["owner_new"])
 })
 
 test("bounds pending removed paths and escalates overflow to a one-shot root reset", (t) => {
@@ -646,6 +878,18 @@ function completionPosition(documentPath, content) {
     line: 3,
     column: line.length + 1,
     workspaceRoot: path.dirname(documentPath),
+  }
+}
+
+function definitionPosition(documentPath, workspaceRoot, content, name) {
+  const offset = content.lastIndexOf(name) + 1
+  const before = content.slice(0, offset)
+  const lines = before.split("\n")
+  return {
+    path: documentPath,
+    line: lines.length,
+    column: lines.at(-1).length + 1,
+    workspaceRoot,
   }
 }
 

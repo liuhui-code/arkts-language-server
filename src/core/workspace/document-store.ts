@@ -112,6 +112,8 @@ export interface SemanticDocumentStoreOptions {
 
 export interface SemanticWorkspaceView {
   rootPath: string
+  canonicalRootId: string
+  typeEngineResetEpoch: number
   documents: Array<WorkspaceDocument & {
     documentVersion?: number
     overlay: boolean
@@ -147,6 +149,7 @@ export class SemanticDocumentStore {
   private readonly watchedChangedPaths = new Map<string, Set<string>>()
   private readonly contentRevisions = new Map<string, number>()
   private readonly typeEngineResetRoots = new Set<string>()
+  private readonly typeEngineResetEpochs = new Map<string, number>()
   private readonly enumerateWorkspaceSources: (rootPath: string) => Iterable<string>
   private readonly operationControl: SemanticOperationControl
   private readonly maxProjectFileSetRoots: number
@@ -299,7 +302,7 @@ export class SemanticDocumentStore {
           resetRoots.add(affectedRoot)
         }
       }
-      for (const resetRoot of resetRoots) this.typeEngineResetRoots.add(resetRoot)
+      for (const resetRoot of resetRoots) this.markTypeEngineReset(resetRoot)
       for (const changedRoot of changedRoots) {
         this.contentRevisions.set(changedRoot, (this.contentRevisions.get(changedRoot) ?? 0) + 1)
       }
@@ -362,7 +365,7 @@ export class SemanticDocumentStore {
     if (removedPaths.length > 0 || changedPaths.length > 0) {
       changedRoots.add(canonicalRoot)
     }
-    for (const resetRoot of resetRoots) this.typeEngineResetRoots.add(resetRoot)
+    for (const resetRoot of resetRoots) this.markTypeEngineReset(resetRoot)
     for (const changedRoot of changedRoots) {
       this.contentRevisions.set(changedRoot, (this.contentRevisions.get(changedRoot) ?? 0) + 1)
     }
@@ -420,7 +423,7 @@ export class SemanticDocumentStore {
           affectedRoot,
           (this.contentRevisions.get(affectedRoot) ?? 0) + 1,
         )
-        this.typeEngineResetRoots.add(affectedRoot)
+        this.markTypeEngineReset(affectedRoot)
       }
       for (const dirtyProjectRoot of dirtyProjectRoots) {
         this.projectFileSets.delete(dirtyProjectRoot)
@@ -548,7 +551,7 @@ export class SemanticDocumentStore {
     for (const [changedRoot, changedPaths] of changedPathsByRoot) {
       for (const changedPath of changedPaths) this.markWatchedChanged(changedRoot, changedPath)
     }
-    for (const resetRoot of resetRoots) this.typeEngineResetRoots.add(resetRoot)
+    for (const resetRoot of resetRoots) this.markTypeEngineReset(resetRoot)
     for (const changedRoot of changedRoots) {
       this.contentRevisions.set(changedRoot, (this.contentRevisions.get(changedRoot) ?? 0) + 1)
     }
@@ -663,6 +666,15 @@ export class SemanticDocumentStore {
     return affectedRoots
   }
 
+  private markTypeEngineReset(canonicalRoot: string): void {
+    if (this.typeEngineResetRoots.has(canonicalRoot)) return
+    this.typeEngineResetRoots.add(canonicalRoot)
+    this.typeEngineResetEpochs.set(
+      canonicalRoot,
+      (this.typeEngineResetEpochs.get(canonicalRoot) ?? 0) + 1,
+    )
+  }
+
   private markWatchedRemoved(canonicalRoot: string, filePath: string): void {
     if (this.typeEngineResetRoots.has(canonicalRoot)) return
     let removed = this.watchedRemovedPaths.get(canonicalRoot)
@@ -672,7 +684,7 @@ export class SemanticDocumentStore {
     }
     if (!removed.has(filePath) && removed.size >= this.maxWatchedRemovedPaths) {
       removed.clear()
-      this.typeEngineResetRoots.add(canonicalRoot)
+      this.markTypeEngineReset(canonicalRoot)
       return
     }
     removed.add(filePath)
@@ -687,7 +699,7 @@ export class SemanticDocumentStore {
     }
     if (!changed.has(filePath) && changed.size >= this.maxWatchedChangedPaths) {
       changed.clear()
-      this.typeEngineResetRoots.add(canonicalRoot)
+      this.markTypeEngineReset(canonicalRoot)
       return
     }
     changed.add(filePath)
@@ -702,6 +714,7 @@ export class SemanticDocumentStore {
     this.watchedChangedPaths.clear()
     this.contentRevisions.clear()
     this.typeEngineResetRoots.clear()
+    this.typeEngineResetEpochs.clear()
     this.accessClock = 0
     this.cachedBytes = 0
     this.projectMembershipRevision = 0
@@ -850,6 +863,8 @@ export class SemanticDocumentStore {
 
     return {
       rootPath,
+      canonicalRootId: canonicalRoot,
+      typeEngineResetEpoch: this.typeEngineResetEpochs.get(canonicalRoot) ?? 0,
       documents,
       projectMembership,
       removedPaths: [...new Set([
