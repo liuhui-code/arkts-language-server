@@ -226,7 +226,6 @@ test("reports exact and truncated ArkUI completion quota boundaries", (t) => {
 
 test("publishes a bounded incomplete ArkUI completion list through stdio", async (t) => {
   const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-arkui-completion-lsp-"))
-  t.after(() => fs.rmSync(temporaryRoot, { recursive: true, force: true }))
   const resourcePath = path.join(
     temporaryRoot,
     "resources",
@@ -245,7 +244,13 @@ test("publishes a bounded incomplete ArkUI completion list through stdio", async
   fs.writeFileSync(temporaryDocumentPath, source, "utf8")
   const temporaryDocumentUri = pathToFileURL(temporaryDocumentPath).href
   const server = new LspProcess({ env: { ARKLINE_HARMONY_SDK_PATH: sdkRoot } })
-  t.after(async () => server.close())
+  t.after(async () => {
+    try {
+      await server.close()
+    } finally {
+      fs.rmSync(temporaryRoot, { recursive: true, force: true })
+    }
+  })
   server.send({
     jsonrpc: "2.0",
     id: 1,

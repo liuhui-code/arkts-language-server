@@ -172,6 +172,8 @@ The real stdio case was mutation-checked by temporarily removing the ArkUI flag
 from Registry's OR, rebuilding, and running:
 
 ```sh
+pnpm build
+
 node --test --test-concurrency=1 \
   --test-name-pattern "bounded incomplete ArkUI completion list through stdio" \
   tests/semantic/arkui-language-features.test.mjs
@@ -206,8 +208,9 @@ pnpm check
   completion context, `allowIncompleteCompletions`, and a bounded continuation
   cache need a separate version-aware contract. Local 128-item truncation is
   already truthful without it.
-- Registry arbitration must cap providers independently, preserve ArkUI-first
-  and TypeScript source identity semantics, and OR every incomplete reason.
+- Registry still needs defensive per-provider caps and dedicated mixed-provider
+  evidence. ArkUI-first order and the OR of current provider flags are already
+  covered; TypeScript same-label/different-source identity must remain intact.
 - ArkUI warm prefix queries are bounded, but cold index construction still
   maps every resource range with repeated source scans. A 10,000-entry
   exploratory fixture remained about eight seconds cold while warm lookup fell
