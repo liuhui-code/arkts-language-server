@@ -6,6 +6,7 @@ export interface SemanticDocumentPosition {
   contentGeneration?: number
   documentVersion?: number
   workspaceRoot?: string
+  allowSnippets?: boolean
 }
 
 export interface SemanticReplayDocument {
@@ -97,6 +98,7 @@ export interface SemanticCompletionItem {
   documentation?: string
   replacementRange?: SemanticTextRange
   commitCharacters?: string[]
+  isSnippet?: true
   definitionTarget?: SemanticDefinitionTarget
   additionalTextEdits?: SemanticCompletionTextEdit[]
   data?: Record<string, unknown>

@@ -110,7 +110,10 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     assertActive(query.signal)
     this.sync(query.document)
     const prepared = this.prepare(query.document, query.position, true)
-    const completion = prepared.engine.complete(prepared.position)
+    const completion = prepared.engine.complete({
+      ...prepared.position,
+      allowSnippets: query.completionOptions?.snippets === true,
+    })
     const items = completion.items
       .map((item) => toPublicCompletion(item, query.document.version))
     return {
@@ -126,7 +129,7 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     this.sync(query.document)
     const prepared = this.prepare(query.document, query.position, true)
     const item = prepared.engine.resolveCompletion(
-      prepared.position,
+      { ...prepared.position, allowSnippets: query.completionOptions?.snippets === true },
       toLegacyCompletion(query.completion),
     )
     return {
@@ -587,6 +590,7 @@ function toPublicCompletion(
     filterText: item.filterText,
     sortText: item.sortText,
     commitCharacters: item.commitCharacters,
+    isSnippet: item.isSnippet,
     replacementRange: item.replacementRange
       ? toPublicRange(item.replacementRange)
       : undefined,
@@ -610,6 +614,7 @@ function toLegacyCompletion(item: SemanticCompletion): SemanticCompletionItem {
     filterText: item.filterText,
     sortText: item.sortText,
     commitCharacters: item.commitCharacters,
+    isSnippet: item.isSnippet,
     replacementRange: item.replacementRange
       ? toLegacyRange(item.replacementRange)
       : undefined,

@@ -618,8 +618,8 @@ Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产�
   - [x] C11f InsertReplaceEdit：在客户端 `insertReplaceSupport` 下保留 insert/replace 双 range；
     不支持时继续发布安全的完整 replacement TextEdit，并对非法/跨行 range 安全回退
     （当前 LSP adapter slice）。
-  - [ ] C11g snippets：仅在客户端 `snippetSupport` 下启用 TypeScript snippet preference，并贯通
-    `isSnippet`/`insertTextFormat`，禁止把占位符当 PlainText 插入。
+  - [x] C11g snippets：仅在客户端 `snippetSupport` 下启用 TypeScript snippet preference，并贯通
+    `isSnippet`/`insertTextFormat`，禁止把占位符当 PlainText 插入（当前 LSP/core slice）。
 - [x] W2 Workspace symbol kind：overlay 的 interface/enum/property/constructor/module/type/variable
   不再统一降级为 Variable；未知 sidecar kind 保守降级为 Variable（`eb0ef8c`）。
 - [x] E1 Hover depth：unopened dependency、import alias、JSDoc tags、emoji UTF-16 range，并加入

@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url"
 import {
   CodeActionKind,
   CompletionItemKind,
+  InsertTextFormat,
   createConnection,
   DiagnosticSeverity,
   DidChangeWatchedFilesNotification,
@@ -69,11 +70,13 @@ interface CompletionResolutionData {
 interface CompletionClientProfile {
   commitCharacters: boolean
   insertReplaceEdits: boolean
+  snippets: boolean
 }
 
 const DEFAULT_COMPLETION_CLIENT_PROFILE: CompletionClientProfile = Object.freeze({
   commitCharacters: false,
   insertReplaceEdits: false,
+  snippets: false,
 })
 
 class CompletionResolutionStore {
@@ -197,6 +200,8 @@ export function runLanguageServer(services?: LanguageServerServices): void {
         ?.completionItem?.commitCharactersSupport === true,
       insertReplaceEdits: params.capabilities.textDocument?.completion
         ?.completionItem?.insertReplaceSupport === true,
+      snippets: params.capabilities.textDocument?.completion
+        ?.completionItem?.snippetSupport === true,
     })
     semanticCapabilities.configure(params.capabilities)
     logger.info("lsp.initialized", {
@@ -362,6 +367,7 @@ export function runLanguageServer(services?: LanguageServerServices): void {
       execute: (document, signal) => semantic.complete({
         document,
         position: params.position,
+        completionOptions: { snippets: completionClientProfile.snippets },
         signal,
       }),
     })
@@ -400,6 +406,7 @@ export function runLanguageServer(services?: LanguageServerServices): void {
       execute: (document, signal) => semantic.resolveCompletion({
         document,
         position: record.position,
+        completionOptions: { snippets: completionClientProfile.snippets },
         completion: record.completion,
         signal,
       }),
@@ -627,22 +634,40 @@ function toLspCompletionItem(
   profile: CompletionClientProfile,
   position?: { line: number; character: number },
 ) {
+  const insertText = clientInsertText(item, profile)
   const textEdit = item.replacementRange
-    ? toLspCompletionTextEdit(item.replacementRange, item.insertText ?? item.label, profile, position)
+    ? toLspCompletionTextEdit(item.replacementRange, insertText, profile, position)
     : undefined
   return {
     label: item.label,
     detail: item.detail,
     kind: completionKind(item.kind),
-    insertText: item.insertText,
+    insertText,
     filterText: item.filterText,
     sortText: item.sortText,
     ...(profile.commitCharacters && item.commitCharacters !== undefined
       ? { commitCharacters: item.commitCharacters }
       : {}),
+    ...(profile.snippets && item.isSnippet === true
+      ? { insertTextFormat: InsertTextFormat.Snippet }
+      : {}),
     textEdit,
     data,
   }
+}
+
+function clientInsertText(item: SemanticCompletion, profile: CompletionClientProfile): string {
+  const insertText = item.insertText ?? item.label
+  return profile.snippets && item.isSnippet === true
+    ? insertText
+    : stripSnippetPlaceholders(insertText)
+}
+
+function stripSnippetPlaceholders(text: string): string {
+  return text
+    .replace(/\$\{\d+:([^}]*)\}/g, "$1")
+    .replace(/\$\{\d+\}/g, "")
+    .replace(/\$\d+/g, "")
 }
 
 function toLspResolvedCompletionItem(

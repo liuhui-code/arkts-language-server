@@ -484,6 +484,67 @@ test("maps enum and module completion families to their LSP kinds", async (t) =>
   assert.equal(layoutModule[0].kind, CompletionItemKind.Module)
 })
 
+test("publishes method snippets only to snippet-capable clients", async (t) => {
+  const materialized = await materializeConformanceWorkspace()
+  const documentPath = path.join(
+    materialized.workspaceRoot,
+    "entry",
+    "src",
+    "main",
+    "ets",
+    "pages",
+    "SnippetCompletion.ets",
+  )
+  const documentUri = pathToFileURL(documentPath).href
+  const source = [
+    "interface Shape { area(value: number): string }",
+    "class Circle implements Shape {",
+    "  ar",
+    "}",
+  ].join("\n")
+  await fs.promises.writeFile(documentPath, source, "utf8")
+  const cursorOffset = source.lastIndexOf("ar") + 2
+  const session = new LspSession({
+    command: process.execPath,
+    args: [path.join(projectRoot, "dist", "server.cjs"), "--stdio"],
+    cwd: projectRoot,
+    env: {
+      HOME: path.join(materialized.root, "missing-home"),
+      DEVECO_SDK_HOME: path.join(materialized.root, "missing-deveco"),
+      ARKLINE_HARMONY_SDK_PATH: path.join(materialized.corpusRoot, "sdk", "openharmony"),
+    },
+    rootUri: pathToFileURL(materialized.workspaceRoot).href,
+    capabilities: {
+      general: { positionEncodings: ["utf-16"] },
+      textDocument: { completion: { completionItem: { snippetSupport: true } } },
+    },
+  })
+  t.after(async () => {
+    try {
+      await session.close()
+    } finally {
+      await fs.promises.rm(materialized.root, { recursive: true, force: true })
+    }
+  })
+
+  await session.initialize()
+  session.openDocument({ uri: documentUri, languageId: "arkts", version: 1, text: source })
+  const response = await session.request("textDocument/completion", {
+    textDocument: { uri: documentUri },
+    position: positionAt(source, cursorOffset),
+  })
+  assert.equal(response.error, undefined, JSON.stringify(response.error))
+  const items = Array.isArray(response.result) ? response.result : response.result?.items ?? []
+  const area = items.find((item) => item.label === "area")
+  assert.ok(area, `Expected area in ${JSON.stringify(items)}`)
+  assert.equal(area.insertTextFormat, 2)
+  assert.match(area.insertText, /\$0/)
+  const resolved = await session.request("completionItem/resolve", area)
+  assert.equal(resolved.error, undefined, JSON.stringify(resolved.error))
+  assert.equal(resolved.result.insertTextFormat, 2)
+  assert.match(resolved.result.insertText, /\$0/)
+})
+
 test("replaces the complete identifier when completion is accepted mid-token", async (t) => {
   const materialized = await materializeConformanceWorkspace()
   const documentPath = path.join(

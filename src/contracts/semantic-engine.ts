@@ -27,6 +27,7 @@ export interface SemanticCompletion {
   filterText?: string
   sortText?: string
   commitCharacters?: string[]
+  isSnippet?: true
   replacementRange?: TextRange
   additionalTextEdits?: SemanticCompletionTextEdit[]
   data?: Record<string, unknown>
@@ -289,6 +290,7 @@ export interface SemanticDocumentQuery {
 export interface SemanticQuery {
   document: DocumentSnapshot
   position: TextPosition
+  completionOptions?: { snippets?: boolean }
   signal?: AbortSignal
 }
 

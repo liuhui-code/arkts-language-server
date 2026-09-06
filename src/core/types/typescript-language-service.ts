@@ -267,6 +267,13 @@ export class TypeScriptLanguageServiceEngine {
       includeCompletionsForModuleExports:
         !memberAccess && hasMinimumCodePointLength(prefix, MIN_MODULE_EXPORT_PREFIX_LENGTH),
       includeCompletionsWithInsertText: true,
+      ...(position.allowSnippets
+        ? {
+            includeCompletionsWithSnippetText: true,
+            includeCompletionsWithClassMemberSnippets: true,
+            includeCompletionsWithObjectLiteralMethodSnippets: true,
+          }
+        : {}),
     })
     work.boundary()
     if (!info) return work.finish({ items: [], isIncomplete: false })
@@ -355,6 +362,7 @@ export class TypeScriptLanguageServiceEngine {
         filterText,
         sortText: entry.sortText,
         commitCharacters: entry.commitCharacters ?? info.defaultCommitCharacters,
+        isSnippet: entry.isSnippet,
         source: "type",
         replacementRange: entry.replacementSpan
           ? script.virtualDocument.generatedSpanToSourceRange(
