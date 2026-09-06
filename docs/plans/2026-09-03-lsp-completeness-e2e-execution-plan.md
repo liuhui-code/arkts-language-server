@@ -1,6 +1,6 @@
 # ArkTS Language Server 功能完备度与 E2E 执行计划
 
-状态：Approved for execution  
+状态：In progress
 基线：`integration/local-beta@ef8ab9533a97ebd000318435a56d8dba895b5488`  
 计划分支：`plan/lsp-completeness-e2e`  
 日期：2026-09-03  
@@ -187,10 +187,43 @@ mode 和 SHA-256。installer 增加“从 artifact 安装/禁止构建”路径�
 - [x] ArkUI SDK provider：component/decorator/resource/attribute completion、hover、
   definition、diagnostics；immutable artifact 已覆盖 SDK breadth、resource 与 builder tail
   （`6f5751b`、`2d7a496`、`b2b73c1`、`4ce2f91`）。
-- [ ] Type definition、implementation。
-- [ ] Semantic tokens、inlay hints、call hierarchy 的需求验证与分级；Zed 已由
-  tree-sitter 满足的能力不重复建设。
-- [ ] 真实 worker cancellation、项目重载、配置/SDK 变化和多 root 隔离。
+- [x] Type definition、implementation：未打开文件、精确 range、取消/新鲜度、能力证据与
+  immutable artifact 已闭环（`94eb5ae`、`98a548e`）。
+- [x] Zed 能力消费审计：确认 inlay hints、call hierarchy、semantic tokens、range formatting
+  都有真实客户端路径；其中 folding 默认由 tree-sitter/缩进承担，semantic tokens 与 inlay
+  hints 默认关闭，不能把“客户端支持”等同于“默认启用”。审计固定在 Zed
+  `5a9b9558db01a6b906cec2fb70a797affdc58cdd` 的
+  [LSP capability 声明](https://github.com/zed-industries/zed/blob/5a9b9558db01a6b906cec2fb70a797affdc58cdd/crates/lsp/src/lsp.rs#L1030-L1129)
+  与 [language 配置文档](https://zed.dev/docs/configuring-languages#semantic-tokens)。
+- [x] Inlay hints：参数名/推断类型、range end-exclusive、UTF-16/ArkUI lowering 精确回映、
+  overlay、稳定去重、1000 items / 256 KiB wire budget、取消/新鲜度与 immutable artifact tracer
+  已闭环（`f704234`）。偏好配置与 TypeScript 查询内抢占仍显式保留为后续项。
+- [x] Call hierarchy：CH1 已完成 prepare/outgoing（`7f95ff1`）；CH2 已补齐 incoming、
+  unopened caller/target、ArkTS `struct`、UTF-16/overlay freshness、完整 membership 刷新、
+  物理根与内容身份校验，以及 raw/normalized/wire 硬预算（`f064358`）。focused bundle 与
+  DocumentStore 回归初始为 54/54。提交后逆向审查又复现 FIFO 阻塞和 watched create 后保留旧
+  模块解析两个 P1；现以 nonblocking preflight 和 workspace-scoped dependency/type-engine
+  invalidation 修复，相关回归为 61/61（`7a34e7b`）。二次复审又发现 nested/sibling root 的
+  相对依赖不会随 owning-root create 失效；现为每个 closure 保存有界的高优先缺失候选，
+  跨 root 只失效匹配 candidate 的 closure/root，超界才保守失效（`5f960fd`），没有用全局 reset
+  掩盖。随后完成三方法取消/新鲜度/shutdown tracer（`8f8caa1`）、capability/evidence matrix 与
+  immutable installed artifact（`8dd2667`、`650681f`），并用真实 production-registration stdio
+  证明 raw preflight、物理 source authority 和 16 MiB aggregate guard wiring（`532811f`），现已广告
+  `callHierarchyProvider`。跨 root watched delete/change、dirty overflow、symlink/case identity、root
+  retarget、overlay alias、lexical event coalescing、close-to-disk truth 与同物理根多 lexical engine
+  的后续逆向审查也以精确 invalidation/reset 和持久 owner epoch 闭环（`848d874`、`cbc6dea`、
+  `d3d6f53`、`a41f490`、`a0355fa`、`046afdd`、`9bc0356`、`d9551e6`、`acd92dd`、`65f3867`、
+  `8d965ca`、`ea023c6`、`0b4c18a`）。全 semantic
+  worker 化不再作为基本能力开放的绝对前置；它与 watcher-backed membership、p95/RSS 属随后
+  QoS 门禁。逐请求 O(N) refresh 只作为 correctness-first 路径，不能冒充大项目性能方案。
+- [ ] Semantic tokens：只在 ArkTS 类型/装饰器/resource token 明显优于 `highlights.scm` 时实现
+  full/delta；Zed 不请求 range，不建设无消费者的 range provider。
+- [ ] Range formatting：复用现有 token-preserving formatter，支持 Zed
+  `format_on_save: "modifications"`，列为 P2。
+- [ ] 真实 worker cancellation：采用 bounded long-lived per-root worker + 每请求独立
+  SharedArrayBuffer cancel cell，按 `docs/plans/2026-09-06-semantic-worker-cancellation-plan.md`
+  的无 sleep stdio tracer 推进；项目重载、配置/SDK 变化和多 root 隔离纳入同一 revision/epoch
+  状态协议。
 - [ ] Highlight 结果数/序列化字节预算，以及 formatter 的真实 wall-time、event-loop lag、
   RSS/heap 门禁；scripted cancellation 不得冒充同步 TypeScript 工作可中断。
 
@@ -451,8 +484,65 @@ Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产�
   （`d596edd`、`ab3b8a3`、`2997518`、`29fbaa6`、`bafff44`）。
 - [x] V6 formatting 的 bounded/token-preserving core、LSP/semantic recheck、artifact 与标准
   final-newline 选项已完成（`299a874`、`963ec7a`、`2997518`、`478a523`）。
-- [x] 本批次集成门禁：fresh `pnpm check:fast` 为 298/298，0 failed、0 skipped、0 todo，
-  耗时 150.2 s；immutable portable acceptance 为 4/4（本分支 HEAD 含 `0445863`、`9fe3a88`）。
+- [x] P1 typeDefinition/implementation 已在 bundle、protocol、capability matrix 与 immutable
+  artifact 全链完成（`94eb5ae`、`98a548e`）。
+- [x] Wave 5 sealed artifact 本地拓扑与 Wave 6 性能证据基础 contract 已完成
+  （`b1713b6`、`d37e859`、`fffed03`、`a21cbe1`）。
+- [x] semantic worker T1 test seam 与 T2 bounded protocol 已完成：独立临时 blocking
+  server/worker、标准 LSP barrier、document/workspace mutation、gapless ACK、query-by-reference、
+  first-cause SAB cancellation 与 canonical response/error codec（`e95a260`、`6a22536`、`ec96afd`）。
+- [x] T2 adversarial hardening 已补齐 object-`undefined` 规范化、非递归早停测量、
+  65,536-node 边界、真实 `MessageChannel` clone/SAB 身份与 canonical file URI 转换边界
+  （`bba2e5a`）；后续又统一了 `fileURLToPath` → `pathToFileURL` 的唯一 URI 身份，
+  拒绝 `%41.ets`/`A.ets` 别名形成两个 scheduler key（`742a924`）。Call Hierarchy 随后以
+  protocol v2 增加三方法 strict args/method-aware result、disk `null` version、内部 source proof、
+  64-hex fingerprint 与 16/256/64/2048 exact bounds（`1ef51ef`）；supervisor 随后按可信 active
+  method 解码响应，并在遍历元素 descriptor 前拒绝超限 collection（`2c690c3`）。production
+  composition 前仍需 dispatcher、physical source authority 和 endpoint/restart 全链门禁。
+- [x] T3 per-root supervisor state machine 已完成：single-flight、64 waiting requests、mutation
+  priority/coalescing、dispatch-time gapless revision/ACK、32 docs / 4 MiB journal、first-cause
+  cancellation terminal fence、root isolation 和 deadline-bounded dispose/fail-closed contract（`e4ecaf3`、
+  `8ce9a16`）。对抗加固锁定 hostile input 不执行 getter、mutation barrier 不重排、
+  32-document + 32-record 双上限、fault 不覆盖取消首因，且 protocol fault 在
+  terminate 终态或 deadline 前不释放 active fence。
+  真实 `worker_threads` endpoint、worker-resident semantic state 与 LSP proxy 仍属 T4–T6。
+- [x] Call hierarchy CH2 correctness-first 切片已完成：真实 stdio prepare/outgoing/incoming、
+  unopened follow-up、ArkTS struct、UTF-16 ranges、overlay freshness、完整 membership refresh、
+  exact disk identity、nested/symlink physical authority、4 MiB 单文件/16 MiB 聚合预算，以及
+  changed-source batch invalidation（`f064358`）；逆向审查发现的 FIFO 阻塞与 watched-create
+  module-resolution stale 两个 P1 已用 workspace-scoped 修复并达到 61/61（`7a34e7b`）；复审新增的
+  nested/sibling cross-root dependency invalidation 已用 bounded reverse candidates 精确闭环
+  （`5f960fd`）。专属 protocol/capability/artifact 门禁与生产 guard stdio 证据已闭环后再广告
+  capability（`8f8caa1`、`8dd2667`、`650681f`、`532811f`）。全 semantic worker
+  与 watcher/performance 仍是后续 QoS 门禁，避免把基础功能长期锁在一次大爆炸式迁移之后。
+- [x] Workspace invalidation 已从 raw-path cache eviction 加固为有界 raw + physical identity：
+  nested/sibling delete/change、watcher overflow、symlink/case alias、workspace-root retarget、open-overlay
+  旁路、不同 lexical create 的队列身份、membership refresh 与 close 后 disk truth 都只传播到受影响
+  closure owner，并保持 unrelated root 热缓存（`848d874`、`cbc6dea`、`d3d6f53`、`a41f490`、
+  `a0355fa`、`046afdd`、`9bc0356`、`d9551e6`、`acd92dd`、`65f3867`、`8d965ca`）。同物理根的
+  多个 lexical engine 继续保留各自路径语义，但用持久 canonical owner/reset epoch 与 disk
+  content revision fence 防止一次性 delta 被其他 alias 消费后残留 stale Program（`ea023c6`、
+  `0b4c18a`）。在 Store 尚无 per-consumer delta coverage、TypeEngine 尚无 physical reverse index
+  前，任意 watcher revision 只懒重建对应 lexical entry；普通 didChange overlay 仍为增量路径。
+  dirty-root 同步阶段不逐文件 stat，仍须以大型 fixture p95/RSS 约束 CPU/内存成本。
+- [x] Request freshness 的取消首因竞态已修复：mutation → late client cancel 保持
+  `ContentModified`，client cancel → mutation 保持 `RequestCancelled`；typed reason 不依赖错误文案
+  （`dce6b63`）。
+- [ ] T4 cancellation 正在按独立边界推进：稳定 per-root scope 与 hostile SAB brand/size 加固
+  （`3d8f07f`、`367988c`）；真实 TypeScript host token bridge（`42eead1`）；DocumentStore
+  membership 事务化取消与目录资源清理（`990b5aa`）；references 自有无界聚合移除及每 64 项
+  mapping/sort checkpoint（`bfe65f7`）；rename 的 TS boundaries、130-location mapping、sort/overlap
+  scan 取消（`5bb65fa`）；DocumentStore 64 KiB disk read、cold BFS 与 warm closure rollback/retry
+  （`90e871e`），以及 final-checkpoint removal delta 事务修复（`8ed16a3`）。diagnostics 逐项映射和
+  documentSymbols 显式迭代 DFS 已覆盖 150,000 宽树、1,000 层深树及每 64 项 SAB 取消
+  （`9eddcf1`、`3d69963`、`7eee8b1`）；测试登记由 `707b6af`、`650681f`、`69fd2e3` 保护。
+  workspace hydration 与 cold dependency BFS 的 8 MiB aggregate admission-before-read 已完成
+  （`3b5a9d2`、`52b9a4b`、`9b18cc8`）；超预算 dependency 在正文 buffer/read 前拒绝，且 byte-truncated
+  closure 不进入 warm cache，预算释放后可 fresh retry。其余 owned loops 以及 production worker
+  composition 仍未完成，不能宣称 stdio 计算已可抢占。
+- [x] 本批次集成门禁：最终源码 HEAD `0b4c18a` 的 fresh `pnpm check:fast` 为 594/594，
+  0 failed、0 skipped、0 todo，耗时 283.3 s；随后 immutable portable acceptance 为 4/4。
+  sealed artifact build/consume-only acceptance 必须在本计划文档提交、worktree clean 后继续执行。
 
 #### 下一批 P0 基本功能 checklist（按依赖执行）
 
@@ -726,8 +816,9 @@ acceptance 又调用 installer 两次，而每次都会重建 JS、sidecar、WAS
   专家入口，调用者仍须自行先 build 或使用测试自带的临时 bundle。
 - [x] P0b portable builder 的 runtime 与 installer 全部只来自同一 resolved `--source-root`；
   missing/symlink escape fail closed，逐文件 mode/size/SHA-256 受测试保护（`84d8853`）。
-- [ ] P1 单次 clean staging build 生成 archive、manifest、checksums，并写入真实 Git SHA；
-  seal 后任何步骤不得再次调用 build。
+- [x] P1 单次 clean Git staging build 生成 deterministic archive、manifest、checksums 并写入
+  真实 Git SHA；两次独立 staging 输出逐字节一致，seal 后 acceptance 以 poison build tools
+  证明 consume-only（`b1713b6`；TDD 证据 `docs/tdd/w5-p1-sealed-artifact.md`）。
 - [x] P2 installer 支持 `--from-artifact` 的 consume-only 路径；acceptance 用 poison
   `pnpm/cargo/esbuild` 保证安装时不编译，并校验 bytes/mode/digest；最终 archive 输入接线归 P1/P4。
 - [ ] P3 CI `build-artifacts` job 上传 immutable artifact。
@@ -771,10 +862,14 @@ Node heap 或 churn；没有机器可读 raw samples/runner identity/十次基�
 - [ ] A Large semantic landmarks：固定 revision 的 marker manifest；先验证 BuildProfile
   versioned diagnostics，再验证 RHS definition 和 TeamRepo member completion；索引中场景必须
   以 response-vs-terminal 顺序证明真实重叠。
-- [ ] B Performance evidence contract：raw samples、nearest-rank p50/p95/p99、fixture/artifact/
-  runner identity、至少 10 次独立 run、绝对/相对 verdict；不得先填假 baseline。
-- [ ] C Real resource probes：macOS `ps`/Linux `/proc` 可注入 parser，按 PID+start identity
-  发现 server/sidecar tree；通过 Node preload 采 heapUsed/heapTotal/external。
+- [x] B Performance evidence contract：有界 raw samples、nearest-rank p50/p95/p99、fixture/
+  artifact/runner identity、至少 10 次独立 run、绝对/相对 verdict、假 baseline fail closed
+  （`d37e859`、`a21cbe1`）；尚未填写真实 baseline。
+- [x] C1 Process resource probe contract：macOS `ps`/Linux `/proc` 可注入 parser，按
+  PID+start identity 发现 server/sidecar tree，稳定有界并显式标记 truncated（`fffed03`、
+  `a21cbe1`）。
+- [ ] C2 Real runner/heap wiring：接入真实 bounded process executor、Linux bounded-open 与
+  `CLK_TCK` 探测；通过 opt-in Node preload/IPC 采 heapUsed/heapTotal/external。RSS 不得冒充 heap。
 - [ ] D Immutable large command：large 层只从 manifest-installed command 启动并记录
   server/sidecar/manifest SHA-256，不再直接消费 repo `dist`/`target`。
 - [ ] E Provider latency/cancel：A/B/D 后按 provider 采 30 个 warm raw samples；cold 进 nightly

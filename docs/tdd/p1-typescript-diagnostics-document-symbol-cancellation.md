@@ -95,14 +95,15 @@ Implementation boundaries:
 
 ## Post-review P1: wide and deep navigation trees
 
-Independent review found two regressions in `3d69963`:
+Independent review found one regression and one unmet cancellation guarantee in `3d69963`:
 
 1. `push(...navigationSymbol(...))` passed a promoted child list as function arguments.
    A synthetic unsupported container with 150,000 recognizable children threw
    `RangeError: Maximum call stack size exceeded`; the pre-change `flatMap` path did not.
-2. The recursive mapper counted work only after visiting descendants. Cancellation at
-   entry to node 64 of a 1,000-node chain therefore still accessed node 65 and the rest
-   of the chain before observing cancellation during unwind.
+2. The new cancellation contract was incomplete: the recursive mapper counted work only
+   after visiting descendants. Cancellation at entry to node 64 of a 1,000-node chain
+   therefore still accessed node 65 and the rest of the chain before observing
+   cancellation during unwind.
 
 ### Slice 3: unsupported wide-container promotion
 

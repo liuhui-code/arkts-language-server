@@ -8,9 +8,12 @@ This vertical slice adds the real production-bundle stdio path for
 `callHierarchy/incomingCalls` and hardens all three Call Hierarchy requests
 against stale, unavailable, oversized, or physically out-of-workspace sources.
 
-The feature deliberately remains undiscoverable: `callHierarchyProvider` is
-not advertised until the semantic-worker protocol, cancellation/reliability
-evidence, capability contract, and installed-artifact acceptance are complete.
+At this slice's parent revision the feature deliberately remained undiscoverable.
+`callHierarchyProvider` was advertised only after Call-Hierarchy-specific
+cancellation/reliability evidence, the capability contract, and installed-artifact
+acceptance became executable. Full semantic-worker migration remains a subsequent
+responsiveness/scale gate, not an absolute prerequisite for exposing the
+correctness-complete Legacy path.
 
 ## Parent revision
 
@@ -114,7 +117,7 @@ Any overflow returns `RequestFailed/result-limit-exceeded`; results are never
 truncated. File reads use regular-file preflight, nonblocking descriptors,
 bounded allocation, stable pre/post stat identity, and fatal UTF-8 decoding.
 
-## Final focused evidence
+## Original slice focused evidence (`f064358`)
 
 ```sh
 pnpm check
@@ -130,22 +133,40 @@ node --test tests/lsp-call-hierarchy.test.mjs
 # tests 32, pass 32, fail 0
 ```
 
+Current-HEAD post-hardening re-run:
+
+```sh
+node --test tests/project-file-set-cache.test.mjs tests/lsp-call-hierarchy.test.mjs
+# tests 76, pass 76, fail 0, skipped 0, todo 0
+```
+
 Production behavior is additionally covered for strict input parsing,
 locale-independent ordinal sorting, exact/deduplicated ranges, overlay
 freshness, source mutation, physical ownership, and atomic failure.
 
-## Deliberate follow-ups before advertising capability
+## Advertisement gates and remaining QoS work
 
-- Extend and test the semantic-worker wire protocol and supervisor for prepare,
-  outgoing, and incoming. This slice changes only the legacy in-process path.
-- Add cancellation/shutdown/restart evidence, capability-matrix coverage, and
-  immutable installed-artifact smoke.
+- Cancellation/freshness/shutdown protocol evidence (`8f8caa1`), capability and
+  immutable installed-artifact acceptance (`8dd2667`), unique test-layer registration
+  (`650681f`), and three production-registration stdio guard tracers (`532811f`) are
+  complete. The latter prove raw-work preflight, physical result-source authority,
+  and the exact 16 MiB aggregate boundary instead of relabeling private-module tests.
+- The strict semantic-worker Call Hierarchy codecs and method-aware supervisor
+  validation are complete (`1ef51ef`, `2c690c3`). The later
+  responsiveness/scale phase must still connect the dispatcher, endpoint, and
+  production proxy for prepare, outgoing, and incoming. Avoid a long-lived
+  CH-only hybrid worker that duplicates the main-thread TypeScript Program;
+  switch semantic ownership coherently when that integration is ready.
 - Replace the correctness-first per-incoming O(project paths) stat
   reconciliation with an authoritative watcher/worker-owned project snapshot;
   no large-project latency claim is made for the interim path.
-- T4c must make refresh scan/reconciliation/publish transactional before adding
-  throwing cancellation checkpoints. The current refresh is synchronous, so a
-  partial candidate cannot be observed mid-operation; it is not claimed to be
-  cancellation-safe once checkpoints are introduced.
+- T4c now keeps cache/membership refresh and watched-removal consumption transactional
+  through the final cancellation checkpoint (`990b5aa`, `90e871e`, `8ed16a3`). If the
+  TypeEngine becomes cancellable after DocumentStore prepare, delta delivery must move
+  to revisioned peek/ack rather than extending this transaction across another owner.
+- Raw/physical watched invalidation and lexical engine ownership now use a durable
+  canonical owner/reset epoch plus a conservative disk-revision fence (`ea023c6`,
+  `0b4c18a`), so one lexical alias cannot consume the only invalidation and leave a
+  second call-hierarchy Program stale.
 - Measure large-project p95 latency and peak RSS after the watcher/worker path
   replaces the interim reconciliation scan.
