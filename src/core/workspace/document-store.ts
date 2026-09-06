@@ -24,6 +24,7 @@ const MAX_REPLAY_DOCUMENTS = 32
 const MAX_REPLAY_BYTES = 4 * 1024 * 1024
 const MAX_DISK_READ_CHUNK_BYTES = 64 * 1024
 export const MAX_DISK_SNAPSHOT_BYTES = 4 * 1024 * 1024
+const CASE_FOLDED_PATH_IDENTITY_PREFIX = "\0case-folded:"
 
 interface DocumentRecord extends WorkspaceDocument {
   contentGeneration: number
@@ -598,10 +599,7 @@ export class SemanticDocumentStore {
   private invalidateCreatedResolutionCandidates(
     sources: readonly DiskInvalidationInput[],
   ): Set<string> {
-    const createdPaths = new Set(sources.flatMap((source) => [
-      path.resolve(source.path),
-      ...(source.physicalPath ? [source.physicalPath] : []),
-    ]))
+    const createdPaths = new Set(sources.flatMap(createdSourcePathIdentities))
     const affectedRoots = new Set<string>()
     if (createdPaths.size === 0) return affectedRoots
     for (const [ownerPath, closure] of this.dependencyClosures) {
@@ -1475,7 +1473,47 @@ function resolveImportPath(
 function sourcePathIdentities(filePath: string): string[] {
   const resolved = path.resolve(filePath)
   const physical = canonicalSourcePath(resolved)
-  return physical === resolved ? [resolved] : [resolved, physical]
+  return [...new Set([
+    resolved,
+    physical,
+    caseFoldedPathIdentity(resolved),
+    caseFoldedPathIdentity(physical),
+  ])]
+}
+
+function createdSourcePathIdentities(source: DiskInvalidationInput): string[] {
+  const resolved = path.resolve(source.path)
+  const physical = source.physicalPath ?? canonicalSourcePath(resolved)
+  const identities = [resolved, physical]
+  if (hasCaseInsensitiveAlias(resolved, physical)) {
+    identities.push(caseFoldedPathIdentity(resolved), caseFoldedPathIdentity(physical))
+  }
+  return [...new Set(identities)]
+}
+
+function caseFoldedPathIdentity(filePath: string): string {
+  return `${CASE_FOLDED_PATH_IDENTITY_PREFIX}${filePath.toLowerCase()}`
+}
+
+function hasCaseInsensitiveAlias(filePath: string, physicalPath: string): boolean {
+  const basename = path.basename(filePath)
+  const alternateBasename = toggleAsciiCase(basename)
+  if (alternateBasename === basename) return false
+  try {
+    return fs.realpathSync.native(path.join(path.dirname(filePath), alternateBasename)) === physicalPath
+  } catch {
+    return false
+  }
+}
+
+function toggleAsciiCase(value: string): string {
+  const index = value.search(/[A-Za-z]/)
+  if (index < 0) return value
+  const character = value[index]
+  const toggled = character === character.toLowerCase()
+    ? character.toUpperCase()
+    : character.toLowerCase()
+  return `${value.slice(0, index)}${toggled}${value.slice(index + 1)}`
 }
 
 function safeRead(

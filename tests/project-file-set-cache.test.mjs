@@ -465,6 +465,49 @@ test("a watched symlink create matches its missing lexical resolution candidate"
   assert.equal(documentPaths(changed).includes(targetTsPath), false)
 })
 
+test("a watched create matches candidate casing only when the volume aliases that casing", (t) => {
+  const workspace = createWorkspace(t, "created-case-candidate", {
+    "Main.ets": "import { target } from './target'\nexport const main = target()\n",
+    "target.ts": "export function target(): string { return 'ts' }\n",
+  })
+  const mainPath = path.join(workspace, "Main.ets")
+  const fallbackPath = path.join(workspace, "target.ts")
+  const lexicalCandidatePath = path.join(workspace, "target.ets")
+  const watchedCreatedPath = path.join(workspace, "Target.ets")
+  const store = new SemanticDocumentStore()
+  t.after(() => store.dispose?.())
+  const position = syncPosition(store, workspace, mainPath)
+  const warm = store.prepare(position)
+  assert.equal(documentPaths(warm).includes(fallbackPath), true)
+  assert.equal(store.prepare(position).state.dependencyClosureCacheHit, true)
+
+  fs.writeFileSync(
+    watchedCreatedPath,
+    "export function target(): string { return 'ets' }\n",
+    "utf8",
+  )
+  const volumeAliasesCase = fs.existsSync(lexicalCandidatePath)
+    && fs.statSync(lexicalCandidatePath).ino === fs.statSync(watchedCreatedPath).ino
+  store.workspaceFilesChanged({
+    rootPath: workspace,
+    rootDirty: false,
+    changes: [{ path: watchedCreatedPath, kind: "created" }],
+  })
+  const changed = store.prepare(position)
+
+  if (volumeAliasesCase) {
+    assert.equal(changed.resetTypeEngine, true)
+    assert.equal(changed.state.dependencyClosureCacheHit, false)
+    assert.equal(documentPaths(changed).includes(lexicalCandidatePath), true)
+    assert.equal(documentPaths(changed).includes(fallbackPath), false)
+  } else {
+    assert.equal(changed.resetTypeEngine, false)
+    assert.equal(changed.state.dependencyClosureCacheHit, true)
+    assert.equal(documentPaths(changed).includes(fallbackPath), true)
+    assert.equal(documentPaths(changed).includes(watchedCreatedPath), false)
+  }
+})
+
 test("a nested watched delete propagates the exact removal only to closure owners", (t) => {
   const outerRoot = createWorkspace(t, "deleted-cross-root-outer", {
     "Main.ets": "import { target } from './nested/Target'\nexport const main = target()\n",
