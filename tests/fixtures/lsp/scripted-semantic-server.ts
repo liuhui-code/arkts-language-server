@@ -19,6 +19,7 @@ import type {
   SemanticInlayHint,
   SemanticInlayHintQuery,
   SemanticCompletionResolveQuery,
+  SemanticCompletionList,
   SemanticQuery,
   SemanticReferencesOutcome,
   SemanticReferencesQuery,
@@ -74,7 +75,7 @@ class ScriptedSemanticEngine implements SemanticEnginePort {
 
   async complete(
     query: SemanticQuery,
-  ): Promise<VersionedSemanticResult<SemanticCompletion[]>> {
+  ): Promise<VersionedSemanticResult<SemanticCompletionList>> {
     this.completionCount += 1
     if (query.document.text.includes("RELEASE_WORKSPACE_GLOBAL_BARRIER")) {
       this.releaseWorkspaceMutation(
@@ -98,11 +99,27 @@ class ScriptedSemanticEngine implements SemanticEnginePort {
       const completionCount = Number.parseInt(bulkCompletion[1] ?? "0", 10)
       return {
         documentVersion: query.document.version,
-        value: Array.from({ length: completionCount }, (_, index) => ({
-          label: `bulk-${String(index).padStart(3, "0")}`,
-          detail: `Scripted bulk completion ${index}`,
-          kind: "property",
-        })),
+        value: {
+          items: Array.from({ length: completionCount }, (_, index) => ({
+            label: `bulk-${String(index).padStart(3, "0")}`,
+            detail: `Scripted bulk completion ${index}`,
+            kind: "property",
+          })),
+          isIncomplete: false,
+        },
+      }
+    }
+    if (query.document.text.includes("COMPLETION_INCOMPLETE_SMALL")) {
+      return {
+        documentVersion: query.document.version,
+        value: {
+          items: [{
+            label: "incomplete-small",
+            detail: "Scripted incomplete completion",
+            kind: "property",
+          }],
+          isIncomplete: true,
+        },
       }
     }
     if (query.document.text.includes("DELAY_IGNORING_ABORT")) {
@@ -114,21 +131,27 @@ class ScriptedSemanticEngine implements SemanticEnginePort {
       await new Promise((resolve) => setTimeout(resolve, 150))
       return {
         documentVersion: query.document.version,
-        value: [{
-          label: `stale-v${query.document.version}`,
-          detail: "Delayed scripted completion",
-          kind: "property",
-        }],
+        value: {
+          items: [{
+            label: `stale-v${query.document.version}`,
+            detail: "Delayed scripted completion",
+            kind: "property",
+          }],
+          isIncomplete: false,
+        },
       }
     }
     console.log(`scripted completion v${query.document.version}`)
     return {
       documentVersion: query.document.version,
-      value: [{
-        label: `fixture-v${query.document.version}`,
-        detail: "Scripted semantic completion",
-        kind: "property",
-      }],
+      value: {
+        items: [{
+          label: `fixture-v${query.document.version}`,
+          detail: "Scripted semantic completion",
+          kind: "property",
+        }],
+        isIncomplete: false,
+      },
     }
   }
 
@@ -707,7 +730,7 @@ function waitForAbortWorkspaceSymbols(signal?: AbortSignal): Promise<never> {
 
 function waitForAbort(
   signal?: AbortSignal,
-): Promise<VersionedSemanticResult<SemanticCompletion[]>> {
+): Promise<VersionedSemanticResult<SemanticCompletionList>> {
   return new Promise((_resolve, reject) => {
     if (signal?.aborted) {
       reject(abortError())

@@ -24,6 +24,7 @@ import type { DocumentSnapshot } from "../contracts/document.js"
 import type {
   SemanticCodeAction,
   SemanticCompletion,
+  SemanticCompletionList,
   SemanticEnginePort,
   SemanticResolvedCodeAction,
 } from "../contracts/semantic-engine.js"
@@ -340,7 +341,7 @@ export function runLanguageServer(services?: LanguageServerServices): void {
       method: "textDocument/completion",
       documentUri: params.textDocument.uri,
       token,
-      fallback: [] as SemanticCompletion[],
+      fallback: { items: [], isIncomplete: false } as SemanticCompletionList,
       execute: (document, signal) => semantic.complete({
         document,
         position: params.position,
@@ -348,8 +349,8 @@ export function runLanguageServer(services?: LanguageServerServices): void {
       }),
     })
     const document = documents.get(params.textDocument.uri)
-    if (!document) return []
-    const bounded = result.slice(0, MAX_COMPLETION_ITEMS)
+    if (!document) return { isIncomplete: false, items: [] }
+    const bounded = result.items.slice(0, MAX_COMPLETION_ITEMS)
     const items = bounded.map((completion) => toLspCompletionItem(
       completion,
       completionResolutions.remember({
@@ -359,9 +360,10 @@ export function runLanguageServer(services?: LanguageServerServices): void {
         completion,
       }),
     ))
-    return result.length > bounded.length
-      ? { isIncomplete: true, items }
-      : items
+    return {
+      isIncomplete: result.isIncomplete || result.items.length > bounded.length,
+      items,
+    }
   })
 
   connection.onCompletionResolve(async (clientItem, token) => {

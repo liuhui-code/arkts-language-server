@@ -17,6 +17,7 @@ import type {
   SemanticCodeActionQuery,
   SemanticCodeActionResolveQuery,
   SemanticCompletion,
+  SemanticCompletionList,
   SemanticCompletionKind,
   SemanticCompletionResolveQuery,
   SemanticDiagnostic,
@@ -105,13 +106,16 @@ export class LegacySemanticEngine implements SemanticEnginePort {
 
   async complete(
     query: SemanticQuery,
-  ): Promise<VersionedSemanticResult<SemanticCompletion[]>> {
+  ): Promise<VersionedSemanticResult<SemanticCompletionList>> {
     assertActive(query.signal)
     this.sync(query.document)
     const prepared = this.prepare(query.document, query.position, true)
-    const value = prepared.engine.complete(prepared.position)
+    const items = prepared.engine.complete(prepared.position)
       .map((item) => toPublicCompletion(item, query.document.version))
-    return { documentVersion: query.document.version, value }
+    return {
+      documentVersion: query.document.version,
+      value: { items, isIncomplete: false },
+    }
   }
 
   async resolveCompletion(

@@ -48,7 +48,8 @@ test("runs injected semantic services and observes framed notifications", async 
   })
 
   const response = await server.response(2)
-  assert.equal(response.result[0].label, "fixture-v3")
+  assert.equal(response.result.isIncomplete, false)
+  assert.equal(response.result.items[0].label, "fixture-v3")
   const notification = await server.notification("window/logMessage")
   assert.match(notification.params.message, /scripted completion v3/)
 })
@@ -102,9 +103,10 @@ test("a newer completion request supersedes the previous request in its lane", a
   })
 
   const latest = await server.response(11)
-  assert.equal(latest.result[0].label, "fixture-v1")
+  assert.equal(latest.result.isIncomplete, false)
+  assert.equal(latest.result.items[0].label, "fixture-v1")
   const superseded = await server.response(10)
-  assert.deepEqual(superseded.result, [])
+  assert.deepEqual(superseded.result, { isIncomplete: false, items: [] })
 })
 
 test("drops a semantic result for a superseded document version", async (t) => {
@@ -155,7 +157,7 @@ test("drops a semantic result for a superseded document version", async (t) => {
   })
 
   const stale = await server.response(20)
-  assert.deepEqual(stale.result, [])
+  assert.deepEqual(stale.result, { isIncomplete: false, items: [] })
   assert.match(server.stderr, /SCRIPTED_STALE_ABORT/)
 })
 
@@ -216,7 +218,8 @@ test("maps client cancellation to the semantic abort signal and RequestCancelled
     },
   })
   const next = await server.response(31)
-  assert.equal(next.result[0].label, "fixture-v1")
+  assert.equal(next.result.isIncomplete, false)
+  assert.equal(next.result.items[0].label, "fixture-v1")
 })
 
 test("maps completion resolve cancellation to the semantic abort signal", async (t) => {
@@ -258,7 +261,7 @@ test("maps completion resolve cancellation to the semantic abort signal", async 
     },
   })
   const completion = await server.response(32)
-  const item = completion.result[0]
+  const item = completion.result.items[0]
   assert.ok(item.data?.arktsCompletionId)
 
   server.send({
@@ -318,9 +321,7 @@ test("returns a bounded incomplete completion list whose edge items remain resol
 
   const completion = await server.response(34)
   assert.equal(completion.error, undefined, JSON.stringify(completion.error))
-  const items = Array.isArray(completion.result)
-    ? completion.result
-    : completion.result?.items ?? []
+  const items = completion.result.items
   assert.equal(items.length > 0, true)
 
   server.send({
@@ -397,11 +398,9 @@ for (const { count, incomplete } of [
 
     const completion = await server.response(37)
     assert.equal(completion.error, undefined, JSON.stringify(completion.error))
-    assert.equal(Array.isArray(completion.result), !incomplete)
-    if (incomplete) assert.equal(completion.result.isIncomplete, true)
-    const items = Array.isArray(completion.result)
-      ? completion.result
-      : completion.result?.items ?? []
+    assert.equal(Array.isArray(completion.result), false)
+    assert.equal(completion.result.isIncomplete, incomplete)
+    const items = completion.result.items
     assert.equal(items.length, 256)
 
     server.send({
@@ -425,6 +424,53 @@ for (const { count, incomplete } of [
     assert.equal(last.result.label, "bulk-255")
   })
 }
+
+test("propagates an incomplete semantic completion list below the adapter limit", async (t) => {
+  const server = new LspProcess({ serverPath: scriptedServerPath })
+  t.after(() => server.close())
+  const uri = pathToFileURL(`${projectRoot}/fixtures/IncompleteCompletion.ets`).href
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: {
+      processId: process.pid,
+      rootUri: pathToFileURL(projectRoot).href,
+      capabilities: {},
+    },
+  })
+  await server.response(1)
+  server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
+  server.send({
+    jsonrpc: "2.0",
+    method: "textDocument/didOpen",
+    params: {
+      textDocument: {
+        uri,
+        languageId: "arkts",
+        version: 1,
+        text: "// COMPLETION_INCOMPLETE_SMALL",
+      },
+    },
+  })
+  server.send({
+    jsonrpc: "2.0",
+    id: 40,
+    method: "textDocument/completion",
+    params: {
+      textDocument: { uri },
+      position: { line: 0, character: 0 },
+    },
+  })
+
+  const completion = await server.response(40)
+  assert.equal(completion.error, undefined, JSON.stringify(completion.error))
+  assert.equal(Array.isArray(completion.result), false)
+  assert.equal(completion.result.isIncomplete, true)
+  assert.equal(completion.result.items.length, 1)
+  assert.equal(completion.result.items[0].label, "incomplete-small")
+})
 
 test("maps code-action resolve cancellation to RequestCancelled without leaking an edit", async (t) => {
   const server = new LspProcess({ serverPath: scriptedServerPath })
@@ -664,7 +710,7 @@ test("rejects forged and stale completion resolve data", async (t) => {
     },
   })
   const completion = await server.response(34)
-  const item = completion.result[0]
+  const item = completion.result.items[0]
 
   server.send({
     jsonrpc: "2.0",
@@ -767,7 +813,7 @@ test("shutdown rejects later requests, disposes once, and waits for exit", async
     jsonrpc: "2.0",
     id: 42,
     method: "completionItem/resolve",
-    params: completion.result[0],
+    params: completion.result.items[0],
   })
   const rejectedResolve = await server.response(42)
   assert.equal(rejectedResolve.error.code, -32600)

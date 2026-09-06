@@ -7,6 +7,7 @@ import type {
   SemanticDocumentQuery,
   SemanticDocumentSymbol,
   SemanticEnginePort,
+  SemanticCompletionList,
   SemanticQuery,
   VersionedSemanticResult,
 } from "../../../src/contracts/semantic-engine.js"
@@ -238,8 +239,8 @@ class ScenarioSemanticEngine implements SemanticEnginePort {
   sync(_document: DocumentSnapshot): void {}
   close(_documentUri: DocumentUri): void {}
 
-  async complete(query: SemanticQuery): Promise<VersionedSemanticResult<never[]>> {
-    return versioned(query, [])
+  async complete(query: SemanticQuery): Promise<VersionedSemanticResult<SemanticCompletionList>> {
+    return versioned(query, { items: [], isIncomplete: false })
   }
 
   async define(query: SemanticQuery): Promise<VersionedSemanticResult<never[]>> {

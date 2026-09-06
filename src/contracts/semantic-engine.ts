@@ -28,6 +28,11 @@ export interface SemanticCompletion {
   data?: Record<string, unknown>
 }
 
+export interface SemanticCompletionList {
+  items: SemanticCompletion[]
+  isIncomplete: boolean
+}
+
 export interface SemanticCompletionTextEdit {
   uri: DocumentUri
   range: TextRange
@@ -337,7 +342,7 @@ export interface SemanticEnginePort {
   sync(document: DocumentSnapshot): void
   close(documentUri: DocumentUri): void
   workspaceFilesChanged?(batches: readonly SemanticWorkspaceFileChangeBatch[]): void
-  complete(query: SemanticQuery): Promise<VersionedSemanticResult<SemanticCompletion[]>>
+  complete(query: SemanticQuery): Promise<VersionedSemanticResult<SemanticCompletionList>>
   resolveCompletion(
     query: SemanticCompletionResolveQuery,
   ): Promise<VersionedSemanticResult<SemanticCompletion>>

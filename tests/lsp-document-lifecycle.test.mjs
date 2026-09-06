@@ -141,10 +141,8 @@ test("does not serve a stale overlay after the document closes", async (t) => {
     },
   })
   const beforeClose = await server.response(2)
-  const beforeItems = Array.isArray(beforeClose.result)
-    ? beforeClose.result
-    : beforeClose.result?.items ?? []
-  assert.ok(beforeItems.some((item) => item.label === "unsavedValue"))
+  assert.equal(beforeClose.result.isIncomplete, false)
+  assert.ok(beforeClose.result.items.some((item) => item.label === "unsavedValue"))
 
   server.send({
     jsonrpc: "2.0",
@@ -162,5 +160,5 @@ test("does not serve a stale overlay after the document closes", async (t) => {
   })
 
   const afterClose = await server.response(3)
-  assert.deepEqual(afterClose.result, [])
+  assert.deepEqual(afterClose.result, { isIncomplete: false, items: [] })
 })
