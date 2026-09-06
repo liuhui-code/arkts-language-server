@@ -271,6 +271,268 @@ test("cancels completion during the bounded raw entry scan without publishing pa
   )
 })
 
+test("cancels implementations during result filtering without publishing partial results", async (t) => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-ts-implementation-cancel-"))
+  t.after(() => fs.rmSync(workspaceRoot, { recursive: true, force: true }))
+
+  const mainPath = path.join(workspaceRoot, "Main.ts")
+  const mainSource = [
+    "export const anchor = 1",
+    ...Array.from({ length: 130 }, (_, index) => `export const use${index} = target`),
+    "",
+  ].join("\n")
+  const targetOffsets = offsetsOf(mainSource, "target")
+  assert.equal(targetOffsets.length, 130)
+  const {
+    SemanticCancellationScope,
+    SemanticWorkerCancelState,
+    TypeScriptLanguageServiceEngine,
+    TypeScriptOperationCanceledException,
+  } = buildDriver(t)
+  const scope = new SemanticCancellationScope()
+  const cancellationCell = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT)
+  const cancellationView = new Int32Array(cancellationCell)
+  let sixtyFifthEntryAccessed = false
+
+  const engine = new TypeScriptLanguageServiceEngine(workspaceRoot, {
+    hostCancellationToken: scope.hostToken,
+    checkpoint: () => scope.checkpoint(),
+  })
+  t.after(() => engine.dispose())
+  prepareSingleDocument(engine, workspaceRoot, mainPath, mainSource)
+
+  const rawImplementations = targetOffsets.map((start, index) => controlledImplementation({
+    index,
+    mainPath,
+    start,
+    onSixtyFourthEntry() {
+      Atomics.store(cancellationView, 0, SemanticWorkerCancelState.clientCancelled)
+    },
+    onSixtyFifthEntry() {
+      sixtyFifthEntryAccessed = true
+    },
+  }))
+  const realService = engine.service
+  engine.service = new Proxy(realService, {
+    get(target, property, receiver) {
+      if (property === "getDefinitionAtPosition") return () => []
+      if (property === "getImplementationAtPosition") return () => rawImplementations
+      const value = Reflect.get(target, property, receiver)
+      return typeof value === "function" ? value.bind(target) : value
+    },
+  })
+
+  const position = {
+    path: mainPath,
+    line: 1,
+    column: mainSource.indexOf("anchor") + 1,
+    documentVersion: 1,
+    workspaceRoot,
+  }
+  let errorCaughtInsideImplementations
+  let publishedResult
+  await assert.rejects(
+    scope.run(cancellationCell, () => {
+      try {
+        publishedResult = engine.implementations(position)
+        return publishedResult
+      } catch (error) {
+        errorCaughtInsideImplementations = error
+        throw error
+      }
+    }),
+    (error) => error instanceof TypeScriptOperationCanceledException,
+  )
+
+  assert.equal(
+    errorCaughtInsideImplementations instanceof TypeScriptOperationCanceledException,
+    true,
+    "engine.implementations must observe cancellation while filtering its own raw result",
+  )
+  assert.equal(sixtyFifthEntryAccessed, false)
+  assert.equal(publishedResult, undefined, "cancelled implementations must not publish partial results")
+
+  const retryCell = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT)
+  const retry = await scope.run(retryCell, () => engine.implementations(position))
+  assert.equal(retry.length, 130)
+  assert.deepEqual(
+    retry.map(({ range }) => range.startLine),
+    Array.from({ length: 130 }, (_, index) => index + 2),
+    "a fresh request must return every implementation in provider order",
+  )
+})
+
+test("cancels implementations during shared candidate mapping", async (t) => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-ts-implementation-map-cancel-"))
+  t.after(() => fs.rmSync(workspaceRoot, { recursive: true, force: true }))
+
+  const mainPath = path.join(workspaceRoot, "Main.ts")
+  const mainSource = [
+    "export const anchor = 1",
+    ...Array.from({ length: 130 }, (_, index) => `export const mapped${index} = target`),
+    "",
+  ].join("\n")
+  const targetOffsets = offsetsOf(mainSource, "target")
+  const {
+    SemanticCancellationScope,
+    SemanticWorkerCancelState,
+    TypeScriptLanguageServiceEngine,
+    TypeScriptOperationCanceledException,
+  } = buildDriver(t)
+  const scope = new SemanticCancellationScope()
+  const cancellationCell = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT)
+  const cancellationView = new Int32Array(cancellationCell)
+  let sixtyFifthMappingAccessed = false
+
+  const engine = new TypeScriptLanguageServiceEngine(workspaceRoot, {
+    hostCancellationToken: scope.hostToken,
+    checkpoint: () => scope.checkpoint(),
+  })
+  t.after(() => engine.dispose())
+  prepareSingleDocument(engine, workspaceRoot, mainPath, mainSource)
+
+  const rawImplementations = targetOffsets.map((start, index) => controlledMappedImplementation({
+    index,
+    mainPath,
+    start,
+    onSixtyFourthMapping() {
+      Atomics.store(cancellationView, 0, SemanticWorkerCancelState.clientCancelled)
+    },
+    onSixtyFifthMapping() {
+      sixtyFifthMappingAccessed = true
+    },
+  }))
+  const realService = engine.service
+  engine.service = new Proxy(realService, {
+    get(target, property, receiver) {
+      if (property === "getDefinitionAtPosition") return () => []
+      if (property === "getImplementationAtPosition") return () => rawImplementations
+      const value = Reflect.get(target, property, receiver)
+      return typeof value === "function" ? value.bind(target) : value
+    },
+  })
+
+  const position = {
+    path: mainPath,
+    line: 1,
+    column: mainSource.indexOf("anchor") + 1,
+    documentVersion: 1,
+    workspaceRoot,
+  }
+  let errorCaughtInsideImplementations
+  let publishedResult
+  await assert.rejects(
+    scope.run(cancellationCell, () => {
+      try {
+        publishedResult = engine.implementations(position)
+        return publishedResult
+      } catch (error) {
+        errorCaughtInsideImplementations = error
+        throw error
+      }
+    }),
+    (error) => error instanceof TypeScriptOperationCanceledException,
+  )
+
+  assert.equal(
+    errorCaughtInsideImplementations instanceof TypeScriptOperationCanceledException,
+    true,
+    "engine.implementations must observe cancellation inside shared candidate mapping",
+  )
+  assert.equal(sixtyFifthMappingAccessed, false)
+  assert.equal(publishedResult, undefined)
+
+  const retryCell = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT)
+  const retry = await scope.run(retryCell, () => engine.implementations(position))
+  assert.equal(retry.length, 130)
+})
+
+test("cancels implementations while indexing declarations before querying implementations", async (t) => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-ts-declaration-cancel-"))
+  t.after(() => fs.rmSync(workspaceRoot, { recursive: true, force: true }))
+
+  const mainPath = path.join(workspaceRoot, "Main.ts")
+  const mainSource = "export const anchor = 1\n"
+  const {
+    SemanticCancellationScope,
+    SemanticWorkerCancelState,
+    TypeScriptLanguageServiceEngine,
+    TypeScriptOperationCanceledException,
+  } = buildDriver(t)
+  const scope = new SemanticCancellationScope()
+  const cancellationCell = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT)
+  const cancellationView = new Int32Array(cancellationCell)
+  let sixtyFifthDefinitionAccessed = false
+  let implementationProviderCalled = false
+
+  const engine = new TypeScriptLanguageServiceEngine(workspaceRoot, {
+    hostCancellationToken: scope.hostToken,
+    checkpoint: () => scope.checkpoint(),
+  })
+  t.after(() => engine.dispose())
+  prepareSingleDocument(engine, workspaceRoot, mainPath, mainSource)
+
+  const rawDefinitions = Array.from({ length: 130 }, (_, index) => controlledDefinition({
+    index,
+    mainPath,
+    onSixtyFourthDefinition() {
+      Atomics.store(cancellationView, 0, SemanticWorkerCancelState.clientCancelled)
+    },
+    onSixtyFifthDefinition() {
+      sixtyFifthDefinitionAccessed = true
+    },
+  }))
+  const realService = engine.service
+  engine.service = new Proxy(realService, {
+    get(target, property, receiver) {
+      if (property === "getDefinitionAtPosition") return () => rawDefinitions
+      if (property === "getImplementationAtPosition") {
+        return () => {
+          implementationProviderCalled = true
+          return []
+        }
+      }
+      const value = Reflect.get(target, property, receiver)
+      return typeof value === "function" ? value.bind(target) : value
+    },
+  })
+
+  const position = {
+    path: mainPath,
+    line: 1,
+    column: mainSource.indexOf("anchor") + 1,
+    documentVersion: 1,
+    workspaceRoot,
+  }
+  let errorCaughtInsideImplementations
+  let publishedResult
+  await assert.rejects(
+    scope.run(cancellationCell, () => {
+      try {
+        publishedResult = engine.implementations(position)
+        return publishedResult
+      } catch (error) {
+        errorCaughtInsideImplementations = error
+        throw error
+      }
+    }),
+    (error) => error instanceof TypeScriptOperationCanceledException,
+  )
+
+  assert.equal(
+    errorCaughtInsideImplementations instanceof TypeScriptOperationCanceledException,
+    true,
+  )
+  assert.equal(sixtyFifthDefinitionAccessed, false)
+  assert.equal(implementationProviderCalled, false)
+  assert.equal(publishedResult, undefined)
+
+  const retryCell = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT)
+  const retry = await scope.run(retryCell, () => engine.implementations(position))
+  assert.deepEqual(retry, [])
+  assert.equal(implementationProviderCalled, true)
+})
+
 function controlledReference({
   definitionStart,
   index,
@@ -313,6 +575,97 @@ function controlledCompletionEntry({
       return name
     },
   }
+}
+
+function controlledImplementation({
+  index,
+  mainPath,
+  start,
+  onSixtyFourthEntry,
+  onSixtyFifthEntry,
+}) {
+  const implementation = { textSpan: { start, length: "target".length } }
+  Object.defineProperty(implementation, "fileName", {
+    configurable: false,
+    enumerable: true,
+    get() {
+      if (index === 63) onSixtyFourthEntry()
+      if (index === 64) onSixtyFifthEntry()
+      return mainPath
+    },
+  })
+  return implementation
+}
+
+function controlledMappedImplementation({
+  index,
+  mainPath,
+  start,
+  onSixtyFourthMapping,
+  onSixtyFifthMapping,
+}) {
+  let fileNameAccesses = 0
+  const implementation = { textSpan: { start, length: "target".length } }
+  Object.defineProperty(implementation, "fileName", {
+    configurable: false,
+    enumerable: true,
+    get() {
+      fileNameAccesses += 1
+      if (fileNameAccesses === 2 && index === 63) onSixtyFourthMapping()
+      if (fileNameAccesses === 2 && index === 64) onSixtyFifthMapping()
+      return mainPath
+    },
+  })
+  return implementation
+}
+
+function controlledDefinition({
+  index,
+  mainPath,
+  onSixtyFourthDefinition,
+  onSixtyFifthDefinition,
+}) {
+  const definition = { textSpan: { start: 0, length: 1 } }
+  Object.defineProperty(definition, "fileName", {
+    configurable: false,
+    enumerable: true,
+    get() {
+      if (index === 63) onSixtyFourthDefinition()
+      if (index === 64) onSixtyFifthDefinition()
+      return mainPath
+    },
+  })
+  return definition
+}
+
+function prepareSingleDocument(engine, workspaceRoot, mainPath, mainSource) {
+  engine.prepare({
+    rootPath: workspaceRoot,
+    documents: [{
+      path: mainPath,
+      content: mainSource,
+      documentVersion: 1,
+      overlay: true,
+    }],
+    projectMembership: {
+      paths: [mainPath],
+      status: "complete",
+      revision: 1,
+    },
+    contentRevision: 1,
+    resetTypeEngine: false,
+    state: {
+      path: mainPath,
+      contentGeneration: 1,
+      documentVersion: 1,
+      dependencyGeneration: 1,
+      documentCacheHit: false,
+      dependencyClosureCacheHit: false,
+      queryCacheHit: false,
+      loadedDocumentCount: 1,
+      syntaxReady: true,
+    },
+  })
 }
 
 function offsetsOf(source, token) {

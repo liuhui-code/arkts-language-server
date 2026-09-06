@@ -338,9 +338,12 @@ export class TypeScriptLanguageServiceEngine {
   }
 
   implementations(position: SemanticDocumentPosition): SemanticDefinitionCandidate[] {
-    return this.definitionCandidates(position, (filePath, offset) => (
-      this.nonDeclarationImplementations(filePath, offset)
-    ))
+    const work = new CooperativeWork(this.checkpoint)
+    return this.definitionCandidates(
+      position,
+      (filePath, offset) => this.nonDeclarationImplementations(filePath, offset, work),
+      work,
+    )
   }
 
   prepareCallHierarchy(
@@ -566,17 +569,28 @@ export class TypeScriptLanguageServiceEngine {
   private nonDeclarationImplementations(
     filePath: string,
     offset: number,
+    work: CooperativeWork,
   ): readonly ts.ImplementationLocation[] {
-    const declarations = new Set(
-      (this.service.getDefinitionAtPosition(filePath, offset) ?? []).map((definition) => (
-        typescriptSpanKey(path.resolve(definition.fileName), definition.textSpan)
-      )),
-    )
-    return (this.service.getImplementationAtPosition(filePath, offset) ?? [])
-      .filter((implementation) => !declarations.has(typescriptSpanKey(
+    work.boundary()
+    const rawDefinitions = this.service.getDefinitionAtPosition(filePath, offset) ?? []
+    work.boundary()
+    const declarations = new Set<string>()
+    for (const definition of rawDefinitions) {
+      declarations.add(typescriptSpanKey(path.resolve(definition.fileName), definition.textSpan))
+      work.item()
+    }
+    work.boundary()
+    const rawImplementations = this.service.getImplementationAtPosition(filePath, offset) ?? []
+    work.boundary()
+    const implementations: ts.ImplementationLocation[] = []
+    for (const implementation of rawImplementations) {
+      if (!declarations.has(typescriptSpanKey(
         path.resolve(implementation.fileName),
         implementation.textSpan,
-      )))
+      ))) implementations.push(implementation)
+      work.item()
+    }
+    return implementations
   }
 
   private prepareCallHierarchyAt(
@@ -668,45 +682,54 @@ export class TypeScriptLanguageServiceEngine {
       filePath: string,
       offset: number,
     ) => readonly { fileName: string; textSpan: ts.TextSpan }[] | undefined,
+    work = new CooperativeWork(),
   ): SemanticDefinitionCandidate[] {
+    work.boundary()
     const filePath = path.resolve(position.path)
     const script = this.scripts.get(filePath)
-    if (!script) return []
+    if (!script) return work.finish([])
     script.lastAccess = ++this.accessClock
     const sourceOffset = lineColumnToOffset(script.sourceContent, position.line, position.column)
     const offset = script.virtualDocument.toGeneratedOffset(sourceOffset)
+    work.boundary()
     const definitions = getDefinitions(filePath, offset) ?? []
+    work.boundary()
     const seen = new Set<string>()
-    return definitions.flatMap((definition) => {
+    const candidates: SemanticDefinitionCandidate[] = []
+    for (const definition of definitions) {
       const targetPath = path.resolve(definition.fileName)
       const targetScript = this.scripts.get(targetPath)
       const targetLazy = targetScript ? undefined : this.loadLazySnapshot(targetPath)
       const content = targetScript?.sourceContent
         ?? targetLazy?.virtualDocument.sourceContent
         ?? safeRead(targetPath)
-      if (content === null) return []
-      const range = targetScript
-        ? targetScript.virtualDocument.generatedSpanToSourceRange(
-            definition.textSpan.start,
-            definition.textSpan.length,
-          )
-        : targetLazy
-          ? targetLazy.virtualDocument.generatedSpanToSourceRange(
+      if (content !== null) {
+        const range = targetScript
+          ? targetScript.virtualDocument.generatedSpanToSourceRange(
               definition.textSpan.start,
               definition.textSpan.length,
             )
-          : spanToRange(content, definition.textSpan.start, definition.textSpan.length)
-      const key = [
-        targetPath,
-        range.startLine,
-        range.startColumn,
-        range.endLine,
-        range.endColumn,
-      ].join(":")
-      if (seen.has(key)) return []
-      seen.add(key)
-      return [{ path: targetPath, range }]
-    })
+          : targetLazy
+            ? targetLazy.virtualDocument.generatedSpanToSourceRange(
+                definition.textSpan.start,
+                definition.textSpan.length,
+              )
+            : spanToRange(content, definition.textSpan.start, definition.textSpan.length)
+        const key = [
+          targetPath,
+          range.startLine,
+          range.startColumn,
+          range.endLine,
+          range.endColumn,
+        ].join(":")
+        if (!seen.has(key)) {
+          seen.add(key)
+          candidates.push({ path: targetPath, range })
+        }
+      }
+      work.item()
+    }
+    return work.finish(candidates)
   }
 
   usages(position: SemanticDocumentPosition): SemanticUsageResult[] {
