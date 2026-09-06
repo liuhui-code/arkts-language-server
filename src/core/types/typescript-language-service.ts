@@ -294,12 +294,34 @@ export class TypeScriptLanguageServiceEngine {
     ))
   }
 
+  implementations(position: SemanticDocumentPosition): SemanticDefinitionCandidate[] {
+    return this.definitionCandidates(position, (filePath, offset) => (
+      this.nonDeclarationImplementations(filePath, offset)
+    ))
+  }
+
+  private nonDeclarationImplementations(
+    filePath: string,
+    offset: number,
+  ): readonly ts.ImplementationLocation[] {
+    const declarations = new Set(
+      (this.service.getDefinitionAtPosition(filePath, offset) ?? []).map((definition) => (
+        typescriptSpanKey(path.resolve(definition.fileName), definition.textSpan)
+      )),
+    )
+    return (this.service.getImplementationAtPosition(filePath, offset) ?? [])
+      .filter((implementation) => !declarations.has(typescriptSpanKey(
+        path.resolve(implementation.fileName),
+        implementation.textSpan,
+      )))
+  }
+
   private definitionCandidates(
     position: SemanticDocumentPosition,
     getDefinitions: (
       filePath: string,
       offset: number,
-    ) => readonly ts.DefinitionInfo[] | undefined,
+    ) => readonly { fileName: string; textSpan: ts.TextSpan }[] | undefined,
   ): SemanticDefinitionCandidate[] {
     const filePath = path.resolve(position.path)
     const script = this.scripts.get(filePath)

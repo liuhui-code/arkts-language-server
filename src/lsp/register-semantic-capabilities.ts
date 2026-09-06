@@ -60,6 +60,7 @@ export function registerSemanticCapabilities({
     documentSymbolProvider: true,
     foldingRangeProvider: true,
     hoverProvider: true,
+    implementationProvider: true,
     referencesProvider: true,
     signatureHelpProvider: {
       triggerCharacters: ["(", ",", "<"],
@@ -105,6 +106,21 @@ export function registerSemanticCapabilities({
       token,
       fallback: [],
       execute: (document, signal) => semantic.typeDefinitions({
+        document,
+        position: params.position,
+        signal,
+      }),
+    })
+  })
+
+  connection.onImplementation(async (params, token) => {
+    return requests.run({
+      method: "textDocument/implementation",
+      documentUri: params.textDocument.uri,
+      token,
+      fallback: [],
+      scope: "workspace",
+      execute: (document, signal) => semantic.implementations({
         document,
         position: params.position,
         signal,

@@ -148,6 +148,19 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     return { documentVersion: query.document.version, value }
   }
 
+  async implementations(
+    query: SemanticQuery,
+  ): Promise<VersionedSemanticResult<SemanticDefinition[]>> {
+    assertActive(query.signal)
+    this.sync(query.document)
+    const prepared = this.prepare(query.document, query.position, true)
+    const value = prepared.engine.implementations(prepared.position).map((target) => ({
+      uri: pathToFileURL(target.path).href,
+      range: toPublicRange(target.range),
+    }))
+    return { documentVersion: query.document.version, value }
+  }
+
   async references(
     query: SemanticReferencesQuery,
   ): Promise<VersionedSemanticResult<SemanticReferencesOutcome>> {

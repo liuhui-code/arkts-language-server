@@ -84,6 +84,7 @@ export interface SemanticTypeQueryContext {
   resolveCompletion(position: SemanticDocumentPosition, item: SemanticCompletionItem): SemanticCompletionItem
   define(position: SemanticDocumentPosition): SemanticDefinitionCandidate[]
   typeDefinitions(position: SemanticDocumentPosition): SemanticDefinitionCandidate[]
+  implementations(position: SemanticDocumentPosition): SemanticDefinitionCandidate[]
   references(
     position: SemanticDocumentPosition,
     includeDeclaration: boolean,
@@ -156,6 +157,7 @@ export class SemanticTypeEngineRegistry {
         entry.engine.define(position),
       ),
       typeDefinitions: (position) => entry.engine.typeDefinitions(position),
+      implementations: (position) => entry.engine.implementations(position),
       references: (position, includeDeclaration) => (
         entry.engine.references(position, includeDeclaration)
       ),

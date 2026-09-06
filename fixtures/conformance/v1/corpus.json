@@ -51,6 +51,34 @@
       "shape": "range"
     },
     {
+      "id": "implementation.interface",
+      "kind": "implementation",
+      "role": "interface-query",
+      "file": "workspace/entry/src/main/ets/model/NavigationContracts.ets",
+      "shape": "range"
+    },
+    {
+      "id": "implementation.interface-target",
+      "kind": "implementation",
+      "role": "concrete-target",
+      "file": "workspace/entry/src/main/ets/model/NavigationImplementations.ets",
+      "shape": "range"
+    },
+    {
+      "id": "implementation.abstract-class",
+      "kind": "implementation",
+      "role": "abstract-query",
+      "file": "workspace/entry/src/main/ets/model/NavigationContracts.ets",
+      "shape": "range"
+    },
+    {
+      "id": "implementation.abstract-class-target",
+      "kind": "implementation",
+      "role": "concrete-target",
+      "file": "workspace/entry/src/main/ets/model/NavigationImplementations.ets",
+      "shape": "range"
+    },
+    {
       "id": "profile.shadow",
       "kind": "references",
       "role": "negative",

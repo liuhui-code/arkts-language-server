@@ -10,6 +10,7 @@ const scriptedServerPath = buildScriptedSemanticServer()
 const semanticRequests = [
   ["textDocument/definition", { position: { line: 0, character: 0 } }, []],
   ["textDocument/typeDefinition", { position: { line: 0, character: 0 } }, []],
+  ["textDocument/implementation", { position: { line: 0, character: 0 } }, []],
   [
     "textDocument/references",
     { position: { line: 0, character: 0 }, context: { includeDeclaration: false } },

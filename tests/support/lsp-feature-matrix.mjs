@@ -111,6 +111,33 @@ export const CURRENT_LSP_FEATURE_MATRIX = Object.freeze({
       artifactGap: null,
     }),
     enabledFeature({
+      id: "implementation",
+      requiredCapabilities: [capability("implementationProvider", true)],
+      protocol: [
+        evidence(
+          "tests/lsp-semantic-request-reliability.test.mjs",
+          "maps cancellation for every advertised semantic request to RequestCancelled",
+          "implementation.protocol.cancellation",
+        ),
+        evidence(
+          "tests/lsp-semantic-request-reliability.test.mjs",
+          "drops stale results for every advertised semantic request after didChange",
+          "implementation.protocol.document-freshness",
+        ),
+      ],
+      bundle: [evidence(
+        "tests/lsp-transcript.test.mjs",
+        "returns exact unopened implementations of an ArkTS interface and abstract class",
+        "implementation.bundle.unopened-interface-abstract-ranges",
+      )],
+      artifact: [evidence(
+        "tests/release/portable-install.acceptance.mjs",
+        "installs one verified artifact without source dependencies or a rebuild",
+        "implementation.artifact.immutable-unopened-interface-abstract-ranges",
+      )],
+      artifactGap: null,
+    }),
+    enabledFeature({
       id: "hover",
       requiredCapabilities: [capability("hoverProvider", true)],
       protocol: [evidence(

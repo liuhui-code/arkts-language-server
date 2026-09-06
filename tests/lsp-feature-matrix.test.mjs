@@ -76,6 +76,7 @@ test("binds the installed semantic umbrella to its exact verified claim set", ()
     "completion.artifact.immutable-typescript-arkui-sdk-resource-builder",
     "definition.artifact.immutable-typescript-arkui-sdk-resource-builder-ranges",
     "type-definition.artifact.immutable-unopened-variable-type-range",
+    "implementation.artifact.immutable-unopened-interface-abstract-ranges",
     "hover.artifact.immutable-negotiated-markdown-plaintext-typescript-arkui-range",
     "signature-help.artifact.immutable-unopened-overload",
     "document-symbol.artifact.immutable-modern-legacy-kind-hierarchy",
@@ -97,7 +98,7 @@ test("binds the installed semantic umbrella to its exact verified claim set", ()
   })
 
   assert.deepEqual(audit.verifiedClaims, [...verifiedClaims].sort())
-  assert.equal(audit.expectedClaims.length, 16)
+  assert.equal(audit.expectedClaims.length, 17)
 })
 
 test("maps the complete public capability contract to executable feature evidence", () => {
@@ -114,6 +115,7 @@ test("maps the complete public capability contract to executable feature evidenc
     "completion",
     "definition",
     "type-definition",
+    "implementation",
     "hover",
     "signature-help",
     "document-symbol",
@@ -128,13 +130,14 @@ test("maps the complete public capability contract to executable feature evidenc
     "document-formatting",
   ])
   assert.deepEqual(audit.plannedFeatureIds, [])
-  assert.equal(audit.requiredCapabilityCount, 18)
+  assert.equal(audit.requiredCapabilityCount, 19)
   assert.equal(audit.absentCapabilityCount, 0)
   assert.deepEqual(audit.artifactCoveredFeatureIds, [
     "document-sync",
     "completion",
     "definition",
     "type-definition",
+    "implementation",
     "hover",
     "signature-help",
     "document-symbol",
@@ -150,6 +153,15 @@ test("maps the complete public capability contract to executable feature evidenc
   ])
   assert.deepEqual(audit.artifactGapFeatureIds, [])
   const editorFeatures = new Map([
+    ["implementation", {
+      provider: "implementationProvider",
+      bundle: [{
+        entry: "tests/lsp-transcript.test.mjs",
+        test: "returns exact unopened implementations of an ArkTS interface and abstract class",
+        claim: "implementation.bundle.unopened-interface-abstract-ranges",
+      }],
+      artifactClaim: "implementation.artifact.immutable-unopened-interface-abstract-ranges",
+    }],
     ["type-definition", {
       provider: "typeDefinitionProvider",
       bundle: [{

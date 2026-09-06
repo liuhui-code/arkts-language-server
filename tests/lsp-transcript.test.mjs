@@ -186,6 +186,83 @@ test("returns the exact unopened type definition for an ArkTS variable", async (
   }])
 })
 
+test("returns exact unopened implementations of an ArkTS interface and abstract class", async (t) => {
+  const server = new LspProcess()
+  t.after(() => server.close())
+  const contractsPath = path.join(basicFixtureRoot, "NavigationContracts.ets")
+  const implementationsPath = path.join(basicFixtureRoot, "NavigationImplementations.ets")
+  const contractsUri = pathToFileURL(contractsPath).href
+  const implementationsUri = pathToFileURL(implementationsPath).href
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: {
+      processId: process.pid,
+      rootUri: pathToFileURL(basicFixtureRoot).href,
+      capabilities: { general: { positionEncodings: ["utf-16"] } },
+    },
+  })
+  await server.response(1)
+  server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
+  server.send({
+    jsonrpc: "2.0",
+    method: "textDocument/didOpen",
+    params: {
+      textDocument: {
+        uri: contractsUri,
+        languageId: "arkts",
+        version: 1,
+        text: fs.readFileSync(contractsPath, "utf8"),
+      },
+    },
+  })
+  server.send({
+    jsonrpc: "2.0",
+    id: 5,
+    method: "textDocument/implementation",
+    params: {
+      textDocument: { uri: contractsUri },
+      position: { line: 0, character: 20 },
+    },
+  })
+
+  const response = await server.response(5)
+  assert.equal(response.error, undefined, JSON.stringify(response.error))
+  const locations = Array.isArray(response.result) ? response.result : [response.result]
+  assert.deepEqual(locations, [{
+    uri: implementationsUri,
+    range: {
+      start: { line: 2, character: 13 },
+      end: { line: 2, character: 26 },
+    },
+  }])
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 6,
+    method: "textDocument/implementation",
+    params: {
+      textDocument: { uri: contractsUri },
+      position: { line: 4, character: 24 },
+    },
+  })
+
+  const abstractResponse = await server.response(6)
+  assert.equal(abstractResponse.error, undefined, JSON.stringify(abstractResponse.error))
+  const abstractLocations = Array.isArray(abstractResponse.result)
+    ? abstractResponse.result
+    : [abstractResponse.result]
+  assert.deepEqual(abstractLocations, [{
+    uri: implementationsUri,
+    range: {
+      start: { line: 8, character: 13 },
+      end: { line: 8, character: 30 },
+    },
+  }])
+})
+
 test("acknowledges shutdown and exits cleanly", async (t) => {
   const server = new LspProcess()
   t.after(() => server.close())

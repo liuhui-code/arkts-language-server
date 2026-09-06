@@ -186,6 +186,15 @@ class ScriptedSemanticEngine implements SemanticEnginePort {
     }])
   }
 
+  async implementations(
+    query: SemanticQuery,
+  ): Promise<VersionedSemanticResult<SemanticDefinition[]>> {
+    return scriptedSemanticResult(query, [{
+      uri: query.document.uri,
+      range: zeroRange(),
+    }])
+  }
+
   async references(
     query: SemanticReferencesQuery,
   ): Promise<VersionedSemanticResult<SemanticReferencesOutcome>> {

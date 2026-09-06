@@ -20,6 +20,10 @@ export async function assertInstalledSemanticSmoke({
   const reference = materialized.cases["profile.reference"]
   const typeDefinition = materialized.cases["profile.type-definition"]
   const definition = materialized.cases["profile.definition"]
+  const implementationInterface = materialized.cases["implementation.interface"]
+  const implementationInterfaceTarget = materialized.cases["implementation.interface-target"]
+  const implementationAbstractClass = materialized.cases["implementation.abstract-class"]
+  const implementationAbstractClassTarget = materialized.cases["implementation.abstract-class-target"]
   const barrel = materialized.cases["profile.barrel"]
   const importedReference = materialized.cases["profile.import"]
   const renameOrigin = materialized.cases["rename.origin"]
@@ -89,6 +93,13 @@ export async function assertInstalledSemanticSmoke({
   assert.ok(signature, "the installed-artifact corpus must expose signature.format-call")
   assert.ok(typeDefinition, "the installed-artifact corpus must expose profile.type-definition")
   assert.ok(
+    implementationInterface
+      && implementationInterfaceTarget
+      && implementationAbstractClass
+      && implementationAbstractClassTarget,
+    "the installed-artifact corpus must expose interface and abstract-class implementations",
+  )
+  assert.ok(
     documentSymbolPage && documentSymbolTitle && documentSymbolBuild,
     "the installed-artifact corpus must expose the ArkUI document-symbol hierarchy",
   )
@@ -106,6 +117,14 @@ export async function assertInstalledSemanticSmoke({
   )
   const consumerSource = fs.readFileSync(fileURLToPath(reference.uri), "utf8")
   const definitionSource = fs.readFileSync(fileURLToPath(definition.uri), "utf8")
+  const implementationContractsSource = fs.readFileSync(
+    fileURLToPath(implementationInterface.uri),
+    "utf8",
+  )
+  const implementationTargetsSource = fs.readFileSync(
+    fileURLToPath(implementationInterfaceTarget.uri),
+    "utf8",
+  )
   const barrelSource = fs.readFileSync(fileURLToPath(barrel.uri), "utf8")
   const renameConflictSource = fs.readFileSync(fileURLToPath(renameConflictOrigin.uri), "utf8")
   const homeSource = fs.readFileSync(fileURLToPath(completion.uri), "utf8")
@@ -297,6 +316,7 @@ export async function assertInstalledSemanticSmoke({
     })
     assert.equal(initialized.result.capabilities.completionProvider.resolveProvider, true)
     assert.equal(initialized.result.capabilities.hoverProvider, true)
+    assert.equal(initialized.result.capabilities.implementationProvider, true)
     assert.equal(initialized.result.capabilities.referencesProvider, true)
     assert.deepEqual(initialized.result.capabilities.renameProvider, {
       prepareProvider: true,
@@ -513,6 +533,49 @@ export async function assertInstalledSemanticSmoke({
     }])
     assert.equal(textInRange(definitionSource, definition.range), "Profile")
     verifiedClaims.push("type-definition.artifact.immutable-unopened-variable-type-range")
+
+    session.openDocument({
+      uri: implementationInterface.uri,
+      languageId: "arkts",
+      version: 1,
+      text: implementationContractsSource,
+    })
+    for (const { query, target, queryText, targetText } of [
+      {
+        query: implementationInterface,
+        target: implementationInterfaceTarget,
+        queryText: "Formatter",
+        targetText: "JsonFormatter",
+      },
+      {
+        query: implementationAbstractClass,
+        target: implementationAbstractClassTarget,
+        queryText: "Validator",
+        targetText: "RequiredValidator",
+      },
+    ]) {
+      assert.equal(textInRange(implementationContractsSource, query.range), queryText)
+      assert.equal(textInRange(implementationTargetsSource, target.range), targetText)
+      const implementationResponse = await session.request("textDocument/implementation", {
+        textDocument: { uri: query.uri },
+        position: midpoint(query.range),
+      }, { timeoutMs })
+      assert.equal(
+        implementationResponse.error,
+        undefined,
+        JSON.stringify(implementationResponse.error),
+      )
+      assert.deepEqual(normalizeLocations(implementationResponse.result), [{
+        uri: target.uri,
+        range: target.range,
+      }])
+    }
+    session.transport.send({
+      jsonrpc: "2.0",
+      method: "textDocument/didClose",
+      params: { textDocument: { uri: implementationInterface.uri } },
+    })
+    verifiedClaims.push("implementation.artifact.immutable-unopened-interface-abstract-ranges")
 
     const hoverResponse = await session.request("textDocument/hover", {
       textDocument: { uri: reference.uri },

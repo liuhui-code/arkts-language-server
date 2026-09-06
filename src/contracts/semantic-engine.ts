@@ -254,6 +254,7 @@ export interface SemanticEnginePort {
   ): Promise<VersionedSemanticResult<SemanticCompletion>>
   define(query: SemanticQuery): Promise<VersionedSemanticResult<SemanticDefinition[]>>
   typeDefinitions(query: SemanticQuery): Promise<VersionedSemanticResult<SemanticDefinition[]>>
+  implementations(query: SemanticQuery): Promise<VersionedSemanticResult<SemanticDefinition[]>>
   references(
     query: SemanticReferencesQuery,
   ): Promise<VersionedSemanticResult<SemanticReferencesOutcome>>
