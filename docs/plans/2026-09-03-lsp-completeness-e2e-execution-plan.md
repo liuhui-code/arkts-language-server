@@ -556,12 +556,22 @@ Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产�
   closure 不进入 warm cache，预算释放后可 fresh retry。Call Hierarchy cadence、Registry/ArkUI/Legacy/
   LSP 后段 owned loops（包括 completion resolve、inlay/highlight 的公共映射、排序与 byte budget）以及
   production worker composition 仍未完成，不能宣称 stdio 计算已可抢占。
-- [ ] Completion 大结果 correctness/performance：ArkUI provider 当前最多可产生 10,000 项，而 LSP
-  resolution store 只保留 512 项；单次响应超过 512 时，前部 item id 会在响应构造完成前被驱逐。
-  必须先以 RED 固化首尾 item 均可 resolve，再在 Registry/provider arbitration 引入有界 quota 和
-  `CompletionList.isIncomplete`，禁止只在 LSP 尾部静默 `slice`。同时把相同 fallback range 提出
-  per-item loop，并以 line-start index 消除最多 128 次 `O(file size)` 坐标扫描；在 T9 记录大文件
-  p95/RSS/cancel latency。
+- [ ] Completion 大结果 correctness/performance：
+  - [x] S0 LSP 在写入 512-entry resolution store 前保留最多 256 项，首尾均可 resolve
+    （`e860cfa`）。
+  - [x] S1 semantic core → port → Legacy → LSP 统一为显式 `CompletionList`
+    （`15fed96`）。
+  - [x] S2 TypeScript provider 的 native/local tail completeness 贯通 127/128/129 边界
+    （`5bb2033`）。
+  - [x] S3 ArkUI prefix lookup 限定 128 + 单 sentinel，并保持 quota 外 exact definition/diagnostic
+    完整（`2543058`）。
+  - [x] S4 Registry 对 ArkUI/TypeScript 分别先截断 128、再做 ArkUI-priority 去重；provider flag 与
+    overflow 统一 OR，冻结输入/identity/no-refill/mixed-provider 已覆盖（`5d039d0`）。
+  - [ ] S5 completion range cost：把相同 fallback range 提出 per-item loop，并以 line-start index
+    消除最多 128 次 `O(file size)` 坐标扫描；在 T9 记录大文件 p95/RSS/cancel latency。
+  - [ ] S6 TypeScript native incomplete continuation：加入 version-aware LSP context、
+    `allowIncompleteCompletions` 与有界 continuation cache；不得把本地 truthful truncation 误报为
+    已支持 continuation。
 - [x] 本批次集成门禁：最终源码 HEAD `0b4c18a` 的 fresh `pnpm check:fast` 为 594/594，
   0 failed、0 skipped、0 todo，耗时 283.3 s；随后 immutable portable acceptance 为 4/4。
   sealed artifact build/consume-only acceptance 必须在本计划文档提交、worktree clean 后继续执行。

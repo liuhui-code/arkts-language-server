@@ -256,9 +256,11 @@ node --test tests/lsp-semantic-worker-responsiveness.test.mjs
     ArkUI/Legacy/LSP 后段 owned loops（包括 definition/typeDefinition merge/mapping、completion resolve
     post-map、inlay/highlight mapping/sort/byte accounting），以及 resolve edit all-or-none count/UTF-8
     byte budget、line-start index/native join 边界尚未闭环，因此 T4d 保持未勾选。
-  - [ ] Completion bounded-result contract：先用真实 LSP RED 证明当前 >512 items 会在同次响应内驱逐
-    前部 resolution id，再以 Registry/provider quota + `CompletionList.isIncomplete` 修复；ArkUI 的
-    10,000-item 上限不能直接流入仅 512-entry store，也不能在 LSP 尾部静默截断。
+  - [x] Completion bounded-result contract：LSP 先截断再登记 resolution（`e860cfa`）；统一 semantic
+    `CompletionList`（`15fed96`）；TypeScript 与 ArkUI 分别建立 truthful 128-item provider 边界
+    （`5bb2033`、`2543058`）；Registry 在跨 provider 去重前分别执行 quota 并传播 provider/overflow
+    incompleteness（`5d039d0`）。真实 stdio 首尾 resolve、127/128/129、ArkUI quota 外 exact
+    definition/diagnostic 与 mixed-provider identity 均有回归保护。
   - [ ] Completion range cost：复用 UTF-16/CRLF/ArkTS rewrite characterization，引入 line-start index，
     将最多 128 项的 range mapping 从 `O(items × file size)` 降为 `O(items × log lines)`，并把相同
     fallback range 提出循环。

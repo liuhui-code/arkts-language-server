@@ -202,15 +202,63 @@ pnpm check
 # PASS
 ```
 
+## S4: defensive per-provider Registry arbitration
+
+Parent revision: `6348ad5`
+
+RED command:
+
+```sh
+node --test --test-concurrency=1 \
+  --test-name-pattern "completion provider before Registry|completion priority" \
+  tests/workspace-file-change-coordinator.test.mjs
+```
+
+Observed RED: 2/2 selected cases failed because Registry trusted provider-sized
+arrays. An overflowing provider could exceed its allocation and still publish
+`isIncomplete: false`; cross-provider deduplication also had no explicit
+quota-before-dedup contract.
+
+Minimal GREEN (`5d039d0`): a pure completion arbitrator independently retains
+the first 128 ArkUI and first 128 TypeScript items before cross-provider label
+suppression. ArkUI retains priority; TypeScript candidates with the same label
+remain distinct from one another; unused provider capacity is not refilled.
+The result is incomplete when either provider reports incomplete or either
+input exceeds its own quota. Frozen-input tests protect non-mutation and item
+identity, including the boundary where an ArkUI label discarded at item 129
+must not suppress a retained TypeScript candidate.
+
+The new unit-contract test first made the layer manifest RED as an unclassified
+test, then was explicitly assigned to that layer. The first full gate also
+found one stale S1-era array assertion in the workspace-global completion
+freshness test; migrating that assertion to `CompletionList.items` made the
+complete file 11/11 GREEN.
+
+Final GREEN:
+
+```sh
+node --test --test-concurrency=1 \
+  tests/semantic/completion-arbitrator.test.mjs \
+  tests/workspace-file-change-coordinator.test.mjs
+# 23/23 passed
+
+node --test --test-concurrency=1 tests/lsp-workspace-global-freshness.test.mjs
+# 11/11 passed
+
+pnpm check:fast
+# 634/634 passed; 0 failed/skipped/todo
+```
+
+Independent review found no production P0/P1. The LSP adapter's separate
+256-item fence remains defense in depth and still runs before inserting
+resolution records.
+
 ## Explicitly open work
 
 - TypeScript's native incomplete continuation path is not enabled: the LSP
   completion context, `allowIncompleteCompletions`, and a bounded continuation
   cache need a separate version-aware contract. Local 128-item truncation is
   already truthful without it.
-- Registry still needs defensive per-provider caps and dedicated mixed-provider
-  evidence. ArkUI-first order and the OR of current provider flags are already
-  covered; TypeScript same-label/different-source identity must remain intact.
 - ArkUI warm prefix queries are bounded, but cold index construction still
   maps every resource range with repeated source scans. A 10,000-entry
   exploratory fixture remained about eight seconds cold while warm lookup fell
