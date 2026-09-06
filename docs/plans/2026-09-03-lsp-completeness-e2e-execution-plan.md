@@ -546,11 +546,22 @@ Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产�
   definition/typeDefinition 现各自由 public entry 激活 request-local cadence；4 个隔离 RED 分别锁定
   provider-return boundary 与第 64/65 项 mapper 边界，并验证无 partial publication 和 fresh retry
   （`b4b3fbc`）。共享 mapper 的 no-op 默认值已移除，新增入口不能再静默漏接 checkpoint。
+  completion resolve 的 TypeScript core 也已覆盖 details provider、detail/documentation display parts、
+  first-safe action selection、change validation/group mapping 与 text-change mapping；7 个隔离 RED 和
+  action predicate characterization 保持 provider order、短路、same-file/non-new-file 与 all-edits
+  语义（`acfc7fd`）。这不是生产链闭环：Legacy/LSP post-map、all-or-none count/UTF-8 byte budget、
+  单个 native join 及 line-index range mapping 仍未完成。
   workspace hydration 与 cold dependency BFS 的 8 MiB aggregate admission-before-read 已完成
   （`3b5a9d2`、`52b9a4b`、`9b18cc8`）；超预算 dependency 在正文 buffer/read 前拒绝，且 byte-truncated
-  closure 不进入 warm cache，预算释放后可 fresh retry。completion resolve、Call Hierarchy cadence、
-  Registry/ArkUI/Legacy/LSP 后段 owned loops（包括 inlay/highlight 的公共映射、排序与 byte budget）
-  以及 production worker composition 仍未完成，不能宣称 stdio 计算已可抢占。
+  closure 不进入 warm cache，预算释放后可 fresh retry。Call Hierarchy cadence、Registry/ArkUI/Legacy/
+  LSP 后段 owned loops（包括 completion resolve、inlay/highlight 的公共映射、排序与 byte budget）以及
+  production worker composition 仍未完成，不能宣称 stdio 计算已可抢占。
+- [ ] Completion 大结果 correctness/performance：ArkUI provider 当前最多可产生 10,000 项，而 LSP
+  resolution store 只保留 512 项；单次响应超过 512 时，前部 item id 会在响应构造完成前被驱逐。
+  必须先以 RED 固化首尾 item 均可 resolve，再在 Registry/provider arbitration 引入有界 quota 和
+  `CompletionList.isIncomplete`，禁止只在 LSP 尾部静默 `slice`。同时把相同 fallback range 提出
+  per-item loop，并以 line-start index 消除最多 128 次 `O(file size)` 坐标扫描；在 T9 记录大文件
+  p95/RSS/cancel latency。
 - [x] 本批次集成门禁：最终源码 HEAD `0b4c18a` 的 fresh `pnpm check:fast` 为 594/594，
   0 failed、0 skipped、0 todo，耗时 283.3 s；随后 immutable portable acceptance 为 4/4。
   sealed artifact build/consume-only acceptance 必须在本计划文档提交、worktree clean 后继续执行。

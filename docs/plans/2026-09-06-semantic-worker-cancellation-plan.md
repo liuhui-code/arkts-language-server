@@ -250,9 +250,18 @@ node --test tests/lsp-semantic-worker-responsiveness.test.mjs
     排序后 1,000 项/256 KiB budget 未前移，避免改变完整结果。definition/typeDefinition 也已各自
     激活 request-local work；4 个 public-entry RED 覆盖 provider-return、每 64 candidate mapping、
     第 65 项不访问、无 partial publication 与 fresh retry，并移除 shared mapper 的 no-op work 默认值
-    （`b4b3fbc`）。以上仍只证明 TypeScript core；completion resolve、Call Hierarchy cadence，
-    Registry/ArkUI/Legacy/LSP 后段 owned loops（包括 definition/typeDefinition merge/mapping，以及
-    inlay/highlight mapping/sort/byte accounting）尚未闭环，因此 T4d 保持未勾选。
+    （`b4b3fbc`）。completion resolve 的 core 以 7 个独立 RED 覆盖 details provider、两个 display
+    parts 阶段、action/change/text-change owned loops，并保持 first-safe、短路、same-file/non-new-file
+    与完整 edit 顺序（`acfc7fd`）。以上仍只证明 TypeScript core；Call Hierarchy cadence，Registry/
+    ArkUI/Legacy/LSP 后段 owned loops（包括 definition/typeDefinition merge/mapping、completion resolve
+    post-map、inlay/highlight mapping/sort/byte accounting），以及 resolve edit all-or-none count/UTF-8
+    byte budget、line-start index/native join 边界尚未闭环，因此 T4d 保持未勾选。
+  - [ ] Completion bounded-result contract：先用真实 LSP RED 证明当前 >512 items 会在同次响应内驱逐
+    前部 resolution id，再以 Registry/provider quota + `CompletionList.isIncomplete` 修复；ArkUI 的
+    10,000-item 上限不能直接流入仅 512-entry store，也不能在 LSP 尾部静默截断。
+  - [ ] Completion range cost：复用 UTF-16/CRLF/ArkTS rewrite characterization，引入 line-start index，
+    将最多 128 项的 range mapping 从 `O(items × file size)` 降为 `O(items × log lines)`，并把相同
+    fallback range 提出循环。
 - [ ] T5 State：worker 独占 SemanticDocumentStore/TS engine，sync/query-by-reference 与无 gap ACK。
   Call Hierarchy 的 protocol v2 strict request/result codec 已先行完成（`1ef51ef`）；随后 supervisor
   已按可信 active method 做 method-aware response decode，超限 collection 在 element descriptor 扫描前
@@ -265,7 +274,8 @@ node --test tests/lsp-semantic-worker-responsiveness.test.mjs
 - [ ] T8 Artifact：构建 `dist/semantic-worker.cjs`，portable manifest/installer/sealed acceptance 验证
   相邻 worker bytes；缺失或篡改必须明确失败。
 - [ ] T9 Real evidence：接 process tree probe 与 Node heap preload，记录主线程/worker/sidecar RSS、
-  heap 和 cancel latency；连续至少 10 次后才设阻断阈值。
+  heap 和 cancel latency；包含 4 MiB 近 EOF completion range mapping、>512 mixed-provider completion
+  以及 resolve 大 edit/display-parts all-or-none 场景；连续至少 10 次后才设阻断阈值。
 
 推荐 ownership：T1 测试、T2/T3 transport、T4 cancellation 可先并行建立 RED；T5/T6 由单一
 integration owner 串行；T7 在基础请求 GREEN 后接；T8/T9 最后接入 artifact/large runner。
