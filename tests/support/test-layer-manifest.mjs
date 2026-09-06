@@ -34,6 +34,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/semantic/typescript-cancellation-bridge.test.mjs",
       "tests/semantic/typescript-cooperative-cancellation.test.mjs",
       "tests/semantic/typescript-diagnostics-symbol-cancellation.test.mjs",
+      "tests/semantic/typescript-inlay-highlight-cancellation.test.mjs",
       "tests/semantic/typescript-rename-cancellation.test.mjs",
       "tests/test-evidence.test.mjs",
       "tests/test-layer-manifest.test.mjs",

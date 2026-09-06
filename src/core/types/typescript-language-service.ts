@@ -507,9 +507,11 @@ export class TypeScriptLanguageServiceEngine {
     position: SemanticDocumentPosition,
     requestedRange: SemanticTextRange,
   ): SemanticInlayHint[] {
+    const work = new CooperativeWork(this.checkpoint)
+    work.boundary()
     const filePath = path.resolve(position.path)
     const script = this.scripts.get(filePath)
-    if (!script) return []
+    if (!script) return work.finish([])
     script.lastAccess = ++this.accessClock
 
     const sourceStart = exactSourceOffset(
@@ -522,16 +524,19 @@ export class TypeScriptLanguageServiceEngine {
       requestedRange.endLine,
       requestedRange.endColumn,
     )
-    if (sourceStart === undefined || sourceEnd === undefined || sourceEnd < sourceStart) return []
+    if (sourceStart === undefined || sourceEnd === undefined || sourceEnd < sourceStart) {
+      return work.finish([])
+    }
     const generatedStart = script.virtualDocument.toGeneratedOffset(sourceStart)
     const generatedEnd = script.virtualDocument.toGeneratedOffset(sourceEnd)
     if (
       script.virtualDocument.toSourceOffset(generatedStart) !== sourceStart
       || script.virtualDocument.toSourceOffset(generatedEnd) !== sourceEnd
       || generatedEnd < generatedStart
-    ) return []
+    ) return work.finish([])
 
-    return this.service.provideInlayHints(
+    work.boundary()
+    const rawHints = this.service.provideInlayHints(
       filePath,
       { start: generatedStart, length: generatedEnd - generatedStart },
       {
@@ -541,29 +546,37 @@ export class TypeScriptLanguageServiceEngine {
         includeInlayVariableTypeHintsWhenTypeMatchesName: false,
         interactiveInlayHints: false,
       },
-    ).flatMap((hint) => {
+    )
+    work.boundary()
+    const hints: SemanticInlayHint[] = []
+    for (const hint of rawHints) {
       const kind = hint.kind === ts.InlayHintKind.Parameter
         ? "parameter" as const
         : hint.kind === ts.InlayHintKind.Type
           ? "type" as const
           : undefined
-      if (!kind) return []
-      const label = hint.text || hint.displayParts?.map((part) => part.text).join("") || ""
-      if (label.length === 0) return []
-      const sourceOffset = exactSourcePosition(script, hint.position)
-      if (
-        sourceOffset === undefined
-        || sourceOffset < sourceStart
-        || sourceOffset >= sourceEnd
-      ) return []
-      return [{
-        position: offsetToLineColumn(script.sourceContent, sourceOffset),
-        label,
-        kind,
-        paddingLeft: hint.whitespaceBefore || undefined,
-        paddingRight: hint.whitespaceAfter || undefined,
-      }]
-    })
+      if (kind) {
+        const label = hint.text || hint.displayParts?.map((part) => part.text).join("") || ""
+        if (label.length > 0) {
+          const sourceOffset = exactSourcePosition(script, hint.position)
+          if (
+            sourceOffset !== undefined
+            && sourceOffset >= sourceStart
+            && sourceOffset < sourceEnd
+          ) {
+            hints.push({
+              position: offsetToLineColumn(script.sourceContent, sourceOffset),
+              label,
+              kind,
+              paddingLeft: hint.whitespaceBefore || undefined,
+              paddingRight: hint.whitespaceAfter || undefined,
+            })
+          }
+        }
+      }
+      work.item()
+    }
+    return work.finish(hints)
   }
 
   private nonDeclarationImplementations(
