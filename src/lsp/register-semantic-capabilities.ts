@@ -77,6 +77,7 @@ export function registerSemanticCapabilities({
   let foldingRangeLimit: number | undefined
   let foldingRangeKinds: ReadonlySet<string> | undefined
   const capabilities: ServerCapabilities = {
+    callHierarchyProvider: true,
     documentHighlightProvider: true,
     documentFormattingProvider: true,
     documentSymbolProvider: true,

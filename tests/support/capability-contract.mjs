@@ -2,6 +2,7 @@ import { isDeepStrictEqual } from "node:util"
 
 export const CURRENT_LSP_CAPABILITY_CONTRACT = Object.freeze({
   allowedTopLevel: Object.freeze([
+    "callHierarchyProvider",
     "codeActionProvider",
     "completionProvider",
     "definitionProvider",
@@ -22,6 +23,7 @@ export const CURRENT_LSP_CAPABILITY_CONTRACT = Object.freeze({
   ]),
   required: Object.freeze([
     { path: "positionEncoding", expected: "utf-16" },
+    { path: "callHierarchyProvider", expected: true },
     { path: "textDocumentSync.openClose", expected: true },
     { path: "textDocumentSync.change", expected: 2 },
     { path: "completionProvider.triggerCharacters", expected: ["."] },

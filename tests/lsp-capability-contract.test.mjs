@@ -44,6 +44,7 @@ test("production initialize advertises exactly the implemented LSP capability co
 
 test("records mature editor providers as required public capabilities", () => {
   const providers = [
+    "callHierarchyProvider",
     "documentFormattingProvider",
     "documentHighlightProvider",
     "foldingRangeProvider",

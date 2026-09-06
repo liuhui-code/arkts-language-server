@@ -301,6 +301,48 @@
       "role": "query",
       "file": "workspace/entry/src/main/ets/pages/DocumentHighlight.ets",
       "shape": "range"
+    },
+    {
+      "id": "call-hierarchy.caller-declaration",
+      "kind": "call-hierarchy",
+      "role": "caller-declaration",
+      "file": "workspace/entry/src/main/ets/pages/CallHierarchyCaller.ets",
+      "shape": "range"
+    },
+    {
+      "id": "call-hierarchy.caller-selection",
+      "kind": "call-hierarchy",
+      "role": "caller-selection",
+      "file": "workspace/entry/src/main/ets/pages/CallHierarchyCaller.ets",
+      "shape": "range"
+    },
+    {
+      "id": "call-hierarchy.target-declaration",
+      "kind": "call-hierarchy",
+      "role": "target-declaration",
+      "file": "workspace/entry/src/main/ets/services/CallHierarchyTarget.ets",
+      "shape": "range"
+    },
+    {
+      "id": "call-hierarchy.target-selection",
+      "kind": "call-hierarchy",
+      "role": "target-selection",
+      "file": "workspace/entry/src/main/ets/services/CallHierarchyTarget.ets",
+      "shape": "range"
+    },
+    {
+      "id": "call-hierarchy.outgoing-callsite",
+      "kind": "call-hierarchy",
+      "role": "outgoing-callsite",
+      "file": "workspace/entry/src/main/ets/pages/CallHierarchyCaller.ets",
+      "shape": "range"
+    },
+    {
+      "id": "call-hierarchy.incoming-callsite",
+      "kind": "call-hierarchy",
+      "role": "incoming-callsite",
+      "file": "workspace/entry/src/main/ets/pages/CallHierarchyCaller.ets",
+      "shape": "range"
     }
   ]
 }

@@ -138,6 +138,84 @@ export const CURRENT_LSP_FEATURE_MATRIX = Object.freeze({
       artifactGap: null,
     }),
     enabledFeature({
+      id: "call-hierarchy",
+      requiredCapabilities: [capability("callHierarchyProvider", true)],
+      protocol: [
+        evidence(
+          "tests/lsp-call-hierarchy-reliability.test.mjs",
+          "maps prepareCallHierarchy client cancellation to RequestCancelled",
+          "call-hierarchy.protocol.prepare-cancellation",
+        ),
+        evidence(
+          "tests/lsp-call-hierarchy-reliability.test.mjs",
+          "maps outgoingCalls client cancellation to RequestCancelled",
+          "call-hierarchy.protocol.outgoing-cancellation",
+        ),
+        evidence(
+          "tests/lsp-call-hierarchy-reliability.test.mjs",
+          "maps incomingCalls client cancellation to RequestCancelled",
+          "call-hierarchy.protocol.incoming-cancellation",
+        ),
+        evidence(
+          "tests/lsp-call-hierarchy-reliability.test.mjs",
+          "rejects cancellation-resistant prepareCallHierarchy after didChange",
+          "call-hierarchy.protocol.prepare-document-freshness",
+        ),
+        evidence(
+          "tests/lsp-call-hierarchy-reliability.test.mjs",
+          "rejects cancellation-resistant outgoingCalls after didChange",
+          "call-hierarchy.protocol.outgoing-document-freshness",
+        ),
+        evidence(
+          "tests/lsp-call-hierarchy-reliability.test.mjs",
+          "rejects cancellation-resistant incomingCalls after didChange",
+          "call-hierarchy.protocol.incoming-document-freshness",
+        ),
+        evidence(
+          "tests/lsp-call-hierarchy-reliability.test.mjs",
+          "rejects every call hierarchy request after shutdown",
+          "call-hierarchy.protocol.shutdown",
+        ),
+      ],
+      bundle: [
+        evidence(
+          "tests/lsp-call-hierarchy.test.mjs",
+          "prepares a callable and returns its exact cross-file outgoing calls over production stdio",
+          "call-hierarchy.bundle.prepare-outgoing-unopened-target-utf16",
+        ),
+        evidence(
+          "tests/lsp-call-hierarchy.test.mjs",
+          "returns one exact unopened caller with both UTF-16 incoming call sites",
+          "call-hierarchy.bundle.incoming-unopened-caller-utf16",
+        ),
+        evidence(
+          "tests/lsp-call-hierarchy.test.mjs",
+          "enforces physical root ownership and open-source identity in the source authority",
+          "call-hierarchy.bundle.physical-root-open-source-identity",
+        ),
+        evidence(
+          "tests/lsp-call-hierarchy.test.mjs",
+          "rejects raw duplicate work before any result-source filesystem validation",
+          "call-hierarchy.bundle.raw-work-preflight",
+        ),
+        evidence(
+          "tests/lsp-call-hierarchy.test.mjs",
+          "validates exact UTF-8 result sources within an aggregate byte budget",
+          "call-hierarchy.bundle.aggregate-result-source-budget",
+        ),
+      ],
+      artifact: [evidence(
+        "tests/release/portable-install.acceptance.mjs",
+        "installs one verified artifact without source dependencies or a rebuild",
+        "call-hierarchy.artifact.immutable-prepare-outgoing-incoming-unopened-utf16",
+      )],
+      artifactGap: null,
+      knownGaps: [
+        "Incoming call discovery performs a correctness-first O(project) membership and content refresh for each request.",
+        "TypeScript call-hierarchy queries run synchronously on the stdio process and cannot be preempted inside the compiler query.",
+      ],
+    }),
+    enabledFeature({
       id: "inlay-hint",
       requiredCapabilities: [capability("inlayHintProvider", true)],
       protocol: [

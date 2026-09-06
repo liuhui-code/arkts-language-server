@@ -46,6 +46,24 @@ export async function assertInstalledSemanticSmoke({
   const missingResource = materialized.cases["arkui.resource.missing"]
   const builderWidth = materialized.cases["arkui.builder-tail.width"]
   const documentHighlight = materialized.cases["document-highlight.tracked"]
+  const callHierarchyCallerDeclaration = materialized.cases[
+    "call-hierarchy.caller-declaration"
+  ]
+  const callHierarchyCallerSelection = materialized.cases[
+    "call-hierarchy.caller-selection"
+  ]
+  const callHierarchyTargetDeclaration = materialized.cases[
+    "call-hierarchy.target-declaration"
+  ]
+  const callHierarchyTargetSelection = materialized.cases[
+    "call-hierarchy.target-selection"
+  ]
+  const callHierarchyOutgoingCallsite = materialized.cases[
+    "call-hierarchy.outgoing-callsite"
+  ]
+  const callHierarchyIncomingCallsite = materialized.cases[
+    "call-hierarchy.incoming-callsite"
+  ]
   const arkuiSdkScenarios = [
     {
       label: "Entry",
@@ -122,6 +140,15 @@ export async function assertInstalledSemanticSmoke({
     documentHighlight,
     "the installed-artifact corpus must expose the document-highlight probe",
   )
+  assert.ok(
+    callHierarchyCallerDeclaration
+      && callHierarchyCallerSelection
+      && callHierarchyTargetDeclaration
+      && callHierarchyTargetSelection
+      && callHierarchyOutgoingCallsite
+      && callHierarchyIncomingCallsite,
+    "the installed-artifact corpus must expose the call-hierarchy traversal probes",
+  )
   const consumerSource = fs.readFileSync(fileURLToPath(reference.uri), "utf8")
   const definitionSource = fs.readFileSync(fileURLToPath(definition.uri), "utf8")
   const implementationContractsSource = fs.readFileSync(
@@ -147,6 +174,14 @@ export async function assertInstalledSemanticSmoke({
   const resourcePageSource = fs.readFileSync(fileURLToPath(resourceCompletion.uri), "utf8")
   const builderPageSource = fs.readFileSync(fileURLToPath(builderWidth.uri), "utf8")
   const documentHighlightSource = fs.readFileSync(fileURLToPath(documentHighlight.uri), "utf8")
+  const callHierarchyCallerSource = fs.readFileSync(
+    fileURLToPath(callHierarchyCallerDeclaration.uri),
+    "utf8",
+  )
+  const callHierarchyTargetSource = fs.readFileSync(
+    fileURLToPath(callHierarchyTargetDeclaration.uri),
+    "utf8",
+  )
   const symbolKindsPath = path.join(
     materialized.workspaceRoot,
     "entry",
@@ -232,6 +267,33 @@ export async function assertInstalledSemanticSmoke({
   assert.equal(textInRange(resourcePageSource, missingResource.range), "missing_title")
   assert.equal(textInRange(builderPageSource, builderWidth.range), "width")
   assert.equal(textInRange(documentHighlightSource, documentHighlight.range), "tracked")
+  assert.equal(
+    textInRange(callHierarchyCallerSource, callHierarchyCallerSelection.range),
+    "artifactCaller",
+  )
+  assert.equal(
+    textInRange(callHierarchyTargetSource, callHierarchyTargetSelection.range),
+    "artifactTarget",
+  )
+  assert.deepEqual(callHierarchyOutgoingCallsite.range, callHierarchyIncomingCallsite.range)
+  assert.equal(
+    textInRange(callHierarchyCallerSource, callHierarchyOutgoingCallsite.range),
+    "artifactTarget",
+  )
+  for (const [label, source, range] of [
+    ["caller selection", callHierarchyCallerSource, callHierarchyCallerSelection.range],
+    ["target selection", callHierarchyTargetSource, callHierarchyTargetSelection.range],
+    ["call site", callHierarchyCallerSource, callHierarchyOutgoingCallsite.range],
+  ]) {
+    const line = source.split("\n")[range.start.line]
+    const prefix = line.slice(0, range.start.character)
+    assert.match(prefix, /😀/, `${label} must follow an emoji prefix`)
+    assert.equal(
+      prefix.length - Array.from(prefix).length,
+      1,
+      `${label} must be measured in UTF-16 code units`,
+    )
+  }
   assert.deepEqual(
     negotiatedSymbolKinds.map(({ name }) => name),
     ["InstalledSymbolReady", "InstalledSymbolType", "InstalledSymbolStruct"],
@@ -348,6 +410,7 @@ export async function assertInstalledSemanticSmoke({
     assert.equal(initialized.result.capabilities.documentHighlightProvider, true)
     assert.equal(initialized.result.capabilities.documentFormattingProvider, true)
     assert.equal(initialized.result.capabilities.foldingRangeProvider, true)
+    assert.equal(initialized.result.capabilities.callHierarchyProvider, true)
     assert.deepEqual(initialized.result.capabilities.codeActionProvider, {
       codeActionKinds: ["quickfix"],
       resolveProvider: true,
@@ -369,6 +432,93 @@ export async function assertInstalledSemanticSmoke({
       create.params.token,
       (message) => message.params.value.kind === "end",
       timeoutMs,
+    )
+
+    const callHierarchyRootUri = pathToFileURL(materialized.workspaceRoot).href
+    const callHierarchyData = {
+      arktsCallHierarchy: {
+        protocol: 1,
+        rootUri: callHierarchyRootUri,
+      },
+    }
+    const openedCallHierarchyUris = new Set()
+    session.openDocument({
+      uri: callHierarchyCallerDeclaration.uri,
+      languageId: "arkts",
+      version: 1,
+      text: callHierarchyCallerSource,
+    })
+    openedCallHierarchyUris.add(callHierarchyCallerDeclaration.uri)
+    const preparedCallHierarchy = await session.request("textDocument/prepareCallHierarchy", {
+      textDocument: { uri: callHierarchyCallerDeclaration.uri },
+      position: midpoint(callHierarchyCallerSelection.range),
+    }, { timeoutMs })
+    assert.equal(
+      preparedCallHierarchy.error,
+      undefined,
+      JSON.stringify(preparedCallHierarchy.error),
+    )
+    assert.deepEqual(preparedCallHierarchy.result, [{
+      name: "artifactCaller",
+      kind: 12,
+      uri: callHierarchyCallerDeclaration.uri,
+      range: callHierarchyCallerDeclaration.range,
+      selectionRange: callHierarchyCallerSelection.range,
+      data: callHierarchyData,
+    }])
+
+    const outgoingCallHierarchy = await session.request("callHierarchy/outgoingCalls", {
+      item: preparedCallHierarchy.result[0],
+    }, { timeoutMs })
+    assert.equal(
+      outgoingCallHierarchy.error,
+      undefined,
+      JSON.stringify(outgoingCallHierarchy.error),
+    )
+    assert.deepEqual(outgoingCallHierarchy.result, [{
+      to: {
+        name: "artifactTarget",
+        kind: 12,
+        uri: callHierarchyTargetDeclaration.uri,
+        range: callHierarchyTargetDeclaration.range,
+        selectionRange: callHierarchyTargetSelection.range,
+        data: callHierarchyData,
+      },
+      fromRanges: [callHierarchyOutgoingCallsite.range],
+    }])
+
+    session.transport.send({
+      jsonrpc: "2.0",
+      method: "textDocument/didClose",
+      params: { textDocument: { uri: callHierarchyCallerDeclaration.uri } },
+    })
+    openedCallHierarchyUris.delete(callHierarchyCallerDeclaration.uri)
+    const incomingCallHierarchy = await session.request("callHierarchy/incomingCalls", {
+      item: outgoingCallHierarchy.result[0].to,
+    }, { timeoutMs })
+    assert.equal(
+      incomingCallHierarchy.error,
+      undefined,
+      JSON.stringify(incomingCallHierarchy.error),
+    )
+    assert.deepEqual(incomingCallHierarchy.result, [{
+      from: {
+        name: "artifactCaller",
+        kind: 12,
+        uri: callHierarchyCallerDeclaration.uri,
+        range: callHierarchyCallerDeclaration.range,
+        selectionRange: callHierarchyCallerSelection.range,
+        data: callHierarchyData,
+      },
+      fromRanges: [callHierarchyIncomingCallsite.range],
+    }])
+    assert.equal(
+      openedCallHierarchyUris.has(callHierarchyCallerDeclaration.uri),
+      false,
+      "the installed incoming traversal must discover its caller while the caller is unopened",
+    )
+    verifiedClaims.push(
+      "call-hierarchy.artifact.immutable-prepare-outgoing-incoming-unopened-utf16",
     )
 
     session.openDocument({

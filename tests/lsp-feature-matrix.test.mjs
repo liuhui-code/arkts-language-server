@@ -77,6 +77,7 @@ test("binds the installed semantic umbrella to its exact verified claim set", ()
     "definition.artifact.immutable-typescript-arkui-sdk-resource-builder-ranges",
     "type-definition.artifact.immutable-unopened-variable-type-range",
     "implementation.artifact.immutable-unopened-interface-abstract-ranges",
+    "call-hierarchy.artifact.immutable-prepare-outgoing-incoming-unopened-utf16",
     "inlay-hint.artifact.immutable-arkui-lowering-parameter-type-range-utf16-overlay",
     "hover.artifact.immutable-negotiated-markdown-plaintext-typescript-arkui-range",
     "signature-help.artifact.immutable-unopened-overload",
@@ -99,7 +100,7 @@ test("binds the installed semantic umbrella to its exact verified claim set", ()
   })
 
   assert.deepEqual(audit.verifiedClaims, [...verifiedClaims].sort())
-  assert.equal(audit.expectedClaims.length, 18)
+  assert.equal(audit.expectedClaims.length, 19)
 })
 
 test("maps the complete public capability contract to executable feature evidence", () => {
@@ -117,6 +118,7 @@ test("maps the complete public capability contract to executable feature evidenc
     "definition",
     "type-definition",
     "implementation",
+    "call-hierarchy",
     "inlay-hint",
     "hover",
     "signature-help",
@@ -132,7 +134,7 @@ test("maps the complete public capability contract to executable feature evidenc
     "document-formatting",
   ])
   assert.deepEqual(audit.plannedFeatureIds, [])
-  assert.equal(audit.requiredCapabilityCount, 20)
+  assert.equal(audit.requiredCapabilityCount, 21)
   assert.equal(audit.absentCapabilityCount, 0)
   assert.deepEqual(audit.artifactCoveredFeatureIds, [
     "document-sync",
@@ -140,6 +142,7 @@ test("maps the complete public capability contract to executable feature evidenc
     "definition",
     "type-definition",
     "implementation",
+    "call-hierarchy",
     "inlay-hint",
     "hover",
     "signature-help",
@@ -156,6 +159,74 @@ test("maps the complete public capability contract to executable feature evidenc
   ])
   assert.deepEqual(audit.artifactGapFeatureIds, [])
   const editorFeatures = new Map([
+    ["call-hierarchy", {
+      provider: "callHierarchyProvider",
+      protocol: [
+        {
+          entry: "tests/lsp-call-hierarchy-reliability.test.mjs",
+          test: "maps prepareCallHierarchy client cancellation to RequestCancelled",
+          claim: "call-hierarchy.protocol.prepare-cancellation",
+        },
+        {
+          entry: "tests/lsp-call-hierarchy-reliability.test.mjs",
+          test: "maps outgoingCalls client cancellation to RequestCancelled",
+          claim: "call-hierarchy.protocol.outgoing-cancellation",
+        },
+        {
+          entry: "tests/lsp-call-hierarchy-reliability.test.mjs",
+          test: "maps incomingCalls client cancellation to RequestCancelled",
+          claim: "call-hierarchy.protocol.incoming-cancellation",
+        },
+        {
+          entry: "tests/lsp-call-hierarchy-reliability.test.mjs",
+          test: "rejects cancellation-resistant prepareCallHierarchy after didChange",
+          claim: "call-hierarchy.protocol.prepare-document-freshness",
+        },
+        {
+          entry: "tests/lsp-call-hierarchy-reliability.test.mjs",
+          test: "rejects cancellation-resistant outgoingCalls after didChange",
+          claim: "call-hierarchy.protocol.outgoing-document-freshness",
+        },
+        {
+          entry: "tests/lsp-call-hierarchy-reliability.test.mjs",
+          test: "rejects cancellation-resistant incomingCalls after didChange",
+          claim: "call-hierarchy.protocol.incoming-document-freshness",
+        },
+        {
+          entry: "tests/lsp-call-hierarchy-reliability.test.mjs",
+          test: "rejects every call hierarchy request after shutdown",
+          claim: "call-hierarchy.protocol.shutdown",
+        },
+      ],
+      bundle: [
+        {
+          entry: "tests/lsp-call-hierarchy.test.mjs",
+          test: "prepares a callable and returns its exact cross-file outgoing calls over production stdio",
+          claim: "call-hierarchy.bundle.prepare-outgoing-unopened-target-utf16",
+        },
+        {
+          entry: "tests/lsp-call-hierarchy.test.mjs",
+          test: "returns one exact unopened caller with both UTF-16 incoming call sites",
+          claim: "call-hierarchy.bundle.incoming-unopened-caller-utf16",
+        },
+        {
+          entry: "tests/lsp-call-hierarchy.test.mjs",
+          test: "enforces physical root ownership and open-source identity in the source authority",
+          claim: "call-hierarchy.bundle.physical-root-open-source-identity",
+        },
+        {
+          entry: "tests/lsp-call-hierarchy.test.mjs",
+          test: "rejects raw duplicate work before any result-source filesystem validation",
+          claim: "call-hierarchy.bundle.raw-work-preflight",
+        },
+        {
+          entry: "tests/lsp-call-hierarchy.test.mjs",
+          test: "validates exact UTF-8 result sources within an aggregate byte budget",
+          claim: "call-hierarchy.bundle.aggregate-result-source-budget",
+        },
+      ],
+      artifactClaim: "call-hierarchy.artifact.immutable-prepare-outgoing-incoming-unopened-utf16",
+    }],
     ["implementation", {
       provider: "implementationProvider",
       bundle: [{
@@ -277,6 +348,13 @@ test("maps the complete public capability contract to executable feature evidenc
     }])
     assert.equal(feature?.artifactGap, null)
   }
+  const callHierarchy = CURRENT_LSP_FEATURE_MATRIX.features.find(
+    ({ id }) => id === "call-hierarchy",
+  )
+  assert.deepEqual(callHierarchy?.knownGaps, [
+    "Incoming call discovery performs a correctness-first O(project) membership and content refresh for each request.",
+    "TypeScript call-hierarchy queries run synchronously on the stdio process and cannot be preempted inside the compiler query.",
+  ])
   const diagnostics = CURRENT_LSP_FEATURE_MATRIX.features.find(({ id }) => id === "diagnostics")
   assert.deepEqual(diagnostics?.knownGaps, [])
   const hover = CURRENT_LSP_FEATURE_MATRIX.features.find(({ id }) => id === "hover")
@@ -402,6 +480,7 @@ test("maps the complete public capability contract to executable feature evidenc
 
 test("cannot silently drop an enabled editor capability evidence slice", () => {
   const requiredProviders = new Map([
+    ["call-hierarchy", "callHierarchyProvider"],
     ["document-highlight", "documentHighlightProvider"],
     ["folding-range", "foldingRangeProvider"],
     ["document-formatting", "documentFormattingProvider"],

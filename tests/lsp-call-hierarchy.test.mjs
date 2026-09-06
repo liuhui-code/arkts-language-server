@@ -41,8 +41,8 @@ test("prepares a callable and returns its exact cross-file outgoing calls over p
   const initialize = await server.response(1)
   assert.equal(
     initialize.result.capabilities.callHierarchyProvider,
-    undefined,
-    "CH1 must remain undiscoverable until incoming/reliability/artifact evidence is complete",
+    true,
+    "completed call hierarchy evidence must remain discoverable",
   )
   server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
   server.send({
@@ -977,7 +977,7 @@ test("returns one exact unopened caller with both UTF-16 incoming call sites", a
     },
   })
   const initialize = await server.response(60)
-  assert.equal(initialize.result.capabilities.callHierarchyProvider, undefined)
+  assert.equal(initialize.result.capabilities.callHierarchyProvider, true)
   server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
   server.send({
     jsonrpc: "2.0",
@@ -1136,7 +1136,7 @@ test("prepares an ArkTS struct with Struct kind and its complete declaration ran
     },
   })
   const initialize = await server.response(70)
-  assert.equal(initialize.result.capabilities.callHierarchyProvider, undefined)
+  assert.equal(initialize.result.capabilities.callHierarchyProvider, true)
   server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
   server.send({
     jsonrpc: "2.0",
