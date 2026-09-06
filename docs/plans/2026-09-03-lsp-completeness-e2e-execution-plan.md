@@ -604,8 +604,9 @@ Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产�
   - [x] C11b Unicode identifier prefix：在 provider quota 前识别完整 Unicode identifier，生成精确
     UTF-16 replacement range，并按 code point 执行两字符 module-export 门槛；astral 1/2 字符
     options contract 经反向 mutation 验证（`d569c33`）。
-  - [ ] C11c camel/fuzzy filtering：以有序 subsequence admission 取代 `startsWith`，保留 TypeScript
-    provider 顺序、`filterText`/`sortText`、128 accepted-item quota 与取消 cadence。
+  - [x] C11c camel/fuzzy filtering：以 prefix > camel > ordered-subsequence 的同 `sortText` tier
+    有界 admission 取代 `startsWith`，保留 TypeScript provider 顺序、`filterText`/`sortText`、
+    128 accepted-item quota、truthful incomplete 与取消 cadence（`a69315f`）。
   - [ ] C11d completion kind families：typed object property 不误报 Field；Enum/EnumMember/Module
     分片贯通 core → public → Legacy → LSP，class field/method 合同不得回归。
   - [ ] C11e commit characters：贯通 entry override 与 list default，`[]` 不得被 default 覆盖，
