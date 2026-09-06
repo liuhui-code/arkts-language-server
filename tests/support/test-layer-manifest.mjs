@@ -26,6 +26,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/release-artifact-topology.test.mjs",
       "tests/resource-sampler.test.mjs",
       "tests/sdk-discovery.test.mjs",
+      "tests/semantic-worker-protocol.test.mjs",
       "tests/test-evidence.test.mjs",
       "tests/test-layer-manifest.test.mjs",
       "tests/test-layer-runner.test.mjs",
@@ -42,6 +43,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/lsp-session.test.mjs",
       "tests/lsp-workspace-global-freshness.test.mjs",
       "tests/lsp-workspace-symbol.test.mjs",
+      "tests/semantic-worker-test-harness.test.mjs",
     ]),
     layer("bundle-e2e", true, [
       "tests/conformance-scenario.test.mjs",
