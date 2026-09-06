@@ -379,7 +379,7 @@ test("rejects an empty selection instead of triggering Node implicit discovery",
   assert.equal(spawnCount, 0)
 })
 
-test("package scripts route every Node test gate through the explicit layer runner", () => {
+test("package test entrypoints build a fresh bundle exactly once without recursive builds", () => {
   const packageJson = JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf8"))
 
   assert.deepEqual({
@@ -391,11 +391,11 @@ test("package scripts route every Node test gate through the explicit layer runn
     "test:e2e:artifact": packageJson.scripts["test:e2e:artifact"],
     "test:e2e:large": packageJson.scripts["test:e2e:large"],
   }, {
-    test: "node scripts/run-node-test-layer.mjs --fast",
-    "check:fast": "pnpm check && pnpm build && pnpm test",
+    test: "pnpm build && node scripts/run-node-test-layer.mjs --fast",
+    "check:fast": "pnpm check && pnpm test",
     "test:unit": "node scripts/run-node-test-layer.mjs --layer unit-contract",
     "test:protocol": "node scripts/run-node-test-layer.mjs --layer protocol",
-    "test:e2e:bundle": "node scripts/run-node-test-layer.mjs --layer bundle-e2e",
+    "test:e2e:bundle": "pnpm build && node scripts/run-node-test-layer.mjs --layer bundle-e2e",
     "test:e2e:artifact": "node scripts/run-node-test-layer.mjs --layer artifact-e2e",
     "test:e2e:large": "node scripts/run-node-test-layer.mjs --layer large",
   })
