@@ -5,7 +5,10 @@ import type {
   SemanticCodeActionQuery,
   SemanticCodeActionResolveQuery,
   SemanticDocumentQuery,
+  SemanticDocumentFormattingQuery,
+  SemanticDocumentHighlight,
   SemanticDocumentSymbol,
+  SemanticDocumentTextEdit,
   SemanticEnginePort,
   SemanticHover,
   SemanticCompletionResolveQuery,
@@ -21,6 +24,8 @@ import type {
   VersionedSemanticResult,
   SemanticCompletion,
   SemanticDefinition,
+  SemanticFoldingRange,
+  SemanticFoldingRangeQuery,
   SemanticWorkspaceFileChangeBatch,
 } from "../../../src/contracts/semantic-engine.js"
 import { runLanguageServer } from "../../../src/lsp/run-language-server.js"
@@ -304,6 +309,24 @@ class ScriptedSemanticEngine implements SemanticEnginePort {
       range: zeroRange(),
       selectionRange: zeroRange(),
     }])
+  }
+
+  async documentHighlights(
+    query: SemanticQuery,
+  ): Promise<VersionedSemanticResult<SemanticDocumentHighlight[]>> {
+    return scriptedSemanticResult(query, [])
+  }
+
+  async foldingRanges(
+    query: SemanticFoldingRangeQuery,
+  ): Promise<VersionedSemanticResult<SemanticFoldingRange[]>> {
+    return scriptedSemanticResult(query, [])
+  }
+
+  async formatDocument(
+    query: SemanticDocumentFormattingQuery,
+  ): Promise<VersionedSemanticResult<SemanticDocumentTextEdit[]>> {
+    return scriptedSemanticResult(query, [])
   }
 
   dispose(): void {

@@ -16,6 +16,13 @@ const semanticRequests = [
   ],
   ["textDocument/hover", { position: { line: 0, character: 0 } }, null],
   ["textDocument/signatureHelp", { position: { line: 0, character: 0 } }, null],
+  ["textDocument/documentHighlight", { position: { line: 0, character: 0 } }, []],
+  ["textDocument/foldingRange", {}, []],
+  [
+    "textDocument/formatting",
+    { options: { tabSize: 2, insertSpaces: true, trimTrailingWhitespace: true } },
+    [],
+  ],
   ["textDocument/documentSymbol", {}, []],
 ]
 
