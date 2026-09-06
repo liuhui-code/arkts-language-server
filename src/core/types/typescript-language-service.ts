@@ -256,6 +256,14 @@ export class TypeScriptLanguageServiceEngine {
     work.boundary()
     if (!info) return work.finish({ items: [], isIncomplete: false })
     const normalizedPrefix = prefix.toLowerCase()
+    const defaultReplacementRange = info.optionalReplacementSpan
+      ? script.virtualDocument.generatedSpanToSourceRange(
+          info.optionalReplacementSpan.start,
+          info.optionalReplacementSpan.length,
+        )
+      : prefix.length > 0
+        ? spanToRange(script.sourceContent, sourceOffset - prefix.length, prefix.length)
+        : undefined
     const completions: SemanticCompletionItem[] = []
     let scannedEntries = 0
     for (const entry of info.entries) {
@@ -278,9 +286,7 @@ export class TypeScriptLanguageServiceEngine {
                 entry.replacementSpan.start,
                 entry.replacementSpan.length,
               )
-            : prefix.length > 0
-              ? spanToRange(script.sourceContent, sourceOffset - prefix.length, prefix.length)
-              : undefined,
+            : defaultReplacementRange,
           data: {
             provider: "typescript",
             engineVersion: ENGINE_VERSION,
