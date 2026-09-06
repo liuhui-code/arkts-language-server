@@ -127,6 +127,8 @@ export interface SemanticDocumentFormattingOptions {
   tabSize: number
   insertSpaces: boolean
   trimTrailingWhitespace?: boolean
+  insertFinalNewline?: boolean
+  trimFinalNewlines?: boolean
 }
 
 export interface SemanticDocumentFormattingQuery extends SemanticDocumentQuery {

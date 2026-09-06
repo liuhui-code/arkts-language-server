@@ -151,6 +151,8 @@ export function registerSemanticCapabilities({
           tabSize: params.options.tabSize,
           insertSpaces: params.options.insertSpaces,
           trimTrailingWhitespace: params.options.trimTrailingWhitespace,
+          insertFinalNewline: params.options.insertFinalNewline,
+          trimFinalNewlines: params.options.trimFinalNewlines,
         },
         signal,
       }),

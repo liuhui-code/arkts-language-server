@@ -65,6 +65,45 @@ test("fails closed when source or edit budgets are exceeded", (t) => {
   }, { maxEdits: 1 }), [])
 })
 
+test("honors final-newline formatting options idempotently", (t) => {
+  const { formatArktsDocument } = buildDriver(t)
+  const cases = [
+    {
+      name: "inserts the detected LF document EOL",
+      source: "struct Page {\n}",
+      expected: "struct Page {\n}\n",
+      options: { insertFinalNewline: true },
+    },
+    {
+      name: "inserts the detected CRLF document EOL",
+      source: "struct Page {\r\n}",
+      expected: "struct Page {\r\n}\r\n",
+      options: { insertFinalNewline: true },
+    },
+    {
+      name: "trims excess final CRLFs to one document EOL",
+      source: "struct Page {\r\n}\r\n\r\n\r\n",
+      expected: "struct Page {\r\n}\r\n",
+      options: { trimFinalNewlines: true },
+    },
+  ]
+
+  for (const scenario of cases) {
+    const options = {
+      tabSize: 2,
+      insertSpaces: true,
+      ...scenario.options,
+    }
+    const edits = formatArktsDocument("/workspace/Page.ets", scenario.source, options)
+    assert.equal(applyOffsetEdits(scenario.source, edits), scenario.expected, scenario.name)
+    assert.deepEqual(
+      formatArktsDocument("/workspace/Page.ets", scenario.expected, options),
+      [],
+      `${scenario.name} is idempotent`,
+    )
+  }
+})
+
 function buildDriver(t) {
   const outputRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-formatter-driver-"))
   t.after(() => fs.rmSync(outputRoot, { recursive: true, force: true }))

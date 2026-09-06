@@ -39,7 +39,9 @@ test("formats an ArkUI document without changing diagnostics or symbol identity"
 
   const documentPath = path.join(workspaceRoot, "FormattingPage.ets")
   const documentUri = pathToFileURL(documentPath).href
-  const original = fs.readFileSync(documentPath, "utf8")
+  const fixtureText = fs.readFileSync(documentPath, "utf8")
+  const original = fixtureText.replace(/\r?\n$/u, "")
+  assert.notEqual(original, fixtureText, "fixture must exercise insertFinalNewline")
   const session = new LspSession({
     command: process.execPath,
     args: [serverPath, "--stdio"],
@@ -74,7 +76,12 @@ test("formats an ArkUI document without changing diagnostics or symbol identity"
 
   const formatting = await session.request("textDocument/formatting", {
     textDocument: { uri: documentUri },
-    options: { tabSize: 2, insertSpaces: true, trimTrailingWhitespace: true },
+    options: {
+      tabSize: 2,
+      insertSpaces: true,
+      trimTrailingWhitespace: true,
+      insertFinalNewline: true,
+    },
   })
   assert.equal(formatting.error, undefined, JSON.stringify(formatting.error))
   assert.ok(Array.isArray(formatting.result))
@@ -111,9 +118,19 @@ test("formats an ArkUI document without changing diagnostics or symbol identity"
     range: rangeInAnchor(fs.readFileSync(sdkPath, "utf8"), "width(value: ArkUILength)", "width"),
   }])
 
+  const withExtraFinalNewlines = `${formatted}\n\n`
+  session.changeDocument({ uri: documentUri, version: 3, text: withExtraFinalNewlines })
+  const trimFinalNewlines = await session.request("textDocument/formatting", {
+    textDocument: { uri: documentUri },
+    options: { tabSize: 2, insertSpaces: true, trimFinalNewlines: true },
+  })
+  assert.equal(trimFinalNewlines.error, undefined, JSON.stringify(trimFinalNewlines.error))
+  assert.equal(applyTextEdits(withExtraFinalNewlines, trimFinalNewlines.result), formatted)
+
+  session.changeDocument({ uri: documentUri, version: 4, text: formatted })
   const second = await session.request("textDocument/formatting", {
     textDocument: { uri: documentUri },
-    options: { tabSize: 2, insertSpaces: true, trimTrailingWhitespace: true },
+    options: { tabSize: 2, insertSpaces: true, trimFinalNewlines: true },
   })
   assert.equal(second.error, undefined, JSON.stringify(second.error))
   assert.deepEqual(second.result, [])

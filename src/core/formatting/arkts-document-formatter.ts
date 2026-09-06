@@ -14,6 +14,8 @@ export interface ArktsDocumentFormattingOptions {
   tabSize: number
   insertSpaces: boolean
   trimTrailingWhitespace?: boolean
+  insertFinalNewline?: boolean
+  trimFinalNewlines?: boolean
 }
 
 export interface ArktsDocumentFormatterLimits {
@@ -78,6 +80,7 @@ export function formatArktsDocument(
     useCaseSensitiveFileNames: () => ts.sys.useCaseSensitiveFileNames,
   }
   const service = ts.createLanguageService(host, ts.createDocumentRegistry())
+  const newLineCharacter = source.includes("\r\n") ? "\r\n" : "\n"
   let changes: readonly ts.TextChange[]
   try {
     changes = service.getFormattingEditsForDocument(normalizedPath, {
@@ -91,7 +94,7 @@ export function formatArktsDocument(
       insertSpaceAfterOpeningAndBeforeClosingNonemptyBrackets: false,
       insertSpaceAfterOpeningAndBeforeClosingNonemptyParenthesis: false,
       insertSpaceBeforeFunctionParenthesis: false,
-      newLineCharacter: source.includes("\r\n") ? "\r\n" : "\n",
+      newLineCharacter,
       semicolons: ts.SemicolonPreference.Ignore,
       tabSize,
       trimTrailingWhitespace: options.trimTrailingWhitespace ?? false,
@@ -101,6 +104,9 @@ export function formatArktsDocument(
   } finally {
     service.dispose()
   }
+
+  const finalNewlineEdit = finalNewlineTextChange(source, newLineCharacter, options)
+  if (finalNewlineEdit) changes = [...changes, finalNewlineEdit]
 
   if (changes.length > maxEdits) return EMPTY_EDITS
   const edits = changes
@@ -121,6 +127,27 @@ export function formatArktsDocument(
   const formatted = applyEdits(source, edits)
   if (!hasSameTokens(source, formatted)) return EMPTY_EDITS
   return Object.freeze(edits.map(edit => Object.freeze(edit)))
+}
+
+function finalNewlineTextChange(
+  source: string,
+  newLineCharacter: "\r\n" | "\n",
+  options: ArktsDocumentFormattingOptions,
+): ts.TextChange | undefined {
+  const trailingNewlines = /(?:\r\n|\r|\n)+$/u.exec(source)
+  if (options.trimFinalNewlines && trailingNewlines) {
+    return {
+      span: { start: trailingNewlines.index, length: trailingNewlines[0].length },
+      newText: newLineCharacter,
+    }
+  }
+  if (options.insertFinalNewline && !trailingNewlines) {
+    return {
+      span: { start: source.length, length: 0 },
+      newText: newLineCharacter,
+    }
+  }
+  return undefined
 }
 
 function boundedLimit(value: number | undefined, fallback: number, hardMaximum: number): number {
