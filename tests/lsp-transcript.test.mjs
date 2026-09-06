@@ -263,6 +263,190 @@ test("returns exact unopened implementations of an ArkTS interface and abstract 
   }])
 })
 
+test("returns complete parameter-name inlay hints for an ArkTS call", async (t) => {
+  const server = new LspProcess()
+  t.after(() => server.close())
+  const documentPath = path.join(basicFixtureRoot, "InlayHints.ets")
+  const documentUri = pathToFileURL(documentPath).href
+  const text = fs.readFileSync(documentPath, "utf8")
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: {
+      processId: process.pid,
+      rootUri: pathToFileURL(basicFixtureRoot).href,
+      capabilities: { general: { positionEncodings: ["utf-16"] } },
+    },
+  })
+  await server.response(1)
+  server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
+  server.send({
+    jsonrpc: "2.0",
+    method: "textDocument/didOpen",
+    params: {
+      textDocument: { uri: documentUri, languageId: "arkts", version: 1, text },
+    },
+  })
+  server.send({
+    jsonrpc: "2.0",
+    id: 7,
+    method: "textDocument/inlayHint",
+    params: {
+      textDocument: { uri: documentUri },
+      range: {
+        start: { line: 5, character: 40 },
+        end: { line: 5, character: 54 },
+      },
+    },
+  })
+
+  const response = await server.response(7)
+  assert.equal(response.error, undefined, JSON.stringify(response.error))
+  assert.deepEqual(response.result, [
+    {
+      position: { line: 5, character: 46 },
+      label: "value:",
+      kind: 2,
+      paddingRight: true,
+    },
+    {
+      position: { line: 5, character: 52 },
+      label: "count:",
+      kind: 2,
+      paddingRight: true,
+    },
+  ])
+})
+
+test("returns an inferred type inlay hint within the requested UTF-16 range", async (t) => {
+  const server = new LspProcess()
+  t.after(() => server.close())
+  const documentPath = path.join(basicFixtureRoot, "InlayHints.ets")
+  const documentUri = pathToFileURL(documentPath).href
+  const text = fs.readFileSync(documentPath, "utf8")
+  const hintLine = text.split("\n")[5]
+  assert.equal(hintLine.slice(0, 36).length, 36)
+  assert.equal(Array.from(hintLine.slice(0, 36)).length, 35)
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: {
+      processId: process.pid,
+      rootUri: pathToFileURL(basicFixtureRoot).href,
+      capabilities: { general: { positionEncodings: ["utf-16"] } },
+    },
+  })
+  await server.response(1)
+  server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
+  server.send({
+    jsonrpc: "2.0",
+    method: "textDocument/didOpen",
+    params: {
+      textDocument: { uri: documentUri, languageId: "arkts", version: 1, text },
+    },
+  })
+  server.send({
+    jsonrpc: "2.0",
+    id: 8,
+    method: "textDocument/inlayHint",
+    params: {
+      textDocument: { uri: documentUri },
+      range: {
+        start: { line: 5, character: 23 },
+        end: { line: 5, character: 38 },
+      },
+    },
+  })
+
+  const response = await server.response(8)
+  assert.equal(response.error, undefined, JSON.stringify(response.error))
+  assert.deepEqual(response.result, [{
+    position: { line: 5, character: 36 },
+    label: ": string",
+    kind: 1,
+    paddingLeft: true,
+  }])
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 81,
+    method: "textDocument/inlayHint",
+    params: {
+      textDocument: { uri: documentUri },
+      range: {
+        start: { line: 5, character: 23 },
+        end: { line: 5, character: 36 },
+      },
+    },
+  })
+  assert.deepEqual((await server.response(81)).result, [])
+})
+
+test("returns inlay hints from the latest changed ArkTS overlay", async (t) => {
+  const server = new LspProcess()
+  t.after(() => server.close())
+  const documentPath = path.join(basicFixtureRoot, "InlayHints.ets")
+  const documentUri = pathToFileURL(documentPath).href
+  const text = fs.readFileSync(documentPath, "utf8")
+  const changedText = text.replace(
+    "function format(value: string, count: number): string {\n  return value.repeat(count)",
+    "function format(value: string, count: number): number {\n  return count",
+  )
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: {
+      processId: process.pid,
+      rootUri: pathToFileURL(basicFixtureRoot).href,
+      capabilities: { general: { positionEncodings: ["utf-16"] } },
+    },
+  })
+  await server.response(1)
+  server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
+  server.send({
+    jsonrpc: "2.0",
+    method: "textDocument/didOpen",
+    params: {
+      textDocument: { uri: documentUri, languageId: "arkts", version: 1, text },
+    },
+  })
+  server.send({
+    jsonrpc: "2.0",
+    method: "textDocument/didChange",
+    params: {
+      textDocument: { uri: documentUri, version: 2 },
+      contentChanges: [{ text: changedText }],
+    },
+  })
+  server.send({
+    jsonrpc: "2.0",
+    id: 9,
+    method: "textDocument/inlayHint",
+    params: {
+      textDocument: { uri: documentUri },
+      range: {
+        start: { line: 5, character: 23 },
+        end: { line: 5, character: 38 },
+      },
+    },
+  })
+
+  const response = await server.response(9)
+  assert.equal(response.error, undefined, JSON.stringify(response.error))
+  assert.deepEqual(response.result, [{
+    position: { line: 5, character: 36 },
+    label: ": number",
+    kind: 1,
+    paddingLeft: true,
+  }])
+})
+
 test("acknowledges shutdown and exits cleanly", async (t) => {
   const server = new LspProcess()
   t.after(() => server.close())

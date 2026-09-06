@@ -138,6 +138,58 @@ export const CURRENT_LSP_FEATURE_MATRIX = Object.freeze({
       artifactGap: null,
     }),
     enabledFeature({
+      id: "inlay-hint",
+      requiredCapabilities: [capability("inlayHintProvider", true)],
+      protocol: [
+        evidence(
+          "tests/lsp-semantic-request-reliability.test.mjs",
+          "maps cancellation for every advertised semantic request to RequestCancelled",
+          "inlay-hint.protocol.cancellation",
+        ),
+        evidence(
+          "tests/lsp-semantic-request-reliability.test.mjs",
+          "drops stale results for every advertised semantic request after didChange",
+          "inlay-hint.protocol.document-freshness",
+        ),
+        evidence(
+          "tests/lsp-semantic-request-reliability.test.mjs",
+          "rejects every advertised semantic request after shutdown",
+          "inlay-hint.protocol.shutdown",
+        ),
+        evidence(
+          "tests/lsp-semantic-request-reliability.test.mjs",
+          "sorts, deduplicates, and hard-bounds serialized inlay hint results",
+          "inlay-hint.protocol.stable-dedup-count-byte-budgets",
+        ),
+      ],
+      bundle: [
+        evidence(
+          "tests/lsp-transcript.test.mjs",
+          "returns complete parameter-name inlay hints for an ArkTS call",
+          "inlay-hint.bundle.complete-parameter-names-range",
+        ),
+        evidence(
+          "tests/lsp-transcript.test.mjs",
+          "returns an inferred type inlay hint within the requested UTF-16 range",
+          "inlay-hint.bundle.inferred-type-utf16-end-exclusive",
+        ),
+        evidence(
+          "tests/lsp-transcript.test.mjs",
+          "returns inlay hints from the latest changed ArkTS overlay",
+          "inlay-hint.bundle.changed-overlay-freshness",
+        ),
+      ],
+      artifact: [evidence(
+        "tests/release/portable-install.acceptance.mjs",
+        "installs one verified artifact without source dependencies or a rebuild",
+        "inlay-hint.artifact.immutable-arkui-lowering-parameter-type-range-utf16-overlay",
+      )],
+      artifactGap: null,
+      knownGaps: [
+        "TypeScript inlay-hint computation is synchronous and cannot be preempted inside the compiler query.",
+      ],
+    }),
+    enabledFeature({
       id: "hover",
       requiredCapabilities: [capability("hoverProvider", true)],
       protocol: [evidence(

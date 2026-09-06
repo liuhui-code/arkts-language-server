@@ -8,6 +8,7 @@ import type {
   SemanticDocumentPosition,
   SemanticDocumentSymbolInfo,
   SemanticHoverInfo,
+  SemanticInlayHint,
   SemanticSignatureHelp,
   SemanticTextRange,
   SemanticUsageResult,
@@ -103,6 +104,10 @@ export interface SemanticTypeQueryContext {
     fingerprint: string,
   ): SemanticResolvedCodeFix | null
   documentHighlights(position: SemanticDocumentPosition): SemanticDocumentHighlight[]
+  inlayHints(
+    position: SemanticDocumentPosition,
+    range: SemanticTextRange,
+  ): SemanticInlayHint[]
   documentSymbols(position: SemanticDocumentPosition): SemanticDocumentSymbolInfo[]
   hover(position: SemanticDocumentPosition): SemanticHoverInfo | null
   signatureHelp(
@@ -172,6 +177,7 @@ export class SemanticTypeEngineRegistry {
         entry.engine.resolveCodeAction(position, range, fingerprint)
       ),
       documentHighlights: (position) => entry.engine.documentHighlights(position),
+      inlayHints: (position, range) => entry.engine.inlayHints(position, range),
       documentSymbols: (position) => entry.engine.documentSymbols(position),
       hover: (position) => entry.engine.hover(position),
       rename: (position, newName) => entry.engine.rename(position, newName),

@@ -11,6 +11,8 @@ import type {
   SemanticDocumentTextEdit,
   SemanticEnginePort,
   SemanticHover,
+  SemanticInlayHint,
+  SemanticInlayHintQuery,
   SemanticCompletionResolveQuery,
   SemanticQuery,
   SemanticReferencesOutcome,
@@ -332,6 +334,62 @@ class ScriptedSemanticEngine implements SemanticEnginePort {
   async documentHighlights(
     query: SemanticQuery,
   ): Promise<VersionedSemanticResult<SemanticDocumentHighlight[]>> {
+    return scriptedSemanticResult(query, [])
+  }
+
+  async inlayHints(
+    query: SemanticInlayHintQuery,
+  ): Promise<VersionedSemanticResult<SemanticInlayHint[]>> {
+    if (query.document.text.includes("INLAY_HINT_COUNT_BUDGET")) {
+      const hints = Array.from({ length: 1_001 }, (_, index): SemanticInlayHint => {
+        const line = 1_000 - index
+        return {
+          position: { line, character: line % 3 },
+          label: `hint-${String(line).padStart(4, "0")}`,
+          kind: line % 2 === 0 ? "type" : "parameter",
+          paddingLeft: line % 5 === 0 || undefined,
+        }
+      })
+      return scriptedSemanticResult(query, [...hints, hints[500], hints[0]])
+    }
+    if (query.document.text.includes("INLAY_HINT_BYTE_BUDGET")) {
+      return scriptedSemanticResult(query, Array.from(
+        { length: 400 },
+        (_, index): SemanticInlayHint => {
+          const line = 399 - index
+          return {
+            position: { line, character: 0 },
+            label: `${String(line).padStart(3, "0")}:${"x".repeat(1_024)}`,
+            kind: "type",
+          }
+        },
+      ))
+    }
+    if (query.document.text.includes("INLAY_HINT_INVALID_ITEMS")) {
+      return scriptedSemanticResult(query, [
+        {
+          position: { line: 1, character: 2 },
+          label: "valid:",
+          kind: "parameter",
+          paddingRight: true,
+        },
+        {
+          position: { line: 1, character: 3 },
+          label: "unknown:",
+          kind: "enum",
+        } as unknown as SemanticInlayHint,
+        {
+          position: { line: -1, character: 0 },
+          label: "negative:",
+          kind: "type",
+        },
+        {
+          position: { line: 1, character: 4 },
+          label: "",
+          kind: "type",
+        },
+      ])
+    }
     return scriptedSemanticResult(query, [])
   }
 

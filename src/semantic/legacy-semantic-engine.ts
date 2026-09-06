@@ -24,6 +24,8 @@ import type {
   SemanticFoldingRange,
   SemanticFoldingRangeQuery,
   SemanticHover,
+  SemanticInlayHint,
+  SemanticInlayHintQuery,
   SemanticQuery,
   SemanticPrepareRenameOutcome,
   SemanticReferencesOutcome,
@@ -247,6 +249,24 @@ export class LegacySemanticEngine implements SemanticEnginePort {
       value: prepared.engine.documentHighlights(prepared.position).map((highlight) => ({
         range: toPublicRange(highlight.range),
         kind: highlight.kind,
+      })),
+    }
+  }
+
+  async inlayHints(
+    query: SemanticInlayHintQuery,
+  ): Promise<VersionedSemanticResult<SemanticInlayHint[]>> {
+    assertActive(query.signal)
+    this.sync(query.document)
+    const prepared = this.prepare(query.document, query.range.start)
+    return {
+      documentVersion: query.document.version,
+      value: prepared.engine.inlayHints(prepared.position, toLegacyRange(query.range)).map((hint) => ({
+        ...hint,
+        position: {
+          line: hint.position.line - 1,
+          character: hint.position.column - 1,
+        },
       })),
     }
   }

@@ -19,6 +19,16 @@ const semanticRequests = [
   ["textDocument/hover", { position: { line: 0, character: 0 } }, null],
   ["textDocument/signatureHelp", { position: { line: 0, character: 0 } }, null],
   ["textDocument/documentHighlight", { position: { line: 0, character: 0 } }, []],
+  [
+    "textDocument/inlayHint",
+    {
+      range: {
+        start: { line: 0, character: 0 },
+        end: { line: 0, character: 1 },
+      },
+    },
+    [],
+  ],
   ["textDocument/foldingRange", {}, []],
   [
     "textDocument/formatting",
@@ -160,6 +170,36 @@ test("rejects malformed editor feature params as InvalidParams", async (t) => {
       params: formattingParams(server.documentUri, 2, "yes"),
       message: "Invalid document formatting parameters.",
     },
+    {
+      label: "inlay hint missing range",
+      method: "textDocument/inlayHint",
+      params: { textDocument: { uri: server.documentUri } },
+      message: "Invalid inlay hint parameters.",
+    },
+    {
+      label: "inlay hint negative range position",
+      method: "textDocument/inlayHint",
+      params: {
+        textDocument: { uri: server.documentUri },
+        range: {
+          start: { line: -1, character: 0 },
+          end: { line: 0, character: 0 },
+        },
+      },
+      message: "Invalid inlay hint parameters.",
+    },
+    {
+      label: "inlay hint reversed range",
+      method: "textDocument/inlayHint",
+      params: {
+        textDocument: { uri: server.documentUri },
+        range: {
+          start: { line: 1, character: 1 },
+          end: { line: 1, character: 0 },
+        },
+      },
+      message: "Invalid inlay hint parameters.",
+    },
   ]
 
   for (const [offset, current] of cases.entries()) {
@@ -178,6 +218,58 @@ test("rejects malformed editor feature params as InvalidParams", async (t) => {
       message: current.message,
     }, current.label)
   }
+})
+
+test("sorts, deduplicates, and hard-bounds serialized inlay hint results", async (t) => {
+  const countServer = await openScriptedServer(
+    t,
+    "InlayHintCountBudget.ets",
+    "// INLAY_HINT_COUNT_BUDGET",
+  )
+  countServer.send(inlayHintRequest(390, countServer.documentUri))
+  const countResponse = await countServer.response(390)
+  assert.equal(countResponse.error, undefined, JSON.stringify(countResponse.error))
+  assert.equal(countResponse.result.length, 1_000)
+  assert.equal(countResponse.result[0].position.line, 0)
+  assert.equal(countResponse.result.at(-1).position.line, 999)
+  assert.equal(
+    new Set(countResponse.result.map((hint) => JSON.stringify(hint))).size,
+    countResponse.result.length,
+  )
+  assert.deepEqual(
+    [...countResponse.result].sort(compareInlayHints),
+    countResponse.result,
+  )
+
+  const byteServer = await openScriptedServer(
+    t,
+    "InlayHintByteBudget.ets",
+    "// INLAY_HINT_BYTE_BUDGET",
+  )
+  byteServer.send(inlayHintRequest(391, byteServer.documentUri))
+  const byteResponse = await byteServer.response(391)
+  assert.equal(byteResponse.error, undefined, JSON.stringify(byteResponse.error))
+  assert.ok(byteResponse.result.length > 0)
+  assert.ok(byteResponse.result.length < 400)
+  assert.ok(Buffer.byteLength(JSON.stringify(byteResponse.result)) <= 256 * 1_024)
+  assert.deepEqual([...byteResponse.result].sort(compareInlayHints), byteResponse.result)
+})
+
+test("fails closed for malformed semantic inlay hint items", async (t) => {
+  const server = await openScriptedServer(
+    t,
+    "InlayHintInvalidItems.ets",
+    "// INLAY_HINT_INVALID_ITEMS",
+  )
+  server.send(inlayHintRequest(392, server.documentUri))
+  const response = await server.response(392)
+  assert.equal(response.error, undefined, JSON.stringify(response.error))
+  assert.deepEqual(response.result, [{
+    position: { line: 1, character: 2 },
+    label: "valid:",
+    kind: 2,
+    paddingRight: true,
+  }])
 })
 
 test("maps LSP signature-help context to bounded semantic trigger reasons", async (t) => {
@@ -386,6 +478,30 @@ function formattingParams(documentUri, tabSize, insertSpaces) {
     textDocument: { uri: documentUri },
     options: { tabSize, insertSpaces },
   }
+}
+
+function inlayHintRequest(id, documentUri) {
+  return {
+    jsonrpc: "2.0",
+    id,
+    method: "textDocument/inlayHint",
+    params: {
+      textDocument: { uri: documentUri },
+      range: {
+        start: { line: 0, character: 0 },
+        end: { line: 2_147_483_647, character: 2_147_483_647 },
+      },
+    },
+  }
+}
+
+function compareInlayHints(left, right) {
+  return left.position.line - right.position.line
+    || left.position.character - right.position.character
+    || (left.kind ?? 0) - (right.kind ?? 0)
+    || String(left.label).localeCompare(String(right.label))
+    || Number(Boolean(left.paddingLeft)) - Number(Boolean(right.paddingLeft))
+    || Number(Boolean(left.paddingRight)) - Number(Boolean(right.paddingRight))
 }
 
 function renameCapableClientCapabilities() {

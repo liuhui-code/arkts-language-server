@@ -149,6 +149,27 @@
       "shape": "point"
     },
     {
+      "id": "inlay-hint.type",
+      "kind": "inlay-hint",
+      "role": "inferred-type",
+      "file": "workspace/entry/src/main/ets/pages/InlayHints.ets",
+      "shape": "point"
+    },
+    {
+      "id": "inlay-hint.value",
+      "kind": "inlay-hint",
+      "role": "parameter-name",
+      "file": "workspace/entry/src/main/ets/pages/InlayHints.ets",
+      "shape": "point"
+    },
+    {
+      "id": "inlay-hint.count",
+      "kind": "inlay-hint",
+      "role": "parameter-name",
+      "file": "workspace/entry/src/main/ets/pages/InlayHints.ets",
+      "shape": "point"
+    },
+    {
       "id": "arkui.decorator.entry",
       "kind": "arkui",
       "role": "decorator",

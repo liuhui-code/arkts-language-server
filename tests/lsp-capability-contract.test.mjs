@@ -48,6 +48,7 @@ test("records mature editor providers as required public capabilities", () => {
     "documentHighlightProvider",
     "foldingRangeProvider",
     "implementationProvider",
+    "inlayHintProvider",
     "typeDefinitionProvider",
   ]
   assert.deepEqual(CURRENT_LSP_CAPABILITY_CONTRACT.absent, [])

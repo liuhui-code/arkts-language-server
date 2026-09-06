@@ -35,6 +35,9 @@ export async function assertInstalledSemanticSmoke({
   const greeterDefinition = materialized.cases["greeter.definition"]
   const quickFix = materialized.cases["quickfix.greeting"]
   const signature = materialized.cases["signature.format-call"]
+  const inlayType = materialized.cases["inlay-hint.type"]
+  const inlayValue = materialized.cases["inlay-hint.value"]
+  const inlayCount = materialized.cases["inlay-hint.count"]
   const documentSymbolPage = materialized.cases["document-symbol.arkui-page"]
   const documentSymbolTitle = materialized.cases["document-symbol.title"]
   const documentSymbolBuild = materialized.cases["document-symbol.build"]
@@ -91,6 +94,10 @@ export async function assertInstalledSemanticSmoke({
     },
   ]
   assert.ok(signature, "the installed-artifact corpus must expose signature.format-call")
+  assert.ok(
+    inlayType && inlayValue && inlayCount,
+    "the installed-artifact corpus must expose type and parameter inlay hints",
+  )
   assert.ok(typeDefinition, "the installed-artifact corpus must expose profile.type-definition")
   assert.ok(
     implementationInterface
@@ -131,6 +138,7 @@ export async function assertInstalledSemanticSmoke({
   const greeterSource = fs.readFileSync(fileURLToPath(greeterDefinition.uri), "utf8")
   const quickFixSource = fs.readFileSync(fileURLToPath(quickFix.uri), "utf8")
   const signatureSource = fs.readFileSync(fileURLToPath(signature.uri), "utf8")
+  const inlaySource = fs.readFileSync(fileURLToPath(inlayType.uri), "utf8")
   const documentSymbolSource = fs.readFileSync(fileURLToPath(documentSymbolPage.uri), "utf8")
   const formattingSource = documentSymbolSource
     .replace("Text(this.title)", "Text( this.title )")
@@ -246,6 +254,16 @@ export async function assertInstalledSemanticSmoke({
     1,
     "the signature marker must use UTF-16 code units after its emoji prefix",
   )
+  assert.equal(inlayType.uri, inlayValue.uri)
+  assert.equal(inlayType.uri, inlayCount.uri)
+  const inlayLine = inlaySource.split("\n")[inlayType.position.line]
+  const inlayPrefix = inlayLine.slice(0, inlayType.position.character)
+  assert.match(inlayPrefix, /😀/)
+  assert.equal(
+    inlayPrefix.length - Array.from(inlayPrefix).length,
+    1,
+    "the inlay hint marker must use UTF-16 code units after its emoji prefix",
+  )
   const titleLine = documentSymbolSource.split("\n")[documentSymbolTitle.range.start.line]
   const titlePrefix = titleLine.slice(0, documentSymbolTitle.range.start.character)
   assert.match(titlePrefix, /😀/)
@@ -317,6 +335,7 @@ export async function assertInstalledSemanticSmoke({
     assert.equal(initialized.result.capabilities.completionProvider.resolveProvider, true)
     assert.equal(initialized.result.capabilities.hoverProvider, true)
     assert.equal(initialized.result.capabilities.implementationProvider, true)
+    assert.equal(initialized.result.capabilities.inlayHintProvider, true)
     assert.equal(initialized.result.capabilities.referencesProvider, true)
     assert.deepEqual(initialized.result.capabilities.renameProvider, {
       prepareProvider: true,
@@ -351,6 +370,94 @@ export async function assertInstalledSemanticSmoke({
       (message) => message.params.value.kind === "end",
       timeoutMs,
     )
+
+    session.openDocument({
+      uri: inlayType.uri,
+      languageId: "arkts",
+      version: 1,
+      text: inlaySource,
+    })
+    const expectedInlayHints = [
+      {
+        position: inlayType.position,
+        label: ": string",
+        kind: 1,
+        paddingLeft: true,
+      },
+      {
+        position: inlayValue.position,
+        label: "value:",
+        kind: 2,
+        paddingRight: true,
+      },
+      {
+        position: inlayCount.position,
+        label: "count:",
+        kind: 2,
+        paddingRight: true,
+      },
+    ]
+    const inlayResponse = await session.request("textDocument/inlayHint", {
+      textDocument: { uri: inlayType.uri },
+      range: {
+        start: { line: inlayType.position.line, character: 0 },
+        end: { line: inlayType.position.line, character: inlayLine.length },
+      },
+    }, { timeoutMs })
+    assert.equal(inlayResponse.error, undefined, JSON.stringify(inlayResponse.error))
+    assert.deepEqual(inlayResponse.result, expectedInlayHints)
+    const repeatedInlayResponse = await session.request("textDocument/inlayHint", {
+      textDocument: { uri: inlayType.uri },
+      range: {
+        start: { line: inlayType.position.line, character: 0 },
+        end: { line: inlayType.position.line, character: inlayLine.length },
+      },
+    }, { timeoutMs })
+    assert.deepEqual(repeatedInlayResponse.result, expectedInlayHints)
+    assert.equal(
+      new Set(repeatedInlayResponse.result.map((hint) => JSON.stringify(hint))).size,
+      repeatedInlayResponse.result.length,
+      "installed inlay hints must be stable and unique",
+    )
+    const parameterOnlyInlayResponse = await session.request("textDocument/inlayHint", {
+      textDocument: { uri: inlayType.uri },
+      range: {
+        start: inlayValue.position,
+        end: { ...inlayCount.position, character: inlayCount.position.character + 1 },
+      },
+    }, { timeoutMs })
+    assert.deepEqual(parameterOnlyInlayResponse.result, expectedInlayHints.slice(1))
+
+    const changedInlaySource = inlaySource.replace(
+      "function inlayFormat(value: string, count: number): string {\n  return value.repeat(count)",
+      "function inlayFormat(value: string, count: number): number {\n  return count",
+    )
+    session.changeDocument({
+      uri: inlayType.uri,
+      version: 2,
+      text: changedInlaySource,
+    })
+    const changedInlayResponse = await session.request("textDocument/inlayHint", {
+      textDocument: { uri: inlayType.uri },
+      range: {
+        start: { line: inlayType.position.line, character: 0 },
+        end: inlayValue.position,
+      },
+    }, { timeoutMs })
+    assert.deepEqual(changedInlayResponse.result, [{
+      position: inlayType.position,
+      label: ": number",
+      kind: 1,
+      paddingLeft: true,
+    }])
+    verifiedClaims.push(
+      "inlay-hint.artifact.immutable-arkui-lowering-parameter-type-range-utf16-overlay",
+    )
+    session.transport.send({
+      jsonrpc: "2.0",
+      method: "textDocument/didClose",
+      params: { textDocument: { uri: inlayType.uri } },
+    })
 
     const highlightRanges = rangesOf(documentHighlightSource, "tracked")
     assert.deepEqual(highlightRanges.map(({ start }) => start.character), [20, 9, 19, 33])

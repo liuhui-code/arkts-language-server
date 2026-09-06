@@ -108,6 +108,16 @@ export interface SemanticDocumentHighlight {
   kind: SemanticDocumentHighlightKind
 }
 
+export type SemanticInlayHintKind = "type" | "parameter"
+
+export interface SemanticInlayHint {
+  position: TextPosition
+  label: string
+  kind: SemanticInlayHintKind
+  paddingLeft?: boolean
+  paddingRight?: boolean
+}
+
 export type SemanticFoldingRangeKind = "comment" | "imports" | "region"
 
 export interface SemanticFoldingRange {
@@ -224,6 +234,10 @@ export interface SemanticCodeActionQuery extends SemanticDocumentQuery {
   range: TextRange
 }
 
+export interface SemanticInlayHintQuery extends SemanticDocumentQuery {
+  range: TextRange
+}
+
 export interface SemanticCodeActionResolveQuery extends SemanticDocumentQuery {
   action: SemanticCodeAction
 }
@@ -265,6 +279,9 @@ export interface SemanticEnginePort {
   documentHighlights(
     query: SemanticQuery,
   ): Promise<VersionedSemanticResult<SemanticDocumentHighlight[]>>
+  inlayHints(
+    query: SemanticInlayHintQuery,
+  ): Promise<VersionedSemanticResult<SemanticInlayHint[]>>
   foldingRanges(
     query: SemanticFoldingRangeQuery,
   ): Promise<VersionedSemanticResult<SemanticFoldingRange[]>>

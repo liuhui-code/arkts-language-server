@@ -16,6 +16,7 @@ import type {
   SemanticDocumentSymbolInfo,
   SemanticDocumentSymbolKind,
   SemanticHoverInfo,
+  SemanticInlayHint,
   SemanticSignatureHelp,
   SemanticTextRange,
   SemanticUsageResult,
@@ -298,6 +299,69 @@ export class TypeScriptLanguageServiceEngine {
     return this.definitionCandidates(position, (filePath, offset) => (
       this.nonDeclarationImplementations(filePath, offset)
     ))
+  }
+
+  inlayHints(
+    position: SemanticDocumentPosition,
+    requestedRange: SemanticTextRange,
+  ): SemanticInlayHint[] {
+    const filePath = path.resolve(position.path)
+    const script = this.scripts.get(filePath)
+    if (!script) return []
+    script.lastAccess = ++this.accessClock
+
+    const sourceStart = exactSourceOffset(
+      script.sourceContent,
+      requestedRange.startLine,
+      requestedRange.startColumn,
+    )
+    const sourceEnd = exactSourceOffset(
+      script.sourceContent,
+      requestedRange.endLine,
+      requestedRange.endColumn,
+    )
+    if (sourceStart === undefined || sourceEnd === undefined || sourceEnd < sourceStart) return []
+    const generatedStart = script.virtualDocument.toGeneratedOffset(sourceStart)
+    const generatedEnd = script.virtualDocument.toGeneratedOffset(sourceEnd)
+    if (
+      script.virtualDocument.toSourceOffset(generatedStart) !== sourceStart
+      || script.virtualDocument.toSourceOffset(generatedEnd) !== sourceEnd
+      || generatedEnd < generatedStart
+    ) return []
+
+    return this.service.provideInlayHints(
+      filePath,
+      { start: generatedStart, length: generatedEnd - generatedStart },
+      {
+        includeInlayParameterNameHints: "all",
+        includeInlayParameterNameHintsWhenArgumentMatchesName: false,
+        includeInlayVariableTypeHints: true,
+        includeInlayVariableTypeHintsWhenTypeMatchesName: false,
+        interactiveInlayHints: false,
+      },
+    ).flatMap((hint) => {
+      const kind = hint.kind === ts.InlayHintKind.Parameter
+        ? "parameter" as const
+        : hint.kind === ts.InlayHintKind.Type
+          ? "type" as const
+          : undefined
+      if (!kind) return []
+      const label = hint.text || hint.displayParts?.map((part) => part.text).join("") || ""
+      if (label.length === 0) return []
+      const sourceOffset = exactSourcePosition(script, hint.position)
+      if (
+        sourceOffset === undefined
+        || sourceOffset < sourceStart
+        || sourceOffset >= sourceEnd
+      ) return []
+      return [{
+        position: offsetToLineColumn(script.sourceContent, sourceOffset),
+        label,
+        kind,
+        paddingLeft: hint.whitespaceBefore || undefined,
+        paddingRight: hint.whitespaceAfter || undefined,
+      }]
+    })
   }
 
   private nonDeclarationImplementations(
@@ -1304,6 +1368,34 @@ function exactSourceRange(
       !== sourceView.virtualDocument.sourceContent.slice(sourceStart, sourceEnd)
   ) return undefined
   return sourceView.virtualDocument.generatedSpanToSourceRange(span.start, span.length)
+}
+
+function exactSourceOffset(
+  content: string,
+  line: number,
+  column: number,
+): number | undefined {
+  if (!Number.isSafeInteger(line) || !Number.isSafeInteger(column) || line < 1 || column < 1) {
+    return undefined
+  }
+  const offset = lineColumnToOffset(content, line, column)
+  const resolved = offsetToLineColumn(content, offset)
+  return resolved.line === line && resolved.column === column ? offset : undefined
+}
+
+function exactSourcePosition(
+  script: ScriptRecord,
+  generatedOffset: number,
+): number | undefined {
+  if (
+    !Number.isSafeInteger(generatedOffset)
+    || generatedOffset < 0
+    || generatedOffset > script.content.length
+  ) return undefined
+  const sourceOffset = script.virtualDocument.toSourceOffset(generatedOffset)
+  return script.virtualDocument.toGeneratedOffset(sourceOffset) === generatedOffset
+    ? sourceOffset
+    : undefined
 }
 
 function semanticLocationKey(filePath: string, range: SemanticTextRange): string {

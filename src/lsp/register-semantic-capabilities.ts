@@ -1,6 +1,7 @@
 import {
   CodeActionKind,
   DocumentHighlightKind,
+  InlayHintKind,
   LSPErrorCodes,
   MarkupKind,
   ResponseError,
@@ -9,6 +10,7 @@ import {
   type ClientCapabilities,
   type Connection,
   type DocumentSymbol,
+  type InlayHint,
   type ServerCapabilities,
   type SymbolInformation,
 } from "vscode-languageserver/node.js"
@@ -24,6 +26,7 @@ import type {
   SemanticEnginePort,
   SemanticFoldingRange,
   SemanticHover,
+  SemanticInlayHint,
   SemanticPrepareRenameOutcome,
   SemanticReferencesOutcome,
   SemanticRenameOutcome,
@@ -43,6 +46,9 @@ interface SemanticCapabilityRegistration {
   configure(clientCapabilities: ClientCapabilities): void
 }
 
+const MAX_INLAY_HINTS = 1_000
+const MAX_INLAY_HINT_RESULT_BYTES = 256 * 1_024
+
 export function registerSemanticCapabilities({
   connection,
   semantic,
@@ -61,6 +67,7 @@ export function registerSemanticCapabilities({
     foldingRangeProvider: true,
     hoverProvider: true,
     implementationProvider: true,
+    inlayHintProvider: true,
     referencesProvider: true,
     signatureHelpProvider: {
       triggerCharacters: ["(", ",", "<"],
@@ -126,6 +133,22 @@ export function registerSemanticCapabilities({
         signal,
       }),
     })
+  })
+
+  connection.languages.inlayHint.on(async (params, token) => {
+    assertValidInlayHintParams(params)
+    const result = await requests.run({
+      method: "textDocument/inlayHint",
+      documentUri: params.textDocument.uri,
+      token,
+      fallback: [] as SemanticInlayHint[],
+      execute: (document, signal) => semantic.inlayHints({
+        document,
+        range: params.range,
+        signal,
+      }),
+    })
+    return boundedInlayHints(result)
   })
 
   connection.onDocumentHighlight(async (params, token) => {
@@ -383,6 +406,81 @@ function assertValidDocumentFormattingParams(params: unknown): void {
   ) {
     throw invalidParams("Invalid document formatting parameters.")
   }
+}
+
+function assertValidInlayHintParams(params: unknown): void {
+  if (
+    !isRecord(params)
+    || !isTextDocumentIdentifier(params.textDocument)
+    || !isRecord(params.range)
+    || !isProtocolPosition(params.range.start)
+    || !isProtocolPosition(params.range.end)
+    || compareProtocolPositions(params.range.start, params.range.end) > 0
+  ) {
+    throw invalidParams("Invalid inlay hint parameters.")
+  }
+}
+
+function compareProtocolPositions(left: unknown, right: unknown): number {
+  if (!isRecord(left) || !isRecord(right)) return 0
+  return Number(left.line) - Number(right.line)
+    || Number(left.character) - Number(right.character)
+}
+
+function boundedInlayHints(hints: readonly SemanticInlayHint[]): InlayHint[] {
+  const ordered = hints.flatMap((hint) => {
+    const kind = hint.kind === "type"
+      ? InlayHintKind.Type
+      : hint.kind === "parameter"
+        ? InlayHintKind.Parameter
+        : undefined
+    if (
+      kind === undefined
+      || !isProtocolPosition(hint.position)
+      || typeof hint.label !== "string"
+      || hint.label.length === 0
+    ) {
+      return []
+    }
+    const item: InlayHint = {
+      position: Object.freeze({ ...hint.position }),
+      label: hint.label,
+      kind,
+      ...(hint.paddingLeft === true ? { paddingLeft: true } : {}),
+      ...(hint.paddingRight === true ? { paddingRight: true } : {}),
+    }
+    Object.freeze(item)
+    return [item]
+  }).sort(compareInlayHints)
+
+  const bounded: InlayHint[] = []
+  const seen = new Set<string>()
+  let serializedBytes = 2
+  for (const hint of ordered) {
+    const serialized = JSON.stringify(hint)
+    if (seen.has(serialized)) continue
+    seen.add(serialized)
+    const nextBytes = Buffer.byteLength(serialized) + (bounded.length === 0 ? 0 : 1)
+    if (
+      bounded.length >= MAX_INLAY_HINTS
+      || serializedBytes + nextBytes > MAX_INLAY_HINT_RESULT_BYTES
+    ) break
+    bounded.push(hint)
+    serializedBytes += nextBytes
+  }
+  Object.freeze(bounded)
+  return bounded
+}
+
+function compareInlayHints(left: InlayHint, right: InlayHint): number {
+  const leftLabel = String(left.label)
+  const rightLabel = String(right.label)
+  return left.position.line - right.position.line
+    || left.position.character - right.position.character
+    || (left.kind ?? 0) - (right.kind ?? 0)
+    || (leftLabel < rightLabel ? -1 : leftLabel > rightLabel ? 1 : 0)
+    || Number(Boolean(left.paddingLeft)) - Number(Boolean(right.paddingLeft))
+    || Number(Boolean(left.paddingRight)) - Number(Boolean(right.paddingRight))
 }
 
 function isTextDocumentIdentifier(value: unknown): boolean {

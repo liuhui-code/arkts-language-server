@@ -139,6 +139,14 @@ export interface SemanticDocumentHighlight {
   kind: SemanticDocumentHighlightKind
 }
 
+export interface SemanticInlayHint {
+  position: { line: number; column: number }
+  label: string
+  kind: "type" | "parameter"
+  paddingLeft?: boolean
+  paddingRight?: boolean
+}
+
 export type SemanticDocumentSymbolKind =
   | "struct"
   | "class"
