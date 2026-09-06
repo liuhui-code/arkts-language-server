@@ -113,6 +113,7 @@ function scanSource(
   let column = 0
   let tokens = 0
   let lineHasCode = false
+  let expressionExpected = true
   let currentImport: ImportState | undefined
   const delimiters: Delimiter[] = []
   const ranges: MutableFoldingRange[] = []
@@ -202,6 +203,18 @@ function scanSource(
       }
       continue
     }
+    if (current === "/" && expressionExpected) {
+      const regularExpressionEnd = scanRegularExpressionLiteral(source, offset)
+      if (regularExpressionEnd !== undefined) {
+        if (!acceptToken()) return undefined
+        column += regularExpressionEnd - offset
+        offset = regularExpressionEnd
+        if (currentImport && !currentImport.sawFollower) currentImport.sawFollower = true
+        lineHasCode = true
+        expressionExpected = false
+        continue
+      }
+    }
     if (current === '"' || current === "'" || current === "`") {
       if (!acceptToken()) return undefined
       if (currentImport && !currentImport.sawFollower) currentImport.sawFollower = true
@@ -238,6 +251,7 @@ function scanSource(
       }
       if (!closed) return undefined
       lineHasCode = true
+      expressionExpected = false
       continue
     }
     if (isIdentifierStart(current)) {
@@ -262,6 +276,7 @@ function scanSource(
         currentImport.sawFollower = true
       }
       lineHasCode = true
+      expressionExpected = identifierExpectsExpression(identifier)
       continue
     }
     if (isDecimalDigit(current)) {
@@ -272,6 +287,7 @@ function scanSource(
       }
       if (currentImport && !currentImport.sawFollower) currentImport.sawFollower = true
       lineHasCode = true
+      expressionExpected = false
       continue
     }
     if (!acceptToken()) return undefined
@@ -286,6 +302,7 @@ function scanSource(
     if (current === "{" || current === "[") {
       delimiters.push({ line: tokenLine, character: tokenColumn, characterToken: current })
       if (delimiters.length > limits.maxDepth) return undefined
+      expressionExpected = true
     } else if (current === "}" || current === "]") {
       const expected = current === "}" ? "{" : "["
       const opened = delimiters.pop()
@@ -296,6 +313,9 @@ function scanSource(
         endLine: tokenLine,
         endCharacter: tokenColumn + 1,
       })) return undefined
+      expressionExpected = false
+    } else {
+      expressionExpected = punctuationExpectsExpression(current)
     }
     if (current === ";" && !finishImport(tokenLine, tokenColumn + 1)) return undefined
     lineHasCode = true
@@ -304,6 +324,57 @@ function scanSource(
   if (delimiters.length > 0) return undefined
   if (!finishImport(line, column)) return undefined
   return { ranges, imports }
+}
+
+function scanRegularExpressionLiteral(source: string, start: number): number | undefined {
+  let offset = start + 1
+  let inCharacterClass = false
+  while (offset < source.length) {
+    const character = source[offset]
+    if (character === "\n" || character === "\r") return undefined
+    if (character === "\\") {
+      offset += 2
+      continue
+    }
+    if (character === "[") inCharacterClass = true
+    else if (character === "]") inCharacterClass = false
+    else if (character === "/" && !inCharacterClass) {
+      offset += 1
+      while (offset < source.length && isIdentifierPart(source[offset])) offset += 1
+      return offset
+    }
+    offset += 1
+  }
+  return undefined
+}
+
+function identifierExpectsExpression(identifier: string): boolean {
+  switch (identifier) {
+    case "await":
+    case "case":
+    case "delete":
+    case "do":
+    case "else":
+    case "in":
+    case "instanceof":
+    case "new":
+    case "of":
+    case "return":
+    case "throw":
+    case "typeof":
+    case "void":
+    case "yield":
+      return true
+    default:
+      return false
+  }
+}
+
+function punctuationExpectsExpression(character: string): boolean {
+  return character !== ")"
+    && character !== "]"
+    && character !== "}"
+    && character !== "."
 }
 
 function groupImports(imports: readonly ImportStatement[], source: string): MutableFoldingRange[] {

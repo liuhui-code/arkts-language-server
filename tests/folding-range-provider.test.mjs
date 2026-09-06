@@ -91,6 +91,23 @@ test("skips string delimiters and fails closed at document, token, and depth lim
   assert.deepEqual(safe.provide("{\n  unterminated\n", {}), [])
 })
 
+test("ignores structural delimiters inside regular-expression literals", (t) => {
+  const { FoldingRangeProvider } = buildDriver(t)
+  const source = [
+    "function match() {",
+    "  const escaped = /\\[/",
+    "  const characterClass = /[{}]/",
+    "  return escaped.test(\"[\") && characterClass.test(\"{\")",
+    "}",
+    "",
+  ].join("\n")
+
+  assert.deepEqual(
+    new FoldingRangeProvider().provide(source, { lineFoldingOnly: true }),
+    [{ startLine: 0, endLine: 4 }],
+  )
+})
+
 function buildDriver(t) {
   const outputRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-folding-provider-"))
   t.after(() => fs.rmSync(outputRoot, { recursive: true, force: true }))
