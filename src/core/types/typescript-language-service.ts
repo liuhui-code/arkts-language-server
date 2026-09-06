@@ -97,6 +97,7 @@ type RenameConflictPreflight =
   | "indeterminate"
 
 export interface TypeScriptLanguageServiceEngineOptions {
+  hostCancellationToken?: ts.HostCancellationToken
   readSourceFile?: (filePath: string) => string | null
   lazySnapshotLimits?: {
     maxFiles?: number
@@ -129,6 +130,7 @@ export class TypeScriptLanguageServiceEngine {
   constructor(
     private readonly rootPath: string,
     {
+      hostCancellationToken,
       readSourceFile = safeRead,
       lazySnapshotLimits = {},
     }: TypeScriptLanguageServiceEngineOptions = {},
@@ -156,7 +158,10 @@ export class TypeScriptLanguageServiceEngine {
     }
     this.sdkDeclarationPaths = discoverSdkAmbientDeclarations()
     this.membershipFileNames = [...this.sdkDeclarationPaths]
-    this.service = ts.createLanguageService(this.createHost(), ts.createDocumentRegistry())
+    this.service = ts.createLanguageService(
+      this.createHost(hostCancellationToken),
+      ts.createDocumentRegistry(),
+    )
   }
 
   prepare(workspace: SemanticWorkspaceView): SemanticTypeEngineState {
@@ -1043,8 +1048,13 @@ export class TypeScriptLanguageServiceEngine {
     this.lazySnapshotBytes = 0
   }
 
-  private createHost(): ts.LanguageServiceHost {
+  private createHost(
+    hostCancellationToken: ts.HostCancellationToken | undefined,
+  ): ts.LanguageServiceHost {
     return {
+      ...(hostCancellationToken
+        ? { getCancellationToken: () => hostCancellationToken }
+        : {}),
       getCompilationSettings: () => this.options,
       getCurrentDirectory: () => this.rootPath,
       getDefaultLibFileName: (options) => ts.getDefaultLibFilePath(options),
