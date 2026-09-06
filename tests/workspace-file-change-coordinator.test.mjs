@@ -906,6 +906,35 @@ test("bounds pending removed paths and escalates overflow to a one-shot root res
   assert.equal(settled.resetTypeEngine, false)
 })
 
+test("defensively caps each completion provider before Registry arbitration", (t) => {
+  const harness = completionArbitrationHarness(t)
+  const arkuiItems = Array.from(
+    { length: 130 },
+    (_, index) => completionItem(`arkui-${String(index).padStart(3, "0")}`, "arkui"),
+  )
+  const typescriptItems = Array.from(
+    { length: 130 },
+    (_, index) => completionItem(`type-${String(index).padStart(3, "0")}`, "type"),
+  )
+
+  const { result, calls } = harness.complete({
+    arkui: { items: arkuiItems, isIncomplete: false },
+    typescript: { items: typescriptItems, isIncomplete: false },
+  })
+
+  assert.deepEqual(calls, ["arkui", "typescript"])
+  assert.equal(result.isIncomplete, true)
+  assert.equal(result.items.length, 256)
+  assert.deepEqual(
+    result.items.map(({ label }) => label),
+    [...arkuiItems.slice(0, 128), ...typescriptItems.slice(0, 128)].map(({ label }) => label),
+  )
+  assert.strictEqual(result.items[0], arkuiItems[0])
+  assert.strictEqual(result.items.at(-1), typescriptItems[127])
+  assert.equal(arkuiItems.length, 130)
+  assert.equal(typescriptItems.length, 130)
+})
+
 function buildDriver(t) {
   const outputRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-watched-driver-"))
   t.after(() => fs.rmSync(outputRoot, { recursive: true, force: true }))
@@ -972,6 +1001,48 @@ function completionPosition(documentPath, content) {
     line: 3,
     column: line.length + 1,
     workspaceRoot: path.dirname(documentPath),
+  }
+}
+
+function completionArbitrationHarness(t) {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-completion-arbitration-"))
+  const mainPath = path.join(workspaceRoot, "Main.ets")
+  const source = completionSource("value")
+  const { SemanticTypeEngineRegistry } = buildTypeEngineDriver(t)
+  const registry = new SemanticTypeEngineRegistry()
+  t.after(() => {
+    registry.dispose()
+    fs.rmSync(workspaceRoot, { recursive: true, force: true })
+  })
+  const context = registry.prepare(workspaceView(workspaceRoot, mainPath, source))
+  const entry = registry.workspaces.get(path.resolve(workspaceRoot))
+  assert.ok(entry, "the prepared Registry must retain its provider entry")
+
+  return {
+    complete({ arkui, typescript }) {
+      const calls = []
+      entry.arkui.complete = () => {
+        calls.push("arkui")
+        return arkui
+      }
+      entry.engine.complete = () => {
+        calls.push("typescript")
+        return typescript
+      }
+      return {
+        result: context.complete(completionPosition(mainPath, source)),
+        calls,
+      }
+    },
+  }
+}
+
+function completionItem(label, source) {
+  return {
+    label,
+    detail: `${source} ${label}`,
+    kind: "property",
+    source,
   }
 }
 

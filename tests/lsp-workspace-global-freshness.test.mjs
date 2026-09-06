@@ -355,7 +355,7 @@ test("completion remains current when another document in its workspace changes"
 
   const response = await session.server.response(100)
   assert.equal(response.error, undefined)
-  assert.equal(response.result?.[0]?.label, "fixture-v1")
+  assert.equal(response.result?.items?.[0]?.label, "fixture-v1")
 })
 
 async function openMultiRootServer(t) {

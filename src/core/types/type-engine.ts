@@ -22,6 +22,7 @@ import type {
 } from "../protocol.js"
 import { ArkUIResourceLanguageProvider } from "../arkui/resource-language-provider.js"
 import type { SemanticWorkspaceView } from "../workspace/document-store.js"
+import { arbitrateCompletionLists } from "./completion-arbitrator.js"
 import { TypeScriptLanguageServiceEngine } from "./typescript-language-service.js"
 
 const MAX_WORKSPACE_ENGINES = 4
@@ -198,10 +199,7 @@ export class SemanticTypeEngineRegistry {
           ? entry.arkui.complete(position, sourceContent)
           : { items: [], isIncomplete: false }
         const typescript = entry.engine.complete(position)
-        return {
-          items: mergeCompletions(arkui.items, typescript.items),
-          isIncomplete: arkui.isIncomplete || typescript.isIncomplete,
-        }
+        return arbitrateCompletionLists(arkui, typescript)
       },
       resolveCompletion: (position, item) => item.data?.provider === "arkui-resource"
         ? item
@@ -277,15 +275,6 @@ function canonicalTypeEngineOwner(rootPath: string): string {
   } catch {
     return resolved
   }
-}
-
-function mergeCompletions(
-  arkui: SemanticCompletionItem[],
-  typescript: SemanticCompletionItem[],
-): SemanticCompletionItem[] {
-  if (arkui.length === 0) return typescript
-  const arkuiLabels = new Set(arkui.map(({ label }) => label))
-  return [...arkui, ...typescript.filter(({ label }) => !arkuiLabels.has(label))]
 }
 
 function mergeDefinitions(
