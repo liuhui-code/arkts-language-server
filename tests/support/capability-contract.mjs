@@ -15,6 +15,7 @@ export const CURRENT_LSP_CAPABILITY_CONTRACT = Object.freeze({
     "renameProvider",
     "signatureHelpProvider",
     "textDocumentSync",
+    "typeDefinitionProvider",
     "workspaceSymbolProvider",
   ]),
   required: Object.freeze([
@@ -28,6 +29,7 @@ export const CURRENT_LSP_CAPABILITY_CONTRACT = Object.freeze({
       expected: { codeActionKinds: ["quickfix"], resolveProvider: true },
     },
     { path: "definitionProvider", expected: true },
+    { path: "typeDefinitionProvider", expected: true },
     { path: "documentFormattingProvider", expected: true },
     { path: "documentHighlightProvider", expected: true },
     { path: "foldingRangeProvider", expected: true },

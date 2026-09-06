@@ -18,6 +18,7 @@ export async function assertInstalledSemanticSmoke({
 }) {
   const materialized = await materializeConformanceWorkspace({ temporaryRoot })
   const reference = materialized.cases["profile.reference"]
+  const typeDefinition = materialized.cases["profile.type-definition"]
   const definition = materialized.cases["profile.definition"]
   const barrel = materialized.cases["profile.barrel"]
   const importedReference = materialized.cases["profile.import"]
@@ -86,6 +87,7 @@ export async function assertInstalledSemanticSmoke({
     },
   ]
   assert.ok(signature, "the installed-artifact corpus must expose signature.format-call")
+  assert.ok(typeDefinition, "the installed-artifact corpus must expose profile.type-definition")
   assert.ok(
     documentSymbolPage && documentSymbolTitle && documentSymbolBuild,
     "the installed-artifact corpus must expose the ArkUI document-symbol hierarchy",
@@ -494,6 +496,23 @@ export async function assertInstalledSemanticSmoke({
     assert.deepEqual(locations, [{ uri: definition.uri, range: definition.range }])
     assert.notDeepEqual(locations[0].range.start, locations[0].range.end)
     assert.equal(textInRange(definitionSource, locations[0].range), "Profile")
+
+    assert.equal(textInRange(consumerSource, typeDefinition.range), "profile")
+    const typeDefinitionResponse = await session.request("textDocument/typeDefinition", {
+      textDocument: { uri: typeDefinition.uri },
+      position: midpoint(typeDefinition.range),
+    }, { timeoutMs })
+    assert.equal(
+      typeDefinitionResponse.error,
+      undefined,
+      JSON.stringify(typeDefinitionResponse.error),
+    )
+    assert.deepEqual(normalizeLocations(typeDefinitionResponse.result), [{
+      uri: definition.uri,
+      range: definition.range,
+    }])
+    assert.equal(textInRange(definitionSource, definition.range), "Profile")
+    verifiedClaims.push("type-definition.artifact.immutable-unopened-variable-type-range")
 
     const hoverResponse = await session.request("textDocument/hover", {
       textDocument: { uri: reference.uri },

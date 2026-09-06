@@ -283,13 +283,31 @@ export class TypeScriptLanguageServiceEngine {
   }
 
   define(position: SemanticDocumentPosition): SemanticDefinitionCandidate[] {
+    return this.definitionCandidates(position, (filePath, offset) => (
+      this.service.getDefinitionAtPosition(filePath, offset)
+    ))
+  }
+
+  typeDefinitions(position: SemanticDocumentPosition): SemanticDefinitionCandidate[] {
+    return this.definitionCandidates(position, (filePath, offset) => (
+      this.service.getTypeDefinitionAtPosition(filePath, offset)
+    ))
+  }
+
+  private definitionCandidates(
+    position: SemanticDocumentPosition,
+    getDefinitions: (
+      filePath: string,
+      offset: number,
+    ) => readonly ts.DefinitionInfo[] | undefined,
+  ): SemanticDefinitionCandidate[] {
     const filePath = path.resolve(position.path)
     const script = this.scripts.get(filePath)
     if (!script) return []
     script.lastAccess = ++this.accessClock
     const sourceOffset = lineColumnToOffset(script.sourceContent, position.line, position.column)
     const offset = script.virtualDocument.toGeneratedOffset(sourceOffset)
-    const definitions = this.service.getDefinitionAtPosition(filePath, offset) ?? []
+    const definitions = getDefinitions(filePath, offset) ?? []
     const seen = new Set<string>()
     return definitions.flatMap((definition) => {
       const targetPath = path.resolve(definition.fileName)
@@ -309,7 +327,7 @@ export class TypeScriptLanguageServiceEngine {
               definition.textSpan.start,
               definition.textSpan.length,
             )
-        : spanToRange(content, definition.textSpan.start, definition.textSpan.length)
+          : spanToRange(content, definition.textSpan.start, definition.textSpan.length)
       const key = [
         targetPath,
         range.startLine,

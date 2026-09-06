@@ -65,6 +65,7 @@ export function registerSemanticCapabilities({
       triggerCharacters: ["(", ",", "<"],
       retriggerCharacters: [")"],
     },
+    typeDefinitionProvider: true,
   }
 
   connection.onSignatureHelp(async (params, token) => {
@@ -95,6 +96,20 @@ export function registerSemanticCapabilities({
       }),
     })
     return result ? toLspHover(result, hoverMarkupKind) : null
+  })
+
+  connection.onTypeDefinition(async (params, token) => {
+    return requests.run({
+      method: "textDocument/typeDefinition",
+      documentUri: params.textDocument.uri,
+      token,
+      fallback: [],
+      execute: (document, signal) => semantic.typeDefinitions({
+        document,
+        position: params.position,
+        signal,
+      }),
+    })
   })
 
   connection.onDocumentHighlight(async (params, token) => {

@@ -75,6 +75,7 @@ test("binds the installed semantic umbrella to its exact verified claim set", ()
     "document-sync.artifact.immutable-incremental-overlay-lifecycle",
     "completion.artifact.immutable-typescript-arkui-sdk-resource-builder",
     "definition.artifact.immutable-typescript-arkui-sdk-resource-builder-ranges",
+    "type-definition.artifact.immutable-unopened-variable-type-range",
     "hover.artifact.immutable-negotiated-markdown-plaintext-typescript-arkui-range",
     "signature-help.artifact.immutable-unopened-overload",
     "document-symbol.artifact.immutable-modern-legacy-kind-hierarchy",
@@ -96,7 +97,7 @@ test("binds the installed semantic umbrella to its exact verified claim set", ()
   })
 
   assert.deepEqual(audit.verifiedClaims, [...verifiedClaims].sort())
-  assert.equal(audit.expectedClaims.length, 15)
+  assert.equal(audit.expectedClaims.length, 16)
 })
 
 test("maps the complete public capability contract to executable feature evidence", () => {
@@ -112,6 +113,7 @@ test("maps the complete public capability contract to executable feature evidenc
     "document-sync",
     "completion",
     "definition",
+    "type-definition",
     "hover",
     "signature-help",
     "document-symbol",
@@ -126,12 +128,13 @@ test("maps the complete public capability contract to executable feature evidenc
     "document-formatting",
   ])
   assert.deepEqual(audit.plannedFeatureIds, [])
-  assert.equal(audit.requiredCapabilityCount, 17)
+  assert.equal(audit.requiredCapabilityCount, 18)
   assert.equal(audit.absentCapabilityCount, 0)
   assert.deepEqual(audit.artifactCoveredFeatureIds, [
     "document-sync",
     "completion",
     "definition",
+    "type-definition",
     "hover",
     "signature-help",
     "document-symbol",
@@ -147,6 +150,15 @@ test("maps the complete public capability contract to executable feature evidenc
   ])
   assert.deepEqual(audit.artifactGapFeatureIds, [])
   const editorFeatures = new Map([
+    ["type-definition", {
+      provider: "typeDefinitionProvider",
+      bundle: [{
+        entry: "tests/lsp-transcript.test.mjs",
+        test: "returns the exact unopened type definition for an ArkTS variable",
+        claim: "type-definition.bundle.unopened-variable-type-range",
+      }],
+      artifactClaim: "type-definition.artifact.immutable-unopened-variable-type-range",
+    }],
     ["document-highlight", {
       provider: "documentHighlightProvider",
       bundle: [{

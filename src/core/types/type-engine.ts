@@ -83,6 +83,7 @@ export interface SemanticTypeQueryContext {
   complete(position: SemanticDocumentPosition): SemanticCompletionItem[]
   resolveCompletion(position: SemanticDocumentPosition, item: SemanticCompletionItem): SemanticCompletionItem
   define(position: SemanticDocumentPosition): SemanticDefinitionCandidate[]
+  typeDefinitions(position: SemanticDocumentPosition): SemanticDefinitionCandidate[]
   references(
     position: SemanticDocumentPosition,
     includeDeclaration: boolean,
@@ -154,6 +155,7 @@ export class SemanticTypeEngineRegistry {
         sourceContent ? entry.arkui.define(position, sourceContent) : [],
         entry.engine.define(position),
       ),
+      typeDefinitions: (position) => entry.engine.typeDefinitions(position),
       references: (position, includeDeclaration) => (
         entry.engine.references(position, includeDeclaration)
       ),

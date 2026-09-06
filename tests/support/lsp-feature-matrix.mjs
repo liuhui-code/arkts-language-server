@@ -84,6 +84,33 @@ export const CURRENT_LSP_FEATURE_MATRIX = Object.freeze({
       artifactGap: null,
     }),
     enabledFeature({
+      id: "type-definition",
+      requiredCapabilities: [capability("typeDefinitionProvider", true)],
+      protocol: [
+        evidence(
+          "tests/lsp-semantic-request-reliability.test.mjs",
+          "maps cancellation for every advertised semantic request to RequestCancelled",
+          "type-definition.protocol.cancellation",
+        ),
+        evidence(
+          "tests/lsp-semantic-request-reliability.test.mjs",
+          "drops stale results for every advertised semantic request after didChange",
+          "type-definition.protocol.document-freshness",
+        ),
+      ],
+      bundle: [evidence(
+        "tests/lsp-transcript.test.mjs",
+        "returns the exact unopened type definition for an ArkTS variable",
+        "type-definition.bundle.unopened-variable-type-range",
+      )],
+      artifact: [evidence(
+        "tests/release/portable-install.acceptance.mjs",
+        "installs one verified artifact without source dependencies or a rebuild",
+        "type-definition.artifact.immutable-unopened-variable-type-range",
+      )],
+      artifactGap: null,
+    }),
+    enabledFeature({
       id: "hover",
       requiredCapabilities: [capability("hoverProvider", true)],
       protocol: [evidence(

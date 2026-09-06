@@ -132,6 +132,60 @@ test("returns an exact cross-file definition from an ArkTS dependency", async (t
   assert.deepEqual(locations[0].range.start, { line: 1, character: 2 })
 })
 
+test("returns the exact unopened type definition for an ArkTS variable", async (t) => {
+  const server = new LspProcess()
+  t.after(() => server.close())
+  const mainPath = path.join(basicFixtureRoot, "Main.ets")
+  const modelPath = path.join(basicFixtureRoot, "Model.ets")
+  const mainUri = pathToFileURL(mainPath).href
+  const modelUri = pathToFileURL(modelPath).href
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: {
+      processId: process.pid,
+      rootUri: pathToFileURL(basicFixtureRoot).href,
+      capabilities: { general: { positionEncodings: ["utf-16"] } },
+    },
+  })
+  await server.response(1)
+  server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
+  server.send({
+    jsonrpc: "2.0",
+    method: "textDocument/didOpen",
+    params: {
+      textDocument: {
+        uri: mainUri,
+        languageId: "arkts",
+        version: 1,
+        text: fs.readFileSync(mainPath, "utf8"),
+      },
+    },
+  })
+  server.send({
+    jsonrpc: "2.0",
+    id: 4,
+    method: "textDocument/typeDefinition",
+    params: {
+      textDocument: { uri: mainUri },
+      position: { line: 3, character: 2 },
+    },
+  })
+
+  const response = await server.response(4)
+  assert.equal(response.error, undefined, JSON.stringify(response.error))
+  const locations = Array.isArray(response.result) ? response.result : [response.result]
+  assert.deepEqual(locations, [{
+    uri: modelUri,
+    range: {
+      start: { line: 0, character: 14 },
+      end: { line: 0, character: 21 },
+    },
+  }])
+})
+
 test("acknowledges shutdown and exits cleanly", async (t) => {
   const server = new LspProcess()
   t.after(() => server.close())
