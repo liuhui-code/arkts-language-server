@@ -324,21 +324,30 @@ export class SemanticDocumentStore {
     }
     const entry = this.projectFileSets.get(canonicalRoot)
     const paths = entry?.paths
+    const sourceChanges = batch.changes.flatMap((change) => {
+      const sourcePath = path.resolve(change.path)
+      if (!SOURCE_EXTENSIONS.includes(path.extname(sourcePath))) return []
+      if (!isInside(canonicalRoot, canonicalSourcePath(sourcePath))) return []
+      if (change.kind !== "created" && this.documents.get(sourcePath)?.overlay) return []
+      return [{ sourcePath, kind: change.kind }]
+    })
+    const knownPathsBeforeInvalidation = new Set(sourceChanges.flatMap(({ sourcePath }) => (
+      this.documents.has(sourcePath) || Boolean(paths?.includes(sourcePath)) ? [sourcePath] : []
+    )))
+    const affectedPathsByRoot = this.invalidateDiskDocuments(
+      sourceChanges.map(({ sourcePath }) => sourcePath),
+    )
     let membershipChanged = false
     let contentChanged = false
     const createdPaths: string[] = []
-    for (const change of batch.changes) {
-      const sourcePath = path.resolve(change.path)
-      if (!SOURCE_EXTENSIONS.includes(path.extname(sourcePath))) continue
-      if (!isInside(canonicalRoot, canonicalSourcePath(sourcePath))) continue
+    const removedPathsByRoot = new Map<string, Set<string>>()
+    const changedPathsByRoot = new Map<string, Set<string>>()
+    const changedRoots = new Set<string>()
+    const resetRoots = new Set<string>()
+    for (const change of sourceChanges) {
+      const { sourcePath } = change
+      const affectedRoots = rootsAffectedByPath(affectedPathsByRoot, sourcePath)
       if (change.kind === "deleted") {
-        if (this.documents.get(sourcePath)?.overlay) continue
-        const known = this.documents.has(sourcePath)
-          || Boolean(paths?.includes(sourcePath))
-          || [...this.dependencyClosures.values()].some((closure) => (
-            closure.paths.includes(sourcePath)
-          ))
-        this.invalidateDiskDocument(sourcePath)
         if (paths) {
           const index = paths.indexOf(sourcePath)
           if (index >= 0) {
@@ -348,15 +357,31 @@ export class SemanticDocumentStore {
             membershipChanged = true
           }
         }
-        if (known) this.markWatchedRemoved(canonicalRoot, sourcePath)
+        if (knownPathsBeforeInvalidation.has(sourcePath) || affectedRoots.length > 0) {
+          addPathByRoot(removedPathsByRoot, canonicalRoot, sourcePath)
+          changedRoots.add(canonicalRoot)
+        }
+        for (const affectedRoot of affectedRoots) {
+          addPathByRoot(removedPathsByRoot, affectedRoot, sourcePath)
+          changedRoots.add(affectedRoot)
+          resetRoots.add(affectedRoot)
+        }
       } else {
-        if (change.kind === "changed" && this.documents.get(sourcePath)?.overlay) continue
-        this.invalidateDiskDocument(sourcePath)
         if (change.kind === "changed") {
-          this.markWatchedChanged(canonicalRoot, sourcePath)
+          addPathByRoot(changedPathsByRoot, canonicalRoot, sourcePath)
           contentChanged = true
+          for (const affectedRoot of affectedRoots) {
+            addPathByRoot(changedPathsByRoot, affectedRoot, sourcePath)
+            changedRoots.add(affectedRoot)
+            if (affectedRoot !== canonicalRoot) resetRoots.add(affectedRoot)
+          }
         } else {
           createdPaths.push(sourcePath)
+          for (const affectedRoot of affectedRoots) {
+            addPathByRoot(changedPathsByRoot, affectedRoot, sourcePath)
+            changedRoots.add(affectedRoot)
+            resetRoots.add(affectedRoot)
+          }
         }
       }
       if (change.kind !== "created" || !paths) continue
@@ -387,23 +412,30 @@ export class SemanticDocumentStore {
       membershipChanged = true
     }
     if (entry && membershipChanged) entry.revision = ++this.projectMembershipRevision
-    const changedRoots = new Set<string>()
     if (contentChanged || createdPaths.length > 0) changedRoots.add(canonicalRoot)
     for (const affectedRoot of this.invalidateCreatedResolutionCandidates(createdPaths)) {
       changedRoots.add(affectedRoot)
-      this.typeEngineResetRoots.add(affectedRoot)
+      resetRoots.add(affectedRoot)
     }
+    for (const [removedRoot, removedPaths] of removedPathsByRoot) {
+      for (const removedPath of removedPaths) this.markWatchedRemoved(removedRoot, removedPath)
+    }
+    for (const [changedRoot, changedPaths] of changedPathsByRoot) {
+      for (const changedPath of changedPaths) this.markWatchedChanged(changedRoot, changedPath)
+    }
+    for (const resetRoot of resetRoots) this.typeEngineResetRoots.add(resetRoot)
     for (const changedRoot of changedRoots) {
       this.contentRevisions.set(changedRoot, (this.contentRevisions.get(changedRoot) ?? 0) + 1)
     }
   }
 
-  private invalidateDiskDocument(filePath: string): void {
-    this.invalidateDiskDocuments([filePath])
+  private invalidateDiskDocument(filePath: string): Map<string, Set<string>> {
+    return this.invalidateDiskDocuments([filePath])
   }
 
-  private invalidateDiskDocuments(filePaths: Iterable<string>): void {
+  private invalidateDiskDocuments(filePaths: Iterable<string>): Map<string, Set<string>> {
     const invalidatedPaths = new Set<string>()
+    const affectedPathsByRoot = new Map<string, Set<string>>()
     for (const filePath of filePaths) {
       const cached = this.documents.get(filePath)
       if (cached?.overlay) continue
@@ -413,15 +445,26 @@ export class SemanticDocumentStore {
         this.cachedBytes -= Buffer.byteLength(cached.content)
       }
     }
-    if (invalidatedPaths.size === 0) return
+    if (invalidatedPaths.size === 0) return affectedPathsByRoot
     for (const [ownerPath, closure] of this.dependencyClosures) {
-      if (
-        invalidatedPaths.has(ownerPath)
-        || closure.paths.some((closurePath) => invalidatedPaths.has(closurePath))
-      ) {
-        this.dependencyClosures.delete(ownerPath)
+      const affectedPaths: string[] = []
+      closure.paths.some((closurePath) => {
+        if (invalidatedPaths.has(closurePath)) affectedPaths.push(closurePath)
+        return false
+      })
+      if (invalidatedPaths.has(ownerPath) && !affectedPaths.includes(ownerPath)) {
+        affectedPaths.push(ownerPath)
       }
+      if (affectedPaths.length === 0) continue
+      this.dependencyClosures.delete(ownerPath)
+      let rootPaths = affectedPathsByRoot.get(closure.workspaceRoot)
+      if (!rootPaths) {
+        rootPaths = new Set()
+        affectedPathsByRoot.set(closure.workspaceRoot, rootPaths)
+      }
+      for (const affectedPath of affectedPaths) rootPaths.add(affectedPath)
     }
+    return affectedPathsByRoot
   }
 
   private invalidateCreatedResolutionCandidates(filePaths: readonly string[]): Set<string> {
@@ -1105,6 +1148,30 @@ function canonicalSourcePath(filePath: string): string {
 function isInside(rootPath: string, candidatePath: string): boolean {
   const relative = path.relative(rootPath, candidatePath)
   return relative.length > 0 && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)
+}
+
+function addPathByRoot(
+  pathsByRoot: Map<string, Set<string>>,
+  rootPath: string,
+  filePath: string,
+): void {
+  let paths = pathsByRoot.get(rootPath)
+  if (!paths) {
+    paths = new Set()
+    pathsByRoot.set(rootPath, paths)
+  }
+  paths.add(filePath)
+}
+
+function rootsAffectedByPath(
+  pathsByRoot: ReadonlyMap<string, ReadonlySet<string>>,
+  filePath: string,
+): string[] {
+  const roots: string[] = []
+  for (const [rootPath, paths] of pathsByRoot) {
+    if (paths.has(filePath)) roots.push(rootPath)
+  }
+  return roots
 }
 
 function boundedLimit(value: number | undefined, hardMaximum: number, label: string): number {

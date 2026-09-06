@@ -135,125 +135,81 @@ test("watched create delete and rename are visible to the immediately following 
 })
 
 test("a watched create in a nested workspace invalidates a warm outer-root definition", async (t) => {
-  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-watched-cross-root-"))
-  const outerRoot = path.join(temporaryRoot, "outer")
-  const nestedRoot = path.join(outerRoot, "nested")
-  fs.mkdirSync(nestedRoot, { recursive: true })
-  const serverPath = path.join(temporaryRoot, "server.cjs")
-  buildSync({
-    entryPoints: [path.join(projectRoot, "src", "server.ts")],
-    bundle: true,
-    platform: "node",
-    target: "node20",
-    format: "cjs",
-    outfile: serverPath,
-  })
-  const mainPath = path.join(outerRoot, "Main.ets")
-  const targetTsPath = path.join(nestedRoot, "Target.ts")
-  const targetEtsPath = path.join(nestedRoot, "Target.ets")
-  const mainLines = [
-    "import { target } from \"./nested/Target\"",
-    "export const selected = target()",
-  ]
-  const mainText = mainLines.join("\n")
-  fs.writeFileSync(mainPath, mainText, "utf8")
-  fs.writeFileSync(
-    targetTsPath,
-    "export function target(): string { return 'ts' }\n",
-    "utf8",
-  )
-  const mainUri = pathToFileURL(mainPath).href
-  const targetTsUri = pathToFileURL(targetTsPath).href
-  const targetEtsUri = pathToFileURL(targetEtsPath).href
-  const rootUri = pathToFileURL(outerRoot).href
-  const workspaceFolders = [outerRoot, nestedRoot].map((root, index) => ({
-    name: index === 0 ? "outer" : "nested",
-    uri: pathToFileURL(root).href,
-  }))
-  const servers = []
-  t.after(async () => {
-    try {
-      for (const server of servers.reverse()) await server.close()
-    } finally {
-      fs.rmSync(temporaryRoot, { recursive: true, force: true })
-    }
-  })
-  const openServer = async () => {
-    const server = new LspProcess({
-      serverPath,
-      env: {
-        HOME: path.join(temporaryRoot, "missing-home"),
-        DEVECO_SDK_HOME: path.join(temporaryRoot, "missing-deveco"),
-        ARKLINE_HARMONY_SDK_PATH: path.join(temporaryRoot, "missing-sdk"),
-        ARKTS_LSP_LOG_DIR: path.join(temporaryRoot, `logs-${servers.length}`),
-      },
-    })
-    servers.push(server)
-    server.send({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "initialize",
-      params: {
-        processId: process.pid,
-        rootUri,
-        workspaceFolders,
-        capabilities: { general: { positionEncodings: ["utf-16"] } },
-      },
-    })
-    const initialized = await server.response(1)
-    assert.equal(initialized.result?.capabilities?.definitionProvider, true)
-    server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
-    server.send({
-      jsonrpc: "2.0",
-      method: "textDocument/didOpen",
-      params: {
-        textDocument: {
-          uri: mainUri,
-          languageId: "arkts",
-          version: 1,
-          text: mainText,
-        },
-      },
-    })
-    return server
-  }
-  const definitionPosition = {
-    line: 1,
-    character: mainLines[1].indexOf("target") + 2,
-  }
+  const scenario = await nestedDefinitionScenario(t, { targetTs: true })
 
-  const warmServer = await openServer()
+  const warmServer = await scenario.openServer()
   assert.equal(
-    await definitionTargetUri(warmServer, 2, mainUri, definitionPosition),
-    targetTsUri,
+    await definitionTargetUri(warmServer, 2, scenario.mainUri, scenario.definitionPosition),
+    scenario.targetTsUri,
     "the warm dependency closure must first resolve the only existing candidate",
   )
 
   fs.writeFileSync(
-    targetEtsPath,
+    scenario.targetEtsPath,
     "export function target(): string { return 'ets' }\n",
     "utf8",
   )
-  watchedFiles(warmServer, [{ uri: targetEtsUri, type: 1 }])
+  watchedFiles(warmServer, [{ uri: scenario.targetEtsUri, type: 1 }])
   const warmAfterCreate = await definitionTargetUri(
     warmServer,
     3,
-    mainUri,
-    definitionPosition,
+    scenario.mainUri,
+    scenario.definitionPosition,
   )
 
-  const freshServer = await openServer()
+  const freshServer = await scenario.openServer()
   const freshAfterCreate = await definitionTargetUri(
     freshServer,
     2,
-    mainUri,
-    definitionPosition,
+    scenario.mainUri,
+    scenario.definitionPosition,
   )
-  assert.equal(freshAfterCreate, targetEtsUri, "a fresh server must prefer the new .ets candidate")
+  assert.equal(
+    freshAfterCreate,
+    scenario.targetEtsUri,
+    "a fresh server must prefer the new .ets candidate",
+  )
   assert.equal(
     warmAfterCreate,
     freshAfterCreate,
     "the watched create must invalidate every workspace whose dependency resolution can change",
+  )
+})
+
+test("a watched delete in a nested workspace invalidates a warm outer-root definition", async (t) => {
+  const scenario = await nestedDefinitionScenario(t, { targetEts: true, targetTs: true })
+  const warmServer = await scenario.openServer()
+  assert.equal(
+    await definitionTargetUri(warmServer, 2, scenario.mainUri, scenario.definitionPosition),
+    scenario.targetEtsUri,
+    "the warm dependency closure must first select the higher-priority .ets source",
+  )
+
+  fs.unlinkSync(scenario.targetEtsPath)
+  watchedFiles(warmServer, [{ uri: scenario.targetEtsUri, type: 3 }])
+  const warmAfterDelete = await definitionTargetUri(
+    warmServer,
+    3,
+    scenario.mainUri,
+    scenario.definitionPosition,
+  )
+
+  const freshServer = await scenario.openServer()
+  const freshAfterDelete = await definitionTargetUri(
+    freshServer,
+    2,
+    scenario.mainUri,
+    scenario.definitionPosition,
+  )
+  assert.equal(
+    freshAfterDelete,
+    scenario.targetTsUri,
+    "a fresh server must fall back to the remaining .ts candidate",
+  )
+  assert.equal(
+    warmAfterDelete,
+    freshAfterDelete,
+    "the watched delete must invalidate every workspace whose selected dependency disappeared",
   )
 })
 
@@ -364,6 +320,110 @@ async function completionLabels(server, id, uri, position) {
   assert.equal(response.error, undefined, JSON.stringify(response.error))
   const items = Array.isArray(response.result) ? response.result : response.result?.items ?? []
   return items.map((item) => item.label)
+}
+
+async function nestedDefinitionScenario(t, { targetEts = false, targetTs = false } = {}) {
+  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-watched-cross-root-"))
+  const outerRoot = path.join(temporaryRoot, "outer")
+  const nestedRoot = path.join(outerRoot, "nested")
+  fs.mkdirSync(nestedRoot, { recursive: true })
+  const serverPath = path.join(temporaryRoot, "server.cjs")
+  buildSync({
+    entryPoints: [path.join(projectRoot, "src", "server.ts")],
+    bundle: true,
+    platform: "node",
+    target: "node20",
+    format: "cjs",
+    outfile: serverPath,
+  })
+  const mainPath = path.join(outerRoot, "Main.ets")
+  const targetTsPath = path.join(nestedRoot, "Target.ts")
+  const targetEtsPath = path.join(nestedRoot, "Target.ets")
+  const mainLines = [
+    "import { target } from \"./nested/Target\"",
+    "export const selected = target()",
+  ]
+  const mainText = mainLines.join("\n")
+  fs.writeFileSync(mainPath, mainText, "utf8")
+  if (targetTs) {
+    fs.writeFileSync(
+      targetTsPath,
+      "export function target(): string { return 'ts' }\n",
+      "utf8",
+    )
+  }
+  if (targetEts) {
+    fs.writeFileSync(
+      targetEtsPath,
+      "export function target(): string { return 'ets' }\n",
+      "utf8",
+    )
+  }
+  const mainUri = pathToFileURL(mainPath).href
+  const targetTsUri = pathToFileURL(targetTsPath).href
+  const targetEtsUri = pathToFileURL(targetEtsPath).href
+  const rootUri = pathToFileURL(outerRoot).href
+  const workspaceFolders = [outerRoot, nestedRoot].map((root, index) => ({
+    name: index === 0 ? "outer" : "nested",
+    uri: pathToFileURL(root).href,
+  }))
+  const servers = []
+  t.after(async () => {
+    try {
+      for (const server of servers.reverse()) await server.close()
+    } finally {
+      fs.rmSync(temporaryRoot, { recursive: true, force: true })
+    }
+  })
+  return {
+    mainUri,
+    targetTsUri,
+    targetEtsUri,
+    targetEtsPath,
+    definitionPosition: {
+      line: 1,
+      character: mainLines[1].indexOf("target") + 2,
+    },
+    async openServer() {
+      const server = new LspProcess({
+        serverPath,
+        env: {
+          HOME: path.join(temporaryRoot, "missing-home"),
+          DEVECO_SDK_HOME: path.join(temporaryRoot, "missing-deveco"),
+          ARKLINE_HARMONY_SDK_PATH: path.join(temporaryRoot, "missing-sdk"),
+          ARKTS_LSP_LOG_DIR: path.join(temporaryRoot, `logs-${servers.length}`),
+        },
+      })
+      servers.push(server)
+      server.send({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          processId: process.pid,
+          rootUri,
+          workspaceFolders,
+          capabilities: { general: { positionEncodings: ["utf-16"] } },
+        },
+      })
+      const initialized = await server.response(1)
+      assert.equal(initialized.result?.capabilities?.definitionProvider, true)
+      server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
+      server.send({
+        jsonrpc: "2.0",
+        method: "textDocument/didOpen",
+        params: {
+          textDocument: {
+            uri: mainUri,
+            languageId: "arkts",
+            version: 1,
+            text: mainText,
+          },
+        },
+      })
+      return server
+    },
+  }
 }
 
 async function definitionTargetUri(server, id, uri, position) {

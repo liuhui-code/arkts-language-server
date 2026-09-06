@@ -191,6 +191,54 @@ test("batches changed-source invalidation across dependency closures", (t) => {
   )
 })
 
+test("batches watched exact invalidation across dependency closures", (t) => {
+  const workspace = createWorkspace(t, "watched-batched-invalidation", {
+    "Main.ets": "export const main = 1\n",
+    "First.ets": "export const first = 1\n",
+    "Second.ets": "export const second = 2\n",
+  })
+  const mainPath = path.join(workspace, "Main.ets")
+  const firstPath = path.join(workspace, "First.ets")
+  const secondPath = path.join(workspace, "Second.ets")
+  const store = new SemanticDocumentStore()
+  t.after(() => store.dispose?.())
+  store.prepare(syncPosition(store, workspace, mainPath), true)
+
+  let closureScans = 0
+  for (let index = 0; index < 3; index += 1) {
+    const paths = [path.join(workspace, `Unchanged${index}.ets`)]
+    const originalSome = paths.some
+    paths.some = function some(...args) {
+      closureScans += 1
+      return originalSome.apply(this, args)
+    }
+    store.dependencyClosures.set(path.join(workspace, `Owner${index}.ets`), {
+      contentGeneration: 1,
+      paths,
+      workspaceRoot: workspace,
+      creationCandidatePaths: [],
+      creationCandidatesComplete: true,
+    })
+  }
+  fs.writeFileSync(firstPath, "export const first = 100\n", "utf8")
+  fs.writeFileSync(secondPath, "export const second = 200\n", "utf8")
+
+  store.workspaceFilesChanged({
+    rootPath: workspace,
+    rootDirty: false,
+    changes: [
+      { path: firstPath, kind: "changed" },
+      { path: secondPath, kind: "changed" },
+    ],
+  })
+
+  assert.equal(
+    closureScans,
+    3,
+    "one watched batch must inspect each dependency closure at most once",
+  )
+})
+
 test("invalidates only the requested workspace source-path set", (t) => {
   const firstRoot = createWorkspace(t, "invalidate-first", {
     "Main.ets": "export const first = 1\n",
@@ -310,6 +358,96 @@ test("a nested watched create invalidates only dependency closures that can sele
   assert.equal(unrelatedAfterCreate.resetTypeEngine, false)
   assert.equal(unrelatedAfterCreate.contentRevision, 0)
   assert.equal(unrelatedAfterCreate.state.dependencyClosureCacheHit, true)
+})
+
+test("a nested watched delete propagates the exact removal only to closure owners", (t) => {
+  const outerRoot = createWorkspace(t, "deleted-cross-root-outer", {
+    "Main.ets": "import { target } from './nested/Target'\nexport const main = target()\n",
+    "nested/Target.ets": "export function target(): string { return 'ets' }\n",
+    "nested/Target.ts": "export function target(): string { return 'ts' }\n",
+  })
+  const nestedRoot = path.join(outerRoot, "nested")
+  const unrelatedRoot = createWorkspace(t, "deleted-cross-root-unrelated", {
+    "Main.ets": "import { kept } from './Kept'\nexport const main = kept()\n",
+    "Kept.ets": "export function kept(): string { return 'kept' }\n",
+  })
+  const outerMain = path.join(outerRoot, "Main.ets")
+  const targetEtsPath = path.join(nestedRoot, "Target.ets")
+  const targetTsPath = path.join(nestedRoot, "Target.ts")
+  const unrelatedMain = path.join(unrelatedRoot, "Main.ets")
+  const store = new SemanticDocumentStore()
+  t.after(() => store.dispose?.())
+  const outerPosition = syncPosition(store, outerRoot, outerMain)
+  const unrelatedPosition = syncPosition(store, unrelatedRoot, unrelatedMain)
+
+  store.prepare(outerPosition)
+  store.prepare(unrelatedPosition)
+  assert.equal(store.prepare(outerPosition).state.dependencyClosureCacheHit, true)
+  assert.equal(store.prepare(unrelatedPosition).state.dependencyClosureCacheHit, true)
+
+  fs.unlinkSync(targetEtsPath)
+  store.workspaceFilesChanged({
+    rootPath: nestedRoot,
+    rootDirty: false,
+    changes: [{ path: targetEtsPath, kind: "deleted" }],
+  })
+  const outerAfterDelete = store.prepare(outerPosition)
+  const unrelatedAfterDelete = store.prepare(unrelatedPosition)
+
+  assert.equal(outerAfterDelete.resetTypeEngine, true)
+  assert.equal(outerAfterDelete.contentRevision, 1)
+  assert.deepEqual(outerAfterDelete.removedPaths, [targetEtsPath])
+  assert.equal(outerAfterDelete.state.dependencyClosureCacheHit, false)
+  assert.ok(documentPaths(outerAfterDelete).includes(targetTsPath))
+  assert.equal(documentPaths(outerAfterDelete).includes(targetEtsPath), false)
+  assert.equal(unrelatedAfterDelete.resetTypeEngine, false)
+  assert.equal(unrelatedAfterDelete.contentRevision, 0)
+  assert.deepEqual(unrelatedAfterDelete.removedPaths, [])
+  assert.equal(unrelatedAfterDelete.state.dependencyClosureCacheHit, true)
+})
+
+test("a nested watched change propagates the exact delta only to closure owners", (t) => {
+  const outerRoot = createWorkspace(t, "changed-cross-root-outer", {
+    "Main.ets": "import { target } from './nested/Target'\nexport const main = target()\n",
+    "nested/Target.ets": "export function target(): string { return 'old' }\n",
+  })
+  const nestedRoot = path.join(outerRoot, "nested")
+  const unrelatedRoot = createWorkspace(t, "changed-cross-root-unrelated", {
+    "Main.ets": "import { kept } from './Kept'\nexport const main = kept()\n",
+    "Kept.ets": "export function kept(): string { return 'kept' }\n",
+  })
+  const outerMain = path.join(outerRoot, "Main.ets")
+  const targetPath = path.join(nestedRoot, "Target.ets")
+  const unrelatedMain = path.join(unrelatedRoot, "Main.ets")
+  const store = new SemanticDocumentStore()
+  t.after(() => store.dispose?.())
+  const outerPosition = syncPosition(store, outerRoot, outerMain)
+  const unrelatedPosition = syncPosition(store, unrelatedRoot, unrelatedMain)
+
+  store.prepare(outerPosition)
+  store.prepare(unrelatedPosition)
+  fs.writeFileSync(
+    targetPath,
+    "export function target(): string { return 'new' }\n",
+    "utf8",
+  )
+  store.workspaceFilesChanged({
+    rootPath: nestedRoot,
+    rootDirty: false,
+    changes: [{ path: targetPath, kind: "changed" }],
+  })
+  const outerAfterChange = store.prepare(outerPosition)
+  const unrelatedAfterChange = store.prepare(unrelatedPosition)
+
+  assert.equal(outerAfterChange.resetTypeEngine, true)
+  assert.equal(outerAfterChange.contentRevision, 1)
+  assert.deepEqual(outerAfterChange.changedPaths, [targetPath])
+  assert.equal(outerAfterChange.state.dependencyClosureCacheHit, false)
+  assert.equal(documentContent(outerAfterChange, targetPath)?.includes("'new'"), true)
+  assert.equal(unrelatedAfterChange.resetTypeEngine, false)
+  assert.equal(unrelatedAfterChange.contentRevision, 0)
+  assert.deepEqual(unrelatedAfterChange.changedPaths, [])
+  assert.equal(unrelatedAfterChange.state.dependencyClosureCacheHit, true)
 })
 
 test("a watched source change keeps exact invalidation without resetting either workspace", (t) => {
