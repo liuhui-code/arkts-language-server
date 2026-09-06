@@ -272,6 +272,60 @@ test("cancels completion during the bounded raw entry scan without publishing pa
   )
 })
 
+test("bounds object-property completion context lookup by syntax depth", (t) => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-ts-completion-context-"))
+  t.after(() => fs.rmSync(workspaceRoot, { recursive: true, force: true }))
+
+  const mainPath = path.join(workspaceRoot, "Main.ts")
+  const declarationCount = 10_000
+  const completionLine = "const selected: Options = {  }"
+  const mainSource = [
+    ...Array.from({ length: declarationCount }, (_, index) => `const before${index} = ${index}`),
+    "interface Options { title: string }",
+    completionLine,
+    "",
+  ].join("\n")
+  const { TypeScriptLanguageServiceEngine } = buildDriver(t)
+  let checkpointCount = 0
+  const engine = new TypeScriptLanguageServiceEngine(workspaceRoot, {
+    checkpoint() {
+      checkpointCount += 1
+    },
+  })
+  t.after(() => engine.dispose())
+  prepareSingleDocument(engine, workspaceRoot, mainPath, mainSource)
+  const realService = engine.service
+  engine.service = new Proxy(realService, {
+    get(target, property, receiver) {
+      if (property === "getCompletionsAtPosition") {
+        return () => ({
+          entries: [{ name: "title", kind: "property", sortText: "11" }],
+          isGlobalCompletion: false,
+          isMemberCompletion: true,
+          isNewIdentifierLocation: false,
+        })
+      }
+      const value = Reflect.get(target, property, receiver)
+      return typeof value === "function" ? value.bind(target) : value
+    },
+  })
+
+  checkpointCount = 0
+  const result = engine.complete({
+    path: mainPath,
+    line: declarationCount + 2,
+    column: completionLine.indexOf("{") + 3,
+    documentVersion: 1,
+    workspaceRoot,
+  })
+
+  assert.equal(result.items[0]?.kind, "property")
+  assert.ok(
+    checkpointCount < 20,
+    `context lookup must descend by syntax depth, observed ${checkpointCount} checkpoints`,
+  )
+})
+
 test("counts Unicode code points for the module-export completion threshold", (t) => {
   const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-ts-unicode-prefix-"))
   t.after(() => fs.rmSync(workspaceRoot, { recursive: true, force: true }))

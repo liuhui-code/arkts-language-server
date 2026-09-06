@@ -273,13 +273,24 @@ test("completes contextual object properties without a prefix", async (t) => {
     "  count: number",
     "}",
     "",
+    "class Receiver {",
+    "  fieldValue: string = 'value'",
+    "}",
+    "",
     "function options(): Options {",
     "  return {  }",
     "}",
     "",
+    "function computed(receiver: Receiver) {",
+    "  return { [receiver.fi]: 'value' }",
+    "}",
+    "",
+    "const unfinished: Options = { ti",
   ].join("\n")
   await fs.promises.writeFile(documentPath, source, "utf8")
   const cursorOffset = source.indexOf("{  }") + 2
+  const computedPrefixStart = source.indexOf("receiver.fi") + "receiver.".length
+  const unfinishedPrefixStart = source.lastIndexOf("ti")
   const session = new LspSession({
     command: process.execPath,
     args: [path.join(projectRoot, "dist", "server.cjs"), "--stdio"],
@@ -319,13 +330,43 @@ test("completes contextual object properties without a prefix", async (t) => {
   const count = items.filter((item) => item.label === "count")
   assert.equal(title.length, 1, `Expected title in ${JSON.stringify(items)}`)
   assert.equal(count.length, 1, `Expected count in ${JSON.stringify(items)}`)
-  assert.equal(title[0].kind, CompletionItemKind.Field)
-  assert.equal(count[0].kind, CompletionItemKind.Field)
+  assert.equal(title[0].kind, CompletionItemKind.Property)
+  assert.equal(count[0].kind, CompletionItemKind.Property)
   assert.equal(
     items.some((item) => item.label === "Greeter"),
     false,
     "zero-prefix contextual completion must not enable workspace module exports",
   )
+
+  const computedResponse = await session.request("textDocument/completion", {
+    textDocument: { uri: documentUri },
+    position: positionAt(source, computedPrefixStart + "fi".length),
+    context: { triggerKind: 1 },
+  })
+  assert.equal(computedResponse.error, undefined, JSON.stringify(computedResponse.error))
+  const computedItems = Array.isArray(computedResponse.result)
+    ? computedResponse.result
+    : computedResponse.result?.items ?? []
+  const fieldValue = computedItems.filter((item) => item.label === "fieldValue")
+  assert.equal(fieldValue.length, 1, `Expected fieldValue in ${JSON.stringify(computedItems)}`)
+  assert.equal(fieldValue[0].kind, CompletionItemKind.Field)
+
+  const unfinishedResponse = await session.request("textDocument/completion", {
+    textDocument: { uri: documentUri },
+    position: positionAt(source, unfinishedPrefixStart + "ti".length),
+    context: { triggerKind: 1 },
+  })
+  assert.equal(unfinishedResponse.error, undefined, JSON.stringify(unfinishedResponse.error))
+  const unfinishedItems = Array.isArray(unfinishedResponse.result)
+    ? unfinishedResponse.result
+    : unfinishedResponse.result?.items ?? []
+  const unfinishedTitle = unfinishedItems.filter((item) => item.label === "title")
+  assert.equal(
+    unfinishedTitle.length,
+    1,
+    `Expected unfinished title in ${JSON.stringify(unfinishedItems)}`,
+  )
+  assert.equal(unfinishedTitle[0].kind, CompletionItemKind.Property)
 })
 
 test("replaces the complete identifier when completion is accepted mid-token", async (t) => {

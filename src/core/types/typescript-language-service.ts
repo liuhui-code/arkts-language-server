@@ -343,11 +343,14 @@ export class TypeScriptLanguageServiceEngine {
       }
     }
     if (!stoppedEarly && hasTier) flushTier()
+    const objectLiteralPropertyCompletion = candidates.some(({ entry }) => (
+      entry.kind === ts.ScriptElementKind.memberVariableElement
+    )) && isObjectLiteralPropertyCompletion(this.service, filePath, offset, work)
     const completions: SemanticCompletionItem[] = candidates.map(({ entry, filterText }) => {
       const completion: SemanticCompletionItem = {
         label: entry.name,
         detail: typescriptTypeDetail(entry, filePath),
-        kind: completionKind(entry.kind),
+        kind: completionKind(entry.kind, objectLiteralPropertyCompletion),
         insertText: entry.insertText,
         filterText,
         sortText: entry.sortText,
@@ -1696,15 +1699,88 @@ function isCompletionWordBoundary(candidate: string, index: number): boolean {
   return previousIsUpper && nextIsLower
 }
 
-function completionKind(kind: ts.ScriptElementKind): string {
+function completionKind(
+  kind: ts.ScriptElementKind,
+  objectLiteralPropertyCompletion = false,
+): string {
   if (kind === ts.ScriptElementKind.memberFunctionElement) return "method"
-  if (kind === ts.ScriptElementKind.memberVariableElement) return "field"
+  if (kind === ts.ScriptElementKind.memberVariableElement) {
+    return objectLiteralPropertyCompletion ? "property" : "field"
+  }
   if (kind === ts.ScriptElementKind.functionElement) return "function"
   if (kind === ts.ScriptElementKind.classElement) return "class"
   if (kind === ts.ScriptElementKind.interfaceElement) return "interface"
   if (kind === ts.ScriptElementKind.keyword) return "keyword"
   if (kind === ts.ScriptElementKind.constElement || kind === ts.ScriptElementKind.letElement) return "variable"
   return "property"
+}
+
+function isObjectLiteralPropertyCompletion(
+  service: ts.LanguageService,
+  filePath: string,
+  position: number,
+  work: CooperativeWork,
+): boolean {
+  const sourceFile = service.getProgram()?.getSourceFile(filePath)
+  if (!sourceFile) return false
+  const probePosition = Math.max(0, position - 1)
+  let current: ts.Node | undefined = syntaxNodeAtPosition(sourceFile, probePosition, work)
+  while (current && !ts.isObjectLiteralExpression(current)) {
+    work.item()
+    current = current.parent
+  }
+  const objectLiteral = current
+  if (!objectLiteral || position > objectLiteral.getEnd()) return false
+  if (
+    position === objectLiteral.getEnd()
+    && objectLiteral.getLastToken(sourceFile)?.kind === ts.SyntaxKind.CloseBraceToken
+  ) return false
+  const property = nodeAtPosition(objectLiteral.properties, probePosition, sourceFile, work)
+  if (!property) return true
+  if (!ts.isShorthandPropertyAssignment(property) && !ts.isPropertyAssignment(property)) {
+    return false
+  }
+  if (ts.isComputedPropertyName(property.name)) return false
+  return probePosition >= property.name.getStart(sourceFile)
+    && position <= property.name.getEnd()
+}
+
+function syntaxNodeAtPosition(
+  sourceFile: ts.SourceFile,
+  position: number,
+  work: CooperativeWork,
+): ts.Node {
+  let current: ts.Node = sourceFile
+  while (true) {
+    const child = nodeAtPosition(current.getChildren(sourceFile), position, sourceFile, work, true)
+    if (!child) return current
+    current = child
+  }
+}
+
+function nodeAtPosition<T extends ts.Node>(
+  nodes: readonly T[],
+  position: number,
+  sourceFile: ts.SourceFile,
+  work: CooperativeWork,
+  includeLeadingTrivia = false,
+): T | undefined {
+  let low = 0
+  let high = nodes.length - 1
+  while (low <= high) {
+    work.item()
+    const middle = low + Math.floor((high - low) / 2)
+    const node = nodes[middle]
+    const start = includeLeadingTrivia ? node.getFullStart() : node.getStart(sourceFile)
+    if (position < start) {
+      high = middle - 1
+    } else if (position >= node.getEnd()) {
+      low = middle + 1
+    } else {
+      return node
+    }
+  }
+  return undefined
 }
 
 function safeCodeFix(
