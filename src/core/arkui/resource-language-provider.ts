@@ -3,6 +3,7 @@ import path from "node:path"
 
 import type {
   SemanticCompletionItem,
+  SemanticCompletionItemList,
   SemanticDefinitionCandidate,
   SemanticDiagnostic,
   SemanticDocumentPosition,
@@ -19,6 +20,7 @@ import { ArkUIResourceIndex, type ArkUIResourceIndexOptions } from "./resource-i
 
 const RESOURCE_NAME_PREFIX = /^[A-Za-z_$][A-Za-z0-9_$]*$/u
 const RESOURCE_NAME = /^[A-Za-z_$][A-Za-z0-9_$]*$/u
+const MAX_COMPLETIONS = 128
 
 export interface ArkUIResourceLanguageProviderOptions extends ArkUIResourceIndexOptions {
   documentFacts?: ArkUIResourceDocumentFactsCacheOptions
@@ -37,26 +39,35 @@ export class ArkUIResourceLanguageProvider {
     this.documentFacts = new ArkUIResourceDocumentFactsCache(options.documentFacts)
   }
 
-  complete(position: SemanticDocumentPosition, sourceContent: string): SemanticCompletionItem[] {
-    if (!this.accepts(position.path)) return []
+  complete(position: SemanticDocumentPosition, sourceContent: string): SemanticCompletionItemList {
+    if (!this.accepts(position.path)) return { items: [], isIncomplete: false }
     const offset = lineColumnToOffset(sourceContent, position.line, position.column)
     const literal = findResourceLiteralAt(
       this.documentFacts.forDocument(position, sourceContent),
       offset,
     )
-    if (!literal || offset < literal.nameStart || offset > literal.valueEnd) return []
+    if (!literal || offset < literal.nameStart || offset > literal.valueEnd) {
+      return { items: [], isIncomplete: false }
+    }
     const typedReference = sourceContent.slice(literal.valueStart, offset)
-    if (!typedReference.startsWith(ARKUI_STRING_REFERENCE_PREFIX)) return []
+    if (!typedReference.startsWith(ARKUI_STRING_REFERENCE_PREFIX)) {
+      return { items: [], isIncomplete: false }
+    }
     const namePrefix = typedReference.slice(ARKUI_STRING_REFERENCE_PREFIX.length)
-    if (namePrefix.length > 0 && !RESOURCE_NAME_PREFIX.test(namePrefix)) return []
+    if (namePrefix.length > 0 && !RESOURCE_NAME_PREFIX.test(namePrefix)) {
+      return { items: [], isIncomplete: false }
+    }
     const replacementRange = spanToRange(
       sourceContent,
       literal.nameStart,
       offset - literal.nameStart,
     )
-    return this.resources
-      .findByPrefix(`${ARKUI_STRING_REFERENCE_PREFIX}${namePrefix}`)
-      .resources.map((resource) => ({
+    const query = this.resources.findByPrefix(
+      `${ARKUI_STRING_REFERENCE_PREFIX}${namePrefix}`,
+      MAX_COMPLETIONS,
+    )
+    return {
+      items: query.resources.map((resource) => ({
         label: resource.name,
         detail: `ArkUI string resource ${resource.reference}`,
         kind: "property",
@@ -66,7 +77,9 @@ export class ArkUIResourceLanguageProvider {
         source: "arkui",
         replacementRange,
         data: { provider: "arkui-resource", reference: resource.reference },
-      }))
+      })),
+      isIncomplete: query.isIncomplete,
+    }
   }
 
   define(position: SemanticDocumentPosition, sourceContent: string): SemanticDefinitionCandidate[] {

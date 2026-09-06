@@ -141,14 +141,83 @@ test("returns immutable exact and ordered-prefix resource query snapshots", (t) 
     exact.resources[0].name = "mutated"
   }, TypeError)
 
-  const prefix = index.findByPrefix("app.string.")
+  const prefix = index.findByPrefix("app.string.", 128)
   assert.ok(Object.isFrozen(prefix))
   assert.ok(Object.isFrozen(prefix.resources))
+  assert.equal(prefix.isIncomplete, false)
   assert.deepEqual(prefix.resources.map(({ name }) => name), ["subtitle", "title"])
   assert.deepEqual(
     index.findExact("app.string.title").resources.map(({ name }) => name),
     ["title", "title"],
   )
+})
+
+test("bounds ordered ArkUI prefix queries without scanning the full matching tail", (t) => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-arkui-prefix-bound-"))
+  t.after(() => fs.rmSync(workspaceRoot, { recursive: true, force: true }))
+  const { ArkUIResourceIndex } = buildIndexDriver(t)
+  const index = new ArkUIResourceIndex(workspaceRoot)
+  t.after(() => index.dispose())
+  let referenceReads = 0
+  const referenceReadsByIndex = new Uint8Array(10_000)
+  const uniqueResources = Array.from({ length: 10_000 }, (_, entryIndex) => {
+    const name = `item${String(entryIndex).padStart(5, "0")}`
+    const resource = {
+      name,
+      path: path.join(workspaceRoot, "resources", "base", "element", "string.json"),
+      range: { startLine: 1, startColumn: 1, endLine: 1, endColumn: name.length + 1 },
+    }
+    Object.defineProperty(resource, "reference", {
+      configurable: false,
+      enumerable: true,
+      get() {
+        referenceReads += 1
+        referenceReadsByIndex[entryIndex] += 1
+        return `app.string.${name}`
+      },
+    })
+    return resource
+  })
+  index.snapshot = {
+    status: "ready",
+    resources: uniqueResources,
+    uniqueResources,
+    byReference: new Map(),
+  }
+
+  const result = index.findByPrefix("app.string.item", 128)
+
+  assert.deepEqual({
+    status: result.status,
+    isIncomplete: result.isIncomplete,
+    count: result.resources.length,
+    first: result.resources[0]?.name,
+    last: result.resources.at(-1)?.name,
+    referenceReadsWithinBound: referenceReads <= 143,
+    sentinelReads: referenceReadsByIndex[128],
+    afterSentinelReads: referenceReadsByIndex[129],
+  }, {
+    status: "ready",
+    isIncomplete: true,
+    count: 128,
+    first: "item00000",
+    last: "item00127",
+    referenceReadsWithinBound: true,
+    sentinelReads: 1,
+    afterSentinelReads: 0,
+  })
+
+  index.snapshot = {
+    status: "partial",
+    resources: [],
+    uniqueResources: [],
+    byReference: new Map(),
+  }
+  assert.deepEqual(index.findByPrefix("app.string.item", 128), {
+    status: "partial",
+    isIncomplete: true,
+    resources: [],
+  })
 })
 
 test("merges ArkUI and TypeScript diagnostics in stable source order", (t) => {

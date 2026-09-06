@@ -133,16 +133,88 @@ pnpm check
 # PASS
 ```
 
+## S3: bounded ArkUI prefix completion and truthful status
+
+Parent revision: `5bb2033`
+
+Index RED:
+
+```sh
+node --test --test-concurrency=1 \
+  --test-name-pattern "immutable exact|bounds ordered ArkUI prefix" \
+  tests/semantic/arkui-diagnostics-depth.test.mjs
+```
+
+Observed RED: 2/2 selected cases failed. A ready prefix query had no explicit
+completeness flag; a 10,000-resource matching tail returned and scanned all
+10,000 entries instead of the first 128. An algorithmic getter probe then made
+an intermediate implementation RED because it read the 129th sentinel twice.
+GREEN performs binary lower-bound lookup, consumes at most 128 matches, probes
+the sentinel once, and never touches item 130. For 10,000 entries the guard
+allows at most 143 reference reads: 14 binary-search probes, 128 accepted
+items, and one sentinel.
+
+Provider RED:
+
+```sh
+node --test --test-concurrency=1 \
+  --test-name-pattern "deterministic ArkUI resource completion|bounds and caches|quota boundaries" \
+  tests/semantic/arkui-language-features.test.mjs
+```
+
+Observed RED: 3/3 selected cases failed against the old array contract. GREEN
+returns a list from the provider, marks ready exact-128 results complete,
+ready 129 results incomplete, unavailable known results incomplete, partial
+empty results incomplete, and non-ArkUI/ready-empty results complete. Mapping
+is limited to the index's first 128 resources.
+
+The real stdio case was mutation-checked by temporarily removing the ArkUI flag
+from Registry's OR, rebuilding, and running:
+
+```sh
+node --test --test-concurrency=1 \
+  --test-name-pattern "bounded incomplete ArkUI completion list through stdio" \
+  tests/semantic/arkui-language-features.test.mjs
+```
+
+The mutation failed at `false !== true`; restoring
+`arkui.isIncomplete || typescript.isIncomplete`, rebuilding, and rerunning made
+the case GREEN. The client receives the ordered first 128 of 129 real resource
+names. A resource beyond the completion quota still returns both exact
+definition locations and does not produce a missing-resource diagnostic,
+proving the shared snapshot and exact map were not truncated.
+
+Full adjacent GREEN:
+
+```sh
+node --test --test-concurrency=1 tests/semantic/arkui-language-features.test.mjs
+# 10/10 passed
+
+node --test --test-concurrency=1 tests/semantic/arkui-diagnostics-depth.test.mjs
+# 10/10 passed
+
+node --test --test-concurrency=1 tests/workspace-file-change-coordinator.test.mjs
+# 19/19 passed
+
+pnpm check
+# PASS
+```
+
 ## Explicitly open work
 
 - TypeScript's native incomplete continuation path is not enabled: the LSP
   completion context, `allowIncompleteCompletions`, and a bounded continuation
   cache need a separate version-aware contract. Local 128-item truncation is
   already truthful without it.
-- ArkUI must stop at a bounded prefix probe instead of materializing up to
-  10,000 resources, and must report partial/unavailable index state.
 - Registry arbitration must cap providers independently, preserve ArkUI-first
   and TypeScript source identity semantics, and OR every incomplete reason.
+- ArkUI warm prefix queries are bounded, but cold index construction still
+  maps every resource range with repeated source scans. A 10,000-entry
+  exploratory fixture remained about eight seconds cold while warm lookup fell
+  below one millisecond; a line-start index needs its own deterministic RED.
+- In-root resource-shaped symlinks are currently skipped while the index claims
+  ready, which can cause a false missing-resource diagnostic. Symlink traversal
+  and physical-cycle policy need a separate correctness slice.
 - The resolution registry remains count-bounded rather than byte-bounded, and
   concurrent response headroom still needs an explicit policy and test.
 - Completion range mapping still needs a snapshot-owned line-start index;

@@ -13,6 +13,7 @@ const MAX_RESOURCE_FILES = 256
 const MAX_RESOURCE_FILE_BYTES = 1 * 1_024 * 1_024
 const MAX_RESOURCE_BYTES = 8 * 1_024 * 1_024
 const MAX_RESOURCE_ENTRIES = 10_000
+const MAX_PREFIX_QUERY_RESOURCES = 128
 const EXCLUDED_DIRECTORIES = new Set([
   ".arkline",
   ".git",
@@ -36,6 +37,10 @@ export type ArkUIResourceIndexStatus = "ready" | "partial" | "unavailable"
 export interface ArkUIResourceQueryResult {
   status: ArkUIResourceIndexStatus
   resources: readonly ArkUIStringResource[]
+}
+
+export interface ArkUIResourcePrefixQueryResult extends ArkUIResourceQueryResult {
+  isIncomplete: boolean
 }
 
 export interface ArkUIResourceIndexOptions {
@@ -119,17 +124,31 @@ export class ArkUIResourceIndex {
     }
   }
 
-  findByPrefix(referencePrefix: string): ArkUIResourceQueryResult {
+  findByPrefix(referencePrefix: string, requestedLimit: number): ArkUIResourcePrefixQueryResult {
     const snapshot = this.load()
+    const limit = boundedLimit(
+      requestedLimit,
+      MAX_PREFIX_QUERY_RESOURCES,
+      "resource prefix query entries",
+    )
     const start = lowerBound(snapshot.uniqueResources, referencePrefix)
+    const resources: ArkUIStringResource[] = []
     let end = start
     while (
-      end < snapshot.uniqueResources.length
+      resources.length < limit
+      && end < snapshot.uniqueResources.length
       && snapshot.uniqueResources[end]?.reference.startsWith(referencePrefix)
-    ) end += 1
+    ) {
+      const resource = snapshot.uniqueResources[end]
+      if (resource) resources.push(resource)
+      end += 1
+    }
+    const next = snapshot.uniqueResources[end]
     return Object.freeze({
       status: snapshot.status,
-      resources: Object.freeze(snapshot.uniqueResources.slice(start, end)),
+      isIncomplete: snapshot.status !== "ready"
+        || next?.reference.startsWith(referencePrefix) === true,
+      resources: Object.freeze(resources),
     })
   }
 

@@ -194,11 +194,13 @@ export class SemanticTypeEngineRegistry {
     return {
       state,
       complete: (position) => {
-        const arkui = sourceContent ? entry.arkui.complete(position, sourceContent) : []
+        const arkui = sourceContent
+          ? entry.arkui.complete(position, sourceContent)
+          : { items: [], isIncomplete: false }
         const typescript = entry.engine.complete(position)
         return {
-          items: mergeCompletions(arkui, typescript.items),
-          isIncomplete: typescript.isIncomplete,
+          items: mergeCompletions(arkui.items, typescript.items),
+          isIncomplete: arkui.isIncomplete || typescript.isIncomplete,
         }
       },
       resolveCompletion: (position, item) => item.data?.provider === "arkui-resource"

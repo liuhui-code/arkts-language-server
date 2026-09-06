@@ -28,17 +28,20 @@ test("provides deterministic ArkUI resource completion and definition candidates
 
   assert.deepEqual(
     provider.complete(toSemanticPosition(documentPath, completionRange.end), documentText),
-    [{
-      label: "title",
-      detail: "ArkUI string resource app.string.title",
-      kind: "property",
-      insertText: "title",
-      filterText: "title",
-      sortText: "0000:title",
-      source: "arkui",
-      replacementRange: toSemanticRange(completionRange),
-      data: { provider: "arkui-resource", reference: "app.string.title" },
-    }],
+    {
+      items: [{
+        label: "title",
+        detail: "ArkUI string resource app.string.title",
+        kind: "property",
+        insertText: "title",
+        filterText: "title",
+        sortText: "0000:title",
+        source: "arkui",
+        replacementRange: toSemanticRange(completionRange),
+        data: { provider: "arkui-resource", reference: "app.string.title" },
+      }],
+      isIncomplete: false,
+    },
   )
   assert.deepEqual(
     provider.define(toSemanticPosition(documentPath, midpoint(definitionRange)), documentText),
@@ -108,24 +111,181 @@ test("bounds and caches each workspace resource snapshot without escaping its ro
   fs.writeFileSync(outsideDocumentPath, source, "utf8")
   const queryPosition = positionAt(source, source.indexOf('")'))
   const provider = new ArkUIResourceLanguageProvider(workspaceRoot)
-  const labels = (filePath = documentPath) => provider.complete(
+  const completion = (filePath = documentPath) => provider.complete(
     toSemanticPosition(filePath, queryPosition, workspaceRoot),
     source,
-  ).map(({ label }) => label)
+  )
+  const labels = (filePath = documentPath) => completion(filePath).items.map(({ label }) => label)
 
   assert.deepEqual(labels(), ["safe"])
+  assert.equal(completion().isIncomplete, true)
   fs.writeFileSync(lateResourcePath, resourceJson("later"), "utf8")
   assert.deepEqual(labels(), ["safe"], "a request must retain its immutable cached snapshot")
   provider.invalidate()
   assert.deepEqual(labels(), ["later", "safe"])
-  assert.deepEqual(labels(outsideDocumentPath), [])
+  assert.deepEqual(completion(outsideDocumentPath), { items: [], isIncomplete: false })
 
   const bounded = new ArkUIResourceLanguageProvider(workspaceRoot, { maxResourceFiles: 1 })
   assert.deepEqual(
     bounded.complete(toSemanticPosition(documentPath, queryPosition, workspaceRoot), source),
-    [],
+    { items: [], isIncomplete: true },
     "an exceeded resource-file limit must fail closed instead of returning a partial index",
   )
+
+  const noQuery = new ArkUIResourceLanguageProvider(workspaceRoot, {
+    readResourceFile() {
+      throw new Error("a non-ArkUI context must not load the resource index")
+    },
+  })
+  const plainSource = "const value = 1\n"
+  assert.deepEqual(
+    noQuery.complete(
+      toSemanticPosition(documentPath, positionAt(plainSource, plainSource.length), workspaceRoot),
+      plainSource,
+    ),
+    { items: [], isIncomplete: false },
+  )
+})
+
+test("reports exact and truncated ArkUI completion quota boundaries", (t) => {
+  const { ArkUIResourceLanguageProvider } = buildArkUIProviderDriver(t)
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-arkui-completion-bound-"))
+  t.after(() => fs.rmSync(workspaceRoot, { recursive: true, force: true }))
+  const resourcePath = path.join(
+    workspaceRoot,
+    "resources",
+    "base",
+    "element",
+    "string.json",
+  )
+  const localizedResourcePath = path.join(
+    workspaceRoot,
+    "resources",
+    "en_US",
+    "element",
+    "string.json",
+  )
+  fs.mkdirSync(path.dirname(resourcePath), { recursive: true })
+  fs.mkdirSync(path.dirname(localizedResourcePath), { recursive: true })
+  const names = Array.from(
+    { length: 129 },
+    (_, index) => `item${String(index).padStart(3, "0")}`,
+  )
+  fs.writeFileSync(resourcePath, resourceCollectionJson(names.slice(0, 128)), "utf8")
+  const source = 'const value = $r("app.string.item")\n'
+  const documentPath = path.join(workspaceRoot, "Page.ets")
+  fs.writeFileSync(documentPath, source, "utf8")
+  const queryPosition = positionAt(source, source.indexOf('")'))
+  const provider = new ArkUIResourceLanguageProvider(workspaceRoot)
+  t.after(() => provider.dispose())
+  const position = toSemanticPosition(documentPath, queryPosition, workspaceRoot)
+
+  const exact = provider.complete(position, source)
+  assert.equal(exact.isIncomplete, false)
+  assert.deepEqual(exact.items.map(({ label }) => label), names.slice(0, 128))
+  const missingSource = 'const value = $r("app.string.zzz")\n'
+  assert.deepEqual(provider.complete(
+    toSemanticPosition(
+      documentPath,
+      positionAt(missingSource, missingSource.indexOf('")')),
+      workspaceRoot,
+    ),
+    missingSource,
+  ), { items: [], isIncomplete: false })
+
+  fs.writeFileSync(resourcePath, resourceCollectionJson(names), "utf8")
+  fs.writeFileSync(localizedResourcePath, resourceCollectionJson([names.at(-1)]), "utf8")
+  provider.invalidate()
+  const truncated = provider.complete(position, source)
+  assert.equal(truncated.isIncomplete, true)
+  assert.deepEqual(truncated.items.map(({ label }) => label), names.slice(0, 128))
+
+  const definitionSource = `const value = $r("app.string.${names.at(-1)}")\n`
+  const definitionOffset = definitionSource.indexOf(names.at(-1))
+  assert.deepEqual(
+    provider.define(
+      toSemanticPosition(
+        documentPath,
+        positionAt(definitionSource, definitionOffset + 1),
+        workspaceRoot,
+      ),
+      definitionSource,
+    ).map(({ path: definitionPath }) => definitionPath),
+    [resourcePath, localizedResourcePath],
+    "bounded prefix completion must not truncate the exact-definition index",
+  )
+  assert.deepEqual(
+    provider.diagnostics(
+      toSemanticPosition(documentPath, { line: 0, character: 0 }, workspaceRoot),
+      definitionSource,
+    ).filter(({ code }) => code === "arkui.resource.not-found"),
+    [],
+    "a resource beyond the completion quota must remain known to diagnostics",
+  )
+})
+
+test("publishes a bounded incomplete ArkUI completion list through stdio", async (t) => {
+  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-arkui-completion-lsp-"))
+  t.after(() => fs.rmSync(temporaryRoot, { recursive: true, force: true }))
+  const resourcePath = path.join(
+    temporaryRoot,
+    "resources",
+    "base",
+    "element",
+    "string.json",
+  )
+  fs.mkdirSync(path.dirname(resourcePath), { recursive: true })
+  const names = Array.from(
+    { length: 129 },
+    (_, index) => `item${String(index).padStart(3, "0")}`,
+  )
+  fs.writeFileSync(resourcePath, resourceCollectionJson(names), "utf8")
+  const source = 'const value = $r("app.string.item")\n'
+  const temporaryDocumentPath = path.join(temporaryRoot, "Page.ets")
+  fs.writeFileSync(temporaryDocumentPath, source, "utf8")
+  const temporaryDocumentUri = pathToFileURL(temporaryDocumentPath).href
+  const server = new LspProcess({ env: { ARKLINE_HARMONY_SDK_PATH: sdkRoot } })
+  t.after(async () => server.close())
+  server.send({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: {
+      processId: process.pid,
+      rootUri: pathToFileURL(temporaryRoot).href,
+      capabilities: { general: { positionEncodings: ["utf-16"] } },
+    },
+  })
+  await server.response(1)
+  server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
+  server.send({
+    jsonrpc: "2.0",
+    method: "textDocument/didOpen",
+    params: {
+      textDocument: {
+        uri: temporaryDocumentUri,
+        languageId: "arkts",
+        version: 1,
+        text: source,
+      },
+    },
+  })
+  server.send({
+    jsonrpc: "2.0",
+    id: 2,
+    method: "textDocument/completion",
+    params: {
+      textDocument: { uri: temporaryDocumentUri },
+      position: positionAt(source, source.indexOf('")')),
+      context: { triggerKind: 1 },
+    },
+  })
+
+  const response = await server.response(2)
+  assert.equal(response.error, undefined, JSON.stringify(response.error))
+  assert.equal(Array.isArray(response.result), false)
+  assert.equal(response.result.isIncomplete, true)
+  assert.deepEqual(response.result.items.map(({ label }) => label), names.slice(0, 128))
 })
 
 test("defines the name property inside the ArkUI string array, not unrelated JSON metadata", (t) => {
@@ -567,6 +727,12 @@ function toSemanticPosition(filePath, position, workspaceRoot = fixtureRoot) {
 
 function resourceJson(name) {
   return `${JSON.stringify({ string: [{ name, value: name }] }, null, 2)}\n`
+}
+
+function resourceCollectionJson(names) {
+  return `${JSON.stringify({
+    string: names.map((name) => ({ name, value: name })),
+  }, null, 2)}\n`
 }
 
 function toSemanticRange(range) {
