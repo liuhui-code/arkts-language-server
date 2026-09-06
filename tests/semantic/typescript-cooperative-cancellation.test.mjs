@@ -533,6 +533,195 @@ test("cancels implementations while indexing declarations before querying implem
   assert.equal(implementationProviderCalled, true)
 })
 
+for (const {
+  method,
+  provider,
+} of [
+  { method: "define", provider: "getDefinitionAtPosition" },
+  { method: "typeDefinitions", provider: "getTypeDefinitionAtPosition" },
+]) {
+  test(`cancels ${method} at the provider return boundary`, async (t) => {
+    const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), `arkts-ts-${method}-provider-cancel-`))
+    t.after(() => fs.rmSync(workspaceRoot, { recursive: true, force: true }))
+
+    const mainPath = path.join(workspaceRoot, "Main.ts")
+    const mainSource = "export const anchor = 1\n"
+    const {
+      SemanticCancellationScope,
+      SemanticWorkerCancelState,
+      TypeScriptLanguageServiceEngine,
+      TypeScriptOperationCanceledException,
+    } = buildDriver(t)
+    const scope = new SemanticCancellationScope()
+    const cancellationCell = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT)
+    const cancellationView = new Int32Array(cancellationCell)
+
+    const engine = new TypeScriptLanguageServiceEngine(workspaceRoot, {
+      hostCancellationToken: scope.hostToken,
+      checkpoint: () => scope.checkpoint(),
+    })
+    t.after(() => engine.dispose())
+    prepareSingleDocument(engine, workspaceRoot, mainPath, mainSource)
+
+    let targetMapped = false
+    const target = {
+      textSpan: { start: mainSource.indexOf("anchor"), length: "anchor".length },
+    }
+    Object.defineProperty(target, "fileName", {
+      configurable: false,
+      enumerable: true,
+      get() {
+        targetMapped = true
+        return mainPath
+      },
+    })
+    const realService = engine.service
+    let cancelProvider = true
+    engine.service = new Proxy(realService, {
+      get(targetService, property, receiver) {
+        if (property === provider) {
+          return () => {
+            if (cancelProvider) {
+              Atomics.store(cancellationView, 0, SemanticWorkerCancelState.clientCancelled)
+            }
+            return [target]
+          }
+        }
+        const value = Reflect.get(targetService, property, receiver)
+        return typeof value === "function" ? value.bind(targetService) : value
+      },
+    })
+
+    const position = {
+      path: mainPath,
+      line: 1,
+      column: mainSource.indexOf("anchor") + 1,
+      documentVersion: 1,
+      workspaceRoot,
+    }
+    let errorCaughtInsideMethod
+    let publishedResult
+    await assert.rejects(
+      scope.run(cancellationCell, () => {
+        try {
+          publishedResult = engine[method](position)
+          return publishedResult
+        } catch (error) {
+          errorCaughtInsideMethod = error
+          throw error
+        }
+      }),
+      (error) => error instanceof TypeScriptOperationCanceledException,
+    )
+
+    assert.equal(
+      errorCaughtInsideMethod instanceof TypeScriptOperationCanceledException,
+      true,
+      `engine.${method} must observe cancellation before mapping provider results`,
+    )
+    assert.equal(publishedResult, undefined)
+    assert.equal(targetMapped, false, "provider-return cancellation must stop before mapping")
+
+    cancelProvider = false
+    const retryCell = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT)
+    const retry = await scope.run(retryCell, () => engine[method](position))
+    assert.equal(retry.length, 1)
+    assert.equal(retry[0].path, mainPath)
+    assert.equal(targetMapped, true)
+  })
+
+  test(`cancels ${method} during shared candidate mapping`, async (t) => {
+    const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), `arkts-ts-${method}-map-cancel-`))
+    t.after(() => fs.rmSync(workspaceRoot, { recursive: true, force: true }))
+
+    const mainPath = path.join(workspaceRoot, "Main.ts")
+    const mainSource = [
+      "export const anchor = 1",
+      ...Array.from({ length: 130 }, (_, index) => `export const target${index} = ${index}`),
+      "",
+    ].join("\n")
+    const targetOffsets = Array.from(
+      { length: 130 },
+      (_, index) => mainSource.indexOf(`target${index}`),
+    )
+    const {
+      SemanticCancellationScope,
+      SemanticWorkerCancelState,
+      TypeScriptLanguageServiceEngine,
+      TypeScriptOperationCanceledException,
+    } = buildDriver(t)
+    const scope = new SemanticCancellationScope()
+    const cancellationCell = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT)
+    const cancellationView = new Int32Array(cancellationCell)
+    let sixtyFifthEntryAccessed = false
+
+    const engine = new TypeScriptLanguageServiceEngine(workspaceRoot, {
+      hostCancellationToken: scope.hostToken,
+      checkpoint: () => scope.checkpoint(),
+    })
+    t.after(() => engine.dispose())
+    prepareSingleDocument(engine, workspaceRoot, mainPath, mainSource)
+
+    const rawDefinitions = targetOffsets.map((start, index) => controlledDefinitionCandidate({
+      index,
+      mainPath,
+      start,
+      onSixtyFourthEntry() {
+        Atomics.store(cancellationView, 0, SemanticWorkerCancelState.clientCancelled)
+      },
+      onSixtyFifthEntry() {
+        sixtyFifthEntryAccessed = true
+      },
+    }))
+    const realService = engine.service
+    engine.service = new Proxy(realService, {
+      get(targetService, property, receiver) {
+        if (property === provider) return () => rawDefinitions
+        const value = Reflect.get(targetService, property, receiver)
+        return typeof value === "function" ? value.bind(targetService) : value
+      },
+    })
+
+    const position = {
+      path: mainPath,
+      line: 1,
+      column: mainSource.indexOf("anchor") + 1,
+      documentVersion: 1,
+      workspaceRoot,
+    }
+    let errorCaughtInsideMethod
+    let publishedResult
+    await assert.rejects(
+      scope.run(cancellationCell, () => {
+        try {
+          publishedResult = engine[method](position)
+          return publishedResult
+        } catch (error) {
+          errorCaughtInsideMethod = error
+          throw error
+        }
+      }),
+      (error) => error instanceof TypeScriptOperationCanceledException,
+    )
+
+    assert.equal(
+      errorCaughtInsideMethod instanceof TypeScriptOperationCanceledException,
+      true,
+      `engine.${method} must observe cancellation while mapping its own result`,
+    )
+    assert.equal(sixtyFifthEntryAccessed, false)
+    assert.equal(publishedResult, undefined)
+
+    const retryCell = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT)
+    const retry = await scope.run(retryCell, () => engine[method](position))
+    assert.equal(retry.length, 130)
+    assert.deepEqual(
+      retry.map(({ range }) => range.startLine),
+      Array.from({ length: 130 }, (_, index) => index + 2),
+    )
+  })
+}
+
 function controlledReference({
   definitionStart,
   index,
@@ -632,6 +821,26 @@ function controlledDefinition({
     get() {
       if (index === 63) onSixtyFourthDefinition()
       if (index === 64) onSixtyFifthDefinition()
+      return mainPath
+    },
+  })
+  return definition
+}
+
+function controlledDefinitionCandidate({
+  index,
+  mainPath,
+  start,
+  onSixtyFourthEntry,
+  onSixtyFifthEntry,
+}) {
+  const definition = { textSpan: { start, length: `target${index}`.length } }
+  Object.defineProperty(definition, "fileName", {
+    configurable: false,
+    enumerable: true,
+    get() {
+      if (index === 63) onSixtyFourthEntry()
+      if (index === 64) onSixtyFifthEntry()
       return mainPath
     },
   })

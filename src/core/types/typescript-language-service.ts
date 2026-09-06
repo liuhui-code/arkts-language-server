@@ -326,15 +326,21 @@ export class TypeScriptLanguageServiceEngine {
   }
 
   define(position: SemanticDocumentPosition): SemanticDefinitionCandidate[] {
-    return this.definitionCandidates(position, (filePath, offset) => (
-      this.service.getDefinitionAtPosition(filePath, offset)
-    ))
+    const work = new CooperativeWork(this.checkpoint)
+    return this.definitionCandidates(
+      position,
+      (filePath, offset) => this.service.getDefinitionAtPosition(filePath, offset),
+      work,
+    )
   }
 
   typeDefinitions(position: SemanticDocumentPosition): SemanticDefinitionCandidate[] {
-    return this.definitionCandidates(position, (filePath, offset) => (
-      this.service.getTypeDefinitionAtPosition(filePath, offset)
-    ))
+    const work = new CooperativeWork(this.checkpoint)
+    return this.definitionCandidates(
+      position,
+      (filePath, offset) => this.service.getTypeDefinitionAtPosition(filePath, offset),
+      work,
+    )
   }
 
   implementations(position: SemanticDocumentPosition): SemanticDefinitionCandidate[] {
@@ -695,7 +701,7 @@ export class TypeScriptLanguageServiceEngine {
       filePath: string,
       offset: number,
     ) => readonly { fileName: string; textSpan: ts.TextSpan }[] | undefined,
-    work = new CooperativeWork(),
+    work: CooperativeWork,
   ): SemanticDefinitionCandidate[] {
     work.boundary()
     const filePath = path.resolve(position.path)
