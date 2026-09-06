@@ -543,11 +543,14 @@ Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产�
   （`f8cb383`）。TypeScript core 的 inlay provider/raw mapping/displayParts 与 documentHighlight
   provider/group/span/sort 也已分别建立 RED，并共用每 64 单元 cadence（`39c052f`、`8c2a649`、
   `8d59011`）；没有把 LSP 的排序后 1,000 项/256 KiB budget 错误前移到 core。
+  definition/typeDefinition 现各自由 public entry 激活 request-local cadence；4 个隔离 RED 分别锁定
+  provider-return boundary 与第 64/65 项 mapper 边界，并验证无 partial publication 和 fresh retry
+  （`b4b3fbc`）。共享 mapper 的 no-op 默认值已移除，新增入口不能再静默漏接 checkpoint。
   workspace hydration 与 cold dependency BFS 的 8 MiB aggregate admission-before-read 已完成
   （`3b5a9d2`、`52b9a4b`、`9b18cc8`）；超预算 dependency 在正文 buffer/read 前拒绝，且 byte-truncated
-  closure 不进入 warm cache，预算释放后可 fresh retry。completion resolve、definition/typeDefinition、
-  Call Hierarchy cadence、Registry/ArkUI/Legacy/LSP 后段 owned loops（包括 inlay/highlight 的公共映射、
-  排序与 byte budget）以及 production worker composition 仍未完成，不能宣称 stdio 计算已可抢占。
+  closure 不进入 warm cache，预算释放后可 fresh retry。completion resolve、Call Hierarchy cadence、
+  Registry/ArkUI/Legacy/LSP 后段 owned loops（包括 inlay/highlight 的公共映射、排序与 byte budget）
+  以及 production worker composition 仍未完成，不能宣称 stdio 计算已可抢占。
 - [x] 本批次集成门禁：最终源码 HEAD `0b4c18a` 的 fresh `pnpm check:fast` 为 594/594，
   0 failed、0 skipped、0 todo，耗时 283.3 s；随后 immutable portable acceptance 为 4/4。
   sealed artifact build/consume-only acceptance 必须在本计划文档提交、worktree clean 后继续执行。
