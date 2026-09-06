@@ -21,6 +21,7 @@ const MAX_WATCHED_CHANGED_PATHS = 512
 const SOURCE_EXTENSIONS = [".ets", ".ts"]
 const MAX_REPLAY_DOCUMENTS = 32
 const MAX_REPLAY_BYTES = 4 * 1024 * 1024
+const MAX_DISK_READ_CHUNK_BYTES = 64 * 1024
 export const MAX_DISK_SNAPSHOT_BYTES = 4 * 1024 * 1024
 
 interface DocumentRecord extends WorkspaceDocument {
@@ -42,6 +43,12 @@ interface DependencyClosureResult {
   entries: Array<{ record: DocumentRecord; cacheHit: boolean }>
   cacheHit: boolean
   removedPaths: string[]
+}
+
+interface DocumentCacheTransaction {
+  records: Map<string, DocumentRecord | undefined>
+  cachedBytes: number
+  accessClock: number
 }
 
 export interface ProjectMembershipSnapshot {
@@ -458,6 +465,7 @@ export class SemanticDocumentStore {
   }
 
   prepare(position: SemanticDocumentPosition, includeWorkspaceFiles = false): SemanticWorkspaceView {
+    this.operationControl.checkpoint()
     const currentPath = path.resolve(position.path)
     const rootPath = position.workspaceRoot
       ? path.resolve(position.workspaceRoot)
@@ -480,6 +488,7 @@ export class SemanticDocumentStore {
     content: string,
     includeWorkspaceFiles = false,
   ): SemanticWorkspaceView {
+    this.operationControl.checkpoint()
     if (Buffer.byteLength(content) > MAX_DISK_SNAPSHOT_BYTES) {
       throw new RangeError(`Disk snapshot exceeds ${MAX_DISK_SNAPSHOT_BYTES} bytes`)
     }
@@ -558,6 +567,7 @@ export class SemanticDocumentStore {
       documentVersion: record.documentVersion,
       overlay: record.overlay,
     }))
+    this.operationControl.checkpoint()
     const dependencyGeneration = this.updateDependencyGeneration(rootPath, closure)
     this.evict(currentPath, new Set(documents.map((document) => document.path)))
     const watchedRemovedPaths = this.watchedRemovedPaths.get(canonicalRoot)
@@ -706,7 +716,7 @@ export class SemanticDocumentStore {
       try {
         for (const sourcePath of this.enumerateWorkspaceSources(resolvedRoot)) {
           this.operationControl.checkpoint()
-          const stat = safeStat(sourcePath)
+          const stat = safeStat(sourcePath, this.operationControl)
           if (!stat?.isFile() || stat.size > MAX_DISK_SNAPSHOT_BYTES) {
             status = "partial"
             reason = "source-unavailable"
@@ -775,18 +785,30 @@ export class SemanticDocumentStore {
   }
 
   private loadFromDisk(filePath: string, cached?: DocumentRecord): DocumentRecord {
+    return this.loadFromDiskWithinTransaction(filePath, cached)
+  }
+
+  private loadFromDiskWithinTransaction(
+    filePath: string,
+    cached?: DocumentRecord,
+    transaction?: DocumentCacheTransaction,
+  ): DocumentRecord {
+    if (transaction && !transaction.records.has(filePath)) {
+      const previous = this.documents.get(filePath)
+      transaction.records.set(filePath, previous ? { ...previous } : undefined)
+    }
     if (cached?.overlay) {
       cached.lastAccess = ++this.accessClock
       return cached
     }
-    const stat = safeStat(filePath)
+    const stat = safeStat(filePath, this.operationControl)
     const fingerprint = stat ? `${stat.mtimeMs}:${stat.size}` : null
     if (cached && fingerprint !== null && cached.diskFingerprint === fingerprint) {
       cached.lastAccess = ++this.accessClock
       return cached
     }
     const content = stat?.isFile() && stat.size <= MAX_DISK_SNAPSHOT_BYTES
-      ? safeRead(filePath)
+      ? safeRead(filePath, this.operationControl)
       : null
     if (content === null) {
       if (cached && !cached.available && cached.diskFingerprint === fingerprint) return cached
@@ -807,6 +829,41 @@ export class SemanticDocumentStore {
     current: DocumentRecord,
     currentCacheHit: boolean,
   ): DependencyClosureResult {
+    const transaction: DocumentCacheTransaction = {
+      records: new Map(),
+      cachedBytes: this.cachedBytes,
+      accessClock: this.accessClock,
+    }
+    const hadCachedClosure = this.dependencyClosures.has(current.path)
+    const cachedClosure = this.dependencyClosures.get(current.path)
+    try {
+      return this.collectDependencyClosureWithinTransaction(
+        current,
+        currentCacheHit,
+        transaction,
+      )
+    } catch (error) {
+      for (const [filePath, record] of transaction.records) {
+        if (record) this.documents.set(filePath, record)
+        else this.documents.delete(filePath)
+      }
+      this.cachedBytes = transaction.cachedBytes
+      this.accessClock = transaction.accessClock
+      if (hadCachedClosure && cachedClosure) {
+        this.dependencyClosures.set(current.path, cachedClosure)
+      } else {
+        this.dependencyClosures.delete(current.path)
+      }
+      throw error
+    }
+  }
+
+  private collectDependencyClosureWithinTransaction(
+    current: DocumentRecord,
+    currentCacheHit: boolean,
+    transaction: DocumentCacheTransaction,
+  ): DependencyClosureResult {
+    this.operationControl.checkpoint()
     const changedPaths = new Set<string>()
     const removedPaths = new Set<string>()
     const cached = this.reuseDependencyClosure(
@@ -814,6 +871,7 @@ export class SemanticDocumentStore {
       currentCacheHit,
       changedPaths,
       removedPaths,
+      transaction,
     )
     if (cached) return { entries: cached, cacheHit: true, removedPaths: [] }
 
@@ -826,15 +884,26 @@ export class SemanticDocumentStore {
     let complete = true
 
     while (queued.length > 0 && result.length < MAX_CLOSURE_DOCUMENTS) {
+      this.operationControl.checkpoint()
       const source = queued.shift()
       if (!source) break
-      const resolved = resolveRelativeImports(source.path, source.content)
+      const resolved = resolveRelativeImports(
+        source.path,
+        source.content,
+        this.operationControl,
+      )
       complete &&= resolved.complete
       for (const dependencyPath of resolved.paths) {
+        this.operationControl.checkpoint()
         if (visited.has(dependencyPath)) continue
         visited.add(dependencyPath)
         const before = this.documents.get(dependencyPath)
-        const dependency = this.loadFromDisk(dependencyPath, before)
+        const dependency = this.loadFromDiskWithinTransaction(
+          dependencyPath,
+          before,
+          transaction,
+        )
+        this.operationControl.checkpoint()
         const bytes = Buffer.byteLength(dependency.content)
         if (totalBytes + bytes > MAX_CLOSURE_BYTES) continue
         totalBytes += bytes
@@ -846,6 +915,7 @@ export class SemanticDocumentStore {
         if (result.length >= MAX_CLOSURE_DOCUMENTS) break
       }
     }
+    this.operationControl.checkpoint()
     if (complete) {
       this.dependencyClosures.set(current.path, {
         contentGeneration: current.contentGeneration,
@@ -862,14 +932,21 @@ export class SemanticDocumentStore {
     currentCacheHit: boolean,
     changedPaths: Set<string>,
     removedPaths: Set<string>,
+    transaction: DocumentCacheTransaction,
   ): Array<{ record: DocumentRecord; cacheHit: boolean }> | null {
     const cached = this.dependencyClosures.get(current.path)
     if (!currentCacheHit || cached?.contentGeneration !== current.contentGeneration) return null
 
     const entries = [{ record: current, cacheHit: true }]
     for (const dependencyPath of cached.paths.slice(1)) {
+      this.operationControl.checkpoint()
       const before = this.documents.get(dependencyPath)
-      const dependency = this.loadFromDisk(dependencyPath, before)
+      const dependency = this.loadFromDiskWithinTransaction(
+        dependencyPath,
+        before,
+        transaction,
+      )
+      this.operationControl.checkpoint()
       if (!dependency.available || dependency !== before) {
         changedPaths.add(dependencyPath)
         if (!dependency.available) removedPaths.add(dependencyPath)
@@ -1022,18 +1099,25 @@ function* listWorkspaceSourcePaths(
 function resolveRelativeImports(
   documentPath: string,
   content: string,
+  operationControl: SemanticOperationControl,
 ): { paths: string[]; complete: boolean } {
   const specifiers = [...content.matchAll(/(?:import|export)\s+(?:type\s+)?(?:[^'";]+?\s+from\s+)?['"]([^'"]+)['"]/g)]
     .map((match) => match[1])
     .filter((specifier): specifier is string => Boolean(specifier?.startsWith(".")))
-  const resolved = specifiers.map((specifier) => resolveImportPath(documentPath, specifier))
+  const resolved = specifiers.map((specifier) => (
+    resolveImportPath(documentPath, specifier, operationControl)
+  ))
   return {
     paths: resolved.flat(),
     complete: resolved.every((matches) => matches.length > 0),
   }
 }
 
-function resolveImportPath(documentPath: string, specifier: string): string[] {
+function resolveImportPath(
+  documentPath: string,
+  specifier: string,
+  operationControl: SemanticOperationControl,
+): string[] {
   const basePath = path.resolve(path.dirname(documentPath), specifier)
   const candidates = path.extname(basePath)
     ? [basePath]
@@ -1042,13 +1126,14 @@ function resolveImportPath(documentPath: string, specifier: string): string[] {
         ...SOURCE_EXTENSIONS.map((extension) => path.join(basePath, `index${extension}`)),
       ]
   return candidates.filter((candidate, index) => index === candidates.findIndex((value) => value === candidate))
-    .filter((candidate) => safeStat(candidate)?.isFile())
+    .filter((candidate) => safeStat(candidate, operationControl)?.isFile())
     .slice(0, 1)
 }
 
-function safeRead(filePath: string): string | null {
+function safeRead(filePath: string, operationControl: SemanticOperationControl): string | null {
   let descriptor: number | undefined
   try {
+    operationControl.checkpoint()
     const initial = fs.lstatSync(filePath)
     if (!initial.isFile() && !initial.isSymbolicLink()) return null
     descriptor = fs.openSync(
@@ -1060,9 +1145,17 @@ function safeRead(filePath: string): string | null {
     const bytes = Buffer.allocUnsafe(before.size + 1)
     let offset = 0
     while (offset < bytes.length) {
-      const bytesRead = fs.readSync(descriptor, bytes, offset, bytes.length - offset, null)
+      operationControl.checkpoint()
+      const bytesRead = fs.readSync(
+        descriptor,
+        bytes,
+        offset,
+        Math.min(bytes.length - offset, MAX_DISK_READ_CHUNK_BYTES),
+        null,
+      )
       if (bytesRead === 0) break
       offset += bytesRead
+      operationControl.checkpoint()
     }
     const after = fs.fstatSync(descriptor)
     if (
@@ -1076,6 +1169,7 @@ function safeRead(filePath: string): string | null {
     return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true })
       .decode(bytes.subarray(0, offset))
   } catch {
+    operationControl.checkpoint()
     return null
   } finally {
     if (descriptor !== undefined) {
@@ -1088,10 +1182,16 @@ function safeRead(filePath: string): string | null {
   }
 }
 
-function safeStat(filePath: string): fs.Stats | null {
+function safeStat(
+  filePath: string,
+  operationControl: SemanticOperationControl = NOOP_OPERATION_CONTROL,
+): fs.Stats | null {
   try {
-    return fs.statSync(filePath)
+    const stat = fs.statSync(filePath)
+    operationControl.checkpoint()
+    return stat
   } catch {
+    operationControl.checkpoint()
     return null
   }
 }

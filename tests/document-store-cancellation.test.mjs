@@ -206,6 +206,270 @@ test("default workspace walking cancels on non-source entries and closes every d
   assert.deepEqual(retried.projectMembership.paths, [mainPath])
 })
 
+test("disk reads checkpoint between bounded chunks, close on cancellation, and retry exactly", (t) => {
+  const payload = "x".repeat(160 * 1024)
+  const content = `export const payload = "${payload}"\n`
+  const workspace = createWorkspace(t, { "Main.ets": content })
+  const mainPath = path.join(workspace, "Main.ets")
+  const cancellation = new Error("cancel disk read")
+  const cleanupFailure = new Error("descriptor cleanup failed")
+  const driverRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-disk-read-driver-"))
+  t.after(() => fs.rmSync(driverRoot, { recursive: true, force: true }))
+  const { SemanticDocumentStore } = buildDocumentStoreDriver(driverRoot)
+  const originalOpen = fs.openSync
+  const originalRead = fs.readSync
+  const originalClose = fs.closeSync
+  const targetDescriptors = new Set()
+  let cancelOnFirstChunk = true
+  let cancelled = false
+  let cancellationObserved = false
+  let cleanupFailureObserved = false
+  let openedDescriptors = 0
+  let closedDescriptors = 0
+  let readCalls = 0
+  let readsAfterCancellation = 0
+  let largestRequestedRead = 0
+  fs.openSync = (filePath, ...args) => {
+    const descriptor = originalOpen(filePath, ...args)
+    if (path.resolve(String(filePath)) === mainPath) {
+      targetDescriptors.add(descriptor)
+      openedDescriptors += 1
+    }
+    return descriptor
+  }
+  fs.readSync = (descriptor, buffer, offset, length, position) => {
+    if (!targetDescriptors.has(descriptor)) {
+      return originalRead(descriptor, buffer, offset, length, position)
+    }
+    readCalls += 1
+    largestRequestedRead = Math.max(largestRequestedRead, length)
+    if (cancelled) readsAfterCancellation += 1
+    const bytesRead = originalRead(
+      descriptor,
+      buffer,
+      offset,
+      Math.min(length, 64 * 1024),
+      position,
+    )
+    if (cancelOnFirstChunk && readCalls === 1) cancelled = true
+    return bytesRead
+  }
+  fs.closeSync = (descriptor) => {
+    const target = targetDescriptors.has(descriptor)
+    const result = originalClose(descriptor)
+    if (target) {
+      targetDescriptors.delete(descriptor)
+      closedDescriptors += 1
+      if (cancellationObserved && !cleanupFailureObserved) {
+        cleanupFailureObserved = true
+        throw cleanupFailure
+      }
+    }
+    return result
+  }
+  t.after(() => {
+    fs.openSync = originalOpen
+    fs.readSync = originalRead
+    fs.closeSync = originalClose
+  })
+  const store = new SemanticDocumentStore({
+    operationControl: {
+      checkpoint() {
+        if (!cancelled) return
+        cancellationObserved = true
+        throw cancellation
+      },
+    },
+  })
+  t.after(() => store.dispose())
+  const position = {
+    path: mainPath,
+    line: 1,
+    column: 1,
+    workspaceRoot: workspace,
+  }
+
+  assert.throws(
+    () => store.prepare(position),
+    (error) => error === cancellation,
+  )
+  assert.equal(readCalls, 1, "no second chunk may be read after cancellation")
+  assert.equal(readsAfterCancellation, 0)
+  assert.ok(largestRequestedRead <= 64 * 1024)
+  assert.equal(openedDescriptors, 1)
+  assert.equal(closedDescriptors, openedDescriptors)
+  assert.equal(cleanupFailureObserved, true)
+
+  cancelOnFirstChunk = false
+  cancelled = false
+  cancellationObserved = false
+  readCalls = 0
+  const retried = store.prepare(position)
+  assert.equal(documentContent(retried, mainPath), content)
+  assert.ok(readCalls >= 3, "the retry must read the complete multi-chunk file")
+  assert.equal(closedDescriptors, openedDescriptors)
+})
+
+test("cold dependency traversal rolls back a loaded prefix and retries the full closure", (t) => {
+  const mainContent = [
+    'import { a } from "./A"',
+    'import { b } from "./B"',
+    "export const main = a + b",
+    "",
+  ].join("\n")
+  const aContent = "export const a = 1\n"
+  const bContent = "export const b = 2\n"
+  const workspace = createWorkspace(t, {
+    "Main.ets": mainContent,
+    "A.ets": aContent,
+    "B.ets": bContent,
+  })
+  const mainPath = path.join(workspace, "Main.ets")
+  const aPath = path.join(workspace, "A.ets")
+  const bPath = path.join(workspace, "B.ets")
+  const cancellation = new Error("cancel cold dependency traversal")
+  const driverRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-cold-closure-driver-"))
+  t.after(() => fs.rmSync(driverRoot, { recursive: true, force: true }))
+  const { SemanticDocumentStore } = buildDocumentStoreDriver(driverRoot)
+  const originalOpen = fs.openSync
+  const originalClose = fs.closeSync
+  const descriptorPaths = new Map()
+  const openCounts = new Map()
+  let cancelAfterA = true
+  let cancelled = false
+  fs.openSync = (filePath, ...args) => {
+    const descriptor = originalOpen(filePath, ...args)
+    const resolvedPath = path.resolve(String(filePath))
+    descriptorPaths.set(descriptor, resolvedPath)
+    openCounts.set(resolvedPath, (openCounts.get(resolvedPath) ?? 0) + 1)
+    return descriptor
+  }
+  fs.closeSync = (descriptor) => {
+    const descriptorPath = descriptorPaths.get(descriptor)
+    const result = originalClose(descriptor)
+    descriptorPaths.delete(descriptor)
+    if (cancelAfterA && descriptorPath === aPath) cancelled = true
+    return result
+  }
+  t.after(() => {
+    fs.openSync = originalOpen
+    fs.closeSync = originalClose
+  })
+  const store = new SemanticDocumentStore({
+    operationControl: {
+      checkpoint() {
+        if (cancelled) throw cancellation
+      },
+    },
+  })
+  t.after(() => store.dispose())
+  const position = {
+    path: mainPath,
+    line: 1,
+    column: 1,
+    workspaceRoot: workspace,
+  }
+
+  assert.throws(
+    () => store.prepare(position),
+    (error) => error === cancellation,
+  )
+  assert.equal(openCounts.get(aPath), 1)
+  assert.equal(openCounts.get(bPath) ?? 0, 0, "B must not open after A arms cancellation")
+
+  cancelAfterA = false
+  cancelled = false
+  const retried = store.prepare(position)
+  assert.equal(openCounts.get(aPath), 2, "a cancelled prefix must not remain in the document cache")
+  assert.equal(openCounts.get(bPath), 1)
+  assert.equal(retried.state.dependencyClosureCacheHit, false)
+  assert.equal(documentContent(retried, aPath), aContent)
+  assert.equal(documentContent(retried, bPath), bContent)
+
+  const warm = store.prepare(position)
+  assert.equal(warm.state.dependencyClosureCacheHit, true)
+})
+
+test("warm closure validation cancels after A stat, preserves the closure, and later invalidates", (t) => {
+  const mainContent = [
+    'import { a } from "./A"',
+    'import { b } from "./B"',
+    "export const main = a + b",
+    "",
+  ].join("\n")
+  const originalA = "export const a = 1\n"
+  const changedA = "export const a = 100\n"
+  const bContent = "export const b = 2\n"
+  const workspace = createWorkspace(t, {
+    "Main.ets": mainContent,
+    "A.ets": originalA,
+    "B.ets": bContent,
+  })
+  const mainPath = path.join(workspace, "Main.ets")
+  const aPath = path.join(workspace, "A.ets")
+  const bPath = path.join(workspace, "B.ets")
+  const cancellation = new Error("cancel warm closure validation")
+  const staleStatUse = new Error("used A stat after cancellation")
+  const driverRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-warm-closure-driver-"))
+  t.after(() => fs.rmSync(driverRoot, { recursive: true, force: true }))
+  const { SemanticDocumentStore } = buildDocumentStoreDriver(driverRoot)
+  let cancelled = false
+  const store = new SemanticDocumentStore({
+    operationControl: {
+      checkpoint() {
+        if (cancelled) throw cancellation
+      },
+    },
+  })
+  t.after(() => store.dispose())
+  const position = {
+    path: mainPath,
+    line: 1,
+    column: 1,
+    workspaceRoot: workspace,
+  }
+  store.prepare(position)
+  assert.equal(store.prepare(position).state.dependencyClosureCacheHit, true)
+
+  const originalStat = fs.statSync
+  const dependencyStats = []
+  let cancelOnAStat = true
+  fs.statSync = (filePath, ...args) => {
+    const stat = originalStat(filePath, ...args)
+    const resolvedPath = path.resolve(String(filePath))
+    if (resolvedPath === aPath || resolvedPath === bPath) dependencyStats.push(resolvedPath)
+    if (!cancelOnAStat || resolvedPath !== aPath) return stat
+    cancelled = true
+    return new Proxy(stat, {
+      get(target, property, receiver) {
+        if (property === "mtimeMs") throw staleStatUse
+        return Reflect.get(target, property, receiver)
+      },
+    })
+  }
+  t.after(() => { fs.statSync = originalStat })
+
+  assert.throws(
+    () => store.prepare(position),
+    (error) => error === cancellation,
+  )
+  assert.deepEqual(dependencyStats, [aPath], "B must not be statted after A arms cancellation")
+
+  cancelOnAStat = false
+  cancelled = false
+  dependencyStats.length = 0
+  const retried = store.prepare(position)
+  assert.equal(retried.state.dependencyClosureCacheHit, true)
+  assert.deepEqual(dependencyStats, [aPath, bPath])
+
+  fs.writeFileSync(aPath, changedA, "utf8")
+  const invalidated = store.prepare(position)
+  assert.equal(invalidated.state.dependencyClosureCacheHit, false)
+  assert.equal(documentContent(invalidated, aPath), changedA)
+  assert.equal(documentContent(invalidated, bPath), bContent)
+  assert.equal(store.prepare(position).state.dependencyClosureCacheHit, true)
+})
+
 function createWorkspace(t, files) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-document-store-cancel-"))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
