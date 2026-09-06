@@ -380,11 +380,14 @@ export class SemanticDocumentStore {
       const dirtyProjectRoots = new Set([canonicalRoot])
       const knownPaths = new Set<string>()
       for (const [projectRoot, projectFileSet] of this.projectFileSets) {
+        const overlapsPhysicalRoot = projectRoot === canonicalRoot
+          || isInside(projectRoot, canonicalRoot)
+          || isInside(canonicalRoot, projectRoot)
         const matchingPaths = projectFileSet.paths.filter((sourcePath) => (
           isInside(lexicalRoot, path.resolve(sourcePath))
           || (projectRoot === canonicalRoot && isInside(canonicalRoot, path.resolve(sourcePath)))
         ))
-        if (matchingPaths.length === 0 && projectRoot !== canonicalRoot) continue
+        if (matchingPaths.length === 0 && !overlapsPhysicalRoot) continue
         dirtyProjectRoots.add(projectRoot)
         for (const matchingPath of matchingPaths) knownPaths.add(matchingPath)
       }

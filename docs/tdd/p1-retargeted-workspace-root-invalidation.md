@@ -17,3 +17,9 @@ RED returned the old string through the retargeted alias. GREEN returns B's byte
 ## Bound
 
 Root-dirty invalidation now matches both the current physical root and the lexical root against cached raw paths. It scans only already bounded project memberships, documents, and dependency closures. The neighboring root-dirty test proves recovery performs zero per-source `stat` calls and one root `realpath` call.
+
+## Membership-only ancestor propagation
+
+A follow-up RED covered a Main file with no imports whose outer, symlink-root project view received `nested/Target.ets` only through `includeWorkspaceFiles`. Because hydrated project files are intentionally absent from the dependency-closure cache, nested root-dirty previously reloaded Target but did not reset or revise the outer type engine.
+
+Cached project roots are already canonical and capped at four. Root-dirty now treats physical ancestor/descendant project roots as affected, invalidates their membership, and advances/resets each once. An unrelated sibling stays warm, and the zero-stat/one-realpath recovery invariant remains GREEN.

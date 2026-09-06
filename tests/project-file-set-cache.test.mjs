@@ -845,6 +845,52 @@ test("a root-dirty event invalidates both sides of a retargeted workspace symlin
   )
 })
 
+test("a nested root-dirty reset reaches an ancestor project hydrated only by membership", (t) => {
+  const oldTarget = "export function target(): string { return 'x' }\n"
+  const newTarget = "export function target(): number { return 123 }\n"
+  assert.equal(Buffer.byteLength(newTarget), Buffer.byteLength(oldTarget))
+  const physicalRoot = createWorkspace(t, "dirty-membership-ancestor", {
+    "Main.ets": "export const main = 1\n",
+    "nested/Target.ets": oldTarget,
+  })
+  const nestedRoot = path.join(physicalRoot, "nested")
+  const aliasRoot = `${physicalRoot}-alias`
+  fs.symlinkSync(physicalRoot, aliasRoot, "dir")
+  t.after(() => fs.rmSync(aliasRoot, { force: true }))
+  const unrelatedRoot = createWorkspace(t, "dirty-membership-sibling", {
+    "Main.ets": "export const unrelated = true\n",
+  })
+  const aliasMain = path.join(aliasRoot, "Main.ets")
+  const aliasTarget = path.join(aliasRoot, "nested", "Target.ets")
+  const physicalTarget = path.join(nestedRoot, "Target.ets")
+  const unrelatedMain = path.join(unrelatedRoot, "Main.ets")
+  const stableTimestamp = new Date("2020-01-02T03:04:05.000Z")
+  fs.utimesSync(physicalTarget, stableTimestamp, stableTimestamp)
+  const store = new SemanticDocumentStore()
+  t.after(() => store.dispose?.())
+  const outerPosition = syncPosition(store, aliasRoot, aliasMain)
+  const unrelatedPosition = syncPosition(store, unrelatedRoot, unrelatedMain)
+  const warm = store.prepare(outerPosition, true)
+  const warmMembershipRevision = warm.projectMembership.revision
+  store.prepare(unrelatedPosition, true)
+  assert.equal(documentContent(warm, aliasTarget), oldTarget)
+  assert.equal(store.prepare(unrelatedPosition).state.dependencyClosureCacheHit, true)
+
+  fs.writeFileSync(physicalTarget, newTarget, "utf8")
+  fs.utimesSync(physicalTarget, stableTimestamp, stableTimestamp)
+  store.workspaceFilesChanged({ rootPath: nestedRoot, rootDirty: true, changes: [] })
+  const outerAfter = store.prepare(outerPosition, true)
+  const unrelatedAfter = store.prepare(unrelatedPosition)
+
+  assert.equal(documentContent(outerAfter, aliasTarget), newTarget)
+  assert.equal(outerAfter.resetTypeEngine, true)
+  assert.equal(outerAfter.contentRevision, 1)
+  assert.ok(outerAfter.projectMembership.revision > warmMembershipRevision)
+  assert.equal(unrelatedAfter.resetTypeEngine, false)
+  assert.equal(unrelatedAfter.contentRevision, 0)
+  assert.equal(unrelatedAfter.state.dependencyClosureCacheHit, true)
+})
+
 test("a nested root-dirty reset reaches only closure owners without snapshot I/O", (t) => {
   const outerRoot = createWorkspace(t, "dirty-cross-root-outer", {
     "Main.ets": "import { target } from './nested/Target'\nexport const main = target()\n",
