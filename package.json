@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "esbuild src/server.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/server.cjs",
+    "build:artifact": "node scripts/build-portable-artifact.mjs",
     "check": "tsc --noEmit -p tsconfig.json",
     "check:fast": "pnpm check && pnpm test",
     "check:release": "./scripts/check-release.sh",
@@ -14,6 +15,7 @@
     "test:protocol": "node scripts/run-node-test-layer.mjs --layer protocol",
     "test:e2e:bundle": "pnpm build && node scripts/run-node-test-layer.mjs --layer bundle-e2e",
     "test:e2e:artifact": "node scripts/run-node-test-layer.mjs --layer artifact-e2e",
+    "test:e2e:artifact:sealed": "node scripts/run-node-test-layer.mjs --layer sealed-artifact-e2e",
     "test:e2e:large": "node scripts/run-node-test-layer.mjs --layer large"
   },
   "dependencies": {

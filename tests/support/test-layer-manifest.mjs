@@ -21,6 +21,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/portable-artifact-builder.test.mjs",
       "tests/project-file-set-cache.test.mjs",
       "tests/project-resolver.test.mjs",
+      "tests/release-artifact-topology.test.mjs",
       "tests/resource-sampler.test.mjs",
       "tests/sdk-discovery.test.mjs",
       "tests/test-evidence.test.mjs",
@@ -72,6 +73,9 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/release/index-sidecar.acceptance.mjs",
       "tests/release/local-delivery.acceptance.mjs",
       "tests/release/portable-install.acceptance.mjs",
+    ]),
+    layer("sealed-artifact-e2e", false, [
+      "tests/release/sealed-portable-artifact.acceptance.mjs",
     ]),
     layer("large", false, [
       "tests/release/large-workspace.acceptance.mjs",
