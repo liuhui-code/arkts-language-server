@@ -1714,7 +1714,10 @@ function completionKind(
   if (kind === ts.ScriptElementKind.enumMemberElement) return "enumMember"
   if (kind === ts.ScriptElementKind.interfaceElement) return "interface"
   if (kind === ts.ScriptElementKind.keyword) return "keyword"
-  if (kind === ts.ScriptElementKind.moduleElement) return "module"
+  if (
+    kind === ts.ScriptElementKind.moduleElement
+    || kind === ts.ScriptElementKind.externalModuleName
+  ) return "module"
   if (kind === ts.ScriptElementKind.constElement || kind === ts.ScriptElementKind.letElement) return "variable"
   return "property"
 }

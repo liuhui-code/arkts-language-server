@@ -380,6 +380,7 @@ test("maps enum and module completion families to their LSP kinds", async (t) =>
     "pages",
     "CompletionKinds.ets",
   )
+  const ambientModulePath = path.join(path.dirname(documentPath), "AmbientModules.d.ts")
   const documentUri = pathToFileURL(documentPath).href
   const source = [
     "enum RenderingMode { Compact, Expanded }",
@@ -387,12 +388,19 @@ test("maps enum and module completion families to their LSP kinds", async (t) =>
     "const selected = RenderingMo",
     "const member = RenderingMode.Com",
     "const tools = LayoutTo",
+    "import { value } from 'lay'",
     "",
   ].join("\n")
+  await fs.promises.writeFile(
+    ambientModulePath,
+    "declare module 'layout-tools' { export const value: number }\n",
+    "utf8",
+  )
   await fs.promises.writeFile(documentPath, source, "utf8")
   const prefixStart = source.indexOf("RenderingMo", source.indexOf("const selected"))
   const memberPrefixStart = source.lastIndexOf("Com")
   const modulePrefixStart = source.lastIndexOf("LayoutTo")
+  const externalModulePrefixStart = source.lastIndexOf("lay")
   const session = new LspSession({
     command: process.execPath,
     args: [path.join(projectRoot, "dist", "server.cjs"), "--stdio"],
@@ -454,6 +462,26 @@ test("maps enum and module completion families to their LSP kinds", async (t) =>
   const layoutTools = moduleItems.filter((item) => item.label === "LayoutTools")
   assert.equal(layoutTools.length, 1, `Expected LayoutTools in ${JSON.stringify(moduleItems)}`)
   assert.equal(layoutTools[0].kind, CompletionItemKind.Module)
+
+  const externalModuleResponse = await session.request("textDocument/completion", {
+    textDocument: { uri: documentUri },
+    position: positionAt(source, externalModulePrefixStart + "lay".length),
+  })
+  assert.equal(
+    externalModuleResponse.error,
+    undefined,
+    JSON.stringify(externalModuleResponse.error),
+  )
+  const externalModuleItems = Array.isArray(externalModuleResponse.result)
+    ? externalModuleResponse.result
+    : externalModuleResponse.result?.items ?? []
+  const layoutModule = externalModuleItems.filter((item) => item.label === "layout-tools")
+  assert.equal(
+    layoutModule.length,
+    1,
+    `Expected layout-tools in ${JSON.stringify(externalModuleItems)}`,
+  )
+  assert.equal(layoutModule[0].kind, CompletionItemKind.Module)
 })
 
 test("replaces the complete identifier when completion is accepted mid-token", async (t) => {
