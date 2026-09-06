@@ -262,13 +262,23 @@ test("decodes a query-by-reference request as a deeply immutable transport snaps
   assert.equal(request.args.position.line, 7)
 })
 
-test("accepts only the version-1 semantic method allowlist with exact argument families", (t) => {
+test("accepts only the current semantic method allowlist with exact argument families", (t) => {
   const protocol = buildDriver(t)
   const position = { position: { line: 1, character: 2 } }
   const range = {
     range: {
       start: { line: 1, character: 2 },
       end: { line: 3, character: 4 },
+    },
+  }
+  const callHierarchyItem = {
+    uri: "file:///workspace/Main.ets",
+    name: "build",
+    kind: "method",
+    range: range.range,
+    selectionRange: {
+      start: { line: 1, character: 2 },
+      end: { line: 1, character: 4 },
     },
   }
   const cases = [
@@ -301,6 +311,9 @@ test("accepts only the version-1 semantic method allowlist with exact argument f
       ...position,
       triggerReason: { kind: "characterTyped", triggerCharacter: "(" },
     }],
+    ["prepareCallHierarchy", position],
+    ["outgoingCalls", { item: callHierarchyItem, sourceFingerprint: "a".repeat(64) }],
+    ["incomingCalls", { item: callHierarchyItem, sourceFingerprint: "b".repeat(64) }],
   ]
 
   assert.deepEqual(protocol.SEMANTIC_WORKER_METHODS, cases.map(([method]) => method))

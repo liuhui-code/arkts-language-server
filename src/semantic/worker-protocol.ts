@@ -1,6 +1,6 @@
 import { fileURLToPath, pathToFileURL } from "node:url"
 
-export const SEMANTIC_WORKER_PROTOCOL_VERSION = 1 as const
+export const SEMANTIC_WORKER_PROTOCOL_VERSION = 2 as const
 export const MAX_SEMANTIC_WORKER_TEXT_BYTES = 4 * 1024 * 1024
 export const MAX_SEMANTIC_WORKER_ARGS_BYTES = 256 * 1024
 export const MAX_SEMANTIC_WORKER_MESSAGE_BYTES = 8 * 1024 * 1024
@@ -8,6 +8,10 @@ export const MAX_SEMANTIC_WORKER_FILE_CHANGES = 1_024
 export const MAX_SEMANTIC_WORKER_URI_BYTES = 16 * 1024
 export const MAX_SEMANTIC_WORKER_VALUE_DEPTH = 32
 export const MAX_SEMANTIC_WORKER_VALUE_NODES = 65_536
+export const MAX_SEMANTIC_WORKER_CALL_HIERARCHY_PREPARE_ITEMS = 16
+export const MAX_SEMANTIC_WORKER_CALL_HIERARCHY_EDGES = 256
+export const MAX_SEMANTIC_WORKER_CALL_HIERARCHY_RANGES_PER_EDGE = 64
+export const MAX_SEMANTIC_WORKER_CALL_HIERARCHY_TOTAL_RANGES = 2_048
 
 const sharedArrayBufferByteLengthGetter = Object.getOwnPropertyDescriptor(
   SharedArrayBuffer.prototype,
@@ -53,6 +57,9 @@ export const SEMANTIC_WORKER_METHODS = Object.freeze([
   "resolveCodeAction",
   "hover",
   "signatureHelp",
+  "prepareCallHierarchy",
+  "outgoingCalls",
+  "incomingCalls",
 ] as const)
 
 export type SemanticWorkerMethod = typeof SEMANTIC_WORKER_METHODS[number]
@@ -146,6 +153,95 @@ export interface SemanticWorkerRange {
   readonly end: SemanticWorkerPosition
 }
 
+export const SEMANTIC_WORKER_CALL_HIERARCHY_ITEM_KINDS = Object.freeze([
+  "file",
+  "module",
+  "struct",
+  "class",
+  "interface",
+  "function",
+  "method",
+  "property",
+  "constructor",
+  "variable",
+  "constant",
+] as const)
+
+export type SemanticWorkerCallHierarchyItemKind =
+  typeof SEMANTIC_WORKER_CALL_HIERARCHY_ITEM_KINDS[number]
+
+export interface SemanticWorkerCallHierarchyInputItem {
+  readonly uri: string
+  readonly name: string
+  readonly kind: SemanticWorkerCallHierarchyItemKind
+  readonly detail?: string
+  readonly range: SemanticWorkerRange
+  readonly selectionRange: SemanticWorkerRange
+}
+
+export interface SemanticWorkerCallHierarchyResultItem
+  extends SemanticWorkerCallHierarchyInputItem {
+  readonly sourceFingerprint: string
+}
+
+export type SemanticWorkerCallHierarchyPrepareResult =
+  | {
+      readonly status: "complete"
+      readonly items: readonly SemanticWorkerCallHierarchyResultItem[]
+    }
+  | {
+      readonly status: "incomplete"
+      readonly reason: SemanticWorkerCallHierarchyFailureReason
+    }
+
+export interface SemanticWorkerCallHierarchyOutgoingCall {
+  readonly to: SemanticWorkerCallHierarchyResultItem
+  readonly fromRanges: readonly SemanticWorkerRange[]
+}
+
+export type SemanticWorkerCallHierarchyOutgoingResult =
+  | {
+      readonly status: "complete"
+      readonly calls: readonly SemanticWorkerCallHierarchyOutgoingCall[]
+    }
+  | { readonly status: "stale-item" }
+  | {
+      readonly status: "incomplete"
+      readonly reason: SemanticWorkerCallHierarchyFailureReason
+    }
+
+export interface SemanticWorkerCallHierarchyIncomingCall {
+  readonly from: SemanticWorkerCallHierarchyResultItem
+  readonly fromRanges: readonly SemanticWorkerRange[]
+}
+
+export type SemanticWorkerCallHierarchyIncomingResult =
+  | {
+      readonly status: "complete"
+      readonly calls: readonly SemanticWorkerCallHierarchyIncomingCall[]
+    }
+  | { readonly status: "stale-item" }
+  | {
+      readonly status: "incomplete"
+      readonly reason: SemanticWorkerCallHierarchyFailureReason
+    }
+
+export const SEMANTIC_WORKER_CALL_HIERARCHY_FAILURE_REASONS = Object.freeze([
+  "project-membership-incomplete",
+  "source-outside-workspace",
+  "source-unavailable",
+  "source-unmappable",
+  "result-limit-exceeded",
+] as const)
+
+export type SemanticWorkerCallHierarchyFailureReason =
+  typeof SEMANTIC_WORKER_CALL_HIERARCHY_FAILURE_REASONS[number]
+
+export interface SemanticWorkerCallHierarchyFollowupArgs {
+  readonly item: SemanticWorkerCallHierarchyInputItem
+  readonly sourceFingerprint: string
+}
+
 export interface SemanticWorkerPositionArgs {
   readonly position: SemanticWorkerPosition
 }
@@ -198,7 +294,15 @@ export interface SemanticWorkerRequestArgsByMethod {
           readonly triggerCharacter?: "(" | "," | "<" | ")"
         }
   }
+  readonly prepareCallHierarchy: SemanticWorkerPositionArgs
+  readonly outgoingCalls: SemanticWorkerCallHierarchyFollowupArgs
+  readonly incomingCalls: SemanticWorkerCallHierarchyFollowupArgs
 }
+
+type SemanticWorkerFollowupMethod = "outgoingCalls" | "incomingCalls"
+
+export type SemanticWorkerExpectedDocumentVersion<Method extends SemanticWorkerMethod> =
+  Method extends SemanticWorkerFollowupMethod ? number | null : number
 
 export interface SemanticWorkerRequestEnvelope<
   Method extends SemanticWorkerMethod,
@@ -210,7 +314,7 @@ export interface SemanticWorkerRequestEnvelope<
   readonly requiredRevision: number
   readonly method: Method
   readonly uri: string
-  readonly expectedDocumentVersion: number
+  readonly expectedDocumentVersion: SemanticWorkerExpectedDocumentVersion<Method>
   readonly args: Args
   readonly cancelCell: SharedArrayBuffer
 }
@@ -243,6 +347,63 @@ export interface SemanticWorkerErrorResponse {
 }
 
 export type SemanticWorkerResponse = SemanticWorkerSuccessResponse | SemanticWorkerErrorResponse
+
+interface DecodedSemanticWorkerSuccessResponse {
+  readonly protocol: typeof SEMANTIC_WORKER_PROTOCOL_VERSION
+  readonly epoch: number
+  readonly id: number
+  readonly appliedRevision: number
+  readonly documentVersion: number | null
+  readonly ok: true
+  readonly value: SemanticWorkerJsonValue
+}
+
+interface DecodedSemanticWorkerErrorResponse {
+  readonly protocol: typeof SEMANTIC_WORKER_PROTOCOL_VERSION
+  readonly epoch: number
+  readonly id: number
+  readonly appliedRevision: number
+  readonly documentVersion: number | null
+  readonly ok: false
+  readonly error: SemanticWorkerError
+}
+
+type DecodedSemanticWorkerResponse =
+  | DecodedSemanticWorkerSuccessResponse
+  | DecodedSemanticWorkerErrorResponse
+
+export type SemanticWorkerResultByMethod<Method extends SemanticWorkerMethod> =
+  Method extends "prepareCallHierarchy"
+    ? SemanticWorkerCallHierarchyPrepareResult
+    : Method extends "outgoingCalls"
+      ? SemanticWorkerCallHierarchyOutgoingResult
+      : Method extends "incomingCalls"
+        ? SemanticWorkerCallHierarchyIncomingResult
+        : SemanticWorkerJsonValue
+
+export interface SemanticWorkerMethodSuccessResponse<Method extends SemanticWorkerMethod> {
+  readonly protocol: typeof SEMANTIC_WORKER_PROTOCOL_VERSION
+  readonly epoch: number
+  readonly id: number
+  readonly appliedRevision: number
+  readonly documentVersion: SemanticWorkerExpectedDocumentVersion<Method>
+  readonly ok: true
+  readonly value: SemanticWorkerResultByMethod<Method>
+}
+
+export interface SemanticWorkerMethodErrorResponse<Method extends SemanticWorkerMethod> {
+  readonly protocol: typeof SEMANTIC_WORKER_PROTOCOL_VERSION
+  readonly epoch: number
+  readonly id: number
+  readonly appliedRevision: number
+  readonly documentVersion: SemanticWorkerExpectedDocumentVersion<Method>
+  readonly ok: false
+  readonly error: SemanticWorkerError
+}
+
+export type SemanticWorkerMethodResponse<Method extends SemanticWorkerMethod> =
+  | SemanticWorkerMethodSuccessResponse<Method>
+  | SemanticWorkerMethodErrorResponse<Method>
 
 export class SemanticWorkerProtocolError extends Error {
   constructor(message: string) {
@@ -378,8 +539,13 @@ export function decodeSemanticWorkerRequest(value: unknown): SemanticWorkerReque
     || !isNonNegativeSafeInteger(input.requiredRevision)
     || !isSemanticWorkerMethod(input.method)
     || !isCanonicalSemanticWorkerFileUri(input.uri)
-    || !isNonNegativeSafeInteger(input.expectedDocumentVersion)
+    || !isExpectedDocumentVersion(input.method, input.expectedDocumentVersion)
   ) throw invalidRequest()
+  const strictCallHierarchyArgs = input.method === "prepareCallHierarchy"
+    ? decodePositionArgs(input.args)
+    : input.method === "outgoingCalls" || input.method === "incomingCalls"
+      ? decodeCallHierarchyFollowupArgs(input.args)
+      : undefined
   const canonicalArgs = canonicalizeJson(
     input.args,
     MAX_SEMANTIC_WORKER_ARGS_BYTES,
@@ -391,7 +557,11 @@ export function decodeSemanticWorkerRequest(value: unknown): SemanticWorkerReque
     || typeof canonicalArgs.value !== "object"
     || Array.isArray(canonicalArgs.value)
   ) throw invalidRequest()
-  const args = decodeRequestArgs(input.method, canonicalArgs.value)
+  const args = strictCallHierarchyArgs ?? decodeRequestArgs(input.method, canonicalArgs.value)
+  if (
+    (input.method === "outgoingCalls" || input.method === "incomingCalls")
+    && (args as SemanticWorkerCallHierarchyFollowupArgs).item.uri !== input.uri
+  ) throw invalidRequest()
   readSemanticWorkerCancellationState(input.cancelCell)
   Object.freeze(input.cancelCell as SharedArrayBuffer)
   const request = {
@@ -412,7 +582,7 @@ export function decodeSemanticWorkerRequest(value: unknown): SemanticWorkerReque
     ["requiredRevision", numberWireBytes(request.requiredRevision)],
     ["method", messageStringWireBytes(request.method)],
     ["uri", messageStringWireBytes(request.uri)],
-    ["expectedDocumentVersion", numberWireBytes(request.expectedDocumentVersion)],
+    ["expectedDocumentVersion", nullableNumberWireBytes(request.expectedDocumentVersion)],
     ["args", canonicalArgs.wireBytes],
     ["cancelCell", Int32Array.BYTES_PER_ELEMENT],
   ])
@@ -420,6 +590,13 @@ export function decodeSemanticWorkerRequest(value: unknown): SemanticWorkerReque
 }
 
 export function decodeSemanticWorkerResponse(value: unknown): SemanticWorkerResponse {
+  return decodeSemanticWorkerResponseEnvelope(value, false) as SemanticWorkerResponse
+}
+
+function decodeSemanticWorkerResponseEnvelope(
+  value: unknown,
+  allowNullDocumentVersion: boolean,
+): DecodedSemanticWorkerResponse {
   const input = ownDataRecord(value)
   if (
     !input
@@ -427,7 +604,8 @@ export function decodeSemanticWorkerResponse(value: unknown): SemanticWorkerResp
     || !isPositiveSafeInteger(input.epoch)
     || !isPositiveSafeInteger(input.id)
     || !isNonNegativeSafeInteger(input.appliedRevision)
-    || !isNonNegativeSafeInteger(input.documentVersion)
+    || (!isNonNegativeSafeInteger(input.documentVersion)
+      && !(allowNullDocumentVersion && input.documentVersion === null))
     || typeof input.ok !== "boolean"
   ) throw invalidResponse()
   if (input.ok) {
@@ -446,7 +624,7 @@ export function decodeSemanticWorkerResponse(value: unknown): SemanticWorkerResp
       invalidResponse,
       messageTooLarge,
     )
-    const response: SemanticWorkerSuccessResponse = {
+    const response: DecodedSemanticWorkerSuccessResponse = {
       protocol: SEMANTIC_WORKER_PROTOCOL_VERSION,
       epoch: input.epoch,
       id: input.id,
@@ -460,7 +638,7 @@ export function decodeSemanticWorkerResponse(value: unknown): SemanticWorkerResp
       ["epoch", numberWireBytes(response.epoch)],
       ["id", numberWireBytes(response.id)],
       ["appliedRevision", numberWireBytes(response.appliedRevision)],
-      ["documentVersion", numberWireBytes(response.documentVersion)],
+      ["documentVersion", nullableNumberWireBytes(response.documentVersion)],
       ["ok", booleanWireBytes(true)],
       ["value", canonicalValue.wireBytes],
     ])
@@ -475,7 +653,7 @@ export function decodeSemanticWorkerResponse(value: unknown): SemanticWorkerResp
     "ok",
     "error",
   ])) throw invalidResponse()
-  const response: SemanticWorkerErrorResponse = {
+  const response: DecodedSemanticWorkerErrorResponse = {
     protocol: SEMANTIC_WORKER_PROTOCOL_VERSION,
     epoch: input.epoch,
     id: input.id,
@@ -493,11 +671,262 @@ export function decodeSemanticWorkerResponse(value: unknown): SemanticWorkerResp
     ["epoch", numberWireBytes(response.epoch)],
     ["id", numberWireBytes(response.id)],
     ["appliedRevision", numberWireBytes(response.appliedRevision)],
-    ["documentVersion", numberWireBytes(response.documentVersion)],
+    ["documentVersion", nullableNumberWireBytes(response.documentVersion)],
     ["ok", booleanWireBytes(false)],
     ["error", errorBytes],
   ])
   return Object.freeze(response)
+}
+
+export function decodeSemanticWorkerResponseForMethod<Method extends SemanticWorkerMethod>(
+  method: Method,
+  value: unknown,
+): SemanticWorkerMethodResponse<Method> {
+  if (!isSemanticWorkerMethod(method)) throw invalidResponse()
+  const callHierarchyValue = isCallHierarchyMethod(method)
+    ? decodeRawCallHierarchyResponseValue(method, value)
+    : undefined
+  const response = decodeSemanticWorkerResponseEnvelope(
+    value,
+    method === "outgoingCalls" || method === "incomingCalls",
+  )
+  if (!response.ok) {
+    return response as SemanticWorkerMethodResponse<Method>
+  }
+  return Object.freeze({
+    ...response,
+    value: callHierarchyValue ?? response.value,
+  }) as SemanticWorkerMethodResponse<Method>
+}
+
+function decodeRawCallHierarchyResponseValue(
+  method: "prepareCallHierarchy" | "outgoingCalls" | "incomingCalls",
+  value: unknown,
+): SemanticWorkerCallHierarchyPrepareResult
+  | SemanticWorkerCallHierarchyOutgoingResult
+  | SemanticWorkerCallHierarchyIncomingResult
+  | undefined {
+  const response = ownDataRecord(value)
+  if (!response || typeof response.ok !== "boolean") throw invalidResponse()
+  if (!response.ok) return undefined
+  if (!hasExactKeys(response, [
+    "protocol",
+    "epoch",
+    "id",
+    "appliedRevision",
+    "documentVersion",
+    "ok",
+    "value",
+  ])) throw invalidResponse()
+  switch (method) {
+    case "prepareCallHierarchy": return decodeCallHierarchyPrepareResult(response.value)
+    case "outgoingCalls": return decodeCallHierarchyOutgoingResult(response.value)
+    case "incomingCalls": return decodeCallHierarchyIncomingResult(response.value)
+  }
+}
+
+function decodeCallHierarchyPrepareResult(
+  value: unknown,
+): SemanticWorkerCallHierarchyPrepareResult {
+  const outcome = ownDataRecord(value)
+  if (!outcome) throw invalidResponse()
+  if (outcome.status === "complete" && hasExactKeys(outcome, ["status", "items"])) {
+    return Object.freeze({
+      status: "complete",
+      items: decodeCallHierarchyResultItems(
+        outcome.items,
+        MAX_SEMANTIC_WORKER_CALL_HIERARCHY_PREPARE_ITEMS,
+      ),
+    })
+  }
+  if (
+    outcome.status === "incomplete"
+    && hasExactKeys(outcome, ["status", "reason"])
+    && isCallHierarchyFailureReason(outcome.reason)
+  ) {
+    return Object.freeze({ status: "incomplete", reason: outcome.reason })
+  }
+  throw invalidResponse()
+}
+
+function decodeCallHierarchyOutgoingResult(
+  value: unknown,
+): SemanticWorkerCallHierarchyOutgoingResult {
+  const outcome = ownDataRecord(value)
+  if (!outcome) throw invalidResponse()
+  if (outcome.status === "complete" && hasExactKeys(outcome, ["status", "calls"])) {
+    return Object.freeze({
+      status: "complete",
+      calls: decodeCallHierarchyOutgoingCalls(outcome.calls),
+    })
+  }
+  if (outcome.status === "stale-item" && hasExactKeys(outcome, ["status"])) {
+    return Object.freeze({ status: "stale-item" })
+  }
+  if (
+    outcome.status === "incomplete"
+    && hasExactKeys(outcome, ["status", "reason"])
+    && isCallHierarchyFailureReason(outcome.reason)
+  ) {
+    return Object.freeze({ status: "incomplete", reason: outcome.reason })
+  }
+  throw invalidResponse()
+}
+
+function decodeCallHierarchyOutgoingCalls(
+  value: unknown,
+): readonly SemanticWorkerCallHierarchyOutgoingCall[] {
+  if (
+    !isPlainDenseArray(value)
+    || value.length > MAX_SEMANTIC_WORKER_CALL_HIERARCHY_EDGES
+  ) throw invalidResponse()
+  const calls: SemanticWorkerCallHierarchyOutgoingCall[] = []
+  let totalRanges = 0
+  for (let index = 0; index < value.length; index += 1) {
+    const call = ownDataRecord(value[index])
+    if (!call || !hasExactKeys(call, ["to", "fromRanges"])) throw invalidResponse()
+    const fromRanges = decodeCallHierarchyRanges(
+      call.fromRanges,
+      MAX_SEMANTIC_WORKER_CALL_HIERARCHY_RANGES_PER_EDGE,
+    )
+    totalRanges += fromRanges.length
+    if (totalRanges > MAX_SEMANTIC_WORKER_CALL_HIERARCHY_TOTAL_RANGES) {
+      throw invalidResponse()
+    }
+    calls.push(Object.freeze({
+      to: decodeCallHierarchyResultItem(call.to),
+      fromRanges,
+    }))
+  }
+  return Object.freeze(calls)
+}
+
+function decodeCallHierarchyIncomingResult(
+  value: unknown,
+): SemanticWorkerCallHierarchyIncomingResult {
+  const outcome = ownDataRecord(value)
+  if (!outcome) throw invalidResponse()
+  if (outcome.status === "complete" && hasExactKeys(outcome, ["status", "calls"])) {
+    return Object.freeze({
+      status: "complete",
+      calls: decodeCallHierarchyIncomingCalls(outcome.calls),
+    })
+  }
+  if (outcome.status === "stale-item" && hasExactKeys(outcome, ["status"])) {
+    return Object.freeze({ status: "stale-item" })
+  }
+  if (
+    outcome.status === "incomplete"
+    && hasExactKeys(outcome, ["status", "reason"])
+    && isCallHierarchyFailureReason(outcome.reason)
+  ) {
+    return Object.freeze({ status: "incomplete", reason: outcome.reason })
+  }
+  throw invalidResponse()
+}
+
+function decodeCallHierarchyIncomingCalls(
+  value: unknown,
+): readonly SemanticWorkerCallHierarchyIncomingCall[] {
+  if (
+    !isPlainDenseArray(value)
+    || value.length > MAX_SEMANTIC_WORKER_CALL_HIERARCHY_EDGES
+  ) throw invalidResponse()
+  const calls: SemanticWorkerCallHierarchyIncomingCall[] = []
+  let totalRanges = 0
+  for (let index = 0; index < value.length; index += 1) {
+    const call = ownDataRecord(value[index])
+    if (!call || !hasExactKeys(call, ["from", "fromRanges"])) throw invalidResponse()
+    const fromRanges = decodeCallHierarchyRanges(
+      call.fromRanges,
+      MAX_SEMANTIC_WORKER_CALL_HIERARCHY_RANGES_PER_EDGE,
+    )
+    totalRanges += fromRanges.length
+    if (totalRanges > MAX_SEMANTIC_WORKER_CALL_HIERARCHY_TOTAL_RANGES) {
+      throw invalidResponse()
+    }
+    calls.push(Object.freeze({
+      from: decodeCallHierarchyResultItem(call.from),
+      fromRanges,
+    }))
+  }
+  return Object.freeze(calls)
+}
+
+function decodeCallHierarchyRanges(
+  value: unknown,
+  maxRanges: number,
+): readonly SemanticWorkerRange[] {
+  if (!isPlainDenseArray(value) || value.length > maxRanges) throw invalidResponse()
+  const ranges: SemanticWorkerRange[] = []
+  for (let index = 0; index < value.length; index += 1) {
+    ranges.push(decodeResponseRange(value[index]))
+  }
+  return Object.freeze(ranges)
+}
+
+function decodeCallHierarchyResultItems(
+  value: unknown,
+  maxItems: number,
+): readonly SemanticWorkerCallHierarchyResultItem[] {
+  if (!isPlainDenseArray(value) || value.length > maxItems) throw invalidResponse()
+  const items: SemanticWorkerCallHierarchyResultItem[] = []
+  for (let index = 0; index < value.length; index += 1) {
+    items.push(decodeCallHierarchyResultItem(value[index]))
+  }
+  return Object.freeze(items)
+}
+
+function decodeCallHierarchyResultItem(value: unknown): SemanticWorkerCallHierarchyResultItem {
+  const item = ownDataRecord(value)
+  if (
+    !item
+    || !hasRequiredAndOnlyKeys(
+      item,
+      ["uri", "name", "kind", "sourceFingerprint", "range", "selectionRange"],
+      ["detail"],
+    )
+    || !isCanonicalSemanticWorkerFileUri(item.uri)
+    || typeof item.name !== "string"
+    || item.name.length === 0
+    || !isCallHierarchyItemKind(item.kind)
+    || !isSourceFingerprint(item.sourceFingerprint)
+    || (Object.hasOwn(item, "detail") && typeof item.detail !== "string")
+  ) throw invalidResponse()
+  const range = decodeResponseRange(item.range)
+  const selectionRange = decodeResponseRange(item.selectionRange)
+  if (!containsRange(range, selectionRange)) throw invalidResponse()
+  return Object.freeze({
+    uri: item.uri,
+    name: item.name,
+    kind: item.kind,
+    sourceFingerprint: item.sourceFingerprint,
+    ...(Object.hasOwn(item, "detail") ? { detail: item.detail as string } : {}),
+    range,
+    selectionRange,
+  })
+}
+
+function decodeResponseRange(value: unknown): SemanticWorkerRange {
+  const range = ownDataRecord(value)
+  if (!range || !hasExactKeys(range, ["start", "end"])) throw invalidResponse()
+  const decoded = Object.freeze({
+    start: decodeResponsePosition(range.start),
+    end: decodeResponsePosition(range.end),
+  })
+  if (comparePositions(decoded.start, decoded.end) > 0) throw invalidResponse()
+  return decoded
+}
+
+function decodeResponsePosition(value: unknown): SemanticWorkerPosition {
+  const position = ownDataRecord(value)
+  if (
+    !position
+    || !hasExactKeys(position, ["line", "character"])
+    || !isNonNegativeSafeInteger(position.line)
+    || !isNonNegativeSafeInteger(position.character)
+  ) throw invalidResponse()
+  return Object.freeze({ line: position.line, character: position.character })
 }
 
 function invalidMutation(): SemanticWorkerProtocolError {
@@ -643,6 +1072,14 @@ function isSemanticWorkerMethod(value: unknown): value is SemanticWorkerMethod {
     && (SEMANTIC_WORKER_METHODS as readonly string[]).includes(value)
 }
 
+function isCallHierarchyMethod(
+  method: SemanticWorkerMethod,
+): method is "prepareCallHierarchy" | "outgoingCalls" | "incomingCalls" {
+  return method === "prepareCallHierarchy"
+    || method === "outgoingCalls"
+    || method === "incomingCalls"
+}
+
 function decodeRequestArgs(
   method: SemanticWorkerMethod,
   value: unknown,
@@ -655,6 +1092,7 @@ function decodeRequestArgs(
     case "prepareRename":
     case "documentHighlights":
     case "hover":
+    case "prepareCallHierarchy":
       return decodePositionArgs(value)
     case "resolveCompletion":
       return decodePositionAndJsonArgs(value, "completion")
@@ -676,7 +1114,53 @@ function decodeRequestArgs(
       return decodeJsonFieldArgs(value, "action")
     case "signatureHelp":
       return decodeSignatureHelpArgs(value)
+    case "outgoingCalls":
+    case "incomingCalls":
+      return decodeCallHierarchyFollowupArgs(value)
   }
+}
+
+function decodeCallHierarchyFollowupArgs(
+  value: unknown,
+): SemanticWorkerCallHierarchyFollowupArgs {
+  const args = ownDataRecord(value)
+  if (
+    !args
+    || !hasExactKeys(args, ["item", "sourceFingerprint"])
+    || !isSourceFingerprint(args.sourceFingerprint)
+  ) throw invalidRequest()
+  return Object.freeze({
+    item: decodeCallHierarchyInputItem(args.item),
+    sourceFingerprint: args.sourceFingerprint,
+  })
+}
+
+function decodeCallHierarchyInputItem(value: unknown): SemanticWorkerCallHierarchyInputItem {
+  const item = ownDataRecord(value)
+  if (
+    !item
+    || !hasRequiredAndOnlyKeys(
+      item,
+      ["uri", "name", "kind", "range", "selectionRange"],
+      ["detail"],
+    )
+    || !isCanonicalSemanticWorkerFileUri(item.uri)
+    || typeof item.name !== "string"
+    || item.name.length === 0
+    || !isCallHierarchyItemKind(item.kind)
+    || (Object.hasOwn(item, "detail") && typeof item.detail !== "string")
+  ) throw invalidRequest()
+  const range = decodeOrderedRange(item.range)
+  const selectionRange = decodeOrderedRange(item.selectionRange)
+  if (!containsRange(range, selectionRange)) throw invalidRequest()
+  return Object.freeze({
+    uri: item.uri,
+    name: item.name,
+    kind: item.kind,
+    ...(Object.hasOwn(item, "detail") ? { detail: item.detail as string } : {}),
+    range,
+    selectionRange,
+  })
 }
 
 function decodePositionArgs(value: unknown): SemanticWorkerPositionArgs {
@@ -743,6 +1227,21 @@ function decodeRange(value: unknown): SemanticWorkerRange {
     start: decodePosition(range.start),
     end: decodePosition(range.end),
   })
+}
+
+function decodeOrderedRange(value: unknown): SemanticWorkerRange {
+  const range = decodeRange(value)
+  if (comparePositions(range.start, range.end) > 0) throw invalidRequest()
+  return range
+}
+
+function containsRange(outer: SemanticWorkerRange, inner: SemanticWorkerRange): boolean {
+  return comparePositions(outer.start, inner.start) <= 0
+    && comparePositions(inner.end, outer.end) <= 0
+}
+
+function comparePositions(left: SemanticWorkerPosition, right: SemanticWorkerPosition): number {
+  return left.line - right.line || left.character - right.character
 }
 
 function decodeFoldingRangeArgs(
@@ -1148,6 +1647,22 @@ function ownDataRecord(value: unknown): Record<string, unknown> | undefined {
   return copy
 }
 
+function isPlainDenseArray(value: unknown): value is unknown[] {
+  if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) return false
+  const keys = Reflect.ownKeys(value)
+  if (
+    keys.length !== value.length + 1
+    || keys.some((key, index) => index < value.length
+      ? key !== String(index)
+      : key !== "length")
+  ) return false
+  for (let index = 0; index < value.length; index += 1) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index))
+    if (!descriptor?.enumerable || !("value" in descriptor)) return false
+  }
+  return true
+}
+
 function hasExactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
   const keys = Object.keys(value)
   return keys.length === expected.length && expected.every(key => Object.hasOwn(value, key))
@@ -1172,6 +1687,32 @@ function isPositiveSafeInteger(value: unknown): value is number {
 
 function isNonNegativeSafeInteger(value: unknown): value is number {
   return Number.isSafeInteger(value) && (value as number) >= 0
+}
+
+function isExpectedDocumentVersion(
+  method: SemanticWorkerMethod,
+  value: unknown,
+): boolean {
+  return isNonNegativeSafeInteger(value)
+    || ((method === "outgoingCalls" || method === "incomingCalls") && value === null)
+}
+
+function isCallHierarchyItemKind(
+  value: unknown,
+): value is SemanticWorkerCallHierarchyItemKind {
+  return typeof value === "string"
+    && (SEMANTIC_WORKER_CALL_HIERARCHY_ITEM_KINDS as readonly string[]).includes(value)
+}
+
+function isCallHierarchyFailureReason(
+  value: unknown,
+): value is SemanticWorkerCallHierarchyFailureReason {
+  return typeof value === "string"
+    && (SEMANTIC_WORKER_CALL_HIERARCHY_FAILURE_REASONS as readonly string[]).includes(value)
+}
+
+function isSourceFingerprint(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{64}$/.test(value)
 }
 
 export function isCanonicalSemanticWorkerFileUri(value: unknown): value is string {
@@ -1241,6 +1782,10 @@ function messageStringWireBytes(value: string): number {
 
 function numberWireBytes(value: number): number {
   return String(Object.is(value, -0) ? 0 : value).length
+}
+
+function nullableNumberWireBytes(value: unknown): number {
+  return value === null ? 4 : numberWireBytes(value as number)
 }
 
 function booleanWireBytes(value: boolean): number {
