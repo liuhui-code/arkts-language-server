@@ -10,6 +10,7 @@ import type { ProjectResolverPort } from "../contracts/project-resolver.js"
 import type {
   SemanticCallHierarchyItem,
   SemanticCallHierarchyItemQuery,
+  SemanticCallHierarchyIncomingOutcome,
   SemanticCallHierarchyOutgoingOutcome,
   SemanticCallHierarchyPrepareOutcome,
   SemanticCodeAction,
@@ -296,29 +297,54 @@ export class LegacySemanticEngine implements SemanticEnginePort {
 
   async outgoingCalls(
     query: SemanticCallHierarchyItemQuery,
-  ): Promise<VersionedSemanticResult<SemanticCallHierarchyOutgoingOutcome>> {
+  ): Promise<SemanticCallHierarchyOutgoingOutcome> {
     assertActive(query.signal)
-    this.sync(query.document)
-    const prepared = this.prepare(
-      query.document,
+    const prepared = this.prepareCallHierarchySource(
+      query.source,
       query.item.selectionRange.start,
     )
     const result = prepared.engine.outgoingCalls(
       prepared.position,
       toLegacyCallHierarchyItem(query.item),
     )
-    return {
-      documentVersion: query.document.version,
-      value: result.status === "complete"
-        ? {
-            status: "complete",
-            calls: result.calls.map((call) => ({
-              to: toPublicCallHierarchyItem(call.to),
-              fromRanges: call.fromRanges.map(toPublicRange),
-            })),
-          }
-        : result,
+    return result.status === "complete"
+      ? {
+          status: "complete",
+          calls: result.calls.map((call) => ({
+            to: toPublicCallHierarchyItem(call.to),
+            fromRanges: call.fromRanges.map(toPublicRange),
+          })),
+        }
+      : result
+  }
+
+  async incomingCalls(
+    query: SemanticCallHierarchyItemQuery,
+  ): Promise<SemanticCallHierarchyIncomingOutcome> {
+    assertActive(query.signal)
+    const workspaceRoot = fileURLToPath(query.source.workspaceRootUri)
+    const membershipRefresh = this.documents.refreshProjectMembership(workspaceRoot)
+    if (membershipRefresh.removedPaths.length > 0) {
+      return { status: "incomplete", reason: "source-unavailable" }
     }
+    const prepared = this.prepareCallHierarchySource(
+      query.source,
+      query.item.selectionRange.start,
+      true,
+    )
+    const result = prepared.engine.incomingCalls(
+      prepared.position,
+      toLegacyCallHierarchyItem(query.item),
+    )
+    return result.status === "complete"
+      ? {
+          status: "complete",
+          calls: result.calls.map((call) => ({
+            from: toPublicCallHierarchyItem(call.from),
+            fromRanges: call.fromRanges.map(toPublicRange),
+          })),
+        }
+      : result
   }
 
   async foldingRanges(
@@ -477,6 +503,38 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     )
     return { engine, position: legacyPosition }
   }
+
+  private prepareCallHierarchySource(
+    source: SemanticCallHierarchyItemQuery["source"],
+    position: TextPosition,
+    includeWorkspaceFiles = false,
+  ) {
+    const documentUri = source.kind === "open" ? source.document.uri : source.uri
+    const workspaceRoot = fileURLToPath(source.workspaceRootUri)
+    const legacyPosition: SemanticDocumentPosition = {
+      path: fileURLToPath(documentUri),
+      line: position.line + 1,
+      column: position.character + 1,
+      workspaceRoot,
+      ...(source.kind === "open" ? { documentVersion: source.document.version } : {}),
+    }
+    const workspace = source.kind === "open"
+      ? (() => {
+          this.documents.sync({
+            path: legacyPosition.path,
+            content: source.document.text,
+            documentVersion: source.document.version,
+            workspaceRoot,
+          })
+          return this.documents.prepare(legacyPosition, includeWorkspaceFiles)
+        })()
+      : this.documents.prepareDiskSnapshot(
+          legacyPosition,
+          source.text,
+          includeWorkspaceFiles,
+        )
+    return { engine: this.engines.prepare(workspace), position: legacyPosition }
+  }
 }
 
 function toLegacyPosition(
@@ -556,6 +614,7 @@ function toPublicCallHierarchyItem(
     uri: pathToFileURL(item.path).href,
     name: item.name,
     kind: item.kind,
+    ...(item.sourceFingerprint ? { sourceFingerprint: item.sourceFingerprint } : {}),
     range: toPublicRange(item.range),
     selectionRange: toPublicRange(item.selectionRange),
     ...(item.detail ? { detail: item.detail } : {}),
@@ -569,6 +628,7 @@ function toLegacyCallHierarchyItem(
     path: fileURLToPath(item.uri),
     name: item.name,
     kind: item.kind,
+    ...(item.sourceFingerprint ? { sourceFingerprint: item.sourceFingerprint } : {}),
     range: toLegacyRange(item.range),
     selectionRange: toLegacyRange(item.selectionRange),
     ...(item.detail ? { detail: item.detail } : {}),

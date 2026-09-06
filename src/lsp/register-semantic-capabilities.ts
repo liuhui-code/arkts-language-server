@@ -20,6 +20,7 @@ import {
  * editor-neutral and the extracted core has no vscode-languageserver import.
  */
 import type {
+  SemanticCallHierarchyIncomingOutcome,
   SemanticCallHierarchyOutgoingOutcome,
   SemanticCallHierarchyPrepareOutcome,
   SemanticDocumentSymbol,
@@ -37,9 +38,14 @@ import type {
 } from "../contracts/semantic-engine.js"
 import {
   assertCallHierarchyPrepareParams,
+  assertCallHierarchyIncomingWorkBudget,
+  assertCallHierarchyOutgoingWorkBudget,
+  assertCallHierarchyPrepareWorkBudget,
   boundedCallHierarchyItems,
+  boundedIncomingCalls,
   boundedOutgoingCalls,
   incompleteCallHierarchy,
+  parseCallHierarchyIncomingItem,
   parseCallHierarchyOutgoingItem,
   staleCallHierarchy,
 } from "./call-hierarchy-adapter.js"
@@ -163,12 +169,21 @@ export function registerSemanticCapabilities({
 
   connection.languages.callHierarchy.onPrepare(async (params, token) => {
     assertCallHierarchyPrepareParams(params)
-    const outcome = await requests.run<SemanticCallHierarchyPrepareOutcome | { status: "stale" }>({
+    const rootUri = requests.callHierarchyRootUri(params.textDocument.uri)
+    if (!rootUri) throw incompleteCallHierarchy("source-outside-workspace")
+    const outcome = await requests.runCallHierarchyPrepare<
+      SemanticCallHierarchyPrepareOutcome | { status: "stale" }
+    >({
       method: "textDocument/prepareCallHierarchy",
       documentUri: params.textDocument.uri,
+      rootUri,
       token,
       fallback: { status: "stale" },
-      scope: "workspace",
+      incomplete: (reason) => ({ status: "incomplete", reason }),
+      preflight: (result) => {
+        if (result.status === "complete") assertCallHierarchyPrepareWorkBudget(result.items)
+      },
+      resultItems: (result) => result.status === "complete" ? result.items : [],
       execute: (document, signal) => semantic.prepareCallHierarchy({
         document,
         position: params.position,
@@ -177,25 +192,60 @@ export function registerSemanticCapabilities({
     })
     if (outcome.status === "stale") throw staleCallHierarchy()
     if (outcome.status === "incomplete") throw incompleteCallHierarchy(outcome.reason)
-    const items = boundedCallHierarchyItems(outcome.items)
+    const items = boundedCallHierarchyItems(outcome.items, rootUri)
     return items.length > 0 ? items : null
   })
 
   connection.languages.callHierarchy.onOutgoingCalls(async (params, token) => {
-    const item = parseCallHierarchyOutgoingItem(params)
-    const outcome = await requests.run<SemanticCallHierarchyOutgoingOutcome | { status: "stale" }>({
+    const { item, rootUri } = parseCallHierarchyOutgoingItem(params)
+    const outcome = await requests.runCallHierarchy<
+      SemanticCallHierarchyOutgoingOutcome | { status: "stale" }
+    >({
       method: "callHierarchy/outgoingCalls",
       documentUri: item.uri,
+      rootUri,
       token,
       fallback: { status: "stale" },
-      scope: "workspace",
-      execute: (document, signal) => semantic.outgoingCalls({ document, item, signal }),
+      incomplete: (reason) => ({ status: "incomplete", reason }),
+      preflight: (result) => {
+        if (result.status === "complete") assertCallHierarchyOutgoingWorkBudget(result.calls)
+      },
+      resultItems: (result) => result.status === "complete"
+        ? result.calls.map((call) => call.to)
+        : [],
+      execute: (source, signal) => semantic.outgoingCalls({ source, item, signal }),
     })
     if (outcome.status === "stale" || outcome.status === "stale-item") {
       throw staleCallHierarchy()
     }
     if (outcome.status === "incomplete") throw incompleteCallHierarchy(outcome.reason)
-    return boundedOutgoingCalls(outcome.calls)
+    return boundedOutgoingCalls(outcome.calls, rootUri)
+  })
+
+  connection.languages.callHierarchy.onIncomingCalls(async (params, token) => {
+    const { item, rootUri } = parseCallHierarchyIncomingItem(params)
+    const outcome = await requests.runCallHierarchy<
+      SemanticCallHierarchyIncomingOutcome | { status: "stale" }
+    >({
+      method: "callHierarchy/incomingCalls",
+      documentUri: item.uri,
+      rootUri,
+      token,
+      fallback: { status: "stale" },
+      incomplete: (reason) => ({ status: "incomplete", reason }),
+      preflight: (result) => {
+        if (result.status === "complete") assertCallHierarchyIncomingWorkBudget(result.calls)
+      },
+      resultItems: (result) => result.status === "complete"
+        ? result.calls.map((call) => call.from)
+        : [],
+      execute: (source, signal) => semantic.incomingCalls({ source, item, signal }),
+    })
+    if (outcome.status === "stale" || outcome.status === "stale-item") {
+      throw staleCallHierarchy()
+    }
+    if (outcome.status === "incomplete") throw incompleteCallHierarchy(outcome.reason)
+    return boundedIncomingCalls(outcome.calls, rootUri)
   })
 
   connection.onDocumentHighlight(async (params, token) => {

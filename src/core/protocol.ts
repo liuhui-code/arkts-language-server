@@ -164,6 +164,7 @@ export interface SemanticCallHierarchyItemInfo {
   path: string
   name: string
   kind: SemanticCallHierarchyItemKind
+  sourceFingerprint?: string
   detail?: string
   range: SemanticTextRange
   selectionRange: SemanticTextRange
@@ -174,7 +175,14 @@ export interface SemanticCallHierarchyOutgoingCallInfo {
   fromRanges: SemanticTextRange[]
 }
 
+export interface SemanticCallHierarchyIncomingCallInfo {
+  from: SemanticCallHierarchyItemInfo
+  fromRanges: SemanticTextRange[]
+}
+
 export type SemanticCallHierarchyFailureReason =
+  | "project-membership-incomplete"
+  | "source-outside-workspace"
   | "source-unavailable"
   | "source-unmappable"
   | "result-limit-exceeded"
@@ -185,6 +193,11 @@ export type SemanticCallHierarchyPrepareQueryResult =
 
 export type SemanticCallHierarchyOutgoingQueryResult =
   | { status: "complete"; calls: SemanticCallHierarchyOutgoingCallInfo[] }
+  | { status: "stale-item" }
+  | { status: "incomplete"; reason: SemanticCallHierarchyFailureReason }
+
+export type SemanticCallHierarchyIncomingQueryResult =
+  | { status: "complete"; calls: SemanticCallHierarchyIncomingCallInfo[] }
   | { status: "stale-item" }
   | { status: "incomplete"; reason: SemanticCallHierarchyFailureReason }
 

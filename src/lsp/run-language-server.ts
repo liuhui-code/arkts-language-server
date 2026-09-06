@@ -41,6 +41,7 @@ import {
   CodeActionResolutionStore,
   type CodeActionResolutionData,
 } from "./code-action-resolution-store.js"
+import { CallHierarchySourceAuthority } from "./call-hierarchy-source-authority.js"
 import { toLspDiagnostic } from "./diagnostic-mapper.js"
 import { RequestFreshness } from "./request-freshness.js"
 import {
@@ -140,10 +141,16 @@ export function runLanguageServer(services?: LanguageServerServices): void {
       throw new ResponseError(ErrorCodes.InvalidRequest, "Language server is shutting down")
     }
   }
+  const callHierarchySources = new CallHierarchySourceAuthority({
+    documents,
+    snapshot: (document) => snapshot(document, projects),
+    workspaceRoots: () => workspaceRoots,
+  })
   const requests = new SemanticRequestRunner({
     documents,
     freshness,
     logger,
+    callHierarchySources,
     assertRunning,
     snapshot: (document) => snapshot(document, projects),
   })
@@ -163,7 +170,10 @@ export function runLanguageServer(services?: LanguageServerServices): void {
   connection.onInitialize((params: InitializeParams) => {
     const rootUris = initialRootUris(params)
     projects.configure(rootUris)
-    workspaceRoots = rootUris.map((rootUri) => ({ id: rootUri, rootUri }))
+    workspaceRoots = rootUris.map((rootUri) => ({
+      id: projects.projectFor(rootUri).id,
+      rootUri,
+    }))
     workspaceFileChanges = new WorkspaceFileChangeCoordinator({ rootUris })
     supportsWatchedFileRegistration = params.capabilities.workspace
       ?.didChangeWatchedFiles?.dynamicRegistration === true

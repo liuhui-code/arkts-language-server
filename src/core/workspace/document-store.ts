@@ -21,6 +21,7 @@ const MAX_WATCHED_CHANGED_PATHS = 512
 const SOURCE_EXTENSIONS = [".ets", ".ts"]
 const MAX_REPLAY_DOCUMENTS = 32
 const MAX_REPLAY_BYTES = 4 * 1024 * 1024
+export const MAX_DISK_SNAPSHOT_BYTES = 4 * 1024 * 1024
 
 interface DocumentRecord extends WorkspaceDocument {
   contentGeneration: number
@@ -46,12 +47,13 @@ interface DependencyClosureResult {
 export interface ProjectMembershipSnapshot {
   paths: string[]
   status: "complete" | "partial"
-  reason?: "path-count-limit" | "path-byte-limit" | "enumeration-error"
+  reason?: "path-count-limit" | "path-byte-limit" | "enumeration-error" | "source-unavailable"
   revision: number
 }
 
 interface ProjectFileSetCacheEntry extends ProjectMembershipSnapshot {
   pathBytes: number
+  diskIdentities: Map<string, string>
 }
 
 export interface SemanticDocumentStoreOptions {
@@ -88,6 +90,11 @@ export interface WorkspaceFileChangeBatch {
     path: string
     kind: "created" | "changed" | "deleted"
   }>
+}
+
+export interface ProjectMembershipRefresh {
+  changed: boolean
+  removedPaths: string[]
 }
 
 export class SemanticDocumentStore {
@@ -234,6 +241,42 @@ export class SemanticDocumentStore {
     this.projectFileSets.delete(canonicalWorkspaceRoot(rootPath))
   }
 
+  refreshProjectMembership(rootPath: string): ProjectMembershipRefresh {
+    const canonicalRoot = canonicalWorkspaceRoot(rootPath)
+    const previous = this.projectFileSets.get(canonicalRoot)
+    if (!previous) return { changed: false, removedPaths: [] }
+    this.projectFileSets.delete(canonicalRoot)
+    this.projectMembership(rootPath)
+    const current = this.projectFileSets.get(canonicalRoot)
+    if (!current) return { changed: true, removedPaths: [...previous.paths] }
+    const membershipUnchanged = current.status === previous.status
+      && current.reason === previous.reason
+      && current.paths.length === previous.paths.length
+      && current.paths.every((filePath, index) => filePath === previous.paths[index])
+    if (membershipUnchanged) current.revision = previous.revision
+    const currentPaths = new Set(current.paths)
+    const removedPaths = current.status === "complete"
+      ? previous.paths.filter((filePath) => !currentPaths.has(filePath))
+      : []
+    const changedPaths = current.paths.filter((filePath) => (
+      current.diskIdentities.get(filePath) !== previous.diskIdentities.get(filePath)
+    ))
+    this.invalidateDiskDocuments([...removedPaths, ...changedPaths])
+    for (const filePath of removedPaths) {
+      this.markWatchedRemoved(canonicalRoot, filePath)
+    }
+    for (const filePath of changedPaths) {
+      this.markWatchedChanged(canonicalRoot, filePath)
+    }
+    if (removedPaths.length > 0 || changedPaths.length > 0) {
+      this.contentRevisions.set(canonicalRoot, (this.contentRevisions.get(canonicalRoot) ?? 0) + 1)
+    }
+    return {
+      changed: !membershipUnchanged || removedPaths.length > 0 || changedPaths.length > 0,
+      removedPaths,
+    }
+  }
+
   workspaceFilesChanged(batch: WorkspaceFileChangeBatch): void {
     const canonicalRoot = canonicalWorkspaceRoot(batch.rootPath)
     if (batch.rootDirty) {
@@ -271,6 +314,7 @@ export class SemanticDocumentStore {
           if (index >= 0) {
             paths.splice(index, 1)
             if (entry) entry.pathBytes -= Buffer.byteLength(sourcePath)
+            entry?.diskIdentities.delete(sourcePath)
             membershipChanged = true
           }
         }
@@ -303,7 +347,11 @@ export class SemanticDocumentStore {
       }
       paths.push(sourcePath)
       paths.sort()
-      if (entry) entry.pathBytes += Buffer.byteLength(sourcePath)
+      if (entry) {
+        entry.pathBytes += Buffer.byteLength(sourcePath)
+        const stat = safeStat(sourcePath)
+        if (stat?.isFile()) entry.diskIdentities.set(sourcePath, sourceStatIdentity(stat))
+      }
       membershipChanged = true
     }
     if (entry && membershipChanged) entry.revision = ++this.projectMembershipRevision
@@ -313,14 +361,26 @@ export class SemanticDocumentStore {
   }
 
   private invalidateDiskDocument(filePath: string): void {
-    const cached = this.documents.get(filePath)
-    if (cached?.overlay) return
-    if (cached) {
-      this.documents.delete(filePath)
-      this.cachedBytes -= Buffer.byteLength(cached.content)
+    this.invalidateDiskDocuments([filePath])
+  }
+
+  private invalidateDiskDocuments(filePaths: Iterable<string>): void {
+    const invalidatedPaths = new Set<string>()
+    for (const filePath of filePaths) {
+      const cached = this.documents.get(filePath)
+      if (cached?.overlay) continue
+      invalidatedPaths.add(filePath)
+      if (cached) {
+        this.documents.delete(filePath)
+        this.cachedBytes -= Buffer.byteLength(cached.content)
+      }
     }
+    if (invalidatedPaths.size === 0) return
     for (const [ownerPath, closure] of this.dependencyClosures) {
-      if (ownerPath === filePath || closure.paths.includes(filePath)) {
+      if (
+        invalidatedPaths.has(ownerPath)
+        || closure.paths.some((closurePath) => invalidatedPaths.has(closurePath))
+      ) {
         this.dependencyClosures.delete(ownerPath)
       }
     }
@@ -378,6 +438,69 @@ export class SemanticDocumentStore {
     const canonicalRoot = canonicalWorkspaceRoot(rootPath)
     const previousCurrent = this.documents.get(currentPath)
     const current = this.loadCurrent(currentPath, position)
+    return this.prepareFromCurrent(
+      currentPath,
+      rootPath,
+      canonicalRoot,
+      previousCurrent,
+      current,
+      includeWorkspaceFiles,
+    )
+  }
+
+  prepareDiskSnapshot(
+    position: SemanticDocumentPosition,
+    content: string,
+    includeWorkspaceFiles = false,
+  ): SemanticWorkspaceView {
+    if (Buffer.byteLength(content) > MAX_DISK_SNAPSHOT_BYTES) {
+      throw new RangeError(`Disk snapshot exceeds ${MAX_DISK_SNAPSHOT_BYTES} bytes`)
+    }
+    const currentPath = path.resolve(position.path)
+    const rootPath = position.workspaceRoot
+      ? path.resolve(position.workspaceRoot)
+      : resolveWorkspaceRoot(currentPath)
+    const canonicalRoot = canonicalWorkspaceRoot(rootPath)
+    const previousCurrent = this.documents.get(currentPath)
+    if (previousCurrent?.overlay) {
+      throw new Error(`Cannot replace open overlay with disk snapshot for ${currentPath}`)
+    }
+    let current: DocumentRecord
+    if (previousCurrent?.available && previousCurrent.content === content) {
+      previousCurrent.lastAccess = ++this.accessClock
+      previousCurrent.workspaceRoot = canonicalRoot
+      previousCurrent.diskFingerprint = null
+      current = previousCurrent
+    } else {
+      current = this.store(
+        currentPath,
+        content,
+        (previousCurrent?.contentGeneration ?? 0) + 1,
+        null,
+        true,
+        undefined,
+        false,
+        canonicalRoot,
+      )
+    }
+    return this.prepareFromCurrent(
+      currentPath,
+      rootPath,
+      canonicalRoot,
+      previousCurrent,
+      current,
+      includeWorkspaceFiles,
+    )
+  }
+
+  private prepareFromCurrent(
+    currentPath: string,
+    rootPath: string,
+    canonicalRoot: string,
+    previousCurrent: DocumentRecord | undefined,
+    current: DocumentRecord,
+    includeWorkspaceFiles: boolean,
+  ): SemanticWorkspaceView {
     const closureResult = this.collectDependencyClosure(current, previousCurrent === current)
     const closure = closureResult.entries
     const loadedPaths = new Set(closure.map(({ record }) => record.path))
@@ -519,6 +642,7 @@ export class SemanticDocumentStore {
     let pathBytes = 0
     let status: ProjectMembershipSnapshot["status"] = "complete"
     let reason: ProjectMembershipSnapshot["reason"]
+    const diskIdentities = new Map<string, string>()
     const accept = (candidate: string): boolean => {
       const sourcePath = path.resolve(candidate)
       if (seen.has(sourcePath)) return true
@@ -544,6 +668,13 @@ export class SemanticDocumentStore {
     if (status === "complete") {
       try {
         for (const sourcePath of this.enumerateWorkspaceSources(resolvedRoot)) {
+          const stat = safeStat(sourcePath)
+          if (!stat?.isFile() || stat.size > MAX_DISK_SNAPSHOT_BYTES) {
+            status = "partial"
+            reason = "source-unavailable"
+            break
+          }
+          diskIdentities.set(path.resolve(sourcePath), sourceStatIdentity(stat))
           if (!accept(sourcePath)) break
         }
       } catch {
@@ -558,6 +689,7 @@ export class SemanticDocumentStore {
       status,
       ...(reason ? { reason } : {}),
       revision: ++this.projectMembershipRevision,
+      diskIdentities,
     }
     this.projectFileSets.set(canonicalRoot, entry)
     while (this.projectFileSets.size > this.maxProjectFileSetRoots) {
@@ -609,7 +741,9 @@ export class SemanticDocumentStore {
       cached.lastAccess = ++this.accessClock
       return cached
     }
-    const content = safeRead(filePath)
+    const content = stat?.isFile() && stat.size <= MAX_DISK_SNAPSHOT_BYTES
+      ? safeRead(filePath)
+      : null
     if (content === null) {
       if (cached && !cached.available && cached.diskFingerprint === fingerprint) return cached
       return this.store(
@@ -865,10 +999,44 @@ function resolveImportPath(documentPath: string, specifier: string): string[] {
 }
 
 function safeRead(filePath: string): string | null {
+  let descriptor: number | undefined
   try {
-    return fs.readFileSync(filePath, "utf8")
+    const initial = fs.lstatSync(filePath)
+    if (!initial.isFile() && !initial.isSymbolicLink()) return null
+    descriptor = fs.openSync(
+      filePath,
+      fs.constants.O_RDONLY | (fs.constants.O_NONBLOCK ?? 0),
+    )
+    const before = fs.fstatSync(descriptor)
+    if (!before.isFile() || before.size > MAX_DISK_SNAPSHOT_BYTES) return null
+    const bytes = Buffer.allocUnsafe(before.size + 1)
+    let offset = 0
+    while (offset < bytes.length) {
+      const bytesRead = fs.readSync(descriptor, bytes, offset, bytes.length - offset, null)
+      if (bytesRead === 0) break
+      offset += bytesRead
+    }
+    const after = fs.fstatSync(descriptor)
+    if (
+      offset !== before.size
+      || before.dev !== after.dev
+      || before.ino !== after.ino
+      || before.size !== after.size
+      || before.mtimeMs !== after.mtimeMs
+      || before.ctimeMs !== after.ctimeMs
+    ) return null
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true })
+      .decode(bytes.subarray(0, offset))
   } catch {
     return null
+  } finally {
+    if (descriptor !== undefined) {
+      try {
+        fs.closeSync(descriptor)
+      } catch {
+        // The read already failed closed.
+      }
+    }
   }
 }
 
@@ -878,4 +1046,8 @@ function safeStat(filePath: string): fs.Stats | null {
   } catch {
     return null
   }
+}
+
+function sourceStatIdentity(stat: fs.Stats): string {
+  return [stat.dev, stat.ino, stat.size, stat.mtimeMs, stat.ctimeMs].join(":")
 }

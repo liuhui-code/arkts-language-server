@@ -7,6 +7,9 @@ import ts from "typescript"
 import { discoverHarmonySdk } from "../sdk/discovery.js"
 import type {
   SemanticCallHierarchyItemInfo,
+  SemanticCallHierarchyFailureReason,
+  SemanticCallHierarchyIncomingCallInfo,
+  SemanticCallHierarchyIncomingQueryResult,
   SemanticCallHierarchyItemKind,
   SemanticCallHierarchyOutgoingCallInfo,
   SemanticCallHierarchyOutgoingQueryResult,
@@ -53,6 +56,7 @@ const MAX_CALL_HIERARCHY_PREPARE_ITEMS = 16
 const MAX_CALL_HIERARCHY_EDGES = 256
 const MAX_CALL_HIERARCHY_RANGES_PER_EDGE = 64
 const MAX_CALL_HIERARCHY_TOTAL_RANGES = 2_048
+const MAX_SOURCE_FILE_BYTES = 4 * 1_024 * 1_024
 const MIN_MODULE_EXPORT_PREFIX_LENGTH = 2
 const ENGINE_VERSION = `typescript-${ts.version}-arkts-v2`
 
@@ -64,6 +68,7 @@ interface ScriptRecord {
   version: number
   documentVersion?: number
   overlay: boolean
+  sourceFingerprint: string
   bytes: number
   lastAccess: number
 }
@@ -73,6 +78,7 @@ interface LazySnapshotRecord {
   content: string
   virtualDocument: ArktsVirtualDocument
   snapshot: ts.IScriptSnapshot
+  sourceFingerprint: string
   bytes: number
 }
 
@@ -343,11 +349,21 @@ export class TypeScriptLanguageServiceEngine {
     }
 
     const calls = this.service.provideCallHierarchyOutgoingCalls(filePath, generatedOffset)
+    if (calls.length > MAX_CALL_HIERARCHY_EDGES) {
+      return { status: "incomplete", reason: "result-limit-exceeded" }
+    }
     const grouped = new Map<string, SemanticCallHierarchyOutgoingCallInfo>()
     let totalRanges = 0
+    let rawRanges = 0
     for (const call of calls) {
-      const target = this.mapCallHierarchyItem(call.to)
-      if (!target) return { status: "incomplete", reason: "source-unmappable" }
+      rawRanges += call.fromSpans.length
+      if (
+        call.fromSpans.length > MAX_CALL_HIERARCHY_RANGES_PER_EDGE
+        || rawRanges > MAX_CALL_HIERARCHY_TOTAL_RANGES
+      ) return { status: "incomplete", reason: "result-limit-exceeded" }
+      const mappedTarget = this.mapCallHierarchyItem(call.to)
+      if (mappedTarget.status === "incomplete") return mappedTarget
+      const target = mappedTarget.item
       const targetKey = callHierarchyItemKey(target)
       let edge = grouped.get(targetKey)
       if (!edge) {
@@ -376,6 +392,83 @@ export class TypeScriptLanguageServiceEngine {
 
     const normalized = [...grouped.values()].sort((left, right) => (
       compareCallHierarchyItems(left.to, right.to)
+    ))
+    return { status: "complete", calls: normalized }
+  }
+
+  incomingCalls(
+    position: SemanticDocumentPosition,
+    item: SemanticCallHierarchyItemInfo,
+  ): SemanticCallHierarchyIncomingQueryResult {
+    if (this.projectMembershipStatus !== "complete") {
+      return { status: "incomplete", reason: "project-membership-incomplete" }
+    }
+    const filePath = path.resolve(position.path)
+    const script = this.scripts.get(filePath)
+    if (!script) return { status: "incomplete", reason: "source-unavailable" }
+    const prepared = this.prepareCallHierarchyAt(position)
+    if (prepared.status !== "complete") return prepared
+    if (!prepared.items.some((candidate) => sameCallHierarchyItem(candidate, item))) {
+      return { status: "stale-item" }
+    }
+
+    const sourceOffset = exactSourceOffset(
+      script.sourceContent,
+      position.line,
+      position.column,
+    )
+    if (sourceOffset === undefined) return { status: "stale-item" }
+    const generatedOffset = script.virtualDocument.toGeneratedOffset(sourceOffset)
+    if (script.virtualDocument.toSourceOffset(generatedOffset) !== sourceOffset) {
+      return { status: "incomplete", reason: "source-unmappable" }
+    }
+
+    const calls = this.service.provideCallHierarchyIncomingCalls(filePath, generatedOffset)
+    if (calls.length > MAX_CALL_HIERARCHY_EDGES) {
+      return { status: "incomplete", reason: "result-limit-exceeded" }
+    }
+    const grouped = new Map<string, SemanticCallHierarchyIncomingCallInfo>()
+    let totalRanges = 0
+    let rawRanges = 0
+    for (const call of calls) {
+      rawRanges += call.fromSpans.length
+      if (
+        call.fromSpans.length > MAX_CALL_HIERARCHY_RANGES_PER_EDGE
+        || rawRanges > MAX_CALL_HIERARCHY_TOTAL_RANGES
+      ) return { status: "incomplete", reason: "result-limit-exceeded" }
+      const mappedCaller = this.mapCallHierarchyItem(call.from)
+      if (mappedCaller.status === "incomplete") return mappedCaller
+      const caller = mappedCaller.item
+      const callerView = this.callHierarchySourceView(path.resolve(call.from.file))
+      if (callerView.status === "incomplete") return callerView
+      const callerKey = callHierarchyItemKey(caller)
+      let edge = grouped.get(callerKey)
+      if (!edge) {
+        if (grouped.size >= MAX_CALL_HIERARCHY_EDGES) {
+          return { status: "incomplete", reason: "result-limit-exceeded" }
+        }
+        edge = { from: caller, fromRanges: [] }
+        grouped.set(callerKey, edge)
+      }
+      const seenRanges = new Set(edge.fromRanges.map(semanticRangeKey))
+      for (const span of call.fromSpans) {
+        const range = exactSourceRange(callerView.view, span)
+        if (!range) return { status: "incomplete", reason: "source-unmappable" }
+        const rangeKey = semanticRangeKey(range)
+        if (seenRanges.has(rangeKey)) continue
+        if (
+          edge.fromRanges.length >= MAX_CALL_HIERARCHY_RANGES_PER_EDGE
+          || totalRanges >= MAX_CALL_HIERARCHY_TOTAL_RANGES
+        ) return { status: "incomplete", reason: "result-limit-exceeded" }
+        seenRanges.add(rangeKey)
+        edge.fromRanges.push(range)
+        totalRanges += 1
+      }
+      edge.fromRanges.sort(compareSemanticRanges)
+    }
+
+    const normalized = [...grouped.values()].sort((left, right) => (
+      compareCallHierarchyItems(left.from, right.from)
     ))
     return { status: "complete", calls: normalized }
   }
@@ -465,6 +558,8 @@ export class TypeScriptLanguageServiceEngine {
     const filePath = path.resolve(position.path)
     const script = this.scripts.get(filePath)
     if (!script) return { status: "incomplete", reason: "source-unavailable" }
+    const pathFailure = callHierarchyPathFailure(this.rootPath, filePath, script.overlay)
+    if (pathFailure) return { status: "incomplete", reason: pathFailure }
     script.lastAccess = ++this.accessClock
     const sourceOffset = exactSourceOffset(
       script.sourceContent,
@@ -478,11 +573,15 @@ export class TypeScriptLanguageServiceEngine {
     }
     const value = this.service.prepareCallHierarchy(filePath, generatedOffset)
     const items = value ? (Array.isArray(value) ? value : [value]) : []
+    if (items.length > MAX_CALL_HIERARCHY_PREPARE_ITEMS) {
+      return { status: "incomplete", reason: "result-limit-exceeded" }
+    }
     const mapped: SemanticCallHierarchyItemInfo[] = []
     const seen = new Set<string>()
     for (const item of items) {
-      const candidate = this.mapCallHierarchyItem(item)
-      if (!candidate) return { status: "incomplete", reason: "source-unmappable" }
+      const mappedCandidate = this.mapCallHierarchyItem(item)
+      if (mappedCandidate.status === "incomplete") return mappedCandidate
+      const candidate = mappedCandidate.item
       const key = callHierarchyItemKey(candidate)
       if (seen.has(key)) continue
       if (mapped.length >= MAX_CALL_HIERARCHY_PREPARE_ITEMS) {
@@ -497,42 +596,43 @@ export class TypeScriptLanguageServiceEngine {
 
   private mapCallHierarchyItem(
     item: ts.CallHierarchyItem,
-  ): SemanticCallHierarchyItemInfo | undefined {
+  ):
+    | { status: "complete"; item: SemanticCallHierarchyItemInfo }
+    | { status: "incomplete"; reason: SemanticCallHierarchyFailureReason } {
     const filePath = path.resolve(item.file)
-    const sourceView = this.callHierarchySourceView(filePath)
-    if (!sourceView) return undefined
+    const resolvedView = this.callHierarchySourceView(filePath)
+    if (resolvedView.status === "incomplete") return resolvedView
+    const sourceView = resolvedView.view
     const selectionRange = exactSourceRange(sourceView, item.selectionSpan)
     const kind = callHierarchyItemKind(item, sourceView)
-    if (!selectionRange || !kind) return undefined
-    const mappedSpan = exactSourceRange(sourceView, item.span)
+    if (!selectionRange || !kind) return { status: "incomplete", reason: "source-unmappable" }
+    const mappedSpan = exactSourceBoundaryRange(sourceView, item.span)
     return {
-      path: filePath,
-      name: item.name,
-      kind,
-      range: mappedSpan ? unionSemanticRanges(mappedSpan, selectionRange) : selectionRange,
-      selectionRange,
-      ...(item.containerName ? { detail: item.containerName } : {}),
+      status: "complete",
+      item: {
+        path: filePath,
+        name: item.name,
+        kind,
+        sourceFingerprint: sourceView.sourceFingerprint,
+        range: mappedSpan ? unionSemanticRanges(mappedSpan, selectionRange) : selectionRange,
+        selectionRange,
+        ...(item.containerName ? { detail: item.containerName } : {}),
+      },
     }
   }
 
   private callHierarchySourceView(
     filePath: string,
-  ): ScriptRecord | LazySnapshotRecord | undefined {
+  ):
+    | { status: "complete"; view: ScriptRecord | LazySnapshotRecord }
+    | { status: "incomplete"; reason: SemanticCallHierarchyFailureReason } {
     const resident = this.scripts.get(filePath)
-    if (resident) return resident
+    const pathFailure = callHierarchyPathFailure(this.rootPath, filePath, resident?.overlay === true)
+    if (pathFailure) return { status: "incomplete", reason: pathFailure }
+    if (resident) return { status: "complete", view: resident }
     const lazy = this.loadLazySnapshot(filePath)
-    if (lazy) return lazy
-    const sourceContent = this.readSourceFile(filePath)
-    if (sourceContent === null) return undefined
-    const virtualDocument = createArktsVirtualDocument(filePath, sourceContent)
-    const content = virtualDocument.generatedContent
-    return {
-      path: filePath,
-      content,
-      virtualDocument,
-      snapshot: ts.ScriptSnapshot.fromString(content),
-      bytes: Buffer.byteLength(sourceContent) + Buffer.byteLength(content),
-    }
+    if (lazy) return { status: "complete", view: lazy }
+    return { status: "incomplete", reason: "source-unavailable" }
   }
 
   private definitionCandidates(
@@ -977,9 +1077,7 @@ export class TypeScriptLanguageServiceEngine {
       directoryExists: ts.sys.directoryExists,
       fileExists: (fileName) => {
         const filePath = path.resolve(fileName)
-        return this.scripts.has(filePath)
-          || this.projectMembershipPaths.has(filePath)
-          || ts.sys.fileExists(fileName)
+        return this.scripts.has(filePath) || isRegularBoundedFile(filePath)
       },
       getDirectories: ts.sys.getDirectories,
       readDirectory: ts.sys.readDirectory,
@@ -987,7 +1085,8 @@ export class TypeScriptLanguageServiceEngine {
         const filePath = path.resolve(fileName)
         return this.scripts.get(filePath)?.content
           ?? this.loadLazySnapshot(filePath)?.content
-          ?? ts.sys.readFile(fileName)
+          ?? safeRead(filePath)
+          ?? undefined
       },
       resolveModuleNames: (names, containingFile) => names.map((name) =>
         this.resolveModule(name, containingFile)),
@@ -1021,7 +1120,7 @@ export class TypeScriptLanguageServiceEngine {
           path.join(base, "index.ts"),
         ]
     const resolved = candidates.find((candidate) =>
-      this.scripts.has(path.resolve(candidate)) || fs.existsSync(candidate))
+      this.scripts.has(path.resolve(candidate)) || isRegularBoundedFile(candidate))
     return resolved
       ? ({ resolvedFileName: resolved, extension: ts.Extension.Ts } as ts.ResolvedModule)
       : undefined
@@ -1052,6 +1151,7 @@ export class TypeScriptLanguageServiceEngine {
       version: (previous?.version ?? 0) + 1,
       documentVersion,
       overlay,
+      sourceFingerprint: fingerprintSource(content),
       bytes,
       lastAccess: ++this.accessClock,
     })
@@ -1153,6 +1253,7 @@ export class TypeScriptLanguageServiceEngine {
       this.lazySnapshots.set(filePath, cached)
       return cached
     }
+    if (!isRegularBoundedFile(filePath)) return undefined
     const sourceContent = this.readSourceFile(filePath)
     if (sourceContent === null) return undefined
     const virtualDocument = createArktsVirtualDocument(filePath, sourceContent)
@@ -1162,6 +1263,7 @@ export class TypeScriptLanguageServiceEngine {
       content,
       virtualDocument,
       snapshot: ts.ScriptSnapshot.fromString(content),
+      sourceFingerprint: fingerprintSource(sourceContent),
       bytes: Buffer.byteLength(sourceContent) + Buffer.byteLength(content),
     }
     if (record.bytes <= this.maxLazySnapshotBytes && this.maxLazySnapshots > 0) {
@@ -1447,7 +1549,7 @@ function isArktsCallHierarchyStruct(
   item: ts.CallHierarchyItem,
   sourceView: ScriptRecord | LazySnapshotRecord,
 ): boolean {
-  const range = exactSourceRange(sourceView, item.span)
+  const range = exactSourceBoundaryRange(sourceView, item.span)
   const selection = exactSourceRange(sourceView, item.selectionSpan)
   if (!range || !selection) return false
   const source = sourceView.virtualDocument.sourceContent
@@ -1585,6 +1687,10 @@ function compareOrdinalStrings(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0
 }
 
+function fingerprintSource(source: string): string {
+  return createHash("sha256").update(source, "utf8").digest("hex")
+}
+
 function sameCallHierarchyItem(
   left: SemanticCallHierarchyItemInfo,
   right: SemanticCallHierarchyItemInfo,
@@ -1596,11 +1702,59 @@ function sameCallHierarchyItem(
 }
 
 function safeRead(filePath: string): string | null {
+  let descriptor: number | undefined
   try {
-    return fs.readFileSync(filePath, "utf8")
+    const initial = fs.lstatSync(filePath)
+    if (!initial.isFile() && !initial.isSymbolicLink()) return null
+    descriptor = fs.openSync(
+      filePath,
+      fs.constants.O_RDONLY | (fs.constants.O_NONBLOCK ?? 0),
+    )
+    const before = fs.fstatSync(descriptor)
+    if (!before.isFile() || !isBoundedSourceSize(before.size)) return null
+    const bytes = Buffer.allocUnsafe(before.size + 1)
+    let offset = 0
+    while (offset < bytes.length) {
+      const bytesRead = fs.readSync(descriptor, bytes, offset, bytes.length - offset, null)
+      if (bytesRead === 0) break
+      offset += bytesRead
+    }
+    const after = fs.fstatSync(descriptor)
+    if (offset !== before.size || !sameSourceStat(before, after)) return null
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true })
+      .decode(bytes.subarray(0, offset))
   } catch {
     return null
+  } finally {
+    if (descriptor !== undefined) {
+      try {
+        fs.closeSync(descriptor)
+      } catch {
+        // The read already failed closed.
+      }
+    }
   }
+}
+
+function isRegularBoundedFile(filePath: string): boolean {
+  try {
+    const stat = fs.statSync(filePath)
+    return stat.isFile() && isBoundedSourceSize(stat.size)
+  } catch {
+    return false
+  }
+}
+
+function isBoundedSourceSize(size: number): boolean {
+  return Number.isSafeInteger(size) && size >= 0 && size <= MAX_SOURCE_FILE_BYTES
+}
+
+function sameSourceStat(left: fs.Stats, right: fs.Stats): boolean {
+  return left.dev === right.dev
+    && left.ino === right.ino
+    && left.size === right.size
+    && left.mtimeMs === right.mtimeMs
+    && left.ctimeMs === right.ctimeMs
 }
 
 function cacheLimit(value: number | undefined, fallback: number, label: string): number {
@@ -1614,6 +1768,38 @@ function cacheLimit(value: number | undefined, fallback: number, label: string):
 function isWithinRoot(rootPath: string, filePath: string) {
   const relative = path.relative(path.resolve(rootPath), path.resolve(filePath))
   return relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)
+}
+
+function callHierarchyPathFailure(
+  rootPath: string,
+  filePath: string,
+  allowMissingSource: boolean,
+): SemanticCallHierarchyFailureReason | undefined {
+  if (!isWithinRoot(rootPath, filePath)) return "source-outside-workspace"
+  try {
+    const realRoot = fs.realpathSync(rootPath)
+    const realSource = allowMissingSource
+      ? prospectiveRealPathSync(filePath)
+      : fs.realpathSync(filePath)
+    return isWithinRoot(realRoot, realSource) ? undefined : "source-outside-workspace"
+  } catch {
+    return "source-unavailable"
+  }
+}
+
+function prospectiveRealPathSync(filePath: string): string {
+  let cursor = filePath
+  const suffix: string[] = []
+  while (true) {
+    try {
+      return path.join(fs.realpathSync(cursor), ...suffix)
+    } catch {
+      const parent = path.dirname(cursor)
+      if (parent === cursor) throw new Error(`No existing ancestor for ${filePath}`)
+      suffix.unshift(path.basename(cursor))
+      cursor = parent
+    }
+  }
 }
 
 function compareTextEdits(
@@ -1670,6 +1856,32 @@ function exactSourceRange(
       !== sourceView.virtualDocument.sourceContent.slice(sourceStart, sourceEnd)
   ) return undefined
   return sourceView.virtualDocument.generatedSpanToSourceRange(span.start, span.length)
+}
+
+function exactSourceBoundaryRange(
+  sourceView: ScriptRecord | LazySnapshotRecord,
+  span: ts.TextSpan,
+): SemanticTextRange | undefined {
+  if (
+    !Number.isSafeInteger(span.start)
+    || !Number.isSafeInteger(span.length)
+    || span.start < 0
+    || span.length <= 0
+    || span.start + span.length > sourceView.content.length
+  ) return undefined
+  const generatedEnd = span.start + span.length
+  const sourceStart = sourceView.virtualDocument.toSourceOffset(span.start)
+  const sourceEnd = sourceView.virtualDocument.toSourceOffset(generatedEnd)
+  if (
+    sourceEnd <= sourceStart
+    || sourceView.virtualDocument.toGeneratedOffset(sourceStart) !== span.start
+    || sourceView.virtualDocument.toGeneratedOffset(sourceEnd) !== generatedEnd
+  ) return undefined
+  return spanToRange(
+    sourceView.virtualDocument.sourceContent,
+    sourceStart,
+    sourceEnd - sourceStart,
+  )
 }
 
 function exactSourceOffset(

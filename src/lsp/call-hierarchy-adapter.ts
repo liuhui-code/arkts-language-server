@@ -1,9 +1,11 @@
+import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
 import {
   LSPErrorCodes,
   ResponseError,
   SymbolKind,
+  type CallHierarchyIncomingCall,
   type CallHierarchyItem,
   type CallHierarchyOutgoingCall,
   type CallHierarchyPrepareParams,
@@ -11,6 +13,7 @@ import {
 
 import type {
   SemanticCallHierarchyItem,
+  SemanticCallHierarchyIncomingCall,
   SemanticCallHierarchyItemKind,
   SemanticCallHierarchyOutgoingCall,
 } from "../contracts/semantic-engine.js"
@@ -25,6 +28,12 @@ const MAX_INPUT_ITEM_BYTES = 64 * 1_024
 const MAX_URI_BYTES = 16 * 1_024
 const MAX_NAME_BYTES = 4 * 1_024
 const MAX_DETAIL_BYTES = 16 * 1_024
+const CALL_HIERARCHY_DATA_PROTOCOL = 1
+
+export interface ParsedCallHierarchyItem {
+  item: SemanticCallHierarchyItem
+  rootUri: string
+}
 
 export function assertCallHierarchyPrepareParams(
   params: unknown,
@@ -42,29 +51,58 @@ export function assertCallHierarchyPrepareParams(
 
 export function parseCallHierarchyOutgoingItem(
   params: unknown,
-): SemanticCallHierarchyItem {
+): ParsedCallHierarchyItem {
   if (!isRecord(params) || !isValidCallHierarchyItem(params.item)) {
     throw invalidParams("Invalid call hierarchy outgoing parameters.")
   }
   const kind = toSemanticKind(params.item.kind)
   if (!kind) throw invalidParams("Unsupported call hierarchy item kind.")
+  const rootUri = callHierarchyRootUri(params.item.data)
+  if (!rootUri) throw invalidParams("Invalid call hierarchy outgoing parameters.")
   return {
-    uri: params.item.uri,
-    name: params.item.name,
-    kind,
-    range: params.item.range,
-    selectionRange: params.item.selectionRange,
-    ...(params.item.detail ? { detail: params.item.detail } : {}),
+    rootUri,
+    item: {
+      uri: params.item.uri,
+      name: params.item.name,
+      kind,
+      range: params.item.range,
+      selectionRange: params.item.selectionRange,
+      ...(params.item.detail ? { detail: params.item.detail } : {}),
+    },
+  }
+}
+
+export function parseCallHierarchyIncomingItem(
+  params: unknown,
+): ParsedCallHierarchyItem {
+  if (!isRecord(params) || !isValidCallHierarchyItem(params.item)) {
+    throw invalidParams("Invalid call hierarchy incoming parameters.")
+  }
+  const kind = toSemanticKind(params.item.kind)
+  const rootUri = callHierarchyRootUri(params.item.data)
+  if (!kind || !rootUri) throw invalidParams("Invalid call hierarchy incoming parameters.")
+  return {
+    rootUri,
+    item: {
+      uri: params.item.uri,
+      name: params.item.name,
+      kind,
+      range: params.item.range,
+      selectionRange: params.item.selectionRange,
+      ...(params.item.detail ? { detail: params.item.detail } : {}),
+    },
   }
 }
 
 export function boundedCallHierarchyItems(
   items: readonly SemanticCallHierarchyItem[],
+  rootUri: string,
 ): CallHierarchyItem[] {
+  assertCallHierarchyPrepareWorkBudget(items)
   const normalized: CallHierarchyItem[] = []
   const seen = new Set<string>()
   for (const semanticItem of items) {
-    const item = toLspItem(semanticItem)
+    const item = toLspItem(semanticItem, rootUri)
     const key = JSON.stringify(item)
     if (seen.has(key)) continue
     if (normalized.length >= MAX_PREPARE_ITEMS) {
@@ -82,11 +120,13 @@ export function boundedCallHierarchyItems(
 
 export function boundedOutgoingCalls(
   calls: readonly SemanticCallHierarchyOutgoingCall[],
+  rootUri: string,
 ): CallHierarchyOutgoingCall[] {
+  assertCallHierarchyOutgoingWorkBudget(calls)
   const grouped = new Map<string, CallHierarchyOutgoingCall>()
   let totalRanges = 0
   for (const call of calls) {
-    const to = toLspItem(call.to)
+    const to = toLspItem(call.to, rootUri)
     const targetKey = JSON.stringify(to)
     const existing = grouped.get(targetKey) ?? { to, fromRanges: [] }
     const seenRanges = new Set(existing.fromRanges.map((range) => JSON.stringify(range)))
@@ -118,6 +158,82 @@ export function boundedOutgoingCalls(
   return normalized
 }
 
+export function boundedIncomingCalls(
+  calls: readonly SemanticCallHierarchyIncomingCall[],
+  rootUri: string,
+): CallHierarchyIncomingCall[] {
+  assertCallHierarchyIncomingWorkBudget(calls)
+  const grouped = new Map<string, CallHierarchyIncomingCall>()
+  let totalRanges = 0
+  for (const call of calls) {
+    const from = toLspItem(call.from, rootUri)
+    const callerKey = JSON.stringify(from)
+    const existing = grouped.get(callerKey) ?? { from, fromRanges: [] }
+    const seenRanges = new Set(existing.fromRanges.map((range) => JSON.stringify(range)))
+    for (const range of call.fromRanges) {
+      if (!isProtocolRange(range)) throw incompleteCallHierarchy("source-unmappable")
+      const key = JSON.stringify(range)
+      if (seenRanges.has(key)) continue
+      seenRanges.add(key)
+      existing.fromRanges.push({
+        start: { ...range.start },
+        end: { ...range.end },
+      })
+      totalRanges += 1
+      if (
+        existing.fromRanges.length > MAX_RANGES_PER_EDGE
+        || totalRanges > MAX_TOTAL_RANGES
+      ) throw incompleteCallHierarchy("result-limit-exceeded")
+    }
+    existing.fromRanges.sort(compareRanges)
+    grouped.set(callerKey, existing)
+    if (grouped.size > MAX_EDGES) throw incompleteCallHierarchy("result-limit-exceeded")
+  }
+  const normalized = [...grouped.values()].sort((left, right) => (
+    compareItems(left.from, right.from)
+  ))
+  if (Buffer.byteLength(JSON.stringify(normalized)) > MAX_CALL_BYTES) {
+    throw incompleteCallHierarchy("result-limit-exceeded")
+  }
+  return normalized
+}
+
+export function assertCallHierarchyPrepareWorkBudget(
+  items: readonly SemanticCallHierarchyItem[],
+): void {
+  if (!Array.isArray(items)) throw incompleteCallHierarchy("source-unmappable")
+  if (items.length > MAX_PREPARE_ITEMS) throw incompleteCallHierarchy("result-limit-exceeded")
+}
+
+export function assertCallHierarchyOutgoingWorkBudget(
+  calls: readonly SemanticCallHierarchyOutgoingCall[],
+): void {
+  assertCallHierarchyCallWorkBudget(calls)
+}
+
+export function assertCallHierarchyIncomingWorkBudget(
+  calls: readonly SemanticCallHierarchyIncomingCall[],
+): void {
+  assertCallHierarchyCallWorkBudget(calls)
+}
+
+function assertCallHierarchyCallWorkBudget(
+  calls: readonly { fromRanges: readonly unknown[] }[],
+): void {
+  if (!Array.isArray(calls)) throw incompleteCallHierarchy("source-unmappable")
+  if (calls.length > MAX_EDGES) throw incompleteCallHierarchy("result-limit-exceeded")
+  let rawRanges = 0
+  for (const call of calls) {
+    if (!isRecord(call) || !Array.isArray(call.fromRanges)) {
+      throw incompleteCallHierarchy("source-unmappable")
+    }
+    rawRanges += call.fromRanges.length
+    if (call.fromRanges.length > MAX_RANGES_PER_EDGE || rawRanges > MAX_TOTAL_RANGES) {
+      throw incompleteCallHierarchy("result-limit-exceeded")
+    }
+  }
+}
+
 export function staleCallHierarchy(): ResponseError<void> {
   return new ResponseError(
     LSPErrorCodes.ContentModified,
@@ -146,6 +262,7 @@ function isValidCallHierarchyItem(value: unknown): value is CallHierarchyItem {
     || !isProtocolRange(value.range)
     || !isProtocolRange(value.selectionRange)
     || !containsRange(value.range, value.selectionRange)
+    || callHierarchyRootUri(value.data) === undefined
     || (value.detail !== undefined && (
       typeof value.detail !== "string"
       || Buffer.byteLength(value.detail) > MAX_DETAIL_BYTES
@@ -154,7 +271,7 @@ function isValidCallHierarchyItem(value: unknown): value is CallHierarchyItem {
   return Buffer.byteLength(JSON.stringify(value)) <= MAX_INPUT_ITEM_BYTES
 }
 
-function toLspItem(value: unknown): CallHierarchyItem {
+function toLspItem(value: unknown, rootUri: string): CallHierarchyItem {
   if (!isRecord(value)) throw incompleteCallHierarchy("source-unmappable")
   const { uri, name, kind: semanticKind, detail, range, selectionRange } = value
   if (
@@ -169,9 +286,13 @@ function toLspItem(value: unknown): CallHierarchyItem {
     || Buffer.byteLength(name) > MAX_NAME_BYTES
     || (detail !== undefined && Buffer.byteLength(detail) > MAX_DETAIL_BYTES)
   ) throw incompleteCallHierarchy("result-limit-exceeded")
+  if (isCanonicalFileUri(uri) && isCanonicalFileUri(rootUri) && !isUriWithinRoot(rootUri, uri)) {
+    throw incompleteCallHierarchy("source-outside-workspace")
+  }
   if (
     kind === undefined
     || !isCanonicalFileUri(uri)
+    || !isCanonicalFileUri(rootUri)
     || !isProtocolRange(range)
     || !isProtocolRange(selectionRange)
     || !containsRange(range, selectionRange)
@@ -188,6 +309,12 @@ function toLspItem(value: unknown): CallHierarchyItem {
     selectionRange: {
       start: { ...selectionRange.start },
       end: { ...selectionRange.end },
+    },
+    data: {
+      arktsCallHierarchy: {
+        protocol: CALL_HIERARCHY_DATA_PROTOCOL,
+        rootUri,
+      },
     },
     ...(detail ? { detail } : {}),
   }
@@ -227,7 +354,7 @@ function toLspKind(kind: SemanticCallHierarchyItemKind): SymbolKind | undefined 
   }
 }
 
-function isCanonicalFileUri(value: string): boolean {
+export function isCanonicalCallHierarchyFileUri(value: string): boolean {
   try {
     const parsed = new URL(value)
     if (
@@ -240,6 +367,34 @@ function isCanonicalFileUri(value: string): boolean {
       || parsed.href !== value
     ) return false
     return pathToFileURL(fileURLToPath(parsed)).href === value
+  } catch {
+    return false
+  }
+}
+
+function isCanonicalFileUri(value: string): boolean {
+  return isCanonicalCallHierarchyFileUri(value)
+}
+
+function callHierarchyRootUri(value: unknown): string | undefined {
+  if (!isRecord(value) || Object.keys(value).length !== 1) return undefined
+  const route = value.arktsCallHierarchy
+  if (
+    !isRecord(route)
+    || Object.keys(route).length !== 2
+    || route.protocol !== CALL_HIERARCHY_DATA_PROTOCOL
+    || typeof route.rootUri !== "string"
+    || Buffer.byteLength(route.rootUri) > MAX_URI_BYTES
+    || !isCanonicalFileUri(route.rootUri)
+  ) return undefined
+  return route.rootUri
+}
+
+function isUriWithinRoot(rootUri: string, documentUri: string): boolean {
+  try {
+    const relative = path.relative(fileURLToPath(rootUri), fileURLToPath(documentUri))
+    return relative === ""
+      || (!path.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path.sep}`))
   } catch {
     return false
   }

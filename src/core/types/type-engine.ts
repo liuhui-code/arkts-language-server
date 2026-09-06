@@ -2,6 +2,7 @@ import path from "node:path"
 
 import type {
   SemanticCallHierarchyItemInfo,
+  SemanticCallHierarchyIncomingQueryResult,
   SemanticCallHierarchyOutgoingQueryResult,
   SemanticCallHierarchyPrepareQueryResult,
   SemanticCompletionItem,
@@ -116,6 +117,10 @@ export interface SemanticTypeQueryContext {
     position: SemanticDocumentPosition,
     item: SemanticCallHierarchyItemInfo,
   ): SemanticCallHierarchyOutgoingQueryResult
+  incomingCalls(
+    position: SemanticDocumentPosition,
+    item: SemanticCallHierarchyItemInfo,
+  ): SemanticCallHierarchyIncomingQueryResult
   documentSymbols(position: SemanticDocumentPosition): SemanticDocumentSymbolInfo[]
   hover(position: SemanticDocumentPosition): SemanticHoverInfo | null
   signatureHelp(
@@ -188,6 +193,7 @@ export class SemanticTypeEngineRegistry {
       inlayHints: (position, range) => entry.engine.inlayHints(position, range),
       prepareCallHierarchy: (position) => entry.engine.prepareCallHierarchy(position),
       outgoingCalls: (position, item) => entry.engine.outgoingCalls(position, item),
+      incomingCalls: (position, item) => entry.engine.incomingCalls(position, item),
       documentSymbols: (position) => entry.engine.documentSymbols(position),
       hover: (position) => entry.engine.hover(position),
       rename: (position, newName) => entry.engine.rename(position, newName),

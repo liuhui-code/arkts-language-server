@@ -97,6 +97,100 @@ test("reuses the bounded source-path set for an unchanged canonical workspace", 
   assert.deepEqual(enumerationRoots, [path.resolve(workspaceAlias)])
 })
 
+test("refreshes membership identities without invalidating an unchanged warm cache", (t) => {
+  const workspace = createWorkspace(t, "refresh-identity", {
+    "Main.ets": "export const main = 1\n",
+    "Other.ets": "export const other = 2\n",
+  })
+  const mainPath = path.join(workspace, "Main.ets")
+  const store = new SemanticDocumentStore()
+  t.after(() => store.dispose?.())
+  const position = syncPosition(store, workspace, mainPath)
+  const first = store.prepare(position, true)
+
+  assert.deepEqual(store.refreshProjectMembership(workspace), {
+    changed: false,
+    removedPaths: [],
+  })
+  const second = store.prepare(position, true)
+  assert.equal(second.projectMembership.revision, first.projectMembership.revision)
+  assert.equal(second.state.documentCacheHit, true)
+  assert.equal(second.resetTypeEngine, false)
+})
+
+test("does not infer removals from a partial membership refresh", (t) => {
+  const workspace = createWorkspace(t, "refresh-partial", {
+    "Main.ets": "export const main = 1\n",
+    "Other.ets": "export const other = 2\n",
+  })
+  const mainPath = path.join(workspace, "Main.ets")
+  const otherPath = path.join(workspace, "Other.ets")
+  let partial = false
+  const store = new SemanticDocumentStore({
+    enumerateWorkspaceSources: function* enumerate() {
+      yield mainPath
+      if (partial) throw new Error("partial refresh")
+      yield otherPath
+    },
+  })
+  t.after(() => store.dispose?.())
+  const position = syncPosition(store, workspace, mainPath)
+  store.prepare(position, true)
+
+  partial = true
+  assert.deepEqual(store.refreshProjectMembership(workspace), {
+    changed: true,
+    removedPaths: [],
+  })
+  const refreshed = store.prepare(position, true)
+  assert.equal(refreshed.projectMembership.status, "partial")
+  assert.equal(refreshed.projectMembership.reason, "enumeration-error")
+  assert.deepEqual(refreshed.removedPaths, [])
+})
+
+test("batches changed-source invalidation across dependency closures", (t) => {
+  const workspace = createWorkspace(t, "refresh-batched-invalidation", {
+    "Main.ets": "export const main = 1\n",
+    "First.ets": "export const first = 1\n",
+    "Second.ets": "export const second = 2\n",
+  })
+  const mainPath = path.join(workspace, "Main.ets")
+  const firstPath = path.join(workspace, "First.ets")
+  const secondPath = path.join(workspace, "Second.ets")
+  const store = new SemanticDocumentStore()
+  t.after(() => store.dispose?.())
+  store.prepare(syncPosition(store, workspace, mainPath), true)
+
+  let closureScans = 0
+  for (let index = 0; index < 3; index += 1) {
+    const paths = [path.join(workspace, `Unchanged${index}.ets`)]
+    const originalIncludes = paths.includes
+    const originalSome = paths.some
+    paths.includes = function includes(...args) {
+      closureScans += 1
+      return originalIncludes.apply(this, args)
+    }
+    paths.some = function some(...args) {
+      closureScans += 1
+      return originalSome.apply(this, args)
+    }
+    store.dependencyClosures.set(path.join(workspace, `Owner${index}.ets`), {
+      contentGeneration: 1,
+      paths,
+    })
+  }
+  fs.writeFileSync(firstPath, "export const first = 100\n", "utf8")
+  fs.writeFileSync(secondPath, "export const second = 200\n", "utf8")
+
+  store.refreshProjectMembership(workspace)
+
+  assert.equal(
+    closureScans,
+    3,
+    "one refresh batch must inspect each dependency closure at most once",
+  )
+})
+
 test("invalidates only the requested workspace source-path set", (t) => {
   const firstRoot = createWorkspace(t, "invalidate-first", {
     "Main.ets": "export const first = 1\n",
@@ -240,6 +334,77 @@ test("adds a newly opened source overlay to an already cached workspace", (t) =>
 
   assert.equal(enumerationCount, 1)
   assert.deepEqual(documentPaths(second), [mainPath, openedPath].sort())
+})
+
+test("prepares exact disk snapshot bytes without promoting them to an open overlay", (t) => {
+  const firstTarget = "export function target(): string { return 'first' }\n"
+  const secondTarget = "export function target(): string { return 'second' }\n"
+  const workspace = createWorkspace(t, "exact-disk-snapshot", {
+    "Main.ets": "export const main = 1\n",
+    "Target.ets": firstTarget,
+  })
+  const mainPath = path.join(workspace, "Main.ets")
+  const targetPath = path.join(workspace, "Target.ets")
+  const store = new SemanticDocumentStore({ enumerateWorkspaceSources: () => [] })
+  t.after(() => store.dispose?.())
+
+  const authorityBytes = fs.readFileSync(targetPath, "utf8")
+  fs.writeFileSync(targetPath, secondTarget, "utf8")
+  const targetPosition = {
+    path: targetPath,
+    line: 1,
+    column: 1,
+    workspaceRoot: workspace,
+  }
+  const first = store.prepareDiskSnapshot(
+    targetPosition,
+    authorityBytes,
+  )
+
+  assert.equal(documentContent(first, targetPath), firstTarget)
+  assert.equal(first.documents.find((document) => document.path === targetPath)?.overlay, false)
+  assert.equal(
+    first.documents.find((document) => document.path === targetPath)?.documentVersion,
+    undefined,
+  )
+
+  const unrelated = store.prepare(
+    { path: mainPath, line: 1, column: 1, workspaceRoot: workspace },
+    false,
+  )
+  assert.equal(
+    unrelated.documents.some((document) => document.path === targetPath),
+    false,
+    "a disk snapshot must not be retained as an open overlay",
+  )
+
+  const second = store.prepareDiskSnapshot(
+    targetPosition,
+    fs.readFileSync(targetPath, "utf8"),
+  )
+  assert.equal(documentContent(second, targetPath), secondTarget)
+  assert.ok(second.state.contentGeneration > first.state.contentGeneration)
+
+  const repeated = store.prepareDiskSnapshot(targetPosition, secondTarget)
+  assert.equal(repeated.state.contentGeneration, second.state.contentGeneration)
+  assert.equal(repeated.state.documentCacheHit, true)
+})
+
+test("rejects a disk snapshot above the single-file byte budget", (t) => {
+  const workspace = createWorkspace(t, "disk-snapshot-byte-limit", {
+    "Target.ets": "export const target = 1\n",
+  })
+  const targetPath = path.join(workspace, "Target.ets")
+  const store = new SemanticDocumentStore({ enumerateWorkspaceSources: () => [] })
+  t.after(() => store.dispose?.())
+
+  assert.throws(
+    () => store.prepareDiskSnapshot(
+      { path: targetPath, line: 1, column: 1, workspaceRoot: workspace },
+      "x".repeat(4 * 1024 * 1024 + 1),
+    ),
+    /Disk snapshot exceeds 4194304 bytes/,
+  )
 })
 
 test("prepares every open overlay beyond the bounded disk snapshot window", (t) => {

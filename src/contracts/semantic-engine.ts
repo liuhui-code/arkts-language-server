@@ -135,6 +135,8 @@ export interface SemanticCallHierarchyItem {
   uri: DocumentUri
   name: string
   kind: SemanticCallHierarchyItemKind
+  /** Internal proof of the exact source bytes used to produce this item. Never serialized to LSP. */
+  sourceFingerprint?: string
   detail?: string
   range: TextRange
   selectionRange: TextRange
@@ -145,7 +147,14 @@ export interface SemanticCallHierarchyOutgoingCall {
   fromRanges: TextRange[]
 }
 
+export interface SemanticCallHierarchyIncomingCall {
+  from: SemanticCallHierarchyItem
+  fromRanges: TextRange[]
+}
+
 export type SemanticCallHierarchyFailureReason =
+  | "project-membership-incomplete"
+  | "source-outside-workspace"
   | "source-unavailable"
   | "source-unmappable"
   | "result-limit-exceeded"
@@ -158,6 +167,25 @@ export type SemanticCallHierarchyOutgoingOutcome =
   | { status: "complete"; calls: SemanticCallHierarchyOutgoingCall[] }
   | { status: "stale-item" }
   | { status: "incomplete"; reason: SemanticCallHierarchyFailureReason }
+
+export type SemanticCallHierarchyIncomingOutcome =
+  | { status: "complete"; calls: SemanticCallHierarchyIncomingCall[] }
+  | { status: "stale-item" }
+  | { status: "incomplete"; reason: SemanticCallHierarchyFailureReason }
+
+export type SemanticCallHierarchySource =
+  | {
+      kind: "open"
+      document: DocumentSnapshot
+      workspaceRootUri: DocumentUri
+    }
+  | {
+      kind: "disk"
+      uri: DocumentUri
+      text: string
+      workspaceId: string
+      workspaceRootUri: DocumentUri
+    }
 
 export type SemanticFoldingRangeKind = "comment" | "imports" | "region"
 
@@ -279,8 +307,10 @@ export interface SemanticInlayHintQuery extends SemanticDocumentQuery {
   range: TextRange
 }
 
-export interface SemanticCallHierarchyItemQuery extends SemanticDocumentQuery {
+export interface SemanticCallHierarchyItemQuery {
+  source: SemanticCallHierarchySource
   item: SemanticCallHierarchyItem
+  signal?: AbortSignal
 }
 
 export interface SemanticCodeActionResolveQuery extends SemanticDocumentQuery {
@@ -332,7 +362,10 @@ export interface SemanticEnginePort {
   ): Promise<VersionedSemanticResult<SemanticCallHierarchyPrepareOutcome>>
   outgoingCalls(
     query: SemanticCallHierarchyItemQuery,
-  ): Promise<VersionedSemanticResult<SemanticCallHierarchyOutgoingOutcome>>
+  ): Promise<SemanticCallHierarchyOutgoingOutcome>
+  incomingCalls(
+    query: SemanticCallHierarchyItemQuery,
+  ): Promise<SemanticCallHierarchyIncomingOutcome>
   foldingRanges(
     query: SemanticFoldingRangeQuery,
   ): Promise<VersionedSemanticResult<SemanticFoldingRange[]>>
