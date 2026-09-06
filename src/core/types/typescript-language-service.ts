@@ -354,6 +354,7 @@ export class TypeScriptLanguageServiceEngine {
         insertText: entry.insertText,
         filterText,
         sortText: entry.sortText,
+        commitCharacters: entry.commitCharacters ?? info.defaultCommitCharacters,
         source: "type",
         replacementRange: entry.replacementSpan
           ? script.virtualDocument.generatedSpanToSourceRange(

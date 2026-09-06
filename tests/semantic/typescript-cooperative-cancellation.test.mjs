@@ -386,6 +386,20 @@ test("propagates provider-reported TypeScript completion incompleteness below th
   assert.deepEqual(result.items.map(({ label }) => label), ["method0"])
 })
 
+test("applies TypeScript completion commit-character precedence", (t) => {
+  const result = completionListHarness(t).complete({
+    count: 3,
+    defaultCommitCharacters: [".", ",", ";"],
+    commitCharactersByIndex: [undefined, ["("], []],
+  })
+
+  assert.deepEqual(
+    result.items.map(({ commitCharacters }) => commitCharacters),
+    [[".", ",", ";"], ["("], []],
+    "an explicit empty entry override must not inherit the list default",
+  )
+})
+
 test("reports a fully consumed 127-entry TypeScript completion provider as complete", (t) => {
   const result = completionListHarness(t).complete({ count: 127 })
 
@@ -1064,6 +1078,8 @@ function completionListHarness(t) {
   return {
     complete({
       count,
+      commitCharactersByIndex = [],
+      defaultCommitCharacters,
       firstFilterText,
       providerIncomplete = false,
       onOneHundredTwentyNinthEntry,
@@ -1072,6 +1088,9 @@ function completionListHarness(t) {
         name: `method${index}`,
         kind: "method",
         sortText: "11",
+        ...(commitCharactersByIndex[index] !== undefined
+          ? { commitCharacters: commitCharactersByIndex[index] }
+          : {}),
         ...(index === 0 && firstFilterText ? { filterText: firstFilterText } : {}),
       }))
       if (onOneHundredTwentyNinthEntry) {
@@ -1088,9 +1107,10 @@ function completionListHarness(t) {
       engine.service = new Proxy(realService, {
         get(target, property, receiver) {
           if (property === "getCompletionsAtPosition") {
-            return () => ({
-              entries,
-              isGlobalCompletion: false,
+        return () => ({
+          entries,
+          defaultCommitCharacters,
+          isGlobalCompletion: false,
               isMemberCompletion: true,
               isNewIdentifierLocation: false,
               ...(providerIncomplete ? { isIncomplete: true } : {}),
