@@ -296,14 +296,19 @@ export class TypeScriptLanguageServiceEngine {
     position: SemanticDocumentPosition,
     item: SemanticCompletionItem,
   ): SemanticCompletionItem {
+    const work = new CooperativeWork(this.checkpoint)
+    work.boundary()
     const filePath = path.resolve(position.path)
     const script = this.scripts.get(filePath)
     const data = item.data
-    if (!script || data?.provider !== "typescript" || data.engineVersion !== ENGINE_VERSION) return item
+    if (!script || data?.provider !== "typescript" || data.engineVersion !== ENGINE_VERSION) {
+      return work.finish(item)
+    }
     const entryName = typeof data.entryName === "string" ? data.entryName : item.label
     const entrySource = typeof data.entrySource === "string" ? data.entrySource : undefined
     const sourceOffset = lineColumnToOffset(script.sourceContent, position.line, position.column)
     const offset = script.virtualDocument.toGeneratedOffset(sourceOffset)
+    work.boundary()
     const details = this.service.getCompletionEntryDetails(
       filePath,
       offset,
@@ -313,16 +318,25 @@ export class TypeScriptLanguageServiceEngine {
       { includeCompletionsForModuleExports: true },
       data.entryData as ts.CompletionEntryData | undefined,
     )
-    if (!details) return item
-    const detail = ts.displayPartsToString(details.displayParts) || item.detail
-    const documentation = optionalDisplayParts(details.documentation ?? []) ?? item.documentation
-    return {
+    work.boundary()
+    if (!details) return work.finish(item)
+    const detail = completionDisplayPartsText(details.displayParts ?? [], work) || item.detail
+    const documentation = completionOptionalDisplayParts(
+      details.documentation ?? [],
+      work,
+    ) ?? item.documentation
+    return work.finish({
       ...item,
       detail,
       documentation,
-      additionalTextEdits: this.mapCompletionEdits(filePath, position.documentVersion, details),
+      additionalTextEdits: this.mapCompletionEdits(
+        filePath,
+        position.documentVersion,
+        details,
+        work,
+      ),
       data: { ...data, resolved: true },
-    }
+    })
   }
 
   define(position: SemanticDocumentPosition): SemanticDefinitionCandidate[] {
@@ -1425,24 +1439,54 @@ export class TypeScriptLanguageServiceEngine {
     currentPath: string,
     documentVersion: number | undefined,
     details: ts.CompletionEntryDetails,
+    work: CooperativeWork,
   ): SemanticCompletionTextEdit[] | undefined {
-    const action = details.codeActions?.find((candidate) =>
-      !candidate.commands?.length
-      && candidate.changes.length > 0
-      && candidate.changes.every((change) =>
-        !change.isNewFile && path.resolve(change.fileName) === currentPath))
+    work.boundary()
+    let action: ts.CodeAction | undefined
+    for (const candidate of details.codeActions ?? []) {
+      let accepted = !candidate.commands?.length
+      if (accepted) {
+        const changes = candidate.changes
+        accepted = changes.length > 0
+        if (accepted) {
+          for (const change of changes) {
+            const belongsToCurrentDocument = !change.isNewFile
+              && path.resolve(change.fileName) === currentPath
+            work.item()
+            if (!belongsToCurrentDocument) {
+              accepted = false
+              break
+            }
+          }
+        }
+      }
+      work.item()
+      if (accepted) {
+        action = candidate
+        break
+      }
+    }
+    work.boundary()
     if (!action) return undefined
     const script = this.scripts.get(currentPath)
     if (!script) return undefined
-    return action.changes.flatMap((change) => change.textChanges.map((textChange) => ({
-      path: currentPath,
-      range: script.virtualDocument.generatedSpanToSourceRange(
-        textChange.span.start,
-        textChange.span.length,
-      ),
-      newText: textChange.newText,
-      expectedVersion: documentVersion,
-    })))
+    const edits: SemanticCompletionTextEdit[] = []
+    for (const change of action.changes) {
+      const textChanges = change.textChanges
+      for (const textChange of textChanges) {
+        const span = textChange.span
+        edits.push({
+          path: currentPath,
+          range: script.virtualDocument.generatedSpanToSourceRange(span.start, span.length),
+          newText: textChange.newText,
+          expectedVersion: documentVersion,
+        })
+        work.item()
+      }
+      work.item()
+    }
+    work.boundary()
+    return edits
   }
 
   private evict(protectedPaths: Set<string>): void {
@@ -1558,6 +1602,26 @@ function documentEol(content: string): string {
 function optionalDisplayParts(parts: ts.SymbolDisplayPart[]) {
   const value = ts.displayPartsToString(parts)
   return value || undefined
+}
+
+function completionDisplayPartsText(
+  parts: readonly ts.SymbolDisplayPart[],
+  work: CooperativeWork,
+): string {
+  work.boundary()
+  const mapped: string[] = []
+  for (const part of parts) {
+    mapped.push(part.text)
+    work.item()
+  }
+  return work.finish(mapped.join(""))
+}
+
+function completionOptionalDisplayParts(
+  parts: readonly ts.SymbolDisplayPart[],
+  work: CooperativeWork,
+): string | undefined {
+  return completionDisplayPartsText(parts, work) || undefined
 }
 
 function inlayHintDisplayText(

@@ -32,6 +32,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/semantic-worker-protocol.test.mjs",
       "tests/semantic-worker-supervisor.test.mjs",
       "tests/semantic/typescript-cancellation-bridge.test.mjs",
+      "tests/semantic/typescript-completion-resolve-cancellation.test.mjs",
       "tests/semantic/typescript-cooperative-cancellation.test.mjs",
       "tests/semantic/typescript-diagnostics-symbol-cancellation.test.mjs",
       "tests/semantic/typescript-inlay-highlight-cancellation.test.mjs",
