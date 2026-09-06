@@ -704,6 +704,117 @@ test("completes imported receiver fields and methods with exact kinds and UTF-16
   assert.deepEqual(method[0].textEdit, { range: replacementRange, newText: "memberMethod" })
 })
 
+test("keeps a camel-subsequence member beyond the raw provider quota", async (t) => {
+  const materialized = await materializeConformanceWorkspace()
+  const documentPath = path.join(
+    materialized.workspaceRoot,
+    "entry",
+    "src",
+    "main",
+    "ets",
+    "pages",
+    "FuzzyMemberCompletion.ets",
+  )
+  const documentUri = pathToFileURL(documentPath).href
+  const source = [
+    "class FuzzyReceiver {",
+    ...Array.from(
+      { length: 129 },
+      (_, index) => `  alpha${String(index).padStart(3, "0")}(): void {}`,
+    ),
+    ...Array.from(
+      { length: 129 },
+      (_, index) => `  alphaMethod${String(index).padStart(3, "0")}(): void {}`,
+    ),
+    "  memberTarget(): void {}",
+    "  zebraZoneQuery(): void {}",
+    "}",
+    "",
+    "function use(receiver: FuzzyReceiver): void {",
+    "  const marker = '😀'; receiver.zzq",
+    "  receiver.me",
+    "}",
+    "",
+  ].join("\n")
+  await fs.promises.writeFile(documentPath, source, "utf8")
+  const prefixStart = source.lastIndexOf("zzq")
+  const replacementRange = {
+    start: positionAt(source, prefixStart),
+    end: positionAt(source, prefixStart + "zzq".length),
+  }
+  const strongPrefixStart = source.lastIndexOf("receiver.me") + "receiver.".length
+  const strongReplacementRange = {
+    start: positionAt(source, strongPrefixStart),
+    end: positionAt(source, strongPrefixStart + "me".length),
+  }
+  const session = new LspSession({
+    command: process.execPath,
+    args: [path.join(projectRoot, "dist", "server.cjs"), "--stdio"],
+    cwd: projectRoot,
+    env: {
+      HOME: path.join(materialized.root, "missing-home"),
+      DEVECO_SDK_HOME: path.join(materialized.root, "missing-deveco"),
+      ARKLINE_HARMONY_SDK_PATH: path.join(materialized.corpusRoot, "sdk", "openharmony"),
+    },
+    rootUri: pathToFileURL(materialized.workspaceRoot).href,
+    capabilities: { general: { positionEncodings: ["utf-16"] } },
+  })
+  t.after(async () => {
+    try {
+      await session.close()
+    } finally {
+      await fs.promises.rm(materialized.root, { recursive: true, force: true })
+    }
+  })
+
+  await session.initialize()
+  session.openDocument({
+    uri: documentUri,
+    languageId: "arkts",
+    version: 1,
+    text: source,
+  })
+  const response = await session.request("textDocument/completion", {
+    textDocument: { uri: documentUri },
+    position: replacementRange.end,
+  })
+
+  assert.equal(response.error, undefined, JSON.stringify(response.error))
+  assert.equal(Array.isArray(response.result), false)
+  assert.equal(response.result?.isIncomplete, false)
+  const items = response.result?.items ?? []
+  assert.deepEqual(items.map(({ label }) => label), ["zebraZoneQuery"])
+  assert.equal(items[0].kind, CompletionItemKind.Method)
+  assert.equal(typeof items[0].sortText, "string")
+  assert.deepEqual(items[0].textEdit, {
+    range: replacementRange,
+    newText: "zebraZoneQuery",
+  })
+  const completed = applyTextEdits(source, [items[0].textEdit])
+  assert.match(completed, /receiver\.zebraZoneQuery\n/)
+
+  const strongResponse = await session.request("textDocument/completion", {
+    textDocument: { uri: documentUri },
+    position: strongReplacementRange.end,
+  })
+  assert.equal(strongResponse.error, undefined, JSON.stringify(strongResponse.error))
+  assert.equal(strongResponse.result?.isIncomplete, true)
+  const strongItems = strongResponse.result?.items ?? []
+  assert.equal(strongItems.length, 128)
+  assert.deepEqual(
+    strongItems.slice(0, 127).map(({ label }) => label),
+    Array.from(
+      { length: 127 },
+      (_, index) => `alphaMethod${String(index).padStart(3, "0")}`,
+    ),
+  )
+  assert.equal(strongItems.at(-1).label, "memberTarget")
+  assert.deepEqual(strongItems.at(-1).textEdit, {
+    range: strongReplacementRange,
+    newText: "memberTarget",
+  })
+})
+
 test("reports an incomplete ordered completion list when TypeScript has more than 128 members", async (t) => {
   const materialized = await materializeConformanceWorkspace()
   const sourceDirectory = path.join(
