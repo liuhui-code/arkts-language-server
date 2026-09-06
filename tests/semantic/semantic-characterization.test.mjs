@@ -524,7 +524,14 @@ test("replaces the complete identifier when completion is accepted mid-token", a
       ARKLINE_HARMONY_SDK_PATH: path.join(materialized.corpusRoot, "sdk", "openharmony"),
     },
     rootUri: pathToFileURL(materialized.workspaceRoot).href,
-    capabilities: { general: { positionEncodings: ["utf-16"] } },
+    capabilities: {
+      general: { positionEncodings: ["utf-16"] },
+      textDocument: {
+        completion: {
+          completionItem: { commitCharactersSupport: true },
+        },
+      },
+    },
   })
   t.after(async () => {
     try {
@@ -552,11 +559,13 @@ test("replaces the complete identifier when completion is accepted mid-token", a
   const methods = items.filter((item) => item.label === "method")
   assert.equal(methods.length, 1, `Expected method in ${JSON.stringify(items)}`)
   assert.equal(methods[0].kind, CompletionItemKind.Method)
+  assert.deepEqual(methods[0].commitCharacters, [".", ",", ";"])
   assert.deepEqual(methods[0].textEdit, { range: replacementRange, newText: "method" })
   assert.equal(applyTextEdits(source, [methods[0].textEdit]), source)
 
   const resolved = await session.request("completionItem/resolve", methods[0])
   assert.equal(resolved.error, undefined, JSON.stringify(resolved.error))
+  assert.deepEqual(resolved.result.commitCharacters, methods[0].commitCharacters)
   assert.deepEqual(resolved.result.textEdit, methods[0].textEdit)
 })
 
@@ -856,8 +865,12 @@ test("completes imported receiver fields and methods with exact kinds and UTF-16
   assert.equal(method.length, 1, `Expected memberMethod in ${JSON.stringify(items)}`)
   assert.equal(field[0].kind, CompletionItemKind.Field)
   assert.equal(method[0].kind, CompletionItemKind.Method)
+  assert.equal(Object.hasOwn(method[0], "commitCharacters"), false)
   assert.deepEqual(field[0].textEdit, { range: replacementRange, newText: "memberField" })
   assert.deepEqual(method[0].textEdit, { range: replacementRange, newText: "memberMethod" })
+  const resolvedMethod = await session.request("completionItem/resolve", method[0])
+  assert.equal(resolvedMethod.error, undefined, JSON.stringify(resolvedMethod.error))
+  assert.equal(Object.hasOwn(resolvedMethod.result, "commitCharacters"), false)
 })
 
 test("keeps a camel-subsequence member beyond the raw provider quota", async (t) => {

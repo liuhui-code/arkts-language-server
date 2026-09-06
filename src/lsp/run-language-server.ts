@@ -66,6 +66,14 @@ interface CompletionResolutionData {
   arktsCompletionId: string
 }
 
+interface CompletionClientProfile {
+  commitCharacters: boolean
+}
+
+const DEFAULT_COMPLETION_CLIENT_PROFILE: CompletionClientProfile = Object.freeze({
+  commitCharacters: false,
+})
+
 class CompletionResolutionStore {
   private readonly entries = new Map<string, CompletionResolutionRecord>()
 
@@ -126,6 +134,7 @@ export function runLanguageServer(services?: LanguageServerServices): void {
   let supportsWatchedFileRegistration = false
   let workspaceSymbolKindValueSet: readonly SymbolKind[] | undefined
   let workspaceIndexAbort: AbortController | undefined
+  let completionClientProfile: CompletionClientProfile = DEFAULT_COMPLETION_CLIENT_PROFILE
 
   const disposeOnce = (reason: "shutdown" | "exit") => {
     if (disposed) return
@@ -181,6 +190,10 @@ export function runLanguageServer(services?: LanguageServerServices): void {
       ?.didChangeWatchedFiles?.dynamicRegistration === true
     workspaceSymbolKindValueSet = params.capabilities.workspace?.symbol
       ?.symbolKind?.valueSet
+    completionClientProfile = Object.freeze({
+      commitCharacters: params.capabilities.textDocument?.completion
+        ?.completionItem?.commitCharactersSupport === true,
+    })
     semanticCapabilities.configure(params.capabilities)
     logger.info("lsp.initialized", {
       workspaceCount: initialRootUris(params).length,
@@ -359,6 +372,7 @@ export function runLanguageServer(services?: LanguageServerServices): void {
         position: { ...params.position },
         completion,
       }),
+      completionClientProfile,
     ))
     return {
       isIncomplete: result.isIncomplete || result.items.length > bounded.length,
@@ -386,7 +400,12 @@ export function runLanguageServer(services?: LanguageServerServices): void {
       }),
     })
     if (!resolved) throw invalidCompletionResolution()
-    return toLspResolvedCompletionItem(resolved, clientItem.data as CompletionResolutionData, record)
+    return toLspResolvedCompletionItem(
+      resolved,
+      clientItem.data as CompletionResolutionData,
+      record,
+      completionClientProfile,
+    )
   })
 
   connection.onCodeAction(async (params, token) => {
@@ -600,6 +619,7 @@ function snapshot(document: TextDocument, projects: ProjectResolverPort): Docume
 function toLspCompletionItem(
   item: SemanticCompletion,
   data: CompletionResolutionData,
+  profile: CompletionClientProfile,
 ) {
   return {
     label: item.label,
@@ -608,6 +628,9 @@ function toLspCompletionItem(
     insertText: item.insertText,
     filterText: item.filterText,
     sortText: item.sortText,
+    ...(profile.commitCharacters && item.commitCharacters !== undefined
+      ? { commitCharacters: item.commitCharacters }
+      : {}),
     textEdit: item.replacementRange
       ? {
           range: item.replacementRange,
@@ -622,6 +645,7 @@ function toLspResolvedCompletionItem(
   item: SemanticCompletion,
   data: CompletionResolutionData,
   record: CompletionResolutionRecord,
+  profile: CompletionClientProfile,
 ) {
   const additionalTextEdits = item.additionalTextEdits?.map((edit) => {
     if (
@@ -631,7 +655,7 @@ function toLspResolvedCompletionItem(
     return { range: edit.range, newText: edit.newText }
   })
   return {
-    ...toLspCompletionItem(item, data),
+    ...toLspCompletionItem(item, data, profile),
     documentation: item.documentation,
     additionalTextEdits,
   }

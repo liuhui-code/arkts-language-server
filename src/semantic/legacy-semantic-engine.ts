@@ -586,6 +586,7 @@ function toPublicCompletion(
     insertText: item.insertText,
     filterText: item.filterText,
     sortText: item.sortText,
+    commitCharacters: item.commitCharacters,
     replacementRange: item.replacementRange
       ? toPublicRange(item.replacementRange)
       : undefined,
@@ -608,6 +609,7 @@ function toLegacyCompletion(item: SemanticCompletion): SemanticCompletionItem {
     insertText: item.insertText,
     filterText: item.filterText,
     sortText: item.sortText,
+    commitCharacters: item.commitCharacters,
     replacementRange: item.replacementRange
       ? toLegacyRange(item.replacementRange)
       : undefined,

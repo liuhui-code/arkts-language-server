@@ -26,6 +26,7 @@ export interface SemanticCompletion {
   insertText?: string
   filterText?: string
   sortText?: string
+  commitCharacters?: string[]
   replacementRange?: TextRange
   additionalTextEdits?: SemanticCompletionTextEdit[]
   data?: Record<string, unknown>

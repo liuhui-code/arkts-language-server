@@ -612,8 +612,9 @@ Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产�
     （`444d12f`）；Enum/EnumMember/Module 分片贯通 core → public → Legacy → LSP
     （`d33b3c6`、`3b7cb4a`、`5e84851`），模块说明符的 `externalModuleName` 同族路径也由
     ambient-module stdio RED 闭环（`774cd0f`）。
-  - [ ] C11e commit characters：贯通 entry override 与 list default，`[]` 不得被 default 覆盖，
-    并尊重客户端 `commitCharactersSupport`。
+  - [x] C11e commit characters：贯通 entry override 与 list default，`[]` 不得被 default 覆盖，
+    并尊重客户端 `commitCharactersSupport`；list/resolve 均按 immutable client profile
+    fail-closed（`2f66e4c`、当前 LSP slice）。
   - [ ] C11f InsertReplaceEdit：在客户端 `insertReplaceSupport` 下保留 insert/replace 双 range；
     不支持时继续发布安全的完整 replacement TextEdit。
   - [ ] C11g snippets：仅在客户端 `snippetSupport` 下启用 TypeScript snippet preference，并贯通
