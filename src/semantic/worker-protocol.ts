@@ -453,7 +453,21 @@ export function createSemanticWorkerError(code: SemanticWorkerErrorCode): Semant
 }
 
 export function decodeSemanticWorkerMutation(value: unknown): SemanticWorkerMutation {
-  const input = ownDataRecord(value)
+  const input = ownDataRecord(value, [
+    "protocol",
+    "epoch",
+    "revision",
+    "kind",
+  ], [
+    "uri",
+    "documentVersion",
+    "text",
+    "rootUri",
+    "rootDirty",
+    "resourceDirty",
+    "resourceChanged",
+    "changes",
+  ])
   if (!input) throw invalidMutation()
   if (input.kind === "workspaceFilesChanged") return decodeWorkspaceFilesChangedMutation(input)
   const kind = input.kind
@@ -501,7 +515,7 @@ export function decodeSemanticWorkerMutation(value: unknown): SemanticWorkerMuta
 }
 
 export function decodeSemanticWorkerMutationAck(value: unknown): SemanticWorkerMutationAck {
-  const input = ownDataRecord(value)
+  const input = ownDataRecord(value, ["protocol", "epoch", "appliedRevision"])
   if (
     !input
     || !hasExactKeys(input, ["protocol", "epoch", "appliedRevision"])
@@ -519,7 +533,17 @@ export function decodeSemanticWorkerMutationAck(value: unknown): SemanticWorkerM
 }
 
 export function decodeSemanticWorkerRequest(value: unknown): SemanticWorkerRequest {
-  const input = ownDataRecord(value)
+  const input = ownDataRecord(value, [
+    "protocol",
+    "epoch",
+    "id",
+    "requiredRevision",
+    "method",
+    "uri",
+    "expectedDocumentVersion",
+    "args",
+    "cancelCell",
+  ])
   if (
     !input
     || !hasExactKeys(input, [
@@ -597,7 +621,17 @@ function decodeSemanticWorkerResponseEnvelope(
   value: unknown,
   allowNullDocumentVersion: boolean,
 ): DecodedSemanticWorkerResponse {
-  const input = ownDataRecord(value)
+  const input = ownDataRecord(value, [
+    "protocol",
+    "epoch",
+    "id",
+    "appliedRevision",
+    "documentVersion",
+    "ok",
+  ], [
+    "value",
+    "error",
+  ])
   if (
     !input
     || input.protocol !== SEMANTIC_WORKER_PROTOCOL_VERSION
@@ -706,7 +740,17 @@ function decodeRawCallHierarchyResponseValue(
   | SemanticWorkerCallHierarchyOutgoingResult
   | SemanticWorkerCallHierarchyIncomingResult
   | undefined {
-  const response = ownDataRecord(value)
+  const response = ownDataRecord(value, [
+    "protocol",
+    "epoch",
+    "id",
+    "appliedRevision",
+    "documentVersion",
+    "ok",
+  ], [
+    "value",
+    "error",
+  ])
   if (!response || typeof response.ok !== "boolean") throw invalidResponse()
   if (!response.ok) return undefined
   if (!hasExactKeys(response, [
@@ -728,7 +772,7 @@ function decodeRawCallHierarchyResponseValue(
 function decodeCallHierarchyPrepareResult(
   value: unknown,
 ): SemanticWorkerCallHierarchyPrepareResult {
-  const outcome = ownDataRecord(value)
+  const outcome = ownDataRecord(value, ["status"], ["items", "reason"])
   if (!outcome) throw invalidResponse()
   if (outcome.status === "complete" && hasExactKeys(outcome, ["status", "items"])) {
     return Object.freeze({
@@ -752,7 +796,7 @@ function decodeCallHierarchyPrepareResult(
 function decodeCallHierarchyOutgoingResult(
   value: unknown,
 ): SemanticWorkerCallHierarchyOutgoingResult {
-  const outcome = ownDataRecord(value)
+  const outcome = ownDataRecord(value, ["status"], ["calls", "reason"])
   if (!outcome) throw invalidResponse()
   if (outcome.status === "complete" && hasExactKeys(outcome, ["status", "calls"])) {
     return Object.freeze({
@@ -776,14 +820,15 @@ function decodeCallHierarchyOutgoingResult(
 function decodeCallHierarchyOutgoingCalls(
   value: unknown,
 ): readonly SemanticWorkerCallHierarchyOutgoingCall[] {
-  if (
-    !isPlainDenseArray(value)
-    || value.length > MAX_SEMANTIC_WORKER_CALL_HIERARCHY_EDGES
-  ) throw invalidResponse()
+  const rawCalls = readBoundedDenseArray(
+    value,
+    MAX_SEMANTIC_WORKER_CALL_HIERARCHY_EDGES,
+    invalidResponse,
+  )
   const calls: SemanticWorkerCallHierarchyOutgoingCall[] = []
   let totalRanges = 0
-  for (let index = 0; index < value.length; index += 1) {
-    const call = ownDataRecord(value[index])
+  for (const rawCall of rawCalls) {
+    const call = ownDataRecord(rawCall, ["to", "fromRanges"])
     if (!call || !hasExactKeys(call, ["to", "fromRanges"])) throw invalidResponse()
     const fromRanges = decodeCallHierarchyRanges(
       call.fromRanges,
@@ -804,7 +849,7 @@ function decodeCallHierarchyOutgoingCalls(
 function decodeCallHierarchyIncomingResult(
   value: unknown,
 ): SemanticWorkerCallHierarchyIncomingResult {
-  const outcome = ownDataRecord(value)
+  const outcome = ownDataRecord(value, ["status"], ["calls", "reason"])
   if (!outcome) throw invalidResponse()
   if (outcome.status === "complete" && hasExactKeys(outcome, ["status", "calls"])) {
     return Object.freeze({
@@ -828,14 +873,15 @@ function decodeCallHierarchyIncomingResult(
 function decodeCallHierarchyIncomingCalls(
   value: unknown,
 ): readonly SemanticWorkerCallHierarchyIncomingCall[] {
-  if (
-    !isPlainDenseArray(value)
-    || value.length > MAX_SEMANTIC_WORKER_CALL_HIERARCHY_EDGES
-  ) throw invalidResponse()
+  const rawCalls = readBoundedDenseArray(
+    value,
+    MAX_SEMANTIC_WORKER_CALL_HIERARCHY_EDGES,
+    invalidResponse,
+  )
   const calls: SemanticWorkerCallHierarchyIncomingCall[] = []
   let totalRanges = 0
-  for (let index = 0; index < value.length; index += 1) {
-    const call = ownDataRecord(value[index])
+  for (const rawCall of rawCalls) {
+    const call = ownDataRecord(rawCall, ["from", "fromRanges"])
     if (!call || !hasExactKeys(call, ["from", "fromRanges"])) throw invalidResponse()
     const fromRanges = decodeCallHierarchyRanges(
       call.fromRanges,
@@ -857,11 +903,9 @@ function decodeCallHierarchyRanges(
   value: unknown,
   maxRanges: number,
 ): readonly SemanticWorkerRange[] {
-  if (!isPlainDenseArray(value) || value.length > maxRanges) throw invalidResponse()
+  const rawRanges = readBoundedDenseArray(value, maxRanges, invalidResponse)
   const ranges: SemanticWorkerRange[] = []
-  for (let index = 0; index < value.length; index += 1) {
-    ranges.push(decodeResponseRange(value[index]))
-  }
+  for (const range of rawRanges) ranges.push(decodeResponseRange(range))
   return Object.freeze(ranges)
 }
 
@@ -869,16 +913,21 @@ function decodeCallHierarchyResultItems(
   value: unknown,
   maxItems: number,
 ): readonly SemanticWorkerCallHierarchyResultItem[] {
-  if (!isPlainDenseArray(value) || value.length > maxItems) throw invalidResponse()
+  const rawItems = readBoundedDenseArray(value, maxItems, invalidResponse)
   const items: SemanticWorkerCallHierarchyResultItem[] = []
-  for (let index = 0; index < value.length; index += 1) {
-    items.push(decodeCallHierarchyResultItem(value[index]))
-  }
+  for (const item of rawItems) items.push(decodeCallHierarchyResultItem(item))
   return Object.freeze(items)
 }
 
 function decodeCallHierarchyResultItem(value: unknown): SemanticWorkerCallHierarchyResultItem {
-  const item = ownDataRecord(value)
+  const item = ownDataRecord(value, [
+    "uri",
+    "name",
+    "kind",
+    "sourceFingerprint",
+    "range",
+    "selectionRange",
+  ], ["detail"])
   if (
     !item
     || !hasRequiredAndOnlyKeys(
@@ -908,7 +957,7 @@ function decodeCallHierarchyResultItem(value: unknown): SemanticWorkerCallHierar
 }
 
 function decodeResponseRange(value: unknown): SemanticWorkerRange {
-  const range = ownDataRecord(value)
+  const range = ownDataRecord(value, ["start", "end"])
   if (!range || !hasExactKeys(range, ["start", "end"])) throw invalidResponse()
   const decoded = Object.freeze({
     start: decodeResponsePosition(range.start),
@@ -919,7 +968,7 @@ function decodeResponseRange(value: unknown): SemanticWorkerRange {
 }
 
 function decodeResponsePosition(value: unknown): SemanticWorkerPosition {
-  const position = ownDataRecord(value)
+  const position = ownDataRecord(value, ["line", "character"])
   if (
     !position
     || !hasExactKeys(position, ["line", "character"])
@@ -1016,7 +1065,7 @@ function decodeWorkspaceFileChanges(
   for (let index = 0; index < value.length; index += 1) {
     const descriptor = Object.getOwnPropertyDescriptor(value, String(index))
     if (!descriptor?.enumerable || !("value" in descriptor)) throw invalidMutation()
-    const change = ownDataRecord(descriptor.value)
+    const change = ownDataRecord(descriptor.value, ["uri", "kind"])
     if (
       !change
       || !hasExactKeys(change, ["uri", "kind"])
@@ -1057,7 +1106,7 @@ function isSemanticWorkerErrorCode(value: unknown): value is SemanticWorkerError
 }
 
 function decodeSemanticWorkerError(value: unknown): SemanticWorkerError {
-  const error = ownDataRecord(value)
+  const error = ownDataRecord(value, ["code", "message"])
   if (
     !error
     || !hasExactKeys(error, ["code", "message"])
@@ -1123,7 +1172,7 @@ function decodeRequestArgs(
 function decodeCallHierarchyFollowupArgs(
   value: unknown,
 ): SemanticWorkerCallHierarchyFollowupArgs {
-  const args = ownDataRecord(value)
+  const args = ownDataRecord(value, ["item", "sourceFingerprint"])
   if (
     !args
     || !hasExactKeys(args, ["item", "sourceFingerprint"])
@@ -1136,7 +1185,13 @@ function decodeCallHierarchyFollowupArgs(
 }
 
 function decodeCallHierarchyInputItem(value: unknown): SemanticWorkerCallHierarchyInputItem {
-  const item = ownDataRecord(value)
+  const item = ownDataRecord(value, [
+    "uri",
+    "name",
+    "kind",
+    "range",
+    "selectionRange",
+  ], ["detail"])
   if (
     !item
     || !hasRequiredAndOnlyKeys(
@@ -1164,7 +1219,7 @@ function decodeCallHierarchyInputItem(value: unknown): SemanticWorkerCallHierarc
 }
 
 function decodePositionArgs(value: unknown): SemanticWorkerPositionArgs {
-  const args = ownDataRecord(value)
+  const args = ownDataRecord(value, ["position"])
   if (!args || !hasExactKeys(args, ["position"])) throw invalidRequest()
   return Object.freeze({ position: decodePosition(args.position) })
 }
@@ -1173,7 +1228,7 @@ function decodePositionAndJsonArgs(
   value: unknown,
   field: "completion",
 ): SemanticWorkerRequestArgsByMethod["resolveCompletion"] {
-  const args = ownDataRecord(value)
+  const args = ownDataRecord(value, ["position", field])
   if (!args || !hasExactKeys(args, ["position", field])) throw invalidRequest()
   return Object.freeze({
     position: decodePosition(args.position),
@@ -1185,7 +1240,7 @@ function decodeJsonFieldArgs(
   value: unknown,
   field: "action",
 ): SemanticWorkerRequestArgsByMethod["resolveCodeAction"] {
-  const args = ownDataRecord(value)
+  const args = ownDataRecord(value, [field])
   if (!args || !hasExactKeys(args, [field])) throw invalidRequest()
   return Object.freeze({ [field]: canonicalJsonObject(args[field]) }) as unknown as (
     SemanticWorkerRequestArgsByMethod["resolveCodeAction"]
@@ -1193,7 +1248,7 @@ function decodeJsonFieldArgs(
 }
 
 function decodeReferencesArgs(value: unknown): SemanticWorkerReferencesArgs {
-  const args = ownDataRecord(value)
+  const args = ownDataRecord(value, ["position", "includeDeclaration"])
   if (!args || !hasExactKeys(args, ["position", "includeDeclaration"])) {
     throw invalidRequest()
   }
@@ -1203,7 +1258,7 @@ function decodeReferencesArgs(value: unknown): SemanticWorkerReferencesArgs {
 }
 
 function decodeRenameArgs(value: unknown): SemanticWorkerRequestArgsByMethod["rename"] {
-  const args = ownDataRecord(value)
+  const args = ownDataRecord(value, ["position", "newName"])
   if (
     !args
     || !hasExactKeys(args, ["position", "newName"])
@@ -1215,13 +1270,13 @@ function decodeRenameArgs(value: unknown): SemanticWorkerRequestArgsByMethod["re
 function decodeRangeArgs(
   value: unknown,
 ): SemanticWorkerRequestArgsByMethod["inlayHints"] {
-  const args = ownDataRecord(value)
+  const args = ownDataRecord(value, ["range"])
   if (!args || !hasExactKeys(args, ["range"])) throw invalidRequest()
   return Object.freeze({ range: decodeRange(args.range) })
 }
 
 function decodeRange(value: unknown): SemanticWorkerRange {
-  const range = ownDataRecord(value)
+  const range = ownDataRecord(value, ["start", "end"])
   if (!range || !hasExactKeys(range, ["start", "end"])) throw invalidRequest()
   return Object.freeze({
     start: decodePosition(range.start),
@@ -1247,7 +1302,7 @@ function comparePositions(left: SemanticWorkerPosition, right: SemanticWorkerPos
 function decodeFoldingRangeArgs(
   value: unknown,
 ): SemanticWorkerRequestArgsByMethod["foldingRanges"] {
-  const args = ownDataRecord(value)
+  const args = ownDataRecord(value, [], ["lineFoldingOnly", "rangeLimit"])
   if (
     !args
     || !hasOnlyKeys(args, ["lineFoldingOnly", "rangeLimit"])
@@ -1265,9 +1320,16 @@ function decodeFoldingRangeArgs(
 function decodeFormattingArgs(
   value: unknown,
 ): SemanticWorkerRequestArgsByMethod["formatDocument"] {
-  const args = ownDataRecord(value)
+  const args = ownDataRecord(value, ["options"])
   if (!args || !hasExactKeys(args, ["options"])) throw invalidRequest()
-  const options = ownDataRecord(args.options)
+  const options = ownDataRecord(args.options, [
+    "tabSize",
+    "insertSpaces",
+  ], [
+    "trimTrailingWhitespace",
+    "insertFinalNewline",
+    "trimFinalNewlines",
+  ])
   const optionalBooleans = [
     "trimTrailingWhitespace",
     "insertFinalNewline",
@@ -1292,7 +1354,7 @@ function decodeFormattingArgs(
 }
 
 function decodeEmptyArgs(value: unknown): Readonly<Record<string, never>> {
-  const args = ownDataRecord(value)
+  const args = ownDataRecord(value, [])
   if (!args || !hasExactKeys(args, [])) throw invalidRequest()
   return Object.freeze({})
 }
@@ -1300,9 +1362,9 @@ function decodeEmptyArgs(value: unknown): Readonly<Record<string, never>> {
 function decodeSignatureHelpArgs(
   value: unknown,
 ): SemanticWorkerRequestArgsByMethod["signatureHelp"] {
-  const args = ownDataRecord(value)
+  const args = ownDataRecord(value, ["position", "triggerReason"])
   if (!args || !hasExactKeys(args, ["position", "triggerReason"])) throw invalidRequest()
-  const trigger = ownDataRecord(args.triggerReason)
+  const trigger = ownDataRecord(args.triggerReason, ["kind"], ["triggerCharacter"])
   if (!trigger || typeof trigger.kind !== "string") throw invalidRequest()
   let triggerReason: SemanticWorkerRequestArgsByMethod["signatureHelp"]["triggerReason"]
   if (trigger.kind === "invoked" && hasExactKeys(trigger, ["kind"])) {
@@ -1342,7 +1404,7 @@ function isTriggerCharacter(value: unknown, closing: boolean): boolean {
 }
 
 function decodePosition(value: unknown): SemanticWorkerPosition {
-  const position = ownDataRecord(value)
+  const position = ownDataRecord(value, ["line", "character"])
   if (
     !position
     || !hasExactKeys(position, ["line", "character"])
@@ -1633,34 +1695,99 @@ function isCancellationState(value: number): value is SemanticWorkerCancellation
     || value === SemanticWorkerCancelState.supervisorDisposing
 }
 
-function ownDataRecord(value: unknown): Record<string, unknown> | undefined {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined
-  const prototype = Object.getPrototypeOf(value)
+function ownDataRecord(
+  value: unknown,
+  requiredKeys: readonly string[],
+  optionalKeys: readonly string[] = [],
+): Record<string, unknown> | undefined {
+  if (value === null || typeof value !== "object") return undefined
+  try {
+    if (Array.isArray(value)) return undefined
+  } catch {
+    return undefined
+  }
+  let prototype: object | null
+  try {
+    prototype = Object.getPrototypeOf(value)
+  } catch {
+    return undefined
+  }
   if (prototype !== Object.prototype && prototype !== null) return undefined
+  let keys: readonly PropertyKey[]
+  try {
+    keys = Reflect.ownKeys(value)
+  } catch {
+    return undefined
+  }
+  const allowedKeys = [...requiredKeys, ...optionalKeys]
+  const maxKeys = Math.min(allowedKeys.length, MAX_SEMANTIC_WORKER_VALUE_NODES)
+  if (
+    keys.length > maxKeys
+    || requiredKeys.length > keys.length
+    || keys.some(key => typeof key !== "string" || !allowedKeys.includes(key))
+    || requiredKeys.some(key => !keys.includes(key))
+  ) return undefined
   const copy: Record<string, unknown> = Object.create(null) as Record<string, unknown>
-  for (const key of Reflect.ownKeys(value)) {
-    if (typeof key !== "string") return undefined
-    const descriptor = Object.getOwnPropertyDescriptor(value, key)
+  for (const key of keys as readonly string[]) {
+    let descriptor: PropertyDescriptor | undefined
+    try {
+      descriptor = Object.getOwnPropertyDescriptor(value, key)
+    } catch {
+      return undefined
+    }
     if (!descriptor?.enumerable || !("value" in descriptor)) return undefined
     copy[key] = descriptor.value
   }
   return copy
 }
 
-function isPlainDenseArray(value: unknown): value is unknown[] {
-  if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) return false
-  const keys = Reflect.ownKeys(value)
+function readBoundedDenseArray(
+  value: unknown,
+  maxLength: number,
+  onInvalid: () => SemanticWorkerProtocolError,
+): readonly unknown[] {
+  let prototype: object | null
+  let lengthDescriptor: PropertyDescriptor | undefined
+  try {
+    if (!Array.isArray(value)) throw onInvalid()
+    prototype = Object.getPrototypeOf(value)
+    lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length")
+  } catch {
+    throw onInvalid()
+  }
   if (
-    keys.length !== value.length + 1
-    || keys.some((key, index) => index < value.length
+    prototype !== Array.prototype
+    || !lengthDescriptor
+    || !("value" in lengthDescriptor)
+    || lengthDescriptor.enumerable
+    || !isNonNegativeSafeInteger(lengthDescriptor.value)
+    || lengthDescriptor.value > maxLength
+  ) throw onInvalid()
+  const length = lengthDescriptor.value
+  let keys: readonly PropertyKey[]
+  try {
+    keys = Reflect.ownKeys(value as object)
+  } catch {
+    throw onInvalid()
+  }
+  if (
+    keys.length !== length + 1
+    || keys.some((key, index) => index < length
       ? key !== String(index)
       : key !== "length")
-  ) return false
-  for (let index = 0; index < value.length; index += 1) {
-    const descriptor = Object.getOwnPropertyDescriptor(value, String(index))
-    if (!descriptor?.enumerable || !("value" in descriptor)) return false
+  ) throw onInvalid()
+  const values: unknown[] = new Array(length)
+  for (let index = 0; index < length; index += 1) {
+    let descriptor: PropertyDescriptor | undefined
+    try {
+      descriptor = Object.getOwnPropertyDescriptor(value, String(index))
+    } catch {
+      throw onInvalid()
+    }
+    if (!descriptor?.enumerable || !("value" in descriptor)) throw onInvalid()
+    values[index] = descriptor.value
   }
-  return true
+  return values
 }
 
 function hasExactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {

@@ -395,6 +395,119 @@ test("accepts exactly 2048 total call ranges and rejects the 2049th", (t) => {
   assert.throws(() => decode(2_049), /Invalid semantic worker response/)
 })
 
+test("rejects every over-limit call hierarchy collection before scanning elements", (t) => {
+  const protocol = buildDriver(t)
+  const cases = [
+    tracked => ({
+      method: "prepareCallHierarchy",
+      value: { status: "complete", items: tracked.value },
+    }),
+    tracked => ({
+      method: "outgoingCalls",
+      value: { status: "complete", calls: tracked.value },
+    }),
+    tracked => ({
+      method: "outgoingCalls",
+      value: {
+        status: "complete",
+        calls: [{ to: callHierarchyResultItem(), fromRanges: tracked.value }],
+      },
+    }),
+  ]
+
+  for (const [index, candidate] of cases.entries()) {
+    const counters = { lengthGets: 0, ownKeyScans: 0, elementDescriptorReads: 0 }
+    const tracked = {
+      counters,
+      value: new Proxy(new Array(10_000).fill(null), {
+        get(target, key, receiver) {
+          if (key === "length") counters.lengthGets += 1
+          return Reflect.get(target, key, receiver)
+        },
+        ownKeys(target) {
+          counters.ownKeyScans += 1
+          return Reflect.ownKeys(target)
+        },
+        getOwnPropertyDescriptor(target, key) {
+          if (key !== "length") counters.elementDescriptorReads += 1
+          return Reflect.getOwnPropertyDescriptor(target, key)
+        },
+      }),
+    }
+    const { method, value } = candidate(tracked)
+
+    assert.throws(
+      () => protocol.decodeSemanticWorkerResponseForMethod(
+        method,
+        successEnvelope(protocol, value),
+      ),
+      /Invalid semantic worker response/,
+      `collection case ${index}`,
+    )
+    assert.deepEqual(counters, {
+      lengthGets: 0,
+      ownKeyScans: 0,
+      elementDescriptorReads: 0,
+    })
+  }
+})
+
+test("rejects a record above its exact key bound before reading unknown descriptors", (t) => {
+  const protocol = buildDriver(t)
+  const target = callHierarchyResultItem()
+  for (let index = 0; index < 70_000; index += 1) {
+    target[`ignored${index}`] = index
+  }
+  let getterCalls = 0
+  let ownKeyScans = 0
+  let descriptorReads = 0
+  const item = new Proxy(target, {
+    get(targetValue, key, receiver) {
+      getterCalls += 1
+      return Reflect.get(targetValue, key, receiver)
+    },
+    ownKeys(targetValue) {
+      ownKeyScans += 1
+      return Reflect.ownKeys(targetValue)
+    },
+    getOwnPropertyDescriptor(targetValue, key) {
+      descriptorReads += 1
+      return Reflect.getOwnPropertyDescriptor(targetValue, key)
+    },
+  })
+
+  assert.throws(
+    () => protocol.decodeSemanticWorkerResponseForMethod(
+      "prepareCallHierarchy",
+      successEnvelope(protocol, { status: "complete", items: [item] }),
+    ),
+    /Invalid semantic worker response/,
+  )
+  assert.equal(getterCalls, 0)
+  assert.equal(ownKeyScans, 1)
+  assert.equal(descriptorReads, 0)
+
+  const { sourceFingerprint: _sourceFingerprint, ...unknownAtExactCount } = (
+    callHierarchyResultItem()
+  )
+  unknownAtExactCount.ignored = true
+  let exactCountDescriptorReads = 0
+  const exactCountItem = new Proxy(unknownAtExactCount, {
+    getOwnPropertyDescriptor(targetValue, key) {
+      exactCountDescriptorReads += 1
+      return Reflect.getOwnPropertyDescriptor(targetValue, key)
+    },
+  })
+  assert.throws(
+    () => protocol.decodeSemanticWorkerResponseForMethod(
+      "prepareCallHierarchy",
+      successEnvelope(protocol, { status: "complete", items: [exactCountItem] }),
+    ),
+    /Invalid semantic worker response/,
+  )
+  assert.equal(exactCountDescriptorReads, 0)
+})
+
 test("rejects non-exact or hostile call hierarchy results without invoking getters", (t) => {
   const protocol = buildDriver(t)
   const validItem = callHierarchyResultItem()

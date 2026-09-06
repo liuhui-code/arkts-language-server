@@ -9,7 +9,7 @@ import {
   decodeSemanticWorkerMutation,
   decodeSemanticWorkerMutationAck,
   decodeSemanticWorkerRequest,
-  decodeSemanticWorkerResponse,
+  decodeSemanticWorkerResponseForMethod,
   isCanonicalSemanticWorkerFileUri,
   readSemanticWorkerCancellationState,
   type SemanticWorkerJsonValue,
@@ -365,10 +365,10 @@ export class RootSemanticWorkerSupervisor {
         this.#finishActiveTerminal()
         active.completion.resolve(undefined)
       } else {
-        const response = decodeSemanticWorkerResponse(message)
+        if (!active.wire) throw new Error("Missing active semantic worker request")
+        const response = decodeSemanticWorkerResponseForMethod(active.wire.method, message)
         if (
-          !active.wire
-          || response.epoch !== this.#epoch
+          response.epoch !== this.#epoch
           || response.id !== active.wire.id
           || response.appliedRevision !== active.wire.requiredRevision
           || response.documentVersion !== active.wire.expectedDocumentVersion
@@ -379,7 +379,7 @@ export class RootSemanticWorkerSupervisor {
         if (cancellation !== SemanticWorkerCancelState.active) {
           active.completion.reject(cancellationError(cancellation))
         } else if (response.ok) {
-          active.completion.resolve(response.value)
+          active.completion.resolve(response.value as SemanticWorkerJsonValue)
         } else {
           active.completion.reject(new SemanticWorkerSupervisorError(response.error.code))
         }

@@ -9,6 +9,115 @@ import { buildSync } from "esbuild"
 
 import { projectRoot } from "./support/lsp-process.mjs"
 
+test("fails the root closed when prepare returns an item without a source proof", async (t) => {
+  const protocol = buildDriver(t)
+  const endpoint = new FakeEndpoint()
+  const supervisor = createSupervisor(protocol, endpoint)
+  const request = supervisor.request({
+    method: "prepareCallHierarchy",
+    uri: "file:///workspace/Main.ets",
+    expectedDocumentVersion: 1,
+    args: { position: { line: 3, character: 2 } },
+  })
+  const wire = endpoint.sent[0]
+
+  endpoint.message(successResponse(protocol, wire, {
+    status: "complete",
+    items: [callHierarchyWorkerItem({ sourceFingerprint: undefined })],
+  }))
+
+  await assert.rejects(request.result, error => (
+    error instanceof protocol.SemanticWorkerSupervisorError
+    && error.code === "worker-unavailable"
+  ))
+  assert.throws(
+    () => supervisor.request({
+      method: "hover",
+      uri: "file:///workspace/Main.ets",
+      expectedDocumentVersion: 1,
+      args: { position: { line: 0, character: 0 } },
+    }),
+    error => error.code === "worker-unavailable",
+  )
+  assert.equal(endpoint.terminateCalls, 1)
+})
+
+test("correlates every call hierarchy response with its dispatched method schema", async (t) => {
+  const protocol = buildDriver(t)
+  const followupArgs = {
+    item: callHierarchyRequestItem(),
+    sourceFingerprint: "f".repeat(64),
+  }
+  const cases = [
+    {
+      method: "prepareCallHierarchy",
+      args: { position: { line: 3, character: 2 } },
+      value: {
+        status: "complete",
+        items: Array.from({ length: 17 }, (_, index) => callHierarchyWorkerItem({
+          uri: `file:///workspace/Prepared${index}.ets`,
+          name: `prepared${index}`,
+        })),
+      },
+    },
+    {
+      method: "outgoingCalls",
+      args: followupArgs,
+      value: {
+        status: "complete",
+        calls: [{
+          to: callHierarchyWorkerItem({ sourceFingerprint: undefined }),
+          fromRanges: [],
+        }],
+      },
+    },
+    {
+      method: "incomingCalls",
+      args: followupArgs,
+      value: {
+        status: "complete",
+        calls: [{
+          from: callHierarchyWorkerItem({
+            selectionRange: {
+              start: { line: 20, character: 0 },
+              end: { line: 20, character: 1 },
+            },
+          }),
+          fromRanges: [],
+        }],
+      },
+    },
+  ]
+
+  for (const [index, candidate] of cases.entries()) {
+    const endpoint = new FakeEndpoint()
+    const supervisor = createSupervisor(protocol, endpoint)
+    const request = supervisor.request({
+      method: candidate.method,
+      uri: "file:///workspace/Main.ets",
+      expectedDocumentVersion: 1,
+      args: candidate.args,
+    })
+    endpoint.message(successResponse(protocol, endpoint.sent[0], candidate.value))
+
+    await assert.rejects(
+      request.result,
+      error => error.code === "worker-unavailable",
+      `method-invalid case ${index}`,
+    )
+    assert.throws(
+      () => supervisor.request({
+        method: "hover",
+        uri: "file:///workspace/Main.ets",
+        expectedDocumentVersion: 1,
+        args: { position: { line: 0, character: 0 } },
+      }),
+      error => error.code === "worker-unavailable",
+    )
+    assert.equal(endpoint.terminateCalls, 1)
+  }
+})
+
 test("acknowledges every mutation before dispatching a revision-bound query", async (t) => {
   const protocol = buildDriver(t)
   const endpoint = new FakeEndpoint()
@@ -1348,6 +1457,30 @@ class FakeEndpoint {
     if (this.terminateGate) return this.terminateGate.promise
     if (this.terminateError) return Promise.reject(this.terminateError)
   }
+}
+
+function callHierarchyWorkerItem(overrides = {}) {
+  const item = {
+    uri: "file:///workspace/Main.ets",
+    name: "build",
+    kind: "method",
+    sourceFingerprint: "a".repeat(64),
+    range: {
+      start: { line: 3, character: 2 },
+      end: { line: 8, character: 3 },
+    },
+    selectionRange: {
+      start: { line: 3, character: 2 },
+      end: { line: 3, character: 7 },
+    },
+    ...overrides,
+  }
+  return Object.fromEntries(Object.entries(item).filter(([, value]) => value !== undefined))
+}
+
+function callHierarchyRequestItem() {
+  const { sourceFingerprint: _sourceFingerprint, ...item } = callHierarchyWorkerItem()
+  return item
 }
 
 function changeMutation(documentVersion, text, uri = "file:///workspace/Main.ets") {

@@ -48,6 +48,15 @@ runs before generic JSON canonicalization so extra `undefined` fields cannot be
 laundered away and over-limit arrays fail before their elements are traversed.
 Accessors are rejected from descriptors without invoking their getters.
 
+An adversarial follow-up at parent revision
+`650681fcdfa58fb2f6d6e7043590cecc431dcd63` tightened the cost of that rejection.
+Each CH array now reads the intrinsic own `length` data descriptor and checks its
+method limit before enumerating keys or element descriptors. Exact records check
+their bounded own-key set against required and optional allowlists before reading
+only those allowlisted data descriptors. A 10,000-entry items/calls/ranges array
+therefore performs no key or element scan, and a result item with 70,000 unknown
+properties performs no property-descriptor reads. Proxy getters are never run.
+
 The dedicated bounds are 16 prepare items, 256 calls, 64 ranges per call, and
 2,048 ranges in aggregate. The existing 256 KiB args, 8 MiB message,
 depth-32, node-65,536, and 16 KiB URI budgets still apply. Validation uses
@@ -88,6 +97,11 @@ Observed REDs, each made GREEN before the next behavior was introduced:
    them before canonicalization.
 10. The version-fence tracer reported `1 !== 2`; the protocol was bumped and
     version-1 requests/responses are now rejected.
+11. A 10,000-entry call collection performed 20,004 observable `length` getter
+    reads before rejection; the intrinsic length preflight now rejects items,
+    calls, and ranges before key or element traversal.
+12. A result item with 70,000 unknown fields caused 70,007 descriptor reads;
+    bounded exact-record preflight now rejects it before reading any descriptor.
 
 The existing allowlist regression then produced a deliberate RED because it
 still enumerated only 18 methods. It now covers all 21 exact argument families.
@@ -96,13 +110,13 @@ still enumerated only 18 methods. It now covers all 21 exact argument families.
 
 ```sh
 node --test tests/semantic-worker-call-hierarchy-protocol.test.mjs
-# tests 15, pass 15, fail 0
+# tests 17, pass 17, fail 0
 
 node --test \
   tests/semantic-worker-call-hierarchy-protocol.test.mjs \
   tests/semantic-worker-protocol.test.mjs \
   tests/semantic-worker-supervisor.test.mjs
-# tests 71, pass 71, fail 0
+# tests 75, pass 75, fail 0
 
 pnpm check
 # tsc --noEmit -p tsconfig.json: PASS
@@ -120,10 +134,9 @@ and response boundaries and covers exact/next limits for 16/17 items,
 
 ## Deliberate follow-ups
 
-- The current supervisor keeps its existing number-only public input and
-  generic response path. The worker dispatcher integration must opt into the
-  method-aware response decoder and add the disk-snapshot routing atomically;
-  this protocol-only slice does not create a half-integrated CH path.
+- The supervisor now correlates a response with the trusted method stored on
+  its active request and applies this method-aware decoder before settlement.
+  Disk-snapshot routing and the worker dispatcher remain separate slices.
 - Main-thread physical source authority, worker-owned document state,
   cancellation composition, crash restore, and the real responsiveness E2E
   remain separate slices.
