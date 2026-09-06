@@ -650,6 +650,100 @@ test("rebuilds a lexical type engine that receives only the latest owner revisio
   ).define(firstPosition).every(({ path: definitionPath }) => definitionPath !== firstTarget))
 })
 
+test("rebuilds an alias engine when another lexical spelling owns its contiguous delta", (t) => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-watched-type-owner-coverage-"))
+  t.after(() => fs.rmSync(base, { recursive: true, force: true }))
+  const physicalRoot = path.join(base, "physical")
+  const firstAlias = path.join(base, "first-alias")
+  const secondAlias = path.join(base, "second-alias")
+  fs.mkdirSync(physicalRoot)
+  fs.symlinkSync(physicalRoot, firstAlias, "dir")
+  fs.symlinkSync(physicalRoot, secondAlias, "dir")
+  const initialMain = [
+    'import { TargetType } from "./Target"',
+    "export const initial = TargetType",
+    "",
+  ].join("\n")
+  const changedMain = completionSource("Tar")
+  const physicalMain = path.join(physicalRoot, "Main.ets")
+  const physicalTarget = path.join(physicalRoot, "Target.ets")
+  const firstMain = path.join(firstAlias, "Main.ets")
+  const firstTarget = path.join(firstAlias, "Target.ets")
+  const secondMain = path.join(secondAlias, "Main.ets")
+  const secondTarget = path.join(secondAlias, "Target.ets")
+  fs.writeFileSync(physicalMain, initialMain, "utf8")
+  fs.writeFileSync(physicalTarget, "export class TargetType {}\n", "utf8")
+  const { SemanticDocumentStore } = buildDocumentStoreDriver(base)
+  const { SemanticTypeEngineRegistry } = buildTypeEngineDriver(t)
+  const store = new SemanticDocumentStore()
+  const registry = new SemanticTypeEngineRegistry()
+  t.after(() => store.dispose())
+  t.after(() => registry.dispose())
+  const initialPosition = (rootPath, mainPath) => ({
+    path: mainPath,
+    line: 1,
+    column: 1,
+    workspaceRoot: rootPath,
+  })
+  registry.prepare(store.prepare(initialPosition(firstAlias, firstMain)))
+  const second = registry.prepare(store.prepare(initialPosition(secondAlias, secondMain)))
+  assert.ok(second.define({
+    path: secondMain,
+    line: 2,
+    column: "export const initial = ".length + 2,
+    workspaceRoot: secondAlias,
+  }).some(({ path: definitionPath }) => definitionPath === secondTarget))
+  assert.equal(registry.workspaceCount(), 2)
+
+  const maxDiskBytes = 4 * 1024 * 1024
+  const fillerPrefix = 'export const filler = "'
+  const fillerSuffix = '"\n'
+  const filler = `${fillerPrefix}${"x".repeat(
+    maxDiskBytes - Buffer.byteLength(fillerPrefix) - Buffer.byteLength(fillerSuffix),
+  )}${fillerSuffix}`
+  for (let index = 0; index < 5; index += 1) {
+    const fillerRoot = path.join(base, `filler-${index}`)
+    const fillerPath = path.join(fillerRoot, "Large.ets")
+    store.prepareDiskSnapshot({
+      path: fillerPath,
+      line: 1,
+      column: 1,
+      workspaceRoot: fillerRoot,
+    }, filler)
+  }
+
+  fs.writeFileSync(physicalMain, changedMain, "utf8")
+  fs.writeFileSync(physicalTarget, "export const replacement = 1\n", "utf8")
+  store.workspaceFilesChanged({
+    rootPath: firstAlias,
+    rootDirty: false,
+    changes: [{ path: firstTarget, kind: "changed" }],
+  })
+  const secondAfterChange = store.prepare({
+    path: secondMain,
+    line: 3,
+    column: changedMain.split("\n")[2].length + 1,
+    workspaceRoot: secondAlias,
+  })
+  assert.deepEqual(secondAfterChange.changedPaths, [firstTarget])
+  assert.equal(secondAfterChange.resetTypeEngine, false)
+  assert.equal(secondAfterChange.typeEngineResetEpoch, 0)
+  assert.deepEqual(secondAfterChange.documents.map(({ path: documentPath }) => documentPath), [
+    secondMain,
+  ])
+
+  const stale = registry.prepare(secondAfterChange)
+  const freshRegistry = new SemanticTypeEngineRegistry()
+  t.after(() => freshRegistry.dispose())
+  const fresh = freshRegistry.prepare(secondAfterChange)
+  const completion = completionPosition(secondMain, changedMain)
+  const staleLabels = stale.complete(completion).map(({ label }) => label)
+  const freshLabels = fresh.complete(completion).map(({ label }) => label)
+
+  assert.equal(staleLabels.includes("TargetType"), false)
+  assert.deepEqual(staleLabels, freshLabels)
+})
+
 test("rebuilds a lexical type engine when its canonical owner identity changes", (t) => {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-watched-type-owner-retarget-"))
   t.after(() => fs.rmSync(base, { recursive: true, force: true }))

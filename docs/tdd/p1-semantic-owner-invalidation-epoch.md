@@ -38,6 +38,20 @@ zero could receive only the later delta at revision two and retain a target
 removed by the missed revision. Before the content cursor fence, the deleted
 target predicate was `true` instead of `false`.
 
+Independent mutation review then exposed a stricter coverage hole even for a
+contiguous revision. The Store evicted the second alias's document and closure
+under its bounded LRU while the Registry retained that lexical engine. A change
+through the first alias produced revision one with only
+`changedPaths=[firstAlias/Target.ets]`. The second view had no target document,
+but its engine retained `secondAlias/Target.ets` because an arbitrary nonempty
+delta does not prove per-consumer coverage:
+
+```text
+node --test --test-name-pattern "another lexical spelling owns its contiguous delta" tests/workspace-file-change-coordinator.test.mjs
+not ok - rebuilds an alias engine when another lexical spelling owns its contiguous delta
+Expected values to be strictly equal: true !== false
+```
+
 ArkUI had the analogous owner split. Invalidating the first alias refreshed only
 that lexical provider; the second alias still returned `owner_old`:
 
@@ -56,9 +70,12 @@ actual:   [ "owner_old" ]
 - Registry entries retain lexical engine/provider roots and record canonical
   owner, reset epoch, and applied content revision only after a successful
   prepare.
-- Owner changes, reset-epoch mismatches, revision gaps, and revision advances
-  without a delta rebuild only the affected lexical entry. A contiguous precise
-  delta remains incremental.
+- Owner changes, reset-epoch mismatches, and any disk content-revision change
+  rebuild only the preparing lexical entry. Until Store deltas carry an explicit
+  per-consumer coverage cursor (or the TypeEngine has a physical-identity
+  reverse index), lexical spelling alone cannot prove a contiguous delta covers
+  that engine. This conservative fence applies to watcher revisions, not normal
+  open-document `didChange` overlay preparation.
 - ArkUI invalidation hits the exact lexical entry (important after symlink
   retarget) and every bounded entry with the current canonical owner.
 - Distinct physical roots continue to own two independent engines; a canonical

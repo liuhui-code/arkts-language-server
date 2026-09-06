@@ -149,20 +149,11 @@ export class SemanticTypeEngineRegistry {
     const resetEpoch = workspace.typeEngineResetEpoch ?? 0
     const contentRevision = workspace.contentRevision ?? 0
     const previous = this.workspaces.get(rootPath)
-    const contentRevisionAdvanced = previous !== undefined
-      && contentRevision > previous.appliedContentRevision
-    const contentRevisionGap = previous !== undefined
-      && contentRevision !== previous.appliedContentRevision
-      && contentRevision !== previous.appliedContentRevision + 1
-    const carriesIncrementalDelta = workspace.resetTypeEngine === true
-      || (workspace.removedPaths?.length ?? 0) > 0
-      || (workspace.changedPaths?.length ?? 0) > 0
     if (
       workspace.resetTypeEngine
       || previous?.ownerId !== ownerId
       || previous?.resetEpoch !== resetEpoch
-      || contentRevisionGap
-      || (contentRevisionAdvanced && !carriesIncrementalDelta)
+      || (previous !== undefined && previous.appliedContentRevision !== contentRevision)
     ) {
       previous?.engine.dispose()
       previous?.arkui.dispose()
