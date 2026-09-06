@@ -238,6 +238,13 @@
       "role": "arkui-sdk-completion",
       "file": "workspace/entry/src/main/ets/pages/ArkuiSdkCompletion.ets",
       "shape": "point+range"
+    },
+    {
+      "id": "document-highlight.tracked",
+      "kind": "document-highlight",
+      "role": "query",
+      "file": "workspace/entry/src/main/ets/pages/DocumentHighlight.ets",
+      "shape": "range"
     }
   ]
 }

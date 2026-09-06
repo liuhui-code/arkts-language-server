@@ -37,6 +37,7 @@ export async function assertInstalledSemanticSmoke({
   const resourceDefinition = materialized.cases["arkui.resource.definition"]
   const missingResource = materialized.cases["arkui.resource.missing"]
   const builderWidth = materialized.cases["arkui.builder-tail.width"]
+  const documentHighlight = materialized.cases["document-highlight.tracked"]
   const arkuiSdkScenarios = [
     {
       label: "Entry",
@@ -97,6 +98,10 @@ export async function assertInstalledSemanticSmoke({
     arkuiSdkScenarios.every(({ completion: sdkCompletion, usage }) => sdkCompletion && usage),
     "the installed-artifact corpus must expose ArkUI SDK completion and usage probes",
   )
+  assert.ok(
+    documentHighlight,
+    "the installed-artifact corpus must expose the document-highlight probe",
+  )
   const consumerSource = fs.readFileSync(fileURLToPath(reference.uri), "utf8")
   const definitionSource = fs.readFileSync(fileURLToPath(definition.uri), "utf8")
   const barrelSource = fs.readFileSync(fileURLToPath(barrel.uri), "utf8")
@@ -106,8 +111,13 @@ export async function assertInstalledSemanticSmoke({
   const quickFixSource = fs.readFileSync(fileURLToPath(quickFix.uri), "utf8")
   const signatureSource = fs.readFileSync(fileURLToPath(signature.uri), "utf8")
   const documentSymbolSource = fs.readFileSync(fileURLToPath(documentSymbolPage.uri), "utf8")
+  const formattingSource = documentSymbolSource
+    .replace("Text(this.title)", "Text( this.title )")
+    .replace('.width("100%")', '.width( "100%" )    ')
+  assert.notEqual(formattingSource, documentSymbolSource)
   const resourcePageSource = fs.readFileSync(fileURLToPath(resourceCompletion.uri), "utf8")
   const builderPageSource = fs.readFileSync(fileURLToPath(builderWidth.uri), "utf8")
+  const documentHighlightSource = fs.readFileSync(fileURLToPath(documentHighlight.uri), "utf8")
   const arkuiSdkCompletionUri = arkuiSdkScenarios[0].completion.uri
   const arkuiSdkCompletionSource = fs.readFileSync(
     fileURLToPath(arkuiSdkCompletionUri),
@@ -173,6 +183,7 @@ export async function assertInstalledSemanticSmoke({
   assert.equal(textInRange(resourcePageSource, resourceDefinition.range), "title")
   assert.equal(textInRange(resourcePageSource, missingResource.range), "missing_title")
   assert.equal(textInRange(builderPageSource, builderWidth.range), "width")
+  assert.equal(textInRange(documentHighlightSource, documentHighlight.range), "tracked")
   for (const scenario of arkuiSdkScenarios) {
     assert.equal(scenario.completion.uri, arkuiSdkCompletionUri)
     assert.deepEqual(scenario.completion.position, scenario.completion.range.end)
@@ -225,6 +236,14 @@ export async function assertInstalledSemanticSmoke({
         symbol: { symbolKind: { valueSet: modernSymbolKinds } },
       },
       textDocument: {
+        documentHighlight: { dynamicRegistration: false },
+        formatting: { dynamicRegistration: false },
+        foldingRange: {
+          dynamicRegistration: false,
+          lineFoldingOnly: true,
+          rangeLimit: 2,
+          foldingRangeKind: { valueSet: ["comment", "imports", "region"] },
+        },
         publishDiagnostics: { versionSupport: true },
         hover: { contentFormat: ["markdown"] },
         rename: { prepareSupport: true },
@@ -262,6 +281,9 @@ export async function assertInstalledSemanticSmoke({
       retriggerCharacters: [")"],
     })
     assert.equal(initialized.result.capabilities.documentSymbolProvider, true)
+    assert.equal(initialized.result.capabilities.documentHighlightProvider, true)
+    assert.equal(initialized.result.capabilities.documentFormattingProvider, true)
+    assert.equal(initialized.result.capabilities.foldingRangeProvider, true)
     assert.deepEqual(initialized.result.capabilities.codeActionProvider, {
       codeActionKinds: ["quickfix"],
       resolveProvider: true,
@@ -284,6 +306,142 @@ export async function assertInstalledSemanticSmoke({
       (message) => message.params.value.kind === "end",
       timeoutMs,
     )
+
+    const highlightRanges = rangesOf(documentHighlightSource, "tracked")
+    assert.deepEqual(highlightRanges.map(({ start }) => start.character), [20, 9, 19, 33])
+    assert.deepEqual(documentHighlight.range, highlightRanges[3])
+    session.openDocument({
+      uri: documentHighlight.uri,
+      languageId: "arkts",
+      version: 7,
+      text: documentHighlightSource,
+    })
+    const highlightResponse = await session.request("textDocument/documentHighlight", {
+      textDocument: { uri: documentHighlight.uri },
+      position: midpoint(documentHighlight.range),
+    }, { timeoutMs })
+    assert.equal(highlightResponse.error, undefined, JSON.stringify(highlightResponse.error))
+    assert.deepEqual(highlightResponse.result, [
+      { range: highlightRanges[0], kind: 3 },
+      { range: highlightRanges[1], kind: 3 },
+      { range: highlightRanges[2], kind: 2 },
+      { range: highlightRanges[3], kind: 2 },
+    ])
+    assert.equal(
+      new Set(highlightResponse.result.map(({ range }) => JSON.stringify(range))).size,
+      highlightResponse.result.length,
+      "installed document highlights must be unique",
+    )
+    verifiedClaims.push("document-highlight.artifact.immutable-versioned-write-read-ranges")
+    session.transport.send({
+      jsonrpc: "2.0",
+      method: "textDocument/didClose",
+      params: { textDocument: { uri: documentHighlight.uri } },
+    })
+
+    const availableArkuiFolds = [
+      lineRange(documentSymbolSource, "struct ArkuiPage {", "}"),
+      lineRange(documentSymbolSource, "build() {", "  }"),
+      lineRange(documentSymbolSource, "Column() {", "    }"),
+    ]
+    assert.equal(availableArkuiFolds.length, 3)
+    session.openDocument({
+      uri: documentSymbolPage.uri,
+      languageId: "arkts",
+      version: 1,
+      text: documentSymbolSource,
+    })
+    const foldingResponse = await session.request("textDocument/foldingRange", {
+      textDocument: { uri: documentSymbolPage.uri },
+    }, { timeoutMs })
+    assert.equal(foldingResponse.error, undefined, JSON.stringify(foldingResponse.error))
+    assert.deepEqual(
+      foldingResponse.result,
+      availableArkuiFolds.slice(0, 2),
+      "installed folding ranges must honor the client's rangeLimit in source order",
+    )
+    assert.ok(foldingResponse.result.every(({ startCharacter, endCharacter }) => (
+      startCharacter === undefined && endCharacter === undefined
+    )), "installed folding ranges must honor lineFoldingOnly")
+    verifiedClaims.push(
+      "folding-range.artifact.immutable-client-options-line-only-range-limit",
+    )
+    session.transport.send({
+      jsonrpc: "2.0",
+      method: "textDocument/didClose",
+      params: { textDocument: { uri: documentSymbolPage.uri } },
+    })
+
+    const formattingDiagnosticsV8 = session.transport.notification(
+      "textDocument/publishDiagnostics",
+      (message) => message.params.uri === documentSymbolPage.uri
+        && message.params.version === 8,
+      timeoutMs,
+    )
+    session.openDocument({
+      uri: documentSymbolPage.uri,
+      languageId: "arkts",
+      version: 8,
+      text: formattingSource,
+    })
+    assert.deepEqual((await formattingDiagnosticsV8).params.diagnostics, [])
+    const formattingResponse = await session.request("textDocument/formatting", {
+      textDocument: { uri: documentSymbolPage.uri },
+      options: { tabSize: 2, insertSpaces: true, trimTrailingWhitespace: true },
+    }, { timeoutMs })
+    assert.equal(formattingResponse.error, undefined, JSON.stringify(formattingResponse.error))
+    assert.ok(Array.isArray(formattingResponse.result))
+    assert.ok(formattingResponse.result.length > 0)
+    const formattedArkuiPage = applyTextEdits(formattingSource, formattingResponse.result)
+    assert.equal(formattedArkuiPage, documentSymbolSource)
+
+    const formattingDiagnosticsV9 = session.transport.notification(
+      "textDocument/publishDiagnostics",
+      (message) => message.params.uri === documentSymbolPage.uri
+        && message.params.version === 9,
+      timeoutMs,
+    )
+    session.changeDocument({
+      uri: documentSymbolPage.uri,
+      version: 9,
+      text: formattedArkuiPage,
+    })
+    assert.deepEqual((await formattingDiagnosticsV9).params.diagnostics, [])
+    const formattedWidthRange = rangeInAnchor(
+      formattedArkuiPage,
+      '.width("100%")',
+      "width",
+    )
+    const formattedWidthDefinition = await session.request("textDocument/definition", {
+      textDocument: { uri: documentSymbolPage.uri },
+      position: midpoint(formattedWidthRange),
+    }, { timeoutMs })
+    assert.equal(
+      formattedWidthDefinition.error,
+      undefined,
+      JSON.stringify(formattedWidthDefinition.error),
+    )
+    assert.deepEqual(
+      normalizeLocations(formattedWidthDefinition.result).filter(({ uri }) => uri === sdkUri),
+      [{
+        uri: sdkUri,
+        range: rangeInAnchor(sdkSource, "width(value: ArkUILength)", "width"),
+      }],
+    )
+    const repeatedFormatting = await session.request("textDocument/formatting", {
+      textDocument: { uri: documentSymbolPage.uri },
+      options: { tabSize: 2, insertSpaces: true, trimTrailingWhitespace: true },
+    }, { timeoutMs })
+    assert.equal(repeatedFormatting.error, undefined, JSON.stringify(repeatedFormatting.error))
+    assert.deepEqual(repeatedFormatting.result, [])
+    verifiedClaims.push(
+      "document-formatting.artifact.immutable-edits-apply-idempotent-semantics",
+    )
+    session.transport.send({
+      jsonrpc: "2.0",
+      method: "textDocument/didClose",
+      params: { textDocument: { uri: documentSymbolPage.uri } },
+    })
 
     const consumerDiagnostics = session.transport.notification(
       "textDocument/publishDiagnostics",
@@ -1149,7 +1307,7 @@ export async function assertInstalledSemanticSmoke({
     session.openDocument({
       uri: documentSymbolPage.uri,
       languageId: "arkts",
-      version: 1,
+      version: 10,
       text: documentSymbolSource,
     })
     for (const scenario of arkuiSdkScenarios) {
@@ -1317,6 +1475,28 @@ function positionAt(source, offset) {
   const line = before.split("\n").length - 1
   const lineStart = before.lastIndexOf("\n") + 1
   return { line, character: offset - lineStart }
+}
+
+function rangesOf(source, name) {
+  const ranges = []
+  let offset = 0
+  while ((offset = source.indexOf(name, offset)) >= 0) {
+    ranges.push({
+      start: positionAt(source, offset),
+      end: positionAt(source, offset + name.length),
+    })
+    offset += name.length
+  }
+  return ranges
+}
+
+function lineRange(source, startAnchor, endAnchor) {
+  const lines = source.split("\n")
+  const startLine = lines.findIndex((line) => line.includes(startAnchor))
+  const endLine = lines.findLastIndex((line) => line === endAnchor)
+  assert.notEqual(startLine, -1, `missing folding start anchor: ${startAnchor}`)
+  assert.ok(endLine > startLine, `missing folding end anchor after ${startAnchor}`)
+  return { startLine, endLine }
 }
 
 function rangeInAnchor(source, anchor, token) {

@@ -302,6 +302,24 @@ test("installs one verified artifact without source dependencies or a rebuild", 
     cwd: externalCwd,
     env: environment,
   })
+  assert.ok(
+    semanticEvidence.verifiedClaims.includes(
+      "document-highlight.artifact.immutable-versioned-write-read-ranges",
+    ),
+    "installed smoke must verify exact document-highlight write/read ranges",
+  )
+  assert.ok(
+    semanticEvidence.verifiedClaims.includes(
+      "folding-range.artifact.immutable-client-options-line-only-range-limit",
+    ),
+    "installed smoke must verify negotiated line-only bounded folding ranges",
+  )
+  assert.ok(
+    semanticEvidence.verifiedClaims.includes(
+      "document-formatting.artifact.immutable-edits-apply-idempotent-semantics",
+    ),
+    "installed smoke must verify formatting edits, application, idempotence, and semantics",
+  )
   assertExactVerifiedArtifactClaims({
     matrix: CURRENT_LSP_FEATURE_MATRIX,
     entry: "tests/release/portable-install.acceptance.mjs",

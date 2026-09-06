@@ -364,6 +364,59 @@ test("materializes installed ArkUI SDK completion probes at exact UTF-16 ranges"
   }
 })
 
+test("materializes an installed document-highlight probe at an exact UTF-16 range", async (t) => {
+  const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "arkts-lsp-highlight-corpus-"))
+  t.after(() => fs.rm(temporaryRoot, { recursive: true, force: true }))
+
+  const schema = JSON.parse(await fs.readFile(path.join(fixtureRoot, "corpus.json"), "utf8"))
+  assert.deepEqual(
+    schema.cases.find(({ id }) => id === "document-highlight.tracked"),
+    {
+      id: "document-highlight.tracked",
+      kind: "document-highlight",
+      role: "query",
+      file: "workspace/entry/src/main/ets/pages/DocumentHighlight.ets",
+      shape: "range",
+    },
+  )
+
+  const materialized = await materializeConformanceWorkspace({ temporaryRoot })
+  const highlight = materialized.cases["document-highlight.tracked"]
+  const documentPath = path.join(
+    materialized.workspaceRoot,
+    "entry",
+    "src",
+    "main",
+    "ets",
+    "pages",
+    "DocumentHighlight.ets",
+  )
+  const source = await fs.readFile(documentPath, "utf8")
+  const occurrences = [...source.matchAll(/\btracked\b/g)].map(({ index }) => index)
+
+  assert.doesNotMatch(source, /\/\*@case\./)
+  assert.equal(highlight.uri, pathToFileURL(documentPath).href)
+  assert.equal(textInRange(source, highlight.range), "tracked")
+  assert.equal(occurrences.length, 4)
+  assert.deepEqual(occurrences.map((offset) => source.slice(0, offset).split("\n").at(-1).length), [
+    20,
+    9,
+    19,
+    33,
+  ])
+  assert.deepEqual(highlight.range.start, { line: 2, character: 33 })
+  assert.equal(
+    source.split("\n")[highlight.range.start.line]
+      .slice(0, highlight.range.start.character).length
+      - Array.from(
+        source.split("\n")[highlight.range.start.line]
+          .slice(0, highlight.range.start.character),
+      ).length,
+    1,
+    "the emoji before the highlight query must occupy two UTF-16 code units",
+  )
+})
+
 test("returns cases in the declared corpus schema order with stable metadata", async (t) => {
   const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "arkts-lsp-schema-test-"))
   t.after(() => fs.rm(temporaryRoot, { recursive: true, force: true }))
