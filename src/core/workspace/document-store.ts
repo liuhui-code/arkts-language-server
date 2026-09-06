@@ -1207,6 +1207,7 @@ export class SemanticDocumentStore {
     const visited = new Set([current.path])
     let totalBytes = Buffer.byteLength(current.content)
     let complete = true
+    let aggregateAdmissionComplete = true
     let creationCandidatesComplete = true
     const creationCandidatePaths = new Set<string>()
 
@@ -1233,11 +1234,17 @@ export class SemanticDocumentStore {
         if (visited.has(dependencyPath)) continue
         visited.add(dependencyPath)
         const before = this.documents.get(dependencyPath)
-        const dependency = this.loadFromDiskWithinTransaction(
+        const loaded = this.loadFromDiskWithinTransaction(
           dependencyPath,
           before,
           transaction,
+          Math.max(0, MAX_CLOSURE_BYTES - totalBytes),
         )
+        if (loaded.status === "budget-exceeded") {
+          aggregateAdmissionComplete = false
+          continue
+        }
+        const dependency = loaded.record
         this.operationControl.checkpoint()
         const bytes = Buffer.byteLength(dependency.content)
         if (totalBytes + bytes > MAX_CLOSURE_BYTES) {
@@ -1255,7 +1262,7 @@ export class SemanticDocumentStore {
     }
     if (queued.length > 0) creationCandidatesComplete = false
     this.operationControl.checkpoint()
-    if (complete) {
+    if (complete && aggregateAdmissionComplete) {
       this.dependencyClosures.set(current.path, {
         contentGeneration: current.contentGeneration,
         paths: result.map(({ record }) => record.path),

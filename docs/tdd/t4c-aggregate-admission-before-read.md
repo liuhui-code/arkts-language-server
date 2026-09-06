@@ -36,4 +36,34 @@ After deleting A and publishing the exact watched-file delta, the same store ret
 
 ## Slice B: cold dependency traversal
 
-Pending its own RED/GREEN cycle and commit.
+Parent revision: `ea023c6` (Slice A is already present in ancestry).
+
+Fixture: `Main.ets`, A, and B total exactly 8 MiB in dependency traversal
+order; imported C is the next dependency. This boundary makes C a deterministic
+aggregate rejection rather than relying on approximate large-file sizes.
+
+RED:
+
+```text
+node --test --test-name-pattern "cold dependency traversal admits aggregate bytes" tests/document-store-cancellation.test.mjs
+not ok - cold dependency traversal admits aggregate bytes before reading and retries its frontier
+C: openSync=1, fstatSync=2, allocUnsafe=1, readSync=3, closeSync=1
+```
+
+The old BFS loaded C completely and rejected it only after adding its byte
+length. It also published the truncated A/B closure, which could permanently
+hide C from closure-path invalidation.
+
+GREEN:
+
+```text
+node --test --test-name-pattern "cold dependency traversal admits aggregate bytes" tests/document-store-cancellation.test.mjs
+ok - cold dependency traversal admits aggregate bytes before reading and retries its frontier
+C initial attempt: openSync=1, fstatSync=1, allocUnsafe=0, readSync=0, closeSync=1
+```
+
+The BFS passes its remaining aggregate bytes into the transactional loader. A
+budget-exceeded outcome neither enters the result nor publishes a byte-truncated
+dependency closure. After A shrinks and its exact watcher delta is applied, the
+same store reads C for the first time, publishes the now-complete closure, and
+the next prepare is a warm closure hit without another C read.

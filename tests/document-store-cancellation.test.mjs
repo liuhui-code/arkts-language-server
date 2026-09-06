@@ -411,6 +411,127 @@ test("workspace hydration admits aggregate bytes before reading and retries an u
   assert.equal(Buffer.byteLength(documentContent(retried, bPath)), maxDiskBytes)
 })
 
+test("cold dependency traversal admits aggregate bytes before reading and retries its frontier", (t) => {
+  const maxClosureBytes = 8 * 1024 * 1024
+  const maxDiskBytes = 4 * 1024 * 1024
+  const mainContent = [
+    'import { a } from "./A"',
+    'import { b } from "./B"',
+    'import { c } from "./C"',
+    "export const main = a + b + c",
+    "",
+  ].join("\n")
+  const bContent = sourceWithExactBytes("b", maxDiskBytes)
+  const aContent = sourceWithExactBytes(
+    "a",
+    maxClosureBytes - Buffer.byteLength(mainContent) - Buffer.byteLength(bContent),
+  )
+  const cContent = sourceWithExactBytes("c", 128 * 1024)
+  assert.equal(
+    Buffer.byteLength(mainContent) + Buffer.byteLength(aContent) + Buffer.byteLength(bContent),
+    maxClosureBytes,
+  )
+  const workspace = createWorkspace(t, {
+    "Main.ets": mainContent,
+    "A.ets": aContent,
+    "B.ets": bContent,
+    "C.ets": cContent,
+  })
+  const mainPath = path.join(workspace, "Main.ets")
+  const aPath = path.join(workspace, "A.ets")
+  const bPath = path.join(workspace, "B.ets")
+  const cPath = path.join(workspace, "C.ets")
+  const driverRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-cold-admission-driver-"))
+  t.after(() => fs.rmSync(driverRoot, { recursive: true, force: true }))
+  const { SemanticDocumentStore } = buildDocumentStoreDriver(driverRoot)
+  const store = new SemanticDocumentStore()
+  t.after(() => store.dispose())
+  const originalOpen = fs.openSync
+  const originalFstat = fs.fstatSync
+  const originalRead = fs.readSync
+  const originalClose = fs.closeSync
+  const originalAllocUnsafe = Buffer.allocUnsafe
+  const descriptorPaths = new Map()
+  const io = { open: 0, fstat: 0, alloc: 0, read: 0, close: 0 }
+  let allocationPath
+  fs.openSync = (filePath, ...args) => {
+    const descriptor = originalOpen(filePath, ...args)
+    const resolvedPath = path.resolve(String(filePath))
+    if (resolvedPath === cPath) {
+      descriptorPaths.set(descriptor, resolvedPath)
+      io.open += 1
+    }
+    return descriptor
+  }
+  fs.fstatSync = (descriptor, ...args) => {
+    if (descriptorPaths.get(descriptor) === cPath) {
+      allocationPath = cPath
+      io.fstat += 1
+    }
+    return originalFstat(descriptor, ...args)
+  }
+  Buffer.allocUnsafe = (size) => {
+    if (allocationPath === cPath) io.alloc += 1
+    return originalAllocUnsafe(size)
+  }
+  fs.readSync = (descriptor, ...args) => {
+    if (descriptorPaths.get(descriptor) === cPath) io.read += 1
+    return originalRead(descriptor, ...args)
+  }
+  fs.closeSync = (descriptor) => {
+    const isObserved = descriptorPaths.get(descriptor) === cPath
+    const result = originalClose(descriptor)
+    if (isObserved) {
+      descriptorPaths.delete(descriptor)
+      allocationPath = undefined
+      io.close += 1
+    }
+    return result
+  }
+  t.after(() => {
+    fs.openSync = originalOpen
+    fs.fstatSync = originalFstat
+    fs.readSync = originalRead
+    fs.closeSync = originalClose
+    Buffer.allocUnsafe = originalAllocUnsafe
+  })
+  const position = {
+    path: mainPath,
+    line: 1,
+    column: 1,
+    workspaceRoot: workspace,
+  }
+
+  const first = store.prepare(position)
+
+  assert.deepEqual(
+    first.documents.map(({ path: documentPath }) => documentPath),
+    [mainPath, aPath, bPath],
+  )
+  assert.deepEqual(io, { open: 1, fstat: 1, alloc: 0, read: 0, close: 1 })
+  assert.equal(first.state.dependencyClosureCacheHit, false)
+
+  fs.writeFileSync(aPath, "export const a = 1\n", "utf8")
+  store.workspaceFilesChanged({
+    rootPath: workspace,
+    rootDirty: false,
+    changes: [{ path: aPath, kind: "changed" }],
+  })
+  Object.assign(io, { open: 0, fstat: 0, alloc: 0, read: 0, close: 0 })
+  const retried = store.prepare(position)
+
+  assert.equal(documentContent(retried, cPath), cContent)
+  assert.equal(io.open, 1)
+  assert.equal(io.fstat, 2)
+  assert.equal(io.alloc, 1)
+  assert.ok(io.read > 0)
+  assert.equal(io.close, 1)
+  assert.equal(retried.state.dependencyClosureCacheHit, false)
+  const readsAfterRetry = io.read
+  assert.equal(store.prepare(position).state.dependencyClosureCacheHit, true)
+  assert.equal(io.read, readsAfterRetry, "the complete retry must publish a warm closure")
+})
+
 test("cold dependency traversal rolls back a loaded prefix and retries the full closure", (t) => {
   const mainContent = [
     'import { a } from "./A"',
