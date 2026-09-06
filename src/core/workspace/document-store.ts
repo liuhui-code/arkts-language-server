@@ -407,7 +407,6 @@ export class SemanticDocumentStore {
       if (!SOURCE_EXTENSIONS.includes(path.extname(sourcePath))) return []
       const physicalPath = canonicalSourcePath(sourcePath)
       if (!isInside(canonicalRoot, physicalPath)) return []
-      if (change.kind !== "created" && this.documents.get(sourcePath)?.overlay) return []
       return [{ sourcePath, physicalPath, kind: change.kind }]
     })
     const knownPathsBeforeInvalidation = new Set(sourceChanges.flatMap(({ sourcePath }) => (
@@ -537,8 +536,6 @@ export class SemanticDocumentStore {
     const invalidationMatches: DiskInvalidationMatches = new Map()
     for (const input of filePaths) {
       const sourcePath = path.resolve(typeof input === "string" ? input : input.path)
-      const cached = this.documents.get(sourcePath)
-      if (cached?.overlay) continue
       addPathByRoot(inputPathsByIdentity, sourcePath, sourcePath)
       if (canonicalizeInputs) {
         const physicalPath = typeof input === "string"

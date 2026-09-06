@@ -674,6 +674,50 @@ test("a physical watched change invalidates a cached symlink dependency identity
   assert.equal(changed.state.dependencyClosureCacheHit, false)
 })
 
+test("a watched overlay path still invalidates non-overlay physical aliases", (t) => {
+  const oldDiskContent = "export function target(): string { return 'x' }\n"
+  const newDiskContent = "export function target(): number { return 123 }\n"
+  const overlayContent = "export function target(): boolean { return true }\n"
+  assert.equal(Buffer.byteLength(newDiskContent), Buffer.byteLength(oldDiskContent))
+  const workspace = createWorkspace(t, "changed-overlay-alias", {
+    "Main.ets": "import { target } from './Alias'\nexport const main = target()\n",
+    "Target.ets": oldDiskContent,
+  })
+  const mainPath = path.join(workspace, "Main.ets")
+  const targetPath = path.join(workspace, "Target.ets")
+  const aliasPath = path.join(workspace, "Alias.ets")
+  fs.symlinkSync(targetPath, aliasPath, "file")
+  const stableTimestamp = new Date("2020-01-02T03:04:05.000Z")
+  fs.utimesSync(targetPath, stableTimestamp, stableTimestamp)
+  const store = new SemanticDocumentStore()
+  t.after(() => store.dispose?.())
+  store.sync({
+    path: targetPath,
+    content: overlayContent,
+    documentVersion: 1,
+    workspaceRoot: workspace,
+  })
+  const position = syncPosition(store, workspace, mainPath)
+  const warm = store.prepare(position)
+  assert.equal(documentContent(warm, targetPath), overlayContent)
+  assert.equal(documentContent(warm, aliasPath), oldDiskContent)
+
+  fs.writeFileSync(targetPath, newDiskContent, "utf8")
+  fs.utimesSync(targetPath, stableTimestamp, stableTimestamp)
+  store.workspaceFilesChanged({
+    rootPath: workspace,
+    rootDirty: false,
+    changes: [{ path: targetPath, kind: "changed" }],
+  })
+  const changed = store.prepare(position)
+
+  assert.equal(documentContent(changed, targetPath), overlayContent)
+  assert.equal(documentContent(changed, aliasPath), newDiskContent)
+  assert.deepEqual(changed.changedPaths, [targetPath, aliasPath])
+  assert.equal(changed.resetTypeEngine, true)
+  assert.equal(changed.state.dependencyClosureCacheHit, false)
+})
+
 test("a watched change matches a dependency through a case-insensitive path alias", (t) => {
   const workspace = createWorkspace(t, "changed-case-identity", {
     "Main.ets": "import { target } from './target'\nexport const main = target()\n",
