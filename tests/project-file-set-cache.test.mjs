@@ -713,7 +713,7 @@ test("a watched overlay path still invalidates non-overlay physical aliases", (t
 
   assert.equal(documentContent(changed, targetPath), overlayContent)
   assert.equal(documentContent(changed, aliasPath), newDiskContent)
-  assert.deepEqual(changed.changedPaths, [targetPath, aliasPath])
+  assert.deepEqual(changed.changedPaths, [aliasPath])
   assert.equal(changed.resetTypeEngine, true)
   assert.equal(changed.state.dependencyClosureCacheHit, false)
 })

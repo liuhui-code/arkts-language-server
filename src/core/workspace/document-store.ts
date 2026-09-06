@@ -428,10 +428,15 @@ export class SemanticDocumentStore {
       if (!SOURCE_EXTENSIONS.includes(path.extname(sourcePath))) return []
       const physicalPath = canonicalSourcePath(sourcePath)
       if (!isInside(canonicalRoot, physicalPath)) return []
-      return [{ sourcePath, physicalPath, kind: change.kind }]
+      return [{
+        sourcePath,
+        physicalPath,
+        kind: change.kind,
+        overlay: this.documents.get(sourcePath)?.overlay === true,
+      }]
     })
-    const knownPathsBeforeInvalidation = new Set(sourceChanges.flatMap(({ sourcePath }) => (
-      this.documents.has(sourcePath) || Boolean(paths?.includes(sourcePath)) ? [sourcePath] : []
+    const knownPathsBeforeInvalidation = new Set(sourceChanges.flatMap(({ sourcePath, overlay }) => (
+      !overlay && (this.documents.has(sourcePath) || Boolean(paths?.includes(sourcePath))) ? [sourcePath] : []
     )))
     const invalidationMatches = this.invalidateDiskDocuments(
       sourceChanges.map(({ sourcePath, physicalPath }) => ({
@@ -447,10 +452,10 @@ export class SemanticDocumentStore {
     const changedRoots = new Set<string>()
     const resetRoots = new Set<string>()
     for (const change of sourceChanges) {
-      const { sourcePath, physicalPath } = change
+      const { sourcePath, physicalPath, overlay } = change
       const affectedPathsByRoot = invalidationMatches.get(sourcePath) ?? new Map()
       if (change.kind === "deleted") {
-        if (paths) {
+        if (!overlay && paths) {
           const index = paths.indexOf(sourcePath)
           if (index >= 0) {
             paths.splice(index, 1)
@@ -459,7 +464,7 @@ export class SemanticDocumentStore {
             membershipChanged = true
           }
         }
-        if (knownPathsBeforeInvalidation.has(sourcePath) || affectedPathsByRoot.size > 0) {
+        if (!overlay && (knownPathsBeforeInvalidation.has(sourcePath) || affectedPathsByRoot.size > 0)) {
           addPathByRoot(removedPathsByRoot, canonicalRoot, sourcePath)
           changedRoots.add(canonicalRoot)
         }
@@ -472,8 +477,10 @@ export class SemanticDocumentStore {
         }
       } else {
         if (change.kind === "changed") {
-          addPathByRoot(changedPathsByRoot, canonicalRoot, sourcePath)
-          contentChanged = true
+          if (!overlay) {
+            addPathByRoot(changedPathsByRoot, canonicalRoot, sourcePath)
+            contentChanged = true
+          }
           for (const [affectedRoot, affectedPaths] of affectedPathsByRoot) {
             let physicalAliasAffected = false
             for (const affectedPath of affectedPaths) {

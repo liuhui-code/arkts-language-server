@@ -17,3 +17,5 @@ RED kept Alias's old string. GREEN reloads Alias from current disk truth while T
 ## Rule
 
 Watcher inputs always contribute raw and physical identities. Overlay protection applies per cached document and per closure entry during invalidation, not to the event itself. Non-overlay aliases receive their original lexical changed path, owner revision, and conservative reset without overwriting the overlay.
+
+The neighboring external-delete test exposed a second edge: the protected overlay itself must not be published as removed/changed or deleted from project membership merely because its disk path emitted an event. Only matched non-overlay aliases contribute deltas; an overlay with no aliases preserves the earlier no-op watcher behavior.
