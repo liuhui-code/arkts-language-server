@@ -971,44 +971,53 @@ export class TypeScriptLanguageServiceEngine {
     position: SemanticDocumentPosition,
     newName: string,
   ): SemanticRenameQueryResult {
+    const work = new CooperativeWork(this.checkpoint)
+    work.boundary()
     if (this.projectMembershipStatus !== "complete") {
-      return { status: "incomplete", reason: "project-membership-incomplete" }
+      return work.finish({ status: "incomplete", reason: "project-membership-incomplete" })
     }
     const filePath = path.resolve(position.path)
     const script = this.scripts.get(filePath)
-    if (!script) return { status: "incomplete", reason: "source-unavailable" }
-    if (!isIdentifierText(newName)) return { status: "invalid-name" }
+    if (!script) return work.finish({ status: "incomplete", reason: "source-unavailable" })
+    if (!isIdentifierText(newName)) return work.finish({ status: "invalid-name" })
     const sourceOffset = lineColumnToOffset(script.sourceContent, position.line, position.column)
     const offset = script.virtualDocument.toGeneratedOffset(sourceOffset)
+    work.boundary()
     const info = this.service.getRenameInfo(filePath, offset, { allowRenameOfImportPath: false })
-    if (!info.canRename) return { status: "unavailable" }
+    work.boundary()
+    if (!info.canRename) return work.finish({ status: "unavailable" })
+    work.boundary()
     const conflict = preflightTopLevelClassRenameConflict(
       this.service,
       filePath,
       info.triggerSpan.start,
       newName,
     )
+    work.boundary()
     if (conflict === "conflict" || conflict === "indeterminate") {
-      return { status: "unavailable" }
+      return work.finish({ status: "unavailable" })
     }
+    work.boundary()
     const locations = this.service.findRenameLocations(filePath, offset, false, false, true) ?? []
-    if (locations.length === 0) return { status: "unavailable" }
+    work.boundary()
+    if (locations.length === 0) return work.finish({ status: "unavailable" })
     const sourceViews = new Map<string, ScriptRecord | LazySnapshotRecord>()
     const edits: Extract<SemanticRenameQueryResult, { status: "complete" }>["edits"] = []
     const seen = new Set<string>()
     for (const location of locations) {
       const targetPath = path.resolve(location.fileName)
+      work.item()
       if (!isWithinRoot(this.rootPath, targetPath)) {
-        return { status: "incomplete", reason: "source-outside-workspace" }
+        return work.finish({ status: "incomplete", reason: "source-outside-workspace" })
       }
       let sourceView = sourceViews.get(targetPath)
       if (!sourceView) {
         sourceView = this.scripts.get(targetPath) ?? this.loadLazySnapshot(targetPath)
-        if (!sourceView) return { status: "incomplete", reason: "source-unavailable" }
+        if (!sourceView) return work.finish({ status: "incomplete", reason: "source-unavailable" })
         sourceViews.set(targetPath, sourceView)
       }
       const range = exactSourceRange(sourceView, location.textSpan)
-      if (!range) return { status: "incomplete", reason: "source-unmappable" }
+      if (!range) return work.finish({ status: "incomplete", reason: "source-unmappable" })
       const newText = `${location.prefixText ?? ""}${newName}${location.suffixText ?? ""}`
       const key = semanticLocationKey(targetPath, range)
       if (seen.has(key)) continue
@@ -1020,11 +1029,13 @@ export class TypeScriptLanguageServiceEngine {
         expectedVersion: this.scripts.get(targetPath)?.documentVersion ?? null,
       })
     }
-    edits.sort(compareTextEdits)
-    if (hasOverlappingEdits(edits)) {
-      return { status: "incomplete", reason: "source-unmappable" }
+    work.boundary()
+    edits.sort(work.comparator(compareTextEdits))
+    work.boundary()
+    if (hasOverlappingEdits(edits, work)) {
+      return work.finish({ status: "incomplete", reason: "source-unmappable" })
     }
-    return { status: "complete", edits }
+    return work.finish({ status: "complete", edits })
   }
 
   signatureHelp(
@@ -1847,8 +1858,10 @@ function compareTextEdits(
 
 function hasOverlappingEdits(
   edits: Array<{ path: string; range: SemanticTextRange }>,
+  work: CooperativeWork,
 ): boolean {
   for (let index = 1; index < edits.length; index += 1) {
+    work.item()
     const previous = edits[index - 1]
     const current = edits[index]
     if (previous.path !== current.path) continue
