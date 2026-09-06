@@ -148,6 +148,129 @@ test("cancels references during result mapping without publishing partial result
   )
 })
 
+test("cancels completion during the bounded raw entry scan without publishing partial results", async (t) => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-ts-completion-cancel-"))
+  t.after(() => fs.rmSync(workspaceRoot, { recursive: true, force: true }))
+
+  const mainPath = path.join(workspaceRoot, "Main.ts")
+  const mainSource = "const receiver = {}\nreceiver.me\n"
+  const {
+    SemanticCancellationScope,
+    SemanticWorkerCancelState,
+    TypeScriptLanguageServiceEngine,
+    TypeScriptOperationCanceledException,
+  } = buildDriver(t)
+  const scope = new SemanticCancellationScope()
+  const cancellationCell = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT)
+  const cancellationView = new Int32Array(cancellationCell)
+  let sixtyFifthEntryAccessed = false
+  let oneHundredTwentyNinthEntryAccessed = false
+
+  const engine = new TypeScriptLanguageServiceEngine(workspaceRoot, {
+    hostCancellationToken: scope.hostToken,
+    checkpoint: () => scope.checkpoint(),
+  })
+  t.after(() => engine.dispose())
+  engine.prepare({
+    rootPath: workspaceRoot,
+    documents: [{
+      path: mainPath,
+      content: mainSource,
+      documentVersion: 1,
+      overlay: true,
+    }],
+    projectMembership: {
+      paths: [mainPath],
+      status: "complete",
+      revision: 1,
+    },
+    contentRevision: 1,
+    resetTypeEngine: false,
+    state: {
+      path: mainPath,
+      contentGeneration: 1,
+      documentVersion: 1,
+      dependencyGeneration: 1,
+      documentCacheHit: false,
+      dependencyClosureCacheHit: false,
+      queryCacheHit: false,
+      loadedDocumentCount: 1,
+      syntaxReady: true,
+    },
+  })
+
+  const entries = Array.from({ length: 130 }, (_, index) => controlledCompletionEntry({
+    index,
+    onSixtyFourthEntry() {
+      Atomics.store(cancellationView, 0, SemanticWorkerCancelState.clientCancelled)
+    },
+    onSixtyFifthEntry() {
+      sixtyFifthEntryAccessed = true
+    },
+    onOneHundredTwentyNinthEntry() {
+      oneHundredTwentyNinthEntryAccessed = true
+    },
+  }))
+  const realService = engine.service
+  engine.service = new Proxy(realService, {
+    get(target, property, receiver) {
+      if (property === "getCompletionsAtPosition") {
+        return () => ({
+          entries,
+          isGlobalCompletion: false,
+          isMemberCompletion: true,
+          isNewIdentifierLocation: false,
+        })
+      }
+      const value = Reflect.get(target, property, receiver)
+      return typeof value === "function" ? value.bind(target) : value
+    },
+  })
+
+  const position = {
+    path: mainPath,
+    line: 2,
+    column: "receiver.me".length + 1,
+    documentVersion: 1,
+    workspaceRoot,
+  }
+  let errorCaughtInsideCompletion
+  let publishedResult
+  await assert.rejects(
+    scope.run(cancellationCell, () => {
+      try {
+        publishedResult = engine.complete(position)
+        return publishedResult
+      } catch (error) {
+        errorCaughtInsideCompletion = error
+        throw error
+      }
+    }),
+    (error) => error instanceof TypeScriptOperationCanceledException,
+  )
+
+  assert.equal(
+    errorCaughtInsideCompletion instanceof TypeScriptOperationCanceledException,
+    true,
+    "engine.complete must observe cancellation while scanning its own raw result",
+  )
+  assert.equal(sixtyFifthEntryAccessed, false)
+  assert.equal(publishedResult, undefined, "cancelled completion must not publish a partial list")
+
+  const retryCell = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT)
+  const retry = await scope.run(retryCell, () => engine.complete(position))
+  assert.equal(retry.length, 128)
+  assert.deepEqual(
+    retry.map(({ label }) => label),
+    Array.from({ length: 128 }, (_, index) => `method${index}`),
+  )
+  assert.equal(
+    oneHundredTwentyNinthEntryAccessed,
+    false,
+    "completion must stop scanning once the bounded result is full",
+  )
+})
+
 function controlledReference({
   definitionStart,
   index,
@@ -170,6 +293,26 @@ function controlledReference({
     },
   })
   return reference
+}
+
+function controlledCompletionEntry({
+  index,
+  onSixtyFourthEntry,
+  onSixtyFifthEntry,
+  onOneHundredTwentyNinthEntry,
+}) {
+  const name = `method${index}`
+  return {
+    name,
+    kind: "method",
+    sortText: "11",
+    get filterText() {
+      if (index === 63) onSixtyFourthEntry()
+      if (index === 64) onSixtyFifthEntry()
+      if (index === 128) onOneHundredTwentyNinthEntry()
+      return name
+    },
+  }
 }
 
 function offsetsOf(source, token) {

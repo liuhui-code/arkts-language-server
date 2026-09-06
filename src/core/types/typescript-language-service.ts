@@ -233,51 +233,63 @@ export class TypeScriptLanguageServiceEngine {
   }
 
   complete(position: SemanticDocumentPosition): SemanticCompletionItem[] {
+    const work = new CooperativeWork(this.checkpoint)
+    work.boundary()
     const filePath = path.resolve(position.path)
     const script = this.scripts.get(filePath)
-    if (!script || !hasCompletionPrefix(script.sourceContent, position)) return []
+    if (!script || !hasCompletionPrefix(script.sourceContent, position)) return work.finish([])
     script.lastAccess = ++this.accessClock
     const sourceOffset = lineColumnToOffset(script.sourceContent, position.line, position.column)
     const offset = script.virtualDocument.toGeneratedOffset(sourceOffset)
     const prefix = completionPrefix(script.sourceContent, sourceOffset)
     const memberAccess = script.sourceContent.slice(0, sourceOffset - prefix.length).endsWith(".")
+    work.boundary()
     const info = this.service.getCompletionsAtPosition(filePath, offset, {
       includeCompletionsForImportStatements: true,
       includeCompletionsForModuleExports:
         !memberAccess && prefix.length >= MIN_MODULE_EXPORT_PREFIX_LENGTH,
       includeCompletionsWithInsertText: true,
     })
-    if (!info) return []
+    work.boundary()
+    if (!info) return work.finish([])
     const normalizedPrefix = prefix.toLowerCase()
-    return info.entries
-      .filter((entry) => !normalizedPrefix
-        || (entry.filterText ?? entry.name).toLowerCase().startsWith(normalizedPrefix))
-      .slice(0, MAX_COMPLETIONS)
-      .map((entry) => ({
-      label: entry.name,
-      detail: typescriptTypeDetail(entry, filePath),
-      kind: completionKind(entry.kind),
-      insertText: entry.insertText,
-      filterText: entry.filterText,
-      sortText: entry.sortText,
-      source: "type",
-      replacementRange: entry.replacementSpan
-        ? script.virtualDocument.generatedSpanToSourceRange(
-            entry.replacementSpan.start,
-            entry.replacementSpan.length,
-          )
-        : prefix.length > 0
-          ? spanToRange(script.sourceContent, sourceOffset - prefix.length, prefix.length)
-          : undefined,
-      data: {
-        provider: "typescript",
-        engineVersion: ENGINE_VERSION,
-        documentVersion: position.documentVersion,
-        entryName: entry.name,
-        entrySource: entry.source,
-        entryData: entry.data,
-      },
-      }))
+    const completions: SemanticCompletionItem[] = []
+    for (const entry of info.entries) {
+      const filterText = entry.filterText
+      if (
+        !normalizedPrefix
+        || (filterText ?? entry.name).toLowerCase().startsWith(normalizedPrefix)
+      ) {
+        completions.push({
+          label: entry.name,
+          detail: typescriptTypeDetail(entry, filePath),
+          kind: completionKind(entry.kind),
+          insertText: entry.insertText,
+          filterText,
+          sortText: entry.sortText,
+          source: "type",
+          replacementRange: entry.replacementSpan
+            ? script.virtualDocument.generatedSpanToSourceRange(
+                entry.replacementSpan.start,
+                entry.replacementSpan.length,
+              )
+            : prefix.length > 0
+              ? spanToRange(script.sourceContent, sourceOffset - prefix.length, prefix.length)
+              : undefined,
+          data: {
+            provider: "typescript",
+            engineVersion: ENGINE_VERSION,
+            documentVersion: position.documentVersion,
+            entryName: entry.name,
+            entrySource: entry.source,
+            entryData: entry.data,
+          },
+        })
+      }
+      work.item()
+      if (completions.length >= MAX_COMPLETIONS) break
+    }
+    return work.finish(completions)
   }
 
   resolveCompletion(
