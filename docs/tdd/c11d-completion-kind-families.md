@@ -52,6 +52,7 @@ production mapping:
 | D2 | `enum` | Property(10) | Enum(13) | `d33b3c6` |
 | D3 | `enum member` | Property(10) | EnumMember(20) | `3b7cb4a` |
 | D4 | `module` | Property(10) | Module(9) | `5e84851` |
+| D5 | `external module name` | Property(10) | Module(9) | `774cd0f` |
 
 Each slice expands the editor-neutral completion-kind union and the core,
 Legacy, and LSP mappings only for that kind. Existing field/method assertions
@@ -72,4 +73,6 @@ pnpm check
 ```
 
 Independent D1 review found and drove both correctness edge cases and the
-linear-cost regression before reporting no remaining P0/P1.
+linear-cost regression before reporting no remaining P0/P1. A later full-kind
+review found the separate module-specifier raw kind; an ambient-module stdio
+RED closed it without changing the already complete public/LSP module path.

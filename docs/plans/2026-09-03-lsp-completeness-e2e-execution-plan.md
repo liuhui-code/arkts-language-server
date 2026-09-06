@@ -610,7 +610,8 @@ Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产�
   - [x] C11d completion kind families：typed object property 以可取消的 syntax-depth lookup
     区分 class field，并覆盖 computed key、EOF recovery 与 10k declaration cost contract
     （`444d12f`）；Enum/EnumMember/Module 分片贯通 core → public → Legacy → LSP
-    （`d33b3c6`、`3b7cb4a`、`5e84851`）。
+    （`d33b3c6`、`3b7cb4a`、`5e84851`），模块说明符的 `externalModuleName` 同族路径也由
+    ambient-module stdio RED 闭环（`774cd0f`）。
   - [ ] C11e commit characters：贯通 entry override 与 list default，`[]` 不得被 default 覆盖，
     并尊重客户端 `commitCharactersSupport`。
   - [ ] C11f InsertReplaceEdit：在客户端 `insertReplaceSupport` 下保留 insert/replace 双 range；
