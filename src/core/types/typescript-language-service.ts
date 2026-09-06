@@ -45,7 +45,12 @@ import type {
   SemanticSignatureHelpTriggerReason,
   SemanticTypeEngineState,
 } from "./type-engine.js"
-import { mapTypescriptDiagnostics, typescriptTypeDetail, typescriptTypeStatus } from "./typescript-language-helpers.js"
+import {
+  mapTypescriptDiagnosticGroups,
+  mapTypescriptDiagnostics,
+  typescriptTypeDetail,
+  typescriptTypeStatus,
+} from "./typescript-language-helpers.js"
 import { lineColumnToOffset, offsetToLineColumn, spanToRange } from "./text-position.js"
 
 const MAX_SCRIPTS = 512
@@ -798,16 +803,24 @@ export class TypeScriptLanguageServiceEngine {
   }
 
   diagnostics(position: SemanticDocumentPosition): SemanticDiagnostic[] {
+    const work = new CooperativeWork(this.checkpoint)
+    work.boundary()
     const filePath = path.resolve(position.path)
     const script = this.scripts.get(filePath)
-    if (!script) return []
+    if (!script) return work.finish([])
     script.lastAccess = ++this.accessClock
-    return mapTypescriptDiagnostics(
+    work.boundary()
+    const syntacticDiagnostics = this.service.getSyntacticDiagnostics(filePath)
+    work.boundary()
+    const semanticDiagnostics = this.service.getSemanticDiagnostics(filePath)
+    work.boundary()
+    const diagnostics = mapTypescriptDiagnosticGroups(
       filePath,
       script.virtualDocument,
-      this.service.getSyntacticDiagnostics(filePath),
-      this.service.getSemanticDiagnostics(filePath),
+      [syntacticDiagnostics, semanticDiagnostics],
+      work,
     )
+    return work.finish(diagnostics)
   }
 
   codeActions(
