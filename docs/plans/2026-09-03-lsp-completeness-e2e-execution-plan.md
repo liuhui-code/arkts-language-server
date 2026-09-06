@@ -168,17 +168,19 @@ mode 和 SHA-256。installer 增加“从 artifact 安装/禁止构建”路径�
 - [x] Code action + resolve：至少从稳定 diagnostic code 产生一个 quick fix；lazy resolve
   返回 version-safe WorkspaceEdit，应用后 diagnostics 清零。
 - [x] Client capability negotiation：hover 遵守 `contentFormat`；document/workspace symbol
-  kind 遵守 `valueSet`，省略时只返回 LSP 1–18（`4ce9c7e`、`03916f0`）。安装产物的
-  plaintext/legacy-client 对照证据仍由 Wave 4b 单独追踪。
-- [ ] Document highlight：当前文档 declaration/write/read、精确 UTF-16 range、稳定排序、
-  overlay freshness 与 installed artifact 证据。TypeScript core 与真实 LSP handler/capability
-  已完成（`20a37c7`、`380b6ff`）；取消与 immutable artifact 闭环尚未完成。
-- [ ] Folding range：ArkUI builder/import/comment、`lineFoldingOnly`、`rangeLimit`、稳定有界结果。
-  有界 lexical core 与真实 LSP handler/capability 已完成，focused 5/5 GREEN
-  （`d596edd`、`ab3b8a3`）；cancellation 与 artifact 证据仍未完成。
-- [ ] Document formatting：应用 edits 后 diagnostics 不增加、symbol identity 不变、二次调用
-  幂等；若交给外部 formatter，必须有 Zed host E2E 而非从矩阵隐去。有界、token-preserving、
-  幂等 core 已完成（`299a874`）；LSP 与语义/artifact 闭环仍未完成。
+  kind 遵守 `valueSet`，省略时只返回 LSP 1–18（`4ce9c7e`、`03916f0`）；immutable
+  artifact 已覆盖 Markdown/plaintext 与 modern/legacy 两组客户端（`6a6e2ae`）。
+- [x] Document highlight：当前文档 declaration/write/read、精确 UTF-16 range、稳定排序、
+  overlay freshness、取消与 installed artifact 均已闭环
+  （`20a37c7`、`380b6ff`、`3d4a8e6`、`c3484e2`、`2997518`）。
+- [x] Folding range：ArkUI builder/import/comment、`lineFoldingOnly`、`rangeLimit`、稳定有界结果、
+  regex literal 与不完整编辑尾部恢复均已闭环
+  （`d596edd`、`ab3b8a3`、`3d4a8e6`、`2997518`、`29fbaa6`、`bafff44`）。
+- [x] Document formatting：token-preserving edits、应用后 diagnostics/definition identity、幂等、
+  LF/CRLF、`insertFinalNewline`/`trimFinalNewlines`、取消/新鲜度与 installed artifact 均已闭环
+  （`299a874`、`963ec7a`、`3d4a8e6`、`2997518`、`478a523`）。
+- [x] Adapter 输入校验：畸形 highlight/folding/formatting 参数固定返回 `InvalidParams`
+  `-32602`，不得泄漏内部异常或静默 clamp（`516b89c`）。
 
 ### P1：P0 后推进
 
@@ -189,6 +191,8 @@ mode 和 SHA-256。installer 增加“从 artifact 安装/禁止构建”路径�
 - [ ] Semantic tokens、inlay hints、call hierarchy 的需求验证与分级；Zed 已由
   tree-sitter 满足的能力不重复建设。
 - [ ] 真实 worker cancellation、项目重载、配置/SDK 变化和多 root 隔离。
+- [ ] Highlight 结果数/序列化字节预算，以及 formatter 的真实 wall-time、event-loop lag、
+  RSS/heap 门禁；scripted cancellation 不得冒充同步 TypeScript 工作可中断。
 
 ## 5. 首批垂直 tracer bullets
 
@@ -441,12 +445,12 @@ Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产�
 - [x] V3 immutable installed ArkUI SDK breadth：Entry/Component/State/Column/Text 的
   completion/hover/definition 与 Markdown/modern-kind client 声明已进入唯一 combined claims
   （`4ce2f91`）。
-- [x] V4a/V4b document highlight TypeScript core 与 LSP handler/capability 已完成
-  （`20a37c7`、`380b6ff`）；installed artifact/cancellation 仍未完成。
-- [x] V5a/V5b folding 的有界 lexical core 与真实 LSP 接线已完成，focused 5/5 GREEN
-  （`d596edd`、`ab3b8a3`）；cancellation/artifact 仍未完成。
-- [x] V6a formatting 的有界 token-preserving/idempotent core 已完成（`299a874`）；
-  LSP/semantic recheck/artifact 仍未完成。
+- [x] V4 document highlight 的 TypeScript core、LSP、cancellation/freshness 与 immutable
+  artifact 已完成（`20a37c7`、`380b6ff`、`3d4a8e6`、`c3484e2`、`2997518`）。
+- [x] V5 folding 的有界 lexical core、真实 LSP、artifact、regex literal 与不完整尾部恢复已完成
+  （`d596edd`、`ab3b8a3`、`2997518`、`29fbaa6`、`bafff44`）。
+- [x] V6 formatting 的 bounded/token-preserving core、LSP/semantic recheck、artifact 与标准
+  final-newline 选项已完成（`299a874`、`963ec7a`、`2997518`、`478a523`）。
 - [x] 本批次集成门禁：fresh `pnpm check:fast` 为 298/298，0 failed、0 skipped、0 todo，
   耗时 150.2 s；immutable portable acceptance 为 4/4（本分支 HEAD 含 `0445863`、`9fe3a88`）。
 
@@ -670,35 +674,38 @@ installed transcript 与 reliability matrix 全绿后 advertised。
 
 - [x] V0 Matrix baseline：document highlight、folding range、document formatting 已登记为
   planned + absent；contract/matrix coverage 使任一能力无法静默消失（`c423db1`）。
-- [ ] V1 Hover negotiation：
+- [x] V1 Hover negotiation：
   - [x] plaintext-only client 不收到 Markdown fence；明确支持 Markdown 的 client 保持现有结构，
     bundle transcript 已完成（`4ce9c7e`）。
   - [x] immutable installed SDK breadth 显式请求 Markdown 并验证结构（`4ce2f91`）。
-  - [ ] immutable artifact 的 plaintext-only 对照 transcript。
-- [ ] V2 Symbol-kind negotiation：
+  - [x] immutable artifact 的 plaintext-only 对照 transcript（`6a6e2ae`）。
+- [x] V2 Symbol-kind negotiation：
   - [x] document/workspace symbol 省略 `valueSet` 时只返回 1–18，声明 1–26 时保留 modern kind，
     bundle/protocol transcript 已完成（`03916f0`）。
   - [x] immutable installed transcript 显式声明 1–26 并精确验证 Struct `kind=23`
     （`4ce2f91`）。
-  - [ ] immutable artifact 的省略 `valueSet` legacy-client 对照 transcript。
+  - [x] immutable artifact 的省略 `valueSet` legacy-client 对照 transcript（`6a6e2ae`）。
 - [x] V3 Installed SDK breadth：immutable artifact 已覆盖 Entry/Component/State/Column/Text 的
   completion/hover/definition，不再以单个 `width` 断言泛化 provider（`4ce2f91`）。
-- [ ] V4 Document highlight tracer：
+- [x] V4 Document highlight tracer：
   - [x] TypeScript core 覆盖当前 changed overlay 的 declaration/write/read、UTF-16 range、
     排序去重与 fail-closed 映射（`20a37c7`）。
   - [x] 真实 bundle LSP handler 与 capability 已接线（`380b6ff`）。
-  - [ ] cancellation/freshness reliability 与 immutable installed artifact claim。
-- [ ] V5 Folding tracer：
+  - [x] cancellation/freshness reliability 与 immutable installed artifact claim
+    （`3d4a8e6`、`c3484e2`、`2997518`）。
+- [x] V5 Folding tracer：
   - [x] 不依赖完整 TypeScript Program 的 bounded lexical core 已覆盖 ArkUI nested builder、
     comment/import、`lineFoldingOnly`、`rangeLimit` 与超限 fail closed（`d596edd`）。
   - [x] LSP capability/handler 已转发 `lineFoldingOnly`、`rangeLimit` 与受支持 kind，bundle 与
     core focused 5/5 GREEN（`ab3b8a3`）。
-  - [ ] cancellation reliability 与 immutable installed artifact claim。
-- [ ] V6 Document formatting tracer：
+  - [x] cancellation/freshness、immutable installed artifact、regex literal 与不完整编辑恢复
+    （`3d4a8e6`、`c3484e2`、`2997518`、`29fbaa6`、`bafff44`）。
+- [x] V6 Document formatting tracer：
   - [x] 独立 bounded source formatter 已覆盖 token-preserving edits、二次调用幂等与预算超限
     fail closed（`299a874`）。
-  - [ ] LSP capability/handler、应用 edits 后 diagnostics/definition identity、stale safety 与
-    immutable installed artifact claim；若改由 Zed formatter 负责，则先提供 host E2E。
+  - [x] LSP capability/handler、应用 edits 后 diagnostics/definition identity、stale safety、
+    immutable installed artifact 与 LF/CRLF final-newline 选项
+    （`963ec7a`、`3d4a8e6`、`c3484e2`、`2997518`、`478a523`）。
 
 并行 ownership：V0/V3 只改 evidence/installed helper；V1/V2 串行独占 LSP capability codec；
 V4/V5/V6 可并行提交 test-only RED，生产 handler/contract 接线由 integration owner 逐条合入。
@@ -708,13 +715,19 @@ Wave 4 exit criteria：P0 功能 checklist 全部 GREEN；生成机器可读 cap
 
 ### Wave 5 — build once / test once / publish same bytes（串并结合）
 
-2026-09-03 只读审计：当前 `check:release` 先构建一次，artifact 层中的 source installer
+2026-09-06 只读审计：当前 `check:release` 先构建一次，artifact 层中的 source installer
 acceptance 又调用 installer 两次，而每次都会重建 JS、sidecar、WASM；因此每类交付 bytes
 在一条 gate 中至少构建三次。portable directory artifact 能证明“安装时不重建”，但 CI 尚未
 上传/下载该 artifact，也没有 digest promotion。公开发布还被 `PROVENANCE.md` 中
 `UNLICENSED`/禁止公开分发声明阻塞，P5 不得在许可决策前推进。
 
-- [ ] P1 单次 staging build 生成 archive、manifest、checksums。
+- [x] P0a `pnpm test` 与 `pnpm test:e2e:bundle` 会先 fresh-build；`check:fast` 复用该入口，
+  因而只构建一次；unit/protocol 不重复构建（`0358c00`）。低层直接 `node --test` 是显式
+  专家入口，调用者仍须自行先 build 或使用测试自带的临时 bundle。
+- [x] P0b portable builder 的 runtime 与 installer 全部只来自同一 resolved `--source-root`；
+  missing/symlink escape fail closed，逐文件 mode/size/SHA-256 受测试保护（`84d8853`）。
+- [ ] P1 单次 clean staging build 生成 archive、manifest、checksums，并写入真实 Git SHA；
+  seal 后任何步骤不得再次调用 build。
 - [x] P2 installer 支持 `--from-artifact` 的 consume-only 路径；acceptance 用 poison
   `pnpm/cargo/esbuild` 保证安装时不编译，并校验 bytes/mode/digest；最终 archive 输入接线归 P1/P4。
 - [ ] P3 CI `build-artifacts` job 上传 immutable artifact。
