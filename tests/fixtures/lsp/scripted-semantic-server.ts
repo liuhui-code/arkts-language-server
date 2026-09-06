@@ -1,7 +1,12 @@
+import { createHash } from "node:crypto"
 import { pathToFileURL } from "node:url"
 
 import type { DocumentSnapshot } from "../../../src/contracts/document.js"
 import type {
+  SemanticCallHierarchyPrepareOutcome,
+  SemanticCallHierarchyItemQuery,
+  SemanticCallHierarchyIncomingOutcome,
+  SemanticCallHierarchyOutgoingOutcome,
   SemanticCodeActionQuery,
   SemanticCodeActionResolveQuery,
   SemanticDocumentQuery,
@@ -36,6 +41,7 @@ import { DefaultWorkspaceSymbolService } from "../../../src/workspace/default-wo
 
 class ScriptedSemanticEngine implements SemanticEnginePort {
   private completionCount = 0
+  private readonly resistantCallHierarchyResolvers = new Map<string, Set<() => void>>()
   private readonly resistantCodeActionResolvers = new Map<string, () => void>()
   private readonly resistantRenameResolvers = new Map<string, () => void>()
   private readonly workspaceMutationResolvers = new Map<string, Set<() => void>>()
@@ -43,6 +49,7 @@ class ScriptedSemanticEngine implements SemanticEnginePort {
 
   sync(document: DocumentSnapshot): void {
     this.documentWorkspaces.set(document.uri, document.workspaceId)
+    this.releaseResistantCallHierarchy(document.uri)
     this.releaseResistantRename(document.uri)
     this.releaseWorkspaceMutation(
       document.workspaceId,
@@ -52,6 +59,7 @@ class ScriptedSemanticEngine implements SemanticEnginePort {
   }
 
   close(documentUri: string): void {
+    this.releaseResistantCallHierarchy(documentUri)
     this.releaseResistantRename(documentUri)
     const workspaceId = this.documentWorkspaces.get(documentUri)
     if (workspaceId) this.releaseWorkspaceMutation(workspaceId, `${documentUri}@close`)
@@ -393,6 +401,62 @@ class ScriptedSemanticEngine implements SemanticEnginePort {
     return scriptedSemanticResult(query, [])
   }
 
+  async prepareCallHierarchy(
+    query: SemanticQuery,
+  ): Promise<VersionedSemanticResult<SemanticCallHierarchyPrepareOutcome>> {
+    if (query.document.text.includes("CALL_HIERARCHY_WAITS_FOR_ABORT")) {
+      console.log(`scripted call-hierarchy prepare entered ${query.document.uri}`)
+      return waitForAbortValue(query.signal)
+    }
+    if (query.document.text.includes("CALL_HIERARCHY_IGNORES_ABORT")) {
+      await this.waitForResistantCallHierarchy(query.document.uri, "prepare")
+    }
+    return scriptedSemanticResult(query, {
+      status: "complete",
+      items: [scriptedCallHierarchyItem(query.document.uri, query.document.text)],
+    })
+  }
+
+  async outgoingCalls(
+    query: SemanticCallHierarchyItemQuery,
+  ): Promise<SemanticCallHierarchyOutgoingOutcome> {
+    if (callHierarchySourceText(query).includes("CALL_HIERARCHY_WAITS_FOR_ABORT")) {
+      console.log(`scripted call-hierarchy outgoing entered ${query.item.uri}`)
+      return waitForAbortResult(query.signal)
+    }
+    const sourceText = callHierarchySourceText(query)
+    if (sourceText.includes("CALL_HIERARCHY_IGNORES_ABORT")) {
+      await this.waitForResistantCallHierarchy(query.item.uri, "outgoing")
+    }
+    return {
+      status: "complete",
+      calls: [{
+        to: scriptedCallHierarchyItem(query.item.uri, sourceText),
+        fromRanges: [zeroRange()],
+      }],
+    }
+  }
+
+  async incomingCalls(
+    query: SemanticCallHierarchyItemQuery,
+  ): Promise<SemanticCallHierarchyIncomingOutcome> {
+    const sourceText = callHierarchySourceText(query)
+    if (sourceText.includes("CALL_HIERARCHY_WAITS_FOR_ABORT")) {
+      console.log(`scripted call-hierarchy incoming entered ${query.item.uri}`)
+      return waitForAbortResult(query.signal)
+    }
+    if (sourceText.includes("CALL_HIERARCHY_IGNORES_ABORT")) {
+      await this.waitForResistantCallHierarchy(query.item.uri, "incoming")
+    }
+    return {
+      status: "complete",
+      calls: [{
+        from: scriptedCallHierarchyItem(query.item.uri, sourceText),
+        fromRanges: [zeroRange()],
+      }],
+    }
+  }
+
   async foldingRanges(
     query: SemanticFoldingRangeQuery,
   ): Promise<VersionedSemanticResult<SemanticFoldingRange[]>> {
@@ -414,6 +478,23 @@ class ScriptedSemanticEngine implements SemanticEnginePort {
     if (!release) return
     this.resistantRenameResolvers.delete(documentUri)
     release()
+  }
+
+  private waitForResistantCallHierarchy(documentUri: string, method: string): Promise<void> {
+    console.log(`scripted resistant call-hierarchy ${method} entered ${documentUri}`)
+    return new Promise((resolve) => {
+      const resolvers = this.resistantCallHierarchyResolvers.get(documentUri)
+        ?? new Set<() => void>()
+      resolvers.add(resolve)
+      this.resistantCallHierarchyResolvers.set(documentUri, resolvers)
+    })
+  }
+
+  private releaseResistantCallHierarchy(documentUri: string): void {
+    const resolvers = this.resistantCallHierarchyResolvers.get(documentUri)
+    if (!resolvers) return
+    this.resistantCallHierarchyResolvers.delete(documentUri)
+    for (const release of resolvers) release()
   }
 
   private waitForWorkspaceMutation(
@@ -562,11 +643,44 @@ function waitForAbortValue<T>(
   })
 }
 
+function waitForAbortResult<T>(signal?: AbortSignal): Promise<T> {
+  return new Promise((_resolve, reject) => {
+    if (signal?.aborted) {
+      reject(abortError())
+      return
+    }
+    signal?.addEventListener("abort", () => reject(abortError()), { once: true })
+  })
+}
+
 function zeroRange() {
   return {
     start: { line: 0, character: 0 },
     end: { line: 0, character: 0 },
   }
+}
+
+function scriptedCallHierarchyItem(uri: string, text: string) {
+  return {
+    uri,
+    name: "scriptedCallHierarchy",
+    kind: "function" as const,
+    sourceFingerprint: createHash("sha256").update(text).digest("hex"),
+    range: {
+      start: { line: 0, character: 0 },
+      end: { line: 0, character: 1 },
+    },
+    selectionRange: {
+      start: { line: 0, character: 0 },
+      end: { line: 0, character: 1 },
+    },
+  }
+}
+
+function callHierarchySourceText(query: SemanticCallHierarchyItemQuery): string {
+  return query.source.kind === "open"
+    ? query.source.document.text
+    : query.source.text
 }
 
 function waitForAbortWorkspaceSymbols(signal?: AbortSignal): Promise<never> {
