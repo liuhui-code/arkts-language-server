@@ -250,7 +250,7 @@ export class TypeScriptLanguageServiceEngine {
     const info = this.service.getCompletionsAtPosition(filePath, offset, {
       includeCompletionsForImportStatements: true,
       includeCompletionsForModuleExports:
-        !memberAccess && prefix.length >= MIN_MODULE_EXPORT_PREFIX_LENGTH,
+        !memberAccess && hasMinimumCodePointLength(prefix, MIN_MODULE_EXPORT_PREFIX_LENGTH),
       includeCompletionsWithInsertText: true,
     })
     work.boundary()
@@ -1517,7 +1517,40 @@ export class TypeScriptLanguageServiceEngine {
 }
 
 function completionPrefix(content: string, offset: number): string {
-  return content.slice(0, offset).match(/[A-Za-z_$][A-Za-z0-9_$]*$/)?.[0] ?? ""
+  let start = offset
+  while (start > 0) {
+    let previousStart = start - 1
+    const trailingUnit = content.charCodeAt(previousStart)
+    if (
+      trailingUnit >= 0xdc00
+      && trailingUnit <= 0xdfff
+      && previousStart > 0
+    ) {
+      const leadingUnit = content.charCodeAt(previousStart - 1)
+      if (leadingUnit >= 0xd800 && leadingUnit <= 0xdbff) previousStart -= 1
+    }
+    const codePoint = content.codePointAt(previousStart)
+    if (
+      codePoint === undefined
+      || !ts.isIdentifierPart(codePoint, ts.ScriptTarget.Latest)
+    ) break
+    start = previousStart
+  }
+  if (start === offset) return ""
+  const firstCodePoint = content.codePointAt(start)
+  return firstCodePoint !== undefined
+    && ts.isIdentifierStart(firstCodePoint, ts.ScriptTarget.Latest)
+    ? content.slice(start, offset)
+    : ""
+}
+
+function hasMinimumCodePointLength(value: string, minimum: number): boolean {
+  let length = 0
+  for (const _codePoint of value) {
+    length += 1
+    if (length >= minimum) return true
+  }
+  return false
 }
 
 function completionKind(kind: ts.ScriptElementKind): string {

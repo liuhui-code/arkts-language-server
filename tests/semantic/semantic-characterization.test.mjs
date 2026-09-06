@@ -178,6 +178,83 @@ test("completes a one-character non-member local with an exact replacement", asy
   })
 })
 
+test("filters a Unicode ArkTS identifier before the provider quota and replaces its exact UTF-16 prefix", async (t) => {
+  const materialized = await materializeConformanceWorkspace()
+  const documentPath = path.join(
+    materialized.workspaceRoot,
+    "entry",
+    "src",
+    "main",
+    "ets",
+    "pages",
+    "UnicodePrefixCompletion.ets",
+  )
+  const documentUri = pathToFileURL(documentPath).href
+  const source = [
+    ...Array.from(
+      { length: 180 },
+      (_, index) => `class filler${String(index).padStart(3, "0")} {}`,
+    ),
+    "",
+    "class 中文组件 {}",
+    "",
+    "const marker = '😀'; const selected = 中",
+    "",
+  ].join("\n")
+  await fs.promises.writeFile(documentPath, source, "utf8")
+  const prefixStart = source.lastIndexOf("中")
+  const replacementRange = {
+    start: positionAt(source, prefixStart),
+    end: positionAt(source, prefixStart + "中".length),
+  }
+  const session = new LspSession({
+    command: process.execPath,
+    args: [path.join(projectRoot, "dist", "server.cjs"), "--stdio"],
+    cwd: projectRoot,
+    env: {
+      HOME: path.join(materialized.root, "missing-home"),
+      DEVECO_SDK_HOME: path.join(materialized.root, "missing-deveco"),
+      ARKLINE_HARMONY_SDK_PATH: path.join(materialized.corpusRoot, "sdk", "openharmony"),
+    },
+    rootUri: pathToFileURL(materialized.workspaceRoot).href,
+    capabilities: { general: { positionEncodings: ["utf-16"] } },
+  })
+  t.after(async () => {
+    try {
+      await session.close()
+    } finally {
+      await fs.promises.rm(materialized.root, { recursive: true, force: true })
+    }
+  })
+
+  await session.initialize()
+  session.openDocument({
+    uri: documentUri,
+    languageId: "arkts",
+    version: 1,
+    text: source,
+  })
+  const response = await session.request("textDocument/completion", {
+    textDocument: { uri: documentUri },
+    position: replacementRange.end,
+    context: { triggerKind: 1 },
+  })
+
+  assert.equal(response.error, undefined, JSON.stringify(response.error))
+  assert.equal(Array.isArray(response.result), false)
+  assert.equal(response.result?.isIncomplete, false)
+  const items = response.result?.items ?? []
+  assert.deepEqual(items.map(({ label }) => label), ["中文组件"])
+  assert.equal(items[0].kind, CompletionItemKind.Class)
+  assert.deepEqual(items[0].textEdit, {
+    range: replacementRange,
+    newText: "中文组件",
+  })
+  const completed = applyTextEdits(source, [items[0].textEdit])
+  assert.equal(completed.slice(prefixStart, prefixStart + "中文组件".length), "中文组件")
+  assert.equal(completed.endsWith("中中文组件\n"), false)
+})
+
 test("completes contextual object properties without a prefix", async (t) => {
   const materialized = await materializeConformanceWorkspace()
   const documentPath = path.join(

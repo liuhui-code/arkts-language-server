@@ -272,6 +272,58 @@ test("cancels completion during the bounded raw entry scan without publishing pa
   )
 })
 
+test("counts Unicode code points for the module-export completion threshold", (t) => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-ts-unicode-prefix-"))
+  t.after(() => fs.rmSync(workspaceRoot, { recursive: true, force: true }))
+  const { TypeScriptLanguageServiceEngine } = buildDriver(t)
+
+  function captureOptions(source, fileName) {
+    const mainPath = path.join(workspaceRoot, fileName)
+    const engine = new TypeScriptLanguageServiceEngine(workspaceRoot)
+    t.after(() => engine.dispose())
+    prepareSingleDocument(engine, workspaceRoot, mainPath, source)
+    const realService = engine.service
+    let observedOptions
+    engine.service = new Proxy(realService, {
+      get(target, property, receiver) {
+        if (property === "getCompletionsAtPosition") {
+          return (_path, _offset, options) => {
+            observedOptions = options
+            return {
+              entries: [],
+              isGlobalCompletion: false,
+              isMemberCompletion: false,
+              isNewIdentifierLocation: false,
+            }
+          }
+        }
+        const value = Reflect.get(target, property, receiver)
+        return typeof value === "function" ? value.bind(target) : value
+      },
+    })
+    engine.complete({
+      path: mainPath,
+      line: 1,
+      column: source.length + 1,
+      documentVersion: 1,
+      workspaceRoot,
+    })
+    assert.ok(observedOptions)
+    return observedOptions
+  }
+
+  assert.equal(
+    captureOptions("const selected = 𐐀", "SingleCodePoint.ts")
+      .includeCompletionsForModuleExports,
+    false,
+  )
+  assert.equal(
+    captureOptions("const selected = 𐐀R", "TwoCodePoints.ts")
+      .includeCompletionsForModuleExports,
+    true,
+  )
+})
+
 test("propagates provider-reported TypeScript completion incompleteness below the local quota", (t) => {
   const harness = completionListHarness(t)
   const result = harness.complete({ count: 1, providerIncomplete: true })
