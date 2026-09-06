@@ -900,14 +900,22 @@ export class TypeScriptLanguageServiceEngine {
   }
 
   documentSymbols(position: SemanticDocumentPosition): SemanticDocumentSymbolInfo[] {
+    const work = new CooperativeWork(this.checkpoint)
+    work.boundary()
     const filePath = path.resolve(position.path)
     const script = this.scripts.get(filePath)
-    if (!script) return []
+    if (!script) return work.finish([])
     script.lastAccess = ++this.accessClock
+    work.boundary()
     const tree = this.service.getNavigationTree(filePath)
-    return (tree.childItems ?? [])
-      .flatMap((item) => navigationSymbol(item, script))
-      .sort(compareDocumentSymbols)
+    work.boundary()
+    const symbols: SemanticDocumentSymbolInfo[] = []
+    for (const item of tree.childItems ?? []) {
+      symbols.push(...navigationSymbol(item, script, work))
+    }
+    work.boundary()
+    symbols.sort(work.comparator(compareDocumentSymbols))
+    return work.finish(symbols)
   }
 
   documentHighlights(position: SemanticDocumentPosition): SemanticDocumentHighlight[] {
@@ -1514,16 +1522,25 @@ function quickInfoDocumentation(info: ts.QuickInfo): string | undefined {
 function navigationSymbol(
   item: ts.NavigationTree,
   script: ScriptRecord,
+  work: CooperativeWork,
 ): SemanticDocumentSymbolInfo[] {
   const span = item.spans[0]
-  if (!span) return []
+  if (!span) {
+    work.item()
+    return []
+  }
   const kind = documentSymbolKind(item, script)
-  const children = (item.childItems ?? [])
-    .flatMap((child) => navigationSymbol(child, script))
-    .sort(compareDocumentSymbols)
-  if (!kind) return children
+  const children: SemanticDocumentSymbolInfo[] = []
+  for (const child of item.childItems ?? []) {
+    children.push(...navigationSymbol(child, script, work))
+  }
+  children.sort(work.comparator(compareDocumentSymbols))
+  if (!kind) {
+    work.item()
+    return children
+  }
   const nameSpan = item.nameSpan ?? { start: span.start, length: 0 }
-  return [{
+  const result = [{
     name: item.text,
     kind,
     range: script.virtualDocument.generatedSpanToSourceRange(span.start, span.length),
@@ -1533,6 +1550,8 @@ function navigationSymbol(
     ),
     children: children.length > 0 ? children : undefined,
   }]
+  work.item()
+  return result
 }
 
 function documentSymbolKind(

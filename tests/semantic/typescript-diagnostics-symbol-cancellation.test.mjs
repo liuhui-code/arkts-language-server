@@ -98,6 +98,94 @@ test("cancels diagnostics during result mapping without publishing a partial lis
   )
 })
 
+test("cancels document symbols during navigation mapping without publishing a partial tree", async (t) => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-ts-symbol-cancel-"))
+  t.after(() => fs.rmSync(workspaceRoot, { recursive: true, force: true }))
+
+  const mainPath = path.join(workspaceRoot, "Main.ts")
+  const expectedNames = Array.from({ length: 130 }, (_, index) => `symbol${index}`)
+  const mainSource = `${expectedNames
+    .map((name) => `export function ${name}(): number { return ${name.length} }`)
+    .join("\n")}\n`
+  const {
+    SemanticCancellationScope,
+    SemanticWorkerCancelState,
+    TypeScriptLanguageServiceEngine,
+    TypeScriptOperationCanceledException,
+  } = buildDriver(t)
+  const scope = new SemanticCancellationScope()
+  const cancellationCell = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT)
+  const cancellationView = new Int32Array(cancellationCell)
+  let sixtyFifthEntryAccessed = false
+
+  const engine = new TypeScriptLanguageServiceEngine(workspaceRoot, {
+    hostCancellationToken: scope.hostToken,
+    checkpoint: () => scope.checkpoint(),
+  })
+  t.after(() => engine.dispose())
+  prepareEngine(engine, workspaceRoot, mainPath, mainSource)
+
+  const realService = engine.service
+  const realTree = realService.getNavigationTree(mainPath)
+  assert.equal(realTree.childItems?.length, 130)
+  const controlledItems = realTree.childItems.map((item, index) => controlledNavigationItem({
+    item,
+    index,
+    onSixtyFourthEntry() {
+      Atomics.store(
+        cancellationView,
+        0,
+        SemanticWorkerCancelState.clientCancelled,
+      )
+    },
+    onSixtyFifthEntry() {
+      sixtyFifthEntryAccessed = true
+    },
+  }))
+  engine.service = new Proxy(realService, {
+    get(target, property, receiver) {
+      if (property === "getNavigationTree") {
+        return () => ({ ...realTree, childItems: controlledItems })
+      }
+      const value = Reflect.get(target, property, receiver)
+      return typeof value === "function" ? value.bind(target) : value
+    },
+  })
+
+  const position = semanticPosition(workspaceRoot, mainPath)
+  let errorCaughtInsideDocumentSymbols
+  let publishedResult
+  await assert.rejects(
+    scope.run(cancellationCell, () => {
+      try {
+        publishedResult = engine.documentSymbols(position)
+        return publishedResult
+      } catch (error) {
+        errorCaughtInsideDocumentSymbols = error
+        throw error
+      }
+    }),
+    (error) => error instanceof TypeScriptOperationCanceledException,
+  )
+
+  assert.equal(
+    errorCaughtInsideDocumentSymbols instanceof TypeScriptOperationCanceledException,
+    true,
+    "engine.documentSymbols must observe cancellation while mapping its own result",
+  )
+  assert.equal(sixtyFifthEntryAccessed, false)
+  assert.equal(publishedResult, undefined, "cancelled symbols must not publish a partial tree")
+
+  const retryCell = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT)
+  const retry = await scope.run(retryCell, () => engine.documentSymbols(position))
+  assert.equal(retry.length, 130)
+  assert.deepEqual(
+    retry.map(({ name }) => name),
+    expectedNames,
+    "a fresh request must return every top-level symbol in stable source order",
+  )
+})
+
 function controlledDiagnostic({
   diagnostic,
   index,
@@ -119,6 +207,32 @@ function controlledDiagnostic({
     get() {
       if (index === 63) onSixtyFourthEntry()
       return diagnostic.messageText
+    },
+  })
+  return controlled
+}
+
+function controlledNavigationItem({
+  item,
+  index,
+  onSixtyFourthEntry,
+  onSixtyFifthEntry,
+}) {
+  const controlled = { ...item }
+  Object.defineProperty(controlled, "spans", {
+    configurable: false,
+    enumerable: true,
+    get() {
+      if (index === 64) onSixtyFifthEntry()
+      return item.spans
+    },
+  })
+  Object.defineProperty(controlled, "text", {
+    configurable: false,
+    enumerable: true,
+    get() {
+      if (index === 63) onSixtyFourthEntry()
+      return item.text
     },
   })
   return controlled

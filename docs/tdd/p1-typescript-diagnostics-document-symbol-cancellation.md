@@ -61,7 +61,37 @@ Implementation boundaries:
 
 ## Slice 2: navigation-tree result mapping
 
-Pending.
+Behavior: with 130 real top-level TypeScript navigation items, cancellation injected
+while mapping item 64 must throw `ts.OperationCanceledException` from inside
+`engine.documentSymbols`; item 65 is not accessed, no partial tree is returned, and a
+fresh request returns all 130 symbols in source order.
+
+RED after Slice 1:
+
+```text
+node --test --test-name-pattern="document symbols" \
+  tests/semantic/typescript-diagnostics-symbol-cancellation.test.mjs
+not ok 2 - cancels document symbols during navigation mapping without publishing a partial tree
+engine.documentSymbols must observe cancellation while mapping its own result
+tests 2; pass 0; fail 1; skipped 1
+```
+
+As in Slice 1, the outer scope did eventually throw, but the engine had already returned
+the complete result. That proves the RED was inside the intended ownership boundary.
+
+GREEN:
+
+```text
+node --test tests/semantic/typescript-diagnostics-symbol-cancellation.test.mjs
+tests 2; pass 2; fail 0
+```
+
+Implementation boundaries:
+
+- request-local `CooperativeWork` checkpoints before and after `getNavigationTree`;
+- recursive mapping shares one work budget and checks after each visited node;
+- child and top-level sort comparators participate in that same budget;
+- a final checkpoint runs before any completed tree is returned.
 
 ## Honest boundary
 
