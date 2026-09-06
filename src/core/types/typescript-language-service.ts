@@ -964,29 +964,38 @@ export class TypeScriptLanguageServiceEngine {
   }
 
   documentHighlights(position: SemanticDocumentPosition): SemanticDocumentHighlight[] {
+    const work = new CooperativeWork(this.checkpoint)
+    work.boundary()
     const filePath = path.resolve(position.path)
     const script = this.scripts.get(filePath)
-    if (!script) return []
+    if (!script) return work.finish([])
     script.lastAccess = ++this.accessClock
     const sourceOffset = lineColumnToOffset(script.sourceContent, position.line, position.column)
     const offset = script.virtualDocument.toGeneratedOffset(sourceOffset)
-    if (script.virtualDocument.toSourceOffset(offset) !== sourceOffset) return []
+    if (script.virtualDocument.toSourceOffset(offset) !== sourceOffset) return work.finish([])
+    work.boundary()
     const groups = this.service.getDocumentHighlights(filePath, offset, [filePath]) ?? []
+    work.boundary()
     const highlights: SemanticDocumentHighlight[] = []
     const seen = new Set<string>()
     for (const group of groups) {
-      if (path.resolve(group.fileName) !== filePath) return []
+      if (path.resolve(group.fileName) !== filePath) return work.finish([])
       for (const span of group.highlightSpans) {
         const range = exactSourceRange(script, span.textSpan)
         const kind = documentHighlightKind(span.kind)
-        if (!range || !kind) return []
+        if (!range || !kind) return work.finish([])
         const key = semanticLocationKey(filePath, range)
-        if (seen.has(key)) continue
-        seen.add(key)
-        highlights.push({ range, kind })
+        if (!seen.has(key)) {
+          seen.add(key)
+          highlights.push({ range, kind })
+        }
+        work.item()
       }
+      work.item()
     }
-    return highlights.sort(compareDocumentHighlights)
+    work.boundary()
+    highlights.sort(work.comparator(compareDocumentHighlights))
+    return work.finish(highlights)
   }
 
   hover(position: SemanticDocumentPosition): SemanticHoverInfo | null {

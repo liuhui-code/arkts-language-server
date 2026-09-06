@@ -288,6 +288,245 @@ test("cancels inlay hints during display-part label mapping", async (t) => {
   )
 })
 
+test("cancels document highlights during span mapping without publishing a partial list", async (t) => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-ts-highlight-span-cancel-"))
+  t.after(() => fs.rmSync(workspaceRoot, { recursive: true, force: true }))
+
+  const mainPath = path.join(workspaceRoot, "Main.ts")
+  const mainSource = `${Array.from(
+    { length: 130 },
+    (_, index) => `const target${index} = ${index}`,
+  ).join("\n")}\n`
+  const offsets = Array.from(
+    { length: 130 },
+    (_, index) => mainSource.indexOf(`target${index}`),
+  )
+  const driver = buildDriver(t)
+  const scope = new driver.SemanticCancellationScope()
+  const cancellationCell = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT)
+  const cancellationView = new Int32Array(cancellationCell)
+  let sixtyFifthSpanAccessed = false
+  const engine = preparedEngine(t, driver, scope, workspaceRoot, mainPath, mainSource)
+
+  const highlightSpans = offsets.map((start, index) => controlledHighlightSpan({
+    index,
+    kind: driver.WrittenReferenceHighlightKind,
+    start,
+    onSixtyFourthSpan() {
+      Atomics.store(cancellationView, 0, driver.SemanticWorkerCancelState.clientCancelled)
+    },
+    onSixtyFifthSpan() {
+      sixtyFifthSpanAccessed = true
+    },
+  }))
+  proxyDocumentHighlights(engine, [{ fileName: mainPath, highlightSpans }])
+  const position = semanticPosition(workspaceRoot, mainPath)
+  let errorCaughtInsideHighlights
+  let publishedResult
+  await assert.rejects(
+    scope.run(cancellationCell, () => {
+      try {
+        publishedResult = engine.documentHighlights(position)
+        return publishedResult
+      } catch (error) {
+        errorCaughtInsideHighlights = error
+        throw error
+      }
+    }),
+    (error) => error instanceof driver.TypeScriptOperationCanceledException,
+  )
+
+  assert.equal(errorCaughtInsideHighlights instanceof driver.TypeScriptOperationCanceledException, true)
+  assert.equal(sixtyFifthSpanAccessed, false)
+  assert.equal(publishedResult, undefined)
+
+  const retryCell = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT)
+  const retry = await scope.run(retryCell, () => engine.documentHighlights(position))
+  assert.equal(retry.length, 130)
+  assert.deepEqual(
+    retry.map(({ range }) => range.startLine),
+    Array.from({ length: 130 }, (_, index) => index + 1),
+  )
+})
+
+test("cancels document highlights while traversing empty result groups", async (t) => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-ts-highlight-group-cancel-"))
+  t.after(() => fs.rmSync(workspaceRoot, { recursive: true, force: true }))
+  const mainPath = path.join(workspaceRoot, "Main.ts")
+  const mainSource = "const target = 1\n"
+  const driver = buildDriver(t)
+  const scope = new driver.SemanticCancellationScope()
+  const cancellationCell = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT)
+  const cancellationView = new Int32Array(cancellationCell)
+  let sixtyFifthGroupAccessed = false
+  const engine = preparedEngine(t, driver, scope, workspaceRoot, mainPath, mainSource)
+
+  const groups = Array.from({ length: 130 }, (_, index) => controlledHighlightGroup({
+    index,
+    mainPath,
+    onSixtyFourthGroup() {
+      Atomics.store(cancellationView, 0, driver.SemanticWorkerCancelState.clientCancelled)
+    },
+    onSixtyFifthGroup() {
+      sixtyFifthGroupAccessed = true
+    },
+  }))
+  proxyDocumentHighlights(engine, groups)
+  const position = semanticPosition(workspaceRoot, mainPath)
+  let errorCaughtInsideHighlights
+  let publishedResult
+  await assert.rejects(
+    scope.run(cancellationCell, () => {
+      try {
+        publishedResult = engine.documentHighlights(position)
+        return publishedResult
+      } catch (error) {
+        errorCaughtInsideHighlights = error
+        throw error
+      }
+    }),
+    (error) => error instanceof driver.TypeScriptOperationCanceledException,
+  )
+
+  assert.equal(errorCaughtInsideHighlights instanceof driver.TypeScriptOperationCanceledException, true)
+  assert.equal(sixtyFifthGroupAccessed, false)
+  assert.equal(publishedResult, undefined)
+  const retryCell = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT)
+  assert.deepEqual(await scope.run(retryCell, () => engine.documentHighlights(position)), [])
+})
+
+test("cancels document highlights at the provider return boundary", async (t) => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-ts-highlight-provider-cancel-"))
+  t.after(() => fs.rmSync(workspaceRoot, { recursive: true, force: true }))
+  const mainPath = path.join(workspaceRoot, "Main.ts")
+  const mainSource = "const target = 1\n"
+  const driver = buildDriver(t)
+  const scope = new driver.SemanticCancellationScope()
+  const cancellationCell = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT)
+  const cancellationView = new Int32Array(cancellationCell)
+  let groupAccessed = false
+  const engine = preparedEngine(t, driver, scope, workspaceRoot, mainPath, mainSource)
+
+  const group = { highlightSpans: [] }
+  Object.defineProperty(group, "fileName", {
+    configurable: false,
+    enumerable: true,
+    get() {
+      groupAccessed = true
+      return mainPath
+    },
+  })
+  const realService = engine.service
+  engine.service = new Proxy(realService, {
+    get(target, property, receiver) {
+      if (property === "getDocumentHighlights") {
+        return () => {
+          Atomics.store(cancellationView, 0, driver.SemanticWorkerCancelState.clientCancelled)
+          return [group]
+        }
+      }
+      const value = Reflect.get(target, property, receiver)
+      return typeof value === "function" ? value.bind(target) : value
+    },
+  })
+  const position = semanticPosition(workspaceRoot, mainPath)
+  let errorCaughtInsideHighlights
+  let publishedResult
+  await assert.rejects(
+    scope.run(cancellationCell, () => {
+      try {
+        publishedResult = engine.documentHighlights(position)
+        return publishedResult
+      } catch (error) {
+        errorCaughtInsideHighlights = error
+        throw error
+      }
+    }),
+    (error) => error instanceof driver.TypeScriptOperationCanceledException,
+  )
+
+  assert.equal(errorCaughtInsideHighlights instanceof driver.TypeScriptOperationCanceledException, true)
+  assert.equal(groupAccessed, false)
+  assert.equal(publishedResult, undefined)
+  const retryCell = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT)
+  assert.deepEqual(await scope.run(retryCell, () => engine.documentHighlights(position)), [])
+  assert.equal(groupAccessed, true)
+})
+
+test("cancels document highlights during result sorting", async (t) => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-ts-highlight-sort-cancel-"))
+  t.after(() => fs.rmSync(workspaceRoot, { recursive: true, force: true }))
+  const mainPath = path.join(workspaceRoot, "Main.ts")
+  const mainSource = `${Array.from(
+    { length: 130 },
+    (_, index) => `const target${index} = ${index}`,
+  ).join("\n")}\n`
+  const offsets = Array.from(
+    { length: 130 },
+    (_, index) => mainSource.indexOf(`target${index}`),
+  )
+  const driver = buildDriver(t)
+  const scope = new driver.SemanticCancellationScope()
+  const cancellationCell = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT)
+  const cancellationView = new Int32Array(cancellationCell)
+  const engine = preparedEngine(t, driver, scope, workspaceRoot, mainPath, mainSource)
+  const highlightSpans = [...offsets].reverse().map((start) => ({
+    kind: driver.WrittenReferenceHighlightKind,
+    textSpan: { start, length: "target".length },
+  }))
+  proxyDocumentHighlights(engine, [{ fileName: mainPath, highlightSpans }])
+
+  const originalSort = Array.prototype.sort
+  let comparisons = 0
+  let sixtyFifthComparisonStarted = false
+  let sortCompleted = false
+  Array.prototype.sort = function controlledSort(compare) {
+    if (this.length !== 130 || typeof compare !== "function") {
+      return originalSort.call(this, compare)
+    }
+    const result = originalSort.call(this, (left, right) => {
+      comparisons += 1
+      if (comparisons === 64) {
+        Atomics.store(cancellationView, 0, driver.SemanticWorkerCancelState.clientCancelled)
+      }
+      if (comparisons === 65) sixtyFifthComparisonStarted = true
+      return compare(left, right)
+    })
+    sortCompleted = true
+    return result
+  }
+  const position = semanticPosition(workspaceRoot, mainPath)
+  let errorCaughtInsideHighlights
+  let publishedResult
+  try {
+    await assert.rejects(
+      scope.run(cancellationCell, () => {
+        try {
+          publishedResult = engine.documentHighlights(position)
+          return publishedResult
+        } catch (error) {
+          errorCaughtInsideHighlights = error
+          throw error
+        }
+      }),
+      (error) => error instanceof driver.TypeScriptOperationCanceledException,
+    )
+  } finally {
+    Array.prototype.sort = originalSort
+  }
+
+  assert.equal(errorCaughtInsideHighlights instanceof driver.TypeScriptOperationCanceledException, true)
+  assert.equal(sixtyFifthComparisonStarted, false)
+  assert.equal(sortCompleted, false)
+  assert.equal(publishedResult, undefined)
+  const retryCell = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT)
+  const retry = await scope.run(retryCell, () => engine.documentHighlights(position))
+  assert.deepEqual(
+    retry.map(({ range }) => range.startLine),
+    Array.from({ length: 130 }, (_, index) => index + 1),
+  )
+})
+
 function controlledInlayHint({
   index,
   kind,
@@ -325,6 +564,76 @@ function controlledDisplayPart({ index, onSixtyFourthPart, onSixtyFifthPart }) {
     },
   })
   return part
+}
+
+function controlledHighlightSpan({
+  index,
+  kind,
+  start,
+  onSixtyFourthSpan,
+  onSixtyFifthSpan,
+}) {
+  const span = { kind }
+  Object.defineProperty(span, "textSpan", {
+    configurable: false,
+    enumerable: true,
+    get() {
+      if (index === 63) onSixtyFourthSpan()
+      if (index === 64) onSixtyFifthSpan()
+      return { start, length: "target".length }
+    },
+  })
+  return span
+}
+
+function controlledHighlightGroup({
+  index,
+  mainPath,
+  onSixtyFourthGroup,
+  onSixtyFifthGroup,
+}) {
+  const group = { highlightSpans: [] }
+  Object.defineProperty(group, "fileName", {
+    configurable: false,
+    enumerable: true,
+    get() {
+      if (index === 63) onSixtyFourthGroup()
+      if (index === 64) onSixtyFifthGroup()
+      return mainPath
+    },
+  })
+  return group
+}
+
+function preparedEngine(t, driver, scope, workspaceRoot, mainPath, mainSource) {
+  const engine = new driver.TypeScriptLanguageServiceEngine(workspaceRoot, {
+    hostCancellationToken: scope.hostToken,
+    checkpoint: () => scope.checkpoint(),
+  })
+  t.after(() => engine.dispose())
+  prepareSingleDocument(engine, workspaceRoot, mainPath, mainSource)
+  return engine
+}
+
+function proxyDocumentHighlights(engine, groups) {
+  const realService = engine.service
+  engine.service = new Proxy(realService, {
+    get(target, property, receiver) {
+      if (property === "getDocumentHighlights") return () => groups
+      const value = Reflect.get(target, property, receiver)
+      return typeof value === "function" ? value.bind(target) : value
+    },
+  })
+}
+
+function semanticPosition(workspaceRoot, mainPath) {
+  return {
+    path: mainPath,
+    line: 1,
+    column: 1,
+    documentVersion: 1,
+    workspaceRoot,
+  }
 }
 
 function prepareSingleDocument(engine, workspaceRoot, mainPath, mainSource) {
@@ -368,6 +677,7 @@ function buildDriver(t) {
         'export { SemanticCancellationScope } from "./src/semantic/semantic-cancellation-scope.ts"',
         'export { SemanticWorkerCancelState } from "./src/semantic/worker-protocol.ts"',
         'export const ParameterInlayHintKind = ts.InlayHintKind.Parameter',
+        'export const WrittenReferenceHighlightKind = ts.HighlightSpanKind.writtenReference',
         'export const TypeScriptOperationCanceledException = ts.OperationCanceledException',
       ].join("\n"),
       resolveDir: projectRoot,
