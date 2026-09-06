@@ -147,6 +147,47 @@ export interface SemanticInlayHint {
   paddingRight?: boolean
 }
 
+export type SemanticCallHierarchyItemKind =
+  | "file"
+  | "module"
+  | "struct"
+  | "class"
+  | "interface"
+  | "function"
+  | "method"
+  | "property"
+  | "constructor"
+  | "variable"
+  | "constant"
+
+export interface SemanticCallHierarchyItemInfo {
+  path: string
+  name: string
+  kind: SemanticCallHierarchyItemKind
+  detail?: string
+  range: SemanticTextRange
+  selectionRange: SemanticTextRange
+}
+
+export interface SemanticCallHierarchyOutgoingCallInfo {
+  to: SemanticCallHierarchyItemInfo
+  fromRanges: SemanticTextRange[]
+}
+
+export type SemanticCallHierarchyFailureReason =
+  | "source-unavailable"
+  | "source-unmappable"
+  | "result-limit-exceeded"
+
+export type SemanticCallHierarchyPrepareQueryResult =
+  | { status: "complete"; items: SemanticCallHierarchyItemInfo[] }
+  | { status: "incomplete"; reason: SemanticCallHierarchyFailureReason }
+
+export type SemanticCallHierarchyOutgoingQueryResult =
+  | { status: "complete"; calls: SemanticCallHierarchyOutgoingCallInfo[] }
+  | { status: "stale-item" }
+  | { status: "incomplete"; reason: SemanticCallHierarchyFailureReason }
+
 export type SemanticDocumentSymbolKind =
   | "struct"
   | "class"

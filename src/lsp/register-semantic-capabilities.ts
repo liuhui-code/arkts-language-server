@@ -20,6 +20,8 @@ import {
  * editor-neutral and the extracted core has no vscode-languageserver import.
  */
 import type {
+  SemanticCallHierarchyOutgoingOutcome,
+  SemanticCallHierarchyPrepareOutcome,
   SemanticDocumentSymbol,
   SemanticDocumentHighlight,
   SemanticDocumentTextEdit,
@@ -33,6 +35,14 @@ import type {
   SemanticSignatureHelp,
   SemanticSignatureHelpTriggerReason,
 } from "../contracts/semantic-engine.js"
+import {
+  assertCallHierarchyPrepareParams,
+  boundedCallHierarchyItems,
+  boundedOutgoingCalls,
+  incompleteCallHierarchy,
+  parseCallHierarchyOutgoingItem,
+  staleCallHierarchy,
+} from "./call-hierarchy-adapter.js"
 import type { SemanticRequestRunner } from "./semantic-request-runner.js"
 
 interface SemanticCapabilityDependencies {
@@ -149,6 +159,43 @@ export function registerSemanticCapabilities({
       }),
     })
     return boundedInlayHints(result)
+  })
+
+  connection.languages.callHierarchy.onPrepare(async (params, token) => {
+    assertCallHierarchyPrepareParams(params)
+    const outcome = await requests.run<SemanticCallHierarchyPrepareOutcome | { status: "stale" }>({
+      method: "textDocument/prepareCallHierarchy",
+      documentUri: params.textDocument.uri,
+      token,
+      fallback: { status: "stale" },
+      scope: "workspace",
+      execute: (document, signal) => semantic.prepareCallHierarchy({
+        document,
+        position: params.position,
+        signal,
+      }),
+    })
+    if (outcome.status === "stale") throw staleCallHierarchy()
+    if (outcome.status === "incomplete") throw incompleteCallHierarchy(outcome.reason)
+    const items = boundedCallHierarchyItems(outcome.items)
+    return items.length > 0 ? items : null
+  })
+
+  connection.languages.callHierarchy.onOutgoingCalls(async (params, token) => {
+    const item = parseCallHierarchyOutgoingItem(params)
+    const outcome = await requests.run<SemanticCallHierarchyOutgoingOutcome | { status: "stale" }>({
+      method: "callHierarchy/outgoingCalls",
+      documentUri: item.uri,
+      token,
+      fallback: { status: "stale" },
+      scope: "workspace",
+      execute: (document, signal) => semantic.outgoingCalls({ document, item, signal }),
+    })
+    if (outcome.status === "stale" || outcome.status === "stale-item") {
+      throw staleCallHierarchy()
+    }
+    if (outcome.status === "incomplete") throw incompleteCallHierarchy(outcome.reason)
+    return boundedOutgoingCalls(outcome.calls)
   })
 
   connection.onDocumentHighlight(async (params, token) => {

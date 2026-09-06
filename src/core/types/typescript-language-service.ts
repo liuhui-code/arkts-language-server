@@ -6,6 +6,11 @@ import ts from "typescript"
 
 import { discoverHarmonySdk } from "../sdk/discovery.js"
 import type {
+  SemanticCallHierarchyItemInfo,
+  SemanticCallHierarchyItemKind,
+  SemanticCallHierarchyOutgoingCallInfo,
+  SemanticCallHierarchyOutgoingQueryResult,
+  SemanticCallHierarchyPrepareQueryResult,
   SemanticCompletionItem,
   SemanticCompletionTextEdit,
   SemanticDefinitionCandidate,
@@ -44,6 +49,10 @@ const MAX_SCRIPT_BYTES = 16 * 1024 * 1024
 const MAX_LAZY_SNAPSHOTS = 128
 const MAX_LAZY_SNAPSHOT_BYTES = 8 * 1024 * 1024
 const MAX_COMPLETIONS = 128
+const MAX_CALL_HIERARCHY_PREPARE_ITEMS = 16
+const MAX_CALL_HIERARCHY_EDGES = 256
+const MAX_CALL_HIERARCHY_RANGES_PER_EDGE = 64
+const MAX_CALL_HIERARCHY_TOTAL_RANGES = 2_048
 const MIN_MODULE_EXPORT_PREFIX_LENGTH = 2
 const ENGINE_VERSION = `typescript-${ts.version}-arkts-v2`
 
@@ -301,6 +310,76 @@ export class TypeScriptLanguageServiceEngine {
     ))
   }
 
+  prepareCallHierarchy(
+    position: SemanticDocumentPosition,
+  ): SemanticCallHierarchyPrepareQueryResult {
+    const prepared = this.prepareCallHierarchyAt(position)
+    if (prepared.status !== "complete") return prepared
+    return prepared
+  }
+
+  outgoingCalls(
+    position: SemanticDocumentPosition,
+    item: SemanticCallHierarchyItemInfo,
+  ): SemanticCallHierarchyOutgoingQueryResult {
+    const filePath = path.resolve(position.path)
+    const script = this.scripts.get(filePath)
+    if (!script) return { status: "incomplete", reason: "source-unavailable" }
+    const prepared = this.prepareCallHierarchyAt(position)
+    if (prepared.status !== "complete") return prepared
+    if (!prepared.items.some((candidate) => sameCallHierarchyItem(candidate, item))) {
+      return { status: "stale-item" }
+    }
+
+    const sourceOffset = exactSourceOffset(
+      script.sourceContent,
+      position.line,
+      position.column,
+    )
+    if (sourceOffset === undefined) return { status: "stale-item" }
+    const generatedOffset = script.virtualDocument.toGeneratedOffset(sourceOffset)
+    if (script.virtualDocument.toSourceOffset(generatedOffset) !== sourceOffset) {
+      return { status: "incomplete", reason: "source-unmappable" }
+    }
+
+    const calls = this.service.provideCallHierarchyOutgoingCalls(filePath, generatedOffset)
+    const grouped = new Map<string, SemanticCallHierarchyOutgoingCallInfo>()
+    let totalRanges = 0
+    for (const call of calls) {
+      const target = this.mapCallHierarchyItem(call.to)
+      if (!target) return { status: "incomplete", reason: "source-unmappable" }
+      const targetKey = callHierarchyItemKey(target)
+      let edge = grouped.get(targetKey)
+      if (!edge) {
+        if (grouped.size >= MAX_CALL_HIERARCHY_EDGES) {
+          return { status: "incomplete", reason: "result-limit-exceeded" }
+        }
+        edge = { to: target, fromRanges: [] }
+        grouped.set(targetKey, edge)
+      }
+      const seenRanges = new Set(edge.fromRanges.map(semanticRangeKey))
+      for (const span of call.fromSpans) {
+        const range = exactSourceRange(script, span)
+        if (!range) return { status: "incomplete", reason: "source-unmappable" }
+        const rangeKey = semanticRangeKey(range)
+        if (seenRanges.has(rangeKey)) continue
+        if (
+          edge.fromRanges.length >= MAX_CALL_HIERARCHY_RANGES_PER_EDGE
+          || totalRanges >= MAX_CALL_HIERARCHY_TOTAL_RANGES
+        ) return { status: "incomplete", reason: "result-limit-exceeded" }
+        seenRanges.add(rangeKey)
+        edge.fromRanges.push(range)
+        totalRanges += 1
+      }
+      edge.fromRanges.sort(compareSemanticRanges)
+    }
+
+    const normalized = [...grouped.values()].sort((left, right) => (
+      compareCallHierarchyItems(left.to, right.to)
+    ))
+    return { status: "complete", calls: normalized }
+  }
+
   inlayHints(
     position: SemanticDocumentPosition,
     requestedRange: SemanticTextRange,
@@ -378,6 +457,82 @@ export class TypeScriptLanguageServiceEngine {
         path.resolve(implementation.fileName),
         implementation.textSpan,
       )))
+  }
+
+  private prepareCallHierarchyAt(
+    position: SemanticDocumentPosition,
+  ): SemanticCallHierarchyPrepareQueryResult {
+    const filePath = path.resolve(position.path)
+    const script = this.scripts.get(filePath)
+    if (!script) return { status: "incomplete", reason: "source-unavailable" }
+    script.lastAccess = ++this.accessClock
+    const sourceOffset = exactSourceOffset(
+      script.sourceContent,
+      position.line,
+      position.column,
+    )
+    if (sourceOffset === undefined) return { status: "complete", items: [] }
+    const generatedOffset = script.virtualDocument.toGeneratedOffset(sourceOffset)
+    if (script.virtualDocument.toSourceOffset(generatedOffset) !== sourceOffset) {
+      return { status: "incomplete", reason: "source-unmappable" }
+    }
+    const value = this.service.prepareCallHierarchy(filePath, generatedOffset)
+    const items = value ? (Array.isArray(value) ? value : [value]) : []
+    const mapped: SemanticCallHierarchyItemInfo[] = []
+    const seen = new Set<string>()
+    for (const item of items) {
+      const candidate = this.mapCallHierarchyItem(item)
+      if (!candidate) return { status: "incomplete", reason: "source-unmappable" }
+      const key = callHierarchyItemKey(candidate)
+      if (seen.has(key)) continue
+      if (mapped.length >= MAX_CALL_HIERARCHY_PREPARE_ITEMS) {
+        return { status: "incomplete", reason: "result-limit-exceeded" }
+      }
+      seen.add(key)
+      mapped.push(candidate)
+    }
+    mapped.sort(compareCallHierarchyItems)
+    return { status: "complete", items: mapped }
+  }
+
+  private mapCallHierarchyItem(
+    item: ts.CallHierarchyItem,
+  ): SemanticCallHierarchyItemInfo | undefined {
+    const filePath = path.resolve(item.file)
+    const sourceView = this.callHierarchySourceView(filePath)
+    if (!sourceView) return undefined
+    const selectionRange = exactSourceRange(sourceView, item.selectionSpan)
+    const kind = callHierarchyItemKind(item, sourceView)
+    if (!selectionRange || !kind) return undefined
+    const mappedSpan = exactSourceRange(sourceView, item.span)
+    return {
+      path: filePath,
+      name: item.name,
+      kind,
+      range: mappedSpan ? unionSemanticRanges(mappedSpan, selectionRange) : selectionRange,
+      selectionRange,
+      ...(item.containerName ? { detail: item.containerName } : {}),
+    }
+  }
+
+  private callHierarchySourceView(
+    filePath: string,
+  ): ScriptRecord | LazySnapshotRecord | undefined {
+    const resident = this.scripts.get(filePath)
+    if (resident) return resident
+    const lazy = this.loadLazySnapshot(filePath)
+    if (lazy) return lazy
+    const sourceContent = this.readSourceFile(filePath)
+    if (sourceContent === null) return undefined
+    const virtualDocument = createArktsVirtualDocument(filePath, sourceContent)
+    const content = virtualDocument.generatedContent
+    return {
+      path: filePath,
+      content,
+      virtualDocument,
+      snapshot: ts.ScriptSnapshot.fromString(content),
+      bytes: Buffer.byteLength(sourceContent) + Buffer.byteLength(content),
+    }
   }
 
   private definitionCandidates(
@@ -1257,6 +1412,54 @@ function documentSymbolKind(
   }
 }
 
+function callHierarchyItemKind(
+  item: ts.CallHierarchyItem,
+  sourceView: ScriptRecord | LazySnapshotRecord,
+): SemanticCallHierarchyItemKind | undefined {
+  switch (item.kind) {
+    case ts.ScriptElementKind.scriptElement: return "file"
+    case ts.ScriptElementKind.moduleElement: return "module"
+    case ts.ScriptElementKind.classElement:
+    case ts.ScriptElementKind.localClassElement:
+      return isArktsCallHierarchyStruct(item, sourceView) ? "struct" : "class"
+    case ts.ScriptElementKind.interfaceElement: return "interface"
+    case ts.ScriptElementKind.functionElement:
+    case ts.ScriptElementKind.localFunctionElement:
+      return "function"
+    case ts.ScriptElementKind.memberFunctionElement:
+    case ts.ScriptElementKind.memberGetAccessorElement:
+    case ts.ScriptElementKind.memberSetAccessorElement:
+      return "method"
+    case ts.ScriptElementKind.memberVariableElement:
+    case ts.ScriptElementKind.memberAccessorVariableElement:
+      return "property"
+    case ts.ScriptElementKind.constructorImplementationElement: return "constructor"
+    case ts.ScriptElementKind.constElement: return "constant"
+    case ts.ScriptElementKind.letElement:
+    case ts.ScriptElementKind.variableElement:
+    case ts.ScriptElementKind.localVariableElement:
+      return "variable"
+    default: return undefined
+  }
+}
+
+function isArktsCallHierarchyStruct(
+  item: ts.CallHierarchyItem,
+  sourceView: ScriptRecord | LazySnapshotRecord,
+): boolean {
+  const range = exactSourceRange(sourceView, item.span)
+  const selection = exactSourceRange(sourceView, item.selectionSpan)
+  if (!range || !selection) return false
+  const source = sourceView.virtualDocument.sourceContent
+  const rangeStart = lineColumnToOffset(source, range.startLine, range.startColumn)
+  const selectionStart = lineColumnToOffset(
+    source,
+    selection.startLine,
+    selection.startColumn,
+  )
+  return /\bstruct\s*$/.test(source.slice(rangeStart, selectionStart))
+}
+
 function isArktsStruct(item: ts.NavigationTree, script: ScriptRecord): boolean {
   const span = item.spans[0]
   const nameSpan = item.nameSpan
@@ -1291,6 +1494,105 @@ function compareDocumentHighlights(
     || left.range.startColumn - right.range.startColumn
     || left.range.endLine - right.range.endLine
     || left.range.endColumn - right.range.endColumn
+}
+
+function unionSemanticRanges(
+  left: SemanticTextRange,
+  right: SemanticTextRange,
+): SemanticTextRange {
+  const start = compareSemanticPositions(
+    left.startLine,
+    left.startColumn,
+    right.startLine,
+    right.startColumn,
+  ) <= 0
+    ? { line: left.startLine, column: left.startColumn }
+    : { line: right.startLine, column: right.startColumn }
+  const end = compareSemanticPositions(
+    left.endLine,
+    left.endColumn,
+    right.endLine,
+    right.endColumn,
+  ) >= 0
+    ? { line: left.endLine, column: left.endColumn }
+    : { line: right.endLine, column: right.endColumn }
+  return {
+    startLine: start.line,
+    startColumn: start.column,
+    endLine: end.line,
+    endColumn: end.column,
+  }
+}
+
+function compareSemanticPositions(
+  leftLine: number,
+  leftColumn: number,
+  rightLine: number,
+  rightColumn: number,
+): number {
+  return leftLine - rightLine || leftColumn - rightColumn
+}
+
+function compareSemanticRanges(
+  left: SemanticTextRange,
+  right: SemanticTextRange,
+): number {
+  return compareSemanticPositions(
+    left.startLine,
+    left.startColumn,
+    right.startLine,
+    right.startColumn,
+  ) || compareSemanticPositions(
+    left.endLine,
+    left.endColumn,
+    right.endLine,
+    right.endColumn,
+  )
+}
+
+function semanticRangeKey(range: SemanticTextRange): string {
+  return [
+    range.startLine,
+    range.startColumn,
+    range.endLine,
+    range.endColumn,
+  ].join(":")
+}
+
+function callHierarchyItemKey(item: SemanticCallHierarchyItemInfo): string {
+  return JSON.stringify([
+    item.path,
+    item.selectionRange.startLine,
+    item.selectionRange.startColumn,
+    item.selectionRange.endLine,
+    item.selectionRange.endColumn,
+    item.name,
+    item.kind,
+  ])
+}
+
+function compareCallHierarchyItems(
+  left: SemanticCallHierarchyItemInfo,
+  right: SemanticCallHierarchyItemInfo,
+): number {
+  return compareOrdinalStrings(left.path, right.path)
+    || compareSemanticRanges(left.selectionRange, right.selectionRange)
+    || compareOrdinalStrings(left.name, right.name)
+    || compareOrdinalStrings(left.kind, right.kind)
+}
+
+function compareOrdinalStrings(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0
+}
+
+function sameCallHierarchyItem(
+  left: SemanticCallHierarchyItemInfo,
+  right: SemanticCallHierarchyItemInfo,
+): boolean {
+  return left.path === path.resolve(right.path)
+    && left.name === right.name
+    && left.kind === right.kind
+    && sameTextRange(left.selectionRange, right.selectionRange)
 }
 
 function safeRead(filePath: string): string | null {

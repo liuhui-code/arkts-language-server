@@ -8,6 +8,10 @@ import type {
 } from "../contracts/document.js"
 import type { ProjectResolverPort } from "../contracts/project-resolver.js"
 import type {
+  SemanticCallHierarchyItem,
+  SemanticCallHierarchyItemQuery,
+  SemanticCallHierarchyOutgoingOutcome,
+  SemanticCallHierarchyPrepareOutcome,
   SemanticCodeAction,
   SemanticCodeActionQuery,
   SemanticCodeActionResolveQuery,
@@ -40,6 +44,7 @@ import type {
   SemanticDefinition,
 } from "../contracts/semantic-engine.js"
 import type {
+  SemanticCallHierarchyItemInfo,
   SemanticCompletionItem,
   SemanticDocumentPosition,
   SemanticDocumentSymbolInfo,
@@ -271,6 +276,51 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     }
   }
 
+  async prepareCallHierarchy(
+    query: SemanticQuery,
+  ): Promise<VersionedSemanticResult<SemanticCallHierarchyPrepareOutcome>> {
+    assertActive(query.signal)
+    this.sync(query.document)
+    const prepared = this.prepare(query.document, query.position)
+    const result = prepared.engine.prepareCallHierarchy(prepared.position)
+    return {
+      documentVersion: query.document.version,
+      value: result.status === "complete"
+        ? {
+            status: "complete",
+            items: result.items.map(toPublicCallHierarchyItem),
+          }
+        : result,
+    }
+  }
+
+  async outgoingCalls(
+    query: SemanticCallHierarchyItemQuery,
+  ): Promise<VersionedSemanticResult<SemanticCallHierarchyOutgoingOutcome>> {
+    assertActive(query.signal)
+    this.sync(query.document)
+    const prepared = this.prepare(
+      query.document,
+      query.item.selectionRange.start,
+    )
+    const result = prepared.engine.outgoingCalls(
+      prepared.position,
+      toLegacyCallHierarchyItem(query.item),
+    )
+    return {
+      documentVersion: query.document.version,
+      value: result.status === "complete"
+        ? {
+            status: "complete",
+            calls: result.calls.map((call) => ({
+              to: toPublicCallHierarchyItem(call.to),
+              fromRanges: call.fromRanges.map(toPublicRange),
+            })),
+          }
+        : result,
+    }
+  }
+
   async foldingRanges(
     query: SemanticFoldingRangeQuery,
   ): Promise<VersionedSemanticResult<SemanticFoldingRange[]>> {
@@ -496,6 +546,32 @@ function toLegacyCompletion(item: SemanticCompletion): SemanticCompletionItem {
       ? toLegacyRange(item.replacementRange)
       : undefined,
     data: item.data,
+  }
+}
+
+function toPublicCallHierarchyItem(
+  item: SemanticCallHierarchyItemInfo,
+): SemanticCallHierarchyItem {
+  return {
+    uri: pathToFileURL(item.path).href,
+    name: item.name,
+    kind: item.kind,
+    range: toPublicRange(item.range),
+    selectionRange: toPublicRange(item.selectionRange),
+    ...(item.detail ? { detail: item.detail } : {}),
+  }
+}
+
+function toLegacyCallHierarchyItem(
+  item: SemanticCallHierarchyItem,
+): SemanticCallHierarchyItemInfo {
+  return {
+    path: fileURLToPath(item.uri),
+    name: item.name,
+    kind: item.kind,
+    range: toLegacyRange(item.range),
+    selectionRange: toLegacyRange(item.selectionRange),
+    ...(item.detail ? { detail: item.detail } : {}),
   }
 }
 

@@ -118,6 +118,47 @@ export interface SemanticInlayHint {
   paddingRight?: boolean
 }
 
+export type SemanticCallHierarchyItemKind =
+  | "file"
+  | "module"
+  | "struct"
+  | "class"
+  | "interface"
+  | "function"
+  | "method"
+  | "property"
+  | "constructor"
+  | "variable"
+  | "constant"
+
+export interface SemanticCallHierarchyItem {
+  uri: DocumentUri
+  name: string
+  kind: SemanticCallHierarchyItemKind
+  detail?: string
+  range: TextRange
+  selectionRange: TextRange
+}
+
+export interface SemanticCallHierarchyOutgoingCall {
+  to: SemanticCallHierarchyItem
+  fromRanges: TextRange[]
+}
+
+export type SemanticCallHierarchyFailureReason =
+  | "source-unavailable"
+  | "source-unmappable"
+  | "result-limit-exceeded"
+
+export type SemanticCallHierarchyPrepareOutcome =
+  | { status: "complete"; items: SemanticCallHierarchyItem[] }
+  | { status: "incomplete"; reason: SemanticCallHierarchyFailureReason }
+
+export type SemanticCallHierarchyOutgoingOutcome =
+  | { status: "complete"; calls: SemanticCallHierarchyOutgoingCall[] }
+  | { status: "stale-item" }
+  | { status: "incomplete"; reason: SemanticCallHierarchyFailureReason }
+
 export type SemanticFoldingRangeKind = "comment" | "imports" | "region"
 
 export interface SemanticFoldingRange {
@@ -238,6 +279,10 @@ export interface SemanticInlayHintQuery extends SemanticDocumentQuery {
   range: TextRange
 }
 
+export interface SemanticCallHierarchyItemQuery extends SemanticDocumentQuery {
+  item: SemanticCallHierarchyItem
+}
+
 export interface SemanticCodeActionResolveQuery extends SemanticDocumentQuery {
   action: SemanticCodeAction
 }
@@ -282,6 +327,12 @@ export interface SemanticEnginePort {
   inlayHints(
     query: SemanticInlayHintQuery,
   ): Promise<VersionedSemanticResult<SemanticInlayHint[]>>
+  prepareCallHierarchy(
+    query: SemanticQuery,
+  ): Promise<VersionedSemanticResult<SemanticCallHierarchyPrepareOutcome>>
+  outgoingCalls(
+    query: SemanticCallHierarchyItemQuery,
+  ): Promise<VersionedSemanticResult<SemanticCallHierarchyOutgoingOutcome>>
   foldingRanges(
     query: SemanticFoldingRangeQuery,
   ): Promise<VersionedSemanticResult<SemanticFoldingRange[]>>
