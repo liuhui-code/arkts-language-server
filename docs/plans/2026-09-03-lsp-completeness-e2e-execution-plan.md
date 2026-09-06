@@ -601,8 +601,9 @@ Wave 1 exit criteria：H/C/S/A focused tests 全绿；不存在共享临时产�
 - [ ] C11 Completion fidelity（逐项真实 LSP RED，禁止一次性改写 pipeline）：
   - [x] C11a mid-token replacement：遵循 entry span → list optional span → prefix fallback，
     `this.meth|od` 接受后仍精确为 `this.method`，list→resolve 保持同一 UTF-16 edit（`5765345`）。
-  - [ ] C11b Unicode identifier prefix：在 provider quota 前识别完整 Unicode identifier，生成精确
-    replacement range，并按 code point 执行两字符 module-export 门槛。
+  - [x] C11b Unicode identifier prefix：在 provider quota 前识别完整 Unicode identifier，生成精确
+    UTF-16 replacement range，并按 code point 执行两字符 module-export 门槛；astral 1/2 字符
+    options contract 经反向 mutation 验证（`d569c33`）。
   - [ ] C11c camel/fuzzy filtering：以有序 subsequence admission 取代 `startsWith`，保留 TypeScript
     provider 顺序、`filterText`/`sortText`、128 accepted-item quota 与取消 cadence。
   - [ ] C11d completion kind families：typed object property 不误报 Field；Enum/EnumMember/Module
