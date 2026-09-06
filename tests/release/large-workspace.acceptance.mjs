@@ -94,7 +94,7 @@ test("the pinned large ArkTS workspace is correct and responsive through the rel
   servers.push(warm)
   await initializeWorkspace(warm, rootUri, 20)
   warm.send({ jsonrpc: "2.0", method: "initialized", params: {} })
-  await acknowledgeProgressAndWaitForCatalogActivity(warm)
+  const warmProgressToken = await acknowledgeProgressAndWaitForCatalogActivity(warm)
 
   const warmStartedAt = performance.now()
   const warmTeamRepo = await search(warm, 21, "TeamRepo", 2_000)
@@ -132,7 +132,7 @@ test("the pinned large ArkTS workspace is correct and responsive through the rel
     `warm repeated workspace search P95 must stay below ${REPEATED_QUERY_P95_BUDGET_MS}ms; measured ${formatMs(repeatedP95Ms)}ms`,
   )
 
-  const warmReady = await waitUntilReady(warm)
+  const warmReady = await waitUntilReady(warm, warmProgressToken)
   assertReadyFileCount(warmReady, EXPECTED_SOURCE_FILES)
   await shutdownAndExit(warm, 100)
 
@@ -215,6 +215,7 @@ async function acknowledgeProgressAndWaitForCatalogActivity(server) {
     "catalog activity",
     30_000,
   )
+  return token
 }
 
 async function acknowledgeProgress(server) {
