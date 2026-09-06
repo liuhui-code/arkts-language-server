@@ -7,6 +7,7 @@ import type {
   SemanticCallHierarchyOutgoingQueryResult,
   SemanticCallHierarchyPrepareQueryResult,
   SemanticCompletionItem,
+  SemanticCompletionItemList,
   SemanticDefinitionCandidate,
   SemanticDiagnostic,
   SemanticDocumentHighlight,
@@ -86,7 +87,7 @@ export type SemanticSignatureHelpTriggerReason =
 
 export interface SemanticTypeQueryContext {
   state: SemanticTypeEngineState
-  complete(position: SemanticDocumentPosition): SemanticCompletionItem[]
+  complete(position: SemanticDocumentPosition): SemanticCompletionItemList
   resolveCompletion(position: SemanticDocumentPosition, item: SemanticCompletionItem): SemanticCompletionItem
   define(position: SemanticDocumentPosition): SemanticDefinitionCandidate[]
   typeDefinitions(position: SemanticDocumentPosition): SemanticDefinitionCandidate[]
@@ -192,10 +193,14 @@ export class SemanticTypeEngineRegistry {
     this.evict(rootPath)
     return {
       state,
-      complete: (position) => mergeCompletions(
-        sourceContent ? entry.arkui.complete(position, sourceContent) : [],
-        entry.engine.complete(position),
-      ),
+      complete: (position) => {
+        const arkui = sourceContent ? entry.arkui.complete(position, sourceContent) : []
+        const typescript = entry.engine.complete(position)
+        return {
+          items: mergeCompletions(arkui, typescript.items),
+          isIncomplete: typescript.isIncomplete,
+        }
+      },
       resolveCompletion: (position, item) => item.data?.provider === "arkui-resource"
         ? item
         : entry.engine.resolveCompletion(position, item),

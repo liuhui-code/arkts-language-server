@@ -102,6 +102,11 @@ export interface SemanticCompletionItem {
   data?: Record<string, unknown>
 }
 
+export interface SemanticCompletionItemList {
+  items: SemanticCompletionItem[]
+  isIncomplete: boolean
+}
+
 export interface SemanticCompletionTextEdit {
   path: string
   range: SemanticTextRange

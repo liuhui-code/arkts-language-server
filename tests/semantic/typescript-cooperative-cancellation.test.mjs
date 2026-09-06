@@ -259,15 +259,74 @@ test("cancels completion during the bounded raw entry scan without publishing pa
 
   const retryCell = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT)
   const retry = await scope.run(retryCell, () => engine.complete(position))
-  assert.equal(retry.length, 128)
+  assert.equal(retry.isIncomplete, true)
+  assert.equal(retry.items.length, 128)
   assert.deepEqual(
-    retry.map(({ label }) => label),
+    retry.items.map(({ label }) => label),
     Array.from({ length: 128 }, (_, index) => `method${index}`),
   )
   assert.equal(
     oneHundredTwentyNinthEntryAccessed,
     false,
     "completion must stop scanning once the bounded result is full",
+  )
+})
+
+test("propagates provider-reported TypeScript completion incompleteness below the local quota", (t) => {
+  const harness = completionListHarness(t)
+  const result = harness.complete({ count: 1, providerIncomplete: true })
+
+  assert.equal(result.isIncomplete, true)
+  assert.deepEqual(result.items.map(({ label }) => label), ["method0"])
+})
+
+test("reports a fully consumed 127-entry TypeScript completion provider as complete", (t) => {
+  const result = completionListHarness(t).complete({ count: 127 })
+
+  assert.equal(result.isIncomplete, false)
+  assert.equal(result.items.length, 127)
+})
+
+test("reports an exact 128-entry TypeScript completion provider as complete", (t) => {
+  const result = completionListHarness(t).complete({ count: 128 })
+
+  assert.equal(result.isIncomplete, false)
+  assert.equal(result.items.length, 128)
+})
+
+test("reports an exact 128-match TypeScript completion tail as complete", (t) => {
+  const result = completionListHarness(t).complete({
+    count: 129,
+    firstFilterText: "other",
+  })
+
+  assert.equal(result.isIncomplete, false)
+  assert.deepEqual(
+    result.items.map(({ label }) => label),
+    Array.from({ length: 128 }, (_, index) => `method${index + 1}`),
+    "the quota must retain the first 128 accepted entries, not the first 128 raw entries",
+  )
+})
+
+test("reports a 129-entry TypeScript completion provider incomplete without reading entry 129", (t) => {
+  const harness = completionListHarness(t)
+  let oneHundredTwentyNinthEntryAccessed = false
+  const result = harness.complete({
+    count: 129,
+    onOneHundredTwentyNinthEntry() {
+      oneHundredTwentyNinthEntryAccessed = true
+    },
+  })
+
+  assert.equal(result.isIncomplete, true)
+  assert.deepEqual(
+    result.items.map(({ label }) => label),
+    Array.from({ length: 128 }, (_, index) => `method${index}`),
+  )
+  assert.equal(
+    oneHundredTwentyNinthEntryAccessed,
+    false,
+    "completion must report an unscanned tail without reading the 129th entry",
   )
 })
 
@@ -875,6 +934,69 @@ function prepareSingleDocument(engine, workspaceRoot, mainPath, mainSource) {
       syntaxReady: true,
     },
   })
+}
+
+function completionListHarness(t) {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-ts-completion-list-"))
+  t.after(() => fs.rmSync(workspaceRoot, { recursive: true, force: true }))
+
+  const mainPath = path.join(workspaceRoot, "Main.ts")
+  const mainSource = "const receiver = {}\nreceiver.me\n"
+  const { TypeScriptLanguageServiceEngine } = buildDriver(t)
+  const engine = new TypeScriptLanguageServiceEngine(workspaceRoot)
+  t.after(() => engine.dispose())
+  prepareSingleDocument(engine, workspaceRoot, mainPath, mainSource)
+
+  const realService = engine.service
+  const position = {
+    path: mainPath,
+    line: 2,
+    column: "receiver.me".length + 1,
+    documentVersion: 1,
+    workspaceRoot,
+  }
+  return {
+    complete({
+      count,
+      firstFilterText,
+      providerIncomplete = false,
+      onOneHundredTwentyNinthEntry,
+    }) {
+      const entries = Array.from({ length: count }, (_, index) => ({
+        name: `method${index}`,
+        kind: "method",
+        sortText: "11",
+        ...(index === 0 && firstFilterText ? { filterText: firstFilterText } : {}),
+      }))
+      if (onOneHundredTwentyNinthEntry) {
+        const lastEntry = entries[128]
+        Object.defineProperty(entries, 128, {
+          configurable: false,
+          enumerable: true,
+          get() {
+            onOneHundredTwentyNinthEntry()
+            return lastEntry
+          },
+        })
+      }
+      engine.service = new Proxy(realService, {
+        get(target, property, receiver) {
+          if (property === "getCompletionsAtPosition") {
+            return () => ({
+              entries,
+              isGlobalCompletion: false,
+              isMemberCompletion: true,
+              isNewIdentifierLocation: false,
+              ...(providerIncomplete ? { isIncomplete: true } : {}),
+            })
+          }
+          const value = Reflect.get(target, property, receiver)
+          return typeof value === "function" ? value.bind(target) : value
+        },
+      })
+      return engine.complete(position)
+    },
+  }
 }
 
 function offsetsOf(source, token) {

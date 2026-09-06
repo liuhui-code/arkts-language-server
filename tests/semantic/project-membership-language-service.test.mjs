@@ -195,7 +195,7 @@ test("loads complete project membership lazily within hard snapshot bounds", (t)
     column: prefixEnd + 1,
     documentVersion: 1,
     workspaceRoot,
-  })
+  }).items
   const state = engine.cacheState()
 
   assert.equal(items.filter((item) => item.label === targetName).length, 1)
@@ -238,7 +238,10 @@ test("drops resident scripts removed from a newer complete membership", (t) => {
     documentVersion: 1,
     workspaceRoot,
   }
-  assert.equal(engine.complete(position).filter((item) => item.label === "RemovedTarget").length, 1)
+  assert.equal(
+    engine.complete(position).items.filter((item) => item.label === "RemovedTarget").length,
+    1,
+  )
 
   engine.prepare(workspaceView({
     rootPath: workspaceRoot,
@@ -248,7 +251,10 @@ test("drops resident scripts removed from a newer complete membership", (t) => {
   }))
   const state = engine.cacheState()
 
-  assert.equal(engine.complete(position).some((item) => item.label === "RemovedTarget"), false)
+  assert.equal(
+    engine.complete(position).items.some((item) => item.label === "RemovedTarget"),
+    false,
+  )
   assert.equal(state.residentScripts.files, 1)
   assert.equal(state.projectMembership.paths, 1)
 })
@@ -311,7 +317,10 @@ test("discards the old complete project view when membership becomes partial", (
     mainSource,
     membership: { paths: [mainPath, targetPath].sort(), status: "complete", revision: 1 },
   }))
-  assert.equal(engine.complete(position).filter((item) => item.label === "GlobalTarget").length, 1)
+  assert.equal(
+    engine.complete(position).items.filter((item) => item.label === "GlobalTarget").length,
+    1,
+  )
 
   engine.prepare(workspaceView({
     rootPath: workspaceRoot,
@@ -326,7 +335,10 @@ test("discards the old complete project view when membership becomes partial", (
   }))
   const state = engine.cacheState()
 
-  assert.equal(engine.complete(position).some((item) => item.label === "GlobalTarget"), false)
+  assert.equal(
+    engine.complete(position).items.some((item) => item.label === "GlobalTarget"),
+    false,
+  )
   assert.deepEqual(state.projectMembership, {
     status: "partial",
     reason: "path-count-limit",

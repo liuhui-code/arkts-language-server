@@ -478,6 +478,80 @@ test("completes imported receiver fields and methods with exact kinds and UTF-16
   assert.deepEqual(method[0].textEdit, { range: replacementRange, newText: "memberMethod" })
 })
 
+test("reports an incomplete ordered completion list when TypeScript has more than 128 members", async (t) => {
+  const materialized = await materializeConformanceWorkspace()
+  const sourceDirectory = path.join(
+    materialized.workspaceRoot,
+    "entry",
+    "src",
+    "main",
+    "ets",
+    "pages",
+  )
+  const documentPath = path.join(sourceDirectory, "ManyMemberCompletions.ets")
+  const expectedLabels = Array.from(
+    { length: 128 },
+    (_, index) => `member${String(index).padStart(3, "0")}`,
+  )
+  const source = [
+    "class ManyMemberCompletions {",
+    ...Array.from(
+      { length: 129 },
+      (_, index) => `  member${String(index).padStart(3, "0")}(): void {}`,
+    ),
+    "",
+    "  complete(): void {",
+    "    this.mem",
+    "  }",
+    "}",
+    "",
+  ].join("\n")
+  await fs.promises.writeFile(documentPath, source, "utf8")
+  const documentUri = pathToFileURL(documentPath).href
+  const completionOffset = source.lastIndexOf("this.mem") + "this.mem".length
+  const session = new LspSession({
+    command: process.execPath,
+    args: [path.join(projectRoot, "dist", "server.cjs"), "--stdio"],
+    cwd: projectRoot,
+    env: {
+      HOME: path.join(materialized.root, "missing-home"),
+      DEVECO_SDK_HOME: path.join(materialized.root, "missing-deveco"),
+      ARKLINE_HARMONY_SDK_PATH: path.join(materialized.corpusRoot, "sdk", "openharmony"),
+    },
+    rootUri: pathToFileURL(materialized.workspaceRoot).href,
+    capabilities: { general: { positionEncodings: ["utf-16"] } },
+  })
+  t.after(async () => {
+    try {
+      await session.close()
+    } finally {
+      await fs.promises.rm(materialized.root, { recursive: true, force: true })
+    }
+  })
+
+  await session.initialize()
+  session.openDocument({
+    uri: documentUri,
+    languageId: "arkts",
+    version: 1,
+    text: source,
+  })
+  const response = await session.request("textDocument/completion", {
+    textDocument: { uri: documentUri },
+    position: positionAt(source, completionOffset),
+  })
+
+  assert.equal(response.error, undefined, JSON.stringify(response.error))
+  assert.equal(Array.isArray(response.result), false)
+  assert.equal(response.result.items.length, 128)
+  assert.deepEqual(
+    response.result.items.map(({ label }) => label),
+    expectedLabels,
+    "the bounded LSP response must preserve TypeScript provider order",
+  )
+  assert.equal(response.result.isIncomplete, true)
+})
+
 test("ranks local completion first and distinguishes stable same-name auto-import sources", async (t) => {
   const materialized = await materializeConformanceWorkspace()
   const sourceDirectory = path.join(

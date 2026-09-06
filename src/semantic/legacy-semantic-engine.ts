@@ -110,11 +110,12 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     assertActive(query.signal)
     this.sync(query.document)
     const prepared = this.prepare(query.document, query.position, true)
-    const items = prepared.engine.complete(prepared.position)
+    const completion = prepared.engine.complete(prepared.position)
+    const items = completion.items
       .map((item) => toPublicCompletion(item, query.document.version))
     return {
       documentVersion: query.document.version,
-      value: { items, isIncomplete: false },
+      value: { items, isIncomplete: completion.isIncomplete },
     }
   }
 

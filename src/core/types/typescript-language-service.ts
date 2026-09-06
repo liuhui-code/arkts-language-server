@@ -15,6 +15,7 @@ import type {
   SemanticCallHierarchyOutgoingQueryResult,
   SemanticCallHierarchyPrepareQueryResult,
   SemanticCompletionItem,
+  SemanticCompletionItemList,
   SemanticCompletionTextEdit,
   SemanticDefinitionCandidate,
   SemanticDiagnostic,
@@ -232,12 +233,14 @@ export class TypeScriptLanguageServiceEngine {
     return this.combinedFileNames
   }
 
-  complete(position: SemanticDocumentPosition): SemanticCompletionItem[] {
+  complete(position: SemanticDocumentPosition): SemanticCompletionItemList {
     const work = new CooperativeWork(this.checkpoint)
     work.boundary()
     const filePath = path.resolve(position.path)
     const script = this.scripts.get(filePath)
-    if (!script || !hasCompletionPrefix(script.sourceContent, position)) return work.finish([])
+    if (!script || !hasCompletionPrefix(script.sourceContent, position)) {
+      return work.finish({ items: [], isIncomplete: false })
+    }
     script.lastAccess = ++this.accessClock
     const sourceOffset = lineColumnToOffset(script.sourceContent, position.line, position.column)
     const offset = script.virtualDocument.toGeneratedOffset(sourceOffset)
@@ -251,10 +254,12 @@ export class TypeScriptLanguageServiceEngine {
       includeCompletionsWithInsertText: true,
     })
     work.boundary()
-    if (!info) return work.finish([])
+    if (!info) return work.finish({ items: [], isIncomplete: false })
     const normalizedPrefix = prefix.toLowerCase()
     const completions: SemanticCompletionItem[] = []
+    let scannedEntries = 0
     for (const entry of info.entries) {
+      scannedEntries += 1
       const filterText = entry.filterText
       if (
         !normalizedPrefix
@@ -289,7 +294,10 @@ export class TypeScriptLanguageServiceEngine {
       work.item()
       if (completions.length >= MAX_COMPLETIONS) break
     }
-    return work.finish(completions)
+    return work.finish({
+      items: completions,
+      isIncomplete: info.isIncomplete === true || scannedEntries < info.entries.length,
+    })
   }
 
   resolveCompletion(

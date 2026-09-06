@@ -482,10 +482,10 @@ test("a root reset drops its stale type scripts without rebuilding another root"
   const second = registry.prepare(workspaceView(secondRoot, secondMain, secondText, [
     { path: keptPath, content: "export class KeptType {}\n" },
   ]))
-  assert.ok(first.complete(completionPosition(firstMain, firstText)).some((item) => (
+  assert.ok(first.complete(completionPosition(firstMain, firstText)).items.some((item) => (
     item.label === "StaleType"
   )))
-  assert.ok(second.complete(completionPosition(secondMain, secondText)).some((item) => (
+  assert.ok(second.complete(completionPosition(secondMain, secondText)).items.some((item) => (
     item.label === "KeptType"
   )))
   assert.equal(registry.workspaceCount(), 2)
@@ -496,10 +496,10 @@ test("a root reset drops its stale type scripts without rebuilding another root"
   })
   const stillWarmSecond = registry.prepare(workspaceView(secondRoot, secondMain, secondText))
 
-  assert.equal(resetFirst.complete(completionPosition(firstMain, firstText)).some((item) => (
+  assert.equal(resetFirst.complete(completionPosition(firstMain, firstText)).items.some((item) => (
     item.label === "StaleType"
   )), false)
-  assert.ok(stillWarmSecond.complete(completionPosition(secondMain, secondText)).some((item) => (
+  assert.ok(stillWarmSecond.complete(completionPosition(secondMain, secondText)).items.some((item) => (
     item.label === "KeptType"
   )))
 })
@@ -737,8 +737,8 @@ test("rebuilds an alias engine when another lexical spelling owns its contiguous
   t.after(() => freshRegistry.dispose())
   const fresh = freshRegistry.prepare(secondAfterChange)
   const completion = completionPosition(secondMain, changedMain)
-  const staleLabels = stale.complete(completion).map(({ label }) => label)
-  const freshLabels = fresh.complete(completion).map(({ label }) => label)
+  const staleLabels = stale.complete(completion).items.map(({ label }) => label)
+  const freshLabels = fresh.complete(completion).items.map(({ label }) => label)
 
   assert.equal(staleLabels.includes("TargetType"), false)
   assert.deepEqual(staleLabels, freshLabels)
@@ -768,7 +768,7 @@ test("rebuilds a lexical type engine when its canonical owner identity changes",
     typeEngineResetEpoch: 0,
     contentRevision: 0,
   })
-  assert.ok(initial.complete(completionPosition(mainPath, source)).some(({ label }) => (
+  assert.ok(initial.complete(completionPosition(mainPath, source)).items.some(({ label }) => (
     label === "StaleType"
   )))
 
@@ -781,7 +781,7 @@ test("rebuilds a lexical type engine when its canonical owner identity changes",
     contentRevision: 0,
   })
 
-  assert.equal(retargeted.complete(completionPosition(mainPath, source)).some(({ label }) => (
+  assert.equal(retargeted.complete(completionPosition(mainPath, source)).items.some(({ label }) => (
     label === "StaleType"
   )), false)
   assert.equal(registry.workspaceCount(), 1)
@@ -1007,8 +1007,8 @@ function resourceJson(name) {
   return `${JSON.stringify({ string: [{ name, value: name }] }, null, 2)}\n`
 }
 
-function arkuiLabels(items) {
-  return items.filter(({ source }) => source === "arkui").map(({ label }) => label)
+function arkuiLabels(completion) {
+  return completion.items.filter(({ source }) => source === "arkui").map(({ label }) => label)
 }
 
 function syncPosition(store, workspaceRoot, documentPath) {
