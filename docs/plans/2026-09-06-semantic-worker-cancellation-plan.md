@@ -241,9 +241,13 @@ node --test tests/lsp-semantic-worker-responsiveness.test.mjs
     `checkpoint` 是两个独立注入项，core 不反向依赖 semantic scope。diagnostics 已移除 eager
     `flat()` 并逐项映射；documentSymbols 改为显式迭代 DFS，覆盖 150,000 宽 unknown container、
     1,000 层深树、每 64 节点取消与 fresh retry（`9eddcf1`、`3d69963`、`7eee8b1`），测试唯一登记
-    到 unit layer（`69fd2e3`）。这些仍只证明 TypeScript core；Registry merge、Legacy/ArkUI/LSP
-    后段及 implementations/completion/inlay/highlight/definition 的 owned loops 尚未闭环，因此 T4d
-    保持未勾选。
+    到 unit layer（`69fd2e3`）。completion raw scan 已合并 filter/slice/map 为单次迭代，每 64 raw
+    entries 检查并在收满 128 个匹配项后停止（`9e971f9`）。implementations 已用同一 request-local
+    cadence 串起 definition/implementation provider boundaries、declaration Set、raw filter 和共享
+    candidate mapper；三个隔离用例先在父实现下 3/3 RED，再达到 5/5 focused GREEN（`f8cb383`）。
+    这些仍只证明 TypeScript core；completion resolve、definition/typeDefinition activation、
+    inlay/highlight、Call Hierarchy cadence、Registry merge 与 Legacy/ArkUI/LSP 后段 owned loops 尚未
+    闭环，因此 T4d 保持未勾选。
 - [ ] T5 State：worker 独占 SemanticDocumentStore/TS engine，sync/query-by-reference 与无 gap ACK。
   Call Hierarchy 的 protocol v2 strict request/result codec 已先行完成（`1ef51ef`）；随后 supervisor
   已按可信 active method 做 method-aware response decode，超限 collection 在 element descriptor 扫描前
