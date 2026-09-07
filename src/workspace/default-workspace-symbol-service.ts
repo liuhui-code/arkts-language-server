@@ -33,6 +33,8 @@ export class DefaultWorkspaceSymbolService implements WorkspaceSymbolServicePort
   private readonly progress = new Map<string, WorkspaceIndexProgress>()
   private report?: (progress: WorkspaceIndexProgress) => void
   private disposed = false
+  private closePromise?: Promise<void>
+  private readonly opening = new Set<Promise<void>>()
 
   constructor(private readonly dependencies: DefaultWorkspaceSymbolServiceDependencies) {}
 
@@ -53,7 +55,9 @@ export class DefaultWorkspaceSymbolService implements WorkspaceSymbolServicePort
     }
     this.reportAggregate()
     for (const workspace of workspaces) {
-      void this.openWorkspace(workspace, signal)
+      const opening = this.openWorkspace(workspace, signal)
+      this.opening.add(opening)
+      void opening.then(() => this.opening.delete(opening))
     }
   }
 
@@ -130,13 +134,14 @@ export class DefaultWorkspaceSymbolService implements WorkspaceSymbolServicePort
     }
   }
 
-  dispose(): void {
-    if (this.disposed) return
+  dispose(): Promise<void> {
+    if (this.closePromise) return this.closePromise
     this.disposed = true
     this.openDocuments.clear()
     const closing = [...this.workspaces].map(([workspaceId]) =>
       this.dependencies.index.close(workspaceId))
-    void Promise.allSettled(closing)
+    this.closePromise = Promise.allSettled([...closing, ...this.opening]).then(() => {})
+    return this.closePromise
   }
 
   private async openWorkspace(

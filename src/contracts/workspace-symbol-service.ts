@@ -29,5 +29,5 @@ export interface WorkspaceSymbolServicePort {
     limit: number,
     signal?: AbortSignal,
   ): Promise<WorkspaceSymbolSearchResult>
-  dispose(): void
+  dispose(): void | Promise<void>
 }

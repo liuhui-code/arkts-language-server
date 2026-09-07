@@ -1,6 +1,10 @@
 # ArkTS Language Server 功能完备度与 E2E 执行计划
 
 状态：In progress
+
+2026-09-07 路线调整：后续优先级见 [大项目与组件复用执行计划](2026-09-07-large-project-reuse-execution-plan.md)。
+现成 ArkTS LSP 整体复用已被用户验证排除；优先推进真实项目/SDK模型，再补生产响应性。
+本文件保留既有能力、测试和发布证据，不以能力清单全绿替代真实工程验收。
 基线：`integration/local-beta@ef8ab9533a97ebd000318435a56d8dba895b5488`  
 计划分支：`plan/lsp-completeness-e2e`  
 日期：2026-09-03  

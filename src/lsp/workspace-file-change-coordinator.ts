@@ -2,7 +2,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
-import { isArkUIStringResourcePath } from "../core/arkui/resource-path.js"
+import { isArkUIStringResourceCandidate, isArkUIStringResourcePath } from "../core/arkui/resource-path.js"
 
 const SOURCE_EXTENSIONS = new Set([".ets", ".ts"])
 const MAX_PENDING_PATHS = 1_024
@@ -32,6 +32,7 @@ export interface WorkspaceFileEvent {
 export interface WorkspaceFileChangeCoordinatorOptions {
   rootUris: string[]
   maxPendingPaths?: number
+  isResourceFile?: (rootUri: string, fileUri: string) => boolean
 }
 
 interface WorkspaceRoot {
@@ -52,8 +53,10 @@ export class WorkspaceFileChangeCoordinator {
   private readonly pending = new Map<string, PendingChange>()
   private readonly sourceDirtyRoots = new Set<string>()
   private readonly resourceDirtyRoots = new Set<string>()
+  private readonly isResourceFile: WorkspaceFileChangeCoordinatorOptions["isResourceFile"]
 
-  constructor({ rootUris, maxPendingPaths }: WorkspaceFileChangeCoordinatorOptions) {
+  constructor({ rootUris, maxPendingPaths, isResourceFile }: WorkspaceFileChangeCoordinatorOptions) {
+    this.isResourceFile = isResourceFile
     this.roots = rootUris
       .flatMap((uri, order) => {
         const rootPath = filePath(uri)
@@ -123,8 +126,22 @@ export class WorkspaceFileChangeCoordinator {
     if (!domain) return
     const candidateLexicalPath = path.resolve(candidatePath)
     const candidateCanonicalPath = canonicalPath(candidatePath)
-    const root = this.roots.find((entry) => isInside(entry.canonicalPath, candidateCanonicalPath))
+    // Configuration links belong to the workspace path the client watched. Source
+    // and resource events still require physical containment in the workspace.
+    const root = isProjectConfiguration(candidatePath)
+      ? this.roots.find((entry) => isInside(entry.path, candidateLexicalPath))
+        ?? this.roots.find((entry) => isInside(entry.canonicalPath,
+          path.join(canonicalPath(path.dirname(candidateLexicalPath)), path.basename(candidateLexicalPath))))
+      : this.roots.find((entry) => isInside(entry.canonicalPath, candidateCanonicalPath))
     if (!root || this.isDirty(root, domain)) return
+    if (domain === "arkui-resource" && !(this.isResourceFile
+      ? this.isResourceFile(root.uri, event.uri)
+      : isArkUIStringResourcePath(candidatePath))) return
+
+    if (isProjectConfiguration(candidatePath)) {
+      this.markRootDirty(root, "source")
+      return
+    }
 
     const key = `${root.canonicalPath}\0${candidateLexicalPath}`
     const existing = this.pending.get(key)
@@ -168,9 +185,16 @@ export class WorkspaceFileChangeCoordinator {
 }
 
 function workspaceFileDomain(filePath: string): WorkspaceFileDomain | undefined {
+  if (isProjectConfiguration(filePath)) return "source"
   if (SOURCE_EXTENSIONS.has(path.extname(filePath))) return "source"
-  if (isArkUIStringResourcePath(filePath)) return "arkui-resource"
+  if (isArkUIStringResourceCandidate(filePath)) return "arkui-resource"
   return undefined
+}
+
+function isProjectConfiguration(filePath: string): boolean {
+  const name = path.basename(filePath)
+  return name === "oh-package.json5" || name === "oh-package-lock.json5"
+    || name === "build-profile.json5" || name === "local.properties"
 }
 
 function filePath(uri: string): string | undefined {

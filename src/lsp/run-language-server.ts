@@ -34,9 +34,9 @@ import type {
   WorkspaceIndexProgress,
   WorkspaceSymbolServicePort,
 } from "../contracts/workspace-symbol-service.js"
-import { ARKUI_STRING_RESOURCE_GLOB } from "../core/arkui/resource-path.js"
+import { ARKUI_STRING_RESOURCE_GLOB, ARKUI_CONFIGURED_STRING_RESOURCE_GLOB } from "../core/arkui/resource-path.js"
 import { SingleRootProjectResolver } from "../project/single-root-project-resolver.js"
-import { createStructuredLogger } from "../observability/logger.js"
+import { createStructuredLogger, type StructuredLogger } from "../observability/logger.js"
 import { LegacySemanticEngine } from "../semantic/legacy-semantic-engine.js"
 import { createDocumentDiagnostics } from "./document-diagnostics.js"
 import {
@@ -116,24 +116,26 @@ class CompletionResolutionStore {
 }
 
 export interface LanguageServerServices {
+  logger?: StructuredLogger
   projects: ProjectResolverPort
   semantic: SemanticEnginePort
   workspaceSymbols?: WorkspaceSymbolServicePort
 }
 
 export function runLanguageServer(services?: LanguageServerServices): void {
-  const logger = createStructuredLogger()
+  const logger = services?.logger ?? createStructuredLogger()
   const connection = createConnection(ProposedFeatures.all)
   const documents = new TextDocuments(TextDocument)
   const projects = services?.projects
     ?? new SingleRootProjectResolver(pathToFileURL(process.cwd()).href)
-  const semantic = services?.semantic ?? new LegacySemanticEngine(projects)
+  const semantic = services?.semantic ?? new LegacySemanticEngine(projects, logger)
   const workspaceSymbols = services?.workspaceSymbols
   const freshness = new RequestFreshness()
   const completionResolutions = new CompletionResolutionStore()
   const codeActionResolutions = new CodeActionResolutionStore()
   let shuttingDown = false
   let disposed = false
+  let disposal: Promise<void> | undefined
   let workspaceRoots: { id: string; rootUri: string }[] = []
   let workspaceFileChanges = new WorkspaceFileChangeCoordinator({ rootUris: [] })
   let supportsWatchedFileRegistration = false
@@ -142,14 +144,16 @@ export function runLanguageServer(services?: LanguageServerServices): void {
   let completionClientProfile: CompletionClientProfile = DEFAULT_COMPLETION_CLIENT_PROFILE
 
   const disposeOnce = (reason: "shutdown" | "exit") => {
-    if (disposed) return
+    if (disposed) return disposal
     disposed = true
     workspaceIndexAbort?.abort(new Error("Language server stopped"))
     completionResolutions.clear()
     codeActionResolutions.clear()
     semantic.dispose()
-    workspaceSymbols?.dispose()
-    logger.info("server.stopped", { reason })
+    disposal = Promise.resolve(workspaceSymbols?.dispose()).then(() => {
+      logger.info("server.stopped", { reason })
+    })
+    return disposal
   }
 
   const assertRunning = () => {
@@ -186,11 +190,14 @@ export function runLanguageServer(services?: LanguageServerServices): void {
   connection.onInitialize((params: InitializeParams) => {
     const rootUris = initialRootUris(params)
     projects.configure(rootUris)
+    semantic.configureProject?.(params.initializationOptions?.project)
     workspaceRoots = rootUris.map((rootUri) => ({
       id: projects.projectFor(rootUri).id,
       rootUri,
     }))
-    workspaceFileChanges = new WorkspaceFileChangeCoordinator({ rootUris })
+    workspaceFileChanges = new WorkspaceFileChangeCoordinator({
+      rootUris, isResourceFile: semantic.isResourceFile?.bind(semantic),
+    })
     supportsWatchedFileRegistration = params.capabilities.workspace
       ?.didChangeWatchedFiles?.dynamicRegistration === true
     workspaceSymbolKindValueSet = params.capabilities.workspace?.symbol
@@ -233,7 +240,12 @@ export function runLanguageServer(services?: LanguageServerServices): void {
         watchers: [
           { globPattern: "**/*.ets" },
           { globPattern: "**/*.ts" },
+          { globPattern: "**/oh-package.json5" },
+          { globPattern: "**/oh-package-lock.json5" },
+          { globPattern: "**/build-profile.json5" },
+          { globPattern: "**/local.properties" },
           { globPattern: ARKUI_STRING_RESOURCE_GLOB },
+          { globPattern: ARKUI_CONFIGURED_STRING_RESOURCE_GLOB },
         ],
       }).catch(() => {
         logger.error("workspace.watch.registration.failed", { outcome: "disabled" })
@@ -307,6 +319,17 @@ export function runLanguageServer(services?: LanguageServerServices): void {
     workspaceSymbols?.sync(opened)
     diagnostics.update(document)
   })
+  connection.onDidChangeConfiguration(({ settings }) => {
+    const configured = settings?.arkts
+    if (!configured || !Object.prototype.hasOwnProperty.call(configured, "project")) return
+    for (const workspace of workspaceRoots) freshness.cancelWorkspace(workspace.id)
+    semantic.configureProject?.(configured.project)
+    semantic.workspaceFilesChanged?.(workspaceRoots.map(({ rootUri }) => ({
+      rootUri, rootDirty: true, changes: [],
+    })))
+    for (const document of documents.all()) diagnostics.update(document)
+    logger.info("project.selection.changed", { workspaceCount: workspaceRoots.length })
+  })
   connection.onDidChangeWatchedFiles(({ changes }) => {
     workspaceFileChanges.accept(changes)
     const batches = workspaceFileChanges.drain()
@@ -320,19 +343,24 @@ export function runLanguageServer(services?: LanguageServerServices): void {
           .filter((batch) => batch.resourceChanged)
           .map((batch) => projects.projectFor(batch.rootUri).id),
       )
-      if (resourceWorkspaceIds.size > 0) {
+      const dirtyWorkspaceIds = new Set(
+        batches.filter((batch) => batch.rootDirty).map((batch) => projects.projectFor(batch.rootUri).id),
+      )
+      if (resourceWorkspaceIds.size > 0 || dirtyWorkspaceIds.size > 0) {
         let scheduledDocuments = 0
         for (const document of documents.all()) {
+          const workspaceId = projects.projectFor(document.uri).id
           if (
-            document.getText().includes("$r")
-            && resourceWorkspaceIds.has(projects.projectFor(document.uri).id)
+            dirtyWorkspaceIds.has(workspaceId)
+            || (document.getText().includes("$r") && resourceWorkspaceIds.has(workspaceId))
           ) {
             scheduledDocuments += 1
             diagnostics.update(document)
           }
         }
-        logger.info("diagnostics.resource.refresh.scheduled", {
-          workspaceCount: resourceWorkspaceIds.size,
+        logger.info(dirtyWorkspaceIds.size > 0
+          ? "diagnostics.project.refresh.scheduled" : "diagnostics.resource.refresh.scheduled", {
+          workspaceCount: new Set([...resourceWorkspaceIds, ...dirtyWorkspaceIds]).size,
           documentCount: scheduledDocuments,
         })
       }
@@ -598,7 +626,7 @@ export function runLanguageServer(services?: LanguageServerServices): void {
     shuttingDown = true
     freshness.cancelAll()
     diagnostics.dispose()
-    disposeOnce("shutdown")
+    return disposeOnce("shutdown")
   })
   connection.onExit(() => {
     freshness.cancelAll()

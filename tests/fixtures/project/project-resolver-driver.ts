@@ -1,5 +1,7 @@
 import { SingleRootProjectResolver } from "../../../src/project/single-root-project-resolver.js"
 
+export { LocalPackageResolver } from "../../../src/core/sdk/local-package-resolver.js"
+
 export function resolveMultiRootDocuments() {
   const resolver = new SingleRootProjectResolver("file:///Fallback")
   resolver.configure([

@@ -280,6 +280,73 @@ test("cancels completion during the bounded raw entry scan without publishing pa
   )
 })
 
+test("cancels cross-tier module-export scoring without publishing partial results", async (t) => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-ts-module-completion-cancel-"))
+  t.after(() => fs.rmSync(workspaceRoot, { recursive: true, force: true }))
+
+  const mainPath = path.join(workspaceRoot, "Main.ts")
+  const mainSource = "const selected = me\n"
+  const {
+    SemanticCancellationScope,
+    SemanticWorkerCancelState,
+    TypeScriptLanguageServiceEngine,
+    TypeScriptOperationCanceledException,
+  } = buildDriver(t)
+  const scope = new SemanticCancellationScope()
+  const cancellationCell = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT)
+  const cancellationView = new Int32Array(cancellationCell)
+  let sixtyFifthEntryAccessed = false
+  const engine = new TypeScriptLanguageServiceEngine(workspaceRoot, {
+    hostCancellationToken: scope.hostToken,
+    checkpoint: () => scope.checkpoint(),
+  })
+  t.after(() => engine.dispose())
+  prepareSingleDocument(engine, workspaceRoot, mainPath, mainSource)
+
+  const entries = Array.from({ length: 1_000 }, (_, index) => controlledCompletionEntry({
+    index,
+    onSixtyFourthEntry() {
+      Atomics.store(cancellationView, 0, SemanticWorkerCancelState.clientCancelled)
+    },
+    onSixtyFifthEntry() {
+      sixtyFifthEntryAccessed = true
+    },
+    onOneHundredTwentyNinthEntry() {},
+  }))
+  const realService = engine.service
+  engine.service = new Proxy(realService, {
+    get(target, property, receiver) {
+      if (property === "getCompletionsAtPosition") {
+        return () => ({
+          entries,
+          isGlobalCompletion: true,
+          isMemberCompletion: false,
+          isNewIdentifierLocation: false,
+        })
+      }
+      const value = Reflect.get(target, property, receiver)
+      return typeof value === "function" ? value.bind(target) : value
+    },
+  })
+
+  let publishedResult
+  await assert.rejects(
+    scope.run(cancellationCell, () => {
+      publishedResult = engine.complete({
+        path: mainPath,
+        line: 1,
+        column: mainSource.trimEnd().length + 1,
+        documentVersion: 1,
+        workspaceRoot,
+      })
+      return publishedResult
+    }),
+    (error) => error instanceof TypeScriptOperationCanceledException,
+  )
+  assert.equal(sixtyFifthEntryAccessed, false)
+  assert.equal(publishedResult, undefined)
+})
+
 test("bounds object-property completion context lookup by syntax depth", (t) => {
   const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-ts-completion-context-"))
   t.after(() => fs.rmSync(workspaceRoot, { recursive: true, force: true }))
@@ -455,6 +522,86 @@ test("reports a 129-entry TypeScript completion provider incomplete without read
     oneHundredTwentyNinthEntryAccessed,
     false,
     "completion must report an unscanned tail without reading the 129th entry",
+  )
+})
+
+test("stops module-export scoring after 128 exact-prefix matches without reading entry 129", (t) => {
+  const source = "const selected = Sta\n"
+  const harness = completionListHarness(t, {
+    mainSource: source,
+    position: { line: 1, column: source.trimEnd().length + 1 },
+  })
+  const entries = Array.from({ length: 129 }, (_, index) => ({
+    name: `StartType${String(index).padStart(3, "0")}`,
+    kind: "const",
+    sortText: "15",
+  }))
+  let oneHundredTwentyNinthEntryAccessed = false
+  const oneHundredTwentyNinthEntry = entries[128]
+  Object.defineProperty(entries, 128, {
+    configurable: false,
+    enumerable: true,
+    get() {
+      oneHundredTwentyNinthEntryAccessed = true
+      return oneHundredTwentyNinthEntry
+    },
+  })
+
+  const result = harness.complete({
+    entries,
+    isGlobalCompletion: true,
+    isMemberCompletion: false,
+  })
+
+  assert.equal(result.items.length, 128)
+  assert.equal(result.isIncomplete, true)
+  assert.equal(
+    oneHundredTwentyNinthEntryAccessed,
+    false,
+    "module-export completion must preserve the exact-prefix hard stop",
+  )
+})
+
+test("bounds cross-tier module-export scoring after retaining a late exact match", (t) => {
+  const source = "const selected = Sta\n"
+  const harness = completionListHarness(t, {
+    mainSource: source,
+    position: { line: 1, column: source.trimEnd().length + 1 },
+  })
+  const entries = Array.from({ length: 100_000 }, (_, index) => ({
+    name: index === 894
+      ? "StaleType"
+      : index < 895
+        ? `SdkThingAlpha${String(index).padStart(5, "0")}`
+        : `TailThing${String(index).padStart(5, "0")}`,
+    kind: index === 894 ? "class" : "const",
+    sortText: index < 880 ? "15" : "16",
+    ...(index === 894 ? { source: path.join(harness.workspaceRoot, "Stale.ts") } : {}),
+  }))
+  let firstEntryBeyondBudgetAccessed = false
+  const firstBeyondBudget = entries[4096]
+  Object.defineProperty(entries, 4096, {
+    configurable: false,
+    enumerable: true,
+    get() {
+      firstEntryBeyondBudgetAccessed = true
+      return firstBeyondBudget
+    },
+  })
+
+  const result = harness.complete({
+    entries,
+    isGlobalCompletion: true,
+    isMemberCompletion: false,
+  })
+
+  assert.equal(result.items[0]?.label, "StaleType")
+  assert.equal(result.items.length, 128)
+  assert.equal(result.isIncomplete, true)
+  assert.equal(
+    firstEntryBeyondBudgetAccessed,
+    false,
+    "module-export ranking must not scan beyond its explicit 4096-entry budget",
   )
 })
 
@@ -1064,12 +1211,17 @@ function prepareSingleDocument(engine, workspaceRoot, mainPath, mainSource) {
   })
 }
 
-function completionListHarness(t) {
+function completionListHarness(t, {
+  mainSource = "const receiver = {}\nreceiver.me\n",
+  position: completionPosition = {
+    line: 2,
+    column: "receiver.me".length + 1,
+  },
+} = {}) {
   const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-ts-completion-list-"))
   t.after(() => fs.rmSync(workspaceRoot, { recursive: true, force: true }))
 
   const mainPath = path.join(workspaceRoot, "Main.ts")
-  const mainSource = "const receiver = {}\nreceiver.me\n"
   const { TypeScriptLanguageServiceEngine } = buildDriver(t)
   const engine = new TypeScriptLanguageServiceEngine(workspaceRoot)
   t.after(() => engine.dispose())
@@ -1078,21 +1230,24 @@ function completionListHarness(t) {
   const realService = engine.service
   const position = {
     path: mainPath,
-    line: 2,
-    column: "receiver.me".length + 1,
+    ...completionPosition,
     documentVersion: 1,
     workspaceRoot,
   }
   return {
+    workspaceRoot,
     complete({
       count,
+      entries: suppliedEntries,
       commitCharactersByIndex = [],
       defaultCommitCharacters,
       firstFilterText,
+      isGlobalCompletion = false,
+      isMemberCompletion = true,
       providerIncomplete = false,
       onOneHundredTwentyNinthEntry,
     }) {
-      const entries = Array.from({ length: count }, (_, index) => ({
+      const entries = suppliedEntries ?? Array.from({ length: count }, (_, index) => ({
         name: `method${index}`,
         kind: "method",
         sortText: "11",
@@ -1115,11 +1270,11 @@ function completionListHarness(t) {
       engine.service = new Proxy(realService, {
         get(target, property, receiver) {
           if (property === "getCompletionsAtPosition") {
-        return () => ({
-          entries,
-          defaultCommitCharacters,
-          isGlobalCompletion: false,
-              isMemberCompletion: true,
+            return () => ({
+              entries,
+              defaultCommitCharacters,
+              isGlobalCompletion,
+              isMemberCompletion,
               isNewIdentifierLocation: false,
               ...(providerIncomplete ? { isIncomplete: true } : {}),
             })

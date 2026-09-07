@@ -30,6 +30,19 @@ test("closes a workspace again when its delayed open finishes after disposal", a
   assert.equal(result.closeCount, 2)
 })
 
+test("disposal waits until the workspace index has actually closed", async () => {
+  const result = await driver.disposalWaitsForIndexClose()
+  assert.equal(result.disposedBeforeIndexClose, false)
+  assert.equal(result.disposedAfterIndexClose, true)
+})
+
+test("disposal drains an in-flight open and its late index close", async () => {
+  const result = await driver.disposalWaitsForLateOpenAndClose()
+  assert.equal(result.disposedBeforeOpen, false)
+  assert.equal(result.disposedBeforeLateClose, false)
+  assert.equal(result.disposedAfterClose, true)
+})
+
 test("closes a workspace that finishes opening after catalog cancellation", async () => {
   const result = await driver.cancellationClosesAnIndexThatFinishesOpeningLate()
   assert.equal(result.closeCount, 1)

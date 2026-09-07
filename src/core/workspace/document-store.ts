@@ -8,6 +8,7 @@ import type {
   SemanticResponseState,
 } from "../protocol.js"
 import { resolveWorkspaceRoot, type WorkspaceDocument } from "../sdk/workspace-loader.js"
+import { LocalPackageResolver } from "../sdk/local-package-resolver.js"
 
 const MAX_CACHED_DOCUMENTS = 512
 const MAX_CACHED_BYTES = 16 * 1024 * 1024
@@ -97,6 +98,7 @@ const NOOP_OPERATION_CONTROL: SemanticOperationControl = Object.freeze({
 })
 
 export interface SemanticDocumentStoreOptions {
+  packageResolver?: LocalPackageResolver
   enumerateWorkspaceSources?: (rootPath: string) => Iterable<string>
   operationControl?: SemanticOperationControl
   projectFileSetLimits?: {
@@ -114,6 +116,7 @@ export interface SemanticWorkspaceView {
   rootPath: string
   canonicalRootId: string
   typeEngineResetEpoch: number
+  overlayPaths?: ReadonlyMap<string, string>
   documents: Array<WorkspaceDocument & {
     documentVersion?: number
     overlay: boolean
@@ -160,16 +163,20 @@ export class SemanticDocumentStore {
   private accessClock = 0
   private cachedBytes = 0
   private projectMembershipRevision = 0
+  private readonly packageResolver: LocalPackageResolver
 
   constructor({
+    packageResolver = new LocalPackageResolver(),
     enumerateWorkspaceSources,
     operationControl = NOOP_OPERATION_CONTROL,
     projectFileSetLimits = {},
     watchedFileLimits = {},
   }: SemanticDocumentStoreOptions = {}) {
+    this.packageResolver = packageResolver
     this.operationControl = operationControl
     this.enumerateWorkspaceSources = enumerateWorkspaceSources
-      ?? ((rootPath) => listWorkspaceSourcePaths(rootPath, this.operationControl))
+      ?? ((rootPath) => listWorkspaceSourcePaths(rootPath, this.operationControl,
+        (sourcePath) => this.isActiveProjectSource(rootPath, sourcePath)))
     this.maxProjectFileSetRoots = boundedLimit(
       projectFileSetLimits.maxRoots,
       MAX_PROJECT_FILE_SET_ROOTS,
@@ -266,6 +273,13 @@ export class SemanticDocumentStore {
       true,
       workspaceRoot,
     )
+    if (!cached?.overlay && filePath.split(path.sep).includes("oh_modules")) {
+      const matches = this.invalidateDiskDocuments([{ path: filePath, physicalPath: record.physicalPath }])
+      for (const affectedRoot of matches.get(filePath)?.keys() ?? []) {
+        this.markTypeEngineReset(affectedRoot)
+        this.contentRevisions.set(affectedRoot, (this.contentRevisions.get(affectedRoot) ?? 0) + 1)
+      }
+    }
     this.includeOpenedProjectSource(document.workspaceRoot, filePath)
     return record
   }
@@ -380,7 +394,18 @@ export class SemanticDocumentStore {
     const lexicalRoot = path.resolve(batch.rootPath)
     const canonicalRoot = canonicalWorkspaceRoot(batch.rootPath)
     if (batch.rootDirty) {
+      this.packageResolver.invalidate()
       const dirtyProjectRoots = new Set([canonicalRoot])
+      const dirtyClosureOwners: string[] = []
+      // Configuration invalidates dependency edges even when every source is an overlay.
+      for (const [owner, closure] of this.dependencyClosures) {
+        if (closure.workspaceRoot === canonicalRoot
+          || isInside(canonicalRoot, closure.workspaceRoot)
+          || isInside(closure.workspaceRoot, canonicalRoot)) {
+          dirtyProjectRoots.add(closure.workspaceRoot)
+          dirtyClosureOwners.push(owner)
+        }
+      }
       const knownPaths = new Set<string>()
       for (const [projectRoot, projectFileSet] of this.projectFileSets) {
         const overlapsPhysicalRoot = projectRoot === canonicalRoot
@@ -408,6 +433,8 @@ export class SemanticDocumentStore {
         dirtyRoot: canonicalRoot,
         lexicalDirtyRoot: lexicalRoot,
       })
+      // Preserve the shared disk-invalidation pass before removing overlay-only edges.
+      for (const owner of dirtyClosureOwners) this.dependencyClosures.delete(owner)
       for (const knownPath of invalidatedPaths) {
         this.markWatchedRemoved(canonicalRoot, knownPath)
         if (this.typeEngineResetRoots.has(canonicalRoot)) break
@@ -513,6 +540,7 @@ export class SemanticDocumentStore {
         }
       }
       if (change.kind !== "created" || !paths) continue
+      if (!this.isActiveProjectSource(batch.rootPath, sourcePath)) continue
       if (paths.includes(sourcePath)) continue
       if (paths.length >= this.maxProjectFileSetPaths) {
         if (entry?.status === "complete") {
@@ -706,6 +734,7 @@ export class SemanticDocumentStore {
   }
 
   dispose(): void {
+    this.packageResolver.invalidate()
     this.documents.clear()
     this.dependencyGenerations.clear()
     this.dependencyClosures.clear()
@@ -809,16 +838,24 @@ export class SemanticDocumentStore {
     includeWorkspaceFiles: boolean,
     transaction: DocumentCacheTransaction,
   ): SemanticWorkspaceView {
+    const overlays = this.openOverlays(canonicalRoot)
+    const overlayPaths = new Map(overlays.map((record) => [record.physicalPath, record.path]))
     const closureResult = this.collectDependencyClosure(
       current,
       previousCurrent === current,
       canonicalRoot,
       transaction,
+      overlayPaths,
     )
     const closure = closureResult.entries
     const loadedPaths = new Set(closure.map(({ record }) => record.path))
-    for (const record of this.openOverlays(canonicalRoot)) {
+    const excludedOverlayPaths: string[] = []
+    for (const record of overlays) {
       if (loadedPaths.has(record.path)) continue
+      if (!this.isActiveProjectSource(rootPath, record.path)) {
+        excludedOverlayPaths.push(record.path)
+        continue
+      }
       closure.push({ record, cacheHit: true })
       loadedPaths.add(record.path)
     }
@@ -864,12 +901,14 @@ export class SemanticDocumentStore {
     return {
       rootPath,
       canonicalRootId: canonicalRoot,
+      overlayPaths,
       typeEngineResetEpoch: this.typeEngineResetEpochs.get(canonicalRoot) ?? 0,
       documents,
       projectMembership,
       removedPaths: [...new Set([
         ...(watchedRemovedPaths ?? []),
         ...closureResult.removedPaths,
+        ...excludedOverlayPaths,
       ])],
       changedPaths: [...(watchedChangedPaths ?? [])],
       contentRevision: this.contentRevisions.get(canonicalRoot) ?? 0,
@@ -969,6 +1008,24 @@ export class SemanticDocumentStore {
     return publicProjectMembership(entry)
   }
 
+  private isActiveProjectSource(rootPath: string, sourcePath: string): boolean {
+    const scope = this.packageResolver.projectFor(rootPath).scopeFor(sourcePath)
+    if (scope.status === "unconfigured" || !scope.moduleRoot) return true
+    const resolvedPath = path.resolve(sourcePath)
+    const sourceParent = path.join(scope.moduleRoot, "src")
+    const physicalPath = canonicalSourcePath(resolvedPath)
+    const physicalParent = canonicalSourcePath(sourceParent)
+    const relative = path.relative(physicalParent, physicalPath)
+    // Module-root entries and package dependency closures are not target source sets.
+    if (!relative || relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) return true
+    if (scope.status === "unavailable") return false
+    return scope.sourceRoots.some((sourceRoot) => {
+      if (resolvedPath === sourceRoot || isInside(sourceRoot, resolvedPath)) return true
+      const physicalRoot = canonicalSourcePath(sourceRoot)
+      return physicalPath === physicalRoot || isInside(physicalRoot, physicalPath)
+    })
+  }
+
   private scanProjectMembership(rootPath: string): ProjectFileSetCacheEntry {
     const resolvedRoot = path.resolve(rootPath)
     const canonicalRoot = canonicalWorkspaceRoot(resolvedRoot)
@@ -984,6 +1041,7 @@ export class SemanticDocumentStore {
     const diskIdentities = new Map<string, string>()
     const accept = (candidate: string): boolean => {
       const sourcePath = path.resolve(candidate)
+      if (!this.isActiveProjectSource(resolvedRoot, sourcePath)) return true
       if (seen.has(sourcePath)) return true
       seen.add(sourcePath)
       if (paths.length >= this.maxProjectFileSetPaths) {
@@ -1054,6 +1112,7 @@ export class SemanticDocumentStore {
     const resolvedPath = path.resolve(filePath)
     const comparablePath = canonicalSourcePath(resolvedPath)
     if (!entry || !paths || paths.includes(resolvedPath) || !isInside(canonicalRoot, comparablePath)) return
+    if (!this.isActiveProjectSource(rootPath, resolvedPath)) return
     if (paths.length >= this.maxProjectFileSetPaths) {
       if (entry.status === "complete") {
         entry.status = "partial"
@@ -1185,6 +1244,7 @@ export class SemanticDocumentStore {
     currentCacheHit: boolean,
     workspaceRoot: string,
     transaction: DocumentCacheTransaction,
+    overlayPaths: ReadonlyMap<string, string>,
   ): DependencyClosureResult {
     this.captureDependencyClosure(transaction, current.path)
     this.operationControl.checkpoint()
@@ -1219,6 +1279,10 @@ export class SemanticDocumentStore {
         source.path,
         source.content,
         this.operationControl,
+        this.packageResolver,
+        workspaceRoot,
+        (filePath) => this.documents.get(filePath)?.overlay === true,
+        (physicalPath) => overlayPaths.get(physicalPath),
       )
       complete &&= resolved.complete
       for (const candidatePath of resolved.creationCandidatePaths) {
@@ -1460,6 +1524,7 @@ function publicProjectMembership(entry: ProjectFileSetCacheEntry): ProjectMember
 function* listWorkspaceSourcePaths(
   rootPath: string,
   operationControl: SemanticOperationControl,
+  includePath: (sourcePath: string) => boolean,
 ): Generator<string> {
   const pending: Array<{ path: string; directory: fs.Dir }> = []
   try {
@@ -1477,6 +1542,7 @@ function* listWorkspaceSourcePaths(
         || entry.name === "node_modules" || entry.name === "oh_modules") continue
       const entryPath = path.resolve(current.path, entry.name)
       if (entry.isDirectory()) {
+        if (!includePath(entryPath)) continue
         pending.push({ path: entryPath, directory: fs.opendirSync(entryPath) })
       }
       else if (entry.isFile() && SOURCE_EXTENSIONS.includes(path.extname(entry.name))) yield entryPath
@@ -1498,13 +1564,32 @@ function resolveRelativeImports(
   documentPath: string,
   content: string,
   operationControl: SemanticOperationControl,
+  packageResolver: LocalPackageResolver,
+  workspaceRoot: string,
+  hasOverlay: (filePath: string) => boolean,
+  overlayPath: (physicalPath: string) => string | undefined,
 ): { paths: string[]; creationCandidatePaths: string[]; complete: boolean } {
   const specifiers = [...content.matchAll(/(?:import|export)\s+(?:type\s+)?(?:[^'";]+?\s+from\s+)?['"]([^'"]+)['"]/g)]
     .map((match) => match[1])
-    .filter((specifier): specifier is string => Boolean(specifier?.startsWith(".")))
-  const resolved = specifiers.map((specifier) => (
-    resolveImportPath(documentPath, specifier, operationControl)
-  ))
+    .filter((specifier): specifier is string => Boolean(specifier))
+  const resolved = specifiers.flatMap((specifier) => {
+    if (specifier.startsWith(".")) {
+      const relative = resolveImportPath(documentPath, specifier, operationControl)
+      return [{
+        ...relative,
+        paths: relative.paths.flatMap((candidate) => {
+          const resolved = packageResolver.installedSourcePath(
+            workspaceRoot, documentPath, candidate, overlayPath, () => operationControl.checkpoint(),
+          )
+          return resolved === undefined ? [] : [resolved]
+        }),
+      }]
+    }
+    const local = packageResolver.resolve(workspaceRoot, documentPath, specifier, {
+      checkpoint: () => operationControl.checkpoint(), hasOverlay, overlayPath,
+    })
+    return local === undefined ? [] : [{ paths: local.path ? [local.path] : [], creationCandidatePaths: [] }]
+  })
   return {
     paths: resolved.flatMap(({ paths }) => paths),
     creationCandidatePaths: resolved.flatMap(({ creationCandidatePaths }) => (

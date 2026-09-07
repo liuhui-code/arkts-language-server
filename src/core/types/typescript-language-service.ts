@@ -4,7 +4,8 @@ import path from "node:path"
 
 import ts from "typescript"
 
-import { discoverHarmonySdk } from "../sdk/discovery.js"
+import { discoverProjectSdk, type ProjectSdkSelection } from "../sdk/project-sdk.js"
+import { LocalPackageResolver } from "../sdk/local-package-resolver.js"
 import type {
   SemanticCallHierarchyItemInfo,
   SemanticCallHierarchyFailureReason,
@@ -59,6 +60,8 @@ const MAX_SCRIPT_BYTES = 16 * 1024 * 1024
 const MAX_LAZY_SNAPSHOTS = 128
 const MAX_LAZY_SNAPSHOT_BYTES = 8 * 1024 * 1024
 const MAX_COMPLETIONS = 128
+const MAX_MODULE_EXPORT_COMPLETION_SCAN = 4096
+const RANKED_TYPESCRIPT_COMPLETION_SORT_PREFIX = "1000"
 const MAX_CALL_HIERARCHY_PREPARE_ITEMS = 16
 const MAX_CALL_HIERARCHY_EDGES = 256
 const MAX_CALL_HIERARCHY_RANGES_PER_EDGE = 64
@@ -102,6 +105,7 @@ interface CompletionCandidate {
   entry: ts.CompletionEntry
   filterText: string | undefined
   providerIndex: number
+  quality: CompletionMatchQuality
 }
 
 interface SafeCodeFix extends SemanticCodeFixCandidate {
@@ -119,6 +123,8 @@ type RenameConflictPreflight =
   | "indeterminate"
 
 export interface TypeScriptLanguageServiceEngineOptions {
+  onSdkSelected?: (workspaceRoot: string, selection: ProjectSdkSelection) => void
+  packageResolver?: LocalPackageResolver
   checkpoint?: () => void
   hostCancellationToken?: ts.HostCancellationToken
   readSourceFile?: (filePath: string) => string | null
@@ -134,6 +140,7 @@ export class TypeScriptLanguageServiceEngine {
   private readonly projectContentVersions = new Map<string, number>()
   private readonly lazySnapshots = new Map<string, LazySnapshotRecord>()
   private readonly sdkDeclarationPaths: string[]
+  private readonly sdkRoot: string | null
   private membershipFileNames: string[]
   private combinedFileNames: string[] | undefined
   private readonly options: ts.CompilerOptions
@@ -150,16 +157,21 @@ export class TypeScriptLanguageServiceEngine {
   private projectMembershipReason: ProjectMembershipSnapshot["reason"]
   private projectMembershipRevision = 0
   private projectContentRevision = 0
+  private readonly packageResolver: LocalPackageResolver
+  private overlayPaths: ReadonlyMap<string, string> | undefined
 
   constructor(
     private readonly rootPath: string,
     {
+      packageResolver = new LocalPackageResolver(),
+      onSdkSelected,
       checkpoint,
       hostCancellationToken,
       readSourceFile = safeRead,
       lazySnapshotLimits = {},
     }: TypeScriptLanguageServiceEngineOptions = {},
   ) {
+    this.packageResolver = packageResolver
     this.checkpoint = checkpoint
     this.readSourceFile = readSourceFile
     this.maxLazySnapshots = cacheLimit(
@@ -182,7 +194,10 @@ export class TypeScriptLanguageServiceEngine {
       skipLibCheck: true,
       target: ts.ScriptTarget.ES2022,
     }
-    this.sdkDeclarationPaths = discoverSdkAmbientDeclarations()
+    const sdk = discoverProjectSdk(rootPath)
+    this.sdkRoot = sdk.path
+    onSdkSelected?.(rootPath, sdk)
+    this.sdkDeclarationPaths = discoverSdkAmbientDeclarations(this.sdkRoot)
     this.membershipFileNames = [...this.sdkDeclarationPaths]
     this.service = ts.createLanguageService(
       this.createHost(hostCancellationToken),
@@ -191,6 +206,7 @@ export class TypeScriptLanguageServiceEngine {
   }
 
   prepare(workspace: SemanticWorkspaceView): SemanticTypeEngineState {
+    this.overlayPaths = workspace.overlayPaths
     const protectedPaths = new Set<string>()
     this.updateProjectMembership(workspace.projectMembership)
     this.updateProjectContent(workspace.contentRevision, workspace.changedPaths)
@@ -261,11 +277,12 @@ export class TypeScriptLanguageServiceEngine {
     const offset = script.virtualDocument.toGeneratedOffset(sourceOffset)
     const prefix = completionPrefix(script.sourceContent, sourceOffset)
     const memberAccess = script.sourceContent.slice(0, sourceOffset - prefix.length).endsWith(".")
+    const includeModuleExports = !memberAccess
+      && hasMinimumCodePointLength(prefix, MIN_MODULE_EXPORT_PREFIX_LENGTH)
     work.boundary()
     const info = this.service.getCompletionsAtPosition(filePath, offset, {
       includeCompletionsForImportStatements: true,
-      includeCompletionsForModuleExports:
-        !memberAccess && hasMinimumCodePointLength(prefix, MIN_MODULE_EXPORT_PREFIX_LENGTH),
+      includeCompletionsForModuleExports: includeModuleExports,
       includeCompletionsWithInsertText: true,
       ...(position.allowSnippets
         ? {
@@ -293,12 +310,14 @@ export class TypeScriptLanguageServiceEngine {
       [],
     ]
     let tierMatchCount = 0
+    let tierRetainedCount = 0
     let tierSortText = ""
     let hasTier = false
     let matchingOverflow = false
     let truncated = false
     let scannedEntries = 0
     let stoppedEarly = false
+    const rankMatchQualityAcrossSortTiers = includeModuleExports
     const flushTier = (): void => {
       const remaining = MAX_COMPLETIONS - candidates.length
       const chosen: CompletionCandidate[] = []
@@ -308,18 +327,30 @@ export class TypeScriptLanguageServiceEngine {
         chosen.push(...bucket.slice(0, available))
       }
       if (tierMatchCount > chosen.length) matchingOverflow = true
-      chosen.sort(work.comparator((left, right) => left.providerIndex - right.providerIndex))
+      if (!rankMatchQualityAcrossSortTiers) {
+        chosen.sort(work.comparator((left, right) => left.providerIndex - right.providerIndex))
+      }
       candidates.push(...chosen)
       tierBuckets = [[], [], []]
       tierMatchCount = 0
+      tierRetainedCount = 0
     }
     for (let providerIndex = 0; providerIndex < info.entries.length; providerIndex += 1) {
+      if (
+        rankMatchQualityAcrossSortTiers
+        && scannedEntries >= MAX_MODULE_EXPORT_COMPLETION_SCAN
+      ) {
+        flushTier()
+        truncated = true
+        stoppedEarly = true
+        break
+      }
       const entry = info.entries[providerIndex]
       scannedEntries += 1
       if (!hasTier) {
         tierSortText = entry.sortText
         hasTier = true
-      } else if (entry.sortText !== tierSortText) {
+      } else if (!rankMatchQualityAcrossSortTiers && entry.sortText !== tierSortText) {
         flushTier()
         if (candidates.length >= MAX_COMPLETIONS) {
           truncated = true
@@ -334,8 +365,18 @@ export class TypeScriptLanguageServiceEngine {
         tierMatchCount += 1
         const bucket = tierBuckets[quality]
         const remaining = MAX_COMPLETIONS - candidates.length
-        if (bucket.length < remaining) {
-          bucket.push({ entry, filterText, providerIndex })
+        if (tierRetainedCount < remaining) {
+          bucket.push({ entry, filterText, providerIndex, quality })
+          tierRetainedCount += 1
+        } else {
+          for (let weakerQuality = COMPLETION_SUBSEQUENCE_MATCH;
+            weakerQuality > quality; weakerQuality -= 1) {
+            const weakerBucket = tierBuckets[weakerQuality]
+            if (weakerBucket.length === 0) continue
+            weakerBucket.pop()
+            bucket.push({ entry, filterText, providerIndex, quality })
+            break
+          }
         }
       }
       work.item()
@@ -353,14 +394,21 @@ export class TypeScriptLanguageServiceEngine {
     const objectLiteralPropertyCompletion = candidates.some(({ entry }) => (
       entry.kind === ts.ScriptElementKind.memberVariableElement
     )) && isObjectLiteralPropertyCompletion(this.service, filePath, offset, work)
-    const completions: SemanticCompletionItem[] = candidates.map(({ entry, filterText }) => {
+    const completions: SemanticCompletionItem[] = candidates.map(({
+      entry,
+      filterText,
+      providerIndex,
+      quality,
+    }) => {
       const completion: SemanticCompletionItem = {
         label: entry.name,
         detail: typescriptTypeDetail(entry, filePath),
         kind: completionKind(entry.kind, objectLiteralPropertyCompletion),
         insertText: entry.insertText,
         filterText,
-        sortText: entry.sortText,
+        sortText: rankMatchQualityAcrossSortTiers
+          ? `${RANKED_TYPESCRIPT_COMPLETION_SORT_PREFIX}:${quality}:${String(providerIndex).padStart(10, "0")}`
+          : entry.sortText,
         commitCharacters: entry.commitCharacters ?? info.defaultCommitCharacters,
         isSnippet: entry.isSnippet,
         source: "type",
@@ -1264,6 +1312,7 @@ export class TypeScriptLanguageServiceEngine {
 
   dispose(): void {
     this.service.dispose()
+    this.overlayPaths = undefined
     this.scripts.clear()
     this.projectMembershipPaths.clear()
     this.projectContentVersions.clear()
@@ -1329,8 +1378,17 @@ export class TypeScriptLanguageServiceEngine {
 
   private resolveModule(name: string, containingFile: string): ts.ResolvedModule | undefined {
     if (!name.startsWith(".")) {
-      const sdkRoot = discoverHarmonySdk().path
-      const sdkModule = sdkRoot ? resolveHarmonySdkModule(sdkRoot, name) : null
+      const local = this.packageResolver.resolve(this.rootPath, containingFile, name, {
+        checkpoint: this.checkpoint,
+        hasOverlay: (filePath) => this.scripts.get(filePath)?.overlay === true,
+        overlayPath: (physicalPath) => this.overlayPaths?.get(physicalPath),
+      })
+      if (local !== undefined) {
+        return local.path
+          ? ({ resolvedFileName: local.path, extension: ts.Extension.Ts } as ts.ResolvedModule)
+          : undefined
+      }
+      const sdkModule = this.sdkRoot ? resolveHarmonySdkModule(this.sdkRoot, name) : null
       if (sdkModule) {
         return ({
           resolvedFileName: sdkModule,
@@ -1341,22 +1399,27 @@ export class TypeScriptLanguageServiceEngine {
       return ts.resolveModuleName(name, containingFile, this.options, ts.sys).resolvedModule
     }
     const base = path.resolve(path.dirname(containingFile), name)
-    const candidates = path.extname(base)
+    const candidates = /(?:\.d\.(?:ets|ts)|\.ets|\.tsx?)$/u.test(base)
       ? [base]
       : [
-          base + ".d.ets",
-          base + ".d.ts",
           base + ".ets",
           base + ".ts",
-          path.join(base, "index.d.ets"),
-          path.join(base, "index.d.ts"),
+          base + ".tsx",
+          base + ".d.ets",
+          base + ".d.ts",
           path.join(base, "index.ets"),
           path.join(base, "index.ts"),
+          path.join(base, "index.tsx"),
+          path.join(base, "index.d.ets"),
+          path.join(base, "index.d.ts"),
         ]
     const resolved = candidates.find((candidate) =>
       this.scripts.has(path.resolve(candidate)) || isRegularBoundedFile(candidate))
-    return resolved
-      ? ({ resolvedFileName: resolved, extension: ts.Extension.Ts } as ts.ResolvedModule)
+    const sourcePath = resolved && this.packageResolver.installedSourcePath(
+      this.rootPath, containingFile, resolved, (physicalPath) => this.overlayPaths?.get(physicalPath), this.checkpoint,
+    )
+    return sourcePath
+      ? ({ resolvedFileName: sourcePath, extension: ts.Extension.Ts } as ts.ResolvedModule)
       : undefined
   }
 
@@ -1909,10 +1972,10 @@ function inlayHintDisplayText(
   return mapped.join("")
 }
 
-function discoverSdkAmbientDeclarations(): string[] {
-  const sdkRoot = discoverHarmonySdk().path
+function discoverSdkAmbientDeclarations(sdkRoot: string | null): string[] {
   if (!sdkRoot) return []
   const prelude = [
+    path.join(sdkRoot, "ets", "component", "index-full.d.ts"),
     path.join(sdkRoot, "ets", "component", "common.d.ts"),
     path.join(sdkRoot, "ets", "component", "arkui.d.ts"),
   ].find((candidate) => fs.existsSync(candidate))

@@ -128,3 +128,40 @@ test("close immediately reports a session already terminated by SIGTERM", async 
   assert.deepEqual(first, { shutdown: null, exit: { code: null, signal: "SIGTERM" } })
   assert.strictEqual(second, first)
 })
+
+test("a shutdown timeout rejects only after terminating the server and remains idempotent", { timeout: 5_000 }, async (t) => {
+  const serverSource = String.raw`
+    process.on("SIGTERM", () => {})
+    let buffer = Buffer.alloc(0)
+    process.stdin.on("data", (chunk) => {
+      buffer = Buffer.concat([buffer, chunk])
+      while (true) {
+        const headerEnd = buffer.indexOf("\r\n\r\n")
+        if (headerEnd < 0) return
+        const length = Number(/Content-Length: (\d+)/i.exec(buffer.subarray(0, headerEnd).toString())[1])
+        const bodyStart = headerEnd + 4
+        if (buffer.length < bodyStart + length) return
+        const request = JSON.parse(buffer.subarray(bodyStart, bodyStart + length).toString())
+        buffer = buffer.subarray(bodyStart + length)
+        if (request.method === "initialize") {
+          const body = JSON.stringify({ jsonrpc: "2.0", id: request.id, result: { capabilities: {} } })
+          process.stdout.write("Content-Length: " + Buffer.byteLength(body) + "\r\n\r\n" + body)
+        }
+      }
+    })
+  `
+  const session = new LspSession({ command: process.execPath, args: ["-e", serverSource] })
+  t.after(() => session.transport.close({ graceMs: 100 }))
+  await session.initialize()
+
+  const closing = session.close({ timeoutMs: 100 })
+  assert.strictEqual(session.close(), closing)
+  await assert.rejects(closing, /Timed out waiting for LSP response 2/)
+
+  assert.deepEqual({
+    code: session.transport.child.exitCode,
+    signal: session.transport.child.signalCode,
+  }, { code: null, signal: "SIGKILL" })
+  assert.strictEqual(session.close(), closing)
+  await assert.rejects(session.close(), /Timed out waiting for LSP response 2/)
+})

@@ -16,9 +16,12 @@
     "test:e2e:bundle": "pnpm build && node scripts/run-node-test-layer.mjs --layer bundle-e2e",
     "test:e2e:artifact": "node scripts/run-node-test-layer.mjs --layer artifact-e2e",
     "test:e2e:artifact:sealed": "node scripts/run-node-test-layer.mjs --layer sealed-artifact-e2e",
-    "test:e2e:large": "node scripts/run-node-test-layer.mjs --layer large"
+    "test:e2e:large": "node scripts/run-node-test-layer.mjs --layer large",
+    "test:e2e:real-sdk": "pnpm build && node scripts/run-node-test-layer.mjs --layer real-sdk"
   },
   "dependencies": {
+    "json5": "2.2.3",
+    "properties-file": "5.0.7",
     "typescript": "5.9.2",
     "vscode-languageserver": "9.0.1",
     "vscode-languageserver-textdocument": "1.0.12"

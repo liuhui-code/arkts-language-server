@@ -1,10 +1,12 @@
 import assert from "node:assert/strict"
+import { EventEmitter } from "node:events"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import test from "node:test"
 import { fileURLToPath } from "node:url"
 
+import { runNodeTestLayer } from "../scripts/run-node-test-layer.mjs"
 import {
   TEST_LAYER_MANIFEST,
   validateTestLayerManifest,
@@ -15,7 +17,7 @@ const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 test("classifies every executable test entry exactly once in an explicit layer", () => {
   const audit = validateTestLayerManifest({ root: projectRoot, manifest: TEST_LAYER_MANIFEST })
 
-  assert.equal(audit.entryCount, 80)
+  assert.equal(audit.entryCount, 88)
   assert.equal(audit.assignments["tests/arkts-document-formatter.test.mjs"], "unit-contract")
   assert.equal(audit.assignments["tests/build-test-server.test.mjs"], "unit-contract")
   assert.equal(
@@ -123,6 +125,7 @@ test("classifies every executable test entry exactly once in an explicit layer",
   )
   assert.equal(audit.assignments["tests/semantic/references-depth.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/semantic/rename-depth.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/release/real-sdk.acceptance.mjs"], "real-sdk")
   assert.equal(
     audit.assignments["tests/semantic/rename-completeness.test.mjs"],
     "bundle-e2e",
@@ -132,13 +135,51 @@ test("classifies every executable test entry exactly once in an explicit layer",
     "bundle-e2e",
   )
   assert.deepEqual(audit.layerCounts, {
-    "unit-contract": 40,
+    "unit-contract": 42,
     protocol: 8,
-    "bundle-e2e": 27,
+    "bundle-e2e": 32,
     "artifact-e2e": 3,
     "sealed-artifact-e2e": 1,
     large: 1,
+    "real-sdk": 1,
   })
+})
+
+test("real SDK acceptance has an explicit command and is excluded from fast execution", async () => {
+  const entry = "tests/release/real-sdk.acceptance.mjs"
+  const sdkLayer = TEST_LAYER_MANIFEST.layers.find(({ id }) => id === "real-sdk")
+  assert.equal(sdkLayer?.fast, false)
+  assert.deepEqual(sdkLayer.entries, [entry])
+  const output = { value: "", write(value) { this.value += value } }
+  const fast = await runNodeTestLayer({ argv: ["--fast", "--list"], stdout: output })
+  assert.equal(fast.entries.includes(entry), false)
+  output.value = ""
+  const sdk = await runNodeTestLayer({ argv: ["--layer", "real-sdk", "--list"], stdout: output })
+  assert.deepEqual(sdk.entries, [entry])
+  assert.equal(output.value, `${entry}\n`)
+  const packageJson = JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf8"))
+  assert.equal(packageJson.scripts["test:e2e:real-sdk"],
+    "pnpm build && node scripts/run-node-test-layer.mjs --layer real-sdk")
+})
+
+test("real SDK layer failures retain their explicit evidence identity", async (t) => {
+  const evidenceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-real-sdk-layer-evidence-"))
+  t.after(() => fs.rmSync(evidenceRoot, { recursive: true, force: true }))
+  const result = await runNodeTestLayer({
+    argv: ["--layer", "real-sdk"],
+    evidenceRoot,
+    spawn: () => {
+      const child = new EventEmitter()
+      queueMicrotask(() => child.emit("close", 23, null))
+      return child
+    },
+  })
+  assert.equal(result.code, 23)
+  const evidenceDirectories = fs.readdirSync(evidenceRoot)
+  assert.equal(evidenceDirectories.length, 1)
+  const failure = JSON.parse(fs.readFileSync(path.join(evidenceRoot, evidenceDirectories[0], "failure.json"), "utf8"))
+  assert.equal(failure.caseId, "node-test-layer/real-sdk")
+  assert.deepEqual(failure.metadata, { target: "real-sdk" })
 })
 
 test("rejects explicit node:test skip calls in fast layers", (t) => {

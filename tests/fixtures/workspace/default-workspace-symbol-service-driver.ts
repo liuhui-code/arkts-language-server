@@ -91,6 +91,48 @@ export async function disposeClosesAnIndexThatFinishesOpeningLate() {
   return { closeCount: fixture.index.closeCount(slowWorkspace.id) }
 }
 
+export async function disposalWaitsForIndexClose() {
+  const fixture = createFixture()
+  let releaseClose!: () => void
+  const closeCompleted = new Promise<void>((resolve) => { releaseClose = resolve })
+  fixture.index.close = () => closeCompleted
+  fixture.service.start([fastWorkspace], () => {})
+  await tick()
+  let disposed = false
+  const pending = Promise.resolve(fixture.service.dispose()).then(() => { disposed = true })
+  await tick()
+  const disposedBeforeIndexClose = disposed
+  releaseClose()
+  await pending
+  return { disposedBeforeIndexClose, disposedAfterIndexClose: disposed }
+}
+
+export async function disposalWaitsForLateOpenAndClose() {
+  const fixture = createFixture()
+  let releaseOpen!: () => void
+  let releaseClose!: () => void
+  const openCompleted = new Promise<void>((resolve) => { releaseOpen = resolve })
+  const closeCompleted = new Promise<void>((resolve) => { releaseClose = resolve })
+  let opened = false
+  fixture.index.open = async () => {
+    await openCompleted
+    opened = true
+    return { state: "ready", committedGeneration: 7 }
+  }
+  fixture.index.close = async () => { if (opened) await closeCompleted }
+  fixture.service.start([fastWorkspace], () => {})
+  let disposed = false
+  const pending = Promise.resolve(fixture.service.dispose()).then(() => { disposed = true })
+  await tick()
+  const disposedBeforeOpen = disposed
+  releaseOpen()
+  await tick()
+  const disposedBeforeLateClose = disposed
+  releaseClose()
+  await pending
+  return { disposedBeforeOpen, disposedBeforeLateClose, disposedAfterClose: disposed }
+}
+
 export async function cancellationClosesAnIndexThatFinishesOpeningLate() {
   const fixture = createFixture()
   const controller = new AbortController()

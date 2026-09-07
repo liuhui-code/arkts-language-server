@@ -603,7 +603,12 @@ class ScriptedWorkspaceIndex {
     return { state: "ready" as const, committedGeneration: 7 }
   }
 
-  async close(): Promise<void> {}
+  async close(): Promise<void> {
+    if (process.env.ARKTS_TEST_DELAY_INDEX_CLOSE === "1") {
+      await new Promise((resolve) => setTimeout(resolve, 100))
+      console.log("scripted index close completed")
+    }
+  }
 }
 
 class ScriptedWorkspaceCatalog {

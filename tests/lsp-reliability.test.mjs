@@ -826,6 +826,31 @@ test("shutdown rejects later requests, disposes once, and waits for exit", async
   assert.equal(server.stderr.match(/SCRIPTED_DISPOSE/g)?.length, 1)
 })
 
+test("shutdown acknowledgement waits for the asynchronous workspace index close", async (t) => {
+  const server = new LspProcess({
+    serverPath: scriptedServerPath,
+    env: { ARKTS_TEST_DELAY_INDEX_CLOSE: "1" },
+  })
+  t.after(() => server.close())
+  server.send({
+    jsonrpc: "2.0", id: 1, method: "initialize",
+    params: { processId: process.pid, rootUri: pathToFileURL(projectRoot).href, capabilities: {} },
+  })
+  await server.response(1)
+  server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
+  let indexClosed = false
+  const closeNotification = server.notification("window/logMessage", (message) => (
+    message.params.message === "scripted index close completed"
+  )).then(() => { indexClosed = true }, () => {})
+  server.send({ jsonrpc: "2.0", id: 2, method: "shutdown", params: null })
+  assert.equal((await server.response(2)).result, null)
+  assert.equal(indexClosed, true, "shutdown acknowledged before the index released its resources")
+  await closeNotification
+  const exited = once(server.child, "exit")
+  server.send({ jsonrpc: "2.0", method: "exit", params: null })
+  assert.deepEqual(await withTimeout(exited, 2_000, "Server did not exit after drained shutdown"), [0, null])
+})
+
 test("exit without shutdown disposes once and uses the failure exit code", async (t) => {
   const server = new LspProcess({ serverPath: scriptedServerPath })
   t.after(() => server.close())
