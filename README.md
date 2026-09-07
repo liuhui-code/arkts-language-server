@@ -207,8 +207,9 @@ real-Zed acceptance record.
 - There is no automatic binary updater; rerun the installer for a new local
   build.
 - The copied semantic core's upstream source is currently marked
-  `UNLICENSED`. This repository therefore remains private and must not be
-  redistributed until the rights holder makes an explicit licensing decision.
+  `UNLICENSED`. This GitHub repository is publicly visible, but public access
+  does not grant redistribution rights; do not redistribute source or artifacts
+  until the rights holder makes an explicit licensing decision.
 
 See [PROVENANCE.md](PROVENANCE.md) for exact copied-code provenance and
 third-party notices.
