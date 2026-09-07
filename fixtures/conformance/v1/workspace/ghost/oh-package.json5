@@ -1,0 +1,7 @@
+{
+  "name": "ghost",
+  "version": "1.0.0",
+  "dependencies": {
+    "shared": "file:../shared"
+  }
+}

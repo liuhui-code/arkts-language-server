@@ -176,7 +176,9 @@ export class SemanticDocumentStore {
     this.operationControl = operationControl
     this.enumerateWorkspaceSources = enumerateWorkspaceSources
       ?? ((rootPath) => listWorkspaceSourcePaths(rootPath, this.operationControl,
-        (sourcePath) => this.isActiveProjectSource(rootPath, sourcePath)))
+        (sourcePath, directoryTraversal) => this.isActiveProjectSource(
+          rootPath, sourcePath, directoryTraversal,
+        )))
     this.maxProjectFileSetRoots = boundedLimit(
       projectFileSetLimits.maxRoots,
       MAX_PROJECT_FILE_SET_ROOTS,
@@ -1008,22 +1010,35 @@ export class SemanticDocumentStore {
     return publicProjectMembership(entry)
   }
 
-  private isActiveProjectSource(rootPath: string, sourcePath: string): boolean {
-    const scope = this.packageResolver.projectFor(rootPath).scopeFor(sourcePath)
-    if (scope.status === "unconfigured" || !scope.moduleRoot) return true
+  private isActiveProjectSource(
+    rootPath: string,
+    sourcePath: string,
+    directoryTraversal = false,
+  ): boolean {
+    const project = this.packageResolver.projectFor(rootPath)
+    const scope = project.scopeFor(sourcePath)
+    if (scope.status === "unconfigured") return true
+    if (!scope.moduleRoot) {
+      return directoryTraversal && project.mayContainDeclaredModule(sourcePath)
+    }
     const resolvedPath = path.resolve(sourcePath)
     const sourceParent = path.join(scope.moduleRoot, "src")
     const physicalPath = canonicalSourcePath(resolvedPath)
     const physicalParent = canonicalSourcePath(sourceParent)
     const relative = path.relative(physicalParent, physicalPath)
-    // Module-root entries and package dependency closures are not target source sets.
-    if (!relative || relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) return true
-    if (scope.status === "unavailable") return false
-    return scope.sourceRoots.some((sourceRoot) => {
+    if (!relative) return true
+    if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+      if (directoryTraversal) return project.mayContainDeclaredModule(sourcePath)
+      const moduleRoot = path.resolve(scope.moduleRoot)
+      return path.dirname(resolvedPath) === moduleRoot
+        && path.dirname(physicalPath) === canonicalSourcePath(moduleRoot)
+    }
+    const activeSource = scope.status === "ready" && scope.sourceRoots.some((sourceRoot) => {
       if (resolvedPath === sourceRoot || isInside(sourceRoot, resolvedPath)) return true
       const physicalRoot = canonicalSourcePath(sourceRoot)
       return physicalPath === physicalRoot || isInside(physicalRoot, physicalPath)
     })
+    return activeSource || (directoryTraversal && project.mayContainDeclaredModule(sourcePath))
   }
 
   private scanProjectMembership(rootPath: string): ProjectFileSetCacheEntry {
@@ -1524,7 +1539,7 @@ function publicProjectMembership(entry: ProjectFileSetCacheEntry): ProjectMember
 function* listWorkspaceSourcePaths(
   rootPath: string,
   operationControl: SemanticOperationControl,
-  includePath: (sourcePath: string) => boolean,
+  includePath: (sourcePath: string, directoryTraversal: boolean) => boolean,
 ): Generator<string> {
   const pending: Array<{ path: string; directory: fs.Dir }> = []
   try {
@@ -1542,10 +1557,11 @@ function* listWorkspaceSourcePaths(
         || entry.name === "node_modules" || entry.name === "oh_modules") continue
       const entryPath = path.resolve(current.path, entry.name)
       if (entry.isDirectory()) {
-        if (!includePath(entryPath)) continue
+        if (!includePath(entryPath, true)) continue
         pending.push({ path: entryPath, directory: fs.opendirSync(entryPath) })
       }
-      else if (entry.isFile() && SOURCE_EXTENSIONS.includes(path.extname(entry.name))) yield entryPath
+      else if (entry.isFile() && SOURCE_EXTENSIONS.includes(path.extname(entry.name))
+        && includePath(entryPath, false)) yield entryPath
     }
   } finally {
     let closeError: unknown

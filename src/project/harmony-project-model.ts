@@ -50,6 +50,16 @@ export class HarmonyProjectModel {
       ?? unavailable("source-outside-declared-modules")
   }
 
+  mayContainDeclaredModule(directoryPath: string): boolean {
+    const snapshot = this.snapshot ??= this.load()
+    if (snapshot.status === "unconfigured") return true
+    if (snapshot.status !== "ready") return false
+    const physicalDirectory = physicalPath(directoryPath)
+    return physicalDirectory !== undefined
+      && inside(snapshot.physicalRoot, physicalDirectory)
+      && snapshot.modules.some((module) => inside(physicalDirectory, module.physicalRoot))
+  }
+
   invalidate(): void {
     this.snapshot = undefined
   }

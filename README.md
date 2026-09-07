@@ -11,6 +11,8 @@ index.
 - completion, including fields and methods after `this.`;
 - go to definition across `.ets` files;
 - diagnostics, hover, signature help, and document outline;
+- references, type definition, implementation, safe workspace rename, quick
+  fixes, inlay hints, call hierarchy, highlights, folding, and formatting;
 - fuzzy workspace-symbol search with exact names ranked first;
 - multi-root workspaces and unsaved-buffer overlays;
 - background, cancellable cataloging with truthful progress and persistent
@@ -23,6 +25,21 @@ The public executable contract is:
 ```text
 arkts-language-server --stdio
 ```
+
+## Project status
+
+Phase 1, the real project and SDK model, is complete. The verified baseline is
+OpenHarmony API 24 with ETS 6.1.1.125 plus the tested Stage
+product/module/target subset. Local Zed installation is also available through
+one command.
+
+Phase 2 is now active. It promotes existing editor capabilities from isolated
+feature coverage to engineering-level correctness in real project workflows:
+named cross-module references and rename, ArkUI lowering/compiler conformance,
+and the same scenarios through both the production bundle and installed
+artifact. Phase 3/4 responsiveness, lifecycle, latency, and memory gates follow
+only after those results are complete and correct. See the
+[execution checklist](docs/plans/2026-09-07-large-project-reuse-execution-plan.md).
 
 ## Install for Zed
 
@@ -184,12 +201,15 @@ real-Zed acceptance record.
 ## Local Beta boundaries
 
 - Local workspaces only; SSH/remote delivery is intentionally out of scope.
-- References, rename, and code actions are not advertised yet.
+- References are advertised; rename and code actions are advertised only when
+  the client declares the required safe-edit capabilities. Phase 2 is still
+  validating their complete cross-module Stage-project workflows.
 - There is no automatic binary updater; rerun the installer for a new local
   build.
 - The copied semantic core's upstream source is currently marked
-  `UNLICENSED`. This repository therefore remains private and must not be
-  redistributed until the rights holder makes an explicit licensing decision.
+  `UNLICENSED`. This GitHub repository is publicly visible, but public access
+  does not grant redistribution rights; do not redistribute source or artifacts
+  until the rights holder makes an explicit licensing decision.
 
 See [PROVENANCE.md](PROVENANCE.md) for exact copied-code provenance and
 third-party notices.

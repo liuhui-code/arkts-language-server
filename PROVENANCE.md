@@ -17,8 +17,9 @@ revision `2337ff1a5875e27b37bdd03e58ba5ca33c75afe7`:
 - `types/typescript-language-helpers.ts`
 - `types/typescript-language-service.ts`
 
-Their source repository is marked `UNLICENSED`; this Local Beta therefore
-remains private pending an explicit licensing decision by the rights holder.
+Their source repository is marked `UNLICENSED`; this publicly visible Local Beta
+remains all-rights-reserved and non-redistributable pending an explicit
+licensing decision by the rights holder.
 
 ## Zed extension assets
 

@@ -2,9 +2,10 @@ import assert from "node:assert/strict"
 import fs from "node:fs"
 import path from "node:path"
 import test from "node:test"
-import { pathToFileURL } from "node:url"
+import { fileURLToPath, pathToFileURL } from "node:url"
 
 import { LspProcess, projectRoot } from "../support/lsp-process.mjs"
+import { materializeConformanceWorkspace } from "../support/materialize-conformance-workspace.mjs"
 
 const fixtureRoot = path.join(projectRoot, "fixtures", "semantic", "references-depth")
 const apiPath = path.join(fixtureRoot, "Api.ets")
@@ -18,6 +19,125 @@ const apiText = fs.readFileSync(apiPath, "utf8")
 const consumerText = fs.readFileSync(consumerPath, "utf8")
 const consumerOverlayText = fs.readFileSync(consumerOverlayPath, "utf8")
 const originText = fs.readFileSync(originPath, "utf8")
+
+test("finds named cross-module references only in declared Stage modules", async (t) => {
+  const materialized = await materializeConformanceWorkspace()
+  const oversizedGhost = path.join(
+    materialized.workspaceRoot,
+    "ghost",
+    "src",
+    "main",
+    "ets",
+    "Oversized.ets",
+  )
+  fs.writeFileSync(oversizedGhost, "")
+  fs.truncateSync(oversizedGhost, 4 * 1_024 * 1_024 + 1)
+  const oversizedUndeclaredRoot = path.join(materialized.workspaceRoot, "OversizedGhost.ets")
+  fs.writeFileSync(oversizedUndeclaredRoot, "")
+  fs.truncateSync(oversizedUndeclaredRoot, 4 * 1_024 * 1_024 + 1)
+  const oversizedNestedGhost = path.join(
+    materialized.workspaceRoot,
+    "entry",
+    "ghost",
+    "src",
+    "main",
+    "ets",
+    "Oversized.ets",
+  )
+  fs.writeFileSync(oversizedNestedGhost, "")
+  fs.truncateSync(oversizedNestedGhost, 4 * 1_024 * 1_024 + 1)
+  const query = materialized.cases["cross-module.references-query"]
+  const expectedCases = [
+    materialized.cases["cross-module.import"],
+    query,
+    materialized.cases["cross-module.barrel"],
+    materialized.cases["cross-module.definition"],
+  ]
+  const excludedCases = [
+    materialized.cases["cross-module.ghost-import"],
+    materialized.cases["cross-module.ghost-use"],
+    materialized.cases["cross-module.nested-ghost-import"],
+    materialized.cases["cross-module.nested-ghost-use"],
+  ]
+  const ghostManifest = JSON.parse(fs.readFileSync(
+    path.join(materialized.workspaceRoot, "ghost", "oh-package.json5"),
+    "utf8",
+  ))
+  assert.equal(ghostManifest.dependencies?.shared, "file:../shared")
+  const nestedGhostManifest = JSON.parse(fs.readFileSync(
+    path.join(materialized.workspaceRoot, "entry", "ghost", "oh-package.json5"),
+    "utf8",
+  ))
+  assert.equal(nestedGhostManifest.dependencies?.shared, "file:../../shared")
+  const server = new LspProcess({
+    env: {
+      HOME: path.join(materialized.root, "missing-home"),
+      DEVECO_SDK_HOME: path.join(materialized.root, "missing-deveco"),
+      ARKLINE_HARMONY_SDK_PATH: path.join(materialized.corpusRoot, "sdk", "openharmony"),
+      ARKTS_LSP_LOG_DIR: path.join(materialized.root, "logs"),
+      ARKTS_INDEX_CACHE_DIR: path.join(materialized.root, "cache"),
+    },
+  })
+  t.after(async () => {
+    try {
+      await server.close()
+    } finally {
+      await fs.promises.rm(materialized.root, { recursive: true, force: true })
+    }
+  })
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: {
+      processId: process.pid,
+      rootUri: pathToFileURL(materialized.workspaceRoot).href,
+      capabilities: { general: { positionEncodings: ["utf-16"] } },
+    },
+  })
+  const initialized = await server.response(1)
+  assert.equal(initialized.result.capabilities.referencesProvider, true)
+  for (const excluded of excludedCases) {
+    assert.equal(
+      textInRange(fs.readFileSync(fileURLToPath(excluded.uri), "utf8"), excluded.range),
+      "SharedProfile",
+      "the undeclared-module negative control must keep using the queried symbol",
+    )
+  }
+  server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
+  server.send({
+    jsonrpc: "2.0",
+    method: "textDocument/didOpen",
+    params: {
+      textDocument: {
+        uri: query.uri,
+        languageId: "arkts",
+        version: 1,
+        text: fs.readFileSync(fileURLToPath(query.uri), "utf8"),
+      },
+    },
+  })
+  server.send({
+    jsonrpc: "2.0",
+    id: 2,
+    method: "textDocument/references",
+    params: {
+      textDocument: { uri: query.uri },
+      position: midpoint(query.range),
+      context: { includeDeclaration: true },
+    },
+  })
+
+  const response = await server.response(2, 15_000)
+  assert.equal(response.error, undefined, JSON.stringify(response.error))
+  assert.deepEqual(
+    response.result,
+    sortedLocations(expectedCases.map(({ uri, range }) => location(uri, range))),
+  )
+  const excludedKeys = new Set(excludedCases.map(({ uri, range }) => locationKey({ uri, range })))
+  assert.ok(response.result.every((candidate) => !excludedKeys.has(locationKey(candidate))))
+})
 
 test("finds unopened barrel references with exact UTF-16 ranges and declaration policy", async (t) => {
   const server = new LspProcess()
@@ -259,6 +379,16 @@ function utf16PositionAt(source, offset) {
   const line = prefix.split("\n").length - 1
   const lineStart = prefix.lastIndexOf("\n") + 1
   return { line, character: prefix.slice(lineStart).length }
+}
+
+function midpoint(range) {
+  assert.equal(range.start.line, range.end.line)
+  return {
+    line: range.start.line,
+    character: range.start.character + Math.floor(
+      (range.end.character - range.start.character) / 2,
+    ),
+  }
 }
 
 function codePointColumnAt(source, position) {

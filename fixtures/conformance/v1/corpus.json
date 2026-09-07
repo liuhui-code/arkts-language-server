@@ -128,10 +128,59 @@
       "shape": "range"
     },
     {
+      "id": "cross-module.barrel",
+      "kind": "references",
+      "role": "re-export",
+      "file": "workspace/shared/src/main/ets/index.ets",
+      "shape": "range"
+    },
+    {
+      "id": "cross-module.import",
+      "kind": "references",
+      "role": "import",
+      "file": "workspace/entry/src/main/ets/pages/CrossModuleConsumer.ets",
+      "shape": "range"
+    },
+    {
       "id": "cross-module.reference",
       "kind": "definition",
       "role": "reference",
       "file": "workspace/entry/src/main/ets/pages/CrossModuleConsumer.ets",
+      "shape": "range"
+    },
+    {
+      "id": "cross-module.references-query",
+      "kind": "references",
+      "role": "query",
+      "file": "workspace/entry/src/main/ets/pages/CrossModuleConsumer.ets",
+      "shape": "range"
+    },
+    {
+      "id": "cross-module.ghost-import",
+      "kind": "references",
+      "role": "negative",
+      "file": "workspace/ghost/src/main/ets/GhostUse.ets",
+      "shape": "range"
+    },
+    {
+      "id": "cross-module.ghost-use",
+      "kind": "references",
+      "role": "negative",
+      "file": "workspace/ghost/src/main/ets/GhostUse.ets",
+      "shape": "range"
+    },
+    {
+      "id": "cross-module.nested-ghost-import",
+      "kind": "references",
+      "role": "negative",
+      "file": "workspace/entry/ghost/src/main/ets/GhostUse.ets",
+      "shape": "range"
+    },
+    {
+      "id": "cross-module.nested-ghost-use",
+      "kind": "references",
+      "role": "negative",
+      "file": "workspace/entry/ghost/src/main/ets/GhostUse.ets",
       "shape": "range"
     },
     {

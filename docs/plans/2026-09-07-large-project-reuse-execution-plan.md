@@ -1,9 +1,11 @@
 # 大项目可用的 ArkTS Language Server：组件复用执行计划
 
-状态：Complete（Phase 1）；P1.1–P1.6 的功能切片及冻结后的统一快速门禁均已完成。
+状态：Phase 2 in progress；Phase 1 的 P1.1–P1.6 及冻结门禁均已完成。
 P1.4b 已锁定并验收 API 24 / ETS 6.1.1.125 的命名工作流；版本元信息本身仍不作为兼容认证。
 基线：`ed069cf5075992b7afd8821ffd12328a9a4fd7ea`。
 实施分支：`codex/project-model-phase1`。
+Phase 2 启动基线：`9218508ddf9ee8e86b022965768a2a04c21a163b`。
+Phase 2 实施分支：`codex/phase2-engineering-correctness`。
 
 ## 已确认的产品决策
 
@@ -64,7 +66,7 @@ Stage 配置子集的 project-model/target/resource 套件。P1.1–P1.3 与 P1.
 | 语言 | TypeScript-compatible `.ets`、现有 ArkUI lowering | 尚未通过官方 `arktsc` 全语法/类型规则一致性验证 |
 | 依赖 | workspace `file:`、已安装 `oh_modules`、`@ohos`/`@kit`/`@arkts`/`@system` | 不下载/解包 HAR，不求解远程版本，不执行包脚本 |
 | 补全候选 | module-export 请求最多扫描4096个 TypeScript 候选并保留/返回128项；按 prefix、camel、subsequence 全局排序 | 超过扫描边界时返回 `isIncomplete=true`，但边界后的自动导入可能未出现；后续用 workspace/export 索引或可续查接口解决，不能退回无界扫描 |
-| Host | 本地标准 LSP stdio，面向 Zed | SSH、远程交付和真实 Zed 安装产物回归仍在后续阶段 |
+| Host | 本地标准 LSP stdio，面向 Zed；一键本地 dev-extension 安装及产物 E2E 已完成 | SSH、远程交付和自动化真实 Zed host smoke 仍在后续阶段 |
 
 各实现按以下首个 RED 启动，已执行的证据见下文；禁止一次铺开全部实现：
 
@@ -82,9 +84,22 @@ Stage 配置子集的 project-model/target/resource 套件。P1.1–P1.3 与 P1.
 
 ### 第二阶段：核心功能的工程级正确性
 
-- [ ] 在项目模型上覆盖跨模块 references/rename 的完整、安全编辑闭环。
+- [ ] P2.1 在项目模型上覆盖命名依赖的跨模块 references 完整性；首个纵切使用真实
+  Stage 双模块、`file:` 依赖和包名导入，并排除未声明模块；inactive target、overlay 与
+  watcher freshness 由后续纵切分别闭环。
+  - [x] P2.1a 真实 stdio references 只返回 declared module 的 import/use、未打开 barrel
+    与 origin；未列入根 profile 的 ghost module 不再污染 project membership。目录在打开前、
+    文件在 stat 前按项目模型剪枝；未声明超大源码不把完整快照误报为 partial，嵌套声明模块仍可达。
+  - [ ] P2.1b 补齐 inactive target、overlay 与 watcher freshness 的 references 纵切。
+- [ ] P2.2 复用 P2.1 corpus 完成跨模块 rename 的安全编辑闭环：冲突、版本、原子
+  `WorkspaceEdit`，应用后重新验证 definition/references/diagnostics。
 - [ ] 用支持版本的 SDK/编译器样例校验 ArkUI lowering、diagnostics、builder 与位置映射。
 - [ ] 每个关键用户场景同时通过 bundle 和安装产物验收；以前失败的外部方案场景纳入 corpus。
+
+P2.1a 验收（2026-09-07）：真实 child-stdio references 精确返回4个 UTF-16 location；
+未声明模块/根目录内的超大源码均不污染完整 membership，目录在打开前完成剪枝；聚焦回归
+29/29、相关缓存/语料/解析回归76/76、统一 `pnpm check:fast` 771/771通过。证据见
+[命名跨模块 references TDD](../tdd/p2-named-cross-module-references.md)。P2.1总体仍未完成。
 
 ### 第三阶段：真实响应性与生命周期
 
