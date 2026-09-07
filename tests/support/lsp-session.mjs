@@ -97,18 +97,22 @@ export class LspSession {
       }
     }
 
-    const id = this.nextRequestId++
-    this.transport.send({ jsonrpc: "2.0", id, method: "shutdown", params: null })
-    const shutdown = await this.transport.response(id, timeoutMs)
-    if (shutdown.error) throw new Error(`LSP shutdown failed: ${JSON.stringify(shutdown.error)}`)
+    try {
+      const id = this.nextRequestId++
+      this.transport.send({ jsonrpc: "2.0", id, method: "shutdown", params: null })
+      const shutdown = await this.transport.response(id, timeoutMs)
+      if (shutdown.error) throw new Error(`LSP shutdown failed: ${JSON.stringify(shutdown.error)}`)
 
-    const exited = once(this.transport.child, "exit")
-    this.transport.send({ jsonrpc: "2.0", method: "exit", params: null })
-    const [code, signal] = await withTimeout(
-      exited,
-      timeoutMs,
-      `LSP process did not exit within ${timeoutMs}ms after shutdown`,
-    )
-    return { shutdown, exit: { code, signal } }
+      const exited = once(this.transport.child, "exit")
+      this.transport.send({ jsonrpc: "2.0", method: "exit", params: null })
+      const [code, signal] = await withTimeout(
+        exited,
+        timeoutMs,
+        `LSP process did not exit within ${timeoutMs}ms after shutdown`,
+      )
+      return { shutdown, exit: { code, signal } }
+    } finally {
+      await this.transport.close()
+    }
   }
 }

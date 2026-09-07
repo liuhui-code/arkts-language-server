@@ -13,6 +13,8 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/conformance-corpus.test.mjs",
       "tests/document-store-cancellation.test.mjs",
       "tests/folding-range-provider.test.mjs",
+      "tests/harmony-project-model-budget.test.mjs",
+      "tests/harmony-project-model.test.mjs",
       "tests/index-adapter.test.mjs",
       "tests/index-catalog-adapter.test.mjs",
       "tests/local-delivery-config.test.mjs",
@@ -77,7 +79,12 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/semantic/document-symbol-depth.test.mjs",
       "tests/semantic/editor-capabilities.test.mjs",
       "tests/semantic/folding-range.test.mjs",
+      "tests/semantic/local-package-resolution.test.mjs",
+      "tests/semantic/installed-package-workflows.test.mjs",
       "tests/semantic/project-membership-language-service.test.mjs",
+      "tests/semantic/project-module-resources.test.mjs",
+      "tests/semantic/project-sdk-selection.test.mjs",
+      "tests/semantic/project-target-membership.test.mjs",
       "tests/semantic/references-completeness.test.mjs",
       "tests/semantic/references-depth.test.mjs",
       "tests/semantic/rename-depth.test.mjs",
@@ -96,6 +103,9 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
     ]),
     layer("large", false, [
       "tests/release/large-workspace.acceptance.mjs",
+    ]),
+    layer("real-sdk", false, [
+      "tests/release/real-sdk.acceptance.mjs",
     ]),
   ]),
 })

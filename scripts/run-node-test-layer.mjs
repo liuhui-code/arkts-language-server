@@ -27,6 +27,7 @@ const SAFE_EVIDENCE_TARGETS = new Set([
   "bundle-e2e",
   "artifact-e2e",
   "large",
+  "real-sdk",
 ])
 
 export async function runNodeTestLayer({

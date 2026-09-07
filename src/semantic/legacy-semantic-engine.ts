@@ -1,3 +1,5 @@
+import fs from "node:fs"
+import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
 import type {
@@ -56,13 +58,25 @@ import { formatArktsDocument } from "../core/formatting/arkts-document-formatter
 import { FoldingRangeProvider } from "../core/syntax/folding-range-provider.js"
 import { SemanticTypeEngineRegistry } from "../core/types/type-engine.js"
 import { SemanticDocumentStore } from "../core/workspace/document-store.js"
+import { LocalPackageResolver } from "../core/sdk/local-package-resolver.js"
+import type { StructuredLogger } from "../observability/logger.js"
 
 export class LegacySemanticEngine implements SemanticEnginePort {
-  private readonly documents = new SemanticDocumentStore()
-  private readonly engines = new SemanticTypeEngineRegistry()
+  private readonly packageResolver = new LocalPackageResolver()
+  private readonly documents = new SemanticDocumentStore({ packageResolver: this.packageResolver })
+  private readonly engines: SemanticTypeEngineRegistry
   private readonly foldingRangeProvider = new FoldingRangeProvider()
 
-  constructor(private readonly projects: ProjectResolverPort) {}
+  constructor(private readonly projects: ProjectResolverPort, logger?: StructuredLogger) {
+    this.engines = new SemanticTypeEngineRegistry(this.packageResolver, logger ? (workspaceRoot, sdk) => {
+      logger.info("sdk.selected", {
+        workspaceRoot, sdkPath: sdk.path, source: sdk.source, ready: sdk.ready,
+        metadataStatus: sdk.identity?.status ?? "unavailable",
+        apiVersion: sdk.identity?.apiVersion, componentVersion: sdk.identity?.componentVersion,
+        dialectCompatibility: "unverified", declarationSupport: "typescript-compatible-only",
+      })
+    } : undefined)
+  }
 
   sync(document: DocumentSnapshot): void {
     if (!document.uri.startsWith("file:")) return
@@ -72,6 +86,25 @@ export class LegacySemanticEngine implements SemanticEnginePort {
       content: document.text,
       documentVersion: document.version,
       workspaceRoot: fileURLToPath(workspace.rootUri),
+    })
+  }
+
+  configureProject(selection: unknown): void {
+    this.packageResolver.configureProject(selection)
+  }
+
+  isResourceFile(rootUri: string, fileUri: string): boolean {
+    const root = toFilePath(rootUri)
+    const candidate = toFilePath(fileUri)
+    if (!root || !candidate) return false
+    const scope = this.packageResolver.projectFor(root).scopeFor(candidate)
+    if (scope.status === "unconfigured") return isArkUIStringResourcePath(candidate)
+    if (scope.status !== "ready") return false
+    const physicalCandidate = resourceEventPath(candidate)
+    return scope.resourceRoots.some((resourceRoot) => {
+      const segments = path.relative(resourceEventPath(resourceRoot), physicalCandidate).split(path.sep)
+      return segments.length === 3 && segments[0] !== ".."
+        && segments[1] === "element" && segments[2] === "string.json"
     })
   }
 
@@ -542,6 +575,14 @@ export class LegacySemanticEngine implements SemanticEnginePort {
           includeWorkspaceFiles,
         )
     return { engine: this.engines.prepare(workspace), position: legacyPosition }
+  }
+}
+
+function resourceEventPath(candidate: string): string {
+  try { return fs.realpathSync.native(candidate) }
+  catch {
+    try { return path.join(fs.realpathSync.native(path.dirname(candidate)), path.basename(candidate)) }
+    catch { return path.resolve(candidate) }
   }
 }
 

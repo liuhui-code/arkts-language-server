@@ -78,6 +78,23 @@ test("keeps distinct lexical create events that resolve to the same physical sou
   }])
 })
 
+test("configuration events preserve a workspace directory alias without following the configuration link", (t) => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-config-alias-"))
+  t.after(() => fs.rmSync(base, { recursive: true, force: true }))
+  const physicalRoot = path.join(base, "workspace")
+  const aliasRoot = path.join(base, "workspace-alias")
+  const shared = path.join(base, "shared.properties")
+  fs.mkdirSync(physicalRoot)
+  fs.symlinkSync(physicalRoot, aliasRoot, "dir")
+  fs.writeFileSync(shared, "sdk.dir=/shared/sdk\n")
+  fs.symlinkSync(shared, path.join(physicalRoot, "local.properties"), "file")
+  const rootUri = pathToFileURL(aliasRoot).href
+  const { WorkspaceFileChangeCoordinator } = buildDriver(t)
+  const coordinator = new WorkspaceFileChangeCoordinator({ rootUris: [rootUri] })
+  coordinator.accept([{ uri: pathToFileURL(path.join(physicalRoot, "local.properties")).href, type: 2 }])
+  assert.deepEqual(coordinator.drain(), [{ rootUri, rootDirty: true, changes: [] }])
+})
+
 test("bounds pending paths and degrades only the overloaded root to dirty", (t) => {
   const firstRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-watched-first-"))
   const secondRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-watched-second-"))

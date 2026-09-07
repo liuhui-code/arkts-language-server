@@ -394,7 +394,7 @@ test("a physical-path watched change invalidates a warm symlink-alias hover", as
   )
 })
 
-test("dynamically registers bounded source and ArkUI resource watchers when supported", async (t) => {
+test("dynamically registers bounded source, package and ArkUI resource watchers when supported", async (t) => {
   const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-watched-register-"))
   const workspaceRoot = path.join(temporaryRoot, "workspace")
   fs.mkdirSync(workspaceRoot)
@@ -457,7 +457,12 @@ test("dynamically registers bounded source and ArkUI resource watchers when supp
     watchers: [
       { globPattern: "**/*.ets" },
       { globPattern: "**/*.ts" },
+      { globPattern: "**/oh-package.json5" },
+      { globPattern: "**/oh-package-lock.json5" },
+      { globPattern: "**/build-profile.json5" },
+      { globPattern: "**/local.properties" },
       { globPattern: "**/resources/*/element/string.json" },
+      { globPattern: "**/*/element/string.json" },
     ],
   })
 

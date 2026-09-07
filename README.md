@@ -49,6 +49,62 @@ immutable, content-addressed release under the install prefix's `libexec`, so
 moving the source checkout does not break the active server and a failed update
 does not replace the last working command.
 
+## Project and SDK selection
+
+The server reads the workspace's `build-profile.json5`, module profiles and
+`oh-package.json5` without executing build scripts. It supports in-workspace
+local/installed packages, explicit declaration entries, selected target source
+sets, self-package source imports and module-scoped string resources.
+
+Select an installed SDK using the workspace's existing `local.properties`:
+
+```properties
+sdk.dir=/absolute/path/to/openharmony
+```
+
+The selected root must contain `ets` and `toolchains`. Java properties escapes
+are supported. If no project SDK is specified, the existing
+`ARKLINE_HARMONY_SDK_PATH`/platform fallback remains available. Invalid explicit
+configuration does not silently select another SDK. Imported APIs and ambient
+declarations share one selection; `sdk.selected` logs the selected source and
+API/component metadata separately.
+
+The currently verified SDK baseline is OpenHarmony API 24 with the ETS
+`6.1.1.125` component. Its named real-SDK acceptance covers ArkUI `Text`,
+`@ohos`, `@kit`, `@arkts` and shipped `@system` declarations, diagnostics,
+member completion/definition, transitive dotted-relative types, and workspace
+auto-import completion under the full ambient declaration set. Run it explicitly
+on a machine with that SDK:
+
+```sh
+ARKTS_REAL_SDK_PATH=/absolute/path/to/openharmony pnpm test:e2e:real-sdk
+```
+
+This certifies those workflows, not the complete ArkTS dialect or official
+compiler. The current language backend consumes a TypeScript-compatible `.ets`
+subset; version metadata by itself is never treated as compatibility evidence.
+
+The server defaults to product `default`; it does not infer the IDE's active
+Build Target. When multiple targets match, pass an explicit LSP
+`initializationOptions` value, using module names from the project profile:
+
+```json
+{"project":{"product":"default","targets":{"entry":"tablet"}}}
+```
+
+Runtime changes use standard `workspace/didChangeConfiguration` with
+`settings.arkts.project` in the same shape. Empty `{}` restores service defaults.
+Configuration changes refresh open-document diagnostics while keeping unsaved
+source authoritative. Unknown or ambiguous selection reports
+`arkts.project.configuration` instead of pretending that resource results are
+complete. Projects without a build profile retain legacy single-root behavior.
+
+See the [execution checklist](docs/plans/2026-09-07-large-project-reuse-execution-plan.md)
+and [tested configuration contract](docs/tdd/p1-module-target-resource-workflows.md)
+for evidence and boundaries, including external module roots, resource merging
+and ArkTS/compiler conformance beyond the named API 24 workflows that remains
+uncertified.
+
 ## Logs and cache
 
 Print the active platform log path without starting LSP:

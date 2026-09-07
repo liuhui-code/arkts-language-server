@@ -21,9 +21,11 @@ import type {
   SemanticNumericDiagnostic,
 } from "../protocol.js"
 import { ArkUIResourceLanguageProvider } from "../arkui/resource-language-provider.js"
+import { LocalPackageResolver } from "../sdk/local-package-resolver.js"
+import type { HarmonyProjectModel } from "../../project/harmony-project-model.js"
 import type { SemanticWorkspaceView } from "../workspace/document-store.js"
 import { arbitrateCompletionLists } from "./completion-arbitrator.js"
-import { TypeScriptLanguageServiceEngine } from "./typescript-language-service.js"
+import { TypeScriptLanguageServiceEngine, type TypeScriptLanguageServiceEngineOptions } from "./typescript-language-service.js"
 
 const MAX_WORKSPACE_ENGINES = 4
 
@@ -135,6 +137,8 @@ export interface SemanticTypeQueryContext {
 interface WorkspaceEngineEntry {
   engine: TypeScriptLanguageServiceEngine
   arkui: ArkUIResourceLanguageProvider
+  project: HarmonyProjectModel
+  resourceScope: string
   ownerId: string
   resetEpoch: number
   appliedContentRevision: number
@@ -144,6 +148,11 @@ interface WorkspaceEngineEntry {
 export class SemanticTypeEngineRegistry {
   private readonly workspaces = new Map<string, WorkspaceEngineEntry>()
   private accessClock = 0
+
+  constructor(
+    private readonly packageResolver = new LocalPackageResolver(),
+    private readonly onSdkSelected?: TypeScriptLanguageServiceEngineOptions["onSdkSelected"],
+  ) {}
 
   prepare(workspace: SemanticWorkspaceView): SemanticTypeQueryContext {
     const rootPath = path.resolve(workspace.rootPath)
@@ -165,8 +174,12 @@ export class SemanticTypeEngineRegistry {
     const newEntry = !entry
     if (!entry) {
       entry = {
-        engine: new TypeScriptLanguageServiceEngine(rootPath),
+        engine: new TypeScriptLanguageServiceEngine(rootPath, {
+          packageResolver: this.packageResolver, onSdkSelected: this.onSdkSelected,
+        }),
         arkui: new ArkUIResourceLanguageProvider(rootPath),
+        project: this.packageResolver.projectFor(rootPath),
+        resourceScope: "",
         ownerId,
         resetEpoch: -1,
         appliedContentRevision: -1,
@@ -188,6 +201,15 @@ export class SemanticTypeEngineRegistry {
     entry.appliedContentRevision = contentRevision
     entry.lastAccess = ++this.accessClock
     if (newEntry) this.workspaces.set(rootPath, entry)
+    const scope = entry.project.scopeFor(workspace.state.path)
+    const resourceScope = JSON.stringify([scope.moduleRoot ?? rootPath, scope.resourceRoots])
+    if (resourceScope !== entry.resourceScope) {
+      entry.arkui.dispose()
+      entry.arkui = new ArkUIResourceLanguageProvider(scope.moduleRoot ?? rootPath, {
+        ...(scope.status === "unconfigured" ? {} : { resourceRoots: scope.resourceRoots }),
+      })
+      entry.resourceScope = resourceScope
+    }
     const sourceContent = workspace.documents.find((document) => (
       document.path === workspace.state.path
     ))?.content
@@ -195,9 +217,9 @@ export class SemanticTypeEngineRegistry {
     return {
       state,
       complete: (position) => {
-        const arkui = sourceContent
+        const arkui = sourceContent && scope.status !== "unavailable"
           ? entry.arkui.complete(position, sourceContent)
-          : { items: [], isIncomplete: false }
+          : { items: [], isIncomplete: scope.status === "unavailable" }
         const typescript = entry.engine.complete(position)
         return arbitrateCompletionLists(arkui, typescript)
       },
@@ -205,7 +227,7 @@ export class SemanticTypeEngineRegistry {
         ? item
         : entry.engine.resolveCompletion(position, item),
       define: (position) => mergeDefinitions(
-        sourceContent ? entry.arkui.define(position, sourceContent) : [],
+        sourceContent && scope.status !== "unavailable" ? entry.arkui.define(position, sourceContent) : [],
         entry.engine.define(position),
       ),
       typeDefinitions: (position) => entry.engine.typeDefinitions(position),
@@ -217,7 +239,14 @@ export class SemanticTypeEngineRegistry {
       usages: (position) => entry.engine.usages(position),
       diagnostics: (position) => mergeDiagnostics(
         entry.engine.diagnostics(position),
-        sourceContent ? entry.arkui.diagnostics(position, sourceContent) : [],
+        scope.status === "unavailable"
+          ? [{
+              source: "language", severity: "error", code: "arkts.project.configuration",
+              path: position.path,
+              range: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 },
+              message: `Project configuration is unavailable: ${scope.reason ?? "unknown"}. Check build-profile.json5 and the product/target selection.`,
+            }]
+          : sourceContent ? entry.arkui.diagnostics(position, sourceContent) : [],
       ),
       codeActions: (position, range) => entry.engine.codeActions(position, range),
       resolveCodeAction: (position, range, fingerprint) => (

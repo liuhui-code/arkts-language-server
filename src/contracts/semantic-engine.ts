@@ -345,6 +345,8 @@ export interface SemanticWorkspaceFileChangeBatch {
 }
 
 export interface SemanticEnginePort {
+  configureProject?(selection: unknown): void
+  isResourceFile?(rootUri: string, fileUri: string): boolean
   sync(document: DocumentSnapshot): void
   close(documentUri: DocumentUri): void
   workspaceFilesChanged?(batches: readonly SemanticWorkspaceFileChangeBatch[]): void

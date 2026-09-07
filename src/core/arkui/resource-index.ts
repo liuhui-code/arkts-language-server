@@ -44,6 +44,7 @@ export interface ArkUIResourcePrefixQueryResult extends ArkUIResourceQueryResult
 }
 
 export interface ArkUIResourceIndexOptions {
+  resourceRoots?: readonly string[]
   maxVisitedEntries?: number
   maxDirectoryEntries?: number
   maxResourceFiles?: number
@@ -81,6 +82,8 @@ interface ParsedStringResources {
 
 export class ArkUIResourceIndex {
   private readonly rootPath: string
+  private readonly resourceRoots: readonly string[]
+  private readonly explicitResourceRoots: boolean
   private readonly canonicalRoot: string
   private readonly limits: ResourceIndexLimits
   private readonly readResourceFile: (filePath: string) => string | null
@@ -88,6 +91,8 @@ export class ArkUIResourceIndex {
 
   constructor(workspaceRoot: string, options: ArkUIResourceIndexOptions = {}) {
     this.rootPath = path.resolve(workspaceRoot)
+    this.resourceRoots = options.resourceRoots ?? [this.rootPath]
+    this.explicitResourceRoots = options.resourceRoots !== undefined
     this.canonicalRoot = canonicalPath(this.rootPath)
     this.readResourceFile = options.readResourceFile ?? safeRead
     this.limits = {
@@ -171,9 +176,10 @@ export class ArkUIResourceIndex {
   private load(): ArkUIResourceSnapshot {
     if (this.snapshot) return this.snapshot
     const discovery = discoverStringResourceFiles(
-      this.rootPath,
+      this.resourceRoots,
       this.canonicalRoot,
       this.limits,
+      this.explicitResourceRoots,
     )
     if (discovery.status !== "ready") {
       return (this.snapshot = createSnapshot(discovery.status, []))
@@ -213,17 +219,30 @@ export class ArkUIResourceIndex {
 }
 
 function discoverStringResourceFiles(
-  rootPath: string,
+  resourceRoots: readonly string[],
   canonicalRoot: string,
   limits: ResourceIndexLimits,
+  explicitResourceRoots: boolean,
 ): ResourceFileDiscovery {
-  const pending = [rootPath]
+  const pending: string[] = []
+  for (const resourceRoot of resourceRoots) {
+    const canonical = canonicalPath(resourceRoot)
+    if (canonical !== canonicalRoot && !isInside(canonicalRoot, canonical)) {
+      return { status: "unavailable", files: [] }
+    }
+    try {
+      if (!fs.statSync(resourceRoot).isDirectory()) return { status: "unavailable", files: [] }
+      pending.push(resourceRoot)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") return { status: "unavailable", files: [] }
+    }
+  }
   const files: string[] = []
   let visitedEntries = 0
   while (pending.length > 0) {
     const directoryPath = pending.pop()
     if (!directoryPath) break
-    const entries = safeReadDirectory(directoryPath)
+    const entries = safeReadDirectory(directoryPath, limits.maxDirectoryEntries)
     if (!entries) return { status: "unavailable", files: [] }
     if (entries.length > limits.maxDirectoryEntries) return { status: "partial", files: [] }
     entries.sort((left, right) => ordinalCompare(left.name, right.name))
@@ -237,7 +256,15 @@ function discoverStringResourceFiles(
         if (!EXCLUDED_DIRECTORIES.has(entry.name)) directories.push(candidatePath)
         continue
       }
-      if (!entry.isFile() || !isArkUIStringResourcePath(candidatePath)) continue
+      if (!entry.isFile()) continue
+      const acceptedResource = explicitResourceRoots
+        ? resourceRoots.some((root) => {
+            const segments = path.relative(root, candidatePath).split(path.sep)
+            return segments.length === 3 && segments[0] !== ".."
+              && segments[1] === "element" && segments[2] === "string.json"
+          })
+        : isArkUIStringResourcePath(candidatePath)
+      if (!acceptedResource) continue
       const canonicalCandidate = canonicalPath(candidatePath)
       if (!isInside(canonicalRoot, canonicalCandidate)) continue
       files.push(candidatePath)
@@ -325,11 +352,21 @@ function propertyName(name: ts.PropertyName): string | undefined {
   return undefined
 }
 
-function safeReadDirectory(directoryPath: string): fs.Dirent[] | null {
+function safeReadDirectory(directoryPath: string, maxEntries: number): fs.Dirent[] | null {
+  let directory: fs.Dir | undefined
   try {
-    return fs.readdirSync(directoryPath, { withFileTypes: true })
+    directory = fs.opendirSync(directoryPath, { bufferSize: Math.min(32, maxEntries + 1) })
+    const entries: fs.Dirent[] = []
+    while (entries.length <= maxEntries) {
+      const entry = directory.readSync()
+      if (entry === null) break
+      entries.push(entry)
+    }
+    return entries
   } catch {
     return null
+  } finally {
+    directory?.closeSync()
   }
 }
 
@@ -360,7 +397,8 @@ function canonicalPath(candidatePath: string): string {
 
 function isInside(rootPath: string, candidatePath: string): boolean {
   const relative = path.relative(rootPath, candidatePath)
-  return relative.length > 0 && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)
+  return relative.length > 0 && relative !== ".."
+    && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)
 }
 
 function boundedLimit(value: number | undefined, hardMaximum: number, label: string): number {
