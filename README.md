@@ -31,23 +31,40 @@ checked-in `.node-version`, `packageManager`, and `rust-toolchain.toml` pin the
 release toolchains, including the `wasm32-wasip2` target.
 
 ```sh
-rustup target add wasm32-wasip2
-./scripts/install-local.sh "$HOME/.local/bin"
+pnpm zed:install
 ```
 
-Make sure `~/.local/bin` is on the environment Zed receives, then in Zed run
-`zed: install dev extension` and select this repository's `editors/zed`
-directory. Trust the project when Zed asks; Restricted Mode intentionally does
-not start language servers.
+That command builds the server, sidecar, and Rust extension; validates the
+reviewed grammar artifact; publishes an immutable extension snapshot; installs
+the server launcher into Zed's extension work directory; and atomically
+registers or refreshes the `arkts` dev extension. A running Zed observes the
+installed-directory change and reloads it. A closed Zed loads it on next start.
+No Extensions-page action or inherited `~/.local/bin` PATH is required.
 
-Run the Zed install action again after grammar or query changes. The installer
-tracks the pinned grammar identity and invalidates an unproven or outdated
-generated grammar instead of letting Zed reuse incompatible state.
+Use an isolated/custom profile or install prefix when needed:
+
+```sh
+pnpm zed:install -- --zed-user-data-dir "/path/to/Zed profile" --bin-dir "/path/to/bin"
+```
+
+The installer does not edit Zed's `index.json`, automate the UI, or restart
+Zed. It refuses to overwrite a regular registry extension, an unrelated dev
+extension, or an unmanaged launcher. Remove such a collision in Zed first.
+Trust the project when Zed asks; Restricted Mode intentionally does not start
+language servers. A user-configured
+`lsp.arkts-language-server.binary.path` remains the highest-priority server.
+
+The checked-in `grammars/arkts.wasm` is tied to the manifest repository and
+revision by `editors/zed/zed-grammar-lock.json` and SHA-256. Grammar upgrades
+must regenerate and review both files together. A missing, stale, or modified
+grammar fails before activation, leaving the previous plugin and server
+launcher intact.
 
 The command installation is transactional and self-contained. It points to an
 immutable, content-addressed release under the install prefix's `libexec`, so
 moving the source checkout does not break the active server and a failed update
-does not replace the last working command.
+does not replace the last working command. `scripts/install-local.sh` remains
+available for server-only installation.
 
 ## Project and SDK selection
 

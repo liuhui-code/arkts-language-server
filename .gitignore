@@ -3,7 +3,8 @@ dist/
 /target/
 editors/zed/target/
 editors/zed/extension.wasm
-editors/zed/grammars/*.wasm
+editors/zed/grammars/*
+!editors/zed/grammars/arkts.wasm
 editors/zed/grammars/.arkts-source
 .DS_Store
 *.log

@@ -11,7 +11,7 @@ import { assertInstalledSemanticSmoke } from "../support/installed-semantic-smok
 import { LspProcess } from "../support/lsp-process.mjs"
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
-const installer = path.join(projectRoot, "scripts", "install-local.sh")
+const installer = path.join(projectRoot, "scripts", "install-zed-local.mjs")
 
 function initialize(command, cwd) {
   return new Promise((resolve, reject) => {
@@ -57,8 +57,16 @@ test("one local command builds and idempotently installs a working Zed language 
   const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-local-delivery-"))
   t.after(() => fs.rmSync(temporaryRoot, { recursive: true, force: true }))
   const binDirectory = path.join(temporaryRoot, "bin")
+  const zedUserDataDirectory = path.join(temporaryRoot, "Zed profile")
+  const installArguments = [
+    installer,
+    "--zed-user-data-dir",
+    zedUserDataDirectory,
+    "--bin-dir",
+    binDirectory,
+  ]
 
-  const first = spawnSync(installer, [binDirectory], { cwd: os.tmpdir(), encoding: "utf8" })
+  const first = spawnSync(process.execPath, installArguments, { cwd: os.tmpdir(), encoding: "utf8" })
   assert.equal(first.status, 0, first.stderr || first.error?.message)
 
   const serverBundle = path.join(projectRoot, "dist", "server.cjs")
@@ -76,11 +84,33 @@ test("one local command builds and idempotently installs a working Zed language 
 
   const installedCommand = path.join(binDirectory, "arkts-language-server")
   const firstTarget = fs.realpathSync(installedCommand)
-  const second = spawnSync(installer, [binDirectory], { cwd: os.tmpdir(), encoding: "utf8" })
+  const installedExtension = path.join(
+    zedUserDataDirectory,
+    "extensions",
+    "installed",
+    "arkts",
+  )
+  const workdirLauncher = path.join(
+    zedUserDataDirectory,
+    "extensions",
+    "work",
+    "arkts",
+    "bin",
+    "arkts-language-server",
+  )
+  assert.equal(fs.lstatSync(installedExtension).isSymbolicLink(), true)
+  assert.equal(fs.lstatSync(workdirLauncher).isFile(), true)
+  fs.accessSync(workdirLauncher, fs.constants.X_OK)
+  assert.deepEqual(
+    fs.readFileSync(path.join(fs.realpathSync(installedExtension), "grammars", "arkts.wasm")).subarray(0, 4),
+    Buffer.from([0x00, 0x61, 0x73, 0x6d]),
+  )
+
+  const second = spawnSync(process.execPath, installArguments, { cwd: os.tmpdir(), encoding: "utf8" })
   assert.equal(second.status, 0, second.stderr || second.error?.message)
   assert.equal(fs.realpathSync(installedCommand), firstTarget)
 
-  const response = await initialize(installedCommand, os.tmpdir())
+  const response = await initialize(workdirLauncher, os.tmpdir())
   assert.equal(response.result.serverInfo.name, "arkts-language-server")
 
   await assertInstalledSemanticSmoke({ installedCommand, temporaryRoot })
