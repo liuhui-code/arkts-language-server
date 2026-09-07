@@ -2,7 +2,7 @@
   "name": "shared",
   "version": "1.0.0",
   "description": "Deterministic shared module for language-server tests",
-  "main": "",
+  "main": "src/main/ets/index.ets",
   "author": "ArkTS Language Server maintainers",
   "license": "Apache-2.0",
   "dependencies": {}

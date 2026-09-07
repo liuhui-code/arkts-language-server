@@ -92,6 +92,14 @@ test("a watched target switch replaces membership and matches a fresh session", 
 test("project membership prunes inactive directories before enumeration or source reads", (t) => {
   const fixture = targetFixture(t)
   fs.writeFileSync(fixture.mainPath, "const value = TabletO\n")
+  const undeclaredRoot = path.join(fixture.workspaceRoot, "ghost")
+  const undeclaredPath = path.join(undeclaredRoot, "src", "main", "ets", "Ghost.ets")
+  fs.mkdirSync(path.dirname(undeclaredPath), { recursive: true })
+  fs.writeFileSync(undeclaredPath, "class GhostOnly {}\n")
+  const nestedUndeclaredRoot = path.join(fixture.moduleRoot, "ghost")
+  const nestedUndeclaredPath = path.join(nestedUndeclaredRoot, "src", "main", "ets", "Ghost.ets")
+  fs.mkdirSync(path.dirname(nestedUndeclaredPath), { recursive: true })
+  fs.writeFileSync(nestedUndeclaredPath, "class NestedGhostOnly {}\n")
   const driverPath = path.join(fixture.root, "document-store-driver.cjs")
   buildSync({
     stdin: { contents: 'export { SemanticDocumentStore } from "./src/core/workspace/document-store.ts"', resolveDir: projectRoot },
@@ -104,7 +112,9 @@ test("project membership prunes inactive directories before enumeration or sourc
   for (const method of ["opendirSync", "readdirSync", "openSync", "readFileSync"]) {
     const original = fs[method]
     t.mock.method(fs, method, (...args) => {
-      if (String(args[0]).startsWith(path.dirname(fixture.desktopPath))) {
+      if (String(args[0]).startsWith(path.dirname(fixture.desktopPath))
+        || String(args[0]).startsWith(undeclaredRoot)
+        || String(args[0]).startsWith(nestedUndeclaredRoot)) {
         inactiveAccesses.push({ method, path: String(args[0]) })
       }
       return original(...args)
@@ -114,7 +124,41 @@ test("project membership prunes inactive directories before enumeration or sourc
   assert.equal(workspace.projectMembership.status, "complete")
   assert.equal(workspace.projectMembership.paths.includes(fixture.tabletPath), true)
   assert.equal(workspace.projectMembership.paths.includes(fixture.desktopPath), false)
+  assert.equal(workspace.projectMembership.paths.includes(undeclaredPath), false)
+  assert.equal(workspace.projectMembership.paths.includes(nestedUndeclaredPath), false)
   assert.deepEqual(inactiveAccesses, [])
+})
+
+test("project membership reaches a declared module nested beneath an inactive target", (t) => {
+  const fixture = targetFixture(t)
+  fs.writeFileSync(fixture.mainPath, "const value = TabletO\n")
+  const nestedRoot = path.join(fixture.moduleRoot, "src", "desktop", "nested")
+  const nestedPath = path.join(nestedRoot, "src", "main", "ets", "Nested.ets")
+  fs.mkdirSync(path.dirname(nestedPath), { recursive: true })
+  fs.writeFileSync(nestedPath, "export class NestedModuleClass {}\n")
+  fs.writeFileSync(path.join(nestedRoot, "build-profile.json5"), "{ targets: [{ name: 'default' }] }")
+  fixture.profile.modules.push({
+    name: "nested",
+    srcPath: "./features/alpha/src/desktop/nested",
+    targets: [{ name: "default", applyToProducts: ["default"] }],
+  })
+  fs.writeFileSync(fixture.profilePath, JSON.stringify(fixture.profile))
+
+  const driverPath = path.join(fixture.root, "nested-document-store-driver.cjs")
+  buildSync({
+    stdin: { contents: 'export { SemanticDocumentStore } from "./src/core/workspace/document-store.ts"', resolveDir: projectRoot },
+    bundle: true, platform: "node", target: "node20", format: "cjs", outfile: driverPath,
+  })
+  const { SemanticDocumentStore } = createRequire(import.meta.url)(driverPath)
+  const store = new SemanticDocumentStore()
+  t.after(() => store.dispose())
+
+  const workspace = store.prepare({
+    path: fixture.mainPath, workspaceRoot: fixture.workspaceRoot, line: 1, column: 1,
+  }, true)
+  assert.equal(workspace.projectMembership.status, "complete")
+  assert.equal(workspace.projectMembership.paths.includes(nestedPath), true)
+  assert.equal(workspace.projectMembership.paths.includes(fixture.desktopPath), false)
 })
 
 test("module-root entries and installed package dependency closures remain available", async (t) => {

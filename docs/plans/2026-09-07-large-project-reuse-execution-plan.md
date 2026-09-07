@@ -85,11 +85,21 @@ Stage 配置子集的 project-model/target/resource 套件。P1.1–P1.3 与 P1.
 ### 第二阶段：核心功能的工程级正确性
 
 - [ ] P2.1 在项目模型上覆盖命名依赖的跨模块 references 完整性；首个纵切使用真实
-  Stage 双模块、`file:` 依赖和包名导入，并排除未声明模块与 inactive target。
+  Stage 双模块、`file:` 依赖和包名导入，并排除未声明模块；inactive target、overlay 与
+  watcher freshness 由后续纵切分别闭环。
+  - [x] P2.1a 真实 stdio references 只返回 declared module 的 import/use、未打开 barrel
+    与 origin；未列入根 profile 的 ghost module 不再污染 project membership。目录在打开前、
+    文件在 stat 前按项目模型剪枝；未声明超大源码不把完整快照误报为 partial，嵌套声明模块仍可达。
+  - [ ] P2.1b 补齐 inactive target、overlay 与 watcher freshness 的 references 纵切。
 - [ ] P2.2 复用 P2.1 corpus 完成跨模块 rename 的安全编辑闭环：冲突、版本、原子
   `WorkspaceEdit`，应用后重新验证 definition/references/diagnostics。
 - [ ] 用支持版本的 SDK/编译器样例校验 ArkUI lowering、diagnostics、builder 与位置映射。
 - [ ] 每个关键用户场景同时通过 bundle 和安装产物验收；以前失败的外部方案场景纳入 corpus。
+
+P2.1a 验收（2026-09-07）：真实 child-stdio references 精确返回4个 UTF-16 location；
+未声明模块/根目录内的超大源码均不污染完整 membership，目录在打开前完成剪枝；聚焦回归
+29/29、相关缓存/语料/解析回归76/76、统一 `pnpm check:fast` 771/771通过。证据见
+[命名跨模块 references TDD](../tdd/p2-named-cross-module-references.md)。P2.1总体仍未完成。
 
 ### 第三阶段：真实响应性与生命周期
 
