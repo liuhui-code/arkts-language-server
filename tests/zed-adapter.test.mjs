@@ -57,11 +57,51 @@ test("the local Zed adapter registers ArkTS and launches the portable server fro
   assert.match(manifest, /\[language_servers\.arkts-language-server\]/)
   assert.match(language, /path_suffixes\s*=\s*\["ets"\]/)
   assert.match(adapter, /worktree\.which\("arkts-language-server"\)/)
-  assert.match(adapter, /args:\s*vec!\["--stdio"\.to_string\(\)\]/)
+  assert.match(adapter, /unwrap_or_else\(\|\|\s*vec!\["--stdio"\.to_string\(\)\]\)/)
   assert.match(adapter, /install.+arkts-language-server.+PATH/is)
   assert.doesNotMatch(adapter, /\/Users\/liuhui/)
   assert.doesNotMatch(adapter, /\/usr\/local\/bin\/node/)
   assert.doesNotMatch(adapter, /sdkPath|hmsPath|ssh/i)
+})
+
+test("the Zed adapter honors the configured language-server binary", () => {
+  const adapter = fs.readFileSync(path.join(extensionRoot, "src", "lib.rs"), "utf8")
+
+  assert.match(
+    adapter,
+    /LspSettings::for_worktree\(language_server_id\.as_ref\(\),\s*worktree\)/,
+  )
+  assert.match(adapter, /binary\.path/)
+  assert.match(adapter, /binary\s*\.arguments/)
+  assert.match(adapter, /binary\s*\.env/)
+  assert.match(adapter, /unwrap_or_else\(\|\|\s*vec!\["--stdio"\.to_string\(\)\]\)/)
+  assert.match(adapter, /unwrap_or_else\(\|\|\s*worktree\.shell_env\(\)\)/)
+  const argumentSetup = adapter.indexOf("let arguments =")
+  const configuredPath = adapter.indexOf("if let Some(command)")
+  const managedLauncher = adapter.indexOf("std::env::current_dir()")
+  assert.ok(argumentSetup >= 0 && argumentSetup < configuredPath)
+  assert.ok(configuredPath < managedLauncher)
+  assert.equal(adapter.match(/args:\s*arguments/g)?.length, 2)
+  assert.equal(adapter.match(/env:\s*environment/g)?.length, 2)
+})
+
+test("the Zed adapter prefers the installer-managed launcher before PATH", () => {
+  const adapter = fs.readFileSync(path.join(extensionRoot, "src", "lib.rs"), "utf8")
+  const configuredBinary = adapter.indexOf("LspSettings::for_worktree")
+  const managedLauncher = adapter.indexOf("std::env::current_dir()")
+  const pathFallback = adapter.indexOf('worktree.which("arkts-language-server")')
+
+  assert.ok(configuredBinary >= 0, "the configured binary lookup must exist")
+  assert.ok(managedLauncher > configuredBinary, "the managed launcher must follow user settings")
+  assert.ok(pathFallback > managedLauncher, "PATH must remain the last lookup")
+  assert.match(adapter, /join\("bin"\).*join\("arkts-language-server"\)/s)
+  assert.match(adapter, /\.is_file\(\)/)
+})
+
+test("the Zed adapter reports both supported recovery paths", () => {
+  const adapter = fs.readFileSync(path.join(extensionRoot, "src", "lib.rs"), "utf8")
+
+  assert.match(adapter, /not found[^\"]*pnpm zed:install[^\"]*binary\.path/i)
 })
 
 test("the repository CLI starts the language server outside the repository cwd", async () => {

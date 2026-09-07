@@ -17,7 +17,8 @@
     "test:e2e:artifact": "node scripts/run-node-test-layer.mjs --layer artifact-e2e",
     "test:e2e:artifact:sealed": "node scripts/run-node-test-layer.mjs --layer sealed-artifact-e2e",
     "test:e2e:large": "node scripts/run-node-test-layer.mjs --layer large",
-    "test:e2e:real-sdk": "pnpm build && node scripts/run-node-test-layer.mjs --layer real-sdk"
+    "test:e2e:real-sdk": "pnpm build && node scripts/run-node-test-layer.mjs --layer real-sdk",
+    "zed:install": "node scripts/install-zed-local.mjs"
   },
   "dependencies": {
     "json5": "2.2.3",

@@ -33,6 +33,7 @@ grammar_gate=$project_root/scripts/check-zed-queries.sh
 grammar_dir=$extension_dir/grammars
 grammar_wasm=$grammar_dir/arkts.wasm
 grammar_stamp=$grammar_dir/.arkts-source
+grammar_lock=$extension_dir/zed-grammar-lock.json
 lockfile=$project_root/pnpm-lock.yaml
 dependency_stamp_dir=$project_root/node_modules/.cache/arkts-language-server
 dependency_stamp=$dependency_stamp_dir/dependency-fingerprint.json
@@ -124,12 +125,28 @@ installed_grammar_identity=
 if [ -f "$grammar_stamp" ]; then
   installed_grammar_identity=$(sed -n '1p' "$grammar_stamp")
 fi
+reviewed_grammar=false
+if [ -f "$grammar_lock" ] && [ -f "$grammar_wasm" ]; then
+  if node -e '
+    const crypto = require("node:crypto")
+    const fs = require("node:fs")
+    const lock = JSON.parse(fs.readFileSync(process.argv[1], "utf8"))
+    const digest = crypto.createHash("sha256").update(fs.readFileSync(process.argv[2])).digest("hex")
+    const identity = `${lock.repository}\t${lock.revision}`
+    if (lock.grammar !== "arkts" || identity !== process.argv[3] || digest !== lock.sha256) process.exit(1)
+  ' "$grammar_lock" "$grammar_wasm" "$grammar_identity"
+  then
+    reviewed_grammar=true
+  fi
+fi
 if [ "$installed_grammar_identity" != "$grammar_identity" ]; then
   mkdir -p "$grammar_dir"
   grammar_stamp_tmp=$grammar_stamp.tmp.$$
   trap 'rm -f "$grammar_stamp_tmp"' EXIT HUP INT TERM
   printf '%s\n' "$grammar_identity" > "$grammar_stamp_tmp"
-  rm -f "$grammar_wasm"
+  if [ "$reviewed_grammar" != true ]; then
+    rm -f "$grammar_wasm"
+  fi
   mv "$grammar_stamp_tmp" "$grammar_stamp"
   trap - EXIT HUP INT TERM
 fi
@@ -185,6 +202,8 @@ trap - EXIT HUP INT TERM
 
 echo "Installed arkts-language-server $release_id at $installed_command"
 echo "Built Zed extension at $extension_wasm"
-echo "Ensure $install_dir is on PATH before starting Zed."
-echo "In Zed, run 'zed: install dev extension' and select $extension_dir."
-echo "Repeat that Zed action after grammar or query updates so Zed rebuilds the pinned grammar."
+if [ "${ARKTS_ZED_INSTALL_AUTO:-}" != "1" ]; then
+  echo "Ensure $install_dir is on PATH before starting Zed."
+  echo "For one-command Zed installation, run 'pnpm zed:install'."
+  echo "Alternatively, run 'zed: install dev extension' and select $extension_dir."
+fi
