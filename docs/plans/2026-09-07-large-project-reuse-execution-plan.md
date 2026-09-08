@@ -1,7 +1,10 @@
 # 大项目可用的 ArkTS Language Server：组件复用执行计划
 
-状态：Phase 2 in progress；Phase 1 的 P1.1–P1.6 及冻结门禁均已完成；P2.1b
-功能切片、统一快速门禁与冻结复审已完成，PR #5 的 CI 与合并待执行。
+状态：历史执行计划；Phase 1 的 P1.1–P1.6 与 P2.1 均已完成。P2.1b 经 PR #5
+合入 `main`，merge `e90cacb9ace47292ac0869d09b3a64f7c7fe2144`，CI canonical release
+gate 通过。后续顺序由
+[官方 ArkTS 语义后端与低内存执行计划](2026-09-09-official-arkts-semantic-backend-execution-plan.md)
+接管；本文件继续保存 P1/P2.1 的历史验收证据。
 P1.4b 已锁定并验收 API 24 / ETS 6.1.1.125 的命名工作流；版本元信息本身仍不作为兼容认证。
 基线：`ed069cf5075992b7afd8821ffd12328a9a4fd7ea`。
 Phase 1 合并记录：PR #2，merge `db5d09c`。
@@ -9,6 +12,7 @@ Phase 2 启动基线：`9218508ddf9ee8e86b022965768a2a04c21a163b`。
 P2.1a 合并记录：PR #4，merge `fdcfb43c3214e1779392a66fbaa18b534e856e52`。
 P2.1b 父 revision：`fdcfb43c3214e1779392a66fbaa18b534e856e52`；候选分支：
 `codex/p21b-reference-freshness`。
+P2.1b 合并记录：PR #5，merge `e90cacb9ace47292ac0869d09b3a64f7c7fe2144`。
 
 ## 已确认的产品决策
 
@@ -145,7 +149,8 @@ P2.1b 集成收口清单：
 
 - [x] 候选冻结后运行 `pnpm check:fast` 并记录准确通过数、失败/取消/跳过/todo与耗时。
 - [x] 运行 `git diff --check`，并让最终冻结候选通过冻结复审且无 P0/P1。
-- [ ] PR #5 通过 CI 后合并到 `main`，回填 merge revision 与 CI 结果。
+- [x] PR #5 通过 CI canonical release gate 后合并到 `main`；merge
+  `e90cacb9ace47292ac0869d09b3a64f7c7fe2144`。
 
 上述三项完成前，不把 P2.1b 称为已合并或统一门禁通过。下一功能切片仍是 P2.2，不能把本轮
 仅用于 source-unavailable 的 rename 安全回归扩张为跨模块 rename 已完成。
