@@ -38,11 +38,11 @@ inactive-target exclusion, one authoritative unsaved overlay, watcher/fresh-
 process equivalence, and fail-closed lazy reads when a discovered file changes
 identity. Relative workspace and SDK imports keep separate physical boundaries,
 and call-hierarchy rejection follows the actual call target rather than unrelated
-imports. The unified fast gate and frozen review pass; PR #5 CI and merge remain
-pending. P2.2 cross-module rename remains the next slice. Later phases retain ArkUI/
-compiler conformance, installed-artifact, responsiveness, latency, and memory
-gates. See the
-[execution checklist](docs/plans/2026-09-07-large-project-reuse-execution-plan.md)
+imports. P2.1b is merged through PR #5 with the canonical release gate passing.
+The next execution sequence first validates an official ETS-aware semantic backend,
+then cuts over only if its correctness and lifecycle gates pass. See the
+[current execution plan](docs/plans/2026-09-09-official-arkts-semantic-backend-execution-plan.md),
+the [historical P1/P2.1 checklist](docs/plans/2026-09-07-large-project-reuse-execution-plan.md),
 and [P2.1b TDD record](docs/tdd/p2-reference-freshness.md).
 
 ## Install for Zed
@@ -206,8 +206,7 @@ real-Zed acceptance record.
 
 - Local workspaces only; SSH/remote delivery is intentionally out of scope.
 - Named references across the selected Stage-project subset have P2.1 focused
-  coverage; P2.1b's unified gate and frozen review pass, while its PR/CI and merge
-  remain pending.
+  coverage; P2.1b's unified and canonical release gates pass and PR #5 is merged.
   Rename and code actions are advertised only when the client declares the
   required safe-edit capabilities, and the complete P2.2 cross-module rename
   workflow is not yet certified.
