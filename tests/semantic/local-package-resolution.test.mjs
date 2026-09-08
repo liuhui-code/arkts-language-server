@@ -63,6 +63,134 @@ test("a relative ArkTS import prefers its source over same-name declaration file
   })
 })
 
+test("an open workspace alias owns a relative import until the overlay closes", async (t) => {
+  const diskSource = [
+    "export class Canonical {",
+    "  diskOnly(): number { return 1 }",
+    "}",
+    "",
+  ].join("\n")
+  const overlaySource = [
+    "// unsaved alias overlay",
+    "export class Canonical {",
+    "  overlayOnly(): string { return 'live' }",
+    "}",
+    "",
+  ].join("\n")
+  let canonicalPath
+  let aliasPath
+  const fixture = await localPackageSession(t, { beforeStart: async ({ consumerPath }) => {
+    const sourceRoot = path.dirname(consumerPath)
+    canonicalPath = path.join(sourceRoot, "Canonical.ets")
+    aliasPath = path.join(sourceRoot, "Alias.ets")
+    await fs.writeFile(canonicalPath, diskSource)
+    await fs.symlink(path.basename(canonicalPath), aliasPath, "file")
+  } })
+  const canonicalUri = pathToFileURL(canonicalPath).href
+  const aliasUri = pathToFileURL(aliasPath).href
+  const diskConsumer = [
+    "import { Canonical } from './Canonical'",
+    "const item = new Canonical()",
+    "item.diskOnly()",
+    "",
+  ].join("\n")
+  const overlayConsumer = diskConsumer.replace("diskOnly", "overlayOnly")
+  const diagnosticsFor = (version) => fixture.session.transport.notification(
+    "textDocument/publishDiagnostics",
+    (message) => message.params.uri === fixture.consumerUri && message.params.version === version,
+  )
+  const definitionAt = (source) => fixture.session.request("textDocument/definition", {
+    textDocument: { uri: fixture.consumerUri },
+    position: positionAt(source, source.indexOf("new Canonical") + "new ".length + 1),
+  })
+  const completionAt = (source, member) => fixture.session.request("textDocument/completion", {
+    textDocument: { uri: fixture.consumerUri },
+    position: positionAt(source, source.indexOf(`item.${member}`) + "item.".length),
+  })
+  const selectedMembers = (response) => {
+    const items = Array.isArray(response.result) ? response.result : response.result?.items ?? []
+    return items.filter(({ label }) => ["diskOnly", "overlayOnly"].includes(label))
+      .map(({ label, kind }) => ({ label, kind }))
+      .sort((left, right) => left.label.localeCompare(right.label))
+  }
+
+  const diskDiagnostics = diagnosticsFor(2)
+  fixture.session.changeDocument({ uri: fixture.consumerUri, version: 2, text: diskConsumer })
+  assert.deepEqual((await diskDiagnostics).params.diagnostics, [])
+  assert.deepEqual((await definitionAt(diskConsumer)).result, [{
+    uri: canonicalUri,
+    range: rangeOf(diskSource, "Canonical"),
+  }])
+
+  fixture.session.openDocument({ uri: aliasUri, version: 1, text: overlaySource })
+  const overlayDiagnostics = diagnosticsFor(3)
+  fixture.session.changeDocument({ uri: fixture.consumerUri, version: 3, text: overlayConsumer })
+  const [overlayDefinition, overlayCompletion] = await Promise.all([
+    definitionAt(overlayConsumer),
+    completionAt(overlayConsumer, "overlayOnly"),
+  ])
+  assert.deepEqual({
+    definition: overlayDefinition.result,
+    members: selectedMembers(overlayCompletion),
+    diagnostics: (await overlayDiagnostics).params.diagnostics,
+  }, {
+    definition: [{ uri: aliasUri, range: rangeOf(overlaySource, "Canonical") }],
+    members: [{ label: "overlayOnly", kind: 2 }],
+    diagnostics: [],
+  })
+
+  fixture.session.transport.send({
+    jsonrpc: "2.0",
+    method: "textDocument/didClose",
+    params: { textDocument: { uri: aliasUri } },
+  })
+  const restoredDiagnostics = diagnosticsFor(4)
+  fixture.session.changeDocument({ uri: fixture.consumerUri, version: 4, text: diskConsumer })
+  const [restoredDefinition, restoredCompletion] = await Promise.all([
+    definitionAt(diskConsumer),
+    completionAt(diskConsumer, "diskOnly"),
+  ])
+  assert.deepEqual({
+    definition: restoredDefinition.result,
+    members: selectedMembers(restoredCompletion),
+    diagnostics: (await restoredDiagnostics).params.diagnostics,
+  }, {
+    definition: [{ uri: canonicalUri, range: rangeOf(diskSource, "Canonical") }],
+    members: [{ label: "diskOnly", kind: 2 }],
+    diagnostics: [],
+  })
+})
+
+test("two open diskless overlays resolve a relative import through the real LSP", async (t) => {
+  const fixture = await localPackageSession(t)
+  const directory = path.join(fixture.workspaceRoot, "entry", "src", "main", "ets")
+  const targetPath = path.join(directory, "DisklessTarget.ets")
+  const consumerPath = path.join(directory, "DisklessConsumer.ets")
+  const targetUri = pathToFileURL(targetPath).href
+  const consumerUri = pathToFileURL(consumerPath).href
+  const target = "export class DisklessTarget { value: number = 42 }\n"
+  const consumer = [
+    "import { DisklessTarget } from './DisklessTarget'",
+    "const value = new DisklessTarget()",
+    "",
+  ].join("\n")
+  await assert.rejects(fs.stat(targetPath), { code: "ENOENT" })
+  await assert.rejects(fs.stat(consumerPath), { code: "ENOENT" })
+
+  fixture.session.openDocument({ uri: targetUri, version: 1, text: target })
+  fixture.session.openDocument({ uri: consumerUri, version: 1, text: consumer })
+  const response = await fixture.session.request("textDocument/definition", {
+    textDocument: { uri: consumerUri },
+    position: positionAt(consumer, consumer.lastIndexOf("DisklessTarget") + 1),
+  })
+
+  assert.equal(response.error, undefined)
+  assert.deepEqual(response.result, [{
+    uri: targetUri,
+    range: rangeOf(target, "DisklessTarget"),
+  }])
+})
+
 test("resolves a declared installed package through its unopened oh_modules entry", async (t) => {
   const fixture = await localPackageSession(t, { beforeStart: async ({ workspaceRoot }) => {
     const installed = path.join(workspaceRoot, "entry", "oh_modules", "shared")

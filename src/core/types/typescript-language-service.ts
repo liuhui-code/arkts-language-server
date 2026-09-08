@@ -34,6 +34,8 @@ import type {
 import { resolveHarmonySdkModule } from "../sdk/module-resolver.js"
 import { createArktsVirtualDocument, type ArktsVirtualDocument } from "../virtual/arkts-virtual-document.js"
 import type {
+  ProjectFileAccessPort,
+  ProjectFileAdmissionToken,
   ProjectMembershipSnapshot,
   SemanticWorkspaceView,
 } from "../workspace/document-store.js"
@@ -90,6 +92,7 @@ interface LazySnapshotRecord {
   snapshot: ts.IScriptSnapshot
   sourceFingerprint: string
   bytes: number
+  admissionToken?: ProjectFileAdmissionToken
 }
 
 const COMPLETION_PREFIX_MATCH = 0
@@ -128,6 +131,7 @@ export interface TypeScriptLanguageServiceEngineOptions {
   checkpoint?: () => void
   hostCancellationToken?: ts.HostCancellationToken
   readSourceFile?: (filePath: string) => string | null
+  projectFileAccess?: ProjectFileAccessPort
   lazySnapshotLimits?: {
     maxFiles?: number
     maxBytes?: number
@@ -141,12 +145,15 @@ export class TypeScriptLanguageServiceEngine {
   private readonly lazySnapshots = new Map<string, LazySnapshotRecord>()
   private readonly sdkDeclarationPaths: string[]
   private readonly sdkRoot: string | null
+  private readonly workspacePhysicalRoot: string | undefined
+  private readonly sdkPhysicalRoot: string | undefined
   private membershipFileNames: string[]
   private combinedFileNames: string[] | undefined
   private readonly options: ts.CompilerOptions
   private readonly service: ts.LanguageService
   private readonly checkpoint: (() => void) | undefined
   private readonly readSourceFile: (filePath: string) => string | null
+  private readonly projectFileAccess: ProjectFileAccessPort | undefined
   private readonly maxLazySnapshots: number
   private readonly maxLazySnapshotBytes: number
   private accessClock = 0
@@ -156,9 +163,20 @@ export class TypeScriptLanguageServiceEngine {
   private projectMembershipStatus: ProjectMembershipSnapshot["status"] | "none" = "none"
   private projectMembershipReason: ProjectMembershipSnapshot["reason"]
   private projectMembershipRevision = 0
+  private projectMembershipRootId: string
+  private projectMembershipSourceUnavailable = false
   private projectContentRevision = 0
   private readonly packageResolver: LocalPackageResolver
   private overlayPaths: ReadonlyMap<string, string> | undefined
+  private relativeModuleResolutionWork = 0
+  private readonly relativeResolutionCheckpoint = (): void => {
+    this.relativeModuleResolutionWork += 1
+    if (this.relativeModuleResolutionWork % 64 === 0) this.checkpoint?.()
+  }
+  private readonly relativeResolutionFailures = new Map<
+    string,
+    Map<string, SemanticCallHierarchyFailureReason>
+  >()
 
   constructor(
     private readonly rootPath: string,
@@ -168,12 +186,16 @@ export class TypeScriptLanguageServiceEngine {
       checkpoint,
       hostCancellationToken,
       readSourceFile = safeRead,
+      projectFileAccess,
       lazySnapshotLimits = {},
     }: TypeScriptLanguageServiceEngineOptions = {},
   ) {
     this.packageResolver = packageResolver
     this.checkpoint = checkpoint
     this.readSourceFile = readSourceFile
+    this.projectFileAccess = projectFileAccess
+    this.projectMembershipRootId = path.resolve(rootPath)
+    this.workspacePhysicalRoot = canonicalExistingPath(rootPath)
     this.maxLazySnapshots = cacheLimit(
       lazySnapshotLimits.maxFiles,
       MAX_LAZY_SNAPSHOTS,
@@ -196,6 +218,7 @@ export class TypeScriptLanguageServiceEngine {
     }
     const sdk = discoverProjectSdk(rootPath)
     this.sdkRoot = sdk.path
+    this.sdkPhysicalRoot = this.sdkRoot ? canonicalExistingPath(this.sdkRoot) : undefined
     onSdkSelected?.(rootPath, sdk)
     this.sdkDeclarationPaths = discoverSdkAmbientDeclarations(this.sdkRoot)
     this.membershipFileNames = [...this.sdkDeclarationPaths]
@@ -207,6 +230,7 @@ export class TypeScriptLanguageServiceEngine {
 
   prepare(workspace: SemanticWorkspaceView): SemanticTypeEngineState {
     this.overlayPaths = workspace.overlayPaths
+    this.projectMembershipRootId = workspace.canonicalRootId ?? path.resolve(workspace.rootPath)
     const protectedPaths = new Set<string>()
     this.updateProjectMembership(workspace.projectMembership)
     this.updateProjectContent(workspace.contentRevision, workspace.changedPaths)
@@ -587,20 +611,80 @@ export class TypeScriptLanguageServiceEngine {
     const normalized = [...grouped.values()].sort((left, right) => (
       compareCallHierarchyItems(left.to, right.to)
     ))
+    const resolutionFailure = this.rejectedOutgoingCallFailure(filePath, generatedOffset)
+    if (resolutionFailure) return { status: "incomplete", reason: resolutionFailure }
     return { status: "complete", calls: normalized }
+  }
+
+  private rejectedOutgoingCallFailure(
+    filePath: string,
+    generatedOffset: number,
+  ): SemanticCallHierarchyFailureReason | undefined {
+    if (this.relativeResolutionFailures.size === 0) return undefined
+    const program = this.service.getProgram()
+    const sourceFile = program?.getSourceFile(filePath)
+    if (!program || !sourceFile) {
+      return strongestCallHierarchyFailure(
+        this.relativeResolutionFailures.get(filePath)?.values() ?? [],
+      )
+    }
+    const work = new CooperativeWork(this.checkpoint)
+    const checker = program.getTypeChecker()
+    const execution = callHierarchyExecutionAtPosition(sourceFile, generatedOffset, checker, work)
+    if (!execution) {
+      return strongestCallHierarchyFailure(
+        this.relativeResolutionFailures.get(filePath)?.values() ?? [],
+      )
+    }
+    if (execution.roots.length === 0) return work.finish(undefined)
+    let failure: SemanticCallHierarchyFailureReason | undefined
+    const visit = (node: ts.Node): void => {
+      if (failure === "source-outside-workspace") return
+      work.item()
+      if (isNestedCallHierarchyOwner(node)) {
+        if (ts.isClassLike(node)) {
+          for (const member of node.members) {
+            if (member.name && ts.isComputedPropertyName(member.name)) {
+              visit(member.name.expression)
+            }
+          }
+        }
+        return
+      }
+      const expression = ts.isCallExpression(node) || ts.isNewExpression(node)
+        ? node.expression
+        : ts.isTaggedTemplateExpression(node)
+          ? node.tag
+          : undefined
+      if (expression) {
+        const rejected = rejectedValueImportFailure(
+          checker,
+          expression,
+          this.relativeResolutionFailures,
+          work,
+        )
+        if (rejected === "source-outside-workspace" || (rejected && !failure)) {
+          failure = rejected
+        }
+      }
+      ts.forEachChild(node, visit)
+    }
+    for (const root of execution.roots) visit(root)
+    return work.finish(failure)
   }
 
   incomingCalls(
     position: SemanticDocumentPosition,
     item: SemanticCallHierarchyItemInfo,
   ): SemanticCallHierarchyIncomingQueryResult {
-    if (this.projectMembershipStatus !== "complete") {
-      return { status: "incomplete", reason: "project-membership-incomplete" }
-    }
+    const initialMembershipFailure = this.projectMembershipFailure()
+    if (initialMembershipFailure) return initialMembershipFailure
     const filePath = path.resolve(position.path)
     const script = this.scripts.get(filePath)
     if (!script) return { status: "incomplete", reason: "source-unavailable" }
     const prepared = this.prepareCallHierarchyAt(position)
+    const prepareMembershipFailure = this.projectMembershipFailure()
+    if (prepareMembershipFailure) return prepareMembershipFailure
     if (prepared.status !== "complete") return prepared
     if (!prepared.items.some((candidate) => sameCallHierarchyItem(candidate, item))) {
       return { status: "stale-item" }
@@ -618,6 +702,8 @@ export class TypeScriptLanguageServiceEngine {
     }
 
     const calls = this.service.provideCallHierarchyIncomingCalls(filePath, generatedOffset)
+    const callsMembershipFailure = this.projectMembershipFailure()
+    if (callsMembershipFailure) return callsMembershipFailure
     if (calls.length > MAX_CALL_HIERARCHY_EDGES) {
       return { status: "incomplete", reason: "result-limit-exceeded" }
     }
@@ -664,6 +750,8 @@ export class TypeScriptLanguageServiceEngine {
     const normalized = [...grouped.values()].sort((left, right) => (
       compareCallHierarchyItems(left.from, right.from)
     ))
+    const finalMembershipFailure = this.projectMembershipFailure()
+    if (finalMembershipFailure) return finalMembershipFailure
     return { status: "complete", calls: normalized }
   }
 
@@ -879,7 +967,7 @@ export class TypeScriptLanguageServiceEngine {
       const targetLazy = targetScript ? undefined : this.loadLazySnapshot(targetPath)
       const content = targetScript?.sourceContent
         ?? targetLazy?.virtualDocument.sourceContent
-        ?? safeRead(targetPath)
+        ?? (this.projectMembershipPaths.has(targetPath) ? null : safeRead(targetPath))
       if (content !== null) {
         const range = targetScript
           ? targetScript.virtualDocument.generatedSpanToSourceRange(
@@ -925,11 +1013,16 @@ export class TypeScriptLanguageServiceEngine {
       const spanKey = `${targetPath}:${reference.textSpan.start}:${reference.textSpan.length}`
       if (definitions.has(spanKey)) return []
       const targetScript = this.scripts.get(targetPath)
-      const content = targetScript?.sourceContent ?? safeRead(targetPath)
+      const targetLazy = targetScript ? undefined : this.loadLazySnapshot(targetPath)
+      const content = targetScript?.sourceContent
+        ?? targetLazy?.virtualDocument.sourceContent
+        ?? (this.projectMembershipPaths.has(targetPath) ? null : safeRead(targetPath))
       if (content === null) return []
       const targetOffset = targetScript
         ? targetScript.virtualDocument.toSourceOffset(reference.textSpan.start)
-        : reference.textSpan.start
+        : targetLazy
+          ? targetLazy.virtualDocument.toSourceOffset(reference.textSpan.start)
+          : reference.textSpan.start
       const target = offsetToLineColumn(content, targetOffset)
       const key = `${targetPath}:${target.line}:${target.column}`
       if (seen.has(key)) return []
@@ -951,9 +1044,8 @@ export class TypeScriptLanguageServiceEngine {
   ): SemanticReferenceQueryResult {
     const work = new CooperativeWork(this.checkpoint)
     work.boundary()
-    if (this.projectMembershipStatus !== "complete") {
-      return work.finish({ status: "incomplete", reason: "project-membership-incomplete" })
-    }
+    const initialMembershipFailure = this.projectMembershipFailure()
+    if (initialMembershipFailure) return work.finish(initialMembershipFailure)
     const filePath = path.resolve(position.path)
     const script = this.scripts.get(filePath)
     if (!script) return work.finish({ status: "incomplete", reason: "source-unavailable" })
@@ -963,6 +1055,8 @@ export class TypeScriptLanguageServiceEngine {
     work.boundary()
     const definitions = this.service.getDefinitionAtPosition(filePath, offset) ?? []
     work.boundary()
+    const definitionMembershipFailure = this.projectMembershipFailure()
+    if (definitionMembershipFailure) return work.finish(definitionMembershipFailure)
     if (definitions.length === 0) return work.finish({ status: "complete", references: [] })
 
     const canonicalDefinitionKeys = new Set<string>()
@@ -982,6 +1076,8 @@ export class TypeScriptLanguageServiceEngine {
         definition.textSpan.start,
       ) ?? []
       work.boundary()
+      const referenceMembershipFailure = this.projectMembershipFailure()
+      if (referenceMembershipFailure) return work.finish(referenceMembershipFailure)
       for (const symbol of symbols) {
         for (const reference of symbol.references) {
           const targetPath = path.resolve(reference.fileName)
@@ -1010,6 +1106,8 @@ export class TypeScriptLanguageServiceEngine {
       }
     }
     work.boundary()
+    const finalMembershipFailure = this.projectMembershipFailure()
+    if (finalMembershipFailure) return work.finish(finalMembershipFailure)
     references.sort(work.comparator(compareSemanticLocations))
     return work.finish({ status: "complete", references })
   }
@@ -1183,15 +1281,16 @@ export class TypeScriptLanguageServiceEngine {
   }
 
   prepareRename(position: SemanticDocumentPosition): SemanticPrepareRenameQueryResult {
-    if (this.projectMembershipStatus !== "complete") {
-      return { status: "incomplete", reason: "project-membership-incomplete" }
-    }
+    const initialMembershipFailure = this.projectMembershipFailure()
+    if (initialMembershipFailure) return initialMembershipFailure
     const filePath = path.resolve(position.path)
     const script = this.scripts.get(filePath)
     if (!script) return { status: "incomplete", reason: "source-unavailable" }
     const sourceOffset = lineColumnToOffset(script.sourceContent, position.line, position.column)
     const offset = script.virtualDocument.toGeneratedOffset(sourceOffset)
     const info = this.service.getRenameInfo(filePath, offset, { allowRenameOfImportPath: false })
+    const renameInfoMembershipFailure = this.projectMembershipFailure()
+    if (renameInfoMembershipFailure) return renameInfoMembershipFailure
     if (!info.canRename) return { status: "unavailable" }
     const range = exactSourceRange(script, info.triggerSpan)
     if (!range) return { status: "incomplete", reason: "source-unmappable" }
@@ -1212,9 +1311,8 @@ export class TypeScriptLanguageServiceEngine {
   ): SemanticRenameQueryResult {
     const work = new CooperativeWork(this.checkpoint)
     work.boundary()
-    if (this.projectMembershipStatus !== "complete") {
-      return work.finish({ status: "incomplete", reason: "project-membership-incomplete" })
-    }
+    const initialMembershipFailure = this.projectMembershipFailure()
+    if (initialMembershipFailure) return work.finish(initialMembershipFailure)
     const filePath = path.resolve(position.path)
     const script = this.scripts.get(filePath)
     if (!script) return work.finish({ status: "incomplete", reason: "source-unavailable" })
@@ -1224,6 +1322,8 @@ export class TypeScriptLanguageServiceEngine {
     work.boundary()
     const info = this.service.getRenameInfo(filePath, offset, { allowRenameOfImportPath: false })
     work.boundary()
+    const renameInfoMembershipFailure = this.projectMembershipFailure()
+    if (renameInfoMembershipFailure) return work.finish(renameInfoMembershipFailure)
     if (!info.canRename) return work.finish({ status: "unavailable" })
     work.boundary()
     const conflict = preflightTopLevelClassRenameConflict(
@@ -1233,12 +1333,16 @@ export class TypeScriptLanguageServiceEngine {
       newName,
     )
     work.boundary()
+    const preflightMembershipFailure = this.projectMembershipFailure()
+    if (preflightMembershipFailure) return work.finish(preflightMembershipFailure)
     if (conflict === "conflict" || conflict === "indeterminate") {
       return work.finish({ status: "unavailable" })
     }
     work.boundary()
     const locations = this.service.findRenameLocations(filePath, offset, false, false, true) ?? []
     work.boundary()
+    const locationsMembershipFailure = this.projectMembershipFailure()
+    if (locationsMembershipFailure) return work.finish(locationsMembershipFailure)
     if (locations.length === 0) return work.finish({ status: "unavailable" })
     const sourceViews = new Map<string, ScriptRecord | LazySnapshotRecord>()
     const edits: Extract<SemanticRenameQueryResult, { status: "complete" }>["edits"] = []
@@ -1274,6 +1378,8 @@ export class TypeScriptLanguageServiceEngine {
     if (hasOverlappingEdits(edits, work)) {
       return work.finish({ status: "incomplete", reason: "source-unmappable" })
     }
+    const finalMembershipFailure = this.projectMembershipFailure()
+    if (finalMembershipFailure) return work.finish(finalMembershipFailure)
     return work.finish({ status: "complete", edits })
   }
 
@@ -1316,6 +1422,8 @@ export class TypeScriptLanguageServiceEngine {
     this.scripts.clear()
     this.projectMembershipPaths.clear()
     this.projectContentVersions.clear()
+    this.projectMembershipSourceUnavailable = false
+    this.relativeResolutionFailures.clear()
     this.lazySnapshots.clear()
     this.scriptBytes = 0
     this.lazySnapshotBytes = 0
@@ -1345,6 +1453,7 @@ export class TypeScriptLanguageServiceEngine {
         if (resident) return ts.ScriptSnapshot.fromString(resident.content)
         const lazy = this.loadLazySnapshot(filePath)
         if (lazy) return lazy.snapshot
+        if (this.projectMembershipPaths.has(filePath)) return undefined
         const content = safeRead(filePath)
         return content === null ? undefined : ts.ScriptSnapshot.fromString(content)
       },
@@ -1360,23 +1469,49 @@ export class TypeScriptLanguageServiceEngine {
       directoryExists: ts.sys.directoryExists,
       fileExists: (fileName) => {
         const filePath = path.resolve(fileName)
-        return this.scripts.has(filePath) || isRegularBoundedFile(filePath)
+        if (this.scripts.has(filePath)) return true
+        if (this.projectMembershipPaths.has(filePath)) {
+          return this.projectFileAccess
+            ? this.projectFileAccess.tokenFor(
+                this.projectMembershipRootId,
+                this.projectMembershipRevision,
+                filePath,
+              ) !== undefined
+            : isRegularBoundedFile(filePath)
+        }
+        return isRegularBoundedFile(filePath)
       },
       getDirectories: ts.sys.getDirectories,
       readDirectory: ts.sys.readDirectory,
       readFile: (fileName) => {
         const filePath = path.resolve(fileName)
-        return this.scripts.get(filePath)?.content
-          ?? this.loadLazySnapshot(filePath)?.content
-          ?? safeRead(filePath)
-          ?? undefined
+        const resident = this.scripts.get(filePath)?.content
+        if (resident !== undefined) return resident
+        const lazy = this.loadLazySnapshot(filePath)?.content
+        if (lazy !== undefined) return lazy
+        if (this.projectMembershipPaths.has(filePath)) return undefined
+        return safeRead(filePath) ?? undefined
       },
-      resolveModuleNames: (names, containingFile) => names.map((name) =>
-        this.resolveModule(name, containingFile)),
+      resolveModuleNames: (names, containingFile) => {
+        const resolvedContainingFile = path.resolve(containingFile)
+        this.relativeResolutionFailures.delete(resolvedContainingFile)
+        const boundaryRoot = names.some((name) => name.startsWith("."))
+          ? this.relativeModuleBoundary(resolvedContainingFile)
+          : undefined
+        return names.map((name) => this.resolveModule(
+          name,
+          resolvedContainingFile,
+          boundaryRoot,
+        ))
+      },
     }
   }
 
-  private resolveModule(name: string, containingFile: string): ts.ResolvedModule | undefined {
+  private resolveModule(
+    name: string,
+    containingFile: string,
+    relativeBoundaryRoot?: string,
+  ): ts.ResolvedModule | undefined {
     if (!name.startsWith(".")) {
       const local = this.packageResolver.resolve(this.rootPath, containingFile, name, {
         checkpoint: this.checkpoint,
@@ -1415,12 +1550,67 @@ export class TypeScriptLanguageServiceEngine {
         ]
     const resolved = candidates.find((candidate) =>
       this.scripts.has(path.resolve(candidate)) || isRegularBoundedFile(candidate))
-    const sourcePath = resolved && this.packageResolver.installedSourcePath(
-      this.rootPath, containingFile, resolved, (physicalPath) => this.overlayPaths?.get(physicalPath), this.checkpoint,
-    )
+    const resolvedPath = resolved && path.resolve(resolved)
+    const sourcePath = resolvedPath && relativeBoundaryRoot
+      ? this.packageResolver.installedSourcePath(
+        relativeBoundaryRoot,
+        containingFile,
+        resolvedPath,
+        (physicalPath) => this.overlayPaths?.get(physicalPath)
+          ?? (this.scripts.has(resolvedPath) ? resolvedPath : undefined),
+        this.relativeResolutionCheckpoint,
+      )
+      : undefined
+    if (!resolvedPath || !relativeBoundaryRoot) this.relativeResolutionCheckpoint()
+    if (resolvedPath && !sourcePath) {
+      const failure = callHierarchyPathFailure(
+        relativeBoundaryRoot ?? this.rootPath,
+        resolvedPath,
+        this.scripts.get(resolvedPath)?.overlay === true,
+      ) ?? "source-unavailable"
+      if (this.scripts.has(containingFile)) {
+        let failures = this.relativeResolutionFailures.get(containingFile)
+        if (!failures) {
+          failures = new Map()
+          this.relativeResolutionFailures.set(containingFile, failures)
+        }
+        const previous = failures.get(name)
+        if (previous !== "source-outside-workspace" || failure === "source-outside-workspace") {
+          failures.set(name, failure)
+        }
+      }
+    }
     return sourcePath
       ? ({ resolvedFileName: sourcePath, extension: ts.Extension.Ts } as ts.ResolvedModule)
       : undefined
+  }
+
+  private relativeModuleBoundary(containingFile: string): string | undefined {
+    let physicalContainingFile: string
+    try {
+      physicalContainingFile = this.scripts.has(containingFile)
+        ? prospectiveRealPathSync(containingFile)
+        : fs.realpathSync.native(containingFile)
+    } catch {
+      return undefined
+    }
+    if (isWithinRoot(this.rootPath, containingFile)) {
+      return this.workspacePhysicalRoot
+        && isWithinRoot(this.workspacePhysicalRoot, physicalContainingFile)
+        ? this.rootPath
+        : undefined
+    }
+    if (
+      this.workspacePhysicalRoot
+      && isWithinRoot(this.workspacePhysicalRoot, physicalContainingFile)
+    ) return this.rootPath
+    if (
+      this.sdkRoot
+      && this.sdkPhysicalRoot
+      && isWithinRoot(this.sdkRoot, containingFile)
+      && isWithinRoot(this.sdkPhysicalRoot, physicalContainingFile)
+    ) return this.sdkRoot
+    return undefined
   }
 
   private updateScript(
@@ -1454,6 +1644,7 @@ export class TypeScriptLanguageServiceEngine {
     })
     if (!previous && !this.projectMembershipPaths.has(filePath)) this.combinedFileNames = undefined
     this.scriptBytes += bytes
+    this.relativeResolutionFailures.clear()
     this.generation += 1
   }
 
@@ -1463,6 +1654,7 @@ export class TypeScriptLanguageServiceEngine {
     this.scripts.delete(filePath)
     if (!this.projectMembershipPaths.has(filePath)) this.combinedFileNames = undefined
     this.scriptBytes -= previous.bytes
+    this.relativeResolutionFailures.clear()
     this.generation += 1
   }
 
@@ -1494,6 +1686,7 @@ export class TypeScriptLanguageServiceEngine {
     this.projectMembershipStatus = membership.status
     this.projectMembershipReason = membership.reason
     this.projectMembershipRevision = membership.revision
+    this.projectMembershipSourceUnavailable = false
     if (membership.status === "partial") {
       for (const filePath of this.projectMembershipPaths) this.removeScript(filePath)
       this.projectMembershipPaths.clear()
@@ -1534,6 +1727,7 @@ export class TypeScriptLanguageServiceEngine {
     changedPaths: string[] | undefined,
   ): void {
     if (contentRevision !== undefined) this.projectContentRevision = contentRevision
+    if ((changedPaths?.length ?? 0) > 0) this.relativeResolutionFailures.clear()
     for (const changedPath of changedPaths ?? []) {
       const filePath = path.resolve(changedPath)
       this.projectContentVersions.set(filePath, this.projectContentRevision)
@@ -1544,15 +1738,36 @@ export class TypeScriptLanguageServiceEngine {
 
   private loadLazySnapshot(filePath: string): LazySnapshotRecord | undefined {
     if (!this.projectMembershipPaths.has(filePath)) return undefined
+    const admissionToken = this.projectFileAccess?.tokenFor(
+      this.projectMembershipRootId,
+      this.projectMembershipRevision,
+      filePath,
+    )
+    if (this.projectFileAccess && admissionToken === undefined) {
+      this.removeLazySnapshot(filePath)
+      this.projectMembershipSourceUnavailable = true
+      return undefined
+    }
     const cached = this.lazySnapshots.get(filePath)
-    if (cached) {
+    if (cached && (!this.projectFileAccess || cached.admissionToken === admissionToken)) {
       this.lazySnapshots.delete(filePath)
       this.lazySnapshots.set(filePath, cached)
       return cached
     }
-    if (!isRegularBoundedFile(filePath)) return undefined
-    const sourceContent = this.readSourceFile(filePath)
-    if (sourceContent === null) return undefined
+    if (cached) this.removeLazySnapshot(filePath)
+    if (!this.projectFileAccess && !isRegularBoundedFile(filePath)) return undefined
+    const sourceContent = this.projectFileAccess
+      ? this.projectFileAccess.read(
+          this.projectMembershipRootId,
+          this.projectMembershipRevision,
+          filePath,
+          admissionToken!,
+        )
+      : this.readSourceFile(filePath)
+    if (sourceContent === null) {
+      if (this.projectFileAccess) this.projectMembershipSourceUnavailable = true
+      return undefined
+    }
     const virtualDocument = createArktsVirtualDocument(filePath, sourceContent)
     const content = virtualDocument.generatedContent
     const record: LazySnapshotRecord = {
@@ -1562,6 +1777,7 @@ export class TypeScriptLanguageServiceEngine {
       snapshot: ts.ScriptSnapshot.fromString(content),
       sourceFingerprint: fingerprintSource(sourceContent),
       bytes: Buffer.byteLength(sourceContent) + Buffer.byteLength(content),
+      ...(admissionToken === undefined ? {} : { admissionToken }),
     }
     if (record.bytes <= this.maxLazySnapshotBytes && this.maxLazySnapshots > 0) {
       this.lazySnapshots.set(filePath, record)
@@ -1569,6 +1785,17 @@ export class TypeScriptLanguageServiceEngine {
       this.evictLazySnapshots()
     }
     return record
+  }
+
+  private projectMembershipFailure():
+    | { status: "incomplete"; reason: "project-membership-incomplete" | "source-unavailable" }
+    | undefined {
+    if (this.projectMembershipStatus !== "complete") {
+      return { status: "incomplete", reason: "project-membership-incomplete" }
+    }
+    return this.projectMembershipSourceUnavailable
+      ? { status: "incomplete", reason: "source-unavailable" }
+      : undefined
   }
 
   private removeLazySnapshot(filePath: string): void {
@@ -2351,6 +2578,14 @@ function isWithinRoot(rootPath: string, filePath: string) {
   return relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)
 }
 
+function canonicalExistingPath(filePath: string): string | undefined {
+  try {
+    return fs.realpathSync.native(filePath)
+  } catch {
+    return undefined
+  }
+}
+
 function callHierarchyPathFailure(
   rootPath: string,
   filePath: string,
@@ -2365,6 +2600,426 @@ function callHierarchyPathFailure(
     return isWithinRoot(realRoot, realSource) ? undefined : "source-outside-workspace"
   } catch {
     return "source-unavailable"
+  }
+}
+
+function strongestCallHierarchyFailure(
+  failures: Iterable<SemanticCallHierarchyFailureReason>,
+): SemanticCallHierarchyFailureReason | undefined {
+  let result: SemanticCallHierarchyFailureReason | undefined
+  for (const failure of failures) {
+    if (failure === "source-outside-workspace") return failure
+    result ??= failure
+  }
+  return result
+}
+
+function callHierarchyExecutionAtPosition(
+  sourceFile: ts.SourceFile,
+  position: number,
+  checker: ts.TypeChecker,
+  work: CooperativeWork,
+): { roots: ts.Node[] } | undefined {
+  let current: ts.Node | undefined = syntaxNodeAtPosition(sourceFile, position, work)
+  while (current) {
+    work.item()
+    const execution = callHierarchyOwnerExecution(current, checker)
+    if (execution) return execution
+    if (
+      (ts.isVariableDeclaration(current) || ts.isPropertyDeclaration(current))
+      && current.initializer
+    ) {
+      const initializerExecution = callHierarchyOwnerExecution(current.initializer, checker)
+      if (initializerExecution) return initializerExecution
+    }
+    current = current.parent
+  }
+  return undefined
+}
+
+function callHierarchyOwnerExecution(
+  node: ts.Node,
+  checker: ts.TypeChecker,
+): { roots: ts.Node[] } | undefined {
+  if (ts.isClassStaticBlockDeclaration(node)) return { roots: [node.body] }
+  if (ts.isClassLike(node)) return callHierarchyClassExecution(node)
+  if (ts.isModuleDeclaration(node)) {
+    return { roots: node.body && ts.isModuleBlock(node.body) ? [...node.body.statements] : [] }
+  }
+  if (ts.isSourceFile(node)) return { roots: [...node.statements] }
+  if (!ts.isFunctionLike(node)) return undefined
+  const implementation = callHierarchyFunctionImplementation(node, checker)
+  const roots: ts.Node[] = implementation.parameters.flatMap((parameter) => (
+    parameter.initializer ? [parameter.initializer] : []
+  ))
+  const body = callHierarchyCallableBody(implementation)
+  if (body) roots.push(body)
+  return { roots }
+}
+
+function callHierarchyClassExecution(node: ts.ClassLikeDeclaration): { roots: ts.Node[] } {
+  const roots: ts.Node[] = callHierarchyModifierRoots(node)
+  const heritage = node.heritageClauses?.find((clause) => clause.token === ts.SyntaxKind.ExtendsKeyword)
+  if (heritage?.types[0]) roots.push(heritage.types[0].expression)
+  for (const member of node.members) {
+    roots.push(...callHierarchyModifierRoots(member))
+    if (ts.isPropertyDeclaration(member) && member.initializer) {
+      roots.push(member.initializer)
+    } else if (ts.isConstructorDeclaration(member) && member.body) {
+      for (const parameter of member.parameters) {
+        if (parameter.initializer) roots.push(parameter.initializer)
+      }
+      roots.push(member.body)
+    }
+  }
+  return { roots }
+}
+
+function callHierarchyModifierRoots(node: ts.Node): ts.Node[] {
+  const roots: ts.Node[] = []
+  if (ts.canHaveDecorators(node)) roots.push(...(ts.getDecorators(node) ?? []))
+  if (ts.canHaveModifiers(node)) roots.push(...(ts.getModifiers(node) ?? []))
+  return roots
+}
+
+function callHierarchyFunctionImplementation(
+  node: ts.SignatureDeclaration,
+  checker: ts.TypeChecker,
+): ts.SignatureDeclaration {
+  if (callHierarchyCallableBody(node)) return node
+  if (
+    (ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node))
+    && node.name
+  ) {
+    const symbol = checker.getSymbolAtLocation(node.name)
+    const declarations = symbol
+      ? [symbol.valueDeclaration, ...(symbol.declarations ?? [])]
+      : []
+    for (const implementation of declarations) {
+      if (
+        implementation
+        && ts.isFunctionLike(implementation)
+        && callHierarchyCallableBody(implementation)
+      ) return implementation
+    }
+  }
+  return node
+}
+
+function isNestedCallHierarchyOwner(node: ts.Node): boolean {
+  if (
+    ts.isSourceFile(node)
+    || ts.isModuleDeclaration(node)
+    || ts.isFunctionDeclaration(node)
+    || ts.isClassDeclaration(node)
+    || ts.isClassStaticBlockDeclaration(node)
+    || ts.isMethodDeclaration(node)
+    || ts.isMethodSignature(node)
+    || ts.isGetAccessorDeclaration(node)
+    || ts.isSetAccessorDeclaration(node)
+  ) return true
+  if (ts.isFunctionExpression(node) || ts.isClassExpression(node)) {
+    return Boolean(node.name) || isAssignedCallHierarchyExpression(node)
+  }
+  return ts.isArrowFunction(node) && isAssignedCallHierarchyExpression(node)
+}
+
+function isAssignedCallHierarchyExpression(
+  node: ts.FunctionExpression | ts.ArrowFunction | ts.ClassExpression,
+): boolean {
+  const declaration = node.parent
+  if (
+    (!ts.isVariableDeclaration(declaration) && !ts.isPropertyDeclaration(declaration))
+    || declaration.initializer !== node
+    || !ts.isIdentifier(declaration.name)
+  ) return false
+  if (ts.isPropertyDeclaration(declaration)) return true
+  return ts.isVariableDeclarationList(declaration.parent)
+    && (declaration.parent.flags & ts.NodeFlags.Const) !== 0
+}
+
+function callHierarchyCallableBody(node: ts.SignatureDeclaration): ts.Node | undefined {
+  if (
+    ts.isFunctionDeclaration(node)
+    || ts.isFunctionExpression(node)
+    || ts.isArrowFunction(node)
+    || ts.isMethodDeclaration(node)
+    || ts.isConstructorDeclaration(node)
+    || ts.isGetAccessorDeclaration(node)
+    || ts.isSetAccessorDeclaration(node)
+  ) return node.body
+  return undefined
+}
+
+function rejectedValueImportFailure(
+  checker: ts.TypeChecker,
+  expression: ts.Expression,
+  failuresByFile: ReadonlyMap<
+    string,
+    ReadonlyMap<string, SemanticCallHierarchyFailureReason>
+  >,
+  work: CooperativeWork,
+  seen = new Set<ts.Symbol>(),
+): SemanticCallHierarchyFailureReason | undefined {
+  let failure: SemanticCallHierarchyFailureReason | undefined
+  for (const symbol of callTargetSymbols(checker, expression)) {
+    const nested = rejectedValueImportSymbolFailure(checker, symbol, failuresByFile, work, seen)
+    if (nested === "source-outside-workspace") return nested
+    failure ??= nested
+  }
+  return failure
+}
+
+function rejectedValueImportSymbolFailure(
+  checker: ts.TypeChecker,
+  symbol: ts.Symbol,
+  failuresByFile: ReadonlyMap<
+    string,
+    ReadonlyMap<string, SemanticCallHierarchyFailureReason>
+  >,
+  work: CooperativeWork,
+  seen: Set<ts.Symbol>,
+): SemanticCallHierarchyFailureReason | undefined {
+  work.item()
+  if (seen.has(symbol)) return undefined
+  seen.add(symbol)
+  const imported = valueImportReferenceForSymbol(symbol)
+  if (imported) {
+    const direct = failuresByFile.get(imported.fileName)?.get(imported.moduleName)
+    if (direct) return direct
+    const module = checker.getSymbolAtLocation(imported.moduleSpecifier)
+    if (module) {
+      return rejectedModuleExportFailure(
+        checker,
+        module,
+        imported.importedName,
+        failuresByFile,
+        work,
+        new Set(),
+      )
+    }
+    return undefined
+  }
+  let failure: SemanticCallHierarchyFailureReason | undefined
+  for (const declaration of symbol.declarations ?? []) {
+    const initializer = valueAliasInitializer(declaration)
+    if (!initializer || ts.isFunctionLike(initializer)) continue
+    const nested = rejectedValueImportFailure(checker, initializer, failuresByFile, work, seen)
+    if (nested === "source-outside-workspace") return nested
+    failure ??= nested
+  }
+  return failure
+}
+
+function valueImportReferenceForSymbol(symbol: ts.Symbol): {
+  fileName: string
+  importedName: string
+  moduleName: string
+  moduleSpecifier: ts.Expression
+} | undefined {
+  for (const declaration of symbol?.declarations ?? []) {
+    let current: ts.Node | undefined = declaration
+    let typeOnly = ts.isImportSpecifier(current) && current.isTypeOnly
+    while (current && !ts.isImportDeclaration(current)) {
+      if (ts.isImportClause(current) && current.isTypeOnly) typeOnly = true
+      current = current.parent
+    }
+    if (
+      current
+      && !typeOnly
+      && ts.isStringLiteralLike(current.moduleSpecifier)
+    ) {
+      const importClause = current.importClause
+      let importedName = "*"
+      if (importClause?.name && declaration === importClause) importedName = "default"
+      if (ts.isImportSpecifier(declaration)) {
+        importedName = (declaration.propertyName ?? declaration.name).text
+      }
+      return {
+        fileName: current.getSourceFile().fileName,
+        importedName,
+        moduleName: current.moduleSpecifier.text,
+        moduleSpecifier: current.moduleSpecifier,
+      }
+    }
+  }
+  return undefined
+}
+
+function rejectedModuleExportFailure(
+  checker: ts.TypeChecker,
+  module: ts.Symbol,
+  exportedName: string,
+  failuresByFile: ReadonlyMap<
+    string,
+    ReadonlyMap<string, SemanticCallHierarchyFailureReason>
+  >,
+  work: CooperativeWork,
+  seen: Set<string>,
+): SemanticCallHierarchyFailureReason | undefined {
+  const sourceFile = module.valueDeclaration?.getSourceFile()
+    ?? module.declarations?.[0]?.getSourceFile()
+  if (!sourceFile) return undefined
+  const key = `${path.resolve(sourceFile.fileName)}\0${exportedName}`
+  if (seen.has(key)) return undefined
+  seen.add(key)
+
+  for (const statement of sourceFile.statements) {
+    work.item()
+    if (localStatementExportsName(statement, exportedName)) return undefined
+    if (
+      !ts.isExportDeclaration(statement)
+      || !statement.exportClause
+      || !ts.isNamedExports(statement.exportClause)
+    ) continue
+    const specifier = statement.exportClause.elements.find((element) => element.name.text === exportedName)
+    if (!specifier) continue
+    if (!statement.moduleSpecifier || !ts.isStringLiteralLike(statement.moduleSpecifier)) {
+      return undefined
+    }
+    return rejectedReexportFailure(
+      checker,
+      sourceFile,
+      statement.moduleSpecifier,
+      (specifier.propertyName ?? specifier.name).text,
+      failuresByFile,
+      work,
+      seen,
+    )
+  }
+
+  if (exportedName === "default") return undefined
+  let failure: SemanticCallHierarchyFailureReason | undefined
+  for (const statement of sourceFile.statements) {
+    work.item()
+    if (
+      !ts.isExportDeclaration(statement)
+      || statement.exportClause
+      || !statement.moduleSpecifier
+      || !ts.isStringLiteralLike(statement.moduleSpecifier)
+    ) continue
+    const nested = rejectedReexportFailure(
+      checker,
+      sourceFile,
+      statement.moduleSpecifier,
+      exportedName,
+      failuresByFile,
+      work,
+      seen,
+    )
+    if (nested === "source-outside-workspace") return nested
+    failure ??= nested
+  }
+  return failure
+}
+
+function rejectedReexportFailure(
+  checker: ts.TypeChecker,
+  sourceFile: ts.SourceFile,
+  moduleSpecifier: ts.Expression,
+  exportedName: string,
+  failuresByFile: ReadonlyMap<
+    string,
+    ReadonlyMap<string, SemanticCallHierarchyFailureReason>
+  >,
+  work: CooperativeWork,
+  seen: Set<string>,
+): SemanticCallHierarchyFailureReason | undefined {
+  if (!ts.isStringLiteralLike(moduleSpecifier)) return undefined
+  const direct = failuresByFile.get(path.resolve(sourceFile.fileName))?.get(moduleSpecifier.text)
+  if (direct) return direct
+  const nestedModule = checker.getSymbolAtLocation(moduleSpecifier)
+  return nestedModule
+    ? rejectedModuleExportFailure(
+        checker,
+        nestedModule,
+        exportedName,
+        failuresByFile,
+        work,
+        seen,
+      )
+    : undefined
+}
+
+function localStatementExportsName(statement: ts.Statement, exportedName: string): boolean {
+  if (!ts.canHaveModifiers(statement)) return false
+  const modifiers = ts.getModifiers(statement) ?? []
+  if (!modifiers.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)) return false
+  if (modifiers.some((modifier) => modifier.kind === ts.SyntaxKind.DefaultKeyword)) {
+    return exportedName === "default"
+  }
+  if (ts.isVariableStatement(statement)) {
+    return statement.declarationList.declarations.some((declaration) => (
+      ts.isIdentifier(declaration.name) && declaration.name.text === exportedName
+    ))
+  }
+  const named = statement as ts.Statement & { name?: ts.DeclarationName }
+  return Boolean(named.name && ts.isIdentifier(named.name) && named.name.text === exportedName)
+}
+
+function valueAliasInitializer(declaration: ts.Declaration): ts.Expression | undefined {
+  if (ts.isVariableDeclaration(declaration) || ts.isParameter(declaration)) {
+    return declaration.initializer
+  }
+  if (ts.isPropertyAssignment(declaration) || ts.isPropertyDeclaration(declaration)) {
+    return declaration.initializer
+  }
+  if (!ts.isBindingElement(declaration)) return undefined
+  if (declaration.initializer) return declaration.initializer
+  let current: ts.Node | undefined = declaration.parent
+  while (current && !ts.isVariableDeclaration(current) && !ts.isParameter(current)) {
+    current = current.parent
+  }
+  return current && (ts.isVariableDeclaration(current) || ts.isParameter(current))
+    ? current.initializer
+    : undefined
+}
+
+function callTargetSymbols(checker: ts.TypeChecker, expression: ts.Expression): ts.Symbol[] {
+  const symbols: ts.Symbol[] = []
+  const add = (node: ts.Node | undefined): void => {
+    const symbol = node ? checker.getSymbolAtLocation(node) : undefined
+    if (symbol && !symbols.includes(symbol)) symbols.push(symbol)
+  }
+  const target = unwrappedCallTarget(expression)
+  if (ts.isPropertyAccessExpression(target)) add(target.name)
+  else if (ts.isElementAccessExpression(target)) add(target)
+  const identifier = leftmostCallIdentifier(target)
+  add(identifier)
+  return symbols
+}
+
+function unwrappedCallTarget(expression: ts.Expression): ts.Expression {
+  let current = expression
+  while (
+    ts.isParenthesizedExpression(current)
+    || ts.isAsExpression(current)
+    || ts.isTypeAssertionExpression(current)
+    || ts.isNonNullExpression(current)
+    || ts.isSatisfiesExpression(current)
+  ) current = current.expression
+  return current
+}
+
+function leftmostCallIdentifier(expression: ts.Expression): ts.Identifier | undefined {
+  let current = expression
+  while (true) {
+    if (ts.isIdentifier(current)) return current
+    if (ts.isPropertyAccessExpression(current) || ts.isElementAccessExpression(current)) {
+      current = current.expression
+      continue
+    }
+    if (
+      ts.isParenthesizedExpression(current)
+      || ts.isAsExpression(current)
+      || ts.isTypeAssertionExpression(current)
+      || ts.isNonNullExpression(current)
+      || ts.isSatisfiesExpression(current)
+    ) {
+      current = current.expression
+      continue
+    }
+    return undefined
   }
 }
 

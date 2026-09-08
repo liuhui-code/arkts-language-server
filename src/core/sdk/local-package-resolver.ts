@@ -34,6 +34,8 @@ const MAX_MANIFEST_BYTES = 64 * 1024
 const MAX_CACHED_MANIFESTS = 128
 const MAX_CACHED_DIRECTORY_OWNERS = 256
 const MAX_CACHED_INSTALLATIONS = 256
+// The type-engine registry admits four workspaces and each may select one SDK.
+const MAX_CACHED_ROOTS = 8
 const MAX_ANCESTORS = 64
 
 interface PackageManifest {
@@ -50,6 +52,7 @@ export class LocalPackageResolver {
   // Filesystem snapshots: manifest/directory watcher changes must call invalidate().
   private readonly directoryOwners = new Map<string, string | undefined>()
   private readonly installations = new Map<string, string>()
+  private readonly canonicalRoots = new Map<string, string>()
   private readonly projectModels = new Map<string, HarmonyProjectModel>()
   private projectSelection: unknown
 
@@ -102,37 +105,48 @@ export class LocalPackageResolver {
           if (installed === undefined) return { path: null }
           packageRoot = installed
         }
-        if (!physicallyInside(root, packageRoot)) return { path: null }
+        let physicalPackageRoot: string
+        try {
+          const physicalRoot = this.canonicalRoot(root)
+          if (physicalRoot === undefined) return { path: null }
+          physicalPackageRoot = fs.realpathSync.native(packageRoot)
+          if (!inside(physicalRoot, physicalPackageRoot)) return { path: null }
+        } catch { return { path: null } }
         checkpoint()
         const target = this.readManifest(path.join(packageRoot, "oh-package.json5"))
         if (!target?.entry || path.isAbsolute(target.entry)) return { path: null }
         const entry = path.resolve(packageRoot, target.entry)
-        let openPath: string | undefined
-        if (!dependency.startsWith("file:") && overlayPath) {
-          try { openPath = overlayPath(fs.realpathSync.native(entry)) }
-          catch {
-            try { openPath = overlayPath(path.join(fs.realpathSync.native(path.dirname(entry)), path.basename(entry))) }
-            catch { /* An absent parent cannot admit an entry overlay. */ }
-          }
-        }
-        const overlay = openPath !== undefined || hasOverlay(entry)
         if (!/\.(?:ets|ts)$/.test(entry) || !inside(packageRoot, entry)) return { path: null }
-        let contained = physicallyInside(packageRoot, entry)
-        if (!contained && overlay) {
-          try {
-            // Existing entries, including dangling symlinks, must pass realpath.
-            fs.lstatSync(entry)
-          } catch (error) {
-            if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-              contained = physicallyInside(packageRoot, path.dirname(entry))
-            }
-          }
-        }
-        if (!contained) return { path: null }
-        if (overlay) return { path: openPath ?? entry }
+        let physicalEntry: string
+        let entryExists = true
         try {
-          const stat = fs.statSync(entry)
-          return { path: stat.isFile() && stat.size <= 4 * 1024 * 1024 ? entry : null }
+          physicalEntry = fs.realpathSync.native(entry)
+        } catch {
+          entryExists = false
+          try {
+            // A dangling link is an existing entry with no stable physical identity.
+            fs.lstatSync(entry)
+            return { path: null }
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== "ENOENT") return { path: null }
+          }
+          try {
+            physicalEntry = path.join(
+              fs.realpathSync.native(path.dirname(entry)),
+              path.basename(entry),
+            )
+          } catch { return { path: null } }
+        }
+        if (!inside(physicalPackageRoot, physicalEntry)) return { path: null }
+        const openPath = overlayPath?.(physicalEntry)
+        const overlay = openPath !== undefined || hasOverlay(entry)
+        if (overlay) return { path: openPath ?? entry }
+        if (!entryExists) return { path: null }
+        try {
+          const stat = fs.statSync(physicalEntry)
+          return {
+            path: stat.isFile() && stat.size <= 4 * 1024 * 1024 ? entry : null,
+          }
         } catch {
           return { path: null }
         }
@@ -145,6 +159,7 @@ export class LocalPackageResolver {
     // Clear the bounded ownership snapshot across lexical/canonical root aliases.
     this.directoryOwners.clear()
     this.installations.clear()
+    this.canonicalRoots.clear()
     for (const model of this.projectModels.values()) model.invalidate()
     for (const manifestPath of this.manifests.keys()) {
       if (rootPath === undefined || inside(rootPath, manifestPath)) this.manifests.delete(manifestPath)
@@ -208,19 +223,57 @@ export class LocalPackageResolver {
     overlayPath: (physicalPath: string) => string | undefined,
     checkpoint: () => void = () => {},
   ): string | undefined {
-    if (!containingFile.split(path.sep).includes("oh_modules")) return candidate
-    checkpoint()
-    let physicalRoot: string
+    const physicalRoot = this.canonicalRoot(rootPath)
+    if (physicalRoot === undefined) return undefined
     let physicalSource: string
+    let sourceExists = true
     try {
-      physicalRoot = fs.realpathSync.native(rootPath)
       physicalSource = fs.realpathSync.native(candidate)
-    } catch { return undefined }
+    } catch {
+      sourceExists = false
+      try {
+        // An existing lexical entry without a physical identity is dangling or
+        // unreadable; it must never inherit an unrelated overlay identity.
+        fs.lstatSync(candidate)
+        return undefined
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") return undefined
+      }
+      try {
+        physicalSource = path.join(
+          fs.realpathSync.native(path.dirname(candidate)),
+          path.basename(candidate),
+        )
+      } catch { return undefined }
+    }
     if (!inside(physicalRoot, physicalSource)) return undefined
     const openPath = overlayPath(physicalSource)
+    if (!sourceExists && openPath === undefined) return undefined
+    checkpoint()
     if (openPath !== undefined) return openPath
+    if (!containingFile.split(path.sep).includes("oh_modules")) {
+      return candidate
+    }
     const clientRoot = clientWorkspaceRoot(physicalRoot, path.dirname(containingFile), checkpoint)
     return clientRoot === undefined ? undefined : path.join(clientRoot, path.relative(physicalRoot, physicalSource))
+  }
+
+  private canonicalRoot(rootPath: string): string | undefined {
+    const root = path.resolve(rootPath)
+    const cached = this.canonicalRoots.get(root)
+    if (cached !== undefined) {
+      this.canonicalRoots.delete(root)
+      this.canonicalRoots.set(root, cached)
+      return cached
+    }
+    let physicalRoot: string
+    try { physicalRoot = fs.realpathSync.native(root) }
+    catch { return undefined }
+    this.canonicalRoots.set(root, physicalRoot)
+    while (this.canonicalRoots.size > MAX_CACHED_ROOTS) {
+      this.canonicalRoots.delete(this.canonicalRoots.keys().next().value!)
+    }
+    return physicalRoot
   }
 
   private installedPackage(root: string, start: string, name: string, checkpoint: () => void): string | undefined {
@@ -244,10 +297,10 @@ export class LocalPackageResolver {
   }
 
   private findInstalledPackage(root: string, start: string, name: string, checkpoint: () => void): string | undefined {
-    let physicalRoot: string
+    const physicalRoot = this.canonicalRoot(root)
+    if (physicalRoot === undefined) return undefined
     let directory: string
     try {
-      physicalRoot = fs.realpathSync.native(root)
       directory = fs.realpathSync.native(start)
     } catch { return undefined }
     const clientRoot = clientWorkspaceRoot(physicalRoot, start, checkpoint)

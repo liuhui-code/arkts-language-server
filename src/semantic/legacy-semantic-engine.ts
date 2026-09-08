@@ -68,14 +68,18 @@ export class LegacySemanticEngine implements SemanticEnginePort {
   private readonly foldingRangeProvider = new FoldingRangeProvider()
 
   constructor(private readonly projects: ProjectResolverPort, logger?: StructuredLogger) {
-    this.engines = new SemanticTypeEngineRegistry(this.packageResolver, logger ? (workspaceRoot, sdk) => {
-      logger.info("sdk.selected", {
-        workspaceRoot, sdkPath: sdk.path, source: sdk.source, ready: sdk.ready,
-        metadataStatus: sdk.identity?.status ?? "unavailable",
-        apiVersion: sdk.identity?.apiVersion, componentVersion: sdk.identity?.componentVersion,
-        dialectCompatibility: "unverified", declarationSupport: "typescript-compatible-only",
-      })
-    } : undefined)
+    this.engines = new SemanticTypeEngineRegistry(
+      this.packageResolver,
+      logger ? (workspaceRoot, sdk) => {
+        logger.info("sdk.selected", {
+          workspaceRoot, sdkPath: sdk.path, source: sdk.source, ready: sdk.ready,
+          metadataStatus: sdk.identity?.status ?? "unavailable",
+          apiVersion: sdk.identity?.apiVersion, componentVersion: sdk.identity?.componentVersion,
+          dialectCompatibility: "unverified", declarationSupport: "typescript-compatible-only",
+        })
+      } : undefined,
+      this.documents,
+    )
   }
 
   sync(document: DocumentSnapshot): void {

@@ -15,6 +15,8 @@ export interface HarmonyProjectScope {
   readonly reason?: string
 }
 
+const PHYSICAL_SOURCE_ROOTS = new WeakMap<HarmonyProjectScope, readonly string[]>()
+
 interface ModuleScope {
   readonly physicalRoot: string
   readonly scope: HarmonyProjectScope
@@ -60,6 +62,10 @@ export class HarmonyProjectModel {
       && snapshot.modules.some((module) => inside(physicalDirectory, module.physicalRoot))
   }
 
+  physicalSourceRootsFor(scope: HarmonyProjectScope): readonly string[] {
+    return PHYSICAL_SOURCE_ROOTS.get(scope) ?? []
+  }
+
   invalidate(): void {
     this.snapshot = undefined
   }
@@ -77,11 +83,11 @@ export class HarmonyProjectModel {
       }
       return Object.freeze({
         status: "unconfigured",
-        scope: Object.freeze({
+        scope: projectScope({
           status: "unconfigured",
           sourceRoots: Object.freeze([this.rootPath]),
           resourceRoots: Object.freeze([this.rootPath]),
-        }),
+        }, [physicalPath(this.rootPath) ?? this.rootPath]),
       })
     }
     if (!profile) return invalid("invalid-project-profile")
@@ -160,6 +166,7 @@ function moduleScope(
   const target = object(targets[0])!
   const mainSourceRoot = path.join(moduleRoot, "src", "main")
   const sourceRoots: string[] = []
+  const physicalSourceRoots: string[] = []
   if (target.source !== undefined) {
     const source = object(target.source)
     if (!source) return unavailable("invalid-target-source")
@@ -181,12 +188,29 @@ function moduleScope(
         }
         try {
           if (!fs.statSync(root).isDirectory()) return unavailable("source-root-unavailable")
-        } catch { return unavailable("source-root-unavailable") }
-        if (root !== mainSourceRoot && !sourceRoots.includes(root)) sourceRoots.push(root)
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+            return unavailable("source-root-unavailable")
+          }
+          try {
+            // A dangling link is not a prospective source root and must fail closed.
+            fs.lstatSync(root)
+            return unavailable("source-root-unavailable")
+          } catch (linkError) {
+            if ((linkError as NodeJS.ErrnoException).code !== "ENOENT") {
+              return unavailable("source-root-unavailable")
+            }
+          }
+        }
+        if (root !== mainSourceRoot && !sourceRoots.includes(root)) {
+          sourceRoots.push(root)
+          physicalSourceRoots.push(physical)
+        }
       }
     }
   }
   sourceRoots.push(mainSourceRoot)
+  physicalSourceRoots.push(physicalPath(mainSourceRoot) ?? path.resolve(mainSourceRoot))
   let resourceRoots = [path.join(moduleRoot, "src", "main", "resources")]
   if (target.resource !== undefined) {
     const resource = object(target.resource)
@@ -211,11 +235,11 @@ function moduleScope(
       }
     }
   }
-  return Object.freeze({
+  return projectScope({
     status: "ready", moduleRoot, targetName,
     sourceRoots: Object.freeze(sourceRoots),
     resourceRoots: Object.freeze(resourceRoots),
-  })
+  }, physicalSourceRoots)
 }
 
 function parseSelection(value: unknown): ProjectSelection | undefined {
@@ -247,10 +271,19 @@ function plainRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function unavailable(reason: string): HarmonyProjectScope {
-  return Object.freeze({
+  return projectScope({
     status: "unavailable", reason,
     sourceRoots: Object.freeze([]), resourceRoots: Object.freeze([]),
-  })
+  }, [])
+}
+
+function projectScope(
+  scope: HarmonyProjectScope,
+  physicalSourceRoots: readonly string[],
+): HarmonyProjectScope {
+  const frozen = Object.freeze(scope)
+  PHYSICAL_SOURCE_ROOTS.set(frozen, Object.freeze([...physicalSourceRoots]))
+  return frozen
 }
 
 function readProfile(filePath: string): Record<string, unknown> | null | undefined {

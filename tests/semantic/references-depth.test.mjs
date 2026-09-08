@@ -139,6 +139,307 @@ test("finds named cross-module references only in declared Stage modules", async
   assert.ok(response.result.every((candidate) => !excludedKeys.has(locationKey(candidate))))
 })
 
+test("does not search unopened inactive-target references for a named dependency", async (t) => {
+  const materialized = await materializeConformanceWorkspace()
+  const scenario = namedReferenceScenario(t, materialized)
+  const { query } = scenario
+
+  const entryRoot = path.join(materialized.workspaceRoot, "entry")
+  const tabletRoot = path.join(entryRoot, "src", "tablet")
+  const desktopPath = path.join(entryRoot, "src", "desktop", "Desktop.ets")
+  fs.mkdirSync(tabletRoot, { recursive: true })
+  fs.mkdirSync(path.dirname(desktopPath), { recursive: true })
+  const inactiveText = [
+    'import { SharedProfile } from "shared"',
+    'export const inactiveProfile: SharedProfile = { id: "inactive" }',
+    '',
+  ].join("\n")
+  fs.writeFileSync(desktopPath, inactiveText)
+  selectTabletTarget(materialized, { includeDesktop: true })
+
+  const inactiveUri = pathToFileURL(desktopPath).href
+  const inactiveLocations = [
+    location(inactiveUri, utf16RangeOf(inactiveText, "SharedProfile", 0)),
+    location(inactiveUri, utf16RangeOf(inactiveText, "SharedProfile", 1)),
+  ]
+  const { server } = await scenario.openServer(20)
+  server.send({
+    jsonrpc: "2.0",
+    id: 21,
+    method: "textDocument/references",
+    params: {
+      textDocument: { uri: query.uri },
+      position: midpoint(query.range),
+      context: { includeDeclaration: true },
+    },
+  })
+
+  const response = await server.response(21, 15_000)
+  assert.equal(response.error, undefined, JSON.stringify(response.error))
+  assert.deepEqual(
+    response.result,
+    scenario.baseLocations,
+  )
+  const inactiveKeys = new Set(inactiveLocations.map(locationKey))
+  assert.ok(
+    response.result.every((candidate) => !inactiveKeys.has(locationKey(candidate))),
+    "the unselected desktop target must not become a project root",
+  )
+})
+
+test("uses one authoritative named-module overlay per physical source", async (t) => {
+  const materialized = await materializeConformanceWorkspace()
+  const scenario = namedReferenceScenario(t, materialized)
+  const { query } = scenario
+  const barrel = materialized.cases["cross-module.barrel"]
+  const origin = materialized.cases["cross-module.definition"]
+  const importUse = materialized.cases["cross-module.import"]
+  const barrelPath = fileURLToPath(barrel.uri)
+  // The later open must win independently of lexical URI order.
+  const firstAliasPath = path.join(path.dirname(barrelPath), "ZFirstAliasIndex.ets")
+  const secondAliasPath = path.join(path.dirname(barrelPath), "ASecondAliasIndex.ets")
+  const firstAliasUri = pathToFileURL(firstAliasPath).href
+  const secondAliasUri = pathToFileURL(secondAliasPath).href
+  fs.symlinkSync(barrelPath, firstAliasPath, "file")
+  fs.symlinkSync(barrelPath, secondAliasPath, "file")
+  const diskBarrelText = fs.readFileSync(barrelPath, "utf8")
+  const firstOverlayText = `// 🚀 first unsaved alias overlay\n\n${diskBarrelText}`
+  const secondOverlayText = `// 🛰️ second unsaved alias overlay\n// current authority\n\n${diskBarrelText}`
+  const revisedFirstOverlayText = `// 🚀 revised first alias\n// newest edit wins\n\n\n${diskBarrelText}`
+  const firstOverlayBarrel = location(
+    firstAliasUri,
+    utf16RangeOf(firstOverlayText, "SharedProfile", 0),
+  )
+  const secondOverlayBarrel = location(
+    secondAliasUri,
+    utf16RangeOf(secondOverlayText, "SharedProfile", 0),
+  )
+  const diskBarrel = location(barrel.uri, barrel.range)
+  const diskExpected = scenario.baseLocations
+  const firstOverlayUsages = sortedLocations([
+    location(importUse.uri, importUse.range),
+    location(query.uri, query.range),
+    firstOverlayBarrel,
+  ])
+  const firstOverlayWithDeclaration = sortedLocations([
+    ...firstOverlayUsages,
+    location(origin.uri, origin.range),
+  ])
+  const secondOverlayWithDeclaration = sortedLocations([
+    location(importUse.uri, importUse.range),
+    location(query.uri, query.range),
+    secondOverlayBarrel,
+    location(origin.uri, origin.range),
+  ])
+  const revisedFirstWithDeclaration = sortedLocations([
+    location(importUse.uri, importUse.range),
+    location(query.uri, query.range),
+    location(firstAliasUri, utf16RangeOf(revisedFirstOverlayText, "SharedProfile", 0)),
+    location(origin.uri, origin.range),
+  ])
+  const { server } = await scenario.openServer(30)
+  const warm = await requestReferences(server, 31, midpoint(query.range), true, query.uri)
+  assert.equal(warm.error, undefined, JSON.stringify(warm.error))
+  assert.deepEqual(warm.result, diskExpected)
+
+  server.send({
+    jsonrpc: "2.0",
+    method: "textDocument/didOpen",
+    params: {
+      textDocument: {
+        uri: firstAliasUri,
+        languageId: "arkts",
+        version: 1,
+        text: firstOverlayText,
+      },
+    },
+  })
+  const withoutDeclaration = await requestReferences(
+    server,
+    32,
+    midpoint(query.range),
+    false,
+    query.uri,
+  )
+  const withDeclaration = await requestReferences(
+    server,
+    33,
+    midpoint(query.range),
+    true,
+    query.uri,
+  )
+  assert.equal(withoutDeclaration.error, undefined, JSON.stringify(withoutDeclaration.error))
+  assert.equal(withDeclaration.error, undefined, JSON.stringify(withDeclaration.error))
+  assert.deepEqual(withoutDeclaration.result, firstOverlayUsages)
+  assert.deepEqual(withDeclaration.result, firstOverlayWithDeclaration)
+  assertUniqueNonEmptyLocations(withDeclaration.result)
+  assert.ok(
+    withDeclaration.result.every((candidate) => locationKey(candidate) !== locationKey(diskBarrel)),
+    "the stale canonical disk view must not coexist with its authoritative alias overlay",
+  )
+
+  server.send({
+    jsonrpc: "2.0",
+    method: "textDocument/didOpen",
+    params: {
+      textDocument: {
+        uri: secondAliasUri,
+        languageId: "arkts",
+        version: 1,
+        text: secondOverlayText,
+      },
+    },
+  })
+  const secondAuthority = await requestReferences(
+    server,
+    34,
+    midpoint(query.range),
+    true,
+    query.uri,
+  )
+  assert.equal(secondAuthority.error, undefined, JSON.stringify(secondAuthority.error))
+  assert.deepEqual(secondAuthority.result, secondOverlayWithDeclaration)
+
+  const firstAliasRequest = await requestReferences(
+    server,
+    35,
+    midpoint(firstOverlayBarrel.range),
+    true,
+    firstAliasUri,
+  )
+  assert.equal(firstAliasRequest.error, undefined, JSON.stringify(firstAliasRequest.error))
+  assert.deepEqual(firstAliasRequest.result, firstOverlayWithDeclaration)
+
+  const globalAuthority = await requestReferences(
+    server,
+    36,
+    midpoint(query.range),
+    true,
+    query.uri,
+  )
+  assert.equal(globalAuthority.error, undefined, JSON.stringify(globalAuthority.error))
+  assert.deepEqual(globalAuthority.result, secondOverlayWithDeclaration)
+
+  server.send({
+    jsonrpc: "2.0",
+    method: "textDocument/didChange",
+    params: {
+      textDocument: { uri: firstAliasUri, version: 2 },
+      contentChanges: [{ text: revisedFirstOverlayText }],
+    },
+  })
+  const firstReactivated = await requestReferences(server, 37, midpoint(query.range), true, query.uri)
+  assert.equal(firstReactivated.error, undefined, JSON.stringify(firstReactivated.error))
+  assert.deepEqual(firstReactivated.result, revisedFirstWithDeclaration)
+
+  server.send({
+    jsonrpc: "2.0",
+    method: "textDocument/didClose",
+    params: { textDocument: { uri: firstAliasUri } },
+  })
+  const secondRestored = await requestReferences(server, 38, midpoint(query.range), true, query.uri)
+  assert.equal(secondRestored.error, undefined, JSON.stringify(secondRestored.error))
+  assert.deepEqual(secondRestored.result, secondOverlayWithDeclaration)
+
+  server.send({
+    jsonrpc: "2.0",
+    method: "textDocument/didClose",
+    params: { textDocument: { uri: secondAliasUri } },
+  })
+  const diskRestored = await requestReferences(server, 39, midpoint(query.range), true, query.uri)
+  assert.equal(diskRestored.error, undefined, JSON.stringify(diskRestored.error))
+  assert.deepEqual(diskRestored.result, diskExpected)
+})
+
+test("refreshes named references when a declared target source root first appears", async (t) => {
+  const materialized = await materializeConformanceWorkspace()
+  const entryRoot = path.join(materialized.workspaceRoot, "entry")
+  selectTabletTarget(materialized)
+
+  const scenario = namedReferenceScenario(t, materialized)
+  const { query, baseLocations: base } = scenario
+  const references = async (server, id) => {
+    const response = await requestReferences(server, id, midpoint(query.range), true, query.uri)
+    assert.equal(response.error, undefined, JSON.stringify(response.error))
+    return response.result
+  }
+
+  const { server: warmServer } = await scenario.openServer()
+  assert.deepEqual(await references(warmServer, 2), base)
+
+  const tabletRoot = path.join(entryRoot, "src", "tablet")
+  const watchedPath = path.join(tabletRoot, "WatchedReference.ets")
+  const watchedUri = pathToFileURL(watchedPath).href
+  const watchedText = [
+    'import { SharedProfile } from "shared"',
+    'export const watched = "😀" as unknown as SharedProfile',
+    '',
+  ].join("\n")
+  fs.mkdirSync(tabletRoot)
+  fs.writeFileSync(watchedPath, watchedText)
+  const stableTimestamp = new Date("2020-01-02T03:04:05.000Z")
+  fs.utimesSync(watchedPath, stableTimestamp, stableTimestamp)
+  warmServer.send({
+    jsonrpc: "2.0",
+    method: "workspace/didChangeWatchedFiles",
+    params: { changes: [{ uri: watchedUri, type: 1 }] },
+  })
+  const warmCreated = await references(warmServer, 3)
+
+  const { server: freshServer } = await scenario.openServer()
+  const freshCreated = await references(freshServer, 2)
+  const expectedCreated = sortedLocations([
+    ...base,
+    location(watchedUri, utf16RangeOf(watchedText, "SharedProfile", 0)),
+    location(watchedUri, utf16RangeOf(watchedText, "SharedProfile", 1)),
+  ])
+  assert.deepEqual(freshCreated, expectedCreated)
+  assert.deepEqual(
+    warmCreated,
+    freshCreated,
+    "the warm project model must admit the first file in a declared source root",
+  )
+
+  const changedText = watchedText.replace("unknown as SharedProfile", "unknown as MissingSymbol")
+  assert.equal(Buffer.byteLength(changedText), Buffer.byteLength(watchedText))
+  fs.writeFileSync(watchedPath, changedText)
+  fs.utimesSync(watchedPath, stableTimestamp, stableTimestamp)
+  warmServer.send({
+    jsonrpc: "2.0",
+    method: "workspace/didChangeWatchedFiles",
+    params: { changes: [{ uri: watchedUri, type: 2 }] },
+  })
+  const warmChanged = await references(warmServer, 4)
+  const { server: freshChangedServer } = await scenario.openServer()
+  const freshChanged = await references(freshChangedServer, 2)
+  const expectedChanged = sortedLocations([
+    ...base,
+    location(watchedUri, utf16RangeOf(changedText, "SharedProfile", 0)),
+  ])
+  assert.deepEqual(freshChanged, expectedChanged)
+  assert.deepEqual(
+    warmChanged,
+    freshChanged,
+    "an equal-size same-mtime watcher change must replace the warm snapshot",
+  )
+
+  fs.unlinkSync(watchedPath)
+  warmServer.send({
+    jsonrpc: "2.0",
+    method: "workspace/didChangeWatchedFiles",
+    params: { changes: [{ uri: watchedUri, type: 3 }] },
+  })
+  const warmDeleted = await references(warmServer, 5)
+  const { server: freshDeletedServer } = await scenario.openServer()
+  const freshDeleted = await references(freshDeletedServer, 2)
+  assert.deepEqual(freshDeleted, base)
+  assert.deepEqual(
+    warmDeleted,
+    freshDeleted,
+    "the watched delete must remove the warm source without invalidating the target model",
+  )
+})
+
 test("finds unopened barrel references with exact UTF-16 ranges and declaration policy", async (t) => {
   const server = new LspProcess()
   t.after(() => server.close())
@@ -344,13 +645,105 @@ test("uses only changed overlay references for both declaration policies", async
   assert.ok(withDeclaration.result.every((candidate) => !shadowKeys.includes(locationKey(candidate))))
 })
 
-async function requestReferences(server, id, position, includeDeclaration) {
+function namedReferenceScenario(t, materialized) {
+  const query = materialized.cases["cross-module.references-query"]
+  const servers = []
+  const baseLocations = sortedLocations([
+    "cross-module.import",
+    "cross-module.references-query",
+    "cross-module.barrel",
+    "cross-module.definition",
+  ].map((id) => {
+    const { uri, range } = materialized.cases[id]
+    return location(uri, range)
+  }))
+
+  t.after(async () => {
+    try {
+      for (const server of servers.reverse()) await server.close()
+    } finally {
+      await fs.promises.rm(materialized.root, { recursive: true, force: true })
+    }
+  })
+
+  return {
+    query,
+    baseLocations,
+    async openServer(initializeId = 1) {
+      const instance = servers.length
+      const server = new LspProcess({
+        env: {
+          HOME: path.join(materialized.root, "missing-home"),
+          DEVECO_SDK_HOME: path.join(materialized.root, "missing-deveco"),
+          ARKLINE_HARMONY_SDK_PATH: path.join(materialized.corpusRoot, "sdk", "openharmony"),
+          ARKTS_LSP_LOG_DIR: path.join(materialized.root, `logs-${instance}`),
+          ARKTS_INDEX_CACHE_DIR: path.join(materialized.root, `cache-${instance}`),
+        },
+      })
+      servers.push(server)
+      server.send({
+        jsonrpc: "2.0",
+        id: initializeId,
+        method: "initialize",
+        params: {
+          processId: process.pid,
+          rootUri: pathToFileURL(materialized.workspaceRoot).href,
+          capabilities: { general: { positionEncodings: ["utf-16"] } },
+        },
+      })
+      const initialized = await server.response(initializeId)
+      server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
+      server.send({
+        jsonrpc: "2.0",
+        method: "textDocument/didOpen",
+        params: {
+          textDocument: {
+            uri: query.uri,
+            languageId: "arkts",
+            version: 1,
+            text: fs.readFileSync(fileURLToPath(query.uri), "utf8"),
+          },
+        },
+      })
+      return { server, initialized }
+    },
+  }
+}
+
+function selectTabletTarget(materialized, { includeDesktop = false } = {}) {
+  const entryRoot = path.join(materialized.workspaceRoot, "entry")
+  const targets = [{ name: "tablet", source: { sourceRoots: ["./src/tablet"] } }]
+  if (includeDesktop) {
+    targets.push({ name: "desktop", source: { sourceRoots: ["./src/desktop"] } })
+  }
+  fs.writeFileSync(path.join(entryRoot, "build-profile.json5"), JSON.stringify({
+    apiType: "stageMode",
+    targets,
+  }))
+  fs.writeFileSync(path.join(materialized.workspaceRoot, "build-profile.json5"), JSON.stringify({
+    app: { products: [{ name: "default" }] },
+    modules: [
+      {
+        name: "entry",
+        srcPath: "./entry",
+        targets: [{ name: "tablet", applyToProducts: ["default"] }],
+      },
+      {
+        name: "shared",
+        srcPath: "./shared",
+        targets: [{ name: "default", applyToProducts: ["default"] }],
+      },
+    ],
+  }))
+}
+
+async function requestReferences(server, id, position, includeDeclaration, uri = consumerUri) {
   server.send({
     jsonrpc: "2.0",
     id,
     method: "textDocument/references",
     params: {
-      textDocument: { uri: consumerUri },
+      textDocument: { uri },
       position,
       context: { includeDeclaration },
     },

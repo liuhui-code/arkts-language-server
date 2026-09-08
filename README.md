@@ -33,13 +33,17 @@ OpenHarmony API 24 with ETS 6.1.1.125 plus the tested Stage
 product/module/target subset. Local Zed installation is also available through
 one command.
 
-Phase 2 is now active. It promotes existing editor capabilities from isolated
-feature coverage to engineering-level correctness in real project workflows:
-named cross-module references and rename, ArkUI lowering/compiler conformance,
-and the same scenarios through both the production bundle and installed
-artifact. Phase 3/4 responsiveness, lifecycle, latency, and memory gates follow
-only after those results are complete and correct. See the
-[execution checklist](docs/plans/2026-09-07-large-project-reuse-execution-plan.md).
+Phase 2 is active. The P2.1b candidate covers named cross-module references,
+inactive-target exclusion, one authoritative unsaved overlay, watcher/fresh-
+process equivalence, and fail-closed lazy reads when a discovered file changes
+identity. Relative workspace and SDK imports keep separate physical boundaries,
+and call-hierarchy rejection follows the actual call target rather than unrelated
+imports. The unified fast gate and frozen review pass; PR/CI and merge remain
+pending. P2.2 cross-module rename remains the next slice. Later phases retain ArkUI/
+compiler conformance, installed-artifact, responsiveness, latency, and memory
+gates. See the
+[execution checklist](docs/plans/2026-09-07-large-project-reuse-execution-plan.md)
+and [P2.1b TDD record](docs/tdd/p2-reference-freshness.md).
 
 ## Install for Zed
 
@@ -201,9 +205,12 @@ real-Zed acceptance record.
 ## Local Beta boundaries
 
 - Local workspaces only; SSH/remote delivery is intentionally out of scope.
-- References are advertised; rename and code actions are advertised only when
-  the client declares the required safe-edit capabilities. Phase 2 is still
-  validating their complete cross-module Stage-project workflows.
+- Named references across the selected Stage-project subset have P2.1 focused
+  coverage; P2.1b's unified gate and frozen review pass, while its PR/CI and merge
+  remain pending.
+  Rename and code actions are advertised only when the client declares the
+  required safe-edit capabilities, and the complete P2.2 cross-module rename
+  workflow is not yet certified.
 - There is no automatic binary updater; rerun the installer for a new local
   build.
 - The copied semantic core's upstream source is currently marked
