@@ -3,7 +3,7 @@
 父 revision：`fdcfb43c3214e1779392a66fbaa18b534e856e52`。
 
 当前状态：P2.1b 的行为切片、受影响回归、统一 `pnpm check:fast` 与冻结审查均已完成；
-最终候选为827/827通过，PR 与合并证据待回填。第一次完整快速门禁793/798和冻结前
+最终候选为827/827通过，PR #5 已创建，CI 与合并证据待回填。第一次完整快速门禁793/798和冻结前
 一次822/827均为有效 RED，不是通过记录。
 P2.2 跨模块 rename 是下一功能切片。
 本轮新增的 rename 用例只锁定“源码不可验证时不得返回编辑”的失败关闭边界，不代表
@@ -312,7 +312,7 @@ duration_ms 480869.10933
 - [x] 运行 `pnpm check` 与 `git diff --check`。
 - [x] 运行统一 `pnpm check:fast`，记录准确通过数、失败/取消/跳过/todo和耗时。
 - [x] 冻结复审确认无 P0/P1。
-- [ ] PR CI 通过并合入 `main`，回填 PR 与 merge revision。
+- [ ] PR #5 CI 通过并合入 `main`，回填 merge revision。
 
 本次使用 documentation-only 例外：reason=同步已观察的 RED/GREEN 与待办状态，不改变运行行为；
 scope=`README.md`、本执行计划与本 TDD 记录；owner=P2.1b 维护者；expires=2026-09-14。

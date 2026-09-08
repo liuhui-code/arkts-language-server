@@ -38,7 +38,7 @@ inactive-target exclusion, one authoritative unsaved overlay, watcher/fresh-
 process equivalence, and fail-closed lazy reads when a discovered file changes
 identity. Relative workspace and SDK imports keep separate physical boundaries,
 and call-hierarchy rejection follows the actual call target rather than unrelated
-imports. The unified fast gate and frozen review pass; PR/CI and merge remain
+imports. The unified fast gate and frozen review pass; PR #5 CI and merge remain
 pending. P2.2 cross-module rename remains the next slice. Later phases retain ArkUI/
 compiler conformance, installed-artifact, responsiveness, latency, and memory
 gates. See the

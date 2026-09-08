@@ -1,7 +1,7 @@
 # 大项目可用的 ArkTS Language Server：组件复用执行计划
 
 状态：Phase 2 in progress；Phase 1 的 P1.1–P1.6 及冻结门禁均已完成；P2.1b
-功能切片、统一快速门禁与冻结复审已完成，PR/CI 与合并待执行。
+功能切片、统一快速门禁与冻结复审已完成，PR #5 的 CI 与合并待执行。
 P1.4b 已锁定并验收 API 24 / ETS 6.1.1.125 的命名工作流；版本元信息本身仍不作为兼容认证。
 基线：`ed069cf5075992b7afd8821ffd12328a9a4fd7ea`。
 Phase 1 合并记录：PR #2，merge `db5d09c`。
@@ -145,7 +145,7 @@ P2.1b 集成收口清单：
 
 - [x] 候选冻结后运行 `pnpm check:fast` 并记录准确通过数、失败/取消/跳过/todo与耗时。
 - [x] 运行 `git diff --check`，并让最终冻结候选通过冻结复审且无 P0/P1。
-- [ ] 通过 PR 合并到 `main`，回填 PR、merge revision 与 CI 结果。
+- [ ] PR #5 通过 CI 后合并到 `main`，回填 merge revision 与 CI 结果。
 
 上述三项完成前，不把 P2.1b 称为已合并或统一门禁通过。下一功能切片仍是 P2.2，不能把本轮
 仅用于 source-unavailable 的 rename 安全回归扩张为跨模块 rename 已完成。
