@@ -50,6 +50,24 @@ test("provides selected target source roots before the retained main source root
   ])
 })
 
+test("retains a declared source root before its directory materializes", (t) => {
+  const fixture = declaredModule(t)
+  const tablet = path.join(fixture.moduleRoot, "src", "tablet")
+  fs.writeFileSync(fixture.moduleProfilePath, "{ targets: [{ name: 'default', source: { sourceRoots: ['./src/tablet'] } }] }")
+  assert.equal(fs.existsSync(tablet), false)
+  assert.deepEqual(fixture.model.scopeFor(fixture.sourcePath).sourceRoots, [
+    tablet, path.join(fixture.moduleRoot, "src", "main"),
+  ])
+})
+
+test("rejects a dangling declared source-root symlink", (t) => {
+  const fixture = declaredModule(t)
+  const tablet = path.join(fixture.moduleRoot, "src", "tablet")
+  fs.symlinkSync(path.join(fixture.root, "missing-outside"), tablet, "dir")
+  fs.writeFileSync(fixture.moduleProfilePath, "{ targets: [{ name: 'default', source: { sourceRoots: ['./src/tablet'] } }] }")
+  assert.equal(fixture.model.scopeFor(fixture.sourcePath).status, "unavailable")
+})
+
 test("does not admit target source roots nested beneath main", (t) => {
   const fixture = declaredModule(t)
   fs.writeFileSync(fixture.moduleProfilePath, "{ targets: [{ name: 'default', source: { sourceRoots: ['./src/main/ets'] } }] }")

@@ -9,6 +9,7 @@ import { pathToFileURL } from "node:url"
 import { buildSync } from "esbuild"
 import { CompletionItemKind } from "vscode-languageserver/node.js"
 
+import { buildDocumentStoreDriver } from "../support/build-document-store-driver.mjs"
 import { LspSession } from "../support/lsp-session.mjs"
 import { projectRoot } from "../support/lsp-process.mjs"
 
@@ -207,6 +208,314 @@ test("loads complete project membership lazily within hard snapshot bounds", (t)
     revision: 7,
     paths: 7,
   })
+})
+
+test("rejects an unopened project member replaced by an outside-workspace alias after discovery", (t) => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-membership-lazy-alias-"))
+  const outsideRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-membership-lazy-outside-"))
+  t.after(() => {
+    fs.rmSync(workspaceRoot, { recursive: true, force: true })
+    fs.rmSync(outsideRoot, { recursive: true, force: true })
+  })
+  const mainPath = path.join(workspaceRoot, "Main.ets")
+  const lateMemberPath = path.join(workspaceRoot, "ZzzLateCaller.ets")
+  const outsidePath = path.join(outsideRoot, "Outside.ets")
+  const mainSource = [
+    "export function workspaceTarget(value: number): number {",
+    "  return value + 1",
+    "}",
+    "",
+  ].join("\n")
+  fs.writeFileSync(mainPath, mainSource, "utf8")
+  for (let index = 0; index < 300; index += 1) {
+    fs.writeFileSync(
+      path.join(workspaceRoot, `A${String(index).padStart(3, "0")}Filler.ets`),
+      `export const filler${index} = ${index}\n`,
+      "utf8",
+    )
+  }
+  fs.writeFileSync(lateMemberPath, "export const safeBeforeDiscovery = true\n", "utf8")
+  fs.writeFileSync(outsidePath, [
+    'import { workspaceTarget } from "./Main"',
+    "export const outsideResult = workspaceTarget(1)",
+    "",
+  ].join("\n"), "utf8")
+
+  const storeDriverRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), "arkts-membership-store-driver-"),
+  )
+  t.after(() => fs.rmSync(storeDriverRoot, { recursive: true, force: true }))
+  const { SemanticDocumentStore } = buildDocumentStoreDriver(storeDriverRoot)
+  const { TypeScriptLanguageServiceEngine } = buildEngineDriver(t)
+  const store = new SemanticDocumentStore()
+  const engine = new TypeScriptLanguageServiceEngine(workspaceRoot, {
+    projectFileAccess: store,
+  })
+  t.after(() => {
+    store.dispose()
+    engine.dispose()
+  })
+  const position = {
+    path: mainPath,
+    line: 1,
+    column: mainSource.indexOf("workspaceTarget") + 1,
+    documentVersion: 1,
+    workspaceRoot,
+  }
+  store.sync({
+    path: mainPath,
+    content: mainSource,
+    documentVersion: 1,
+    workspaceRoot,
+  })
+  const discovered = store.prepare(position, true)
+
+  assert.equal(discovered.projectMembership.status, "complete")
+  assert.equal(discovered.projectMembership.paths.includes(lateMemberPath), true)
+  assert.equal(
+    discovered.documents.some((document) => document.path === lateMemberPath),
+    false,
+    "the replaced member must be beyond the eager document window",
+  )
+
+  fs.unlinkSync(lateMemberPath)
+  fs.symlinkSync(outsidePath, lateMemberPath, "file")
+  engine.prepare(discovered)
+  const result = engine.references(position, true)
+
+  assert.deepEqual(result, { status: "incomplete", reason: "source-unavailable" })
+})
+
+test("fails rename closed when an unopened project member becomes unavailable after discovery", (t) => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-membership-rename-alias-"))
+  const outsideRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-membership-rename-outside-"))
+  t.after(() => {
+    fs.rmSync(workspaceRoot, { recursive: true, force: true })
+    fs.rmSync(outsideRoot, { recursive: true, force: true })
+  })
+  const mainPath = path.join(workspaceRoot, "Main.ets")
+  const lateMemberPath = path.join(workspaceRoot, "ZzzLateCaller.ets")
+  const outsidePath = path.join(outsideRoot, "Outside.ets")
+  const mainSource = [
+    "export function workspaceTarget(value: number): number {",
+    "  return value + 1",
+    "}",
+    "export const localCall = workspaceTarget(1)",
+    "",
+  ].join("\n")
+  fs.writeFileSync(mainPath, mainSource, "utf8")
+  for (let index = 0; index < 300; index += 1) {
+    fs.writeFileSync(
+      path.join(workspaceRoot, `A${String(index).padStart(3, "0")}Filler.ets`),
+      `export const filler${index} = ${index}\n`,
+      "utf8",
+    )
+  }
+  fs.writeFileSync(lateMemberPath, [
+    'import { workspaceTarget } from "./Main"',
+    "export const lateCall = workspaceTarget(2)",
+    "",
+  ].join("\n"), "utf8")
+  fs.writeFileSync(outsidePath, "export const SECRET_OUTSIDE = 1\n", "utf8")
+
+  const storeDriverRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), "arkts-membership-rename-store-driver-"),
+  )
+  t.after(() => fs.rmSync(storeDriverRoot, { recursive: true, force: true }))
+  const { SemanticDocumentStore } = buildDocumentStoreDriver(storeDriverRoot)
+  const { TypeScriptLanguageServiceEngine } = buildEngineDriver(t)
+  const store = new SemanticDocumentStore()
+  const engine = new TypeScriptLanguageServiceEngine(workspaceRoot, {
+    projectFileAccess: store,
+  })
+  t.after(() => {
+    store.dispose()
+    engine.dispose()
+  })
+  const position = {
+    path: mainPath,
+    line: 1,
+    column: mainSource.indexOf("workspaceTarget") + 1,
+    documentVersion: 1,
+    workspaceRoot,
+  }
+  store.sync({
+    path: mainPath,
+    content: mainSource,
+    documentVersion: 1,
+    workspaceRoot,
+  })
+  const discovered = store.prepare(position, true)
+
+  assert.equal(discovered.projectMembership.status, "complete")
+  assert.equal(discovered.projectMembership.paths.includes(lateMemberPath), true)
+  assert.equal(
+    discovered.documents.some((document) => document.path === lateMemberPath),
+    false,
+    "the renamed member must be beyond the eager document window",
+  )
+
+  fs.unlinkSync(lateMemberPath)
+  fs.symlinkSync(outsidePath, lateMemberPath, "file")
+  engine.prepare(discovered)
+  const result = engine.rename(position, "renamedTarget")
+
+  assert.deepEqual(result, { status: "incomplete", reason: "source-unavailable" })
+})
+
+test("fails incoming calls closed when an unopened caller becomes unavailable after discovery", (t) => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-membership-incoming-alias-"))
+  const outsideRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-membership-incoming-outside-"))
+  t.after(() => {
+    fs.rmSync(workspaceRoot, { recursive: true, force: true })
+    fs.rmSync(outsideRoot, { recursive: true, force: true })
+  })
+  const mainPath = path.join(workspaceRoot, "Main.ets")
+  const lateMemberPath = path.join(workspaceRoot, "ZzzLateCaller.ets")
+  const outsidePath = path.join(outsideRoot, "Outside.ets")
+  const mainSource = [
+    "export function workspaceTarget(value: number): number {",
+    "  return value + 1",
+    "}",
+    "",
+  ].join("\n")
+  fs.writeFileSync(mainPath, mainSource, "utf8")
+  for (let index = 0; index < 300; index += 1) {
+    fs.writeFileSync(
+      path.join(workspaceRoot, `A${String(index).padStart(3, "0")}Filler.ets`),
+      `export const filler${index} = ${index}\n`,
+      "utf8",
+    )
+  }
+  fs.writeFileSync(lateMemberPath, [
+    'import { workspaceTarget } from "./Main"',
+    "export function lateCaller(): number { return workspaceTarget(2) }",
+    "",
+  ].join("\n"), "utf8")
+  fs.writeFileSync(outsidePath, "export const SECRET_OUTSIDE = 1\n", "utf8")
+
+  const storeDriverRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), "arkts-membership-incoming-store-driver-"),
+  )
+  t.after(() => fs.rmSync(storeDriverRoot, { recursive: true, force: true }))
+  const { SemanticDocumentStore } = buildDocumentStoreDriver(storeDriverRoot)
+  const { TypeScriptLanguageServiceEngine } = buildEngineDriver(t)
+  const store = new SemanticDocumentStore()
+  const engine = new TypeScriptLanguageServiceEngine(workspaceRoot, {
+    projectFileAccess: store,
+  })
+  t.after(() => {
+    store.dispose()
+    engine.dispose()
+  })
+  const position = {
+    path: mainPath,
+    line: 1,
+    column: mainSource.indexOf("workspaceTarget") + 1,
+    documentVersion: 1,
+    workspaceRoot,
+  }
+  engine.prepare(workspaceView({
+    rootPath: workspaceRoot,
+    mainPath,
+    mainSource,
+    membership: undefined,
+  }))
+  const prepared = engine.prepareCallHierarchy(position)
+  assert.equal(prepared.status, "complete")
+  assert.equal(prepared.items.length, 1)
+
+  store.sync({
+    path: mainPath,
+    content: mainSource,
+    documentVersion: 1,
+    workspaceRoot,
+  })
+  const discovered = store.prepare(position, true)
+  assert.equal(discovered.projectMembership.status, "complete")
+  assert.equal(discovered.projectMembership.paths.includes(lateMemberPath), true)
+  assert.equal(
+    discovered.documents.some((document) => document.path === lateMemberPath),
+    false,
+    "the caller must be beyond the eager document window",
+  )
+
+  fs.unlinkSync(lateMemberPath)
+  fs.symlinkSync(outsidePath, lateMemberPath, "file")
+  engine.prepare(discovered)
+  const result = engine.incomingCalls(position, prepared.items[0])
+
+  assert.deepEqual(result, { status: "incomplete", reason: "source-unavailable" })
+})
+
+test("fails prepare rename closed when an unopened project member becomes unavailable", (t) => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-membership-prepare-rename-"))
+  const outsideRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-membership-prepare-outside-"))
+  t.after(() => {
+    fs.rmSync(workspaceRoot, { recursive: true, force: true })
+    fs.rmSync(outsideRoot, { recursive: true, force: true })
+  })
+  const mainPath = path.join(workspaceRoot, "Main.ets")
+  const lateMemberPath = path.join(workspaceRoot, "ZzzLateCaller.ets")
+  const outsidePath = path.join(outsideRoot, "Outside.ets")
+  const mainSource = "export function workspaceTarget(value: number): number { return value + 1 }\n"
+  fs.writeFileSync(mainPath, mainSource, "utf8")
+  for (let index = 0; index < 300; index += 1) {
+    fs.writeFileSync(
+      path.join(workspaceRoot, `A${String(index).padStart(3, "0")}Filler.ets`),
+      `export const filler${index} = ${index}\n`,
+      "utf8",
+    )
+  }
+  fs.writeFileSync(lateMemberPath, [
+    'import { workspaceTarget } from "./Main"',
+    "export const lateCall = workspaceTarget(2)",
+    "",
+  ].join("\n"), "utf8")
+  fs.writeFileSync(outsidePath, "export const SECRET_OUTSIDE = 1\n", "utf8")
+
+  const storeDriverRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), "arkts-membership-prepare-store-driver-"),
+  )
+  t.after(() => fs.rmSync(storeDriverRoot, { recursive: true, force: true }))
+  const { SemanticDocumentStore } = buildDocumentStoreDriver(storeDriverRoot)
+  const { TypeScriptLanguageServiceEngine } = buildEngineDriver(t)
+  const store = new SemanticDocumentStore()
+  const engine = new TypeScriptLanguageServiceEngine(workspaceRoot, {
+    projectFileAccess: store,
+  })
+  t.after(() => {
+    store.dispose()
+    engine.dispose()
+  })
+  const position = {
+    path: mainPath,
+    line: 1,
+    column: mainSource.indexOf("workspaceTarget") + 1,
+    documentVersion: 1,
+    workspaceRoot,
+  }
+  store.sync({
+    path: mainPath,
+    content: mainSource,
+    documentVersion: 1,
+    workspaceRoot,
+  })
+  const discovered = store.prepare(position, true)
+  assert.equal(discovered.projectMembership.status, "complete")
+  assert.equal(discovered.projectMembership.paths.includes(lateMemberPath), true)
+  assert.equal(
+    discovered.documents.some((document) => document.path === lateMemberPath),
+    false,
+    "the unavailable member must be beyond the eager document window",
+  )
+
+  fs.unlinkSync(lateMemberPath)
+  fs.symlinkSync(outsidePath, lateMemberPath, "file")
+  engine.prepare(discovered)
+  const result = engine.prepareRename(position)
+
+  assert.deepEqual(result, { status: "incomplete", reason: "source-unavailable" })
 })
 
 test("drops resident scripts removed from a newer complete membership", (t) => {

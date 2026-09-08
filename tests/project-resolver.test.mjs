@@ -129,6 +129,69 @@ test("warm ownership does not cache entry existence or an open overlay", (t) => 
   assert.deepEqual(resolver.resolve(root, containingFile, "shared"), { path: null })
 })
 
+test("one canonical package entry snapshot drives overlay lookup and containment", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-package-entry-snapshot-"))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const directory = path.join(root, "entry", "src")
+  const shared = path.join(root, "shared")
+  fs.mkdirSync(directory, { recursive: true })
+  fs.mkdirSync(shared)
+  fs.writeFileSync(
+    path.join(root, "entry", "oh-package.json5"),
+    "{ dependencies: { shared: 'file:../shared' } }",
+  )
+  fs.writeFileSync(path.join(shared, "oh-package.json5"), "{ main: 'Index.ets' }")
+  const entry = path.join(shared, "Index.ets")
+  fs.writeFileSync(entry, "export class Shared {}")
+  const containingFile = path.join(directory, "Index.ets")
+  const resolver = new driver.LocalPackageResolver()
+  const realpath = fs.realpathSync.native
+  const canonicalEntry = realpath(entry)
+  let entrySnapshots = 0
+  t.mock.method(fs.realpathSync, "native", (...args) => {
+    if (path.resolve(String(args[0])) === entry) entrySnapshots += 1
+    return realpath(...args)
+  })
+  const overlayQueries = []
+
+  assert.deepEqual(resolver.resolve(root, containingFile, "shared", {
+    overlayPath(physicalPath) {
+      overlayQueries.push(physicalPath)
+      return undefined
+    },
+  }), { path: entry })
+  assert.deepEqual(overlayQueries, [canonicalEntry])
+  assert.equal(
+    entrySnapshots,
+    1,
+    "one immutable physical identity must serve both overlay selection and containment",
+  )
+})
+
+test("reuses the canonical workspace root across relative source resolutions", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-relative-root-snapshot-"))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const containingFile = path.join(root, "Main.ets")
+  const candidate = path.join(root, "Target.ets")
+  fs.writeFileSync(containingFile, "import { target } from './Target'\n")
+  fs.writeFileSync(candidate, "export const target = 1\n")
+  const resolver = new driver.LocalPackageResolver()
+  const realpath = fs.realpathSync.native
+  let rootSnapshots = 0
+  t.mock.method(fs.realpathSync, "native", (...args) => {
+    if (path.resolve(String(args[0])) === root) rootSnapshots += 1
+    return realpath(...args)
+  })
+
+  for (let index = 0; index < 100; index += 1) {
+    assert.equal(
+      resolver.installedSourcePath(root, containingFile, candidate, () => undefined),
+      candidate,
+    )
+  }
+  assert.equal(rootSnapshots, 1, "relative imports must share one canonical root snapshot")
+})
+
 test("declared installed imports resolve directly without enumerating oh_modules or its store", (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-package-direct-installed-"))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))

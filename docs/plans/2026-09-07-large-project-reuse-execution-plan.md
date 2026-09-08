@@ -1,11 +1,14 @@
 # 大项目可用的 ArkTS Language Server：组件复用执行计划
 
-状态：Phase 2 in progress；Phase 1 的 P1.1–P1.6 及冻结门禁均已完成。
+状态：Phase 2 in progress；Phase 1 的 P1.1–P1.6 及冻结门禁均已完成；P2.1b
+功能切片、统一快速门禁与冻结复审已完成，PR #5 的 CI 与合并待执行。
 P1.4b 已锁定并验收 API 24 / ETS 6.1.1.125 的命名工作流；版本元信息本身仍不作为兼容认证。
 基线：`ed069cf5075992b7afd8821ffd12328a9a4fd7ea`。
-实施分支：`codex/project-model-phase1`。
+Phase 1 合并记录：PR #2，merge `db5d09c`。
 Phase 2 启动基线：`9218508ddf9ee8e86b022965768a2a04c21a163b`。
-Phase 2 实施分支：`codex/phase2-engineering-correctness`。
+P2.1a 合并记录：PR #4，merge `fdcfb43c3214e1779392a66fbaa18b534e856e52`。
+P2.1b 父 revision：`fdcfb43c3214e1779392a66fbaa18b534e856e52`；候选分支：
+`codex/p21b-reference-freshness`。
 
 ## 已确认的产品决策
 
@@ -84,13 +87,16 @@ Stage 配置子集的 project-model/target/resource 套件。P1.1–P1.3 与 P1.
 
 ### 第二阶段：核心功能的工程级正确性
 
-- [ ] P2.1 在项目模型上覆盖命名依赖的跨模块 references 完整性；首个纵切使用真实
+- [x] P2.1 在项目模型上覆盖命名依赖的跨模块 references 完整性；首个纵切使用真实
   Stage 双模块、`file:` 依赖和包名导入，并排除未声明模块；inactive target、overlay 与
   watcher freshness 由后续纵切分别闭环。
   - [x] P2.1a 真实 stdio references 只返回 declared module 的 import/use、未打开 barrel
     与 origin；未列入根 profile 的 ghost module 不再污染 project membership。目录在打开前、
     文件在 stat 前按项目模型剪枝；未声明超大源码不把完整快照误报为 partial，嵌套声明模块仍可达。
-  - [ ] P2.1b 补齐 inactive target、overlay 与 watcher freshness 的 references 纵切。
+  - [x] P2.1b 补齐 inactive target、overlay 与 watcher freshness 的 references 纵切；
+    同时封闭 discovery 到 lazy read 之间的文件身份变化，避免大型 membership 中未打开文件
+    被软链接替换后读入越界内容。实现、统一门禁与冻结复审已完成，PR/CI 与合并
+    单列在下方待办。
 - [ ] P2.2 复用 P2.1 corpus 完成跨模块 rename 的安全编辑闭环：冲突、版本、原子
   `WorkspaceEdit`，应用后重新验证 definition/references/diagnostics。
 - [ ] 用支持版本的 SDK/编译器样例校验 ArkUI lowering、diagnostics、builder 与位置映射。
@@ -99,7 +105,50 @@ Stage 配置子集的 project-model/target/resource 套件。P1.1–P1.3 与 P1.
 P2.1a 验收（2026-09-07）：真实 child-stdio references 精确返回4个 UTF-16 location；
 未声明模块/根目录内的超大源码均不污染完整 membership，目录在打开前完成剪枝；聚焦回归
 29/29、相关缓存/语料/解析回归76/76、统一 `pnpm check:fast` 771/771通过。证据见
-[命名跨模块 references TDD](../tdd/p2-named-cross-module-references.md)。P2.1总体仍未完成。
+[命名跨模块 references TDD](../tdd/p2-named-cross-module-references.md)。这是 P2.1a 合并时的
+验收记录；P2.1 由下述 P2.1b 候选补齐，统一门禁和合并状态仍按独立清单跟踪。
+
+P2.1b 候选（父 revision `fdcfb43`）：真实 child-stdio 场景覆盖未选 target 的明确排除、
+同一物理源码只保留最近活动 overlay、相对导入也遵循相同 authority，以及声明 source root
+首次出现后的 Created/等字节同 mtime Changed/Deleted 与 fresh server 精确一致。多 alias 状态机
+显式验证 `second -> first -> second` authority 切换：同一个 lexical engine 每次都删除前任脚本，
+不会因 reset 由另一 alias 先消费而残留旧定义或补全。大型 membership 新增按
+`(canonical root, catalog revision, per-file admission token)` 绑定的按需读取口；文件在发现后被
+替换或越界时 references 返回 `source-unavailable`，rename 也只验证相同 fail-closed 安全边界，
+不提前宣称 P2.2 完成。
+
+相对解析继续复用一套 resolver，但把 lexical workspace 与 selected SDK 的物理授权分开：
+workspace importer 永远先受 workspace boundary 约束，即使 SDK 是 workspace 的祖先；lexical
+workspace symlink 也不能继承其 SDK target 的权限。真正位于 SDK 内的 declaration 仍可解析
+dotted-relative suffix。100-edge 热路径约为203次 `realpath`（约2.03次/edge），canonical root
+只 snapshot 一次；SDK 图与其他解析共享每64 edge一次取消检查。调用层级的越界失败只由被选
+函数实际产生的 import-call provenance 触发，type-only 或未使用的越界 import 不会污染空结果
+或合法的本地 outgoing edge。
+
+1000 文件 Stage membership 把 source-root `realpath` 从逐文件热循环降为每个 root 不超过4次，
+并在未变 epoch 复用不可变 membership snapshot；这些都是确定性 I/O、状态和取消契约，不是
+Phase 4 的 p95/RSS 结论。证据见
+[target/overlay/watcher freshness TDD](../tdd/p2-reference-freshness.md)。
+
+候选第一次完整执行 `pnpm check:fast` 得到793/798，准确暴露5类回归，而不是把局部 GREEN
+当作发布结论：outgoing call 越界被误报为空结果、SDK dotted-relative declaration 失效、
+object-property completion 的 checkpoint 从基线4增至80、alias reset 被另一个 lexical root
+先消费后遗留 removed path，以及只收到最新 owner revision 的 lexical engine 未重建。每项均以
+既有或新增稳定公开测试复现后最小修复；这次793/798是 RED 证据，绝不是最终门禁通过记录。
+
+冻结前一次完整门禁又以822/827暴露 re-export provenance 缺口：caller 的 bridge import 成功，
+但越界 failure 属于 bridge 的 `export ... from`。修复按具体导出名递归传播 named/star/default
+re-export failure，并保留本地显式导出的优先级。最终 affected suites 246/246、统一
+`pnpm check:fast` 827/827通过，0 failure/cancel/skip/todo；冻结 diff 复审无P0/P1。
+
+P2.1b 集成收口清单：
+
+- [x] 候选冻结后运行 `pnpm check:fast` 并记录准确通过数、失败/取消/跳过/todo与耗时。
+- [x] 运行 `git diff --check`，并让最终冻结候选通过冻结复审且无 P0/P1。
+- [ ] PR #5 通过 CI 后合并到 `main`，回填 merge revision 与 CI 结果。
+
+上述三项完成前，不把 P2.1b 称为已合并或统一门禁通过。下一功能切片仍是 P2.2，不能把本轮
+仅用于 source-unavailable 的 rename 安全回归扩张为跨模块 rename 已完成。
 
 ### 第三阶段：真实响应性与生命周期
 
@@ -166,7 +215,8 @@ SDK 路径和显式 product/target 配置用法已写入 README。未知/歧义�
 生产 bundle 构建和全部 fast 层，761/761通过；失败/取消/跳过/todo均为0，测试耗时469.61秒。
 独立真实 SDK 门禁为10/10、19.54秒；test-layer清单/runner契约32/32，`git diff --check`通过。
 第一阶段据此关闭；仍不宣称真实 Zed/安装产物或大型工程时延、内存已验收。
-本批未提交、推送或合并。
+“未提交、推送或合并”是该批验收当时的状态；Phase 1 后续已通过 PR #2 合入
+`main`（merge `db5d09c`）。
 
 ### 前批 P1.5a 记录
 
@@ -182,7 +232,8 @@ SDK 路径和显式 product/target 配置用法已写入 README。未知/歧义�
 复用现有 TypeScript engine、依赖闭包、JSON5 与失效链，本轮没有新增运行依赖。
 证据与固定官方实现来源见 [安装包TDD](../tdd/p1-installed-package-resolution.md)。
 该切片当时尚未验收真实 SDK；后续 P1.4b 已完成 API 24 命名工作流门禁。
-不可变安装产物、Zed host、大工程p95/RSS仍未验收；未提交、推送或合并。
+不可变安装产物、Zed host、大工程p95/RSS当时仍未验收；该批“未提交、推送或合并”也是
+历史中间状态，Phase 1 最终由 PR #2 合入 `main`。
 
 ### 前批 P1.1–P1.3 记录
 
@@ -201,7 +252,8 @@ SDK 路径和显式 product/target 配置用法已写入 README。未知/歧义�
 `pnpm check:fast` 664/664，失败/取消/跳过/todo均为0，耗时329.1秒。
 完整门禁首次暴露的闭包失效与关闭顺序问题均已修复后再通过，未放宽断言或清理逻辑。
 证据见 [本地依赖TDD](../tdd/p1-local-package-resolution.md) 与
-[正常关闭TDD](../tdd/p1-sidecar-shutdown.md)。本分支尚未提交、推送或合并。
+[正常关闭TDD](../tdd/p1-sidecar-shutdown.md)。该段记录保留了当时“尚未提交、推送或合并”
+的检查点；Phase 1 最终由 PR #2 合入 `main`。
 
 本批新增唯一运行依赖为锁定的 `json5@2.2.3`：TypeScript 的配置解析器不完整支持
 JSON5 的单引号/裸键，故复用专门解析组件，而非自行实现语法。配置读取每文件最多64 KiB，

@@ -23,7 +23,7 @@ import type {
 import { ArkUIResourceLanguageProvider } from "../arkui/resource-language-provider.js"
 import { LocalPackageResolver } from "../sdk/local-package-resolver.js"
 import type { HarmonyProjectModel } from "../../project/harmony-project-model.js"
-import type { SemanticWorkspaceView } from "../workspace/document-store.js"
+import type { ProjectFileAccessPort, SemanticWorkspaceView } from "../workspace/document-store.js"
 import { arbitrateCompletionLists } from "./completion-arbitrator.js"
 import { TypeScriptLanguageServiceEngine, type TypeScriptLanguageServiceEngineOptions } from "./typescript-language-service.js"
 
@@ -152,6 +152,7 @@ export class SemanticTypeEngineRegistry {
   constructor(
     private readonly packageResolver = new LocalPackageResolver(),
     private readonly onSdkSelected?: TypeScriptLanguageServiceEngineOptions["onSdkSelected"],
+    private readonly projectFileAccess?: ProjectFileAccessPort,
   ) {}
 
   prepare(workspace: SemanticWorkspaceView): SemanticTypeQueryContext {
@@ -175,7 +176,9 @@ export class SemanticTypeEngineRegistry {
     if (!entry) {
       entry = {
         engine: new TypeScriptLanguageServiceEngine(rootPath, {
-          packageResolver: this.packageResolver, onSdkSelected: this.onSdkSelected,
+          packageResolver: this.packageResolver,
+          onSdkSelected: this.onSdkSelected,
+          projectFileAccess: this.projectFileAccess,
         }),
         arkui: new ArkUIResourceLanguageProvider(rootPath),
         project: this.packageResolver.projectFor(rootPath),

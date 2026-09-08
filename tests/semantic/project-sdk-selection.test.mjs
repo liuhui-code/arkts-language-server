@@ -233,6 +233,106 @@ test("a dotted relative SDK import resolves its declaration suffix", async (t) =
   assert.deepEqual(diagnostics.params.diagnostics, [])
 })
 
+test("a selected SDK ancestor does not widen relative imports beyond the workspace", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "arkts-project-sdk-boundary-"))
+  const sdkRoot = path.join(root, "sdk")
+  const workspaceRoot = path.join(sdkRoot, "workspace")
+  const documentPath = path.join(workspaceRoot, "Page.ets")
+  const outsidePath = path.join(sdkRoot, "Secret.ets")
+  const source = [
+    "import { Secret } from '../Secret'",
+    "const secret = new Secret()",
+    "const value = secret.outsideOnly",
+    "",
+  ].join("\n")
+  const outsideSource = "export class Secret { outsideOnly: number = 1 }\n"
+  await fs.mkdir(path.join(sdkRoot, "ets"), { recursive: true })
+  await fs.mkdir(path.join(sdkRoot, "toolchains"), { recursive: true })
+  await fs.mkdir(workspaceRoot, { recursive: true })
+  await fs.writeFile(path.join(workspaceRoot, "local.properties"), sdkProperty(sdkRoot))
+  await fs.writeFile(documentPath, source)
+  await fs.writeFile(outsidePath, outsideSource)
+  const uri = pathToFileURL(documentPath).href
+  const session = new LspSession({
+    command: process.execPath,
+    args: [path.join(projectRoot, "dist", "server.cjs"), "--stdio"],
+    env: {
+      ARKTS_LSP_LOG_DIR: path.join(root, "logs"),
+      ARKTS_INDEX_CACHE_DIR: path.join(root, "cache"),
+    },
+    rootUri: pathToFileURL(workspaceRoot).href,
+  })
+  t.after(async () => {
+    try { await session.close() }
+    finally { await fs.rm(root, { recursive: true, force: true }) }
+  })
+  await session.initialize()
+  session.openDocument({ uri, version: 1, text: source })
+
+  const response = await session.request("textDocument/definition", {
+    textDocument: { uri },
+    position: positionAt(source, source.lastIndexOf("outsideOnly") + 1),
+  })
+
+  assert.equal(response.error, undefined, JSON.stringify(response.error))
+  assert.deepEqual(
+    response.result,
+    [],
+    "the selected SDK root must not become the source boundary for a workspace importer",
+  )
+})
+
+test("a lexical workspace symlink cannot inherit its SDK target boundary", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "arkts-project-sdk-symlink-boundary-"))
+  const sdkRoot = path.join(root, "sdk")
+  const workspaceRoot = path.join(root, "workspace")
+  const physicalDocumentPath = path.join(sdkRoot, "Api.ets")
+  const documentPath = path.join(workspaceRoot, "Link.ets")
+  const outsidePath = path.join(sdkRoot, "Secret.ets")
+  const source = [
+    "import { Secret } from '../sdk/Secret'",
+    "const secret = new Secret()",
+    "const value = secret.outsideOnly",
+    "",
+  ].join("\n")
+  const outsideSource = "export class Secret { outsideOnly: number = 1 }\n"
+  await fs.mkdir(path.join(sdkRoot, "ets"), { recursive: true })
+  await fs.mkdir(path.join(sdkRoot, "toolchains"), { recursive: true })
+  await fs.mkdir(workspaceRoot, { recursive: true })
+  await fs.writeFile(path.join(workspaceRoot, "local.properties"), sdkProperty(sdkRoot))
+  await fs.writeFile(physicalDocumentPath, source)
+  await fs.writeFile(outsidePath, outsideSource)
+  await fs.symlink(physicalDocumentPath, documentPath, "file")
+  const uri = pathToFileURL(documentPath).href
+  const session = new LspSession({
+    command: process.execPath,
+    args: [path.join(projectRoot, "dist", "server.cjs"), "--stdio"],
+    env: {
+      ARKTS_LSP_LOG_DIR: path.join(root, "logs"),
+      ARKTS_INDEX_CACHE_DIR: path.join(root, "cache"),
+    },
+    rootUri: pathToFileURL(workspaceRoot).href,
+  })
+  t.after(async () => {
+    try { await session.close() }
+    finally { await fs.rm(root, { recursive: true, force: true }) }
+  })
+  await session.initialize()
+  session.openDocument({ uri, version: 1, text: source })
+
+  const response = await session.request("textDocument/definition", {
+    textDocument: { uri },
+    position: positionAt(source, source.lastIndexOf("outsideOnly") + 1),
+  })
+
+  assert.equal(response.error, undefined, JSON.stringify(response.error))
+  assert.deepEqual(
+    response.result,
+    [],
+    "lexical workspace ownership must not fall through to the selected SDK boundary",
+  )
+})
+
 test("changing project sdk.dir refreshes module and ambient diagnostics to the same result as a fresh process", async (t) => {
   const fixture = await sdkSession(t)
   const initial = await fixture.session.transport.notification("textDocument/publishDiagnostics",

@@ -2251,6 +2251,784 @@ test("fails an outgoing request atomically when a target resolves outside the wo
   })
 })
 
+test("ignores a type-only outside import for a function with no outgoing calls", async (t) => {
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-call-hierarchy-type-only-outside-"))
+  t.after(() => fs.rmSync(parent, { recursive: true, force: true }))
+  const workspace = path.join(parent, "workspace")
+  fs.mkdirSync(workspace)
+  const insidePath = path.join(workspace, "Inside.ets")
+  const outsidePath = path.join(parent, "Outside.ets")
+  const insideText = [
+    "import type { OutsideModel } from '../Outside'",
+    "",
+    "export function describeInside(value?: OutsideModel): string {",
+    "  return value?.name ?? 'inside'",
+    "}",
+    "",
+  ].join("\n")
+  fs.writeFileSync(insidePath, insideText, "utf8")
+  fs.writeFileSync(
+    outsidePath,
+    "export interface OutsideModel { name: string }\n",
+    "utf8",
+  )
+  const insideUri = pathToFileURL(insidePath).href
+  const server = new LspProcess()
+  t.after(() => server.close())
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 180,
+    method: "initialize",
+    params: {
+      processId: process.pid,
+      rootUri: pathToFileURL(workspace).href,
+      capabilities: { general: { positionEncodings: ["utf-16"] } },
+    },
+  })
+  await server.response(180)
+  server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
+  server.send({
+    jsonrpc: "2.0",
+    method: "textDocument/didOpen",
+    params: {
+      textDocument: {
+        uri: insideUri,
+        languageId: "arkts",
+        version: 1,
+        text: insideText,
+      },
+    },
+  })
+  server.send({
+    jsonrpc: "2.0",
+    id: 181,
+    method: "textDocument/prepareCallHierarchy",
+    params: {
+      textDocument: { uri: insideUri },
+      position: midpoint(exactTextRange(insideText, "describeInside")),
+    },
+  })
+  const prepared = await server.response(181)
+  assert.equal(prepared.error, undefined, JSON.stringify(prepared.error))
+  assert.equal(prepared.result.length, 1)
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 182,
+    method: "callHierarchy/outgoingCalls",
+    params: { item: prepared.result[0] },
+  })
+  const outgoing = await server.response(182)
+  assert.equal(outgoing.error, undefined, JSON.stringify(outgoing.error))
+  assert.deepEqual(outgoing.result, [])
+})
+
+test("ignores an unused outside value import when the function only calls a local target", async (t) => {
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-call-hierarchy-unused-outside-"))
+  t.after(() => fs.rmSync(parent, { recursive: true, force: true }))
+  const workspace = path.join(parent, "workspace")
+  fs.mkdirSync(workspace)
+  const sourcePath = path.join(workspace, "Source.ets")
+  const targetPath = path.join(workspace, "Target.ets")
+  const outsidePath = path.join(parent, "Outside.ets")
+  const sourceText = [
+    "import { outsideCall } from '../Outside'",
+    "import { localCall } from './Target'",
+    "",
+    "export function callInside(): string {",
+    "  return localCall()",
+    "}",
+    "",
+  ].join("\n")
+  const targetText = "export function localCall(): string { return 'inside' }\n"
+  fs.writeFileSync(sourcePath, sourceText, "utf8")
+  fs.writeFileSync(targetPath, targetText, "utf8")
+  fs.writeFileSync(
+    outsidePath,
+    [
+      "export function outsideCall(): string { return 'outside' }",
+      "export default function outsideDefault(): string { return 'outside-default' }",
+      "",
+    ].join("\n"),
+    "utf8",
+  )
+  const sourceUri = pathToFileURL(sourcePath).href
+  const targetUri = pathToFileURL(targetPath).href
+  const rootUri = pathToFileURL(workspace).href
+  const server = new LspProcess()
+  t.after(() => server.close())
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 183,
+    method: "initialize",
+    params: {
+      processId: process.pid,
+      rootUri,
+      capabilities: { general: { positionEncodings: ["utf-16"] } },
+    },
+  })
+  await server.response(183)
+  server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
+  server.send({
+    jsonrpc: "2.0",
+    method: "textDocument/didOpen",
+    params: {
+      textDocument: {
+        uri: sourceUri,
+        languageId: "arkts",
+        version: 1,
+        text: sourceText,
+      },
+    },
+  })
+  server.send({
+    jsonrpc: "2.0",
+    id: 184,
+    method: "textDocument/prepareCallHierarchy",
+    params: {
+      textDocument: { uri: sourceUri },
+      position: midpoint(exactTextRange(sourceText, "callInside")),
+    },
+  })
+  const prepared = await server.response(184)
+  assert.equal(prepared.error, undefined, JSON.stringify(prepared.error))
+  assert.equal(prepared.result.length, 1)
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 185,
+    method: "callHierarchy/outgoingCalls",
+    params: { item: prepared.result[0] },
+  })
+  const outgoing = await server.response(185)
+  assert.equal(outgoing.error, undefined, JSON.stringify(outgoing.error))
+  assert.deepEqual(outgoing.result, [{
+    to: {
+      name: "localCall",
+      kind: 12,
+      uri: targetUri,
+      range: {
+        start: { line: 0, character: 0 },
+        end: { line: 0, character: targetText.trimEnd().length },
+      },
+      selectionRange: exactTextRange(targetText, "localCall"),
+      data: callHierarchyData(rootUri),
+    },
+    fromRanges: exactTextRanges(sourceText, "localCall").slice(1),
+  }])
+})
+
+test("keeps a declaration-only overload complete when an outside value import is unused", async (t) => {
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-call-hierarchy-overload-unused-outside-"))
+  t.after(() => fs.rmSync(parent, { recursive: true, force: true }))
+  const workspace = path.join(parent, "workspace")
+  fs.mkdirSync(workspace)
+  const sourcePath = path.join(workspace, "Source.ets")
+  const outsidePath = path.join(parent, "Outside.ets")
+  const sourceText = [
+    "import { outsideCall } from '../Outside'",
+    "",
+    "export function overloaded(value: string): string",
+    "export function overloaded(value: number): string",
+    "export function overloaded(value: string | number): string {",
+    "  return String(value)",
+    "}",
+    "",
+  ].join("\n")
+  fs.writeFileSync(sourcePath, sourceText, "utf8")
+  fs.writeFileSync(
+    outsidePath,
+    "export function outsideCall(): string { return 'outside' }\n",
+    "utf8",
+  )
+  const sourceUri = pathToFileURL(sourcePath).href
+  const server = new LspProcess()
+  t.after(() => server.close())
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 186,
+    method: "initialize",
+    params: {
+      processId: process.pid,
+      rootUri: pathToFileURL(workspace).href,
+      capabilities: { general: { positionEncodings: ["utf-16"] } },
+    },
+  })
+  await server.response(186)
+  server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
+  server.send({
+    jsonrpc: "2.0",
+    method: "textDocument/didOpen",
+    params: {
+      textDocument: {
+        uri: sourceUri,
+        languageId: "arkts",
+        version: 1,
+        text: sourceText,
+      },
+    },
+  })
+  server.send({
+    jsonrpc: "2.0",
+    id: 187,
+    method: "textDocument/prepareCallHierarchy",
+    params: {
+      textDocument: { uri: sourceUri },
+      position: midpoint(exactTextRanges(sourceText, "overloaded")[0]),
+    },
+  })
+  const prepared = await server.response(187)
+  assert.equal(prepared.error, undefined, JSON.stringify(prepared.error))
+  assert.equal(prepared.result.length, 1)
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 188,
+    method: "callHierarchy/outgoingCalls",
+    params: { item: prepared.result[0] },
+  })
+  const outgoing = await server.response(188)
+  assert.equal(outgoing.error, undefined, JSON.stringify(outgoing.error))
+  assert.deepEqual(outgoing.result, [])
+})
+
+test("fails indirect calls to outside imports closed over production stdio", async (t) => {
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-call-hierarchy-indirect-outside-"))
+  t.after(() => fs.rmSync(parent, { recursive: true, force: true }))
+  const workspace = path.join(parent, "workspace")
+  fs.mkdirSync(workspace)
+  const outsidePath = path.join(parent, "Outside.ets")
+  fs.writeFileSync(
+    outsidePath,
+    [
+      "export function outsideCall(): string { return 'outside' }",
+      "export default function outsideDefault(): string { return 'outside-default' }",
+      "",
+    ].join("\n"),
+    "utf8",
+  )
+  const server = new LspProcess()
+  t.after(() => server.close())
+  server.send({
+    jsonrpc: "2.0",
+    id: 189,
+    method: "initialize",
+    params: {
+      processId: process.pid,
+      rootUri: pathToFileURL(workspace).href,
+      capabilities: { general: { positionEncodings: ["utf-16"] } },
+    },
+  })
+  await server.response(189)
+  server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
+
+  const cases = [
+    {
+      name: "const rebound from an import alias",
+      fileName: "ConstRebound.ets",
+      callable: "callRebound",
+      text: [
+        "import { outsideCall as importAlias } from '../Outside'",
+        "const rebound = importAlias",
+        "",
+        "export function callRebound(): string {",
+        "  return rebound()",
+        "}",
+        "",
+      ].join("\n"),
+    },
+    {
+      name: "namespace destructuring alias",
+      fileName: "NamespaceDestructure.ets",
+      callable: "callDestructured",
+      text: [
+        "import * as outsideNamespace from '../Outside'",
+        "const { outsideCall: destructuredCall } = outsideNamespace",
+        "",
+        "export function callDestructured(): string {",
+        "  return destructuredCall()",
+        "}",
+        "",
+      ].join("\n"),
+    },
+    {
+      name: "default parameter initializer",
+      fileName: "DefaultParameter.ets",
+      callable: "callDefault",
+      text: [
+        "import { outsideCall } from '../Outside'",
+        "",
+        "export function callDefault(value: string = outsideCall()): string {",
+        "  return value",
+        "}",
+        "",
+      ].join("\n"),
+    },
+    {
+      name: "object property alias",
+      fileName: "ObjectPropertyAlias.ets",
+      callable: "callProperty",
+      text: [
+        "import { outsideCall } from '../Outside'",
+        "const holder = { fn: outsideCall }",
+        "",
+        "export function callProperty(): string {",
+        "  return holder.fn()",
+        "}",
+        "",
+      ].join("\n"),
+    },
+    {
+      name: "variable destructuring default",
+      fileName: "VariableDestructuringDefault.ets",
+      callable: "callVariableDefault",
+      text: [
+        "import { outsideCall } from '../Outside'",
+        "const local = {} as { cb?: () => string }",
+        "const { cb = outsideCall } = local",
+        "",
+        "export function callVariableDefault(): string {",
+        "  return cb()",
+        "}",
+        "",
+      ].join("\n"),
+    },
+    {
+      name: "parameter destructuring default",
+      fileName: "ParameterDestructuringDefault.ets",
+      callable: "callParameterDefault",
+      text: [
+        "import { outsideCall } from '../Outside'",
+        "",
+        "export function callParameterDefault(",
+        "  { cb = outsideCall }: { cb?: () => string } = {},",
+        "): string {",
+        "  return cb()",
+        "}",
+        "",
+      ].join("\n"),
+    },
+    {
+      name: "named re-export",
+      fileName: "NamedReexportSource.ets",
+      callable: "callNamedReexport",
+      supportFiles: {
+        "NamedBridge.ets": "export { outsideCall as bridgedCall } from '../Outside'\n",
+      },
+      text: [
+        "import { bridgedCall } from './NamedBridge'",
+        "",
+        "export function callNamedReexport(): string {",
+        "  return bridgedCall()",
+        "}",
+        "",
+      ].join("\n"),
+    },
+    {
+      name: "star re-export",
+      fileName: "StarReexportSource.ets",
+      callable: "callStarReexport",
+      supportFiles: {
+        "StarBridge.ets": "export * from '../Outside'\n",
+      },
+      text: [
+        "import { outsideCall } from './StarBridge'",
+        "",
+        "export function callStarReexport(): string {",
+        "  return outsideCall()",
+        "}",
+        "",
+      ].join("\n"),
+    },
+    {
+      name: "multi-hop star re-export",
+      fileName: "MultiHopStarSource.ets",
+      callable: "callMultiHopStar",
+      supportFiles: {
+        "FirstStarBridge.ets": "export * from './SecondStarBridge'\n",
+        "SecondStarBridge.ets": "export * from '../Outside'\n",
+      },
+      text: [
+        "import { outsideCall } from './FirstStarBridge'",
+        "",
+        "export function callMultiHopStar(): string {",
+        "  return outsideCall()",
+        "}",
+        "",
+      ].join("\n"),
+    },
+    {
+      name: "default re-export",
+      fileName: "DefaultReexportSource.ets",
+      callable: "callDefaultReexport",
+      supportFiles: {
+        "DefaultBridge.ets": "export { default } from '../Outside'\n",
+      },
+      text: [
+        "import bridgedDefault from './DefaultBridge'",
+        "",
+        "export function callDefaultReexport(): string {",
+        "  return bridgedDefault()",
+        "}",
+        "",
+      ].join("\n"),
+    },
+    {
+      name: "overload implementation",
+      fileName: "OverloadImplementation.ets",
+      callable: "overloadedOutside",
+      text: [
+        "import { outsideCall } from '../Outside'",
+        "export function overloadedOutside(value: string): string",
+        "export function overloadedOutside(value: number): string",
+        "export function overloadedOutside(value: string | number): string {",
+        "  return outsideCall() + String(value)",
+        "}",
+        "",
+      ].join("\n"),
+    },
+    {
+      name: "inline callback owned by its outer function",
+      fileName: "InlineCallback.ets",
+      callable: "callInlineCallback",
+      text: [
+        "import { outsideCall } from '../Outside'",
+        "export function callInlineCallback(): void {",
+        "  [1].forEach(() => outsideCall())",
+        "}",
+        "",
+      ].join("\n"),
+    },
+  ]
+  let requestId = 190
+  for (const scenario of cases) {
+    await t.test(scenario.name, async () => {
+      for (const [fileName, content] of Object.entries(scenario.supportFiles ?? {})) {
+        fs.writeFileSync(path.join(workspace, fileName), content, "utf8")
+      }
+      const sourcePath = path.join(workspace, scenario.fileName)
+      fs.writeFileSync(sourcePath, scenario.text, "utf8")
+      const sourceUri = pathToFileURL(sourcePath).href
+      server.send({
+        jsonrpc: "2.0",
+        method: "textDocument/didOpen",
+        params: {
+          textDocument: {
+            uri: sourceUri,
+            languageId: "arkts",
+            version: 1,
+            text: scenario.text,
+          },
+        },
+      })
+      const prepareId = requestId
+      requestId += 1
+      server.send({
+        jsonrpc: "2.0",
+        id: prepareId,
+        method: "textDocument/prepareCallHierarchy",
+        params: {
+          textDocument: { uri: sourceUri },
+          position: midpoint(exactTextRanges(scenario.text, scenario.callable)[0]),
+        },
+      })
+      const prepared = await server.response(prepareId)
+      assert.equal(prepared.error, undefined, `${scenario.name}: ${JSON.stringify(prepared.error)}`)
+      assert.equal(prepared.result.length, 1, scenario.name)
+
+      const outgoingId = requestId
+      requestId += 1
+      server.send({
+        jsonrpc: "2.0",
+        id: outgoingId,
+        method: "callHierarchy/outgoingCalls",
+        params: { item: prepared.result[0] },
+      })
+      const outgoing = await server.response(outgoingId)
+      assert.equal(outgoing.result, undefined, scenario.name)
+      assert.deepEqual(outgoing.error, {
+        code: -32803,
+        message: "Call hierarchy result is incomplete: source-outside-workspace.",
+      })
+    })
+  }
+})
+
+test("attributes rejected imports to TypeScript call hierarchy executable owners", async (t) => {
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-call-hierarchy-owner-boundaries-"))
+  t.after(() => fs.rmSync(parent, { recursive: true, force: true }))
+  const workspace = path.join(parent, "workspace")
+  fs.mkdirSync(workspace)
+  const targetPath = path.join(workspace, "Target.ets")
+  const targetText = "export function localCall(): string { return 'inside' }\n"
+  fs.writeFileSync(targetPath, targetText, "utf8")
+  fs.writeFileSync(
+    path.join(parent, "Outside.ets"),
+    "export function outsideCall(): string { return 'outside' }\n",
+    "utf8",
+  )
+  const rootUri = pathToFileURL(workspace).href
+  const targetUri = pathToFileURL(targetPath).href
+  const server = new LspProcess()
+  t.after(() => server.close())
+  server.send({
+    jsonrpc: "2.0",
+    id: 220,
+    method: "initialize",
+    params: {
+      processId: process.pid,
+      rootUri,
+      capabilities: { general: { positionEncodings: ["utf-16"] } },
+    },
+  })
+  await server.response(220)
+  server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
+
+  const cases = [
+    {
+      name: "empty class ignores an unused rejected import",
+      fileName: "EmptyClass.ets",
+      callable: "EmptyClass",
+      text: [
+        "import { outsideCall } from '../Outside'",
+        "export class EmptyClass {}",
+        "",
+      ].join("\n"),
+      localCalls: false,
+    },
+    {
+      name: "class owns its field initializer",
+      fileName: "ClassField.ets",
+      callable: "ClassField",
+      text: [
+        "import { outsideCall } from '../Outside'",
+        "import { localCall } from './Target'",
+        "export class ClassField {",
+        "  value = localCall()",
+        "}",
+        "",
+      ].join("\n"),
+      localCalls: true,
+    },
+    {
+      name: "outer function excludes a nested class field initializer",
+      fileName: "NestedClass.ets",
+      callable: "outerFunction",
+      text: [
+        "import { outsideCall } from '../Outside'",
+        "export function outerFunction(): string {",
+        "  class Inner { value = outsideCall() }",
+        "  return 'inside'",
+        "}",
+        "",
+      ].join("\n"),
+      localCalls: false,
+    },
+    {
+      name: "empty namespace ignores an unused rejected import",
+      fileName: "EmptyNamespace.ets",
+      callable: "EmptyNamespace",
+      text: [
+        "import { outsideCall } from '../Outside'",
+        "export namespace EmptyNamespace {}",
+        "",
+      ].join("\n"),
+      localCalls: false,
+    },
+    {
+      name: "namespace owns its top-level initializer",
+      fileName: "NamespaceInitializer.ets",
+      callable: "InitializedNamespace",
+      text: [
+        "import { outsideCall } from '../Outside'",
+        "import { localCall } from './Target'",
+        "export namespace InitializedNamespace {",
+        "  export const value = localCall()",
+        "}",
+        "",
+      ].join("\n"),
+      localCalls: true,
+    },
+  ]
+  let requestId = 221
+  for (const scenario of cases) {
+    await t.test(scenario.name, async () => {
+      const sourcePath = path.join(workspace, scenario.fileName)
+      fs.writeFileSync(sourcePath, scenario.text, "utf8")
+      const sourceUri = pathToFileURL(sourcePath).href
+      server.send({
+        jsonrpc: "2.0",
+        method: "textDocument/didOpen",
+        params: {
+          textDocument: {
+            uri: sourceUri,
+            languageId: "arkts",
+            version: 1,
+            text: scenario.text,
+          },
+        },
+      })
+      const prepareId = requestId
+      requestId += 1
+      server.send({
+        jsonrpc: "2.0",
+        id: prepareId,
+        method: "textDocument/prepareCallHierarchy",
+        params: {
+          textDocument: { uri: sourceUri },
+          position: midpoint(exactTextRange(scenario.text, scenario.callable)),
+        },
+      })
+      const prepared = await server.response(prepareId)
+      assert.equal(prepared.error, undefined, `${scenario.name}: ${JSON.stringify(prepared.error)}`)
+      assert.equal(prepared.result.length, 1, scenario.name)
+
+      const outgoingId = requestId
+      requestId += 1
+      server.send({
+        jsonrpc: "2.0",
+        id: outgoingId,
+        method: "callHierarchy/outgoingCalls",
+        params: { item: prepared.result[0] },
+      })
+      const outgoing = await server.response(outgoingId)
+      assert.equal(outgoing.error, undefined, `${scenario.name}: ${JSON.stringify(outgoing.error)}`)
+      const expected = scenario.localCalls
+        ? [{
+            to: {
+              name: "localCall",
+              kind: 12,
+              uri: targetUri,
+              range: {
+                start: { line: 0, character: 0 },
+                end: { line: 0, character: targetText.trimEnd().length },
+              },
+              selectionRange: exactTextRange(targetText, "localCall"),
+              data: callHierarchyData(rootUri),
+            },
+            fromRanges: exactTextRanges(scenario.text, "localCall").slice(1),
+          }]
+        : []
+      assert.deepEqual(outgoing.result, expected, scenario.name)
+    })
+  }
+})
+
+test("keeps local barrel exports precise beside unrelated rejected re-exports", async (t) => {
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-call-hierarchy-barrel-precision-"))
+  t.after(() => fs.rmSync(parent, { recursive: true, force: true }))
+  const workspace = path.join(parent, "workspace")
+  fs.mkdirSync(workspace)
+  fs.writeFileSync(
+    path.join(parent, "Outside.ets"),
+    "export function outsideCall(): string { return 'outside' }\n",
+    "utf8",
+  )
+  const cases = [
+    {
+      name: "explicit local named export wins over an unrelated rejected re-export",
+      bridgeName: "NamedPrecisionBridge.ets",
+      bridgeText: [
+        "export function safeCall(): string { return 'safe' }",
+        "export { outsideCall as unrelatedOutside } from '../Outside'",
+        "",
+      ].join("\n"),
+      sourceName: "NamedPrecisionSource.ets",
+      sourceText: [
+        "import { safeCall } from './NamedPrecisionBridge'",
+        "export function callNamedLocal(): string { return safeCall() }",
+        "",
+      ].join("\n"),
+      callable: "callNamedLocal",
+      target: "safeCall",
+    },
+    {
+      name: "local default export wins over a rejected export star",
+      bridgeName: "DefaultPrecisionBridge.ets",
+      bridgeText: [
+        "export default function safeDefault(): string { return 'safe' }",
+        "export * from '../Outside'",
+        "",
+      ].join("\n"),
+      sourceName: "DefaultPrecisionSource.ets",
+      sourceText: [
+        "import safeDefault from './DefaultPrecisionBridge'",
+        "export function callDefaultLocal(): string { return safeDefault() }",
+        "",
+      ].join("\n"),
+      callable: "callDefaultLocal",
+      target: "safeDefault",
+    },
+  ]
+  const server = new LspProcess()
+  t.after(() => server.close())
+  server.send({
+    jsonrpc: "2.0",
+    id: 240,
+    method: "initialize",
+    params: {
+      processId: process.pid,
+      rootUri: pathToFileURL(workspace).href,
+      capabilities: { general: { positionEncodings: ["utf-16"] } },
+    },
+  })
+  await server.response(240)
+  server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
+
+  let requestId = 241
+  for (const scenario of cases) {
+    await t.test(scenario.name, async () => {
+      const bridgePath = path.join(workspace, scenario.bridgeName)
+      const sourcePath = path.join(workspace, scenario.sourceName)
+      fs.writeFileSync(bridgePath, scenario.bridgeText, "utf8")
+      fs.writeFileSync(sourcePath, scenario.sourceText, "utf8")
+      const sourceUri = pathToFileURL(sourcePath).href
+      server.send({
+        jsonrpc: "2.0",
+        method: "textDocument/didOpen",
+        params: {
+          textDocument: {
+            uri: sourceUri,
+            languageId: "arkts",
+            version: 1,
+            text: scenario.sourceText,
+          },
+        },
+      })
+      const prepareId = requestId
+      requestId += 1
+      server.send({
+        jsonrpc: "2.0",
+        id: prepareId,
+        method: "textDocument/prepareCallHierarchy",
+        params: {
+          textDocument: { uri: sourceUri },
+          position: midpoint(exactTextRange(scenario.sourceText, scenario.callable)),
+        },
+      })
+      const prepared = await server.response(prepareId)
+      assert.equal(prepared.error, undefined, `${scenario.name}: ${JSON.stringify(prepared.error)}`)
+      assert.equal(prepared.result.length, 1, scenario.name)
+      const outgoingId = requestId
+      requestId += 1
+      server.send({
+        jsonrpc: "2.0",
+        id: outgoingId,
+        method: "callHierarchy/outgoingCalls",
+        params: { item: prepared.result[0] },
+      })
+      const outgoing = await server.response(outgoingId)
+      assert.equal(outgoing.error, undefined, `${scenario.name}: ${JSON.stringify(outgoing.error)}`)
+      assert.equal(outgoing.result.length, 1, scenario.name)
+      assert.equal(outgoing.result[0].to.uri, pathToFileURL(bridgePath).href, scenario.name)
+      assert.equal(outgoing.result[0].to.name, scenario.target, scenario.name)
+    })
+  }
+})
+
 test("rejects a physically escaped result source through production registration stdio", async (t) => {
   const parent = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-call-hierarchy-symlink-"))
   t.after(() => fs.rmSync(parent, { recursive: true, force: true }))

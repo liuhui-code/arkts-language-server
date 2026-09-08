@@ -55,6 +55,63 @@ test("reports complete project membership independently from the bounded documen
   assert.ok(first.projectMembership.revision > 0)
 })
 
+test("snapshots active physical source roots during a large Stage membership scan", (t) => {
+  const sourcesPerRoot = 500
+  const workspace = createWorkspace(t, "stage-source-root-snapshot", {
+    "build-profile.json5": JSON.stringify({
+      app: { products: [{ name: "default" }] },
+      modules: [{
+        name: "entry",
+        srcPath: "./entry",
+        targets: [{ name: "default", applyToProducts: ["default"] }],
+      }],
+    }),
+    "entry/build-profile.json5": JSON.stringify({
+      targets: [{ name: "default", source: { sourceRoots: ["./src/tablet"] } }],
+    }),
+    ...Object.fromEntries(Array.from({ length: sourcesPerRoot }, (_value, index) => [
+      index === 0
+        ? "entry/src/main/ets/Main.ets"
+        : `entry/src/main/ets/Main${String(index).padStart(3, "0")}.ets`,
+      `export const main${index} = ${index}\n`,
+    ])),
+    ...Object.fromEntries(Array.from({ length: sourcesPerRoot }, (_value, index) => [
+      `entry/src/tablet/ets/Tablet${String(index).padStart(3, "0")}.ets`,
+      `export const tablet${index} = ${index}\n`,
+    ])),
+  })
+  const mainPath = path.join(workspace, "entry", "src", "main", "ets", "Main.ets")
+  const activeSourceRoots = [
+    path.join(workspace, "entry", "src", "main"),
+    path.join(workspace, "entry", "src", "tablet"),
+  ]
+  const realpathCallsBySourceRoot = new Map(activeSourceRoots.map((root) => [root, 0]))
+  const originalRealpathNative = fs.realpathSync.native
+  fs.realpathSync.native = (candidate, ...args) => {
+    const resolved = path.resolve(candidate)
+    if (realpathCallsBySourceRoot.has(resolved)) {
+      realpathCallsBySourceRoot.set(resolved, (realpathCallsBySourceRoot.get(resolved) ?? 0) + 1)
+    }
+    return originalRealpathNative(candidate, ...args)
+  }
+  const store = new SemanticDocumentStore()
+  t.after(() => store.dispose?.())
+  let view
+  try {
+    view = store.prepare(syncPosition(store, workspace, mainPath), true)
+  } finally {
+    fs.realpathSync.native = originalRealpathNative
+  }
+
+  assert.equal(view.projectMembership.status, "complete")
+  assert.equal(view.projectMembership.paths.length, sourcesPerRoot * activeSourceRoots.length)
+  const observedRootCalls = Object.fromEntries(realpathCallsBySourceRoot)
+  assert.ok(
+    [...realpathCallsBySourceRoot.values()].every((count) => count <= 4),
+    `active physical source roots must come from a bounded snapshot; observed ${JSON.stringify(observedRootCalls)}`,
+  )
+})
+
 test("reuses the bounded source-path set for an unchanged canonical workspace", (t) => {
   const workspace = createWorkspace(t, "reuse", {
     "Main.ets": "export const main = 1\n",
@@ -89,6 +146,11 @@ test("reuses the bounded source-path set for an unchanged canonical workspace", 
 
   assert.deepEqual(documentPaths(first), [mainPath, otherPath].sort())
   assert.deepEqual(documentPaths(second), documentPaths(first))
+  assert.strictEqual(
+    second.projectMembership,
+    first.projectMembership,
+    "the same catalog epoch must reuse its immutable public membership snapshot",
+  )
   assert.equal(
     defaultDirectoryReads,
     readsAfterFirst,
@@ -116,6 +178,107 @@ test("refreshes membership identities without invalidating an unchanged warm cac
   assert.equal(second.projectMembership.revision, first.projectMembership.revision)
   assert.equal(second.state.documentCacheHit, true)
   assert.equal(second.resetTypeEngine, false)
+})
+
+test("advances the catalog revision when a member identity changes", (t) => {
+  const workspace = createWorkspace(t, "refresh-changed-identity", {
+    "Main.ets": "export const main = 1\n",
+    "Other.ets": "export const other = 2\n",
+  })
+  const mainPath = path.join(workspace, "Main.ets")
+  const otherPath = path.join(workspace, "Other.ets")
+  const store = new SemanticDocumentStore()
+  t.after(() => store.dispose?.())
+  const position = syncPosition(store, workspace, mainPath)
+  const first = store.prepare(position, true)
+
+  fs.writeFileSync(otherPath, "export const other = 200\n", "utf8")
+  assert.deepEqual(store.refreshProjectMembership(workspace), {
+    changed: true,
+    removedPaths: [],
+  })
+  const refreshed = store.prepare(position, true)
+
+  assert.ok(refreshed.projectMembership.revision > first.projectMembership.revision)
+  assert.deepEqual(refreshed.changedPaths, [otherPath])
+})
+
+test("refreshes an admitted lazy source token on a valid watched change", (t) => {
+  const workspace = createWorkspace(t, "watched-admission-token", {
+    "Main.ets": "export const main = 1\n",
+    "Other.ets": "export const other = 2\n",
+  })
+  const mainPath = path.join(workspace, "Main.ets")
+  const otherPath = path.join(workspace, "Other.ets")
+  const store = new SemanticDocumentStore()
+  t.after(() => store.dispose?.())
+  const position = syncPosition(store, workspace, mainPath)
+  const first = store.prepare(position, true)
+  const firstToken = store.tokenFor(
+    first.canonicalRootId,
+    first.projectMembership.revision,
+    otherPath,
+  )
+
+  fs.writeFileSync(otherPath, "export const other = 200\n", "utf8")
+  store.workspaceFilesChanged({
+    rootPath: workspace,
+    rootDirty: false,
+    changes: [{ path: otherPath, kind: "changed" }],
+  })
+  const changed = store.prepare(position, true)
+  const changedToken = store.tokenFor(
+    changed.canonicalRootId,
+    changed.projectMembership.revision,
+    otherPath,
+  )
+
+  assert.ok(changed.projectMembership.revision > first.projectMembership.revision)
+  assert.notEqual(changedToken, firstToken)
+  assert.equal(
+    store.read(changed.canonicalRootId, changed.projectMembership.revision, otherPath, changedToken),
+    "export const other = 200\n",
+  )
+})
+
+test("drops a watched project member replaced by an in-workspace symlink", (t) => {
+  const workspace = createWorkspace(t, "watched-regular-to-symlink", {
+    "Main.ets": "export const main = 1\n",
+    "Original.ets": "export const original = 2\n",
+    "Target.ets": "export const target = 3\n",
+  })
+  const mainPath = path.join(workspace, "Main.ets")
+  const originalPath = path.join(workspace, "Original.ets")
+  const targetPath = path.join(workspace, "Target.ets")
+  const store = new SemanticDocumentStore()
+  t.after(() => store.dispose?.())
+  const position = syncPosition(store, workspace, mainPath)
+  const first = store.prepare(position, true)
+
+  fs.unlinkSync(originalPath)
+  fs.symlinkSync(targetPath, originalPath, "file")
+  store.workspaceFilesChanged({
+    rootPath: workspace,
+    rootDirty: false,
+    changes: [{ path: originalPath, kind: "changed" }],
+  })
+  const changed = store.prepare(position, true)
+  const freshStore = new SemanticDocumentStore()
+  t.after(() => freshStore.dispose?.())
+  const fresh = freshStore.prepare(syncPosition(freshStore, workspace, mainPath), true)
+
+  assert.ok(changed.projectMembership.revision > first.projectMembership.revision)
+  assert.deepEqual({
+    status: changed.projectMembership.status,
+    paths: changed.projectMembership.paths,
+  }, {
+    status: fresh.projectMembership.status,
+    paths: fresh.projectMembership.paths,
+  })
+  assert.equal(changed.projectMembership.paths.includes(originalPath), false)
+  assert.deepEqual(changed.removedPaths, [originalPath])
+  assert.deepEqual(changed.changedPaths, [])
+  assert.equal(changed.resetTypeEngine, true)
 })
 
 test("does not infer removals from a partial membership refresh", (t) => {
@@ -465,6 +628,98 @@ test("a watched symlink create matches its missing lexical resolution candidate"
   assert.equal(documentPaths(changed).includes(targetTsPath), false)
 })
 
+test("a dangling source-root create cannot later load a file outside the workspace", (t) => {
+  const workspace = createWorkspace(t, "created-dangling-source-root", {
+    "build-profile.json5": JSON.stringify({
+      app: { products: [{ name: "default" }] },
+      modules: [{
+        name: "entry",
+        srcPath: "./entry",
+        targets: [{ name: "tablet", applyToProducts: ["default"] }],
+      }],
+    }),
+    "entry/build-profile.json5": JSON.stringify({
+      targets: [{ name: "tablet", source: { sourceRoots: ["./src/tablet"] } }],
+    }),
+    "entry/src/main/ets/Main.ets": "export const main = 1\n",
+  })
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-project-set-outside-"))
+  t.after(() => fs.rmSync(outside, { recursive: true, force: true }))
+  const mainPath = path.join(workspace, "entry", "src", "main", "ets", "Main.ets")
+  const tabletRoot = path.join(workspace, "entry", "src", "tablet")
+  const leakPath = path.join(tabletRoot, "Leak.ets")
+  const outsideTarget = path.join(outside, "Outside.ets")
+  const store = new SemanticDocumentStore()
+  t.after(() => store.dispose?.())
+  const position = syncPosition(store, workspace, mainPath)
+
+  const warm = store.prepare(position, true)
+  assert.equal(fs.existsSync(tabletRoot), false)
+  assert.equal(warm.projectMembership.status, "complete")
+  assert.equal(warm.projectMembership.paths.includes(leakPath), false)
+
+  fs.mkdirSync(tabletRoot)
+  fs.symlinkSync(outsideTarget, leakPath, "file")
+  store.workspaceFilesChanged({
+    rootPath: workspace,
+    rootDirty: false,
+    changes: [{ path: leakPath, kind: "created" }],
+  })
+  fs.writeFileSync(outsideTarget, "export const SECRET_OUTSIDE = 1\n", "utf8")
+
+  const prepared = store.prepare(position, true)
+  const freshRejectedStore = new SemanticDocumentStore()
+  t.after(() => freshRejectedStore.dispose?.())
+  const freshRejectedPosition = syncPosition(freshRejectedStore, workspace, mainPath)
+  const freshRejected = freshRejectedStore.prepare(freshRejectedPosition, true)
+  const rejectedState = {
+    loadedOutsideContent: prepared.documents.some((document) => (
+      document.content.includes("SECRET_OUTSIDE")
+    )),
+    documentsContainLeak: documentPaths(prepared).includes(leakPath),
+    warmMembership: {
+      status: prepared.projectMembership.status,
+      paths: prepared.projectMembership.paths,
+    },
+  }
+
+  fs.unlinkSync(leakPath)
+  fs.writeFileSync(leakPath, "export const RECOVERED_INSIDE = 1\n", "utf8")
+  store.workspaceFilesChanged({
+    rootPath: workspace,
+    rootDirty: false,
+    changes: [{ path: leakPath, kind: "created" }],
+  })
+  const recovered = store.prepare(position, true)
+  const freshRecoveredStore = new SemanticDocumentStore()
+  t.after(() => freshRecoveredStore.dispose?.())
+  const freshRecoveredPosition = syncPosition(freshRecoveredStore, workspace, mainPath)
+  const freshRecovered = freshRecoveredStore.prepare(freshRecoveredPosition, true)
+
+  assert.deepEqual({
+    rejected: rejectedState,
+    recovered: {
+      loadedRecoveredContent: documentContent(recovered, leakPath)?.includes("RECOVERED_INSIDE"),
+      status: recovered.projectMembership.status,
+      paths: recovered.projectMembership.paths,
+    },
+  }, {
+    rejected: {
+      loadedOutsideContent: false,
+      documentsContainLeak: false,
+      warmMembership: {
+        status: freshRejected.projectMembership.status,
+        paths: freshRejected.projectMembership.paths,
+      },
+    },
+    recovered: {
+      loadedRecoveredContent: true,
+      status: freshRecovered.projectMembership.status,
+      paths: freshRecovered.projectMembership.paths,
+    },
+  })
+})
+
 test("a watched create matches candidate casing only when the volume aliases that casing", (t) => {
   const workspace = createWorkspace(t, "created-case-candidate", {
     "Main.ets": "import { target } from './target'\nexport const main = target()\n",
@@ -598,6 +853,46 @@ test("a nested watched change propagates the exact delta only to closure owners"
   assert.equal(unrelatedAfterChange.state.dependencyClosureCacheHit, true)
 })
 
+test("a rejected nested source change cannot re-enter an outer warm workspace", (t) => {
+  const outerRoot = createWorkspace(t, "rejected-nested-change-outer", {
+    "Main.ets": "import { target } from './nested/Target'\nexport const main = target()\n",
+    "nested/Target.ets": "export function target(): string { return 'inside' }\n",
+  })
+  const outsideRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-project-set-outside-"))
+  t.after(() => fs.rmSync(outsideRoot, { recursive: true, force: true }))
+  const nestedRoot = path.join(outerRoot, "nested")
+  const mainPath = path.join(outerRoot, "Main.ets")
+  const targetPath = path.join(nestedRoot, "Target.ets")
+  const outsideTarget = path.join(outsideRoot, "Outside.ets")
+  const store = new SemanticDocumentStore()
+  t.after(() => store.dispose?.())
+  const position = syncPosition(store, outerRoot, mainPath)
+
+  const warm = store.prepare(position, true)
+  assert.equal(warm.projectMembership.status, "complete")
+  assert.equal(warm.projectMembership.paths.includes(targetPath), true)
+
+  fs.writeFileSync(outsideTarget, "export const SECRET_OUTSIDE = 1\n", "utf8")
+  fs.unlinkSync(targetPath)
+  fs.symlinkSync(outsideTarget, targetPath, "file")
+  store.workspaceFilesChanged({
+    rootPath: nestedRoot,
+    rootDirty: false,
+    changes: [{ path: targetPath, kind: "changed" }],
+  })
+  const changed = store.prepare(position, true)
+
+  assert.deepEqual({
+    loadedOutsideContent: changed.documents.some((document) => (
+      document.content.includes("SECRET_OUTSIDE")
+    )),
+    membershipContainsTarget: changed.projectMembership.paths.includes(targetPath),
+  }, {
+    loadedOutsideContent: false,
+    membershipContainsTarget: false,
+  })
+})
+
 test("a watched source change keeps exact invalidation without resetting either workspace", (t) => {
   const firstRoot = createWorkspace(t, "changed-resolution-first", {
     "Main.ets": "import { target } from './Target'\nexport const main = target()\n",
@@ -674,7 +969,7 @@ test("a physical watched change invalidates a cached symlink dependency identity
   assert.equal(changed.state.dependencyClosureCacheHit, false)
 })
 
-test("a watched overlay path still invalidates non-overlay physical aliases", (t) => {
+test("an authoritative overlay shields its physical aliases from disk churn", (t) => {
   const oldDiskContent = "export function target(): string { return 'x' }\n"
   const newDiskContent = "export function target(): number { return 123 }\n"
   const overlayContent = "export function target(): boolean { return true }\n"
@@ -700,7 +995,7 @@ test("a watched overlay path still invalidates non-overlay physical aliases", (t
   const position = syncPosition(store, workspace, mainPath)
   const warm = store.prepare(position)
   assert.equal(documentContent(warm, targetPath), overlayContent)
-  assert.equal(documentContent(warm, aliasPath), oldDiskContent)
+  assert.equal(documentContent(warm, aliasPath), undefined)
 
   fs.writeFileSync(targetPath, newDiskContent, "utf8")
   fs.utimesSync(targetPath, stableTimestamp, stableTimestamp)
@@ -712,10 +1007,10 @@ test("a watched overlay path still invalidates non-overlay physical aliases", (t
   const changed = store.prepare(position)
 
   assert.equal(documentContent(changed, targetPath), overlayContent)
-  assert.equal(documentContent(changed, aliasPath), newDiskContent)
-  assert.deepEqual(changed.changedPaths, [aliasPath])
-  assert.equal(changed.resetTypeEngine, true)
-  assert.equal(changed.state.dependencyClosureCacheHit, false)
+  assert.equal(documentContent(changed, aliasPath), undefined)
+  assert.deepEqual(changed.changedPaths, [])
+  assert.equal(changed.resetTypeEngine, false)
+  assert.equal(changed.state.dependencyClosureCacheHit, true)
 })
 
 test("a watched change matches a dependency through a case-insensitive path alias", (t) => {
@@ -1082,6 +1377,80 @@ test("adds a newly opened source overlay to an already cached workspace", (t) =>
   assert.deepEqual(documentPaths(second), [mainPath, openedPath].sort())
 })
 
+test("keeps a saved diskless overlay in warm membership after its create event and close", (t) => {
+  const workspace = createWorkspace(t, "saved-diskless-overlay", {
+    "Main.ets": "export const main = 1\n",
+  })
+  const mainPath = path.join(workspace, "Main.ets")
+  const freshPath = path.join(workspace, "Fresh.ets")
+  const freshContent = "export const fresh = 2\n"
+  const store = new SemanticDocumentStore()
+  t.after(() => store.dispose?.())
+  const position = syncPosition(store, workspace, mainPath)
+
+  const warm = store.prepare(position, true)
+  assert.deepEqual([...warm.projectMembership.paths].sort(), [mainPath])
+
+  store.sync({
+    path: freshPath,
+    content: freshContent,
+    documentVersion: 1,
+    workspaceRoot: workspace,
+  })
+  fs.writeFileSync(freshPath, freshContent, "utf8")
+  store.workspaceFilesChanged({
+    rootPath: workspace,
+    rootDirty: false,
+    changes: [{ path: freshPath, kind: "created" }],
+  })
+  store.close(freshPath)
+
+  const closed = store.prepare(position, true)
+  const expectedPaths = [freshPath, mainPath].sort()
+  assert.deepEqual([...closed.projectMembership.paths].sort(), expectedPaths)
+  assert.deepEqual(documentPaths(closed), expectedPaths)
+  assert.equal(documentContent(closed, freshPath), freshContent)
+})
+
+test("removes a deleted disk source from warm membership after its overlay closes", (t) => {
+  const workspace = createWorkspace(t, "deleted-open-overlay", {
+    "Main.ets": "export const main = 1\n",
+    "Old.ets": "export const old = 1\n",
+  })
+  const mainPath = path.join(workspace, "Main.ets")
+  const oldPath = path.join(workspace, "Old.ets")
+  const overlayContent = "export const unsavedOld = 2\n"
+  const store = new SemanticDocumentStore()
+  t.after(() => store.dispose?.())
+  const position = syncPosition(store, workspace, mainPath)
+
+  const warm = store.prepare(position, true)
+  assert.deepEqual([...warm.projectMembership.paths].sort(), [mainPath, oldPath].sort())
+
+  store.sync({
+    path: oldPath,
+    content: overlayContent,
+    documentVersion: 1,
+    workspaceRoot: workspace,
+  })
+  fs.unlinkSync(oldPath)
+  store.workspaceFilesChanged({
+    rootPath: workspace,
+    rootDirty: false,
+    changes: [{ path: oldPath, kind: "deleted" }],
+  })
+  store.close(oldPath)
+
+  const closed = store.prepare(position, true)
+  assert.deepEqual({
+    membership: [...closed.projectMembership.paths].sort(),
+    documents: documentPaths(closed),
+  }, {
+    membership: [mainPath],
+    documents: [mainPath],
+  })
+})
+
 test("prepares exact disk snapshot bytes without promoting them to an open overlay", (t) => {
   const firstTarget = "export function target(): string { return 'first' }\n"
   const secondTarget = "export function target(): string { return 'second' }\n"
@@ -1226,9 +1595,9 @@ test("closing an overlay invalidates disk aliases by its captured physical ident
   const outerRoot = createWorkspace(t, "close-alias-outer", {
     "Main.ets": "import { target } from './Alias'\nexport const main = target()\n",
   })
-  const targetRoot = createWorkspace(t, "close-alias-target", {
-    "Target.ets": oldDiskContent,
-  })
+  const targetRoot = path.join(outerRoot, "target")
+  fs.mkdirSync(targetRoot)
+  fs.writeFileSync(path.join(targetRoot, "Target.ets"), oldDiskContent, "utf8")
   const mainPath = path.join(outerRoot, "Main.ets")
   const targetPath = path.join(targetRoot, "Target.ets")
   const aliasPath = path.join(outerRoot, "Alias.ets")
@@ -1245,7 +1614,8 @@ test("closing an overlay invalidates disk aliases by its captured physical ident
   })
   const outerPosition = syncPosition(store, outerRoot, mainPath)
   const warm = store.prepare(outerPosition)
-  assert.equal(documentContent(warm, aliasPath), oldDiskContent)
+  assert.equal(documentContent(warm, targetPath), overlayContent)
+  assert.equal(documentContent(warm, aliasPath), undefined)
 
   fs.writeFileSync(targetPath, newDiskContent, "utf8")
   fs.utimesSync(targetPath, stableTimestamp, stableTimestamp)
@@ -1254,7 +1624,7 @@ test("closing an overlay invalidates disk aliases by its captured physical ident
   const targetAfterClose = store.prepare(viewPathPosition(targetRoot, targetPath))
 
   assert.equal(documentContent(outerAfterClose, aliasPath), newDiskContent)
-  assert.deepEqual(outerAfterClose.changedPaths, [aliasPath])
+  assert.deepEqual(outerAfterClose.changedPaths, [targetPath])
   assert.equal(outerAfterClose.contentRevision, 1)
   assert.equal(outerAfterClose.resetTypeEngine, true)
   assert.equal(outerAfterClose.state.dependencyClosureCacheHit, false)
@@ -1341,6 +1711,55 @@ test("restores disk truth and advances the workspace content revision after clos
   assert.deepEqual(stable.changedPaths, [])
 })
 
+test("closing an overlay drops a regular root source replaced by an in-workspace symlink", (t) => {
+  const workspace = createWorkspace(t, "close-regular-to-symlink", {
+    "Main.ets": "export const main = 1\n",
+    "Original.ets": "export const original = 2\n",
+    "Target.ets": "export const target = 3\n",
+  })
+  const mainPath = path.join(workspace, "Main.ets")
+  const originalPath = path.join(workspace, "Original.ets")
+  const targetPath = path.join(workspace, "Target.ets")
+  const store = new SemanticDocumentStore()
+  t.after(() => store.dispose?.())
+  const position = syncPosition(store, workspace, mainPath)
+
+  const warm = store.prepare(position, true)
+  assert.deepEqual(
+    warm.projectMembership.paths,
+    [mainPath, originalPath, targetPath].sort(),
+  )
+  store.sync({
+    path: originalPath,
+    content: "export const overlay = 4\n",
+    documentVersion: 1,
+    workspaceRoot: workspace,
+  })
+  fs.unlinkSync(originalPath)
+  fs.symlinkSync(targetPath, originalPath, "file")
+  store.close(originalPath)
+
+  const closed = store.prepare(position, true)
+  const freshStore = new SemanticDocumentStore()
+  t.after(() => freshStore.dispose?.())
+  const fresh = freshStore.prepare(syncPosition(freshStore, workspace, mainPath), true)
+  assert.deepEqual({
+    membership: {
+      status: closed.projectMembership.status,
+      paths: closed.projectMembership.paths,
+    },
+    documents: documentPaths(closed),
+    containsSymlinkRootFile: closed.projectMembership.paths.includes(originalPath),
+  }, {
+    membership: {
+      status: fresh.projectMembership.status,
+      paths: fresh.projectMembership.paths,
+    },
+    documents: documentPaths(fresh),
+    containsSymlinkRootFile: false,
+  })
+})
+
 test("hard-bounds cached source paths per workspace", (t) => {
   const workspace = createWorkspace(t, "path-limit", {
     "Main.ets": "export const main = 1\n",
@@ -1359,6 +1778,134 @@ test("hard-bounds cached source paths per workspace", (t) => {
   const view = store.prepare(syncPosition(store, workspace, mainPath), true)
 
   assert.deepEqual(documentPaths(view), [mainPath, onePath].sort())
+})
+
+test("issues lazy file access tokens only for admitted project members", (t) => {
+  const limitedWorkspace = createWorkspace(t, "token-count-limit", {
+    "Main.ets": "export const main = 1\n",
+    "Omitted.ets": "export const omitted = 2\n",
+  })
+  const limitedMainPath = path.join(limitedWorkspace, "Main.ets")
+  const omittedPath = path.join(limitedWorkspace, "Omitted.ets")
+  const limitedStore = new SemanticDocumentStore({
+    enumerateWorkspaceSources: () => [limitedMainPath, omittedPath],
+    projectFileSetLimits: { maxPaths: 1 },
+  })
+  t.after(() => limitedStore.dispose?.())
+  const limitedView = limitedStore.prepare(
+    syncPosition(limitedStore, limitedWorkspace, limitedMainPath),
+    true,
+  )
+
+  const symlinkWorkspace = createWorkspace(t, "token-enumerator-symlink", {
+    "Main.ets": "export const main = 1\n",
+    "Target.ets": "export const target = 2\n",
+  })
+  const symlinkMainPath = path.join(symlinkWorkspace, "Main.ets")
+  const symlinkTargetPath = path.join(symlinkWorkspace, "Target.ets")
+  const symlinkPath = path.join(symlinkWorkspace, "Alias.ets")
+  fs.symlinkSync(symlinkTargetPath, symlinkPath, "file")
+  const symlinkStore = new SemanticDocumentStore({
+    enumerateWorkspaceSources: () => [symlinkMainPath, symlinkPath, symlinkTargetPath],
+  })
+  t.after(() => symlinkStore.dispose?.())
+  const symlinkView = symlinkStore.prepare(
+    syncPosition(symlinkStore, symlinkWorkspace, symlinkMainPath),
+    true,
+  )
+
+  const targetedWorkspace = createWorkspace(t, "token-inactive-target", {
+    "build-profile.json5": JSON.stringify({
+      app: { products: [{ name: "default" }] },
+      modules: [{
+        name: "entry",
+        srcPath: "./entry",
+        targets: [{ name: "tablet", applyToProducts: ["default"] }],
+      }],
+    }),
+    "entry/build-profile.json5": JSON.stringify({
+      targets: [{ name: "tablet", source: { sourceRoots: ["./src/tablet"] } }],
+    }),
+    "entry/src/main/ets/Main.ets": "export const main = 1\n",
+    "entry/src/desktop/ets/Inactive.ets": "export const inactive = 2\n",
+  })
+  const targetedMainPath = path.join(targetedWorkspace, "entry", "src", "main", "ets", "Main.ets")
+  const inactivePath = path.join(targetedWorkspace, "entry", "src", "desktop", "ets", "Inactive.ets")
+  const targetedStore = new SemanticDocumentStore({
+    enumerateWorkspaceSources: () => [targetedMainPath, inactivePath],
+  })
+  t.after(() => targetedStore.dispose?.())
+  const targetedView = targetedStore.prepare(
+    syncPosition(targetedStore, targetedWorkspace, targetedMainPath),
+    true,
+  )
+
+  assert.deepEqual({
+    rejectedByCountLimit: {
+      member: limitedView.projectMembership.paths.includes(omittedPath),
+      tokenIssued: limitedStore.tokenFor(
+        limitedView.canonicalRootId,
+        limitedView.projectMembership.revision,
+        omittedPath,
+      ) !== undefined,
+    },
+    rejectedSymlink: {
+      member: symlinkView.projectMembership.paths.includes(symlinkPath),
+      tokenIssued: symlinkStore.tokenFor(
+        symlinkView.canonicalRootId,
+        symlinkView.projectMembership.revision,
+        symlinkPath,
+      ) !== undefined,
+    },
+    inactiveTarget: {
+      member: targetedView.projectMembership.paths.includes(inactivePath),
+      tokenIssued: targetedStore.tokenFor(
+        targetedView.canonicalRootId,
+        targetedView.projectMembership.revision,
+        inactivePath,
+      ) !== undefined,
+    },
+  }, {
+    rejectedByCountLimit: { member: false, tokenIssued: false },
+    rejectedSymlink: { member: false, tokenIssued: false },
+    inactiveTarget: { member: false, tokenIssued: false },
+  })
+})
+
+test("keeps disk identities bounded to admitted membership after closing an omitted overlay", (t) => {
+  const workspace = createWorkspace(t, "disk-identity-membership-limit", {
+    "Main.ets": "export const main = 1\n",
+    "Omitted.ets": "export const omitted = 2\n",
+  })
+  const mainPath = path.join(workspace, "Main.ets")
+  const omittedPath = path.join(workspace, "Omitted.ets")
+  const store = new SemanticDocumentStore({
+    enumerateWorkspaceSources: () => [mainPath],
+    projectFileSetLimits: { maxPaths: 1 },
+  })
+  t.after(() => store.dispose?.())
+  const position = syncPosition(store, workspace, mainPath)
+
+  store.prepare(position, true)
+  store.sync({
+    path: omittedPath,
+    content: fs.readFileSync(omittedPath, "utf8"),
+    documentVersion: 1,
+    workspaceRoot: workspace,
+  })
+  store.close(omittedPath)
+
+  const membership = store.prepare(position, true).projectMembership
+  const cached = [...store.projectFileSets.values()][0]
+  assert.deepEqual({
+    membershipPaths: membership.paths,
+    diskIdentityPaths: [...cached.diskIdentities.keys()].sort(),
+    diskIdentityCountWithinLimit: cached.diskIdentities.size <= 1,
+  }, {
+    membershipPaths: [mainPath],
+    diskIdentityPaths: [mainPath],
+    diskIdentityCountWithinLimit: true,
+  })
 })
 
 test("reports path-count-limited project membership as partial without exhausting enumeration", (t) => {

@@ -476,6 +476,102 @@ test("keeps an open unsaved overlay authoritative across an external delete", (t
   assert.equal(settled.resetTypeEngine, false)
 })
 
+test("removes stale scripts when overlay authority returns to a lexical alias", (t) => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-overlay-removal-aliases-"))
+  t.after(() => fs.rmSync(base, { recursive: true, force: true }))
+  const physicalRoot = path.join(base, "physical")
+  const firstAlias = path.join(base, "first-alias")
+  const secondAlias = path.join(base, "second-alias")
+  fs.mkdirSync(physicalRoot)
+  fs.symlinkSync(physicalRoot, firstAlias, "dir")
+  fs.symlinkSync(physicalRoot, secondAlias, "dir")
+  const physicalMain = path.join(physicalRoot, "Main.ets")
+  const physicalTarget = path.join(physicalRoot, "Target.ets")
+  const firstTarget = path.join(firstAlias, "Target.ets")
+  const secondMain = path.join(secondAlias, "Main.ets")
+  const secondTarget = path.join(secondAlias, "Target.ets")
+  const mainText = [
+    "struct Home {",
+    "  build() {",
+    "    const first = Fir",
+    "    const second = Sec",
+    "  }",
+    "}",
+  ].join("\n")
+  const firstText = "export class FirstAuthority {}\n"
+  const secondText = "export class SecondAuthority {}\n"
+  fs.writeFileSync(physicalMain, mainText, "utf8")
+  fs.writeFileSync(physicalTarget, secondText, "utf8")
+  const { SemanticDocumentStore } = buildDocumentStoreDriver(base)
+  const { SemanticTypeEngineRegistry } = buildTypeEngineDriver(t)
+  const store = new SemanticDocumentStore()
+  const registry = new SemanticTypeEngineRegistry()
+  t.after(() => store.dispose())
+  t.after(() => registry.dispose())
+  store.sync({
+    path: firstTarget,
+    content: firstText,
+    documentVersion: 1,
+    workspaceRoot: firstAlias,
+  })
+  store.sync({
+    path: secondTarget,
+    content: secondText,
+    documentVersion: 1,
+    workspaceRoot: secondAlias,
+  })
+  const position = (rootPath, documentPath) => ({
+    path: documentPath,
+    line: 1,
+    column: 1,
+    workspaceRoot: rootPath,
+  })
+  const completion = (line) => ({
+    path: secondMain,
+    line,
+    column: mainText.split("\n")[line - 1].length + 1,
+    workspaceRoot: secondAlias,
+  })
+  const labels = (view) => {
+    const engine = registry.prepare(view)
+    return {
+      first: engine.complete(completion(3)).items.map(({ label }) => label),
+      second: engine.complete(completion(4)).items.map(({ label }) => label),
+    }
+  }
+
+  const second = store.prepare(position(secondAlias, secondMain))
+  const secondLabels = labels(second)
+  store.sync({
+    path: firstTarget,
+    content: `${firstText}// newest first alias\n`,
+    documentVersion: 2,
+    workspaceRoot: firstAlias,
+  })
+  const first = store.prepare(position(secondAlias, firstTarget))
+  const firstLabels = labels(first)
+  store.sync({
+    path: secondTarget,
+    content: `${secondText}// newest second alias\n`,
+    documentVersion: 2,
+    workspaceRoot: secondAlias,
+  })
+  const secondAgain = store.prepare(position(secondAlias, secondTarget))
+  const secondAgainLabels = labels(secondAgain)
+
+  assert.deepEqual(second.removedPaths, [firstTarget])
+  assert.equal(second.documents.some(({ path: documentPath }) => documentPath === secondTarget), true)
+  assert.equal(secondLabels.second.includes("SecondAuthority"), true)
+  assert.equal(secondLabels.first.includes("FirstAuthority"), false)
+  assert.deepEqual(first.removedPaths, [secondTarget])
+  assert.equal(firstLabels.first.includes("FirstAuthority"), true)
+  assert.equal(firstLabels.second.includes("SecondAuthority"), false)
+  assert.deepEqual(secondAgain.removedPaths, [firstTarget])
+  assert.equal(secondAgainLabels.second.includes("SecondAuthority"), true)
+  assert.equal(secondAgainLabels.first.includes("FirstAuthority"), false)
+  assert.equal(registry.workspaceCount(), 1, "all views must update the same lexical engine")
+})
+
 test("a root reset drops its stale type scripts without rebuilding another root", (t) => {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-watched-type-reset-"))
   t.after(() => fs.rmSync(base, { recursive: true, force: true }))
@@ -594,7 +690,7 @@ test("rebuilds a stale lexical type engine after another alias consumes a root r
   assert.equal(secondAfterDelete.resetTypeEngine, false, "the Store reset delta is one-shot")
   assert.equal(firstAfterDelete.typeEngineResetEpoch, 1)
   assert.equal(secondAfterDelete.typeEngineResetEpoch, 1, "the reset epoch is persistent")
-  assert.deepEqual(secondAfterDelete.removedPaths, [])
+  assert.deepEqual(secondAfterDelete.removedPaths, [firstMain])
   assert.equal(staleDefinitions.some(({ path: definitionPath }) => (
     definitionPath === secondTarget
   )), false)
