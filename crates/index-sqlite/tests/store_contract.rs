@@ -10,6 +10,7 @@ use std::{
 
 use arkts_index_core::{Document, IndexState, MemoryStore, WorkspaceIndex};
 use arkts_index_sqlite::{SqliteStore, workspace_cache_location};
+use rusqlite::Connection;
 
 struct TestDir(PathBuf);
 
@@ -43,7 +44,7 @@ fn assert_store_contract(mut index: WorkspaceIndex) {
             [
                 Document::new(
                     "file:///workspace/Ranking.ets",
-                    "class DomainMain {}\nclass MainPanel {}\n",
+                    "class DomainMain {}\nexport class MainPanel {}\n",
                 ),
                 Document::new(
                     "file:///workspace/Panel.ets",
@@ -66,6 +67,13 @@ fn assert_store_contract(mut index: WorkspaceIndex) {
     assert_eq!(names, ["MainPage", "MainPanel"]);
     assert_eq!(result.items[0].uri, "file:///workspace/Panel.ets");
     assert_eq!(result.items[0].container, None);
+
+    let exports = index
+        .search_exports("MainP", 20)
+        .expect("export search should succeed");
+    assert_eq!(exports.served_generation, 1);
+    assert_eq!(exports.items.len(), 1);
+    assert_eq!(exports.items[0].exported_name, "MainPanel");
 }
 
 #[test]
@@ -600,6 +608,100 @@ fn one_and_two_character_queries_use_bounded_prefix_and_acronym_indexes() {
             .items
             .is_empty()
     );
+}
+
+#[test]
+fn export_discovery_persists_a_candidate_beyond_the_old_completion_scan_bound() {
+    const FILLER_EXPORTS: usize = 4_999;
+    let temp = TestDir::new("exports-over-4096");
+    let database = temp.path().join("symbols.sqlite3");
+    let mut source = String::new();
+    for ordinal in 0..FILLER_EXPORTS {
+        writeln!(&mut source, "export class FillerExport{ordinal:04} {{}}")
+            .expect("writing to String should succeed");
+    }
+    source.push_str("export class ExactNeedleExport {}\n");
+
+    let store =
+        SqliteStore::open(&database, "file:///workspace").expect("SQLite store should open");
+    WorkspaceIndex::with_store(store)
+        .refresh(
+            1,
+            [Document::new("file:///workspace/Exports.ets", source)],
+            &[],
+        )
+        .expect("large export generation should commit");
+
+    let store =
+        SqliteStore::open(&database, "file:///workspace").expect("SQLite store should reopen");
+    let result = WorkspaceIndex::with_store(store)
+        .search_exports("ExactNeedle", 20)
+        .expect("persisted export should be discoverable");
+    assert_eq!(result.served_generation, 1);
+    assert_eq!(result.items.len(), 1);
+    assert_eq!(result.items[0].exported_name, "ExactNeedleExport");
+    assert_eq!(result.items[0].uri, "file:///workspace/Exports.ets");
+    assert_eq!(result.items[0].ordinal, FILLER_EXPORTS as u32);
+}
+
+#[test]
+fn version_two_database_migrates_in_place_without_losing_committed_symbols() {
+    let temp = TestDir::new("v2-migration");
+    let database = temp.path().join("symbols-v2.sqlite3");
+    let store =
+        SqliteStore::open(&database, "file:///workspace").expect("SQLite store should open");
+    WorkspaceIndex::with_store(store)
+        .refresh(
+            1,
+            [Document::new(
+                "file:///workspace/Existing.ets",
+                "class ExistingSymbol {}\n",
+            )],
+            &[],
+        )
+        .expect("generation one should commit");
+
+    let legacy = Connection::open(&database).expect("database should open directly");
+    legacy
+        .execute_batch("DROP TABLE exports; PRAGMA user_version = 2;")
+        .expect("test fixture should emulate the previous schema");
+    drop(legacy);
+
+    let store = SqliteStore::open(&database, "file:///workspace")
+        .expect("version two database should migrate in place");
+    let mut index = WorkspaceIndex::with_store(store);
+    assert_eq!(
+        index
+            .search("ExistingSymbol", 20)
+            .expect("existing symbols should survive migration")
+            .items
+            .len(),
+        1
+    );
+    index
+        .refresh(
+            2,
+            [Document::new(
+                "file:///workspace/NewExport.ets",
+                "export class NewExport {}\n",
+            )],
+            &[],
+        )
+        .expect("migrated database should accept exports");
+    assert_eq!(
+        index
+            .search_exports("NewExport", 20)
+            .expect("new export should be searchable")
+            .items
+            .len(),
+        1
+    );
+
+    let migrated = Connection::open(&database).expect("migrated database should reopen");
+    let version: i64 = migrated
+        .pragma_query_value(None, "user_version", |row| row.get(0))
+        .expect("schema version should be readable");
+    assert_eq!(version, 3);
 }
 
 #[test]

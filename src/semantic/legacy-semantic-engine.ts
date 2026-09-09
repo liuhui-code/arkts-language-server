@@ -173,6 +173,7 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     const completion = prepared.engine.complete({
       ...prepared.position,
       allowSnippets: query.completionOptions?.snippets === true,
+      completionDiscovery: query.completionDiscovery,
     })
     const items = completion.items
       .map((item) => toPublicCompletion(item, query.document.version))

@@ -1,7 +1,7 @@
 # Memory Runtime — Coordinator, memory policy, and single semantic worker
 
 Parent revision: `3729edf56c0aa9d6ab7bb8740fa190a215454d2d` (PR #16 merge).
-Branch: `codex/memory-runtime`.
+Branch: `codex/memory-runtime`; merged by PR #17 as `68c8b51`.
 
 ## RED
 
@@ -81,8 +81,8 @@ artifact-e2e: 6/6 passed
 large: 1/1 passed (cold catalog 558.47 ms; warm first query 3.30 ms; repeated query P95 2.45 ms)
 ```
 
-The local canonical release script passed. GitHub canonical `validate` remains the final phase-exit
-check before merge.
+The local canonical release script and GitHub canonical `validate` run `34340965128` passed. PR #17
+merged as `68c8b51`; the Memory Runtime phase is closed.
 
 ## Reproduction
 

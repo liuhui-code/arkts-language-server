@@ -6,6 +6,7 @@ import { Worker } from "node:worker_threads"
 
 import type { DocumentSnapshot } from "../contracts/document.js"
 import type { ProjectResolverPort } from "../contracts/project-resolver.js"
+import type { WorkspaceExportIndexPort } from "../contracts/workspace-index.js"
 import type * as Contract from "../contracts/semantic-engine.js"
 import { isArkUIStringResourcePath } from "../core/arkui/resource-path.js"
 import { LocalPackageResolver } from "../core/sdk/local-package-resolver.js"
@@ -32,6 +33,7 @@ import type {
 interface SemanticWorkerProxyOptions {
   readonly env?: NodeJS.ProcessEnv
   readonly workerPath?: string
+  readonly exportIndex?: WorkspaceExportIndexPort
 }
 
 type TrackedDocument = DocumentSnapshot
@@ -49,6 +51,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
   readonly #logger: StructuredLogger | undefined
   readonly #environment: NodeJS.ProcessEnv
   readonly #workerPath: string
+  readonly #exportIndex: WorkspaceExportIndexPort | undefined
   readonly #packageResolver = new LocalPackageResolver()
   readonly #documents = new Map<string, TrackedDocument>()
   readonly #supervisors = new Map<string, RootSemanticWorkerSupervisor>()
@@ -68,6 +71,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
     this.#projects = projects
     this.#logger = logger
     this.#environment = options.env ?? process.env
+    this.#exportIndex = options.exportIndex
     const adjacentWorker = path.join(__dirname, "semantic-worker.cjs")
     this.#workerPath = options.workerPath ?? (fs.existsSync(adjacentWorker)
       ? adjacentWorker
@@ -139,10 +143,12 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
     }
   }
 
-  complete(query: Contract.SemanticQuery) {
+  async complete(query: Contract.SemanticQuery) {
+    const discovery = await this.#completionDiscovery(query)
     return this.#documentRequest<Contract.SemanticCompletionList>("complete", query, {
       position: query.position,
       snippets: query.completionOptions?.snippets === true,
+      ...(discovery ? { discovery } : {}),
     })
   }
 
@@ -278,6 +284,47 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
       position: query.position,
       triggerReason: query.triggerReason,
     })
+  }
+
+  async #completionDiscovery(
+    query: Contract.SemanticQuery,
+  ): Promise<Contract.SemanticCompletionDiscovery | undefined> {
+    if (!this.#exportIndex) return undefined
+    const context = completionPrefixContext(query.document.text, query.position)
+    if (context.memberAccess || Array.from(context.prefix).length < 2) return undefined
+    try {
+      const result = await this.#exportIndex.searchExports(
+        query.document.workspaceId,
+        context.prefix,
+        128,
+        query.signal,
+      )
+      return {
+        incomplete: result.completeness !== "ready",
+        candidates: result.items
+          .filter(candidate => candidate.uri !== query.document.uri)
+          .flatMap(candidate => {
+            const importSpecifier = candidate.importSpecifier
+              ?? relativeImportSpecifier(query.document.uri, candidate.uri)
+            return importSpecifier
+              ? [{
+                  exportedName: candidate.exportedName,
+                  kind: candidate.kind,
+                  uri: candidate.uri,
+                  ordinal: candidate.ordinal,
+                  ...(candidate.declarationIdentity
+                    ? { declarationIdentity: candidate.declarationIdentity }
+                    : {}),
+                  importSpecifier,
+                  ...(candidate.moduleId ? { moduleId: candidate.moduleId } : {}),
+                  ...(candidate.targetScope ? { targetScope: candidate.targetScope } : {}),
+                }]
+              : []
+          }),
+      }
+    } catch {
+      return undefined
+    }
   }
 
   async dispose(): Promise<void> {
@@ -445,6 +492,45 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
   #assertAvailable(): void {
     if (this.#disposed) throw new Error("Semantic worker is disposed")
     if (this.#failure) throw this.#failure
+  }
+}
+
+function completionPrefixContext(
+  text: string,
+  position: { line: number; character: number },
+): { prefix: string; memberAccess: boolean } {
+  const lines = text.split(/\r?\n/u)
+  const line = lines[position.line] ?? ""
+  let utf16 = 0
+  let offset = 0
+  while (offset < line.length && utf16 < position.character) {
+    const codePoint = line.codePointAt(offset)
+    if (codePoint === undefined) break
+    const width = codePoint > 0xffff ? 2 : 1
+    if (utf16 + width > position.character) break
+    utf16 += width
+    offset += width
+  }
+  const before = line.slice(0, offset)
+  const prefix = /[\p{ID_Continue}$_]*$/u.exec(before)?.[0] ?? ""
+  return {
+    prefix,
+    memberAccess: before.slice(0, before.length - prefix.length).endsWith("."),
+  }
+}
+
+function relativeImportSpecifier(fromUri: string, candidateUri: string): string | undefined {
+  if (!fromUri.startsWith("file:") || !candidateUri.startsWith("file:")) return undefined
+  try {
+    const fromDirectory = path.dirname(fileURLToPath(fromUri))
+    const candidatePath = fileURLToPath(candidateUri)
+      .replace(/\.(?:d\.)?(?:ets|ts)$/u, "")
+      .replace(/[\\/]index$/u, "")
+    let relative = path.relative(fromDirectory, candidatePath).split(path.sep).join("/")
+    if (!relative.startsWith(".")) relative = `./${relative}`
+    return relative
+  } catch {
+    return undefined
   }
 }
 

@@ -808,6 +808,85 @@ test("resolves and applies an unopened class auto-import through the production 
   assert.equal(textInRange(greeterSource, locations[0].range), "Greeter")
 })
 
+test("recalls and semantically validates an auto-import beyond 4096 module exports", { timeout: 60_000 }, async (t) => {
+  const materialized = await materializeConformanceWorkspace()
+  const sourceDirectory = path.join(
+    materialized.workspaceRoot,
+    "entry",
+    "src",
+    "main",
+    "ets",
+    "pages",
+  )
+  const exportPath = path.join(sourceDirectory, "ManyExports.ets")
+  const filler = Array.from(
+    { length: 4_999 },
+    (_, index) => `export class FillerExport${String(index).padStart(4, "0")} {}`,
+  )
+  await fs.promises.writeFile(
+    exportPath,
+    `${filler.join("\n")}\nexport class ExactNeedleExport {}\n`,
+    "utf8",
+  )
+  const consumerPath = path.join(sourceDirectory, "Beyond4096Consumer.ets")
+  const source = "const selected = ExactNeedle\n"
+  await fs.promises.writeFile(consumerPath, source, "utf8")
+  const uri = pathToFileURL(consumerPath).href
+  const session = new LspSession({
+    command: process.execPath,
+    args: [path.join(projectRoot, "dist", "server.cjs"), "--stdio"],
+    cwd: projectRoot,
+    env: {
+      HOME: path.join(materialized.root, "missing-home"),
+      DEVECO_SDK_HOME: path.join(materialized.root, "missing-deveco"),
+      ARKLINE_HARMONY_SDK_PATH: path.join(materialized.corpusRoot, "sdk", "openharmony"),
+      ARKTS_INDEX_SIDECAR_PATH: path.join(projectRoot, "target", "debug", "arkts-index-sidecar"),
+    },
+    rootUri: pathToFileURL(materialized.workspaceRoot).href,
+  })
+  t.after(async () => {
+    try {
+      await session.close()
+    } finally {
+      await fs.promises.rm(materialized.root, { recursive: true, force: true })
+    }
+  })
+
+  await session.initialize()
+  session.openDocument({ uri, languageId: "arkts", version: 1, text: source })
+  let indexed = false
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const discovery = await session.request("workspace/symbol", { query: "ExactNeedle" })
+    if (discovery.result?.some((symbol) => symbol.name === "ExactNeedleExport")) {
+      indexed = true
+      break
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+  assert.equal(indexed, true, "Rust catalog must commit before completion discovery")
+
+  const prefixOffset = source.indexOf("ExactNeedle")
+  const replacement = {
+    start: positionAt(source, prefixOffset),
+    end: positionAt(source, prefixOffset + "ExactNeedle".length),
+  }
+  const response = await session.request("textDocument/completion", {
+    textDocument: { uri },
+    position: replacement.end,
+  })
+  assert.equal(response.error, undefined, JSON.stringify(response.error))
+  const items = Array.isArray(response.result) ? response.result : response.result?.items ?? []
+  const matches = items.filter((item) => item.label === "ExactNeedleExport")
+  assert.equal(matches.length, 1, JSON.stringify(items))
+  assert.deepEqual(matches[0].textEdit, {
+    range: replacement,
+    newText: "ExactNeedleExport",
+  })
+  const resolved = await session.request("completionItem/resolve", matches[0])
+  assert.equal(resolved.error, undefined, JSON.stringify(resolved.error))
+  assert.match(resolved.result.additionalTextEdits?.[0]?.newText ?? "", /ManyExports/)
+})
+
 test("restores an unopened auto-import after call-hierarchy traversal and overlay close", async (t) => {
   const materialized = await materializeConformanceWorkspace()
   const completion = materialized.cases["completion.unicode"]

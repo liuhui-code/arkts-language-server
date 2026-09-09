@@ -362,6 +362,35 @@ test("canonicalizes representative editor request argument shapes", (t) => {
   }
 })
 
+test("clones and strictly decodes export discovery candidates for completion", (t) => {
+  const protocol = buildDriver(t)
+  const input = requestEnvelope(protocol, {
+    method: "complete",
+    args: {
+      position: { line: 3, character: 7 },
+      discovery: {
+        incomplete: false,
+        candidates: [{
+          exportedName: "NeedleExport",
+          kind: "class",
+          uri: "file:///workspace/NeedleExport.ets",
+          ordinal: 4999,
+          declarationIdentity: "needle-identity",
+          importSpecifier: "./NeedleExport",
+        }],
+      },
+    },
+  })
+
+  const decoded = protocol.decodeSemanticWorkerRequest(input)
+  assert.deepEqual(decoded.args, input.args)
+  assert.notEqual(decoded.args.discovery, input.args.discovery)
+  assert.notEqual(decoded.args.discovery.candidates, input.args.discovery.candidates)
+  assert.equal(Object.isFrozen(decoded.args.discovery), true)
+  assert.equal(Object.isFrozen(decoded.args.discovery.candidates), true)
+  assert.equal(Object.isFrozen(decoded.args.discovery.candidates[0]), true)
+})
+
 test("rejects malformed requests, executable values, document text, and invalid cancel cells", (t) => {
   const protocol = buildDriver(t)
   const valid = requestEnvelope(protocol)

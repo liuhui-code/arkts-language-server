@@ -4,8 +4,9 @@
 contract 34/34 PASS，lifecycle/memory PASS。Backend Cutover 的本地 `check:fast` 855/855、完整
 `check:release` 与 PR #16 canonical `validate` 均已通过并合入 `3729edf`。Memory Runtime 的
 单 Worker、Coordinator、L0-L3、metrics 与交付接线已在 `codex/memory-runtime` 完成，本地
-`check:fast` 864/864、bundle-e2e 271/271 与完整本地 `check:release` 已通过；PR canonical
-`validate` 与合并仍待执行。
+`check:fast` 864/864、bundle-e2e 271/271、完整本地 `check:release` 与 PR #17 canonical
+`validate` 均已通过，并合入 `68c8b51`。Rust Discovery 已在 `codex/rust-discovery` 完成
+本地退出门禁，等待 canonical PR `validate` 与合并。
 
 计划基线：`e90cacb9ace47292ac0869d09b3a64f7c7fe2144`（P2.1b，PR #5）。
 
@@ -628,10 +629,10 @@ openDocuments 和 leaseCount。Node worker thread memory 不与 process RSS 重�
   adjacency 回归通过；
 - [x] bundle-e2e 271/271，`pnpm check:fast` 864/864；
 - [x] 本地完整 `pnpm check:release` 通过：artifact 6/6、真实 455-file large fixture 1/1；
-- [ ] canonical PR `validate` 通过并合入。
+- [x] canonical PR `validate`（run `34340965128`）通过，PR #17 合入 `68c8b51`。
 
 RED/GREEN、回归分类与复现命令见 [Memory Runtime TDD 记录](../tdd/memory-runtime.md)。在最后一项
-关闭前不得进入 Rust Discovery。
+该 Phase 已关闭，Rust Discovery 从 `68c8b51` 开始。
 
 ## 13. Rust Discovery 清单
 
@@ -648,6 +649,24 @@ symbol kind、declaration identity、import specifier 和 target scope。
 - 不通过调大现有4096常量掩盖 discovery 缺口。
 
 Rust 变更运行 focused crate tests、`pnpm check:fast` 和相关 release build。
+
+当前证据（2026-09-09）：
+
+- [x] 现有 `symbols-v2.sqlite3` 原地迁移到 schema v3；旧 generation/symbol 保留，未创建第二 DB；
+- [x] export metadata 与 workspace symbols 在同一 WAL transaction/generation 中提交；
+- [x] MemoryStore 与 SQLite store 的 export prefix query 契约一致；
+- [x] 真实 sidecar `exports/search` 返回严格解码、URI rebasing、generation 与 completeness；
+- [x] 5000-export fixture 的 `ExactNeedleExport` 位于 ordinal 4999，Rust 重启后仍可召回；
+- [x] 单 semantic worker 只接受名称与 module source 匹配、且
+  `getCompletionEntryDetails()` 验证成功的官方 completion entry；
+- [x] 真实 LSP completion/resolve 产生指向 `ManyExports` 的 import edit；4096 常量保持不变；
+- [x] `cargo fmt`、三 crate clippy/tests、release sidecar build 全绿；
+- [x] `pnpm check:fast` 867/867；完整本地 `pnpm check:release` 通过：artifact 6/6，
+  455-file large 1/1（cold 597.73 ms；warm first 3.90 ms；repeated P95 2.39 ms）；
+- [ ] canonical PR `validate` 通过并合入。
+
+RED/GREEN 与复现命令见 [Rust Discovery TDD 记录](../tdd/rust-discovery.md)。最后一项关闭前
+不得进入 Rule Gap。
 
 ## 14. Rule Gap 清单
 

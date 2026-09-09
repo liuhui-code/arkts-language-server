@@ -283,6 +283,63 @@ impl Runtime {
                     false,
                 ))
             }
+            "exports/search" => {
+                let params: SearchParams = parse_params(request.params)?;
+                let search_result = self
+                    .index
+                    .as_ref()
+                    .ok_or_else(not_initialized)?
+                    .search_exports(&params.query, params.limit);
+                let result = match search_result {
+                    Ok(result) => result,
+                    Err(error) => {
+                        self.state = IndexState::Degraded;
+                        self.completeness = "stale";
+                        return Err(protocol_store_error(error));
+                    }
+                };
+                let items: Vec<_> = result
+                    .items
+                    .into_iter()
+                    .map(|export| {
+                        let mut item = json!({
+                            "exportedName": export.exported_name,
+                            "kind": symbol_kind_name(export.kind),
+                            "uri": export.uri,
+                            "ordinal": export.ordinal,
+                            "range": {
+                                "start": {
+                                    "line": export.range.start.line,
+                                    "character": export.range.start.character,
+                                },
+                                "end": {
+                                    "line": export.range.end.line,
+                                    "character": export.range.end.character,
+                                },
+                            },
+                        });
+                        for (name, value) in [
+                            ("declarationIdentity", export.declaration_identity),
+                            ("importSpecifier", export.import_specifier),
+                            ("moduleId", export.module_id),
+                            ("targetScope", export.target_scope),
+                        ] {
+                            if let Some(value) = value {
+                                item[name] = json!(value);
+                            }
+                        }
+                        item
+                    })
+                    .collect();
+                Ok((
+                    json!({
+                        "items": items,
+                        "servedGeneration": result.served_generation,
+                        "completeness": self.completeness,
+                    }),
+                    false,
+                ))
+            }
             "catalog/start" => {
                 let _params: CatalogStartParams = parse_params(request.params)?;
                 if let Some(active) = &self.catalog {

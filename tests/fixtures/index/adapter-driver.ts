@@ -13,7 +13,7 @@ import { SidecarWorkspaceIndex } from "../../../src/index/sidecar-workspace-inde
 
 interface DriverCommand {
   id: number
-  method: "open" | "refresh" | "search" | "status" | "close" | "abort" | "events" | "resolveCache" | "resolveSidecar" | "exit"
+  method: "open" | "refresh" | "search" | "exportsSearch" | "status" | "close" | "abort" | "events" | "resolveCache" | "resolveSidecar" | "exit"
   workspace?: WorkspaceDescriptor
   workspaceId?: string
   cacheDir?: string
@@ -75,6 +75,14 @@ async function dispatch(command: DriverCommand): Promise<void> {
           required(command.limit, "limit"),
           controller?.signal,
           command.excludedUris,
+        )
+        break
+      case "exportsSearch":
+        result = await index.searchExports(
+          required(command.workspaceId, "workspaceId"),
+          command.query ?? "",
+          required(command.limit, "limit"),
+          controller?.signal,
         )
         break
       case "status":
