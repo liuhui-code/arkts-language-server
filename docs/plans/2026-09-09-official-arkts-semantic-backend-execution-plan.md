@@ -8,7 +8,8 @@ contract 34/34 PASS，lifecycle/memory PASS。Backend Cutover 的本地 `check:f
 `validate` 均已通过，并合入 `68c8b51`。Rust Discovery 的修复后 canonical run
 `34347649107` 已通过，PR #18 合入 `38f65e3`。Rule Gap canonical run `34349569571` 已通过，
 PR #19 合入 `089419c`；没有 target-SDK golden 证明需要第二规则 provider。Product Gate 已从
-该 merge 开始，自动化工具与完整 Linux/DevEco 测量证据分开验收。
+该 merge 开始；benchmark infrastructure canonical run `34355082083` 已通过，PR #20 合入
+`0e820e2`。完整 Linux/DevEco 测量证据继续单独验收。
 
 计划基线：`e90cacb9ace47292ac0869d09b3a64f7c7fe2144`（P2.1b，PR #5）。
 
@@ -755,7 +756,8 @@ DevEco 对照固定 IDE/JDK/SDK/workspace/config 和进程集合，不含 emulat
 - [ ] 同一 identity 下完成首次 DevEco UI workflow 与进程归属确认；
 - [ ] `memory-zed-arkts.json` / `memory-deveco.json` 通过两行 release gate；
 - [x] benchmark infrastructure 的 `pnpm check:fast` 876/876，0 fail/cancel/skip/todo；
-- [ ] canonical PR `validate` 通过并合入 benchmark infrastructure；
+- [x] benchmark infrastructure canonical PR `validate`（run `34355082083`）通过，PR #20 合入
+  `0e820e2`；
 - [ ] 最终 measurement evidence PR 通过同一 canonical gate 并合入。
 
 当前 host 为 macOS，不能提供计划要求的 Linux `smaps_rollup` PSS；禁止把本地 RSS 或占位 JSON
