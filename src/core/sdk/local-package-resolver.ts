@@ -95,8 +95,12 @@ export class LocalPackageResolver {
         const dependency = manifest?.dependencies.get(name)
         if (dependency === undefined) return undefined
         let packageRoot: string
-        if (dependency.startsWith("file:")) {
-          const relative = dependency.slice(5)
+        const relative = dependency.startsWith("file:")
+          ? dependency.slice(5)
+          : dependency.startsWith("./") || dependency.startsWith("../")
+            ? dependency
+            : undefined
+        if (relative !== undefined) {
           if (!relative || path.isAbsolute(relative)) return { path: null }
           packageRoot = path.resolve(directory, relative)
         } else {
