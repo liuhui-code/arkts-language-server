@@ -2,6 +2,7 @@
   {
     "id": "references.barrel-unopened",
     "mandatory": true,
+    "scenario": "direct",
     "evidence": { "file": "tests/semantic/references-depth.test.mjs", "testName": "finds unopened barrel references with exact UTF-16 ranges and declaration policy" },
     "oracleFields": ["result[].uri", "result[].range", "includeDeclaration"],
     "assertions": ["References include exact unopened barrel locations and honor declaration policy."]
@@ -9,6 +10,7 @@
   {
     "id": "references.changed-overlay",
     "mandatory": true,
+    "scenario": "direct",
     "evidence": { "file": "tests/semantic/references-depth.test.mjs", "testName": "uses only changed overlay references for both declaration policies" },
     "oracleFields": ["result[].uri", "result[].range", "documentVersion"],
     "assertions": ["Changed overlay references replace stale disk references for both policies."]
@@ -16,6 +18,7 @@
   {
     "id": "references.large-unopened-struct",
     "mandatory": true,
+    "scenario": "direct",
     "evidence": { "file": "tests/semantic/references-completeness.test.mjs", "testName": "finds unopened rewritten struct references beyond resident and lazy windows" },
     "oracleFields": ["result[].uri", "result[].range", "result.length"],
     "assertions": ["References remain complete beyond resident and lazy document windows."]
@@ -23,6 +26,7 @@
   {
     "id": "references.new-target-root",
     "mandatory": true,
+    "scenario": "direct",
     "evidence": { "file": "tests/semantic/references-depth.test.mjs", "testName": "refreshes named references when a declared target source root first appears" },
     "oracleFields": ["before", "after[].uri", "after[].range"],
     "assertions": ["A newly materialized declared target root is visible after the watched refresh."]

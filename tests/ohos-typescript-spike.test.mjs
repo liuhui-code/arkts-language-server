@@ -8,7 +8,11 @@ import {
   SPIKE_CATEGORIES,
   summarizeSpikeResults,
 } from "../scripts/semantic/ohos-typescript-spike/spike-report.mjs"
-import { DIRECT_SCENARIO_IDS } from "../scripts/semantic/ohos-typescript-spike/direct-scenarios.mjs"
+import {
+  CORE_SEMANTIC_SCENARIO_IDS,
+  DIRECT_SCENARIO_IDS,
+  REFERENCE_RENAME_SCENARIO_IDS,
+} from "../scripts/semantic/ohos-typescript-spike/direct-scenarios.mjs"
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 
@@ -69,9 +73,9 @@ test("the committed spike report remains explicitly incomplete until every contr
   const report = JSON.parse(reportBytes.toString("utf8"))
   assert.equal(report.status, "INCOMPLETE")
   assert.equal(report.summary.totals.total, 34)
-  assert.equal(report.summary.totals.passed, 13)
+  assert.equal(report.summary.totals.passed, 21)
   assert.equal(report.summary.totals.failed, 0)
-  assert.equal(report.summary.totals.deferred, 21)
+  assert.equal(report.summary.totals.deferred, 13)
   assert.equal(report.backendRevision, "9cc62fe98f47c0bf113676e3fb33fe932b493052")
   assert.equal(
     report.sdkDeclarationDigest,
@@ -87,7 +91,7 @@ test("the committed spike report remains explicitly incomplete until every contr
 
 test("the core semantic contracts have direct official-backend scenarios", () => {
   assert.deepEqual(
-    [...DIRECT_SCENARIO_IDS].sort(),
+    [...CORE_SEMANTIC_SCENARIO_IDS].sort(),
     [
       "completion.auto-import",
       "completion.imported-receiver",
@@ -97,6 +101,22 @@ test("the core semantic contracts have direct official-backend scenarios", () =>
       "definition.unopened-utf16",
       "diagnostics.exact-code-range",
       "unicode.identifier-completion",
+    ],
+  )
+})
+
+test("references and rename contracts have direct official-backend scenarios", () => {
+  assert.deepEqual(
+    [...REFERENCE_RENAME_SCENARIO_IDS].sort(),
+    [
+      "references.barrel-unopened",
+      "references.changed-overlay",
+      "references.large-unopened-struct",
+      "references.new-target-root",
+      "rename.cross-module",
+      "rename.explicit-barrel-alias",
+      "rename.non-bmp-prepare",
+      "rename.same-scope-conflict",
     ],
   )
 })

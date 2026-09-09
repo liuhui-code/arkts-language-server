@@ -18,9 +18,9 @@
     "status": "INCOMPLETE",
     "totals": {
       "total": 34,
-      "passed": 13,
+      "passed": 21,
       "failed": 0,
-      "deferred": 21
+      "deferred": 13
     },
     "categories": {
       "syntax": {
@@ -39,14 +39,14 @@
         "deferred": 1
       },
       "references": {
-        "passed": 0,
+        "passed": 4,
         "failed": 0,
-        "deferred": 4
+        "deferred": 0
       },
       "rename": {
-        "passed": 0,
+        "passed": 4,
         "failed": 0,
-        "deferred": 4
+        "deferred": 0
       },
       "diagnostics": {
         "passed": 1,
@@ -301,50 +301,234 @@
     {
       "id": "references.barrel-unopened",
       "category": "references",
-      "status": "deferred",
-      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+      "status": "passed",
+      "observations": {
+        "references": [
+          {
+            "relativePath": "references/barrel.ets",
+            "start": 9,
+            "length": 6,
+            "isDefinition": false,
+            "isWriteAccess": true
+          },
+          {
+            "relativePath": "references/consumer.ets",
+            "start": 9,
+            "length": 6,
+            "isDefinition": false,
+            "isWriteAccess": true
+          },
+          {
+            "relativePath": "references/consumer.ets",
+            "start": 46,
+            "length": 6,
+            "isDefinition": false,
+            "isWriteAccess": false
+          },
+          {
+            "relativePath": "references/origin.ets",
+            "start": 13,
+            "length": 6,
+            "isDefinition": false,
+            "isWriteAccess": true
+          }
+        ]
+      },
+      "stats": {
+        "projectFileCount": 3,
+        "snapshotReadCount": 53,
+        "uniqueSnapshotReadCount": 53,
+        "disposed": true
+      }
     },
     {
       "id": "references.changed-overlay",
       "category": "references",
-      "status": "deferred",
-      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+      "status": "passed",
+      "observations": {
+        "beforeCount": 3,
+        "after": [
+          {
+            "relativePath": "references/changed-overlay.ets",
+            "start": 9,
+            "length": 6,
+            "isDefinition": false,
+            "isWriteAccess": true
+          },
+          {
+            "relativePath": "references/changed-overlay.ets",
+            "start": 46,
+            "length": 6,
+            "isDefinition": false,
+            "isWriteAccess": false
+          }
+        ]
+      },
+      "stats": {
+        "projectFileCount": 1,
+        "snapshotReadCount": 102,
+        "uniqueSnapshotReadCount": 51,
+        "disposed": true
+      }
     },
     {
       "id": "references.large-unopened-struct",
       "category": "references",
-      "status": "deferred",
-      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+      "status": "passed",
+      "observations": {
+        "referenceCount": 81,
+        "lastReference": {
+          "relativePath": "references/large/model.ets",
+          "start": 7,
+          "length": 4,
+          "isDefinition": false,
+          "isWriteAccess": true
+        }
+      },
+      "stats": {
+        "projectFileCount": 81,
+        "snapshotReadCount": 131,
+        "uniqueSnapshotReadCount": 131,
+        "disposed": true
+      }
     },
     {
       "id": "references.new-target-root",
       "category": "references",
-      "status": "deferred",
-      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+      "status": "passed",
+      "observations": {
+        "beforeCount": 1,
+        "afterCount": 2
+      },
+      "stats": {
+        "projectFileCount": 2,
+        "snapshotReadCount": 103,
+        "uniqueSnapshotReadCount": 52,
+        "disposed": true
+      }
     },
     {
       "id": "rename.cross-module",
       "category": "rename",
-      "status": "deferred",
-      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+      "status": "passed",
+      "observations": {
+        "locations": [
+          {
+            "relativePath": "rename/barrel.ets",
+            "start": 18,
+            "length": 11,
+            "prefixText": null,
+            "suffixText": null
+          },
+          {
+            "relativePath": "rename/consumer-a.ets",
+            "start": 9,
+            "length": 11,
+            "prefixText": null,
+            "suffixText": null
+          },
+          {
+            "relativePath": "rename/consumer-a.ets",
+            "start": 43,
+            "length": 11,
+            "prefixText": null,
+            "suffixText": null
+          },
+          {
+            "relativePath": "rename/consumer-b.ets",
+            "start": 9,
+            "length": 11,
+            "prefixText": null,
+            "suffixText": null
+          },
+          {
+            "relativePath": "rename/consumer-b.ets",
+            "start": 43,
+            "length": 11,
+            "prefixText": null,
+            "suffixText": null
+          }
+        ]
+      },
+      "stats": {
+        "projectFileCount": 4,
+        "snapshotReadCount": 54,
+        "uniqueSnapshotReadCount": 54,
+        "disposed": true
+      }
     },
     {
       "id": "rename.explicit-barrel-alias",
       "category": "rename",
-      "status": "deferred",
-      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+      "status": "passed",
+      "observations": {
+        "locations": [
+          {
+            "relativePath": "rename/alias-barrel.ets",
+            "start": 21,
+            "length": 11,
+            "prefixText": null,
+            "suffixText": null
+          },
+          {
+            "relativePath": "rename/alias-consumer.ets",
+            "start": 9,
+            "length": 11,
+            "prefixText": null,
+            "suffixText": null
+          },
+          {
+            "relativePath": "rename/alias-consumer.ets",
+            "start": 49,
+            "length": 11,
+            "prefixText": null,
+            "suffixText": null
+          }
+        ]
+      },
+      "stats": {
+        "projectFileCount": 3,
+        "snapshotReadCount": 53,
+        "uniqueSnapshotReadCount": 53,
+        "disposed": true
+      }
     },
     {
       "id": "rename.non-bmp-prepare",
       "category": "rename",
-      "status": "deferred",
-      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+      "status": "passed",
+      "observations": {
+        "displayName": "Alias",
+        "kind": "alias",
+        "triggerSpan": {
+          "start": 87,
+          "length": 5
+        }
+      },
+      "stats": {
+        "projectFileCount": 2,
+        "snapshotReadCount": 52,
+        "uniqueSnapshotReadCount": 52,
+        "disposed": true
+      }
     },
     {
       "id": "rename.same-scope-conflict",
       "category": "rename",
-      "status": "deferred",
-      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+      "status": "passed",
+      "observations": {
+        "candidateCount": 2,
+        "conflictCodes": [
+          2451,
+          2451
+        ]
+      },
+      "stats": {
+        "projectFileCount": 1,
+        "snapshotReadCount": 51,
+        "uniqueSnapshotReadCount": 51,
+        "disposed": true
+      }
     },
     {
       "id": "diagnostics.exact-code-range",

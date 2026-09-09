@@ -2,7 +2,7 @@ import path from "node:path"
 
 import { createSpikeProject, diagnosticIdentity, materializeMarkedFixture } from "./backend-host.mjs"
 
-const scenarios = new Map([
+const coreScenarios = [
   ["completion.this-member", completionThisMember],
   ["completion.imported-receiver", completionImportedReceiver],
   ["completion.auto-import", completionAutoImport],
@@ -11,9 +11,26 @@ const scenarios = new Map([
   ["definition.alias-reexport", definitionAliasReexport],
   ["diagnostics.exact-code-range", diagnosticsExactCodeRange],
   ["unicode.identifier-completion", unicodeIdentifier],
-])
+]
+
+const referenceRenameScenarios = [
+  ["references.barrel-unopened", referencesBarrelUnopened],
+  ["references.changed-overlay", referencesChangedOverlay],
+  ["references.large-unopened-struct", referencesLargeUnopenedStruct],
+  ["references.new-target-root", referencesNewTargetRoot],
+  ["rename.cross-module", renameCrossModule],
+  ["rename.explicit-barrel-alias", renameExplicitBarrelAlias],
+  ["rename.non-bmp-prepare", renameNonBmpPrepare],
+  ["rename.same-scope-conflict", renameSameScopeConflict],
+]
+
+const scenarios = new Map([...coreScenarios, ...referenceRenameScenarios])
 
 export const DIRECT_SCENARIO_IDS = new Set(scenarios.keys())
+export const CORE_SEMANTIC_SCENARIO_IDS = new Set(coreScenarios.map(([id]) => id))
+export const REFERENCE_RENAME_SCENARIO_IDS = new Set(
+  referenceRenameScenarios.map(([id]) => id),
+)
 
 export function runDirectScenario(compiler, contractsRoot, record) {
   const scenario = scenarios.get(record.id)
@@ -190,6 +207,193 @@ function unicodeIdentifier(compiler, root) {
   })
 }
 
+function referencesBarrelUnopened(compiler, root) {
+  const origin = marked("export const /*@query*/target = 1\n")
+  const project = createSpikeProject(compiler, root, {
+    "references/origin.ets": origin.text,
+    "references/barrel.ets": "export { target } from \"./origin\"\n",
+    "references/consumer.ets": "import { target } from \"./barrel\"\nconsole.log(target)\n",
+  })
+  return wrap(project, () => {
+    const references = referenceIdentities(
+      project.references("references/origin.ets", origin.position),
+      root,
+    )
+    assertPathSet(references, [
+      "references/origin.ets",
+      "references/barrel.ets",
+      "references/consumer.ets",
+    ])
+    return { references }
+  })
+}
+
+function referencesChangedOverlay(compiler, root) {
+  const initial = marked(`
+function /*@query*/target(): void {}
+target()
+target()
+`)
+  const changed = `
+function target(): void {}
+const emoji = "😀"
+target()
+`.trimStart()
+  const mainPath = "references/changed-overlay.ets"
+  const project = createSpikeProject(compiler, root, { [mainPath]: initial.text })
+  return wrap(project, () => {
+    const before = referenceIdentities(project.references(mainPath, initial.position), root)
+    assert(before.length === 3, "initial overlay should contain three target references")
+    project.update(mainPath, changed)
+    const after = referenceIdentities(project.references(mainPath, changed.indexOf("target")), root)
+    assert(after.length === 2, "changed overlay should replace stale target references")
+    assert(
+      after.every(({ start }) => start < changed.length),
+      "changed overlay returned a stale out-of-range reference",
+    )
+    return { beforeCount: before.length, after }
+  })
+}
+
+function referencesLargeUnopenedStruct(compiler, root) {
+  const declaration = marked("struct /*@query*/Card { value: number = 1 }\n")
+  const files = { "references/large/model.ets": declaration.text }
+  for (let index = 0; index < 80; index += 1) {
+    files[`references/large/consumer-${String(index).padStart(3, "0")}.ets`]
+      = `const card${index} = new Card()\n`
+  }
+  const project = createSpikeProject(compiler, root, files)
+  return wrap(project, () => {
+    const references = referenceIdentities(
+      project.references("references/large/model.ets", declaration.position),
+      root,
+    )
+    assert(references.length === 81, "large unopened reference set is incomplete")
+    assert(
+      references.some(({ relativePath }) => relativePath.endsWith("consumer-079.ets")),
+      "last unopened consumer is missing",
+    )
+    return { referenceCount: references.length, lastReference: references.at(-1) }
+  })
+}
+
+function referencesNewTargetRoot(compiler, root) {
+  const declaration = marked("class /*@query*/TargetService {}\n")
+  const modelPath = "references/new-target/model.ets"
+  const project = createSpikeProject(compiler, root, { [modelPath]: declaration.text })
+  return wrap(project, () => {
+    const before = referenceIdentities(project.references(modelPath, declaration.position), root)
+    project.update(
+      "references/new-target/materialized/consumer.ets",
+      "const service = new TargetService()\n",
+    )
+    const after = referenceIdentities(project.references(modelPath, declaration.position), root)
+    assert(after.length === before.length + 1, "new target root did not refresh references")
+    assertPathSet(after, ["references/new-target/materialized/consumer.ets"])
+    return { beforeCount: before.length, afterCount: after.length }
+  })
+}
+
+function renameCrossModule(compiler, root) {
+  const barrel = marked("export { Thing as /*@query*/PublicThing } from \"./origin\"\n")
+  const project = createSpikeProject(compiler, root, {
+    "rename/origin.ets": "export class Thing {}\n",
+    "rename/barrel.ets": barrel.text,
+    "rename/consumer-a.ets": "import { PublicThing } from \"./barrel\"\nnew PublicThing()\n",
+    "rename/consumer-b.ets": "import { PublicThing } from \"./barrel\"\nnew PublicThing()\n",
+  })
+  return wrap(project, () => {
+    const locations = renameIdentities(
+      project.renameLocations("rename/barrel.ets", barrel.position),
+      root,
+    )
+    assertPathSet(locations, [
+      "rename/barrel.ets",
+      "rename/consumer-a.ets",
+      "rename/consumer-b.ets",
+    ])
+    assert(
+      locations.every(({ relativePath }) => relativePath !== "rename/origin.ets"),
+      "public rename changed the origin identity",
+    )
+    return { locations }
+  })
+}
+
+function renameExplicitBarrelAlias(compiler, root) {
+  const barrel = marked("export { Original as Public/*@query*/Alias } from \"./alias-origin\"\n")
+  const project = createSpikeProject(compiler, root, {
+    "rename/alias-origin.ets": "export class Original {}\n",
+    "rename/alias-barrel.ets": barrel.text,
+    "rename/alias-consumer.ets": "import { PublicAlias } from \"./alias-barrel\"\nnew PublicAlias()\n",
+  })
+  return wrap(project, () => {
+    const locations = renameIdentities(
+      project.renameLocations("rename/alias-barrel.ets", barrel.position),
+      root,
+    )
+    assertPathSet(locations, ["rename/alias-barrel.ets", "rename/alias-consumer.ets"])
+    assert(
+      locations.every(({ relativePath }) => relativePath !== "rename/alias-origin.ets"),
+      "explicit alias rename reached the origin declaration",
+    )
+    return { locations }
+  })
+}
+
+function renameNonBmpPrepare(compiler, root) {
+  const fixture = marked(`
+import { Thing as Alias } from "./prepare-origin"
+const emoji = "😀"
+const value = new Al/*@query*/ias()
+`)
+  const mainPath = "rename/non-bmp-prepare.ets"
+  const project = createSpikeProject(compiler, root, {
+    [mainPath]: fixture.text,
+    "rename/prepare-origin.ets": "export class Thing {}\n",
+  })
+  return wrap(project, () => {
+    const info = project.renameInfo(mainPath, fixture.position)
+    assert(info.canRename === true, "prepare rename rejected the source alias")
+    const aliasStart = fixture.text.lastIndexOf("Alias")
+    assert(info.triggerSpan.start === aliasStart, "prepare rename starts at the wrong UTF-16 offset")
+    assert(info.triggerSpan.length === "Alias".length, "prepare rename has the wrong length")
+    return {
+      displayName: info.displayName,
+      kind: info.kind,
+      triggerSpan: info.triggerSpan,
+    }
+  })
+}
+
+function renameSameScopeConflict(compiler, root) {
+  const fixture = marked(`
+const existing = 1
+const /*@query*/target = 2
+console.log(target)
+`)
+  const mainPath = "rename/same-scope-conflict.ets"
+  const project = createSpikeProject(compiler, root, { [mainPath]: fixture.text })
+  return wrap(project, () => {
+    const locations = project.renameLocations(mainPath, fixture.position)
+    assert(locations.length === 2, "rename did not find both target locations")
+    const renamed = applyRename(fixture.text, locations, project.fileName(mainPath), "existing")
+    const validation = createSpikeProject(compiler, root, { [mainPath]: renamed })
+    try {
+      const diagnostics = validation.semanticDiagnostics(mainPath)
+        .map((diagnostic) => diagnosticIdentity(compiler, diagnostic))
+      const conflicts = diagnostics.filter(({ code }) => code === 2451)
+      assert(conflicts.length >= 2, "backend did not expose the same-scope rename conflict")
+      return {
+        candidateCount: locations.length,
+        conflictCodes: conflicts.map(({ code }) => code),
+      }
+    } finally {
+      validation.dispose()
+    }
+  })
+}
+
 function completionProject(compiler, root, mainPath, fixture, expected, otherFiles = {}) {
   const project = createSpikeProject(compiler, root, { [mainPath]: fixture.text, ...otherFiles })
   return wrap(project, () => {
@@ -257,6 +461,51 @@ function portableSource(source, root) {
   return path.isAbsolute(source)
     ? path.relative(root, source).split(path.sep).join("/")
     : source
+}
+
+function referenceIdentities(entries, root) {
+  return entries.map((entry) => ({
+    relativePath: portablePath(entry.fileName, root),
+    start: entry.textSpan.start,
+    length: entry.textSpan.length,
+    isDefinition: entry.isDefinition === true,
+    isWriteAccess: entry.isWriteAccess === true,
+  })).sort(compareLocation)
+}
+
+function renameIdentities(entries, root) {
+  return entries.map((entry) => ({
+    relativePath: portablePath(entry.fileName, root),
+    start: entry.textSpan.start,
+    length: entry.textSpan.length,
+    prefixText: entry.prefixText ?? null,
+    suffixText: entry.suffixText ?? null,
+  })).sort(compareLocation)
+}
+
+function portablePath(fileName, root) {
+  return path.relative(root, fileName).split(path.sep).join("/")
+}
+
+function compareLocation(left, right) {
+  return left.relativePath.localeCompare(right.relativePath) || left.start - right.start
+}
+
+function assertPathSet(locations, expectedPaths) {
+  const actual = new Set(locations.map(({ relativePath }) => relativePath))
+  for (const expectedPath of expectedPaths) {
+    assert(actual.has(expectedPath), "missing semantic location in " + expectedPath)
+  }
+}
+
+function applyRename(text, locations, fileName, newName) {
+  const spans = locations
+    .filter((location) => path.resolve(location.fileName) === fileName)
+    .map(({ textSpan }) => textSpan)
+    .sort((left, right) => right.start - left.start)
+  return spans.reduce((current, span) => (
+    current.slice(0, span.start) + newName + current.slice(span.start + span.length)
+  ), text)
 }
 
 function assert(condition, message) {
