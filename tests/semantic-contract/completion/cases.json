@@ -1,0 +1,30 @@
+[
+  {
+    "id": "completion.this-member",
+    "mandatory": true,
+    "evidence": { "file": "tests/semantic/semantic-characterization.test.mjs", "testName": "completes inherited fields and methods after this dot" },
+    "oracleFields": ["items[].label", "items[].kind", "items[].textEdit.range"],
+    "assertions": ["Completion returns inherited fields and methods after this. with exact edits."]
+  },
+  {
+    "id": "completion.imported-receiver",
+    "mandatory": true,
+    "evidence": { "file": "tests/semantic/semantic-characterization.test.mjs", "testName": "completes imported receiver fields and methods with exact kinds and UTF-16 range" },
+    "oracleFields": ["items[].label", "items[].kind", "items[].textEdit.range"],
+    "assertions": ["Imported receiver members retain exact kinds and UTF-16 replacement ranges."]
+  },
+  {
+    "id": "completion.auto-import",
+    "mandatory": true,
+    "evidence": { "file": "tests/semantic/semantic-characterization.test.mjs", "testName": "resolves and applies an unopened class auto-import through the production server" },
+    "oracleFields": ["completion.label", "completion.additionalTextEdits", "appliedDocument"],
+    "assertions": ["An unopened class auto-import resolves to an exact edit through production LSP."]
+  },
+  {
+    "id": "completion.sdk-hot-switch",
+    "mandatory": true,
+    "evidence": { "file": "tests/semantic/project-sdk-selection.test.mjs", "testName": "Zed runtime SDK configuration rebuilds semantics without losing the open overlay" },
+    "oracleFields": ["definition.uri", "completion.items[].label", "diagnostics[].code"],
+    "assertions": ["A hot SDK switch changes completion and diagnostics while preserving the open overlay."]
+  }
+]

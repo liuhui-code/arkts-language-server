@@ -1,0 +1,32 @@
+[
+  {
+    "id": "syntax.struct",
+    "mandatory": true,
+    "fixture": {
+      "file": "struct.ets",
+      "marker": "/*@query*/",
+      "oracle": { "parse": "success", "declarations": ["struct:Page"] }
+    },
+    "assertions": ["The ETS parser recognizes Page as a struct declaration without source rewriting."]
+  },
+  {
+    "id": "syntax.struct-in-string",
+    "mandatory": true,
+    "fixture": {
+      "file": "struct-in-string.ets",
+      "marker": "/*@query*/",
+      "oracle": { "parse": "success", "literal": "struct Ghost {}", "absentDeclarations": ["Ghost"] }
+    },
+    "assertions": ["The token struct inside a string remains literal text and creates no declaration."]
+  },
+  {
+    "id": "syntax.struct-in-comment",
+    "mandatory": true,
+    "fixture": {
+      "file": "struct-in-comment.ets",
+      "marker": "/*@query*/",
+      "oracle": { "parse": "success", "declarations": ["struct:Page"], "absentDeclarations": ["Ghost"] }
+    },
+    "assertions": ["The token struct inside a comment creates no declaration or diagnostic."]
+  }
+]

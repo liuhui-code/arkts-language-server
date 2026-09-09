@@ -1,0 +1,23 @@
+[
+  {
+    "id": "diagnostics.exact-code-range",
+    "mandatory": true,
+    "evidence": { "file": "tests/semantic/diagnostic-code-characterization.test.mjs", "testName": "publishes the TypeScript spelling diagnostic code at the exact UTF-16 marker range" },
+    "oracleFields": ["diagnostics[].code", "diagnostics[].range", "diagnostics[].severity"],
+    "assertions": ["Diagnostics compare stable code, severity, and exact UTF-16 range rather than non-emptiness."]
+  },
+  {
+    "id": "diagnostics.overlay-freshness",
+    "mandatory": true,
+    "evidence": { "file": "tests/semantic/diagnostic-code-characterization.test.mjs", "testName": "rapid change and close never publish diagnostics for an obsolete version" },
+    "oracleFields": ["uri", "version", "diagnostics"],
+    "assertions": ["No diagnostic from an obsolete overlay version may be published."]
+  },
+  {
+    "id": "diagnostics.invalid-sdk",
+    "mandatory": true,
+    "evidence": { "file": "tests/semantic/project-sdk-selection.test.mjs", "testName": "an invalid explicit Zed SDK fails closed with a stable configuration diagnostic" },
+    "oracleFields": ["diagnostics[].code", "definition.result"],
+    "assertions": ["Invalid explicit SDK configuration emits arkts.sdk.configuration and never falls back."]
+  }
+]

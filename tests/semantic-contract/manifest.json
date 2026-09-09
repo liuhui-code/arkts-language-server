@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "minimumCases": 30,
+  "requiredCategories": [
+    "syntax",
+    "completion",
+    "definition",
+    "references",
+    "rename",
+    "diagnostics",
+    "incomplete",
+    "unicode",
+    "project-boundary"
+  ],
+  "caseFiles": [
+    { "category": "syntax", "path": "syntax/cases.json" },
+    { "category": "completion", "path": "completion/cases.json" },
+    { "category": "definition", "path": "definition/cases.json" },
+    { "category": "references", "path": "references/cases.json" },
+    { "category": "rename", "path": "rename/cases.json" },
+    { "category": "diagnostics", "path": "diagnostics/cases.json" },
+    { "category": "incomplete", "path": "incomplete/cases.json" },
+    { "category": "unicode", "path": "unicode/cases.json" },
+    { "category": "project-boundary", "path": "project-boundary/cases.json" }
+  ]
+}

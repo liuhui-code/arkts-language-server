@@ -1,6 +1,6 @@
 # Zed + ArkTS Language Server：官方语义后端与超大型工程低内存执行计划
 
-状态：当前权威执行计划；Foundation 进行中，F1–F2 已完成，F3 待推进。
+状态：当前权威执行计划；Foundation F1–F3 与退出门禁已完成，下一步为 Backend Spike S1。
 
 计划基线：`e90cacb9ace47292ac0869d09b3a64f7c7fe2144`（P2.1b，PR #5）。
 
@@ -270,7 +270,7 @@ PSS 仍过 release gate，才能实验第二 worker。
 - [x] PR #5 canonical release gate 通过。
 - [x] F1 clean parent：`c8234a0bebf0aa08d08f55b184c895f0c9b1dc67`；
   F2 clean parent：`07786a8`（PR #7 merge）。
-- [ ] 创建 `docs/toolchains/`、`docs/reports/`、`scripts/semantic/`、
+- [x] 创建 `docs/toolchains/`、`docs/reports/`、`scripts/semantic/`、
   `tests/semantic-contract/`，且不提交 upstream checkout/cache。
 
 ### F1：Zed SDK 配置纵切（先 RED）
@@ -370,6 +370,19 @@ watcher/catalog-identity contracts。首次 DevEco 人工确认后固化
 `tests/oracle/deveco-${TARGET_API_LEVEL}.json`，以后比较 symbol identity、URI、range、diagnostic code
 与 edit，不比较“非空”。
 
+完成证据（2026-09-09）：
+
+- [x] manifest 驱动 34 个 mandatory case，覆盖全部 9 个 required categories；
+- [x] 29 个 case 绑定唯一、已存在的精确公共 transcript/contract test name；
+- [x] `struct`、string/comment token、`this.` incomplete、non-BMP UTF-16 以 raw fixture
+  交给 Backend Spike，不通过 legacy rewrite 预处理；
+- [x] declared/ghost/inactive module、alias re-export、cross-module rename、target、overlay、
+  watcher、catalog identity 均进入 mandatory 集合；
+- [ ] DevEco API 24 golden：等待首次受控人工确认，不生成推测结果。
+
+结构、RED/GREEN 和延期 oracle 说明见
+[Foundation F3 TDD 记录](../tdd/foundation-semantic-contracts.md)。
+
 Foundation 退出命令：
 
 ```bash
@@ -378,6 +391,13 @@ git diff --check
 ```
 
 并验证 lock schema、case count、required categories。未满足则停止。
+
+Foundation 退出证据（2026-09-09）：
+
+- [x] `pnpm check:fast`：839/839，0 fail/cancel/skip/todo；
+- [x] `git diff --check`；
+- [x] toolchain lock schema、34 个 case 与 9 个 required categories 均由 fast gate 验证；
+- [ ] DevEco API 24 golden 不属于自动化 Foundation 退出门禁，仍等待首次受控人工确认。
 
 ## 10. Backend Spike 清单
 

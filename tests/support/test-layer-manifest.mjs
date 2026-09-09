@@ -30,6 +30,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/resource-sampler.test.mjs",
       "tests/sdk-discovery.test.mjs",
       "tests/semantic-cancellation-scope.test.mjs",
+      "tests/semantic-contract-manifest.test.mjs",
       "tests/semantic/completion-arbitrator.test.mjs",
       "tests/semantic-worker-call-hierarchy-protocol.test.mjs",
       "tests/semantic-worker-protocol.test.mjs",
