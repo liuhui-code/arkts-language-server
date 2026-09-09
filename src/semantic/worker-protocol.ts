@@ -420,7 +420,7 @@ export function readSemanticWorkerCancellationState(
   cell: unknown,
 ): SemanticWorkerCancellationState {
   const view = cancellationView(cell)
-  const state = Atomics.load(view, 0)
+  const state = Number(Atomics.load(view, 0))
   if (!isCancellationState(state)) {
     throw new SemanticWorkerProtocolError("Invalid semantic worker cancellation state")
   }
@@ -1670,7 +1670,7 @@ function stringByteMetrics(
   return Object.freeze({ rawBytes, wireBytes })
 }
 
-function cancellationView(cell: unknown): Int32Array<SharedArrayBuffer> {
+function cancellationView(cell: unknown): Int32Array {
   let byteLength: unknown
   let maxByteLength: unknown
   try {

@@ -32,7 +32,8 @@ import type {
   SemanticUsageResult,
 } from "../protocol.js"
 import { resolveHarmonySdkModule } from "../sdk/module-resolver.js"
-import { createArktsVirtualDocument, type ArktsVirtualDocument } from "../virtual/arkts-virtual-document.js"
+import { officialDocumentRegistryFor } from "../../semantic/backends/ohos-typescript/registry-pool.js"
+import { officialEtsCompilerOptions } from "../../semantic/backends/ohos-typescript/ets-options.js"
 import type {
   ProjectFileAccessPort,
   ProjectFileAdmissionToken,
@@ -40,6 +41,7 @@ import type {
   SemanticWorkspaceView,
 } from "../workspace/document-store.js"
 import { CooperativeWork } from "./cooperative-work.js"
+import { createSourceDocument, type SourceDocument } from "./source-document.js"
 import type {
   SemanticCodeFixCandidate,
   SemanticPrepareRenameQueryResult,
@@ -76,7 +78,7 @@ interface ScriptRecord {
   path: string
   content: string
   sourceContent: string
-  virtualDocument: ArktsVirtualDocument
+  virtualDocument: SourceDocument
   version: number
   documentVersion?: number
   overlay: boolean
@@ -88,7 +90,7 @@ interface ScriptRecord {
 interface LazySnapshotRecord {
   path: string
   content: string
-  virtualDocument: ArktsVirtualDocument
+  virtualDocument: SourceDocument
   snapshot: ts.IScriptSnapshot
   sourceFingerprint: string
   bytes: number
@@ -105,10 +107,20 @@ type CompletionMatchQuality =
   | typeof COMPLETION_SUBSEQUENCE_MATCH
 
 interface CompletionCandidate {
-  entry: ts.CompletionEntry
+  entry: CompletionEntryCompat
   filterText: string | undefined
   providerIndex: number
   quality: CompletionMatchQuality
+}
+
+type CompletionEntryCompat = ts.CompletionEntry & {
+  filterText?: string
+  commitCharacters?: string[]
+}
+
+type CompletionInfoCompat = ts.CompletionInfo & {
+  entries: CompletionEntryCompat[]
+  defaultCommitCharacters?: string[]
 }
 
 interface SafeCodeFix extends SemanticCodeFixCandidate {
@@ -209,21 +221,22 @@ export class TypeScriptLanguageServiceEngine {
       MAX_LAZY_SNAPSHOT_BYTES,
       "lazy snapshot bytes",
     )
-    this.options = {
-      allowNonTsExtensions: true,
-      allowSyntheticDefaultImports: true,
-      experimentalDecorators: true,
-      module: ts.ModuleKind.ESNext,
-      moduleResolution: ts.ModuleResolutionKind.Node10,
-      noEmit: true,
-      skipLibCheck: true,
-      target: ts.ScriptTarget.ES2022,
-    }
     const sdk = discoverProjectSdk(
       rootPath,
       process.env.ARKLINE_HARMONY_SDK_PATH,
       sdkConfiguration,
     )
+    this.options = {
+      allowNonTsExtensions: true,
+      allowSyntheticDefaultImports: true,
+      experimentalDecorators: true,
+      module: ts.ModuleKind.ESNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeJs,
+      noEmit: true,
+      skipLibCheck: true,
+      target: ts.ScriptTarget.ES2022,
+      ...officialEtsCompilerOptions(sdk.path),
+    }
     this.sdkSelection = sdk
     this.sdkRoot = sdk.path
     this.sdkPhysicalRoot = this.sdkRoot ? canonicalExistingPath(this.sdkRoot) : undefined
@@ -232,7 +245,7 @@ export class TypeScriptLanguageServiceEngine {
     this.membershipFileNames = [...this.sdkDeclarationPaths]
     this.service = ts.createLanguageService(
       this.createHost(hostCancellationToken),
-      ts.createDocumentRegistry(),
+      officialDocumentRegistryFor(sdk),
     )
   }
 
@@ -323,9 +336,15 @@ export class TypeScriptLanguageServiceEngine {
             includeCompletionsWithObjectLiteralMethodSnippets: true,
           }
         : {}),
-    })
+    }) as CompletionInfoCompat | undefined
     work.boundary()
     if (!info) return work.finish({ items: [], isIncomplete: false })
+    const completionEntries = arktsStructThisCompletionEntries(
+      this.service,
+      filePath,
+      offset,
+      info.entries,
+    )
     const normalizedPrefix = prefix.toLowerCase()
     const defaultReplacementRange = info.optionalReplacementSpan
       ? script.virtualDocument.generatedSpanToSourceRange(
@@ -367,7 +386,7 @@ export class TypeScriptLanguageServiceEngine {
       tierMatchCount = 0
       tierRetainedCount = 0
     }
-    for (let providerIndex = 0; providerIndex < info.entries.length; providerIndex += 1) {
+    for (let providerIndex = 0; providerIndex < completionEntries.length; providerIndex += 1) {
       if (
         rankMatchQualityAcrossSortTiers
         && scannedEntries >= MAX_MODULE_EXPORT_COMPLETION_SCAN
@@ -377,7 +396,7 @@ export class TypeScriptLanguageServiceEngine {
         stoppedEarly = true
         break
       }
-      const entry = info.entries[providerIndex]
+      const entry = completionEntries[providerIndex] as CompletionEntryCompat
       scannedEntries += 1
       if (!hasTier) {
         tierSortText = entry.sortText
@@ -417,7 +436,7 @@ export class TypeScriptLanguageServiceEngine {
         && tierBuckets[COMPLETION_PREFIX_MATCH].length >= MAX_COMPLETIONS - candidates.length
       ) {
         flushTier()
-        truncated = scannedEntries < info.entries.length
+        truncated = scannedEntries < completionEntries.length
         stoppedEarly = true
         break
       }
@@ -441,7 +460,9 @@ export class TypeScriptLanguageServiceEngine {
         sortText: rankMatchQualityAcrossSortTiers
           ? `${RANKED_TYPESCRIPT_COMPLETION_SORT_PREFIX}:${quality}:${String(providerIndex).padStart(10, "0")}`
           : entry.sortText,
-        commitCharacters: entry.commitCharacters ?? info.defaultCommitCharacters,
+        commitCharacters: entry.commitCharacters
+          ?? info.defaultCommitCharacters
+          ?? defaultCompletionCommitCharacters(entry.kind),
         isSnippet: entry.isSnippet,
         source: "type",
         replacementRange: entry.replacementSpan
@@ -508,6 +529,7 @@ export class TypeScriptLanguageServiceEngine {
       additionalTextEdits: this.mapCompletionEdits(
         filePath,
         position.documentVersion,
+        entrySource,
         details,
         work,
       ),
@@ -804,7 +826,6 @@ export class TypeScriptLanguageServiceEngine {
         includeInlayParameterNameHintsWhenArgumentMatchesName: false,
         includeInlayVariableTypeHints: true,
         includeInlayVariableTypeHintsWhenTypeMatchesName: false,
-        interactiveInlayHints: false,
       },
     )
     work.boundary()
@@ -816,7 +837,10 @@ export class TypeScriptLanguageServiceEngine {
           ? "type" as const
           : undefined
       if (kind) {
-        const label = hint.text || inlayHintDisplayText(hint.displayParts, work)
+        const label = hint.text || inlayHintDisplayText(
+          (hint as ts.InlayHint & { displayParts?: readonly { text: string }[] }).displayParts,
+          work,
+        )
         if (label.length > 0) {
           const sourceOffset = exactSourcePosition(script, hint.position)
           if (
@@ -887,6 +911,10 @@ export class TypeScriptLanguageServiceEngine {
     }
     const value = this.service.prepareCallHierarchy(filePath, generatedOffset)
     const items = value ? (Array.isArray(value) ? value : [value]) : []
+    if (items.length === 0) {
+      const struct = this.prepareArktsStructCallHierarchy(filePath, script, generatedOffset)
+      if (struct) return { status: "complete", items: [struct] }
+    }
     if (items.length > MAX_CALL_HIERARCHY_PREPARE_ITEMS) {
       return { status: "incomplete", reason: "result-limit-exceeded" }
     }
@@ -906,6 +934,45 @@ export class TypeScriptLanguageServiceEngine {
     }
     mapped.sort(compareCallHierarchyItems)
     return { status: "complete", items: mapped }
+  }
+
+  private prepareArktsStructCallHierarchy(
+    filePath: string,
+    script: ScriptRecord,
+    generatedOffset: number,
+  ): SemanticCallHierarchyItemInfo | undefined {
+    const sourceFile = this.service.getProgram()?.getSourceFile(filePath)
+    if (!sourceFile) return undefined
+    let match: ts.StructDeclaration | undefined
+    const visit = (node: ts.Node): void => {
+      if (match) return
+      if (ts.isStructDeclaration(node) && node.name) {
+        const nameStart = node.name.getStart(sourceFile)
+        if (generatedOffset >= nameStart && generatedOffset <= node.name.end) {
+          match = node
+          return
+        }
+      }
+      ts.forEachChild(node, visit)
+    }
+    visit(sourceFile)
+    if (!match?.name) return undefined
+    const selectionRange = script.virtualDocument.generatedSpanToSourceRange(
+      match.name.getStart(sourceFile),
+      match.name.getWidth(sourceFile),
+    )
+    const range = script.virtualDocument.generatedSpanToSourceRange(
+      match.getStart(sourceFile),
+      match.getWidth(sourceFile),
+    )
+    return {
+      path: filePath,
+      name: match.name.text,
+      kind: "struct",
+      sourceFingerprint: script.sourceFingerprint,
+      range: unionSemanticRanges(range, selectionRange),
+      selectionRange,
+    }
   }
 
   private mapCallHierarchyItem(
@@ -954,7 +1021,12 @@ export class TypeScriptLanguageServiceEngine {
     getDefinitions: (
       filePath: string,
       offset: number,
-    ) => readonly { fileName: string; textSpan: ts.TextSpan }[] | undefined,
+    ) => readonly {
+      fileName: string
+      textSpan: ts.TextSpan
+      name?: string
+      kind?: ts.ScriptElementKind
+    }[] | undefined,
     work: CooperativeWork,
   ): SemanticDefinitionCandidate[] {
     work.boundary()
@@ -977,17 +1049,22 @@ export class TypeScriptLanguageServiceEngine {
         ?? targetLazy?.virtualDocument.sourceContent
         ?? (this.projectMembershipPaths.has(targetPath) ? null : safeRead(targetPath))
       if (content !== null) {
+        const textSpan = normalizedDefinitionSpan(
+          this.service.getProgram()?.getSourceFile(targetPath),
+          content,
+          definition,
+        )
         const range = targetScript
           ? targetScript.virtualDocument.generatedSpanToSourceRange(
-              definition.textSpan.start,
-              definition.textSpan.length,
+              textSpan.start,
+              textSpan.length,
             )
           : targetLazy
             ? targetLazy.virtualDocument.generatedSpanToSourceRange(
-                definition.textSpan.start,
-                definition.textSpan.length,
+                textSpan.start,
+                textSpan.length,
               )
-            : spanToRange(content, definition.textSpan.start, definition.textSpan.length)
+            : spanToRange(content, textSpan.start, textSpan.length)
         const key = [
           targetPath,
           range.startLine,
@@ -1464,7 +1541,9 @@ export class TypeScriptLanguageServiceEngine {
         this.projectContentRevision,
       ].join(":"),
       getScriptFileNames: () => this.scriptFileNames(),
-      getScriptKind: () => ts.ScriptKind.TS,
+      getScriptKind: (fileName) => fileName.endsWith(".ets")
+        ? ts.ScriptKind.ETS
+        : ts.ScriptKind.TS,
       getScriptSnapshot: (fileName) => {
         const filePath = path.resolve(fileName)
         const resident = this.scripts.get(filePath)
@@ -1538,14 +1617,14 @@ export class TypeScriptLanguageServiceEngine {
       })
       if (local !== undefined) {
         return local.path
-          ? ({ resolvedFileName: local.path, extension: ts.Extension.Ts } as ts.ResolvedModule)
+          ? ({ resolvedFileName: local.path, extension: moduleExtension(local.path) } as ts.ResolvedModule)
           : undefined
       }
       const sdkModule = this.sdkRoot ? resolveHarmonySdkModule(this.sdkRoot, name) : null
       if (sdkModule) {
         return ({
           resolvedFileName: sdkModule,
-          extension: sdkModule.endsWith(".d.ts") ? ts.Extension.Dts : ts.Extension.Ts,
+          extension: moduleExtension(sdkModule),
           isExternalLibraryImport: true,
         } as ts.ResolvedModule)
       }
@@ -1599,7 +1678,7 @@ export class TypeScriptLanguageServiceEngine {
       }
     }
     return sourcePath
-      ? ({ resolvedFileName: sourcePath, extension: ts.Extension.Ts } as ts.ResolvedModule)
+      ? ({ resolvedFileName: sourcePath, extension: moduleExtension(sourcePath) } as ts.ResolvedModule)
       : undefined
   }
 
@@ -1646,7 +1725,7 @@ export class TypeScriptLanguageServiceEngine {
       return
     }
     if (previous) this.scriptBytes -= previous.bytes
-    const virtualDocument = createArktsVirtualDocument(filePath, content)
+    const virtualDocument = createSourceDocument(content)
     const bytes = Buffer.byteLength(content) + Buffer.byteLength(virtualDocument.generatedContent)
     this.scripts.set(filePath, {
       path: filePath,
@@ -1786,7 +1865,7 @@ export class TypeScriptLanguageServiceEngine {
       if (this.projectFileAccess) this.projectMembershipSourceUnavailable = true
       return undefined
     }
-    const virtualDocument = createArktsVirtualDocument(filePath, sourceContent)
+    const virtualDocument = createSourceDocument(sourceContent)
     const content = virtualDocument.generatedContent
     const record: LazySnapshotRecord = {
       path: filePath,
@@ -1842,6 +1921,7 @@ export class TypeScriptLanguageServiceEngine {
   private mapCompletionEdits(
     currentPath: string,
     documentVersion: number | undefined,
+    sourcePath: string | undefined,
     details: ts.CompletionEntryDetails,
     work: CooperativeWork,
   ): SemanticCompletionTextEdit[] | undefined {
@@ -1882,7 +1962,12 @@ export class TypeScriptLanguageServiceEngine {
         edits.push({
           path: currentPath,
           range: script.virtualDocument.generatedSpanToSourceRange(span.start, span.length),
-          newText: textChange.newText,
+          newText: normalizeCompletionEdit(
+            textChange.newText,
+            currentPath,
+            sourcePath,
+            documentEol(script.sourceContent),
+          ),
           expectedVersion: documentVersion,
         })
         work.item()
@@ -1904,6 +1989,13 @@ export class TypeScriptLanguageServiceEngine {
       this.generation += 1
     }
   }
+}
+
+function moduleExtension(filePath: string): ts.Extension {
+  if (filePath.endsWith(".d.ets")) return ts.Extension.Dets
+  if (filePath.endsWith(".ets")) return ts.Extension.Ets
+  if (filePath.endsWith(".d.ts")) return ts.Extension.Dts
+  return ts.Extension.Ts
 }
 
 function completionPrefix(content: string, offset: number): string {
@@ -1932,6 +2024,29 @@ function completionPrefix(content: string, offset: number): string {
     && ts.isIdentifierStart(firstCodePoint, ts.ScriptTarget.Latest)
     ? content.slice(start, offset)
     : ""
+}
+
+function defaultCompletionCommitCharacters(kind: ts.ScriptElementKind): string[] | undefined {
+  return kind === ts.ScriptElementKind.memberFunctionElement ? [".", ",", ";"] : undefined
+}
+
+function normalizeCompletionEdit(
+  text: string,
+  currentPath: string,
+  sourcePath: string | undefined,
+  eol: string,
+): string {
+  let normalized = text.replace(/\r\n?|\n/gu, eol)
+  if (!sourcePath || !path.isAbsolute(sourcePath)) return normalized
+  const sourceWithExtension = path.extname(sourcePath)
+    ? sourcePath
+    : [".ets", ".ts", ".d.ets", ".d.ts"]
+      .map((extension) => sourcePath + extension)
+      .find((candidate) => fs.existsSync(candidate)) ?? sourcePath
+  let specifier = path.relative(path.dirname(currentPath), sourceWithExtension).replace(/\\/gu, "/")
+  if (!specifier.startsWith(".")) specifier = `./${specifier}`
+  normalized = normalized.replace(/(\bfrom\s+["'])[^"']+(["'])/u, `$1${specifier}$2`)
+  return normalized
 }
 
 function hasMinimumCodePointLength(value: string, minimum: number): boolean {
@@ -2185,6 +2300,11 @@ function optionalDisplayParts(parts: ts.SymbolDisplayPart[]) {
   return value || undefined
 }
 
+function optionalJSDocTagText(text: string | ts.SymbolDisplayPart[] | undefined) {
+  if (typeof text === "string") return text || undefined
+  return optionalDisplayParts(text ?? [])
+}
+
 function completionDisplayPartsText(
   parts: readonly ts.SymbolDisplayPart[],
   work: CooperativeWork,
@@ -2230,7 +2350,7 @@ function discoverSdkAmbientDeclarations(sdkRoot: string | null): string[] {
 function quickInfoDocumentation(info: ts.QuickInfo): string | undefined {
   const documentation = optionalDisplayParts(info.documentation ?? [])
   const tags = (info.tags ?? []).map((tag) => {
-    const text = optionalDisplayParts(tag.text ?? [])
+    const text = optionalJSDocTagText(tag.text)
     return `@${tag.name}${text ? ` ${text}` : ""}`
   })
   return [documentation, ...tags].filter((part): part is string => Boolean(part)).join("\n\n") || undefined
@@ -2310,6 +2430,7 @@ function documentSymbolKind(
   script: ScriptRecord,
 ): SemanticDocumentSymbolKind | null {
   switch (item.kind) {
+    case ts.ScriptElementKind.structElement: return "struct"
     case ts.ScriptElementKind.classElement:
     case ts.ScriptElementKind.localClassElement:
       return isArktsStruct(item, script) ? "struct" : "class"
@@ -2326,15 +2447,14 @@ function documentSymbolKind(
     case ts.ScriptElementKind.memberVariableElement:
     case ts.ScriptElementKind.memberAccessorVariableElement:
       return "property"
-    case ts.ScriptElementKind.constructorImplementationElement: return "constructor"
+    case ts.ScriptElementKind.constructorImplementationElement:
+      return item.spans[0]?.length === 0 ? null : "constructor"
     case ts.ScriptElementKind.moduleElement: return "module"
     case ts.ScriptElementKind.typeElement: return "type"
     case ts.ScriptElementKind.constElement:
     case ts.ScriptElementKind.letElement:
     case ts.ScriptElementKind.variableElement:
     case ts.ScriptElementKind.localVariableElement:
-    case ts.ScriptElementKind.variableUsingElement:
-    case ts.ScriptElementKind.variableAwaitUsingElement:
       return "variable"
     default: return null
   }
@@ -2345,6 +2465,7 @@ function callHierarchyItemKind(
   sourceView: ScriptRecord | LazySnapshotRecord,
 ): SemanticCallHierarchyItemKind | undefined {
   switch (item.kind) {
+    case ts.ScriptElementKind.structElement: return "struct"
     case ts.ScriptElementKind.scriptElement: return "file"
     case ts.ScriptElementKind.moduleElement: return "module"
     case ts.ScriptElementKind.classElement:
@@ -2369,6 +2490,87 @@ function callHierarchyItemKind(
       return "variable"
     default: return undefined
   }
+}
+
+function normalizedDefinitionSpan(
+  sourceFile: ts.SourceFile | undefined,
+  content: string,
+  definition: {
+    textSpan: ts.TextSpan
+    name?: string
+    kind?: ts.ScriptElementKind
+  },
+): ts.TextSpan {
+  const current = content.slice(
+    definition.textSpan.start,
+    definition.textSpan.start + definition.textSpan.length,
+  )
+  if (!definition.name || current === definition.name || !sourceFile) {
+    return definition.textSpan
+  }
+  let best: ts.Identifier | undefined
+  let bestDistance = Number.POSITIVE_INFINITY
+  const visit = (node: ts.Node): void => {
+    const name = ts.isStructDeclaration(node) ? node.name : undefined
+    if (name && name.text === definition.name) {
+      const distance = Math.abs(name.getStart(sourceFile) - definition.textSpan.start)
+      if (distance < bestDistance) {
+        best = name
+        bestDistance = distance
+      }
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(sourceFile)
+  return best
+    ? { start: best.getStart(sourceFile), length: best.getWidth(sourceFile) }
+    : definition.textSpan
+}
+
+function arktsStructThisCompletionEntries(
+  service: ts.LanguageService,
+  filePath: string,
+  offset: number,
+  entries: readonly ts.CompletionEntry[],
+): readonly ts.CompletionEntry[] {
+  const sourceFile = service.getProgram()?.getSourceFile(filePath)
+  if (!sourceFile) return entries
+  let owner: ts.StructDeclaration | undefined
+  const visit = (node: ts.Node, enclosing: ts.StructDeclaration | undefined): void => {
+    if (owner) return
+    const current = ts.isStructDeclaration(node) ? node : enclosing
+    if (
+      ts.isPropertyAccessExpression(node)
+      && node.expression.kind === ts.SyntaxKind.ThisKeyword
+      && offset >= node.expression.end
+      && offset <= node.end
+    ) {
+      owner = current
+      return
+    }
+    ts.forEachChild(node, (child) => visit(child, current))
+  }
+  visit(sourceFile, undefined)
+  if (!owner) return entries
+  const existing = new Map(entries.map((entry) => [entry.name, entry]))
+  const promoted = new Set<string>()
+  const sortText = entries[0]?.sortText ?? "0"
+  const additions: ts.CompletionEntry[] = []
+  for (const member of owner.members) {
+    const name = member.name && (ts.isIdentifier(member.name) || ts.isStringLiteral(member.name))
+      ? member.name.text
+      : undefined
+    if (!name || promoted.has(name)) continue
+    let kind: ts.ScriptElementKind | undefined
+    if (ts.isMethodDeclaration(member)) kind = ts.ScriptElementKind.memberFunctionElement
+    else if (ts.isGetAccessorDeclaration(member)) kind = ts.ScriptElementKind.memberGetAccessorElement
+    else if (ts.isSetAccessorDeclaration(member)) kind = ts.ScriptElementKind.memberSetAccessorElement
+    else if (ts.isPropertyDeclaration(member)) kind = ts.ScriptElementKind.memberVariableElement
+    if (!kind) continue
+    additions.push(existing.get(name) ?? { name, kind, kindModifiers: "", sortText })
+    promoted.add(name)
+  }
+  return additions.length > 0 ? additions : entries
 }
 
 function isArktsCallHierarchyStruct(
@@ -3212,7 +3414,15 @@ function preflightTopLevelClassRenameConflict(
     || !ts.isSourceFile(target.parent.parent)
   ) return "not-applicable"
 
-  const checker = program.getTypeChecker()
+  const checker = program.getTypeChecker() as ts.TypeChecker & {
+    resolveName(
+      name: string,
+      location: ts.Node,
+      meaning: ts.SymbolFlags,
+      excludeGlobals: boolean,
+    ): ts.Symbol | undefined
+    getMergedSymbol(symbol: ts.Symbol): ts.Symbol
+  }
   const targetSymbol = checker.getSymbolAtLocation(target)
   if (!targetSymbol) return "indeterminate"
   const canonicalTarget = canonicalExportSymbol(checker, targetSymbol)
@@ -3232,7 +3442,10 @@ function preflightTopLevelClassRenameConflict(
   return "clear"
 }
 
-function canonicalExportSymbol(checker: ts.TypeChecker, symbol: ts.Symbol): ts.Symbol {
+function canonicalExportSymbol(
+  checker: ts.TypeChecker & { getMergedSymbol(symbol: ts.Symbol): ts.Symbol },
+  symbol: ts.Symbol,
+): ts.Symbol {
   return checker.getMergedSymbol(checker.getExportSymbolOfSymbol(symbol))
 }
 

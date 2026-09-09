@@ -62,7 +62,7 @@ const scenarios = [
     completionPrefix: "Col",
     usageAnchor: "    Column()",
     definitionAnchor: "declare function Column",
-    hoverPattern: /function Column\(\): ArkUIColumnAttribute/,
+    hoverPattern: /function Column\(\): ColumnAttribute/,
   },
   {
     label: "Text",
@@ -71,7 +71,7 @@ const scenarios = [
     completionPrefix: "Te",
     usageAnchor: "    Text(this.title)",
     definitionAnchor: "declare function Text",
-    hoverPattern: /function Text\(value: string \| ArkUIResourceValue\): ArkUITextAttribute/,
+    hoverPattern: /function Text\(value: string \| ArkUIResourceValue\): TextAttribute/,
   },
 ]
 
@@ -170,7 +170,7 @@ test("exposes an ordinary Text attribute through completion hover and definition
   assert.equal(hover.result?.contents?.kind, "markdown")
   assert.match(
     hover.result.contents.value,
-    /ArkUICommonAttribute\.width\(value: ArkUILength\): ArkUITextAttribute/,
+    /ArkUICommonAttribute\.width\(value: ArkUILength\): TextAttribute/,
   )
   assert.deepEqual(hover.result.range, usageRange)
 

@@ -16,12 +16,12 @@ interface ArkUICommonAttribute {
   width(value: ArkUILength): this
 }
 
-interface ArkUIColumnAttribute extends ArkUICommonAttribute {}
-interface ArkUITextAttribute extends ArkUICommonAttribute {}
+interface ColumnAttribute extends ArkUICommonAttribute {}
+interface TextAttribute extends ArkUICommonAttribute {}
 
 /** Resolves an application resource. */
 declare function $r(name: string): ArkUIResourceValue
 /** Creates a column builder. */
-declare function Column(): ArkUIColumnAttribute
+declare function Column(): ColumnAttribute
 /** Creates a text builder. */
-declare function Text(value: string | ArkUIResourceValue): ArkUITextAttribute
+declare function Text(value: string | ArkUIResourceValue): TextAttribute

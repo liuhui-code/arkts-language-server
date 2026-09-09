@@ -808,6 +808,92 @@ test("resolves and applies an unopened class auto-import through the production 
   assert.equal(textInRange(greeterSource, locations[0].range), "Greeter")
 })
 
+test("restores an unopened auto-import after call-hierarchy traversal and overlay close", async (t) => {
+  const materialized = await materializeConformanceWorkspace()
+  const completion = materialized.cases["completion.unicode"]
+  const definition = materialized.cases["greeter.definition"]
+  const callHierarchyCaller = materialized.cases["call-hierarchy.caller-selection"]
+  const home = fs.readFileSync(fileURLToPath(completion.uri), "utf8")
+  const greeter = fs.readFileSync(fileURLToPath(definition.uri), "utf8")
+  const callHierarchySource = fs.readFileSync(fileURLToPath(callHierarchyCaller.uri), "utf8")
+  const session = new LspSession({
+    command: process.execPath,
+    args: [path.join(projectRoot, "dist", "server.cjs"), "--stdio"],
+    cwd: projectRoot,
+    env: {
+      HOME: path.join(materialized.root, "missing-home"),
+      DEVECO_SDK_HOME: path.join(materialized.root, "missing-deveco"),
+      ARKLINE_HARMONY_SDK_PATH: path.join(materialized.corpusRoot, "sdk", "openharmony"),
+    },
+    rootUri: pathToFileURL(materialized.workspaceRoot).href,
+    capabilities: {
+      general: { positionEncodings: ["utf-16"] },
+      window: { workDoneProgress: true },
+    },
+  })
+  t.after(async () => {
+    try {
+      await session.close()
+    } finally {
+      await fs.promises.rm(materialized.root, { recursive: true, force: true })
+    }
+  })
+
+  await session.initialize()
+  const create = await session.transport.serverRequest(
+    "window/workDoneProgress/create",
+    () => true,
+    5_000,
+  )
+  session.transport.send({ jsonrpc: "2.0", id: create.id, result: null })
+  await session.transport.progress(
+    create.params.token,
+    (message) => message.params.value.kind === "end",
+    5_000,
+  )
+  session.openDocument({
+    uri: callHierarchyCaller.uri,
+    languageId: "arkts",
+    version: 1,
+    text: callHierarchySource,
+  })
+  const preparedCallHierarchy = await session.request("textDocument/prepareCallHierarchy", {
+    textDocument: { uri: callHierarchyCaller.uri },
+    position: midpoint(callHierarchyCaller.range),
+  })
+  const outgoingCallHierarchy = await session.request("callHierarchy/outgoingCalls", {
+    item: preparedCallHierarchy.result[0],
+  })
+  session.transport.send({
+    jsonrpc: "2.0",
+    method: "textDocument/didClose",
+    params: { textDocument: { uri: callHierarchyCaller.uri } },
+  })
+  await session.request("callHierarchy/incomingCalls", {
+    item: outgoingCallHierarchy.result[0].to,
+  })
+  session.openDocument({ uri: definition.uri, languageId: "arkts", version: 1, text: greeter })
+  session.changeDocument({
+    uri: definition.uri,
+    version: 2,
+    text: greeter.replace("Greeter", "InstalledOverlayGreeter"),
+  })
+  session.transport.send({
+    jsonrpc: "2.0",
+    method: "textDocument/didClose",
+    params: { textDocument: { uri: definition.uri } },
+  })
+  session.openDocument({ uri: completion.uri, languageId: "arkts", version: 1, text: home })
+  const response = await session.request("textDocument/completion", {
+    textDocument: { uri: completion.uri },
+    position: completion.position,
+  })
+
+  assert.equal(response.error, undefined, JSON.stringify(response.error))
+  const items = Array.isArray(response.result) ? response.result : response.result?.items ?? []
+  assert.equal(items.filter((item) => item.label === "Greeter").length, 1, JSON.stringify(items))
+})
+
 test("completes inherited fields and methods after this dot", async (t) => {
   const server = new LspProcess()
   t.after(() => server.close())

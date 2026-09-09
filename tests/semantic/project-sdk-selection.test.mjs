@@ -9,6 +9,8 @@ import { pathToFileURL } from "node:url"
 import { LspSession } from "../support/lsp-session.mjs"
 import { LspProcess, projectRoot, withTimeout } from "../support/lsp-process.mjs"
 
+const EXCESS_PROPERTY_DIAGNOSTIC = 2322
+
 test("Zed initialization SDK configuration overrides local.properties", async (t) => {
   const fixture = await sdkSession(t, { initializationSdk: "sdkB" })
   const response = await fixture.session.request(
@@ -30,7 +32,7 @@ test("Zed runtime SDK configuration rebuilds semantics without losing the open o
     "textDocument/publishDiagnostics",
     (message) => message.params.uri === fixture.uri
       && message.params.version === 2
-      && message.params.diagnostics.some((diagnostic) => diagnostic.code === 2353),
+      && message.params.diagnostics.some((diagnostic) => diagnostic.code === EXCESS_PROPERTY_DIAGNOSTIC),
   )
   fixture.session.transport.send({
     jsonrpc: "2.0",
@@ -55,7 +57,7 @@ test("Zed runtime SDK configuration rebuilds semantics without losing the open o
   assert.ok(items.some((item) => item.label === "secondOnly"))
   assert.ok(!items.some((item) => item.label === "projectOnly"))
   assert.ok((await refreshedDiagnostics).params.diagnostics.some((diagnostic) => (
-    diagnostic.code === 2353
+    diagnostic.code === EXCESS_PROPERTY_DIAGNOSTIC
   )))
 })
 
@@ -436,7 +438,7 @@ test("changing project sdk.dir refreshes module and ambient diagnostics to the s
   await fixture.session.request("textDocument/definition", fixture.query("ProjectApi"))
   const refreshed = fixture.session.transport.notification("textDocument/publishDiagnostics",
     (message) => message.params.uri === fixture.uri && message.params.version === 1
-      && message.params.diagnostics.some((diagnostic) => diagnostic.code === 2353))
+      && message.params.diagnostics.some((diagnostic) => diagnostic.code === EXCESS_PROPERTY_DIAGNOSTIC))
   await fs.writeFile(fixture.configPath, sdkProperty(fixture.sdkB.root))
   fixture.session.transport.send({ jsonrpc: "2.0", method: "workspace/didChangeWatchedFiles", params: {
     changes: [{ uri: pathToFileURL(fixture.configPath).href, type: 2 }],
@@ -475,7 +477,7 @@ test("removing local.properties restores process fallback for both module and am
     (message) => message.params.uri === fixture.uri && message.params.version === 1)
   assert.deepEqual(initial.params.diagnostics, [])
   const refreshed = fixture.session.transport.notification("textDocument/publishDiagnostics",
-    (message) => message.params.uri === fixture.uri && message.params.diagnostics.some((diagnostic) => diagnostic.code === 2353))
+    (message) => message.params.uri === fixture.uri && message.params.diagnostics.some((diagnostic) => diagnostic.code === EXCESS_PROPERTY_DIAGNOSTIC))
   await fs.rm(fixture.configPath)
   fixture.session.transport.send({ jsonrpc: "2.0", method: "workspace/didChangeWatchedFiles", params: {
     changes: [{ uri: pathToFileURL(fixture.configPath).href, type: 3 }],
@@ -500,7 +502,7 @@ test("a workspace-local symlink to shared SDK configuration refreshes through it
     (message) => message.params.uri === fixture.uri && message.params.version === 1)
   assert.deepEqual(initial.params.diagnostics, [])
   const refreshed = fixture.session.transport.notification("textDocument/publishDiagnostics",
-    (message) => message.params.uri === fixture.uri && message.params.diagnostics.some((diagnostic) => diagnostic.code === 2353))
+    (message) => message.params.uri === fixture.uri && message.params.diagnostics.some((diagnostic) => diagnostic.code === EXCESS_PROPERTY_DIAGNOSTIC))
   await fs.writeFile(sharedConfiguration, sdkProperty(fixture.sdkB.root))
   fixture.session.transport.send({ jsonrpc: "2.0", method: "workspace/didChangeWatchedFiles", params: {
     changes: [{ uri: pathToFileURL(fixture.configPath).href, type: 2 }],

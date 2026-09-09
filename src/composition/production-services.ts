@@ -4,7 +4,7 @@ import type { LanguageServerServices } from "../lsp/run-language-server.js"
 import { resolveIndexCacheDirectory } from "../index/cache-directory.js"
 import { SidecarWorkspaceIndex } from "../index/sidecar-workspace-index.js"
 import { SingleRootProjectResolver } from "../project/single-root-project-resolver.js"
-import { LegacySemanticEngine } from "../semantic/legacy-semantic-engine.js"
+import { createProductionSemanticEngine } from "../semantic/backends/production-semantic-engine.js"
 import { DefaultWorkspaceSymbolService } from "../workspace/default-workspace-symbol-service.js"
 import { createStructuredLogger } from "../observability/logger.js"
 import { resolveLogPath } from "../observability/log-path.js"
@@ -20,7 +20,7 @@ export function createProductionLanguageServerServices(
   const environment = options.env ?? process.env
   const logger = createStructuredLogger(resolveLogPath(environment))
   const projects = new SingleRootProjectResolver(pathToFileURL(options.cwd ?? process.cwd()).href)
-  const semantic = new LegacySemanticEngine(projects, logger)
+  const semantic = createProductionSemanticEngine(projects, logger)
   const index = new SidecarWorkspaceIndex({ env: environment })
   const workspaceSymbols = new DefaultWorkspaceSymbolService({
     index,

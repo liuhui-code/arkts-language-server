@@ -72,7 +72,7 @@ export function formatArktsDocument(
     getCurrentDirectory: () => path.dirname(normalizedPath),
     getDefaultLibFileName: settings => ts.getDefaultLibFilePath(settings),
     getScriptFileNames: () => [normalizedPath],
-    getScriptKind: () => ts.ScriptKind.TS,
+    getScriptKind: () => ts.ScriptKind.ETS,
     getScriptSnapshot: candidate => samePath(candidate, normalizedPath) ? snapshot : undefined,
     getScriptVersion: () => "0",
     readFile: candidate => samePath(candidate, normalizedPath) ? source : undefined,
@@ -99,6 +99,10 @@ export function formatArktsDocument(
       tabSize,
       trimTrailingWhitespace: options.trimTrailingWhitespace ?? false,
     })
+    changes = preserveTopLevelStructIndentation(
+      changes,
+      service.getProgram()?.getSourceFile(normalizedPath),
+    )
   } catch {
     return EMPTY_EDITS
   } finally {
@@ -127,6 +131,24 @@ export function formatArktsDocument(
   const formatted = applyEdits(source, edits)
   if (!hasSameTokens(source, formatted)) return EMPTY_EDITS
   return Object.freeze(edits.map(edit => Object.freeze(edit)))
+}
+
+function preserveTopLevelStructIndentation(
+  changes: readonly ts.TextChange[],
+  sourceFile: ts.SourceFile | undefined,
+): readonly ts.TextChange[] {
+  if (!sourceFile) return changes
+  const starts = new Set(sourceFile.statements
+    .filter(ts.isStructDeclaration)
+    .map(statement => statement.getChildren(sourceFile)
+      .find(child => child.kind === ts.SyntaxKind.StructKeyword)
+      ?.getStart(sourceFile))
+    .filter((start): start is number => start !== undefined))
+  return changes.filter(change => !(
+    change.span.length === 0
+    && starts.has(change.span.start)
+    && /^\s+$/u.test(change.newText)
+  ))
 }
 
 function finalNewlineTextChange(
