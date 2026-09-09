@@ -1,0 +1,30 @@
+[
+  {
+    "id": "rename.cross-module",
+    "mandatory": true,
+    "evidence": { "file": "tests/semantic/rename-completeness.test.mjs", "testName": "renaming a barrel exported name preserves the origin and updates every public consumer" },
+    "oracleFields": ["documentChanges[].textDocument.uri", "documentChanges[].edits[].range", "documentChanges[].edits[].newText"],
+    "assertions": ["Cross-module barrel rename updates every public consumer without changing origin identity."]
+  },
+  {
+    "id": "rename.explicit-barrel-alias",
+    "mandatory": true,
+    "evidence": { "file": "tests/semantic/rename-completeness.test.mjs", "testName": "renaming an explicit barrel alias changes only the public alias layer" },
+    "oracleFields": ["documentChanges[].textDocument.uri", "documentChanges[].edits"],
+    "assertions": ["Renaming an explicit barrel alias does not rename the origin declaration."]
+  },
+  {
+    "id": "rename.non-bmp-prepare",
+    "mandatory": true,
+    "evidence": { "file": "tests/semantic/rename-depth.test.mjs", "testName": "prepareRename returns the source alias range and placeholder after an emoji" },
+    "oracleFields": ["range", "placeholder"],
+    "assertions": ["Prepare rename returns the exact UTF-16 source alias range after a non-BMP character."]
+  },
+  {
+    "id": "rename.same-scope-conflict",
+    "mandatory": true,
+    "evidence": { "file": "tests/semantic/rename-completeness.test.mjs", "testName": "rejects rename when the target name already exists in the same scope" },
+    "oracleFields": ["error.code", "error.message", "workspaceEdit"],
+    "assertions": ["Rename fails atomically when the new name conflicts in the same scope."]
+  }
+]
