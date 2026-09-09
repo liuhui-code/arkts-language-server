@@ -28,6 +28,8 @@ async function installFromManifest({ artifactRoot, binDirectory }) {
     : "arkts-index-sidecar"
   const runtimePaths = [
     "bin/arkts-language-server",
+    "config/semantic-runtime.json",
+    "dist/semantic-worker.cjs",
     "dist/server.cjs",
     `target/release/${sidecarName}`,
   ]

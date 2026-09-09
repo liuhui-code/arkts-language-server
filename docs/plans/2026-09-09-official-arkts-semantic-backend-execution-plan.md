@@ -1,8 +1,11 @@
 # Zed + ArkTS Language Server：官方语义后端与超大型工程低内存执行计划
 
-状态：当前权威执行计划；Foundation 与 Backend Spike S1–S3 已完成；semantic contract
-34/34 PASS，lifecycle/memory PASS。Backend Cutover 实现已完成，本地 `check:fast` 855/855 与
-`check:release` 均已通过；仅 canonical CI 尚待关闭，因此 Memory Runtime 仍未开始。
+状态：当前权威执行计划；Foundation、Backend Spike S1–S3 与 Backend Cutover 已完成；semantic
+contract 34/34 PASS，lifecycle/memory PASS。Backend Cutover 的本地 `check:fast` 855/855、完整
+`check:release` 与 PR #16 canonical `validate` 均已通过并合入 `3729edf`。Memory Runtime 的
+单 Worker、Coordinator、L0-L3、metrics 与交付接线已在 `codex/memory-runtime` 完成，本地
+`check:fast` 864/864、bundle-e2e 271/271 与完整本地 `check:release` 已通过；PR canonical
+`validate` 与合并仍待执行。
 
 计划基线：`e90cacb9ace47292ac0869d09b3a64f7c7fe2144`（P2.1b，PR #5）。
 
@@ -581,8 +584,8 @@ SDK runtime configuration、module resolution、definition/references/rename、s
 ArkUI 与 formatting 回归均已关闭。macOS lexical/physical workspace alias 下的 overlay close
 membership 回归已固定；conformance SDK 已补官方 ETS loader 配置。本地 `pnpm check:fast`
 855/855 PASS，完整 `check:release` 通过，其中 artifact 6/6、真实 455-file large fixture 1/1。
-RED/GREEN 与完整适配边界见 [Backend Cutover TDD 记录](../tdd/backend-cutover.md)。canonical CI
-通过前，本 Phase 保持 open。
+RED/GREEN 与完整适配边界见 [Backend Cutover TDD 记录](../tdd/backend-cutover.md)。PR #16 的
+canonical `validate`（run `34331750083`）用时 7m03s 通过，本 Phase 已关闭。
 
 ## 12. Memory Runtime 清单
 
@@ -609,6 +612,26 @@ src/semantic/coordinator/
 
 metrics JSONL 至少含 worker/context 数、RSS、heapUsed、external、arrayBuffers、projectFiles、
 openDocuments 和 leaseCount。Node worker thread memory 不与 process RSS 重复相加。
+
+当前证据（2026-09-09）：
+
+- [x] 唯一生产 worker multiplex 所有 workspace root，production composition 不在协议线程创建
+  official backend；
+- [x] `SemanticCoordinator` 唯一拥有 context set，lease pin、LRU、L2 trim、L3 dispose 与重建
+  contract 均通过；
+- [x] runtime 固定 `semanticWorkers=1`、`maxResidentContexts=2`，支持
+  `ARKTS_MEMORY_BUDGET_MB` 覆盖 budget；
+- [x] metrics JSONL 覆盖进程内存、worker/context、project/open document 与 lease；
+- [x] 20 轮 context:req/trim/dispose 后 resident context 为 0；
+- [x] 1 MiB 压力测试证明 Level3 后最新 open overlay 可重建并完成 completion；
+- [x] Zed initialization/runtime SDK 路径切换、SDK identity 日志、所有语义能力与 artifact
+  adjacency 回归通过；
+- [x] bundle-e2e 271/271，`pnpm check:fast` 864/864；
+- [x] 本地完整 `pnpm check:release` 通过：artifact 6/6、真实 455-file large fixture 1/1；
+- [ ] canonical PR `validate` 通过并合入。
+
+RED/GREEN、回归分类与复现命令见 [Memory Runtime TDD 记录](../tdd/memory-runtime.md)。在最后一项
+关闭前不得进入 Rust Discovery。
 
 ## 13. Rust Discovery 清单
 

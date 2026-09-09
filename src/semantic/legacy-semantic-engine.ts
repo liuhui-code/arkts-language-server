@@ -60,6 +60,12 @@ import { SemanticTypeEngineRegistry } from "../core/types/type-engine.js"
 import { SemanticDocumentStore } from "../core/workspace/document-store.js"
 import { LocalPackageResolver } from "../core/sdk/local-package-resolver.js"
 import type { StructuredLogger } from "../observability/logger.js"
+import type { SemanticMemoryLevel } from "./coordinator/semantic-coordinator.js"
+
+export interface LegacySemanticEngineRuntimeOptions {
+  readonly maxResidentContexts?: number
+  readonly hostCancellationToken?: import("typescript").HostCancellationToken
+}
 
 export class LegacySemanticEngine implements SemanticEnginePort {
   private readonly packageResolver = new LocalPackageResolver()
@@ -67,7 +73,11 @@ export class LegacySemanticEngine implements SemanticEnginePort {
   private readonly engines: SemanticTypeEngineRegistry
   private readonly foldingRangeProvider = new FoldingRangeProvider()
 
-  constructor(private readonly projects: ProjectResolverPort, logger?: StructuredLogger) {
+  constructor(
+    private readonly projects: ProjectResolverPort,
+    logger?: StructuredLogger,
+    runtime: LegacySemanticEngineRuntimeOptions = {},
+  ) {
     this.engines = new SemanticTypeEngineRegistry(
       this.packageResolver,
       logger ? (workspaceRoot, sdk) => {
@@ -79,7 +89,16 @@ export class LegacySemanticEngine implements SemanticEnginePort {
         })
       } : undefined,
       this.documents,
+      runtime,
     )
+  }
+
+  runtimeStats() {
+    return this.engines.runtimeStats()
+  }
+
+  applyMemoryPressure(level: SemanticMemoryLevel): void {
+    this.engines.applyMemoryPressure(level)
   }
 
   sync(document: DocumentSnapshot): void {

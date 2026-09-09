@@ -42,8 +42,11 @@ test("a relative ArkTS import prefers its source over same-name declaration file
   const query = (offset) => ({
     textDocument: { uri: fixture.consumerUri }, position: positionAt(consumer, offset),
   })
-  const [definition, methodDefinition, completion] = await Promise.all([
-    fixture.session.request("textDocument/definition", query(consumer.indexOf("new Foo") + 5)),
+  const definition = await fixture.session.request(
+    "textDocument/definition",
+    query(consumer.indexOf("new Foo") + 5),
+  )
+  const [methodDefinition, completion] = await Promise.all([
     fixture.session.request("textDocument/definition", query(consumer.indexOf("item.common") + "item.".length + 1)),
     fixture.session.request("textDocument/completion", query(consumer.indexOf("item.sourceOnly") + "item.".length)),
   ])

@@ -36,6 +36,14 @@ test("formats an ArkUI document without changing diagnostics or symbol identity"
     format: "cjs",
     outfile: serverPath,
   })
+  buildSync({
+    entryPoints: [path.join(projectRoot, "src", "semantic", "semantic-worker-runtime.ts")],
+    bundle: true,
+    platform: "node",
+    target: "node20",
+    format: "cjs",
+    outfile: path.join(path.dirname(serverPath), "semantic-worker.cjs"),
+  })
 
   const documentPath = path.join(workspaceRoot, "FormattingPage.ets")
   const documentUri = pathToFileURL(documentPath).href
@@ -72,7 +80,7 @@ test("formats an ArkUI document without changing diagnostics or symbol identity"
   assert.equal(initialized.result.capabilities.documentFormattingProvider, true)
   const diagnosticsV1 = diagnosticsFor(session, documentUri, 1)
   session.openDocument({ uri: documentUri, version: 1, text: original })
-  assert.deepEqual((await diagnosticsV1).params.diagnostics, [])
+  assert.deepEqual((await diagnosticsAtStage(diagnosticsV1, "initial open")).params.diagnostics, [])
 
   const formatting = await session.request("textDocument/formatting", {
     textDocument: { uri: documentUri },
@@ -105,7 +113,7 @@ test("formats an ArkUI document without changing diagnostics or symbol identity"
 
   const diagnosticsV2 = diagnosticsFor(session, documentUri, 2)
   session.changeDocument({ uri: documentUri, version: 2, text: formatted })
-  assert.deepEqual((await diagnosticsV2).params.diagnostics, [])
+  assert.deepEqual((await diagnosticsAtStage(diagnosticsV2, "formatted change")).params.diagnostics, [])
 
   const widthRange = rangeInAnchor(formatted, '}.width("100%")', "width")
   const definition = await session.request("textDocument/definition", {
@@ -141,6 +149,15 @@ function diagnosticsFor(session, uri, version) {
     "textDocument/publishDiagnostics",
     ({ params }) => params.uri === uri && params.version === version,
   )
+}
+
+async function diagnosticsAtStage(promise, stage) {
+  try { return await promise }
+  catch (error) {
+    throw new Error(`Diagnostics failed at ${stage}: ${error instanceof Error ? error.message : String(error)}`, {
+      cause: error,
+    })
+  }
 }
 
 function normalizeLocations(result) {

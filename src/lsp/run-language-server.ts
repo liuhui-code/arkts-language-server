@@ -149,8 +149,7 @@ export function runLanguageServer(services?: LanguageServerServices): void {
     workspaceIndexAbort?.abort(new Error("Language server stopped"))
     completionResolutions.clear()
     codeActionResolutions.clear()
-    semantic.dispose()
-    disposal = Promise.resolve(workspaceSymbols?.dispose()).then(() => {
+    disposal = Promise.resolve(semantic.dispose()).then(() => workspaceSymbols?.dispose()).then(() => {
       logger.info("server.stopped", { reason })
     })
     return disposal

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "semanticWorkers": 1,
+  "maxResidentContexts": 2,
+  "defaultMemoryBudgetMiB": 1024,
+  "sampleIntervalMs": 1000,
+  "level1Ratio": 0.70,
+  "level2Ratio": 0.82,
+  "level3Ratio": 0.92,
+  "level3TargetRatio": 0.85
+}

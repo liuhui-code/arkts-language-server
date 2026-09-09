@@ -104,7 +104,8 @@ fast 855/855; Rust PASS; artifact 6/6; real 455-file large fixture 1/1
 cold catalog 600.71 ms; warm first query 2.80 ms; repeated query P95 2.69 ms
 ```
 
-Canonical GitHub validation is recorded after the branch is pushed.
+Canonical GitHub `validate` run `34331750083` passed in 7m03s. PR #16 was merged as
+`3729edf56c0aa9d6ab7bb8740fa190a215454d2d`.
 
 ## Reproduction
 

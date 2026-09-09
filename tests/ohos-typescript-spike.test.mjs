@@ -266,8 +266,12 @@ test("production composition has one locked official semantic backend and no vir
   assert.doesNotMatch(runtime, /LegacySemanticEngine/u)
 
   const factory = readProjectFile("src/semantic/backends/production-semantic-engine.ts")
-  assert.equal((factory.match(/new OhosTypeScriptSemanticEngine/gu) ?? []).length, 1)
+  assert.equal((factory.match(/new SemanticWorkerEngine/gu) ?? []).length, 1)
   assert.doesNotMatch(factory, /Es2Panda/u)
+
+  const worker = readProjectFile("src/semantic/semantic-worker-runtime.ts")
+  assert.equal((worker.match(/new OhosTypeScriptSemanticEngine/gu) ?? []).length, 1)
+  assert.doesNotMatch(worker, /Es2Panda/u)
 
   const engine = readProjectFile("src/core/types/typescript-language-service.ts")
   assert.match(engine, /fileName\.endsWith\("\.ets"\)[\s\S]*ScriptKind\.ETS/u)

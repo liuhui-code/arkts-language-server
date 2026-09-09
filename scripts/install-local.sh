@@ -171,7 +171,8 @@ release_fingerprint=$(node -e '
     digest.update("\0")
   }
   process.stdout.write(digest.digest("hex"))
-' "$source_command" "$project_root/dist/server.cjs" \
+' "$source_command" "$project_root/config/semantic-runtime.json" \
+  "$project_root/dist/semantic-worker.cjs" "$project_root/dist/server.cjs" \
   "$project_root/target/release/arkts-index-sidecar")
 release_id=$package_version-$release_fingerprint
 release_dir=$libexec_root/$release_id
@@ -183,8 +184,11 @@ cleanup_installation() {
 }
 trap cleanup_installation EXIT HUP INT TERM
 
-mkdir -p "$staging_dir/bin" "$staging_dir/dist" "$staging_dir/target/release"
+mkdir -p "$staging_dir/bin" "$staging_dir/config" "$staging_dir/dist" \
+  "$staging_dir/target/release"
 cp "$source_command" "$staging_dir/bin/arkts-language-server"
+cp "$project_root/config/semantic-runtime.json" "$staging_dir/config/semantic-runtime.json"
+cp "$project_root/dist/semantic-worker.cjs" "$staging_dir/dist/semantic-worker.cjs"
 cp "$project_root/dist/server.cjs" "$staging_dir/dist/server.cjs"
 cp "$project_root/target/release/arkts-index-sidecar" \
   "$staging_dir/target/release/arkts-index-sidecar"

@@ -26,8 +26,11 @@ import type { HarmonyProjectModel } from "../../project/harmony-project-model.js
 import type { ProjectFileAccessPort, SemanticWorkspaceView } from "../workspace/document-store.js"
 import { arbitrateCompletionLists } from "./completion-arbitrator.js"
 import { TypeScriptLanguageServiceEngine, type TypeScriptLanguageServiceEngineOptions } from "./typescript-language-service.js"
-
-const MAX_WORKSPACE_ENGINES = 4
+import {
+  SemanticCoordinator,
+  type SemanticManagedContext,
+  type SemanticMemoryLevel,
+} from "../../semantic/coordinator/semantic-coordinator.js"
 
 export type SemanticTypeStatus = "ready" | "partial" | "unsupported"
 
@@ -134,7 +137,7 @@ export interface SemanticTypeQueryContext {
   ): SemanticSignatureHelp | null
 }
 
-interface WorkspaceEngineEntry {
+interface WorkspaceEngineEntry extends SemanticManagedContext {
   engine: TypeScriptLanguageServiceEngine
   arkui: ArkUIResourceLanguageProvider
   project: HarmonyProjectModel
@@ -143,18 +146,33 @@ interface WorkspaceEngineEntry {
   resetEpoch: number
   appliedContentRevision: number
   lastAccess: number
+  projectFiles: number
+  openDocuments: number
 }
 
 export class SemanticTypeEngineRegistry {
-  private readonly workspaces = new Map<string, WorkspaceEngineEntry>()
+  private readonly coordinator: SemanticCoordinator<WorkspaceEngineEntry>
   private accessClock = 0
   private sdkConfiguration: unknown
+
+  private get workspaces(): { get(rootPath: string): WorkspaceEngineEntry | undefined } {
+    return { get: rootPath => this.coordinator.peek(rootPath) }
+  }
 
   constructor(
     private readonly packageResolver = new LocalPackageResolver(),
     private readonly onSdkSelected?: TypeScriptLanguageServiceEngineOptions["onSdkSelected"],
     private readonly projectFileAccess?: ProjectFileAccessPort,
-  ) {}
+    private readonly options: {
+      maxResidentContexts?: number
+      hostCancellationToken?: TypeScriptLanguageServiceEngineOptions["hostCancellationToken"]
+    } = {},
+  ) {
+    this.coordinator = new SemanticCoordinator({
+      maxResidentContexts: options.maxResidentContexts ?? 2,
+      createContext: rootPath => this.createContext(rootPath),
+    })
+  }
 
   configureSdk(selection: unknown): void {
     this.sdkConfiguration = selection
@@ -166,51 +184,32 @@ export class SemanticTypeEngineRegistry {
     const ownerId = workspace.canonicalRootId ?? rootPath
     const resetEpoch = workspace.typeEngineResetEpoch ?? 0
     const contentRevision = workspace.contentRevision ?? 0
-    const previous = this.workspaces.get(rootPath)
+    const previous = this.coordinator.peek(rootPath)
     if (
       workspace.resetTypeEngine
       || previous?.ownerId !== ownerId
       || previous?.resetEpoch !== resetEpoch
       || (previous !== undefined && previous.appliedContentRevision !== contentRevision)
     ) {
-      previous?.engine.dispose()
-      previous?.arkui.dispose()
-      this.workspaces.delete(rootPath)
+      this.coordinator.remove(rootPath)
     }
-    let entry = this.workspaces.get(rootPath)
-    const newEntry = !entry
-    if (!entry) {
-      entry = {
-        engine: new TypeScriptLanguageServiceEngine(rootPath, {
-          packageResolver: this.packageResolver,
-          onSdkSelected: this.onSdkSelected,
-          projectFileAccess: this.projectFileAccess,
-          sdkConfiguration: this.sdkConfiguration,
-        }),
-        arkui: new ArkUIResourceLanguageProvider(rootPath),
-        project: this.packageResolver.projectFor(rootPath),
-        resourceScope: "",
-        ownerId,
-        resetEpoch: -1,
-        appliedContentRevision: -1,
-        lastAccess: 0,
-      }
-    }
+    const lease = this.coordinator.acquire(rootPath)
+    const entry = lease.context
+    const newEntry = previous !== entry
     let state: SemanticTypeEngineState
     try {
       state = entry.engine.prepare(workspace)
     } catch (error) {
-      if (newEntry) {
-        entry.engine.dispose()
-        entry.arkui.dispose()
-      }
+      lease.release()
+      if (newEntry) this.coordinator.remove(rootPath)
       throw error
     }
     entry.ownerId = ownerId
     entry.resetEpoch = resetEpoch
     entry.appliedContentRevision = contentRevision
     entry.lastAccess = ++this.accessClock
-    if (newEntry) this.workspaces.set(rootPath, entry)
+    entry.projectFiles = workspace.projectMembership?.paths.length ?? workspace.documents.length
+    entry.openDocuments = workspace.documents.filter(document => document.overlay).length
     const activeEntry = entry
     const scope = activeEntry.project.scopeFor(workspace.state.path)
     const resourceScope = JSON.stringify([scope.moduleRoot ?? rootPath, scope.resourceRoots])
@@ -224,34 +223,42 @@ export class SemanticTypeEngineRegistry {
     const sourceContent = workspace.documents.find((document) => (
       document.path === workspace.state.path
     ))?.content
-    this.evict(rootPath)
+    lease.release()
+    const withLease = <Result>(run: (current: WorkspaceEngineEntry) => Result): Result => {
+      const queryLease = this.coordinator.acquire(rootPath)
+      try {
+        return run(queryLease.context)
+      } finally {
+        queryLease.release()
+      }
+    }
     return {
       state,
-      complete: (position) => {
+      complete: (position) => withLease((current) => {
         const arkui = sourceContent && scope.status !== "unavailable"
-          ? activeEntry.arkui.complete(position, sourceContent)
+          ? current.arkui.complete(position, sourceContent)
           : { items: [], isIncomplete: scope.status === "unavailable" }
-        const typescript = activeEntry.engine.complete(position)
+        const typescript = current.engine.complete(position)
         return arbitrateCompletionLists(arkui, typescript)
-      },
+      }),
       resolveCompletion: (position, item) => item.data?.provider === "arkui-resource"
         ? item
-        : activeEntry.engine.resolveCompletion(position, item),
-      define: (position) => mergeDefinitions(
+        : withLease(current => current.engine.resolveCompletion(position, item)),
+      define: (position) => withLease(current => mergeDefinitions(
         sourceContent && scope.status !== "unavailable"
-          ? activeEntry.arkui.define(position, sourceContent)
+          ? current.arkui.define(position, sourceContent)
           : [],
-        activeEntry.engine.define(position),
-      ),
-      typeDefinitions: (position) => activeEntry.engine.typeDefinitions(position),
-      implementations: (position) => activeEntry.engine.implementations(position),
+        current.engine.define(position),
+      )),
+      typeDefinitions: (position) => withLease(current => current.engine.typeDefinitions(position)),
+      implementations: (position) => withLease(current => current.engine.implementations(position)),
       references: (position, includeDeclaration) => (
-        activeEntry.engine.references(position, includeDeclaration)
+        withLease(current => current.engine.references(position, includeDeclaration))
       ),
-      prepareRename: (position) => activeEntry.engine.prepareRename(position),
-      usages: (position) => activeEntry.engine.usages(position),
-      diagnostics: (position) => mergeDiagnostics(
-        activeEntry.engine.diagnostics(position),
+      prepareRename: (position) => withLease(current => current.engine.prepareRename(position)),
+      usages: (position) => withLease(current => current.engine.usages(position)),
+      diagnostics: (position) => withLease(current => mergeDiagnostics(
+        current.engine.diagnostics(position),
         scope.status === "unavailable"
           ? [{
               source: "language", severity: "error", code: "arkts.project.configuration",
@@ -259,55 +266,79 @@ export class SemanticTypeEngineRegistry {
               range: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 },
               message: `Project configuration is unavailable: ${scope.reason ?? "unknown"}. Check build-profile.json5 and the product/target selection.`,
             }]
-          : sourceContent ? activeEntry.arkui.diagnostics(position, sourceContent) : [],
-      ),
-      codeActions: (position, range) => activeEntry.engine.codeActions(position, range),
+          : sourceContent ? current.arkui.diagnostics(position, sourceContent) : [],
+      )),
+      codeActions: (position, range) => withLease(current => current.engine.codeActions(position, range)),
       resolveCodeAction: (position, range, fingerprint) => (
-        activeEntry.engine.resolveCodeAction(position, range, fingerprint)
+        withLease(current => current.engine.resolveCodeAction(position, range, fingerprint))
       ),
-      documentHighlights: (position) => activeEntry.engine.documentHighlights(position),
-      inlayHints: (position, range) => activeEntry.engine.inlayHints(position, range),
-      prepareCallHierarchy: (position) => activeEntry.engine.prepareCallHierarchy(position),
-      outgoingCalls: (position, item) => activeEntry.engine.outgoingCalls(position, item),
-      incomingCalls: (position, item) => activeEntry.engine.incomingCalls(position, item),
-      documentSymbols: (position) => activeEntry.engine.documentSymbols(position),
-      hover: (position) => activeEntry.engine.hover(position),
-      rename: (position, newName) => activeEntry.engine.rename(position, newName),
+      documentHighlights: (position) => withLease(current => current.engine.documentHighlights(position)),
+      inlayHints: (position, range) => withLease(current => current.engine.inlayHints(position, range)),
+      prepareCallHierarchy: (position) => withLease(current => current.engine.prepareCallHierarchy(position)),
+      outgoingCalls: (position, item) => withLease(current => current.engine.outgoingCalls(position, item)),
+      incomingCalls: (position, item) => withLease(current => current.engine.incomingCalls(position, item)),
+      documentSymbols: (position) => withLease(current => current.engine.documentSymbols(position)),
+      hover: (position) => withLease(current => current.engine.hover(position)),
+      rename: (position, newName) => withLease(current => current.engine.rename(position, newName)),
       signatureHelp: (position, triggerReason) => (
-        activeEntry.engine.signatureHelp(position, triggerReason)
+        withLease(current => current.engine.signatureHelp(position, triggerReason))
       ),
     }
   }
 
   workspaceCount(): number {
-    return this.workspaces.size
+    return this.coordinator.stats().residentContextCount
+  }
+
+  runtimeStats() {
+    return this.coordinator.stats()
+  }
+
+  applyMemoryPressure(level: SemanticMemoryLevel): void {
+    this.coordinator.applyMemoryPressure(level)
   }
 
   invalidateArkUIResources(rootPath: string): void {
     const lexicalRoot = path.resolve(rootPath)
     const ownerId = canonicalTypeEngineOwner(rootPath)
-    for (const [entryRoot, entry] of this.workspaces) {
+    this.coordinator.forEachContext((entry, entryRoot) => {
       if (entryRoot === lexicalRoot || entry.ownerId === ownerId) entry.arkui.invalidate()
-    }
+    })
   }
 
   dispose(): void {
-    for (const entry of this.workspaces.values()) {
-      entry.engine.dispose()
-      entry.arkui.dispose()
-    }
-    this.workspaces.clear()
+    this.coordinator.dispose()
   }
 
-  private evict(activeRoot: string): void {
-    while (this.workspaces.size > MAX_WORKSPACE_ENGINES) {
-      const candidate = [...this.workspaces.entries()]
-        .filter(([root]) => root !== activeRoot)
-        .sort((left, right) => left[1].lastAccess - right[1].lastAccess)[0]
-      if (!candidate) return
-      candidate[1].engine.dispose()
-      candidate[1].arkui.dispose()
-      this.workspaces.delete(candidate[0])
+  private createContext(rootPath: string): WorkspaceEngineEntry {
+    const engine = new TypeScriptLanguageServiceEngine(rootPath, {
+      packageResolver: this.packageResolver,
+      onSdkSelected: this.onSdkSelected,
+      projectFileAccess: this.projectFileAccess,
+      sdkConfiguration: this.sdkConfiguration,
+      hostCancellationToken: this.options.hostCancellationToken,
+    })
+    return {
+      engine,
+      arkui: new ArkUIResourceLanguageProvider(rootPath),
+      project: this.packageResolver.projectFor(rootPath),
+      resourceScope: "",
+      ownerId: rootPath,
+      resetEpoch: -1,
+      appliedContentRevision: -1,
+      lastAccess: 0,
+      projectFiles: 0,
+      openDocuments: 0,
+      trim() {
+        this.engine.trim()
+      },
+      dispose() {
+        this.engine.dispose()
+        this.arkui.dispose()
+      },
+      stats() {
+        return { projectFiles: this.projectFiles, openDocuments: this.openDocuments }
+      },
     }
   }
 }

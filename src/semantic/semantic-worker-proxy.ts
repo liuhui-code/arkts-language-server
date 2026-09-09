@@ -1,0 +1,511 @@
+import fs from "node:fs"
+import { createHash } from "node:crypto"
+import path from "node:path"
+import { fileURLToPath } from "node:url"
+import { Worker } from "node:worker_threads"
+
+import type { DocumentSnapshot } from "../contracts/document.js"
+import type { ProjectResolverPort } from "../contracts/project-resolver.js"
+import type * as Contract from "../contracts/semantic-engine.js"
+import { isArkUIStringResourcePath } from "../core/arkui/resource-path.js"
+import { LocalPackageResolver } from "../core/sdk/local-package-resolver.js"
+import type { StructuredLogger } from "../observability/logger.js"
+import { OHOS_TYPESCRIPT_BACKEND_IDENTITY } from "./backends/ohos-typescript/identity.js"
+import type { SemanticBackend } from "./backends/semantic-backend.js"
+import { semanticRuntimeConfig } from "./coordinator/runtime-config.js"
+import {
+  RootSemanticWorkerSupervisor,
+  SemanticWorkerCancelState,
+  isSemanticWorkerUriWithinRoot,
+  type RootSemanticWorkerEndpoint,
+  type RootSemanticWorkerEndpointHandlers,
+  type RootSemanticWorkerMutationInput,
+  type RootSemanticWorkerRequestInput,
+} from "./semantic-worker-supervisor.js"
+import type {
+  SemanticWorkerJsonObject,
+  SemanticWorkerJsonValue,
+  SemanticWorkerMethod,
+  SemanticWorkerRequestArgsByMethod,
+} from "./worker-protocol.js"
+
+interface SemanticWorkerProxyOptions {
+  readonly env?: NodeJS.ProcessEnv
+  readonly workerPath?: string
+}
+
+type TrackedDocument = DocumentSnapshot
+
+interface WorkerControlMessage {
+  readonly control: "registerRoot" | "configureProject" | "configureSdk"
+  readonly epoch?: number
+  readonly rootUri?: string
+  readonly value?: unknown
+}
+
+export class SemanticWorkerEngine implements Contract.SemanticEnginePort, SemanticBackend {
+  readonly backendIdentity = OHOS_TYPESCRIPT_BACKEND_IDENTITY
+  readonly #projects: ProjectResolverPort
+  readonly #logger: StructuredLogger | undefined
+  readonly #environment: NodeJS.ProcessEnv
+  readonly #workerPath: string
+  readonly #packageResolver = new LocalPackageResolver()
+  readonly #documents = new Map<string, TrackedDocument>()
+  readonly #supervisors = new Map<string, RootSemanticWorkerSupervisor>()
+  readonly #handlers = new Map<number, RootSemanticWorkerEndpointHandlers>()
+  #worker: Worker | undefined
+  #nextEpoch = 1
+  #projectConfiguration: unknown
+  #sdkConfiguration: unknown
+  #failure: unknown
+  #disposed = false
+
+  constructor(
+    projects: ProjectResolverPort,
+    logger?: StructuredLogger,
+    options: SemanticWorkerProxyOptions = {},
+  ) {
+    this.#projects = projects
+    this.#logger = logger
+    this.#environment = options.env ?? process.env
+    const adjacentWorker = path.join(__dirname, "semantic-worker.cjs")
+    this.#workerPath = options.workerPath ?? (fs.existsSync(adjacentWorker)
+      ? adjacentWorker
+      : path.resolve(process.cwd(), "dist", "semantic-worker.cjs"))
+  }
+
+  configureProject(selection: unknown): void {
+    this.#projectConfiguration = selection
+    this.#packageResolver.configureProject(selection)
+    this.#sendControl({ control: "configureProject", value: selection })
+  }
+
+  configureSdk(selection: unknown): void {
+    this.#sdkConfiguration = selection
+    this.#sendControl({ control: "configureSdk", value: selection })
+  }
+
+  isResourceFile(rootUri: string, fileUri: string): boolean {
+    const root = toFilePath(rootUri)
+    const candidate = toFilePath(fileUri)
+    if (!root || !candidate) return false
+    const scope = this.#packageResolver.projectFor(root).scopeFor(candidate)
+    if (scope.status === "unconfigured") return isArkUIStringResourcePath(candidate)
+    if (scope.status !== "ready") return false
+    const physicalCandidate = resourceEventPath(candidate)
+    return scope.resourceRoots.some((resourceRoot) => {
+      const segments = path.relative(resourceEventPath(resourceRoot), physicalCandidate).split(path.sep)
+      return segments.length === 3 && segments[0] !== ".."
+        && segments[1] === "element" && segments[2] === "string.json"
+    })
+  }
+
+  sync(document: DocumentSnapshot): void {
+    if (!document.uri.startsWith("file:")) return
+    if (!isSemanticWorkerUriWithinRoot(document.uri, document.workspaceId)) return
+    const snapshot = Object.freeze({ ...document })
+    const previous = this.#documents.get(document.uri)
+    this.#documents.set(document.uri, snapshot)
+    if (previous?.version === snapshot.version && previous.text === snapshot.text) return
+    this.#mutate(snapshot.workspaceId, {
+      kind: previous ? "change" : "open",
+      uri: snapshot.uri,
+      documentVersion: snapshot.version,
+      text: snapshot.text,
+    })
+  }
+
+  close(documentUri: string): void {
+    const document = this.#documents.get(documentUri)
+    if (!document) return
+    this.#documents.delete(documentUri)
+    this.#mutate(document.workspaceId, {
+      kind: "close",
+      uri: documentUri,
+      documentVersion: document.version,
+    })
+  }
+
+  workspaceFilesChanged(batches: readonly Contract.SemanticWorkspaceFileChangeBatch[]): void {
+    for (const batch of batches) {
+      this.#mutate(batch.rootUri, {
+        kind: "workspaceFilesChanged",
+        rootUri: batch.rootUri,
+        rootDirty: batch.rootDirty,
+        resourceDirty: batch.resourceDirty === true,
+        resourceChanged: batch.resourceChanged === true,
+        changes: batch.changes,
+      })
+    }
+  }
+
+  complete(query: Contract.SemanticQuery) {
+    return this.#documentRequest<Contract.SemanticCompletionList>("complete", query, {
+      position: query.position,
+      snippets: query.completionOptions?.snippets === true,
+    })
+  }
+
+  resolveCompletion(query: Contract.SemanticCompletionResolveQuery) {
+    return this.#documentRequest<Contract.SemanticCompletion>("resolveCompletion", query, {
+      position: query.position,
+      completion: query.completion as unknown as SemanticWorkerJsonObject,
+      snippets: query.completionOptions?.snippets === true,
+    })
+  }
+
+  define(query: Contract.SemanticQuery) {
+    return this.#documentRequest<Contract.SemanticDefinition[]>("define", query, {
+      position: query.position,
+    })
+  }
+
+  typeDefinitions(query: Contract.SemanticQuery) {
+    return this.#documentRequest<Contract.SemanticDefinition[]>("typeDefinitions", query, {
+      position: query.position,
+    })
+  }
+
+  implementations(query: Contract.SemanticQuery) {
+    return this.#documentRequest<Contract.SemanticDefinition[]>("implementations", query, {
+      position: query.position,
+    })
+  }
+
+  references(query: Contract.SemanticReferencesQuery) {
+    return this.#documentRequest<Contract.SemanticReferencesOutcome>("references", query, {
+      position: query.position,
+      includeDeclaration: query.includeDeclaration,
+    })
+  }
+
+  prepareRename(query: Contract.SemanticQuery) {
+    return this.#documentRequest<Contract.SemanticPrepareRenameOutcome>("prepareRename", query, {
+      position: query.position,
+    })
+  }
+
+  rename(query: Contract.SemanticRenameQuery) {
+    if (!isSemanticWorkerUriWithinRoot(query.document.uri, query.document.workspaceId)) {
+      return Promise.resolve({
+        documentVersion: query.document.version,
+        value: { status: "incomplete" as const, reason: "source-outside-workspace" as const },
+      })
+    }
+    return this.#documentRequest<Contract.SemanticRenameOutcome>("rename", query, {
+      position: query.position,
+      newName: query.newName,
+    })
+  }
+
+  documentHighlights(query: Contract.SemanticQuery) {
+    return this.#documentRequest<Contract.SemanticDocumentHighlight[]>("documentHighlights", query, {
+      position: query.position,
+    })
+  }
+
+  inlayHints(query: Contract.SemanticInlayHintQuery) {
+    return this.#documentRequest<Contract.SemanticInlayHint[]>("inlayHints", query, {
+      range: query.range,
+    })
+  }
+
+  prepareCallHierarchy(query: Contract.SemanticQuery) {
+    return this.#documentRequest<Contract.SemanticCallHierarchyPrepareOutcome>(
+      "prepareCallHierarchy",
+      query,
+      { position: query.position },
+    )
+  }
+
+  outgoingCalls(query: Contract.SemanticCallHierarchyItemQuery) {
+    return this.#callHierarchyRequest<Contract.SemanticCallHierarchyOutgoingOutcome>(
+      "outgoingCalls",
+      query,
+    )
+  }
+
+  incomingCalls(query: Contract.SemanticCallHierarchyItemQuery) {
+    return this.#callHierarchyRequest<Contract.SemanticCallHierarchyIncomingOutcome>(
+      "incomingCalls",
+      query,
+    )
+  }
+
+  foldingRanges(query: Contract.SemanticFoldingRangeQuery) {
+    return this.#documentRequest<Contract.SemanticFoldingRange[]>("foldingRanges", query, {
+      ...(query.lineFoldingOnly === undefined ? {} : { lineFoldingOnly: query.lineFoldingOnly }),
+      ...(query.rangeLimit === undefined ? {} : { rangeLimit: query.rangeLimit }),
+    })
+  }
+
+  formatDocument(query: Contract.SemanticDocumentFormattingQuery) {
+    return this.#documentRequest<Contract.SemanticDocumentTextEdit[]>("formatDocument", query, {
+      options: query.options,
+    })
+  }
+
+  documentSymbols(query: Contract.SemanticDocumentQuery) {
+    return this.#documentRequest<Contract.SemanticDocumentSymbol[]>("documentSymbols", query, {})
+  }
+
+  diagnose(query: Contract.SemanticDocumentQuery) {
+    return this.#documentRequest<Contract.SemanticDiagnostic[]>("diagnose", query, {})
+  }
+
+  codeActions(query: Contract.SemanticCodeActionQuery) {
+    return this.#documentRequest<Contract.SemanticCodeAction[]>("codeActions", query, {
+      range: query.range,
+    })
+  }
+
+  resolveCodeAction(query: Contract.SemanticCodeActionResolveQuery) {
+    return this.#documentRequest<Contract.SemanticResolvedCodeAction | null>(
+      "resolveCodeAction",
+      query,
+      { action: query.action as unknown as SemanticWorkerJsonObject },
+    )
+  }
+
+  hover(query: Contract.SemanticQuery) {
+    return this.#documentRequest<Contract.SemanticHover | null>("hover", query, {
+      position: query.position,
+    })
+  }
+
+  signatureHelp(query: Contract.SemanticSignatureHelpQuery) {
+    return this.#documentRequest<Contract.SemanticSignatureHelp | null>("signatureHelp", query, {
+      position: query.position,
+      triggerReason: query.triggerReason,
+    })
+  }
+
+  async dispose(): Promise<void> {
+    if (this.#disposed) return
+    this.#disposed = true
+    await Promise.all([...this.#supervisors.values()].map(supervisor => supervisor.dispose()))
+    this.#supervisors.clear()
+    this.#handlers.clear()
+    await this.#worker?.terminate()
+    this.#worker = undefined
+  }
+
+  async #documentRequest<Value, Method extends SemanticWorkerMethod = SemanticWorkerMethod>(
+    method: Method,
+    query: Contract.SemanticDocumentQuery,
+    args: SemanticWorkerRequestArgsByMethod[Method],
+  ): Promise<Contract.VersionedSemanticResult<Value>> {
+    this.sync(query.document)
+    const value = await this.#request(method, query.document.workspaceId, query.document.uri,
+      query.document.version, args, query.signal)
+    return { documentVersion: query.document.version, value: value as unknown as Value }
+  }
+
+  async #callHierarchyRequest<Value>(
+    method: "outgoingCalls" | "incomingCalls",
+    query: Contract.SemanticCallHierarchyItemQuery,
+  ): Promise<Value> {
+    const rootUri = query.source.workspaceRootUri
+    const document = query.source.kind === "open"
+      ? query.source.document
+      : {
+          uri: query.source.uri,
+          version: 0,
+          text: query.source.text,
+          workspaceId: query.source.workspaceId,
+        }
+    const tracked = this.#documents.has(document.uri)
+    if (query.source.kind === "open") this.sync(document)
+    else this.#mutate(rootUri, {
+      kind: "open",
+      uri: document.uri,
+      documentVersion: document.version,
+      text: document.text,
+    })
+    const { sourceFingerprint: itemFingerprint, ...item } = query.item
+    const sourceFingerprint = itemFingerprint ?? createHash("sha256")
+      .update(document.text)
+      .digest("hex")
+    try {
+      const value = await this.#request(method, rootUri, document.uri, null, {
+        item,
+        sourceFingerprint,
+      }, query.signal)
+      return value as unknown as Value
+    } finally {
+      if (query.source.kind === "disk" && !tracked) {
+        this.#mutate(rootUri, {
+          kind: "close",
+          uri: document.uri,
+          documentVersion: document.version,
+        })
+      }
+    }
+  }
+
+  async #request<Method extends SemanticWorkerMethod>(
+    method: Method,
+    rootUri: string,
+    uri: string,
+    expectedDocumentVersion: number | null,
+    args: SemanticWorkerRequestArgsByMethod[Method],
+    signal?: AbortSignal,
+  ): Promise<SemanticWorkerJsonValue> {
+    this.#assertAvailable()
+    const supervisor = this.#supervisor(rootUri)
+    const handle = supervisor.request({
+      method,
+      uri,
+      expectedDocumentVersion,
+      args,
+    } as RootSemanticWorkerRequestInput)
+    const abort = () => handle.cancel(abortState(signal))
+    signal?.addEventListener("abort", abort, { once: true })
+    if (signal?.aborted) abort()
+    try {
+      return await handle.result
+    } finally {
+      signal?.removeEventListener("abort", abort)
+    }
+  }
+
+  #mutate(rootUri: string, mutation: RootSemanticWorkerMutationInput): void {
+    try {
+      void this.#supervisor(rootUri).mutate(mutation).catch(error => {
+        this.#failure = error
+      })
+    } catch (error) {
+      this.#failure = error
+    }
+  }
+
+  #supervisor(rootUri: string): RootSemanticWorkerSupervisor {
+    this.#assertAvailable()
+    const existing = this.#supervisors.get(rootUri)
+    if (existing) return existing
+    const worker = this.#ensureWorker(rootUri)
+    const epoch = this.#nextEpoch++
+    const endpoint: RootSemanticWorkerEndpoint = {
+      listen: (handlers) => {
+        this.#handlers.set(epoch, handlers)
+        return () => { this.#handlers.delete(epoch) }
+      },
+      send: message => worker.postMessage(message),
+      terminate: () => { this.#handlers.delete(epoch) },
+    }
+    worker.postMessage({ control: "registerRoot", epoch, rootUri } satisfies WorkerControlMessage)
+    const supervisor = new RootSemanticWorkerSupervisor({
+      rootUri,
+      epoch,
+      endpoint,
+      waitForDisposeDeadline: () => new Promise(resolve => setTimeout(resolve, 100)),
+    })
+    this.#supervisors.set(rootUri, supervisor)
+    return supervisor
+  }
+
+  #ensureWorker(rootUri: string): Worker {
+    if (this.#worker) return this.#worker
+    const config = semanticRuntimeConfig(this.#environment)
+    const worker = new Worker(this.#workerPath, {
+      workerData: {
+        rootUri,
+        projectConfiguration: this.#projectConfiguration,
+        sdkConfiguration: this.#sdkConfiguration,
+        runtimeConfig: config,
+        metricsPath: this.#environment.ARKTS_MEMORY_METRICS_FILE,
+      },
+    })
+    worker.on("message", (message: unknown) => {
+      const log = workerLogMessage(message)
+      if (log) {
+        this.#logger?.[log.level](log.event, log.fields)
+        return
+      }
+      const epoch = messageEpoch(message)
+      if (epoch !== undefined) this.#handlers.get(epoch)?.message(message)
+    })
+    worker.on("error", error => {
+      this.#failure = error
+      for (const handlers of this.#handlers.values()) handlers.error(error)
+    })
+    worker.on("exit", code => {
+      if (!this.#disposed && code !== 0) this.#failure = new Error(`Semantic worker exited ${code}`)
+      if (!this.#disposed) for (const handlers of this.#handlers.values()) handlers.exit(code)
+    })
+    this.#worker = worker
+    this.#logger?.info("semantic.worker.started", { semanticWorkerCount: 1 })
+    return worker
+  }
+
+  #sendControl(message: WorkerControlMessage): void {
+    this.#worker?.postMessage(message)
+  }
+
+  #assertAvailable(): void {
+    if (this.#disposed) throw new Error("Semantic worker is disposed")
+    if (this.#failure) throw this.#failure
+  }
+}
+
+function abortState(signal: AbortSignal | undefined) {
+  const kind = signal?.reason && typeof signal.reason === "object"
+    ? (signal.reason as { kind?: unknown }).kind
+    : undefined
+  if (kind === "content-modified" || kind === "superseded") {
+    return SemanticWorkerCancelState.contentModified
+  }
+  if (kind === "shutdown") return SemanticWorkerCancelState.supervisorDisposing
+  return SemanticWorkerCancelState.clientCancelled
+}
+
+function messageEpoch(value: unknown): number | undefined {
+  if (!value || typeof value !== "object") return undefined
+  const epoch = (value as { epoch?: unknown }).epoch
+  return Number.isSafeInteger(epoch) ? epoch as number : undefined
+}
+
+function workerLogMessage(value: unknown): {
+  level: "info" | "error"
+  event: string
+  fields: Readonly<Record<string, string | number | boolean | null | undefined>>
+} | undefined {
+  if (!value || typeof value !== "object") return undefined
+  const candidate = value as {
+    workerEvent?: unknown
+    level?: unknown
+    event?: unknown
+    fields?: unknown
+  }
+  if (candidate.workerEvent !== "log"
+    || (candidate.level !== "info" && candidate.level !== "error")
+    || typeof candidate.event !== "string"
+    || candidate.event.length === 0
+    || !candidate.fields
+    || typeof candidate.fields !== "object"
+    || Array.isArray(candidate.fields)) return undefined
+  for (const field of Object.values(candidate.fields)) {
+    if (field !== null && field !== undefined
+      && typeof field !== "string" && typeof field !== "number" && typeof field !== "boolean") {
+      return undefined
+    }
+  }
+  return {
+    level: candidate.level,
+    event: candidate.event,
+    fields: candidate.fields as Readonly<Record<string, string | number | boolean | null | undefined>>,
+  }
+}
+
+function resourceEventPath(candidate: string): string {
+  try { return fs.realpathSync.native(candidate) }
+  catch {
+    try { return path.join(fs.realpathSync.native(path.dirname(candidate)), path.basename(candidate)) }
+    catch { return path.resolve(candidate) }
+  }
+}
+
+function toFilePath(uri: string): string | undefined {
+  try { return uri.startsWith("file:") ? fileURLToPath(uri) : undefined }
+  catch { return undefined }
+}

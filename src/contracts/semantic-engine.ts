@@ -396,5 +396,5 @@ export interface SemanticEnginePort {
   signatureHelp(
     query: SemanticSignatureHelpQuery,
   ): Promise<VersionedSemanticResult<SemanticSignatureHelp | null>>
-  dispose(): void
+  dispose(): void | Promise<void>
 }
