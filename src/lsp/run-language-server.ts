@@ -178,6 +178,16 @@ export function runLanguageServer(services?: LanguageServerServices): void {
     semantic,
     requests,
   })
+  if (process.env.ARKTS_BENCHMARK_CONTROL === "1") {
+    connection.onRequest("arkts/benchmark/applyMemoryPressure", (params: unknown) => {
+      if ((params as { level?: unknown } | null)?.level !== "level3"
+        || !semantic.applyMemoryPressure) {
+        throw new ResponseError(ErrorCodes.InvalidParams, "level3 memory pressure is unavailable")
+      }
+      semantic.applyMemoryPressure("level3")
+      return { applied: "level3" }
+    })
+  }
   const diagnostics = createDocumentDiagnostics({
     connection,
     documents,

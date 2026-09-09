@@ -39,7 +39,17 @@ function generateFixture({ output, workspaceFiles, activeDependencyFiles, seed }
   const firstImport = activeDependencyFiles === 0
     ? ""
     : `import { Active000000 } from "./generated/Active000000"\n\n`
-  write(output, `${sourceRoot}/Main.ets`, `${firstImport}export const benchmarkSeed = ${seed}\n`)
+  write(output, `${sourceRoot}/Main.ets`, `${firstImport}export const benchmarkSeed = ${seed}
+
+export struct BenchmarkEntry {
+  stableMember: number = benchmarkSeed
+
+  build(): number {
+    // benchmark-edit
+    return this.stableMember
+  }
+}
+`)
 
   for (let index = 0; index < activeDependencyFiles; index += 1) {
     const identity = padded(index)
@@ -62,7 +72,7 @@ function generateFixture({ output, workspaceFiles, activeDependencyFiles, seed }
     const bucket = String(Math.floor(index / 1_000)).padStart(3, "0")
     write(
       output,
-      `${generatedRoot}/unused/${bucket}/Unused${identity}.ets`,
+      `unrelated/${bucket}/Unused${identity}.ets`,
       `export class Unused${identity} { readonly seed: number = ${seed} }\n`,
     )
   }

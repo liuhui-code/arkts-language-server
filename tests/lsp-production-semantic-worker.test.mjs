@@ -22,7 +22,7 @@ test("production semantics run in one worker and report the bounded resident set
 
   const server = new LspProcess({ env: {
     ARKTS_MEMORY_METRICS_FILE: metricsPath,
-    ARKTS_MEMORY_BUDGET_MB: "1",
+    ARKTS_BENCHMARK_CONTROL: "1",
   } })
   t.after(() => server.close())
   const rootUri = pathToFileURL(fixtureRoot).href
@@ -60,6 +60,14 @@ test("production semantics run in one worker and report the bounded resident set
   assert.equal(response.error, undefined, JSON.stringify(response.error))
   const items = Array.isArray(response.result) ? response.result : response.result.items
   assert.ok(items.some((item) => item.label === "title"))
+
+  server.send({
+    jsonrpc: "2.0",
+    id: 5,
+    method: "arkts/benchmark/applyMemoryPressure",
+    params: { level: "level3" },
+  })
+  assert.deepEqual((await server.response(5, 10_000)).result, { applied: "level3" })
 
   const changedText = text.replace(
     "  title: string = \"Ada\"",

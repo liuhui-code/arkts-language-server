@@ -39,7 +39,7 @@ interface SemanticWorkerProxyOptions {
 type TrackedDocument = DocumentSnapshot
 
 interface WorkerControlMessage {
-  readonly control: "registerRoot" | "configureProject" | "configureSdk"
+  readonly control: "registerRoot" | "configureProject" | "configureSdk" | "applyMemoryPressure"
   readonly epoch?: number
   readonly rootUri?: string
   readonly value?: unknown
@@ -87,6 +87,10 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
   configureSdk(selection: unknown): void {
     this.#sdkConfiguration = selection
     this.#sendControl({ control: "configureSdk", value: selection })
+  }
+
+  applyMemoryPressure(level: "level3"): void {
+    this.#sendControl({ control: "applyMemoryPressure", value: level })
   }
 
   isResourceFile(rootUri: string, fileUri: string): boolean {

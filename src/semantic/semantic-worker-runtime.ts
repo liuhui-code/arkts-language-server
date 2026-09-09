@@ -36,12 +36,16 @@ interface RegisterRootControl {
   readonly rootUri: string
 }
 
-interface ConfigurationControl {
-  readonly control: "configureProject" | "configureSdk"
-  readonly value: unknown
+type ConfigurationControl =
+  | { readonly control: "configureProject"; readonly value: unknown }
+  | { readonly control: "configureSdk"; readonly value: unknown }
+
+interface MemoryPressureControl {
+  readonly control: "applyMemoryPressure"
+  readonly value: "level3"
 }
 
-type WorkerControl = RegisterRootControl | ConfigurationControl
+type WorkerControl = RegisterRootControl | ConfigurationControl | MemoryPressureControl
 
 const port = requireParentPort(parentPort)
 const data = workerData as RuntimeWorkerData
@@ -102,8 +106,10 @@ function applyControl(control: WorkerControl): void {
     appliedRevisions.set(control.epoch, 0)
   } else if (control.control === "configureProject") {
     engine.configureProject(control.value)
-  } else {
+  } else if (control.control === "configureSdk") {
     engine.configureSdk(control.value)
+  } else {
+    engine.applyMemoryPressure(control.value)
   }
 }
 
@@ -355,6 +361,9 @@ function isWorkerControl(value: unknown): value is WorkerControl {
     return Number.isSafeInteger(candidate.epoch)
       && typeof candidate.rootUri === "string"
       && candidate.rootUri.startsWith("file:")
+  }
+  if (control === "applyMemoryPressure") {
+    return (value as Partial<MemoryPressureControl>).value === "level3"
   }
   return control === "configureProject" || control === "configureSdk"
 }
