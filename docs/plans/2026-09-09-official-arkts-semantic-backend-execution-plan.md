@@ -5,10 +5,9 @@ contract 34/34 PASS，lifecycle/memory PASS。Backend Cutover 的本地 `check:f
 `check:release` 与 PR #16 canonical `validate` 均已通过并合入 `3729edf`。Memory Runtime 的
 单 Worker、Coordinator、L0-L3、metrics 与交付接线已在 `codex/memory-runtime` 完成，本地
 `check:fast` 864/864、bundle-e2e 271/271、完整本地 `check:release` 与 PR #17 canonical
-`validate` 均已通过，并合入 `68c8b51`。Rust Discovery 已在 `codex/rust-discovery` 完成
-本地退出门禁；PR #18 首次 canonical run `34345757995` 暴露了 Node 层依赖 debug sidecar 与
-5 秒全量 catalog 的非密封时序，现已把真实 Rust 5,000-export 召回和真实 LSP 官方语义验证拆成
-两个稳定 contract，等待修复后的 canonical `validate` 与合并。
+`validate` 均已通过，并合入 `68c8b51`。Rust Discovery 的修复后 canonical run
+`34347649107` 已通过，PR #18 合入 `38f65e3`。Rule Gap 已从该 merge 开始，只提交单 owner
+capability matrix；当前没有 target-SDK golden 证明需要第二规则 provider。
 
 计划基线：`e90cacb9ace47292ac0869d09b3a64f7c7fe2144`（P2.1b，PR #5）。
 
@@ -668,10 +667,10 @@ Rust 变更运行 focused crate tests、`pnpm check:fast` 和相关 release buil
 - [x] `cargo fmt`、三 crate clippy/tests、release sidecar build 全绿；
 - [x] `pnpm check:fast` 867/867；完整本地 `pnpm check:release` 通过：artifact 6/6，
   455-file large 1/1（cold 597.73 ms；warm first 3.90 ms；repeated P95 2.39 ms）；
-- [ ] canonical PR `validate` 通过并合入。
+- [x] canonical PR `validate`（run `34347649107`）通过，PR #18 合入 `38f65e3`。
 
-RED/GREEN 与复现命令见 [Rust Discovery TDD 记录](../tdd/rust-discovery.md)。最后一项关闭前
-不得进入 Rule Gap。
+RED/GREEN 与复现命令见 [Rust Discovery TDD 记录](../tdd/rust-discovery.md)。该 Phase 已关闭，
+Rule Gap 从 `38f65e3` 开始。
 
 ## 14. Rule Gap 清单
 
@@ -682,6 +681,21 @@ provider；ArkTS restrictions 与 ArkUI structural rules 先保持 unassigned。
 只有 golden 明确证明 primary backend 缺少目标 SDK 的 diagnostic，才能引入
 `ets2panda-linter` 或 ACE ArkUI rule provider。若不能共享 parser/Program，则只允许后台/按需或
 禁用，不能在普通编辑中新增第二常驻 Program。
+
+当前证据（2026-09-09）：
+
+- [x] `docs/semantic-capability-matrix.json` 对每项 capability 只接受一个 string owner；
+- [x] syntax/types/completion/definition/references/rename 的唯一 owner 为 `ohos-typescript`；
+- [x] resource existence 的唯一 owner 为 `project-resource-provider`；
+- [x] ArkTS restrictions 与 ArkUI structural rules 保持 `unassigned`，未在无 golden 的情况下
+  引入 `ets2panda` 或 ACE provider；
+- [x] normal semantic sources 只有一个 `createLanguageService()`，没有 `createProgram()`；资源
+  provider 不创建 Language Service、Program 或 DocumentRegistry；
+- [x] `pnpm check:fast` 869/869，0 fail/cancel/skip/todo；
+- [ ] canonical PR `validate` 通过并合入。
+
+RED/GREEN 与复现命令见 [Rule Gap TDD 记录](../tdd/rule-gap.md)。最后两项关闭前不得进入
+Product Gate。
 
 ## 15. Product Gate 清单
 
