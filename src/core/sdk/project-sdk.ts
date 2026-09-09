@@ -29,14 +29,25 @@ import { discoverHarmonySdk, type HarmonySdkDiscovery } from "./discovery.js"
 import { readSdkConfiguration } from "./configuration-reader.js"
 
 export interface ProjectSdkSelection extends HarmonySdkDiscovery {
-  source: "project" | "environment" | "default"
+  source: "configuration" | "project" | "environment" | "default"
 }
 
 /** Select once per engine generation, never from the module-resolution request loop. */
 export function discoverProjectSdk(
   workspaceRoot: string,
   fallback = process.env.ARKLINE_HARMONY_SDK_PATH,
+  editorConfiguration?: unknown,
 ): ProjectSdkSelection {
+  const configuredByEditor = editorSdkPath(editorConfiguration)
+  if (configuredByEditor.status === "invalid") {
+    return { ready: false, path: null, source: "configuration" }
+  }
+  if (configuredByEditor.status === "configured") {
+    return {
+      ...discoverHarmonySdk(configuredByEditor.path),
+      source: "configuration",
+    }
+  }
   const configuration = path.join(workspaceRoot, "local.properties")
   const fallbackSelection = (): ProjectSdkSelection => ({
     ...discoverHarmonySdk(fallback), source: fallback?.trim() ? "environment" : "default",
@@ -59,4 +70,20 @@ export function discoverProjectSdk(
     }
     return { ready: false, path: null, source: "project" }
   }
+}
+
+function editorSdkPath(configuration: unknown):
+  | { status: "absent" }
+  | { status: "configured"; path: string }
+  | { status: "invalid" } {
+  if (configuration === undefined) return { status: "absent" }
+  if (configuration === null || typeof configuration !== "object" || Array.isArray(configuration)) {
+    return { status: "invalid" }
+  }
+  if (!Object.prototype.hasOwnProperty.call(configuration, "path")) return { status: "absent" }
+  const configured = (configuration as { path?: unknown }).path
+  if (typeof configured !== "string" || !configured.trim() || !path.isAbsolute(configured)) {
+    return { status: "invalid" }
+  }
+  return { status: "configured", path: configured }
 }

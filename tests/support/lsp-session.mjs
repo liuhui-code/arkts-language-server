@@ -14,7 +14,12 @@ export class LspSession {
     this.documentVersions = new Map()
   }
 
-  initialize({ rootUri = this.rootUri, capabilities = this.capabilities, timeoutMs = 5_000 } = {}) {
+  initialize({
+    rootUri = this.rootUri,
+    capabilities = this.capabilities,
+    initializationOptions,
+    timeoutMs = 5_000,
+  } = {}) {
     if (this.initialization) return this.initialization
 
     const id = this.nextRequestId++
@@ -22,7 +27,7 @@ export class LspSession {
       jsonrpc: "2.0",
       id,
       method: "initialize",
-      params: { processId: process.pid, rootUri, capabilities },
+      params: { processId: process.pid, rootUri, capabilities, initializationOptions },
     })
     this.initialization = this.transport.response(id, timeoutMs).then((response) => {
       if (response.error) throw new Error(`LSP initialize failed: ${JSON.stringify(response.error)}`)

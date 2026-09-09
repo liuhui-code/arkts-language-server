@@ -148,12 +148,18 @@ interface WorkspaceEngineEntry {
 export class SemanticTypeEngineRegistry {
   private readonly workspaces = new Map<string, WorkspaceEngineEntry>()
   private accessClock = 0
+  private sdkConfiguration: unknown
 
   constructor(
     private readonly packageResolver = new LocalPackageResolver(),
     private readonly onSdkSelected?: TypeScriptLanguageServiceEngineOptions["onSdkSelected"],
     private readonly projectFileAccess?: ProjectFileAccessPort,
   ) {}
+
+  configureSdk(selection: unknown): void {
+    this.sdkConfiguration = selection
+    this.dispose()
+  }
 
   prepare(workspace: SemanticWorkspaceView): SemanticTypeQueryContext {
     const rootPath = path.resolve(workspace.rootPath)
@@ -179,6 +185,7 @@ export class SemanticTypeEngineRegistry {
           packageResolver: this.packageResolver,
           onSdkSelected: this.onSdkSelected,
           projectFileAccess: this.projectFileAccess,
+          sdkConfiguration: this.sdkConfiguration,
         }),
         arkui: new ArkUIResourceLanguageProvider(rootPath),
         project: this.packageResolver.projectFor(rootPath),

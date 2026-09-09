@@ -100,6 +100,28 @@ Select an installed SDK using the workspace's existing `local.properties`:
 sdk.dir=/absolute/path/to/openharmony
 ```
 
+Zed can override that selection per project through `.zed/settings.json`:
+
+```json
+{
+  "lsp": {
+    "arkts-language-server": {
+      "initialization_options": {
+        "sdk": {
+          "path": "/absolute/path/to/openharmony"
+        }
+      }
+    }
+  }
+}
+```
+
+The server also accepts the same value at runtime as
+`settings.arkts.sdk.path` in `workspace/didChangeConfiguration`; setting
+`arkts.sdk` to `{}` clears the editor override. The selected path must be
+absolute. Editor configuration takes precedence over `local.properties`, then
+`ARKLINE_HARMONY_SDK_PATH`, then platform discovery.
+
 The selected root must contain `ets` and `toolchains`. Java properties escapes
 are supported. If no project SDK is specified, the existing
 `ARKLINE_HARMONY_SDK_PATH`/platform fallback remains available. Invalid explicit

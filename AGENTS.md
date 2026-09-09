@@ -17,3 +17,12 @@ defect fix, refactor, build/CI change, and developer-tooling change.
 - Never push or merge directly to `main`; use a branch and pull request.
 - stdout belongs exclusively to LSP/internal protocols. Operational logs go to
   stderr.
+
+## Agent skills
+
+Before using repository-planning, triage, diagnosis, TDD, or architecture
+skills, read the matching repository guidance:
+
+- Issue tracker operations: `docs/agents/issue-tracker.md`
+- Triage label vocabulary: `docs/agents/triage-labels.md`
+- Domain-document discovery and terminology: `docs/agents/domain.md`
