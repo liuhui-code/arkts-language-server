@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "result": "PASS",
+  "fixture": {
+    "repository": "netease-kit/nim-uikit-harmony",
+    "revision": "585feb45114a128a0d2a23947c83faf338e758f7",
+    "sourceFiles": 455
+  },
+  "candidateRevision": "5ee0ce7b9458c2d2b1bd883b7e1fb13ee82a3f84",
+  "source": "teamkit_ui/src/main/ets/pages/TeamAvatarPage.ets",
+  "sdk": {
+    "source": "configuration",
+    "apiLevel": 24,
+    "componentVersion": "6.1.1.125"
+  },
+  "catalog": "Indexed 455/455 files; skipped 3 entries",
+  "initializeAndCatalogMs": 465.92,
+  "operations": {
+    "completion": {
+      "ms": 4807.61,
+      "matched": "teamDefaultIcons"
+    },
+    "definition": {
+      "ms": 193.33,
+      "locations": 1,
+      "reached": "chatkit/src/main/ets/repo/TeamRepo.ets"
+    },
+    "references": {
+      "ms": 453.6,
+      "locations": 4
+    },
+    "prepareRename": {
+      "ms": 51.07,
+      "placeholder": "teamDefaultIcons"
+    },
+    "rename": {
+      "ms": 50.03,
+      "documents": 2,
+      "edits": 4,
+      "appliedToDisk": false
+    }
+  },
+  "releaseLargeGate": {
+    "result": "PASS",
+    "coldCatalogMs": 194.48,
+    "warmFirstQueryMs": 4.93,
+    "warmRepeatedQueryP95Ms": 2.81,
+    "warmRepeatedQuerySamples": 30
+  },
+  "verification": {
+    "checkFast": "878/878 PASS",
+    "realSdk": "10/10 PASS"
+  }
+}

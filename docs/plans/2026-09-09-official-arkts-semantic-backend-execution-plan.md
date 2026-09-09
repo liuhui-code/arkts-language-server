@@ -755,6 +755,10 @@ DevEco 对照固定 IDE/JDK/SDK/workspace/config 和进程集合，不含 emulat
 - [x] macOS 上完成 API 24、455-file 真实工程与 10k/100k 的 3/10/5 生产 stdio E2E；100k
   completion/definition/references/edit/L3 rebuild 全绿，详见
   [Mac Product Gate 摘要](../reports/macos-product-gate-summary.md)；
+- [x] 455-file 真实工程打开真实 `TeamAvatarPage.ets` 后完成 member completion、跨 module
+  definition、4-location references、prepareRename 与 2-file/4-edit transactional rename；过程中
+  发现并修复 `oh-package.json5` 裸 `../module` 本地依赖解析缺口，详见
+  [真实工程语义 E2E 证据](../reports/macos-real-project-semantic-e2e.json)；
 - [x] 隔离 Zed 1.18.0 profile 打开 100k workspace，catalog 100000/100000，Zed 自动语义请求、
   server/sidecar 进程链及 `.zed/settings.json` 自定义 API 24 SDK 均已验证；
 - [x] 修正 fixture ownership：无关文件位于声明 module 之外；10k/100k 的 semantic project
