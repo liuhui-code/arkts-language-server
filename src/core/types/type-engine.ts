@@ -155,11 +155,18 @@ export class SemanticTypeEngineRegistry {
   private accessClock = 0
   private sdkConfiguration: unknown
 
+  private get workspaces(): { get(rootPath: string): WorkspaceEngineEntry | undefined } {
+    return { get: rootPath => this.coordinator.peek(rootPath) }
+  }
+
   constructor(
     private readonly packageResolver = new LocalPackageResolver(),
     private readonly onSdkSelected?: TypeScriptLanguageServiceEngineOptions["onSdkSelected"],
     private readonly projectFileAccess?: ProjectFileAccessPort,
-    options: { maxResidentContexts?: number } = {},
+    private readonly options: {
+      maxResidentContexts?: number
+      hostCancellationToken?: TypeScriptLanguageServiceEngineOptions["hostCancellationToken"]
+    } = {},
   ) {
     this.coordinator = new SemanticCoordinator({
       maxResidentContexts: options.maxResidentContexts ?? 2,
@@ -309,6 +316,7 @@ export class SemanticTypeEngineRegistry {
       onSdkSelected: this.onSdkSelected,
       projectFileAccess: this.projectFileAccess,
       sdkConfiguration: this.sdkConfiguration,
+      hostCancellationToken: this.options.hostCancellationToken,
     })
     return {
       engine,

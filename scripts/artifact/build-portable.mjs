@@ -25,6 +25,14 @@ async function buildPortableArtifact({ sourceRoot, output, version, commit, tool
       destination: "bin/arkts-language-server",
     },
     {
+      source: "config/semantic-runtime.json",
+      destination: "config/semantic-runtime.json",
+    },
+    {
+      source: "dist/semantic-worker.cjs",
+      destination: "dist/semantic-worker.cjs",
+    },
+    {
       source: "dist/server.cjs",
       destination: "dist/server.cjs",
     },

@@ -252,9 +252,10 @@ export interface SemanticWorkerReferencesArgs {
 }
 
 export interface SemanticWorkerRequestArgsByMethod {
-  readonly complete: SemanticWorkerPositionArgs
+  readonly complete: SemanticWorkerPositionArgs & { readonly snippets?: boolean }
   readonly resolveCompletion: SemanticWorkerPositionArgs & {
     readonly completion: SemanticWorkerJsonObject
+    readonly snippets?: boolean
   }
   readonly define: SemanticWorkerPositionArgs
   readonly typeDefinitions: SemanticWorkerPositionArgs
@@ -1135,6 +1136,7 @@ function decodeRequestArgs(
 ): SemanticWorkerRequestArgsByMethod[SemanticWorkerMethod] {
   switch (method) {
     case "complete":
+      return decodeCompletionArgs(value)
     case "define":
     case "typeDefinitions":
     case "implementations":
@@ -1144,7 +1146,7 @@ function decodeRequestArgs(
     case "prepareCallHierarchy":
       return decodePositionArgs(value)
     case "resolveCompletion":
-      return decodePositionAndJsonArgs(value, "completion")
+      return decodeResolveCompletionArgs(value)
     case "references":
       return decodeReferencesArgs(value)
     case "rename":
@@ -1224,16 +1226,33 @@ function decodePositionArgs(value: unknown): SemanticWorkerPositionArgs {
   return Object.freeze({ position: decodePosition(args.position) })
 }
 
-function decodePositionAndJsonArgs(
-  value: unknown,
-  field: "completion",
-): SemanticWorkerRequestArgsByMethod["resolveCompletion"] {
-  const args = ownDataRecord(value, ["position", field])
-  if (!args || !hasExactKeys(args, ["position", field])) throw invalidRequest()
+function decodeCompletionArgs(value: unknown): SemanticWorkerRequestArgsByMethod["complete"] {
+  const args = ownDataRecord(value, ["position"], ["snippets"])
+  if (
+    !args
+    || !hasRequiredAndOnlyKeys(args, ["position"], ["snippets"])
+    || (Object.hasOwn(args, "snippets") && typeof args.snippets !== "boolean")
+  ) throw invalidRequest()
   return Object.freeze({
     position: decodePosition(args.position),
-    [field]: canonicalJsonObject(args[field]),
-  }) as SemanticWorkerRequestArgsByMethod["resolveCompletion"]
+    ...(Object.hasOwn(args, "snippets") ? { snippets: args.snippets as boolean } : {}),
+  })
+}
+
+function decodeResolveCompletionArgs(
+  value: unknown,
+): SemanticWorkerRequestArgsByMethod["resolveCompletion"] {
+  const args = ownDataRecord(value, ["position", "completion"], ["snippets"])
+  if (
+    !args
+    || !hasRequiredAndOnlyKeys(args, ["position", "completion"], ["snippets"])
+    || (Object.hasOwn(args, "snippets") && typeof args.snippets !== "boolean")
+  ) throw invalidRequest()
+  return Object.freeze({
+    position: decodePosition(args.position),
+    completion: canonicalJsonObject(args.completion),
+    ...(Object.hasOwn(args, "snippets") ? { snippets: args.snippets as boolean } : {}),
+  })
 }
 
 function decodeJsonFieldArgs(

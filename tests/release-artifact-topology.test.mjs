@@ -213,6 +213,7 @@ function releaseFixture(t) {
   writeFile(sourceRoot, "pnpm-lock.yaml", "lockfileVersion: '9.0'\n")
   writeFile(sourceRoot, "Cargo.toml", "[workspace]\nmembers = []\n")
   writeFile(sourceRoot, "Cargo.lock", "# fixture lock\n")
+  writeFile(sourceRoot, "config/semantic-runtime.json", "{}\n")
   writeFile(sourceRoot, "bin/arkts-language-server", "#!/bin/sh\nexit 0\n", 0o755)
   for (const relativePath of [
     "scripts/install-local.sh",
@@ -232,6 +233,7 @@ printf '{"tool":"pnpm","cwd":"%s","args":"%s"}\\n' "$PWD" "$*" >> "$ARKTS_RELEAS
 if [ "\${1:-}" = "install" ]; then exit 0; fi
 if [ "\${1:-}" = "build" ]; then
   mkdir -p dist
+  printf '%s\\n' '// staged semantic worker fixture' > dist/semantic-worker.cjs
   printf '%s\\n' '// staged server fixture' > dist/server.cjs
   exit 0
 fi

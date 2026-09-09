@@ -103,6 +103,8 @@ exit 97
   const installedRoot = path.resolve(path.dirname(fs.realpathSync(installedCommand)), "..")
   for (const relativePath of [
     "bin/arkts-language-server",
+    "config/semantic-runtime.json",
+    "dist/semantic-worker.cjs",
     "dist/server.cjs",
     `target/release/${process.platform === "win32"
       ? "arkts-index-sidecar.exe"

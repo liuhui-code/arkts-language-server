@@ -16,6 +16,8 @@ const sidecarPath = `target/release/${process.platform === "win32"
 function portableSourceFiles() {
   return new Map([
     ["bin/arkts-language-server", "#!/bin/sh\n# source-root launcher marker\n"],
+    ["config/semantic-runtime.json", "{}\n"],
+    ["dist/semantic-worker.cjs", "// source-root worker marker\n"],
     ["dist/server.cjs", "// source-root server marker\n"],
     [sidecarPath, "source-root sidecar marker\n"],
     ["scripts/install-local.sh", "#!/bin/sh\n# source-root installer marker\n"],
@@ -51,7 +53,8 @@ function writePortableSource(sourceRoot, { without } = {}) {
       sourceRoot,
       relativePath,
       contents,
-      relativePath === "dist/server.cjs" ? 0o640 : 0o750,
+      relativePath.startsWith("dist/") ? 0o640
+        : relativePath.startsWith("config/") ? 0o644 : 0o750,
     )
   }
   return files

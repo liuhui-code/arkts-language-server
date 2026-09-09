@@ -5,7 +5,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "esbuild src/server.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/server.cjs",
+    "build": "node scripts/build-runtime.mjs",
     "build:artifact": "node scripts/build-portable-artifact.mjs",
     "check": "tsc --noEmit -p tsconfig.json",
     "check:fast": "pnpm check && pnpm test",

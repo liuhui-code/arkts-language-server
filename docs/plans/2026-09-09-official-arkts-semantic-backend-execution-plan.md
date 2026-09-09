@@ -2,8 +2,9 @@
 
 状态：当前权威执行计划；Foundation、Backend Spike S1–S3 与 Backend Cutover 已完成；semantic
 contract 34/34 PASS，lifecycle/memory PASS。Backend Cutover 的本地 `check:fast` 855/855、完整
-`check:release` 与 PR #16 canonical `validate` 均已通过并合入 `3729edf`。Memory Runtime 正在
-`codex/memory-runtime` 分支按 TDD 推进。
+`check:release` 与 PR #16 canonical `validate` 均已通过并合入 `3729edf`。Memory Runtime 的
+单 Worker、Coordinator、L0-L3、metrics 与交付接线已在 `codex/memory-runtime` 完成，本地
+`check:fast` 864/864、bundle-e2e 271/271 通过；完整 release gate 与合并仍待执行。
 
 计划基线：`e90cacb9ace47292ac0869d09b3a64f7c7fe2144`（P2.1b，PR #5）。
 
@@ -610,6 +611,25 @@ src/semantic/coordinator/
 
 metrics JSONL 至少含 worker/context 数、RSS、heapUsed、external、arrayBuffers、projectFiles、
 openDocuments 和 leaseCount。Node worker thread memory 不与 process RSS 重复相加。
+
+当前证据（2026-09-09）：
+
+- [x] 唯一生产 worker multiplex 所有 workspace root，production composition 不在协议线程创建
+  official backend；
+- [x] `SemanticCoordinator` 唯一拥有 context set，lease pin、LRU、L2 trim、L3 dispose 与重建
+  contract 均通过；
+- [x] runtime 固定 `semanticWorkers=1`、`maxResidentContexts=2`，支持
+  `ARKTS_MEMORY_BUDGET_MB` 覆盖 budget；
+- [x] metrics JSONL 覆盖进程内存、worker/context、project/open document 与 lease；
+- [x] 20 轮 context:req/trim/dispose 后 resident context 为 0；
+- [x] 1 MiB 压力测试证明 Level3 后最新 open overlay 可重建并完成 completion；
+- [x] Zed initialization/runtime SDK 路径切换、SDK identity 日志、所有语义能力与 artifact
+  adjacency 回归通过；
+- [x] bundle-e2e 271/271，`pnpm check:fast` 864/864；
+- [ ] 完整 `pnpm check:release` 与 canonical PR `validate` 通过并合入。
+
+RED/GREEN、回归分类与复现命令见 [Memory Runtime TDD 记录](../tdd/memory-runtime.md)。在最后一项
+关闭前不得进入 Rust Discovery。
 
 ## 13. Rust Discovery 清单
 

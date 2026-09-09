@@ -33,6 +33,8 @@ function makeCheckout(temporaryRoot) {
   copy("scripts/install-local.sh")
   copy("scripts/check-zed-queries.sh")
   copy("bin/arkts-language-server")
+  copy("config/semantic-runtime.json")
+  copy("dist/semantic-worker.cjs")
   copy("dist/server.cjs")
   copy("target/release/arkts-index-sidecar")
   copy(
@@ -131,6 +133,8 @@ test("installs one verified artifact without source dependencies or a rebuild", 
     : "arkts-index-sidecar"
   const runtimePaths = [
     "bin/arkts-language-server",
+    "config/semantic-runtime.json",
+    "dist/semantic-worker.cjs",
     "dist/server.cjs",
     `target/release/${sidecarName}`,
   ]

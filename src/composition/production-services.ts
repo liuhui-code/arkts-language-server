@@ -20,7 +20,7 @@ export function createProductionLanguageServerServices(
   const environment = options.env ?? process.env
   const logger = createStructuredLogger(resolveLogPath(environment))
   const projects = new SingleRootProjectResolver(pathToFileURL(options.cwd ?? process.cwd()).href)
-  const semantic = createProductionSemanticEngine(projects, logger)
+  const semantic = createProductionSemanticEngine(projects, logger, { env: environment })
   const index = new SidecarWorkspaceIndex({ env: environment })
   const workspaceSymbols = new DefaultWorkspaceSymbolService({
     index,

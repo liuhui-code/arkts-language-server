@@ -146,6 +146,26 @@ test("memory policy maps the configured ratios to levels without double-counting
   })
 })
 
+test("twenty context rebuild and pressure cycles leave no resident context", (t) => {
+  const { SemanticCoordinator } = buildCoordinatorDriver(t)
+  const events = []
+  const coordinator = new SemanticCoordinator({
+    maxResidentContexts: 2,
+    createContext: contextFactory(events, new Map()),
+  })
+
+  for (let cycle = 0; cycle < 20; cycle += 1) {
+    coordinator.acquire(`project-${cycle}`).release()
+    coordinator.applyMemoryPressure("level2")
+    coordinator.applyMemoryPressure("level3")
+    assert.equal(coordinator.stats().residentContextCount, 0)
+  }
+
+  assert.equal(events.filter((event) => event.startsWith("create:")).length, 20)
+  assert.equal(events.filter((event) => event.startsWith("trim:")).length, 20)
+  assert.equal(events.filter((event) => event.startsWith("dispose:")).length, 20)
+})
+
 function contextFactory(events, authority) {
   return (contextId) => {
     events.push(`create:${contextId}`)

@@ -122,12 +122,14 @@ test("the local installer reruns frozen install when its dependency fingerprint 
   fs.mkdirSync(path.join(fixture, "bin"), { recursive: true })
   fs.mkdirSync(path.join(fixture, "editors", "zed"), { recursive: true })
   fs.mkdirSync(path.join(fixture, "editors", "zed", "grammars"), { recursive: true })
+  fs.mkdirSync(path.join(fixture, "config"), { recursive: true })
   fs.mkdirSync(path.join(fixture, "node_modules", ".bin"), { recursive: true })
   fs.mkdirSync(fakeBin)
   fs.copyFileSync(path.join(projectRoot, "scripts", "install-local.sh"), path.join(fixture, "scripts", "install-local.sh"))
   fs.copyFileSync(path.join(projectRoot, "scripts", "check-zed-queries.sh"), path.join(fixture, "scripts", "check-zed-queries.sh"))
   fs.writeFileSync(path.join(fixture, "package.json"), '{"version":"0.0.1"}\n')
   fs.writeFileSync(path.join(fixture, "pnpm-lock.yaml"), "lockfileVersion: one\n")
+  fs.writeFileSync(path.join(fixture, "config", "semantic-runtime.json"), "{}\n")
   const grammarManifest = path.join(fixture, "editors", "zed", "extension.toml")
   const grammarWasm = path.join(fixture, "editors", "zed", "grammars", "arkts.wasm")
   const grammarStamp = path.join(fixture, "editors", "zed", "grammars", ".arkts-source")
@@ -151,6 +153,7 @@ fi
 printf '%s\\n' "$*" >> "$ARKTS_INSTALL_TEST_LOG"
 if [ "$1" = "build" ]; then
   mkdir -p dist
+  printf '%s\\n' 'process.stdin.resume()' > dist/semantic-worker.cjs
   printf '%s\\n' 'process.stdin.resume()' > dist/server.cjs
 fi
 exit 0

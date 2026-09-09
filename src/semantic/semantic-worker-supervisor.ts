@@ -183,7 +183,7 @@ export class RootSemanticWorkerSupervisor {
     if (
       snapshot.kind === "workspaceFilesChanged"
         ? snapshot.rootUri !== this.#rootUri
-        : !isUriWithinRoot(snapshot.uri, this.#rootUri)
+        : !isSemanticWorkerUriWithinRoot(snapshot.uri, this.#rootUri)
     ) throw new SemanticWorkerSupervisorError("invalid-request")
     const documentKey = snapshot.kind === "workspaceFilesChanged" ? undefined : snapshot.uri
     const existing = findCoalescingMutation(
@@ -261,7 +261,7 @@ export class RootSemanticWorkerSupervisor {
     } catch (error) {
       throw new SemanticWorkerSupervisorError("invalid-request", { cause: error })
     }
-    if (!isUriWithinRoot(snapshot.uri, this.#rootUri)) {
+    if (!isSemanticWorkerUriWithinRoot(snapshot.uri, this.#rootUri)) {
       throw new SemanticWorkerSupervisorError("invalid-request")
     }
     const completion = deferred<SemanticWorkerJsonValue>()
@@ -828,7 +828,7 @@ function assertOverboundWorkspaceMutationStructure(
       !change
       || !hasExactInputKeys(change, ["uri", "kind"])
       || !isCanonicalSemanticWorkerFileUri(change.uri)
-      || !isUriWithinRoot(change.uri, rootUri)
+      || !isSemanticWorkerUriWithinRoot(change.uri, rootUri)
       || (change.kind !== "created"
         && change.kind !== "changed"
         && change.kind !== "deleted")
@@ -856,7 +856,7 @@ function assertMutationTargetsRoot(
       uri: input.uri,
       documentVersion: input.documentVersion,
     })
-    if (target.kind === "workspaceFilesChanged" || !isUriWithinRoot(target.uri, rootUri)) {
+    if (target.kind === "workspaceFilesChanged" || !isSemanticWorkerUriWithinRoot(target.uri, rootUri)) {
       throw new SemanticWorkerSupervisorError("invalid-request")
     }
   } catch (error) {
@@ -985,7 +985,7 @@ function assertCanonicalRootUri(rootUri: string): void {
   }
 }
 
-function isUriWithinRoot(uriValue: string, rootValue: string): boolean {
+export function isSemanticWorkerUriWithinRoot(uriValue: string, rootValue: string): boolean {
   if (
     !isCanonicalSemanticWorkerFileUri(uriValue)
     || !isCanonicalSemanticWorkerFileUri(rootValue)

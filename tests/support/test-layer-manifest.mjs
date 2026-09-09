@@ -73,6 +73,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/lsp-diagnostics.test.mjs",
       "tests/lsp-document-lifecycle.test.mjs",
       "tests/lsp-production-index.test.mjs",
+      "tests/lsp-production-semantic-worker.test.mjs",
       "tests/lsp-transcript.test.mjs",
       "tests/lsp-workspace-file-changes.test.mjs",
       "tests/semantic/arkui-builder-tail.test.mjs",
