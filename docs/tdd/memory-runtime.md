@@ -76,9 +76,13 @@ Verification:
 bundle-e2e: 271/271 passed
 pnpm check:fast: 864/864 passed, 0 fail/cancel/skip/todo
 pnpm check: PASS
+pnpm check:release: PASS
+artifact-e2e: 6/6 passed
+large: 1/1 passed (cold catalog 558.47 ms; warm first query 3.30 ms; repeated query P95 2.45 ms)
 ```
 
-The canonical release gate remains the final phase-exit check before merge.
+The local canonical release script passed. GitHub canonical `validate` remains the final phase-exit
+check before merge.
 
 ## Reproduction
 
@@ -87,5 +91,7 @@ node --test tests/semantic/semantic-coordinator.test.mjs
 node --test tests/lsp-production-semantic-worker.test.mjs
 pnpm test:bundle-e2e
 pnpm check:fast
+ARKTS_INDEX_REAL_FIXTURE=/private/tmp/nim-uikit-harmony \
+  ARKTS_LARGE_FIXTURE=/private/tmp/nim-uikit-harmony pnpm check:release
 git diff --check
 ```

@@ -4,7 +4,8 @@
 contract 34/34 PASS，lifecycle/memory PASS。Backend Cutover 的本地 `check:fast` 855/855、完整
 `check:release` 与 PR #16 canonical `validate` 均已通过并合入 `3729edf`。Memory Runtime 的
 单 Worker、Coordinator、L0-L3、metrics 与交付接线已在 `codex/memory-runtime` 完成，本地
-`check:fast` 864/864、bundle-e2e 271/271 通过；完整 release gate 与合并仍待执行。
+`check:fast` 864/864、bundle-e2e 271/271 与完整本地 `check:release` 已通过；PR canonical
+`validate` 与合并仍待执行。
 
 计划基线：`e90cacb9ace47292ac0869d09b3a64f7c7fe2144`（P2.1b，PR #5）。
 
@@ -626,7 +627,8 @@ openDocuments 和 leaseCount。Node worker thread memory 不与 process RSS 重�
 - [x] Zed initialization/runtime SDK 路径切换、SDK identity 日志、所有语义能力与 artifact
   adjacency 回归通过；
 - [x] bundle-e2e 271/271，`pnpm check:fast` 864/864；
-- [ ] 完整 `pnpm check:release` 与 canonical PR `validate` 通过并合入。
+- [x] 本地完整 `pnpm check:release` 通过：artifact 6/6、真实 455-file large fixture 1/1；
+- [ ] canonical PR `validate` 通过并合入。
 
 RED/GREEN、回归分类与复现命令见 [Memory Runtime TDD 记录](../tdd/memory-runtime.md)。在最后一项
 关闭前不得进入 Rust Discovery。
