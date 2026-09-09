@@ -1,8 +1,12 @@
 import assert from "node:assert/strict"
+import { createRequire } from "node:module"
 import fs from "node:fs"
+import os from "node:os"
 import path from "node:path"
 import test from "node:test"
 import { fileURLToPath } from "node:url"
+
+import { buildSync } from "esbuild"
 
 import {
   SPIKE_CATEGORIES,
@@ -43,6 +47,43 @@ test("spike contexts share immutable snapshots by file version and rematerialize
   assert.equal(rebuilt.stats().snapshotMaterializationCount, 0)
   first.dispose()
   rebuilt.dispose()
+})
+
+test("official registry pooling shares one SDK identity and isolates a different SDK", (t) => {
+  const { officialDocumentRegistryFor } = buildOfficialBackendSupportDriver(t)
+  const identity = {
+    status: "identified",
+    metadataPath: "/sdk/a/ets/oh-uni-package.json",
+    apiVersion: "24",
+    componentVersion: "6.0.0",
+    dialectCompatibility: "unverified",
+    declarationSupport: "typescript-compatible-only",
+  }
+  const first = officialDocumentRegistryFor({ ready: true, path: "/sdk/a", identity, source: "project" })
+  const same = officialDocumentRegistryFor({ ready: true, path: "/sdk/a", identity, source: "configuration" })
+  const different = officialDocumentRegistryFor({
+    ready: true,
+    path: "/sdk/b",
+    identity: { ...identity, metadataPath: "/sdk/b/ets/oh-uni-package.json" },
+    source: "project",
+  })
+  assert.equal(first, same)
+  assert.notEqual(first, different)
+})
+
+test("official ETS options come from the selected SDK loader configuration", (t) => {
+  const { officialEtsCompilerOptions } = buildOfficialBackendSupportDriver(t)
+  const sdkRoot = path.join(
+    projectRoot,
+    "fixtures",
+    "semantic",
+    "arkui-sdk-depth",
+    "sdk",
+    "openharmony",
+  )
+  const options = officialEtsCompilerOptions(sdkRoot)
+  assert.deepEqual(options.ets?.components, ["Column", "Text"])
+  assert.equal(options.etsLoaderPath, path.join(sdkRoot, "ets", "build-tools", "ets-loader"))
 })
 
 test("an incomplete official-backend run cannot be reported as a pass", () => {
@@ -210,6 +251,34 @@ test("the committed lifecycle report closes the backend memory spike gate", () =
   assert.deepEqual(evaluateLifecycleEvidence(report), { status: "PASS", failures: [] })
 })
 
+test("production composition has one locked official semantic backend and no virtual rewrite", () => {
+  const packageJson = JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf8"))
+  assert.equal(packageJson.dependencies.typescript, "npm:ohos-typescript@4.9.5-r4")
+
+  const contract = readProjectFile("src/semantic/backends/semantic-backend.ts")
+  assert.doesNotMatch(contract, /typescript|sqlite|vscode-languageserver/iu)
+
+  const production = readProjectFile("src/composition/production-services.ts")
+  assert.doesNotMatch(production, /LegacySemanticEngine/u)
+  assert.match(production, /createProductionSemanticEngine/u)
+
+  const runtime = readProjectFile("src/lsp/run-language-server.ts")
+  assert.doesNotMatch(runtime, /LegacySemanticEngine/u)
+
+  const factory = readProjectFile("src/semantic/backends/production-semantic-engine.ts")
+  assert.equal((factory.match(/new OhosTypeScriptSemanticEngine/gu) ?? []).length, 1)
+  assert.doesNotMatch(factory, /Es2Panda/u)
+
+  const engine = readProjectFile("src/core/types/typescript-language-service.ts")
+  assert.match(engine, /fileName\.endsWith\("\.ets"\)[\s\S]*ScriptKind\.ETS/u)
+  assert.doesNotMatch(engine, /createDocumentRegistry/u)
+  assert.doesNotMatch(engine, /arkts-virtual-document/u)
+  assert.equal(
+    fs.existsSync(path.join(projectRoot, "src/core/virtual/arkts-virtual-document.ts")),
+    false,
+  )
+})
+
 function fakeCompiler(onMaterialize) {
   return {
     ScriptTarget: { ES2021: 1 },
@@ -242,4 +311,23 @@ function fakeCompiler(onMaterialize) {
       }
     },
   }
+}
+
+function readProjectFile(relativePath) {
+  return fs.readFileSync(path.join(projectRoot, ...relativePath.split("/")), "utf8")
+}
+
+function buildOfficialBackendSupportDriver(t) {
+  const outputDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-official-backend-"))
+  t.after(() => fs.rmSync(outputDirectory, { recursive: true, force: true }))
+  const driverPath = path.join(outputDirectory, "support.cjs")
+  buildSync({
+    entryPoints: [path.join(projectRoot, "tests", "support", "official-backend-driver.ts")],
+    bundle: true,
+    platform: "node",
+    target: "node20",
+    format: "cjs",
+    outfile: driverPath,
+  })
+  return createRequire(import.meta.url)(driverPath)
 }

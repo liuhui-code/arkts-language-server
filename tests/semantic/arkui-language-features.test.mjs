@@ -331,8 +331,8 @@ test("defines the name property inside the ArkUI string array, not unrelated JSO
   )
 })
 
-test("rewrites only ArkUI builder blocks while preserving exact source offsets", (t) => {
-  const { createArktsVirtualDocument } = buildArkUIVirtualDocumentDriver(t)
+test("keeps official ArkUI builder source direct while preserving exact offsets", (t) => {
+  const { createSourceDocument } = buildSourceDocumentDriver(t)
   const source = [
     "struct Page {",
     "  build() {",
@@ -347,31 +347,15 @@ test("rewrites only ArkUI builder blocks while preserving exact source offsets",
     "function helper() { return 1 }",
     "",
   ].join("\n")
-  const expected = [
-    "class Page {",
-    "  build() {",
-    "    if (this.ready) { this.refresh() }",
-    "    lowercase() { this.bad() }",
-    "    ([Column(),()=>{",
-    "      ([Row(),()=>{ Text(\"Ready\") }] as const)[0]",
-    "    }] as const)[0]",
-    "    const face = \"😀\"; const values = [1 2]",
-    "  }",
-    "}",
-    "function helper() { return 1 }",
-    "",
-  ].join("\n")
-
-  const virtual = createArktsVirtualDocument("/workspace/Page.ets", source)
+  const direct = createSourceDocument(source)
   const numericErrorOffset = source.indexOf("[1 2]") + 3
-  const generatedNumericErrorOffset = virtual.toGeneratedOffset(numericErrorOffset)
+  const generatedNumericErrorOffset = direct.toGeneratedOffset(numericErrorOffset)
 
-  assert.equal(virtual.generatedContent, expected)
-  assert.equal(virtual.generatedContent.length, expected.length)
-  assert.equal(generatedNumericErrorOffset, expected.indexOf("[1 2]") + 3)
-  assert.equal(virtual.toSourceOffset(generatedNumericErrorOffset), numericErrorOffset)
+  assert.equal(direct.generatedContent, source)
+  assert.equal(generatedNumericErrorOffset, numericErrorOffset)
+  assert.equal(direct.toSourceOffset(generatedNumericErrorOffset), numericErrorOffset)
   assert.deepEqual(
-    virtual.generatedSpanToSourceRange(generatedNumericErrorOffset, 1),
+    direct.generatedSpanToSourceRange(generatedNumericErrorOffset, 1),
     toSemanticRange(suffixRangeOf(source, "values = [1 2", "2")),
   )
 })
@@ -770,17 +754,17 @@ function buildArkUIProviderDriver(t) {
   return createRequire(import.meta.url)(driverPath)
 }
 
-function buildArkUIVirtualDocumentDriver(t) {
-  const outputDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-arkui-virtual-"))
+function buildSourceDocumentDriver(t) {
+  const outputDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-source-document-"))
   t.after(() => fs.rmSync(outputDirectory, { recursive: true, force: true }))
-  const driverPath = path.join(outputDirectory, "arkts-virtual-document.cjs")
+  const driverPath = path.join(outputDirectory, "source-document.cjs")
   buildSync({
     entryPoints: [path.join(
       projectRoot,
       "src",
       "core",
-      "virtual",
-      "arkts-virtual-document.ts",
+      "types",
+      "source-document.ts",
     )],
     bundle: true,
     platform: "node",

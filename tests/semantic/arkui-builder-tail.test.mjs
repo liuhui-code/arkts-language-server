@@ -28,8 +28,8 @@ const sdkSource = fs.readFileSync(sdkPath, "utf8")
 const sdkRoot = path.join(fixtureRoot, "sdk", "openharmony")
 const serverPath = process.env.ARKTS_BUILDER_TAIL_SERVER_PATH ?? "dist/server.cjs"
 
-test("lowers nested ArkUI builders to type-preserving expressions with exact source maps", (t) => {
-  const { createArktsVirtualDocument } = buildVirtualDocumentDriver(t)
+test("keeps nested ArkUI builders as direct official-backend source", (t) => {
+  const { createSourceDocument } = buildSourceDocumentDriver(t)
   const input = [
     "struct Page {",
     "  build() {",
@@ -43,88 +43,22 @@ test("lowers nested ArkUI builders to type-preserving expressions with exact sou
     "}",
     "",
   ].join("\n")
-  const expected = [
-    "class Page {",
-    "  build() {",
-    "    if (this.ready) { this.refresh() }",
-    "    function helper() { return 1 }",
-    "    lowercase() { this.bad() }",
-    "    ([Column(),()=>{",
-    '      ([Row(),()=>{ Text("Ready") }] as const)[0]',
-    '    }] as const)[0].width("100%")',
-    "  }",
-    "}",
-    "",
-  ].join("\n")
-
-  const virtual = createArktsVirtualDocument("/workspace/Page.ets", input)
-  assert.equal(virtual.generatedContent, expected)
-  assert.match(virtual.generatedContent, /if \(this\.ready\) \{ this\.refresh\(\) \}/)
-  assert.match(virtual.generatedContent, /function helper\(\) \{ return 1 \}/)
-  assert.match(virtual.generatedContent, /lowercase\(\) \{ this\.bad\(\) \}/)
+  const direct = createSourceDocument(input)
+  assert.equal(direct.generatedContent, input)
 
   const sourceCall = input.indexOf("Column()")
-  const generatedPrefix = virtual.generatedContent.indexOf("([Column()")
   assert.notEqual(sourceCall, -1)
-  assert.notEqual(generatedPrefix, -1)
-  assert.equal(virtual.toGeneratedOffset(sourceCall), generatedPrefix + 2)
-  assert.equal(virtual.toSourceOffset(generatedPrefix), sourceCall)
-
-  const sourceOpenBrace = input.indexOf("{", sourceCall)
-  const generatedArrow = virtual.generatedContent.indexOf("()=>{", generatedPrefix)
-  assert.notEqual(sourceOpenBrace, -1)
-  assert.notEqual(generatedArrow, -1)
-  assert.equal(virtual.toSourceOffset(generatedArrow), sourceOpenBrace)
+  assert.equal(direct.toGeneratedOffset(sourceCall), sourceCall)
+  assert.equal(direct.toSourceOffset(sourceCall), sourceCall)
 
   const sourceWidth = input.indexOf(".width", sourceCall) + 1
-  const generatedWidth = virtual.generatedContent.indexOf(".width", generatedPrefix) + 1
   assert.ok(sourceWidth > 0)
-  assert.ok(generatedWidth > 0)
-  assert.equal(virtual.toGeneratedOffset(sourceWidth), generatedWidth)
-  assert.equal(virtual.toSourceOffset(generatedWidth), sourceWidth)
+  assert.equal(direct.toGeneratedOffset(sourceWidth), sourceWidth)
+  assert.equal(direct.toSourceOffset(sourceWidth), sourceWidth)
   assert.deepEqual(
-    virtual.generatedSpanToSourceRange(generatedWidth, "width".length),
+    direct.generatedSpanToSourceRange(sourceWidth, "width".length),
     toSemanticRange(rangeAt(input, sourceWidth, "width".length)),
   )
-
-  const sourceTailBoundary = sourceWidth - 1
-  const generatedTailBoundary = generatedWidth - 1
-  assert.equal(virtual.toGeneratedOffset(sourceTailBoundary), generatedTailBoundary)
-  const generatedSuffix = virtual.generatedContent.lastIndexOf("] as const)[0]", generatedTailBoundary)
-  assert.notEqual(generatedSuffix, -1)
-  assert.equal(virtual.toSourceOffset(generatedSuffix), sourceTailBoundary)
-})
-
-test("fails safe without partial lowering when a document exceeds the builder transform limit", (t) => {
-  const { createArktsVirtualDocument } = buildVirtualDocumentDriver(t)
-  const builderLine = `    Column()${" ".repeat(32)}{}`
-  const atLimitInput = [
-    "struct AtLimitPage {",
-    "  build() {",
-    ...Array.from({ length: 512 }, () => builderLine),
-    "  }",
-    "}",
-    "",
-  ].join("\n")
-  const atLimit = createArktsVirtualDocument("/workspace/AtLimitPage.ets", atLimitInput)
-  assert.equal(atLimit.generatedContent.split("([Column()").length - 1, 512)
-
-  const builderLines = Array.from({ length: 513 }, () => builderLine)
-  const input = ["struct BoundedPage {", "  build() {", ...builderLines, "  }", "}", ""].join("\n")
-  const virtual = createArktsVirtualDocument("/workspace/BoundedPage.ets", input)
-
-  assert.equal(virtual.generatedContent, input.replace("struct", "class"))
-  assert.equal(virtual.generatedContent.includes("([Column()"), false)
-})
-
-test("fails safe without partial lowering when generated builder expansion exceeds its budget", (t) => {
-  const { createArktsVirtualDocument } = buildVirtualDocumentDriver(t)
-  const builderLines = Array.from({ length: 410 }, () => "    Column() {}")
-  const input = ["struct ExpandedPage {", "  build() {", ...builderLines, "  }", "}", ""].join("\n")
-  const virtual = createArktsVirtualDocument("/workspace/ExpandedPage.ets", input)
-
-  assert.equal(virtual.generatedContent, input.replace("struct", "class"))
-  assert.equal(virtual.generatedContent.includes("([Column()"), false)
 })
 
 test("supports a width attribute after nested ArkUI builder blocks", async (t) => {
@@ -181,7 +115,7 @@ test("supports a width attribute after nested ArkUI builder blocks", async (t) =
   assert.equal(hover.result?.contents?.kind, "markdown")
   assert.match(
     hover.result.contents.value,
-    /ArkUICommonAttribute\.width\(value: ArkUILength\): ArkUIColumnAttribute/,
+    /ArkUICommonAttribute\.width\(value: ArkUILength\): ColumnAttribute/,
   )
   assert.deepEqual(hover.result.range, widthRange)
 
@@ -279,17 +213,17 @@ function toSemanticRange(range) {
   }
 }
 
-function buildVirtualDocumentDriver(t) {
-  const outputDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-builder-tail-"))
+function buildSourceDocumentDriver(t) {
+  const outputDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-source-document-"))
   t.after(() => fs.rmSync(outputDirectory, { recursive: true, force: true }))
-  const driverPath = path.join(outputDirectory, "arkts-virtual-document.cjs")
+  const driverPath = path.join(outputDirectory, "source-document.cjs")
   buildSync({
     entryPoints: [path.join(
       projectRoot,
       "src",
       "core",
-      "virtual",
-      "arkts-virtual-document.ts",
+      "types",
+      "source-document.ts",
     )],
     bundle: true,
     platform: "node",

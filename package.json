@@ -23,7 +23,7 @@
   "dependencies": {
     "json5": "2.2.3",
     "properties-file": "5.0.7",
-    "typescript": "5.9.2",
+    "typescript": "npm:ohos-typescript@4.9.5-r4",
     "vscode-languageserver": "9.0.1",
     "vscode-languageserver-textdocument": "1.0.12"
   },

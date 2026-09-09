@@ -3,7 +3,7 @@ import path from "node:path"
 import ts from "typescript"
 
 import type { SemanticNumericDiagnostic } from "../protocol.js"
-import type { ArktsVirtualDocument } from "../virtual/arkts-virtual-document.js"
+import type { SourceDocument } from "./source-document.js"
 import type { SemanticTypeStatus } from "./type-engine.js"
 
 export function typescriptTypeStatus(filePath: string): SemanticTypeStatus {
@@ -36,7 +36,7 @@ function completionSourceDisplay(
 
 export function mapTypescriptDiagnostics(
   filePath: string,
-  virtualDocument: ArktsVirtualDocument,
+  virtualDocument: SourceDocument,
   ...diagnosticGroups: readonly ts.Diagnostic[][]
 ): SemanticNumericDiagnostic[] {
   return mapTypescriptDiagnosticGroups(filePath, virtualDocument, diagnosticGroups)
@@ -44,7 +44,7 @@ export function mapTypescriptDiagnostics(
 
 export function mapTypescriptDiagnosticGroups(
   filePath: string,
-  virtualDocument: ArktsVirtualDocument,
+  virtualDocument: SourceDocument,
   diagnosticGroups: readonly (readonly ts.Diagnostic[])[],
   work?: { item(): void },
 ): SemanticNumericDiagnostic[] {
@@ -74,7 +74,7 @@ export function mapTypescriptDiagnosticGroups(
 
 function mapTypescriptDiagnostic(
   filePath: string,
-  virtualDocument: ArktsVirtualDocument,
+  virtualDocument: SourceDocument,
   diagnostic: ts.Diagnostic,
 ): SemanticNumericDiagnostic | null {
   if (

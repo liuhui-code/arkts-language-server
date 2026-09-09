@@ -11,7 +11,6 @@ revision `2337ff1a5875e27b37bdd03e58ba5ca33c75afe7`:
 - `sdk/module-resolver.ts`
 - `sdk/workspace-loader.ts`
 - `workspace/document-store.ts`
-- `virtual/arkts-virtual-document.ts`
 - `types/text-position.ts`
 - `types/type-engine.ts`
 - `types/typescript-language-helpers.ts`

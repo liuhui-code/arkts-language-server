@@ -37,7 +37,7 @@ import type {
 import { ARKUI_STRING_RESOURCE_GLOB, ARKUI_CONFIGURED_STRING_RESOURCE_GLOB } from "../core/arkui/resource-path.js"
 import { SingleRootProjectResolver } from "../project/single-root-project-resolver.js"
 import { createStructuredLogger, type StructuredLogger } from "../observability/logger.js"
-import { LegacySemanticEngine } from "../semantic/legacy-semantic-engine.js"
+import { createProductionSemanticEngine } from "../semantic/backends/production-semantic-engine.js"
 import { createDocumentDiagnostics } from "./document-diagnostics.js"
 import {
   CodeActionResolutionStore,
@@ -128,7 +128,7 @@ export function runLanguageServer(services?: LanguageServerServices): void {
   const documents = new TextDocuments(TextDocument)
   const projects = services?.projects
     ?? new SingleRootProjectResolver(pathToFileURL(process.cwd()).href)
-  const semantic = services?.semantic ?? new LegacySemanticEngine(projects, logger)
+  const semantic = services?.semantic ?? createProductionSemanticEngine(projects, logger)
   const workspaceSymbols = services?.workspaceSymbols
   const freshness = new RequestFreshness()
   const completionResolutions = new CompletionResolutionStore()

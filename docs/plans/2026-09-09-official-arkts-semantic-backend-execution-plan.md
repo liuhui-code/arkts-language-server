@@ -1,8 +1,8 @@
 # Zed + ArkTS Language Server：官方语义后端与超大型工程低内存执行计划
 
 状态：当前权威执行计划；Foundation 与 Backend Spike S1–S3 已完成；semantic contract
-34/34 PASS，lifecycle/memory PASS。`ohos-typescript` 已通过 Primary Backend 决策门，下一阶段为
-Backend Cutover；production cutover 尚未开始。
+34/34 PASS，lifecycle/memory PASS。Backend Cutover 实现已完成并通过本地 `check:fast` 854/854；
+`check:release` 与 canonical CI 尚待关闭，因此 Memory Runtime 仍未开始。
 
 计划基线：`e90cacb9ace47292ac0869d09b3a64f7c7fe2144`（P2.1b，PR #5）。
 
@@ -574,6 +574,13 @@ GREEN 后才能继续 advertise。
 - ETS-aware parser 通过 mapping contracts 后，
   `src/core/virtual/arkts-virtual-document.ts` 不再承担生产语义改写并从该路径删除；
 - `pnpm check:fast` 与 `pnpm check:release` 全绿。
+
+当前证据（2026-09-09）：production package 已锁为 `ohos-typescript@4.9.5-r4`；默认 composition
+只有一个 official backend factory；shared registry pool 已接入；virtual rewrite 文件已删除；
+SDK runtime configuration、module resolution、definition/references/rename、struct call hierarchy、
+ArkUI 与 formatting 回归均已关闭。本地 `pnpm check:fast` 854/854 PASS。RED/GREEN 与完整适配边界
+见 [Backend Cutover TDD 记录](../tdd/backend-cutover.md)。在 `check:release` 和 canonical CI 通过前，
+本 Phase 保持 open。
 
 ## 12. Memory Runtime 清单
 

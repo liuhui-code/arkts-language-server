@@ -211,14 +211,15 @@ export class SemanticTypeEngineRegistry {
     entry.appliedContentRevision = contentRevision
     entry.lastAccess = ++this.accessClock
     if (newEntry) this.workspaces.set(rootPath, entry)
-    const scope = entry.project.scopeFor(workspace.state.path)
+    const activeEntry = entry
+    const scope = activeEntry.project.scopeFor(workspace.state.path)
     const resourceScope = JSON.stringify([scope.moduleRoot ?? rootPath, scope.resourceRoots])
-    if (resourceScope !== entry.resourceScope) {
-      entry.arkui.dispose()
-      entry.arkui = new ArkUIResourceLanguageProvider(scope.moduleRoot ?? rootPath, {
+    if (resourceScope !== activeEntry.resourceScope) {
+      activeEntry.arkui.dispose()
+      activeEntry.arkui = new ArkUIResourceLanguageProvider(scope.moduleRoot ?? rootPath, {
         ...(scope.status === "unconfigured" ? {} : { resourceRoots: scope.resourceRoots }),
       })
-      entry.resourceScope = resourceScope
+      activeEntry.resourceScope = resourceScope
     }
     const sourceContent = workspace.documents.find((document) => (
       document.path === workspace.state.path
@@ -228,27 +229,29 @@ export class SemanticTypeEngineRegistry {
       state,
       complete: (position) => {
         const arkui = sourceContent && scope.status !== "unavailable"
-          ? entry.arkui.complete(position, sourceContent)
+          ? activeEntry.arkui.complete(position, sourceContent)
           : { items: [], isIncomplete: scope.status === "unavailable" }
-        const typescript = entry.engine.complete(position)
+        const typescript = activeEntry.engine.complete(position)
         return arbitrateCompletionLists(arkui, typescript)
       },
       resolveCompletion: (position, item) => item.data?.provider === "arkui-resource"
         ? item
-        : entry.engine.resolveCompletion(position, item),
+        : activeEntry.engine.resolveCompletion(position, item),
       define: (position) => mergeDefinitions(
-        sourceContent && scope.status !== "unavailable" ? entry.arkui.define(position, sourceContent) : [],
-        entry.engine.define(position),
+        sourceContent && scope.status !== "unavailable"
+          ? activeEntry.arkui.define(position, sourceContent)
+          : [],
+        activeEntry.engine.define(position),
       ),
-      typeDefinitions: (position) => entry.engine.typeDefinitions(position),
-      implementations: (position) => entry.engine.implementations(position),
+      typeDefinitions: (position) => activeEntry.engine.typeDefinitions(position),
+      implementations: (position) => activeEntry.engine.implementations(position),
       references: (position, includeDeclaration) => (
-        entry.engine.references(position, includeDeclaration)
+        activeEntry.engine.references(position, includeDeclaration)
       ),
-      prepareRename: (position) => entry.engine.prepareRename(position),
-      usages: (position) => entry.engine.usages(position),
+      prepareRename: (position) => activeEntry.engine.prepareRename(position),
+      usages: (position) => activeEntry.engine.usages(position),
       diagnostics: (position) => mergeDiagnostics(
-        entry.engine.diagnostics(position),
+        activeEntry.engine.diagnostics(position),
         scope.status === "unavailable"
           ? [{
               source: "language", severity: "error", code: "arkts.project.configuration",
@@ -256,21 +259,23 @@ export class SemanticTypeEngineRegistry {
               range: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 },
               message: `Project configuration is unavailable: ${scope.reason ?? "unknown"}. Check build-profile.json5 and the product/target selection.`,
             }]
-          : sourceContent ? entry.arkui.diagnostics(position, sourceContent) : [],
+          : sourceContent ? activeEntry.arkui.diagnostics(position, sourceContent) : [],
       ),
-      codeActions: (position, range) => entry.engine.codeActions(position, range),
+      codeActions: (position, range) => activeEntry.engine.codeActions(position, range),
       resolveCodeAction: (position, range, fingerprint) => (
-        entry.engine.resolveCodeAction(position, range, fingerprint)
+        activeEntry.engine.resolveCodeAction(position, range, fingerprint)
       ),
-      documentHighlights: (position) => entry.engine.documentHighlights(position),
-      inlayHints: (position, range) => entry.engine.inlayHints(position, range),
-      prepareCallHierarchy: (position) => entry.engine.prepareCallHierarchy(position),
-      outgoingCalls: (position, item) => entry.engine.outgoingCalls(position, item),
-      incomingCalls: (position, item) => entry.engine.incomingCalls(position, item),
-      documentSymbols: (position) => entry.engine.documentSymbols(position),
-      hover: (position) => entry.engine.hover(position),
-      rename: (position, newName) => entry.engine.rename(position, newName),
-      signatureHelp: (position, triggerReason) => entry.engine.signatureHelp(position, triggerReason),
+      documentHighlights: (position) => activeEntry.engine.documentHighlights(position),
+      inlayHints: (position, range) => activeEntry.engine.inlayHints(position, range),
+      prepareCallHierarchy: (position) => activeEntry.engine.prepareCallHierarchy(position),
+      outgoingCalls: (position, item) => activeEntry.engine.outgoingCalls(position, item),
+      incomingCalls: (position, item) => activeEntry.engine.incomingCalls(position, item),
+      documentSymbols: (position) => activeEntry.engine.documentSymbols(position),
+      hover: (position) => activeEntry.engine.hover(position),
+      rename: (position, newName) => activeEntry.engine.rename(position, newName),
+      signatureHelp: (position, triggerReason) => (
+        activeEntry.engine.signatureHelp(position, triggerReason)
+      ),
     }
   }
 
