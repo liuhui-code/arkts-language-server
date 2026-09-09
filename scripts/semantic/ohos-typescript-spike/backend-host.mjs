@@ -57,6 +57,52 @@ export function createSpikeProject(compiler, root, inputFiles) {
     definitions(relativePath, position) {
       return service.getDefinitionAtPosition(this.fileName(relativePath), position) ?? []
     },
+    references(relativePath, position) {
+      return service.getReferencesAtPosition(this.fileName(relativePath), position) ?? []
+    },
+    renameInfo(relativePath, position) {
+      return service.getRenameInfo(this.fileName(relativePath), position, {})
+    },
+    renameLocations(relativePath, position) {
+      return service.findRenameLocations(
+        this.fileName(relativePath),
+        position,
+        false,
+        false,
+        true,
+      ) ?? []
+    },
+    update(relativePath, text) {
+      const fileName = this.fileName(relativePath)
+      const previous = files.get(fileName)
+      files.set(fileName, {
+        text,
+        version: String(Number(previous?.version ?? "0") + 1),
+      })
+    },
+    references(relativePath, position) {
+      return service.getReferencesAtPosition(this.fileName(relativePath), position) ?? []
+    },
+    renameInfo(relativePath, position) {
+      return service.getRenameInfo(this.fileName(relativePath), position, {})
+    },
+    renameLocations(relativePath, position) {
+      return service.findRenameLocations(
+        this.fileName(relativePath),
+        position,
+        false,
+        false,
+        true,
+      ) ?? []
+    },
+    update(relativePath, text) {
+      const fileName = this.fileName(relativePath)
+      const current = files.get(fileName)
+      files.set(fileName, {
+        text,
+        version: String(Number(current?.version ?? "0") + 1),
+      })
+    },
     sourceFile(relativePath) {
       return service.getProgram()?.getSourceFile(this.fileName(relativePath))
     },

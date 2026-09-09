@@ -1,7 +1,7 @@
 # Zed + ArkTS Language Server：官方语义后端与超大型工程低内存执行计划
 
-状态：当前权威执行计划；Foundation、S1、S2a 已完成；S2b core semantic batch 已完成，
-S2 hard gate 仍关闭（13/34 executed，21 deferred）。
+状态：当前权威执行计划；Foundation、S1、S2a、S2b core semantic batch 已完成；
+S2c references/rename batch 已完成，hard gate 仍关闭（21/34 executed，13 deferred）。
 
 计划基线：`e90cacb9ace47292ac0869d09b3a64f7c7fe2144`（P2.1b，PR #5）。
 
@@ -481,10 +481,29 @@ S2b core semantic batch 完成证据（2026-09-09）：
 - [x] 当前 [spike report](../reports/ohos-typescript-spike.json) 为 13 passed、0 failed、
   21 deferred，仍为 INCOMPLETE；
 - [x] `pnpm check:fast`：848/848，0 fail/cancel/skip/todo；
-- [ ] completion SDK hot switch、freshness、references、rename 与 project-boundary 仍需直接执行。
+- [x] references/rename 已由 S2c 直接执行；SDK hot switch、freshness 与 project-boundary
+  留给后续 batch。
 
 RED/GREEN 与可复现命令见
 [Backend Spike S2b core contracts TDD 记录](../tdd/backend-spike-core-contracts.md)。
+
+S2c references/rename batch 完成证据（2026-09-09）：
+
+- [x] references 直接覆盖 barrel/unopened consumer 与精确 source span；
+- [x] overlay version 更新后旧 reference 消失，新 reference 成为唯一真值；
+- [x] 80 个未打开 consumer 的完整集合包含第 80 个文件，不受 resident window 影响；
+- [x] 新 materialized target source 加入 root file set 后下一查询可见；
+- [x] public/explicit barrel alias rename 覆盖所有 consumer 且不修改 origin identity；
+- [x] non-BMP 后 prepare rename 返回精确 UTF-16 trigger span；
+- [x] same-scope rename candidate 经独立 semantic validation 暴露 TS2451，允许上层原子拒绝；
+- [x] 当前 [spike report](../reports/ohos-typescript-spike.json) 为 21 passed、0 failed、
+  13 deferred，仍为 INCOMPLETE；
+- [x] `pnpm check:fast`：849/849，0 fail/cancel/skip/todo；
+- [ ] SDK hot switch、diagnostic freshness、result-limit policy、partial-membership fail-closed 与
+  project-boundary 仍需 direct scenario。
+
+RED/GREEN 与可复现命令见
+[Backend Spike S2c references/rename TDD 记录](../tdd/backend-spike-references-rename.md)。
 
 ## 11. Backend Cutover 清单
 
