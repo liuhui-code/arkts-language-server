@@ -1,0 +1,14 @@
+# Triage labels
+
+The repository uses the canonical engineering-skill triage vocabulary.
+
+| Skill role | Repository label | Meaning |
+| --- | --- | --- |
+| `needs-triage` | `needs-triage` | A maintainer must evaluate the issue |
+| `needs-info` | `needs-info` | More information is required from the reporter |
+| `ready-for-agent` | `ready-for-agent` | Fully specified and suitable for an autonomous agent |
+| `ready-for-human` | `ready-for-human` | Requires human implementation or judgment |
+| `wontfix` | `wontfix` | Will not be actioned |
+
+When a skill refers to a triage role, use the corresponding repository label
+from this table.
