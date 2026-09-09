@@ -33,6 +33,8 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/semantic-cancellation-scope.test.mjs",
       "tests/semantic-contract-manifest.test.mjs",
       "tests/semantic/completion-arbitrator.test.mjs",
+      "tests/semantic/semantic-coordinator.test.mjs",
+      "tests/semantic/type-engine-context-runtime.test.mjs",
       "tests/semantic-worker-call-hierarchy-protocol.test.mjs",
       "tests/semantic-worker-protocol.test.mjs",
       "tests/semantic-worker-supervisor.test.mjs",

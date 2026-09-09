@@ -1524,6 +1524,10 @@ export class TypeScriptLanguageServiceEngine {
     this.lazySnapshotBytes = 0
   }
 
+  trim(): void {
+    this.service.cleanupSemanticCache()
+  }
+
   private createHost(
     hostCancellationToken: ts.HostCancellationToken | undefined,
   ): ts.LanguageServiceHost {
