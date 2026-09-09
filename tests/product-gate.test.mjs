@@ -11,6 +11,7 @@ import { projectRoot } from "./support/lsp-process.mjs"
 const generator = path.join(projectRoot, "scripts", "bench", "generate-large-fixture.mjs")
 const processMemory = path.join(projectRoot, "scripts", "bench", "process-memory.sh")
 const releaseGate = path.join(projectRoot, "scripts", "bench", "assert-release-gates.mjs")
+const macosE2e = path.join(projectRoot, "scripts", "bench", "run-macos-e2e.mjs")
 const releaseGateConfig = path.join(projectRoot, "config", "memory-release-gates.json")
 const workflowConfig = path.join(projectRoot, "config", "product-benchmark-workflow.json")
 
@@ -35,6 +36,21 @@ test("generates deterministic workspace and dependency growth fixtures", (t) => 
   assert.equal(findFiles(first, ".ets").length, 24)
   assert.equal(reachableDependencies(first, manifest.entryFile).size - 1, 7)
   assert.equal(treeDigest(first), treeDigest(second))
+  assert.equal(
+    fs.existsSync(path.join(first, "unrelated", "000", "Unused000000.ets")),
+    true,
+    "unrelated growth must stay outside every declared Harmony module",
+  )
+  assert.equal(
+    fs.existsSync(path.join(first, manifest.generatedSourceRoot, "unused")),
+    false,
+  )
+
+  const entry = fs.readFileSync(path.join(first, manifest.entryFile), "utf8")
+  assert.match(entry, /export struct/)
+  assert.match(entry, /stableMember: number/)
+  assert.match(entry, /return this\.stableMember/)
+  assert.match(entry, /\/\/ benchmark-edit/)
 })
 
 test("rejects an impossible or destructive fixture request", (t) => {
@@ -65,6 +81,19 @@ test("rejects an impossible or destructive fixture request", (t) => {
 test("keeps generated benchmark workspaces outside version control", () => {
   const ignore = fs.readFileSync(path.join(projectRoot, ".gitignore"), "utf8")
   assert.match(ignore, /^\.bench\/$/mu)
+})
+
+test("exposes one strict macOS end-to-end benchmark command", () => {
+  const result = spawnSync(process.execPath, [macosE2e, "--help"], {
+    cwd: projectRoot,
+    encoding: "utf8",
+  })
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stdout, /--workspace PATH/u)
+  assert.match(result.stdout, /--sdk PATH/u)
+  assert.match(result.stdout, /--sidecar PATH/u)
+  assert.match(result.stdout, /--out FILE/u)
+  assert.match(result.stdout, /cold=3, warm=10, stress=5/u)
 })
 
 test("locks both growth series, workflow actions, and process accounting", () => {

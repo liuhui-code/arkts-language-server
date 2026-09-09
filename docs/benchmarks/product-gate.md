@@ -39,8 +39,23 @@ Before measuring, record these values in both report `comparisonIdentity` values
 - explicit PID-to-role mapping used for each product.
 
 The release evaluator rejects different `comparisonIdentity` values. A macOS RSS run is useful for
-development feedback but cannot set `measurementStatus` to `complete`, because this gate requires Linux
-PSS from `smaps_rollup`.
+development feedback but cannot be submitted as a complete Linux release measurement, because this gate
+requires PSS from `smaps_rollup`.
+
+For the macOS development gate, build the production bundle and release sidecar, then run the same
+semantic workflow directly over framed stdio:
+
+```bash
+node scripts/bench/run-macos-e2e.mjs \
+  --workspace .bench/unrelated/ws-100000 \
+  --sdk /absolute/path/to/openharmony \
+  --sidecar target/release/arkts-index-sidecar \
+  --out docs/reports/macos-zed-arkts-100k.json
+```
+
+This report deliberately uses `measurementKind: macos-rss-development-gate` and
+`releasePssComparable: false`. It may be complete as a macOS execution record but is rejected as Linux
+release evidence.
 
 ## 3. Execute the same workflow
 
