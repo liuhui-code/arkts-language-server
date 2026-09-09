@@ -2,6 +2,7 @@
   {
     "id": "diagnostics.exact-code-range",
     "mandatory": true,
+    "scenario": "direct",
     "evidence": { "file": "tests/semantic/diagnostic-code-characterization.test.mjs", "testName": "publishes the TypeScript spelling diagnostic code at the exact UTF-16 marker range" },
     "oracleFields": ["diagnostics[].code", "diagnostics[].range", "diagnostics[].severity"],
     "assertions": ["Diagnostics compare stable code, severity, and exact UTF-16 range rather than non-emptiness."]
