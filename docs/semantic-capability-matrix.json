@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "syntax": "ohos-typescript",
+  "types": "ohos-typescript",
+  "completion": "ohos-typescript",
+  "definition": "ohos-typescript",
+  "references": "ohos-typescript",
+  "rename": "ohos-typescript",
+  "arktsRestrictions": "unassigned",
+  "arkuiStructuralRules": "unassigned",
+  "resourceExistence": "project-resource-provider"
+}
