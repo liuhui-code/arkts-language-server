@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "semanticBackend": "openharmony/third_party_typescript",
+  "semanticBackendRepository": "https://github.com/openharmony/third_party_typescript.git",
+  "semanticBackendRevision": "9cc62fe98f47c0bf113676e3fb33fe932b493052",
+  "sdkApiLevel": 24,
+  "sdkDeclarationDigest": "8098b8abbc6b06fce0e7322d6f8f82a5bbce41e847dbd39e9a98811a33d4c6e4",
+  "checkoutRevision": "9cc62fe98f47c0bf113676e3fb33fe932b493052",
+  "licenseSha256": "a7d00bfd54525bc694b6e32f64c7ebcf5e6b7ae3657be5cc12767bce74654a47",
+  "packageName": "ohos-typescript",
+  "packageVersion": "4.9.5-r4",
+  "buildScript": {
+    "name": "build:compiler",
+    "command": "hereby local"
+  },
+  "probeRuntime": {
+    "nodeVersion": "v26.3.0",
+    "platform": "darwin",
+    "architecture": "x64"
+  },
+  "compilerApiIdentity": {
+    "modulePath": "lib/typescript.js",
+    "version": "4.9.5",
+    "scriptKindEts": 8,
+    "hasCreateLanguageService": true,
+    "hasCreateDocumentRegistry": true
+  }
+}

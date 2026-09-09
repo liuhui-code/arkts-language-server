@@ -1,6 +1,6 @@
 # Zed + ArkTS Language Server：官方语义后端与超大型工程低内存执行计划
 
-状态：当前权威执行计划；Foundation F1–F3 与退出门禁已完成，下一步为 Backend Spike S1。
+状态：当前权威执行计划；Foundation 与 Backend Spike S1 已完成，下一步为独立 Spike Host S2。
 
 计划基线：`e90cacb9ace47292ac0869d09b3a64f7c7fe2144`（P2.1b，PR #5）。
 
@@ -406,6 +406,23 @@ Foundation 退出证据（2026-09-09）：
 checkout 位于未跟踪的 `.cache/upstream/ohos-typescript`，只 checkout lock 中的 SHA；记录 LICENSE
 SHA-256、package name/version、build command 和实际 compiler API identity。不得把 upstream 源码
 复制进 `src/`。
+
+完成证据（2026-09-09）：
+
+- [x] `.cache/upstream/ohos-typescript` 由 `.gitignore` 排除，并以 sparse detached checkout
+  精确固定在 `9cc62fe98f47c0bf113676e3fb33fe932b493052`；
+- [x] package identity：`ohos-typescript@4.9.5-r4`；
+- [x] compiler build script：`build:compiler = hereby local`；
+- [x] 已加载 `lib/typescript.js` 并验证 compiler `4.9.5`、`ScriptKind.ETS = 8`、
+  `createLanguageService` 与 `createDocumentRegistry`；
+- [x] LICENSE SHA-256：
+  `a7d00bfd54525bc694b6e32f64c7ebcf5e6b7ae3657be5cc12767bce74654a47`；
+- [x] toolchain lock、license digest 和
+  [upstream identity report](../reports/ohos-typescript-upstream.json) 由 fast unit contract
+  交叉验证；upstream checkout 不进入 production source graph。
+- [x] `pnpm check:fast`：843/843，0 fail/cancel/skip/todo。
+
+RED/GREEN 与可复现命令见 [Backend Spike S1 TDD 记录](../tdd/backend-spike-upstream-identity.md)。
 
 ### S2：独立 spike host
 

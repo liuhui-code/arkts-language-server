@@ -5,6 +5,6 @@
   "semanticBackendRepository": "https://github.com/openharmony/third_party_typescript.git",
   "sdkApiLevel": 24,
   "sdkDeclarationDigest": "8098b8abbc6b06fce0e7322d6f8f82a5bbce41e847dbd39e9a98811a33d4c6e4",
-  "packageName": null,
-  "packageVersion": null
+  "packageName": "ohos-typescript",
+  "packageVersion": "4.9.5-r4"
 }
