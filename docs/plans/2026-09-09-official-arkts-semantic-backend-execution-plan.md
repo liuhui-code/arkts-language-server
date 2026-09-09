@@ -6,8 +6,9 @@ contract 34/34 PASS，lifecycle/memory PASS。Backend Cutover 的本地 `check:f
 单 Worker、Coordinator、L0-L3、metrics 与交付接线已在 `codex/memory-runtime` 完成，本地
 `check:fast` 864/864、bundle-e2e 271/271、完整本地 `check:release` 与 PR #17 canonical
 `validate` 均已通过，并合入 `68c8b51`。Rust Discovery 的修复后 canonical run
-`34347649107` 已通过，PR #18 合入 `38f65e3`。Rule Gap 已从该 merge 开始，只提交单 owner
-capability matrix；当前没有 target-SDK golden 证明需要第二规则 provider。
+`34347649107` 已通过，PR #18 合入 `38f65e3`。Rule Gap canonical run `34349569571` 已通过，
+PR #19 合入 `089419c`；没有 target-SDK golden 证明需要第二规则 provider。Product Gate 已从
+该 merge 开始，自动化工具与完整 Linux/DevEco 测量证据分开验收。
 
 计划基线：`e90cacb9ace47292ac0869d09b3a64f7c7fe2144`（P2.1b，PR #5）。
 
@@ -692,10 +693,10 @@ provider；ArkTS restrictions 与 ArkUI structural rules 先保持 unassigned。
 - [x] normal semantic sources 只有一个 `createLanguageService()`，没有 `createProgram()`；资源
   provider 不创建 Language Service、Program 或 DocumentRegistry；
 - [x] `pnpm check:fast` 869/869，0 fail/cancel/skip/todo；
-- [ ] canonical PR `validate` 通过并合入。
+- [x] canonical PR `validate`（run `34349569571`）通过，PR #19 合入 `089419c`。
 
-RED/GREEN 与复现命令见 [Rule Gap TDD 记录](../tdd/rule-gap.md)。最后两项关闭前不得进入
-Product Gate。
+RED/GREEN 与复现命令见 [Rule Gap TDD 记录](../tdd/rule-gap.md)。该 Phase 已关闭，Product Gate
+从 `089419c` 开始。
 
 ## 15. Product Gate 清单
 
@@ -737,6 +738,28 @@ DevEco 对照固定 IDE/JDK/SDK/workspace/config 和进程集合，不含 emulat
 ```
 
 这些是产品发布目标，不是当前性能预测；不能为让结果通过而自动放宽。
+
+当前证据（2026-09-09）：
+
+- [x] `generate-large-fixture.mjs` 严格生成确定性 topology，拒绝覆盖已有目录；
+- [x] unrelated 1k/10k/50k/100k（active=200）与 dependency 100k×200/1k/5k/10k 已本地生成，
+  实际文件总数分别验证为 161,000 与复用 200 档后的新增 300,000；
+- [x] `product-benchmark-workflow.json` 固定 cold/warm/stress=3/10/5、交互步骤、20-module stress
+  与进程计数边界；
+- [x] Linux `process-memory.sh` 从 `status`/`smaps_rollup` 严格读取单 PID RSS/PSS，输出 bytes；
+- [x] `memory-release-gates.json` 与 `assert-release-gates.mjs` 已实现所有 correctness、PSS、
+  scaling、eviction 与 latency gate，identity/workflow 不一致时 fail closed；
+- [x] [Product Gate benchmark protocol](../benchmarks/product-gate.md) 固定生成、环境、工作流、
+  进程归属和最终命令；
+- [ ] 固定 Linux/cgroup 环境完成 Zed + server + sidecar 的 3/10/5 测量；
+- [ ] 同一 identity 下完成首次 DevEco UI workflow 与进程归属确认；
+- [ ] `memory-zed-arkts.json` / `memory-deveco.json` 通过两行 release gate；
+- [x] benchmark infrastructure 的 `pnpm check:fast` 876/876，0 fail/cancel/skip/todo；
+- [ ] canonical PR `validate` 通过并合入 benchmark infrastructure；
+- [ ] 最终 measurement evidence PR 通过同一 canonical gate 并合入。
+
+当前 host 为 macOS，不能提供计划要求的 Linux `smaps_rollup` PSS；禁止把本地 RSS 或占位 JSON
+标记为 release PASS。RED/GREEN 与复现命令见 [Product Gate TDD 记录](../tdd/product-gate.md)。
 
 ## 16. 完成定义与开放输入
 
