@@ -1,6 +1,7 @@
 # Zed + ArkTS Language Server：官方语义后端与超大型工程低内存执行计划
 
-状态：当前权威执行计划；Foundation 与 Backend Spike S1 已完成，下一步为独立 Spike Host S2。
+状态：当前权威执行计划；Foundation、S1 已完成；S2a raw official-backend host 已完成，
+S2 hard gate 仍关闭（5/34 executed，29 deferred）。
 
 计划基线：`e90cacb9ace47292ac0869d09b3a64f7c7fe2144`（P2.1b，PR #5）。
 
@@ -452,6 +453,23 @@ target_visibility_failures == 0
 
 失败时生成 `docs/reports/ohos-typescript-spike-failure.md` 并以固定非零码停止 A 方案；不得修改
 virtual document 添加 workaround。只有此时才建立 `ets2panda` fallback spike。
+
+S2a 完成证据（2026-09-09）：
+
+- [x] 独立 host 直接加载锁定的 compiler module，不接入 LSP 或 production composition；
+- [x] 3 个 syntax fixture 验证真正的 StructDeclaration，string/comment token 不被误解析；
+- [x] incomplete this-dot 返回 value、refresh completion；
+- [x] non-BMP fixture 在 UTF-16 position round-trip 后返回 Greeter completion；
+- [x] 目标 API 24 SDK 的 @ohos.hilog declaration parse smoke 为 0 syntax diagnostics；
+- [x] report hard-bound 为 64 KiB，context 在记录 stats 前已经 dispose；
+- [x] 默认命令对 INCOMPLETE 返回 42；仅显式 allow-incomplete 可保存阶段证据；
+- [x] `pnpm check:fast`：847/847，0 fail/cancel/skip/todo；
+- [ ] 其余 29 个公共 transcript 尚未转成 direct official-backend scenario，故
+  [spike report](../reports/ohos-typescript-spike.json) 明确为 INCOMPLETE，不得进入 cutover。
+
+this-dot 编辑尾部当前观测到 TS1003，但 DevEco oracle 尚未确认，因此 S2a 只以 completion
+可用性作 gate，不把“无诊断”伪造成已确认合同。RED/GREEN 记录见
+[Backend Spike S2a TDD 记录](../tdd/backend-spike-host.md)。
 
 ## 11. Backend Cutover 清单
 
