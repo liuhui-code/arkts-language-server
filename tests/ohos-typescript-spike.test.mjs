@@ -8,14 +8,42 @@ import {
   SPIKE_CATEGORIES,
   summarizeSpikeResults,
 } from "../scripts/semantic/ohos-typescript-spike/spike-report.mjs"
+import { createSpikeProject } from "../scripts/semantic/ohos-typescript-spike/backend-host.mjs"
 import {
   BOUNDARY_POLICY_SCENARIO_IDS,
   CORE_SEMANTIC_SCENARIO_IDS,
   DIRECT_SCENARIO_IDS,
   REFERENCE_RENAME_SCENARIO_IDS,
 } from "../scripts/semantic/ohos-typescript-spike/direct-scenarios.mjs"
+import { evaluateLifecycleEvidence } from "../scripts/semantic/ohos-typescript-spike/lifecycle-report.mjs"
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
+
+test("spike contexts share immutable snapshots by file version and rematerialize an edit once", () => {
+  let materializations = 0
+  const compiler = fakeCompiler(() => { materializations += 1 })
+  const snapshotPool = new Map()
+  const runtime = { registry: {}, snapshotPool }
+  const inputs = { "workspace/Main.ets": "class Main { value = 1 }\n" }
+
+  const first = createSpikeProject(compiler, projectRoot, inputs, runtime)
+  first.completions("workspace/Main.ets", 0)
+  first.completions("workspace/Main.ets", 0)
+  assert.equal(materializations, 1)
+  assert.equal(first.stats().snapshotMaterializationCount, 1)
+
+  first.update("workspace/Main.ets", "class Main { value = 2 }\n")
+  first.completions("workspace/Main.ets", 0)
+  assert.equal(materializations, 2)
+  assert.equal(first.stats().snapshotMaterializationCount, 2)
+
+  const rebuilt = createSpikeProject(compiler, projectRoot, inputs, runtime)
+  rebuilt.completions("workspace/Main.ets", 0)
+  assert.equal(materializations, 2)
+  assert.equal(rebuilt.stats().snapshotMaterializationCount, 0)
+  first.dispose()
+  rebuilt.dispose()
+})
 
 test("an incomplete official-backend run cannot be reported as a pass", () => {
   const results = [
@@ -142,3 +170,76 @@ test("freshness and project-boundary contracts have direct backend scenarios", (
     ],
   )
 })
+
+test("lifecycle evidence fails without GC, reuse, trim, dispose, and 20 churn runs", () => {
+  const result = evaluateLifecycleEvidence({
+    exposedGc: false,
+    stableReuse: { repeatedQueries: 10, additionalSnapshotMaterializations: 1 },
+    commentEdit: {
+      additionalSnapshotMaterializations: 2,
+      maximumSnapshotMaterializations: 1,
+    },
+    lifecycle: { trimCalls: 0, disposeCalls: 19, sharedRegistry: false },
+    churn: { runs: 19, rssGrowthBytes: 0, heapGrowthBytes: 0 },
+    gates: { rssGrowthMaxBytes: 64 * 1024 * 1024, heapGrowthMaxBytes: 16 * 1024 * 1024 },
+  })
+  assert.equal(result.status, "FAIL")
+  assert.ok(result.failures.length >= 5)
+})
+
+test("the committed lifecycle report closes the backend memory spike gate", () => {
+  const reportPath = path.join(projectRoot, "docs", "reports", "ohos-typescript-lifecycle.json")
+  const reportBytes = fs.readFileSync(reportPath)
+  assert.ok(reportBytes.length <= 64 * 1024)
+  assert.equal(reportBytes.includes(Buffer.from(projectRoot)), false)
+  const report = JSON.parse(reportBytes.toString("utf8"))
+  assert.equal(report.status, "PASS")
+  assert.equal(report.backendRevision, "9cc62fe98f47c0bf113676e3fb33fe932b493052")
+  assert.equal(report.exposedGc, true)
+  assert.equal(report.churn.runs, 20)
+  assert.equal(report.lifecycle.sharedRegistry, true)
+  assert.ok(report.lifecycle.trimCalls >= 1)
+  assert.equal(report.lifecycle.disposeCalls, 21)
+  assert.equal(report.stableReuse.additionalSnapshotMaterializations, 0)
+  assert.ok(
+    report.commentEdit.additionalSnapshotMaterializations
+      <= report.commentEdit.maximumSnapshotMaterializations,
+  )
+  assert.ok(report.churn.rssGrowthBytes <= report.gates.rssGrowthMaxBytes)
+  assert.ok(report.churn.heapGrowthBytes <= report.gates.heapGrowthMaxBytes)
+  assert.deepEqual(evaluateLifecycleEvidence(report), { status: "PASS", failures: [] })
+})
+
+function fakeCompiler(onMaterialize) {
+  return {
+    ScriptTarget: { ES2021: 1 },
+    ModuleKind: { ESNext: 1 },
+    ModuleResolutionKind: { NodeJs: 1 },
+    ScriptKind: { ETS: 8 },
+    ScriptSnapshot: {
+      fromString(text) {
+        onMaterialize()
+        return { text }
+      },
+    },
+    sys: {
+      useCaseSensitiveFileNames: true,
+      fileExists: () => false,
+      readFile: () => undefined,
+      readDirectory: () => [],
+      newLine: "\n",
+    },
+    getScriptKindFromFileName: () => 3,
+    getDefaultLibFilePath: () => "lib.d.ts",
+    createLanguageService(host) {
+      return {
+        getCompletionsAtPosition() {
+          for (const fileName of host.getScriptFileNames()) host.getScriptSnapshot(fileName)
+          return { entries: [{ name: "value" }] }
+        },
+        cleanupSemanticCache() {},
+        dispose() {},
+      }
+    },
+  }
+}

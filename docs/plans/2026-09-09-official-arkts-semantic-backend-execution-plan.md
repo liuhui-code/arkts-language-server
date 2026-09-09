@@ -1,7 +1,8 @@
 # Zed + ArkTS Language Server：官方语义后端与超大型工程低内存执行计划
 
-状态：当前权威执行计划；Foundation 与 S1–S2d semantic contract 已完成（34/34 PASS）；
-Backend Spike lifecycle/memory gate 仍关闭，production cutover 尚未开始。
+状态：当前权威执行计划；Foundation 与 Backend Spike S1–S3 已完成；semantic contract
+34/34 PASS，lifecycle/memory PASS。`ohos-typescript` 已通过 Primary Backend 决策门，下一阶段为
+Backend Cutover；production cutover 尚未开始。
 
 计划基线：`e90cacb9ace47292ac0869d09b3a64f7c7fe2144`（P2.1b，PR #5）。
 
@@ -518,7 +519,7 @@ S2d ownership-boundary batch 完成证据（2026-09-09）：
   0 deferred、position mapping failure 0、target visibility failure 0；
 - [x] 所有 direct context 均在 report stats 前 dispose，报告不含本机绝对路径；
 - [x] `pnpm check:fast`：850/850，0 fail/cancel/skip/todo；
-- [ ] 20 次 context lifecycle churn 与进程 memory 回落仍需 S3 通过，未授权 cutover。
+- [x] 20 次 context lifecycle churn 与进程 memory 回落已由 S3 通过，允许进入 cutover。
 
 RED/GREEN 与可复现命令见
 [Backend Spike S2d boundary contracts TDD 记录](../tdd/backend-spike-boundary-contracts.md)。
@@ -527,12 +528,23 @@ RED/GREEN 与可复现命令见
 
 S2d 只关闭 semantic correctness gate。进入 Backend Cutover 前必须继续满足：
 
-- [ ] 同一 SDK/context identity 的稳定查询不重复读取完整 SDK declaration set；
-- [ ] 普通 overlay comment edit 不触发全 SDK/全项目无界重建；
-- [ ] 连续 20 次 context create/query/dispose 不出现无界 RSS/heap 增长；
-- [ ] `cleanupSemanticCache()`/`dispose()` 的释放范围与 registry reference lifecycle 有机器证据；
-- [ ] 删除、SDK switch 与 target switch 的重建策略保留最新 overlay；
-- [ ] lifecycle/memory report 与固定阈值进入 fast 或显式 acceptance gate。
+- [x] 同一 SDK/context identity 的 10 次稳定查询新增 snapshot read/materialization 均为 0；
+- [x] 普通 overlay comment edit 虽使 compiler 重新请求 2,271 个 root snapshot，但共享 immutable
+  snapshot pool 仅物化已变更文档 1 次，未重新物化 SDK declaration set；
+- [x] 连续 20 次 context create/query/dispose 后 RSS 增长 0，heap 增长 1,456,160 bytes，低于
+  96 MiB/32 MiB 固定门禁；
+- [x] `cleanupSemanticCache()` 调用 1 次、`dispose()` 调用 21 次，所有 churn context 共享同一
+  DocumentRegistry 与 snapshot pool；
+- [x] 删除、SDK switch 与 target switch 的重建策略已由 S2d direct scenarios 证明保留最新
+  DocumentAuthority overlay；
+- [x] [lifecycle/memory report](../reports/ohos-typescript-lifecycle.json) 已进入 fast unit acceptance
+  gate，要求精确 backend/SDK identity、20 个样本、固定增长阈值且不含本机路径。
+
+S3 完成证据（2026-09-09）：目标 API 24 SDK 包含 2,150 个 declaration files；首轮真实运行
+发现普通注释编辑会触发 2,271 次 snapshot 重新物化并 FAIL。修正为按 file path + version 缓存、
+以 text equality 防御 identity 冲突后，稳定查询零物化、编辑仅物化当前文件一次，20 次 churn
+通过。RED/GREEN 与复现命令见
+[Backend Spike S3 lifecycle/memory TDD 记录](../tdd/backend-spike-lifecycle-memory.md)。
 
 S3 任一项失败时 Backend Cutover 保持关闭；不得以 regex rewrite 或双 backend 常驻规避。
 

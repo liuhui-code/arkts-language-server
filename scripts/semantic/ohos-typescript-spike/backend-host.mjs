@@ -1,6 +1,6 @@
 import path from "node:path"
 
-export function createSpikeProject(compiler, root, inputFiles) {
+export function createSpikeProject(compiler, root, inputFiles, runtime = {}) {
   const files = new Map()
   for (const [relativePath, text] of Object.entries(inputFiles)) {
     const fileName = path.resolve(root, ...relativePath.split("/"))
@@ -14,6 +14,9 @@ export function createSpikeProject(compiler, root, inputFiles) {
     skipLibCheck: true,
   }
   const snapshotReads = new Map()
+  const snapshotPool = runtime.snapshotPool ?? new Map()
+  let snapshotMaterializationCount = 0
+  let snapshotMaterializedBytes = 0
   const host = {
     getCompilationSettings: () => options,
     getScriptFileNames: () => [...files.keys()],
@@ -23,8 +26,18 @@ export function createSpikeProject(compiler, root, inputFiles) {
       : compiler.getScriptKindFromFileName(fileName),
     getScriptSnapshot: (fileName) => {
       snapshotReads.set(fileName, (snapshotReads.get(fileName) ?? 0) + 1)
-      const text = files.get(fileName)?.text ?? compiler.sys.readFile(fileName)
-      return text === undefined ? undefined : compiler.ScriptSnapshot.fromString(text)
+      const record = files.get(fileName)
+      const text = record?.text ?? compiler.sys.readFile(fileName)
+      if (text === undefined) return undefined
+      const version = record?.version ?? "disk"
+      const poolKey = fileName + "\0" + version
+      const cached = snapshotPool.get(poolKey)
+      if (cached?.text === text) return cached.snapshot
+      const snapshot = compiler.ScriptSnapshot.fromString(text)
+      snapshotPool.set(poolKey, { text, snapshot })
+      snapshotMaterializationCount += 1
+      snapshotMaterializedBytes += Buffer.byteLength(text)
+      return snapshot
     },
     getCurrentDirectory: () => root,
     getDefaultLibFileName: (settings) => compiler.getDefaultLibFilePath(settings),
@@ -34,9 +47,11 @@ export function createSpikeProject(compiler, root, inputFiles) {
     useCaseSensitiveFileNames: () => compiler.sys.useCaseSensitiveFileNames,
     getNewLine: () => compiler.sys.newLine,
   }
-  const registry = compiler.createDocumentRegistry(compiler.sys.useCaseSensitiveFileNames, root)
+  const registry = runtime.registry
+    ?? compiler.createDocumentRegistry(compiler.sys.useCaseSensitiveFileNames, root)
   const service = compiler.createLanguageService(host, registry)
   let disposed = false
+  let trimCount = 0
 
   return {
     fileName(relativePath) {
@@ -86,11 +101,22 @@ export function createSpikeProject(compiler, root, inputFiles) {
     sourceFile(relativePath) {
       return service.getProgram()?.getSourceFile(this.fileName(relativePath))
     },
+    trim() {
+      if (disposed) throw new Error("Cannot trim a disposed spike context")
+      if (typeof service.cleanupSemanticCache !== "function") {
+        throw new Error("Official backend does not expose cleanupSemanticCache")
+      }
+      service.cleanupSemanticCache()
+      trimCount += 1
+    },
     stats() {
       return {
         projectFileCount: files.size,
         snapshotReadCount: [...snapshotReads.values()].reduce((sum, count) => sum + count, 0),
         uniqueSnapshotReadCount: snapshotReads.size,
+        snapshotMaterializationCount,
+        snapshotMaterializedBytes,
+        trimCount,
         disposed,
       }
     },

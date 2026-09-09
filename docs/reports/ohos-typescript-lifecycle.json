@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "backendRevision": "9cc62fe98f47c0bf113676e3fb33fe932b493052",
+  "backendPackage": "ohos-typescript",
+  "backendPackageVersion": "4.9.5-r4",
+  "sdkApiLevel": 24,
+  "sdkDeclarationDigest": "8098b8abbc6b06fce0e7322d6f8f82a5bbce41e847dbd39e9a98811a33d4c6e4",
+  "sdkDeclarationFiles": 2150,
+  "exposedGc": true,
+  "stableReuse": {
+    "repeatedQueries": 10,
+    "readsAfterWarm": 2299,
+    "readsAfterStable": 2299,
+    "additionalSnapshotReads": 0,
+    "materializationsAfterWarm": 2271,
+    "materializationsAfterStable": 2271,
+    "additionalSnapshotMaterializations": 0
+  },
+  "commentEdit": {
+    "readsBeforeEdit": 2299,
+    "readsAfterEdit": 4570,
+    "additionalSnapshotReads": 2271,
+    "materializationsBeforeEdit": 2271,
+    "materializationsAfterEdit": 2272,
+    "additionalSnapshotMaterializations": 1,
+    "maximumSnapshotMaterializations": 1
+  },
+  "lifecycle": {
+    "trimCalls": 1,
+    "disposeCalls": 21,
+    "sharedRegistry": true
+  },
+  "churn": {
+    "runs": 20,
+    "rssGrowthBytes": 0,
+    "heapGrowthBytes": 1456160,
+    "samples": [
+      { "iteration": 1, "rss": 979030016, "heapUsed": 735950440, "external": 10417680, "arrayBuffers": 143611 },
+      { "iteration": 2, "rss": 973266944, "heapUsed": 736014208, "external": 10417720, "arrayBuffers": 143611 },
+      { "iteration": 3, "rss": 972693504, "heapUsed": 736216680, "external": 10417720, "arrayBuffers": 143611 },
+      { "iteration": 4, "rss": 928804864, "heapUsed": 736229592, "external": 10417720, "arrayBuffers": 143611 },
+      { "iteration": 5, "rss": 930480128, "heapUsed": 736287800, "external": 10417720, "arrayBuffers": 143611 },
+      { "iteration": 6, "rss": 934678528, "heapUsed": 736798664, "external": 10417720, "arrayBuffers": 143611 },
+      { "iteration": 7, "rss": 941010944, "heapUsed": 758523184, "external": 10417720, "arrayBuffers": 143611 },
+      { "iteration": 8, "rss": 951595008, "heapUsed": 737089208, "external": 10417720, "arrayBuffers": 143611 },
+      { "iteration": 9, "rss": 951422976, "heapUsed": 737071768, "external": 10417720, "arrayBuffers": 143611 },
+      { "iteration": 10, "rss": 956801024, "heapUsed": 758755184, "external": 10417720, "arrayBuffers": 143611 },
+      { "iteration": 11, "rss": 957984768, "heapUsed": 758841024, "external": 10417720, "arrayBuffers": 143611 },
+      { "iteration": 12, "rss": 951324672, "heapUsed": 737278968, "external": 10417720, "arrayBuffers": 143611 },
+      { "iteration": 13, "rss": 952614912, "heapUsed": 737221816, "external": 10417720, "arrayBuffers": 143611 },
+      { "iteration": 14, "rss": 952643584, "heapUsed": 737298816, "external": 10417720, "arrayBuffers": 143611 },
+      { "iteration": 15, "rss": 958124032, "heapUsed": 758903624, "external": 10417720, "arrayBuffers": 143611 },
+      { "iteration": 16, "rss": 952930304, "heapUsed": 737347056, "external": 10417720, "arrayBuffers": 143611 },
+      { "iteration": 17, "rss": 952958976, "heapUsed": 737350656, "external": 10417720, "arrayBuffers": 143611 },
+      { "iteration": 18, "rss": 952963072, "heapUsed": 737386736, "external": 10417720, "arrayBuffers": 143611 },
+      { "iteration": 19, "rss": 958693376, "heapUsed": 758962688, "external": 10417720, "arrayBuffers": 143611 },
+      { "iteration": 20, "rss": 953573376, "heapUsed": 737406600, "external": 10417720, "arrayBuffers": 143611 }
+    ]
+  },
+  "gates": {
+    "rssGrowthMaxBytes": 100663296,
+    "heapGrowthMaxBytes": 33554432
+  },
+  "status": "PASS",
+  "failures": []
+}
