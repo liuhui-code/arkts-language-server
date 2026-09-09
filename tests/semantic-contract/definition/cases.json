@@ -26,6 +26,7 @@
   {
     "id": "definition.cross-module",
     "mandatory": true,
+    "scenario": "direct",
     "evidence": { "file": "tests/semantic/semantic-characterization.test.mjs", "testName": "resolves an exact unopened definition across Harmony modules" },
     "oracleFields": ["result[].uri", "result[].range"],
     "assertions": ["Declared Harmony module boundaries retain exact unopened definition identity."]

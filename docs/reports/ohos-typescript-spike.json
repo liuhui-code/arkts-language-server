@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "status": "INCOMPLETE",
+  "status": "PASS",
   "backendRevision": "9cc62fe98f47c0bf113676e3fb33fe932b493052",
   "backendPackage": "ohos-typescript",
   "backendPackageVersion": "4.9.5-r4",
@@ -15,12 +15,12 @@
     "syntacticDiagnostics": []
   },
   "summary": {
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "totals": {
       "total": 34,
-      "passed": 21,
+      "passed": 34,
       "failed": 0,
-      "deferred": 13
+      "deferred": 0
     },
     "categories": {
       "syntax": {
@@ -29,14 +29,14 @@
         "deferred": 0
       },
       "completion": {
-        "passed": 3,
+        "passed": 4,
         "failed": 0,
-        "deferred": 1
+        "deferred": 0
       },
       "definition": {
-        "passed": 3,
+        "passed": 4,
         "failed": 0,
-        "deferred": 1
+        "deferred": 0
       },
       "references": {
         "passed": 4,
@@ -49,14 +49,14 @@
         "deferred": 0
       },
       "diagnostics": {
-        "passed": 1,
+        "passed": 3,
         "failed": 0,
-        "deferred": 2
+        "deferred": 0
       },
       "incomplete": {
-        "passed": 1,
+        "passed": 3,
         "failed": 0,
-        "deferred": 2
+        "deferred": 0
       },
       "unicode": {
         "passed": 2,
@@ -64,9 +64,9 @@
         "deferred": 0
       },
       "project-boundary": {
-        "passed": 0,
+        "passed": 7,
         "failed": 0,
-        "deferred": 7
+        "deferred": 0
       }
     },
     "semanticContractFailures": 0,
@@ -229,8 +229,23 @@
     {
       "id": "completion.sdk-hot-switch",
       "category": "completion",
-      "status": "deferred",
-      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+      "status": "passed",
+      "observations": {
+        "before": [
+          "SdkAlpha"
+        ],
+        "after": [
+          "SdkBeta"
+        ],
+        "overlayRestored": true,
+        "owner": "DocumentAuthority + SemanticCoordinator"
+      },
+      "stats": {
+        "projectFileCount": 4,
+        "snapshotReadCount": 104,
+        "uniqueSnapshotReadCount": 104,
+        "disposed": true
+      }
     },
     {
       "id": "definition.unopened-utf16",
@@ -295,8 +310,22 @@
     {
       "id": "definition.cross-module",
       "category": "definition",
-      "status": "deferred",
-      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+      "status": "passed",
+      "observations": {
+        "definition": {
+          "relativePath": "boundary/feature/service.ets",
+          "start": 13,
+          "length": 13,
+          "kind": "class",
+          "name": "RemoteService"
+        }
+      },
+      "stats": {
+        "projectFileCount": 2,
+        "snapshotReadCount": 52,
+        "uniqueSnapshotReadCount": 52,
+        "disposed": true
+      }
     },
     {
       "id": "references.barrel-unopened",
@@ -552,14 +581,37 @@
     {
       "id": "diagnostics.overlay-freshness",
       "category": "diagnostics",
-      "status": "deferred",
-      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+      "status": "passed",
+      "observations": {
+        "beforeCodes": [
+          2552
+        ],
+        "afterCodes": []
+      },
+      "stats": {
+        "projectFileCount": 1,
+        "snapshotReadCount": 102,
+        "uniqueSnapshotReadCount": 51,
+        "disposed": true
+      }
     },
     {
       "id": "diagnostics.invalid-sdk",
       "category": "diagnostics",
-      "status": "deferred",
-      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+      "status": "passed",
+      "observations": {
+        "backendCodes": [
+          2307
+        ],
+        "configurationOutcome": "arkts.sdk.configuration",
+        "owner": "ProjectGraph"
+      },
+      "stats": {
+        "projectFileCount": 1,
+        "snapshotReadCount": 51,
+        "uniqueSnapshotReadCount": 51,
+        "disposed": true
+      }
     },
     {
       "id": "incomplete.this-dot",
@@ -591,14 +643,36 @@
     {
       "id": "incomplete.completion-result-limit",
       "category": "incomplete",
-      "status": "deferred",
-      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+      "status": "passed",
+      "observations": {
+        "backendEntryCount": 129,
+        "responseEntryCount": 128,
+        "isIncomplete": true,
+        "owner": "LSP completion policy"
+      },
+      "stats": {
+        "projectFileCount": 1,
+        "snapshotReadCount": 51,
+        "uniqueSnapshotReadCount": 51,
+        "disposed": true
+      }
     },
     {
       "id": "incomplete.references-membership",
       "category": "incomplete",
-      "status": "deferred",
-      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+      "status": "passed",
+      "observations": {
+        "partialBackendCount": 2,
+        "completeBackendCount": 3,
+        "partialPolicyOutcome": "unavailable",
+        "owner": "ProjectGraph + SemanticCoordinator"
+      },
+      "stats": {
+        "projectFileCount": 5,
+        "snapshotReadCount": 105,
+        "uniqueSnapshotReadCount": 105,
+        "disposed": true
+      }
     },
     {
       "id": "unicode.non-bmp-position",
@@ -649,44 +723,129 @@
     {
       "id": "project-boundary.declared-module",
       "category": "project-boundary",
-      "status": "deferred",
-      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+      "status": "passed",
+      "observations": {
+        "definition": {
+          "relativePath": "boundary/declared/service.ets",
+          "start": 13,
+          "length": 15,
+          "kind": "class",
+          "name": "DeclaredService"
+        }
+      },
+      "stats": {
+        "projectFileCount": 2,
+        "snapshotReadCount": 52,
+        "uniqueSnapshotReadCount": 52,
+        "disposed": true
+      }
     },
     {
       "id": "project-boundary.ghost-module",
       "category": "project-boundary",
-      "status": "deferred",
-      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+      "status": "passed",
+      "observations": {
+        "activeVisible": true,
+        "ghostVisible": false,
+        "owner": "ProjectGraph file set"
+      },
+      "stats": {
+        "projectFileCount": 2,
+        "snapshotReadCount": 52,
+        "uniqueSnapshotReadCount": 52,
+        "disposed": true
+      }
     },
     {
       "id": "project-boundary.inactive-target",
       "category": "project-boundary",
-      "status": "deferred",
-      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+      "status": "passed",
+      "observations": {
+        "active": [
+          "TargetActive"
+        ],
+        "excluded": [
+          "TargetInactive"
+        ],
+        "owner": "ProjectGraph"
+      },
+      "stats": {
+        "projectFileCount": 2,
+        "snapshotReadCount": 52,
+        "uniqueSnapshotReadCount": 52,
+        "disposed": true
+      }
     },
     {
       "id": "project-boundary.target-membership",
       "category": "project-boundary",
-      "status": "deferred",
-      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+      "status": "passed",
+      "observations": {
+        "warm": [
+          "TargetNew"
+        ],
+        "fresh": [
+          "TargetNew"
+        ],
+        "equal": true
+      },
+      "stats": {
+        "projectFileCount": 2,
+        "snapshotReadCount": 104,
+        "uniqueSnapshotReadCount": 53,
+        "disposed": true
+      }
     },
     {
       "id": "project-boundary.overlay-authority",
       "category": "project-boundary",
-      "status": "deferred",
-      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+      "status": "passed",
+      "observations": {
+        "openDefinition": "OverlayValue",
+        "closedDefinition": "DiskValue"
+      },
+      "stats": {
+        "projectFileCount": 2,
+        "snapshotReadCount": 104,
+        "uniqueSnapshotReadCount": 52,
+        "disposed": true
+      }
     },
     {
       "id": "project-boundary.watcher-freshness",
       "category": "project-boundary",
-      "status": "deferred",
-      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+      "status": "passed",
+      "observations": {
+        "createVisible": true,
+        "changeVisible": true,
+        "deletedTargetVisible": false,
+        "remainingLocalAliasDefinitions": 1,
+        "diagnosticCodes": [
+          2307
+        ]
+      },
+      "stats": {
+        "projectFileCount": 1,
+        "snapshotReadCount": 155,
+        "uniqueSnapshotReadCount": 52,
+        "disposed": true
+      }
     },
     {
       "id": "project-boundary.catalog-identity",
       "category": "project-boundary",
-      "status": "deferred",
-      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+      "status": "passed",
+      "observations": {
+        "beforeKind": "class",
+        "afterKind": "interface",
+        "owner": "ProjectGraph catalog revision"
+      },
+      "stats": {
+        "projectFileCount": 2,
+        "snapshotReadCount": 104,
+        "uniqueSnapshotReadCount": 52,
+        "disposed": true
+      }
     }
   ]
 }

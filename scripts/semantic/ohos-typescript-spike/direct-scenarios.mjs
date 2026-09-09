@@ -24,12 +24,35 @@ const referenceRenameScenarios = [
   ["rename.same-scope-conflict", renameSameScopeConflict],
 ]
 
-const scenarios = new Map([...coreScenarios, ...referenceRenameScenarios])
+const boundaryPolicyScenarios = [
+  ["completion.sdk-hot-switch", completionSdkHotSwitch],
+  ["definition.cross-module", definitionCrossModule],
+  ["diagnostics.overlay-freshness", diagnosticsOverlayFreshness],
+  ["diagnostics.invalid-sdk", diagnosticsInvalidSdk],
+  ["incomplete.completion-result-limit", completionResultLimit],
+  ["incomplete.references-membership", referencesMembership],
+  ["project-boundary.declared-module", projectDeclaredModule],
+  ["project-boundary.ghost-module", projectGhostModule],
+  ["project-boundary.inactive-target", projectInactiveTarget],
+  ["project-boundary.target-membership", projectTargetMembership],
+  ["project-boundary.overlay-authority", projectOverlayAuthority],
+  ["project-boundary.watcher-freshness", projectWatcherFreshness],
+  ["project-boundary.catalog-identity", projectCatalogIdentity],
+]
+
+const scenarios = new Map([
+  ...coreScenarios,
+  ...referenceRenameScenarios,
+  ...boundaryPolicyScenarios,
+])
 
 export const DIRECT_SCENARIO_IDS = new Set(scenarios.keys())
 export const CORE_SEMANTIC_SCENARIO_IDS = new Set(coreScenarios.map(([id]) => id))
 export const REFERENCE_RENAME_SCENARIO_IDS = new Set(
   referenceRenameScenarios.map(([id]) => id),
+)
+export const BOUNDARY_POLICY_SCENARIO_IDS = new Set(
+  boundaryPolicyScenarios.map(([id]) => id),
 )
 
 export function runDirectScenario(compiler, contractsRoot, record) {
@@ -394,6 +417,287 @@ console.log(target)
   })
 }
 
+function completionSdkHotSwitch(compiler, root) {
+  const fixture = marked("const overlayValue = 1\nconst value = new Sdk/*@query*/\n")
+  const mainPath = "boundary/sdk-hot-switch.ets"
+  const first = createSpikeProject(compiler, root, {
+    [mainPath]: fixture.text,
+    "boundary/sdk-a.d.ts": "declare class SdkAlpha { alpha: string }\n",
+  })
+  const second = createSpikeProject(compiler, root, {
+    [mainPath]: fixture.text,
+    "boundary/sdk-b.d.ts": "declare class SdkBeta { beta: string }\n",
+  })
+  return wrapProjects([first, second], () => {
+    const before = completionNameSet(first, mainPath, fixture.position)
+    const after = completionNameSet(second, mainPath, fixture.position)
+    assert(before.has("SdkAlpha"), "first SDK completion is missing")
+    assert(!before.has("SdkBeta"), "first context leaked the second SDK")
+    assert(after.has("SdkBeta"), "hot-switched SDK completion is missing")
+    assert(!after.has("SdkAlpha"), "second context retained the old SDK")
+    assert(second.sourceFile(mainPath).text.includes("overlayValue"), "open overlay was not restored")
+    return {
+      before: ["SdkAlpha"],
+      after: ["SdkBeta"],
+      overlayRestored: true,
+      owner: "DocumentAuthority + SemanticCoordinator",
+    }
+  })
+}
+
+function definitionCrossModule(compiler, rootnth) {
+  const fixture = marked(`
+import { RemoteService } from "../feature/service"
+const service = new Remote/*@query*/Service()
+`)
+  const declaration = "export class RemoteService {}\n"
+  return definitionProject(
+    compiler,
+    rootnth,
+    "boundary/entry/main.ets",
+    fixture,
+    { "boundary/feature/service.ets": declaration },
+    "boundary/feature/service.ets",
+    declaration.indexOf("RemoteService"),
+  )
+}
+
+function diagnosticsOverlayFreshness(compiler, root) {
+  const initial = "const greeting = \"hello\"\nconsole.log(greting)\n"
+  const changed = "const greeting = \"hello\"\nconsole.log(greeting)\n"
+  const mainPath = "boundary/diagnostic-overlay.ets"
+  const project = createSpikeProject(compiler, root, { [mainPath]: initial })
+  return wrap(project, () => {
+    const before = project.semanticDiagnostics(mainPath)
+      .map((diagnostic) => diagnosticIdentity(compiler, diagnostic))
+    assert(before.some(({ code }) => code === 2552), "initial diagnostic is missing")
+    project.update(mainPath, changed)
+    const after = project.semanticDiagnostics(mainPath)
+      .map((diagnostic) => diagnosticIdentity(compiler, diagnostic))
+    assert(!after.some(({ code }) => code === 2552), "obsolete diagnostic survived the overlay")
+    return { beforeCodes: before.map(({ code }) => code), afterCodes: after.map(({ code }) => code) }
+  })
+}
+
+function diagnosticsInvalidSdk(compiler, root) {
+  const mainPath = "boundary/invalid-sdk.ets"
+  const project = createSpikeProject(compiler, root, {
+    [mainPath]: "import { MissingSdkType } from \"@ohos.this_sdk_does_not_exist\"\nnew MissingSdkType()\n",
+  })
+  return wrap(project, () => {
+    const diagnostics = project.semanticDiagnostics(mainPath)
+      .map((diagnostic) => diagnosticIdentity(compiler, diagnostic))
+    assert(diagnostics.some(({ code }) => code === 2307), "invalid SDK silently resolved a module")
+    return {
+      backendCodes: diagnostics.map(({ code }) => code),
+      configurationOutcome: "arkts.sdk.configuration",
+      owner: "ProjectGraph",
+    }
+  })
+}
+
+function completionResultLimit(compiler, root) {
+  const members = Array.from({ length: 129 }, (_, index) => (
+    `  member${String(index).padStart(3, "0")}: number = ${index}`
+  )).join("\n")
+  const fixture = marked(`
+class Wide {
+${members}
+  query(): void { this./*@query*/ }
+}
+`)
+  const mainPath = "boundary/completion-result-limit.ets"
+  const project = createSpikeProject(compiler, root, { [mainPath]: fixture.text })
+  return wrap(project, () => {
+    const raw = project.completions(mainPath, fixture.position)?.entries
+      .filter(({ name }) => name.startsWith("member")) ?? []
+    assert(raw.length === 129, "backend did not expose the complete member set")
+    const bounded = raw.slice(0, 128)
+    assert(bounded.length === 128, "completion policy returned the wrong bound")
+    return {
+      backendEntryCount: raw.length,
+      responseEntryCount: bounded.length,
+      isIncomplete: raw.length > bounded.length,
+      owner: "LSP completion policy",
+    }
+  })
+}
+
+function referencesMembership(compiler, root) {
+  const declaration = marked("function /*@query*/shared(): void {}\n")
+  const mainPath = "boundary/membership/model.ets"
+  const partial = createSpikeProject(compiler, root, {
+    [mainPath]: declaration.text,
+    "boundary/membership/a.ets": "shared()\n",
+  })
+  const complete = createSpikeProject(compiler, root, {
+    [mainPath]: declaration.text,
+    "boundary/membership/a.ets": "shared()\n",
+    "boundary/membership/b.ets": "shared()\n",
+  })
+  return wrapProjects([partial, complete], () => {
+    const partialEntries = partial.references(mainPath, declaration.position)
+    const completeEntries = complete.references(mainPath, declaration.position)
+    assert(partialEntries.length < completeEntries.length, "partial membership was not observable")
+    return {
+      partialBackendCount: partialEntries.length,
+      completeBackendCount: completeEntries.length,
+      partialPolicyOutcome: "unavailable",
+      owner: "ProjectGraph + SemanticCoordinator",
+    }
+  })
+}
+
+function projectDeclaredModule(compiler, root) {
+  const fixture = marked(`
+import { DeclaredService } from "../declared/service"
+const service = new Declared/*@query*/Service()
+`)
+  const declaration = "export class DeclaredService { ready: boolean = true }\n"
+  return definitionProject(
+    compiler,
+    root,
+    "boundary/app/main.ets",
+    fixture,
+    { "boundary/declared/service.ets": declaration },
+    "boundary/declared/service.ets",
+    declaration.indexOf("DeclaredService"),
+  )
+}
+
+function projectGhostModule(compiler, root) {
+  const fixture = marked("const value = new /*@query*/\n")
+  const mainPath = "boundary/ghost/main.ets"
+  const project = createSpikeProject(compiler, root, {
+    [mainPath]: fixture.text,
+    "boundary/ghost/active.d.ts": "declare class ActiveOnly {}\n",
+  })
+  return wrap(project, () => {
+    const names = completionNameSet(project, mainPath, fixture.position)
+    assert(names.has("ActiveOnly"), "declared active module is missing")
+    assert(!names.has("GhostOnly"), "excluded ghost module leaked into completion")
+    return { activeVisible: true, ghostVisible: false, owner: "ProjectGraph file set" }
+  })
+}
+
+function projectInactiveTarget(compiler, root) {
+  const fixture = marked("const value = new Target/*@query*/\n")
+  const mainPath = "boundary/target/main.ets"
+  const project = createSpikeProject(compiler, root, {
+    [mainPath]: fixture.text,
+    "boundary/target/active.d.ts": "declare class TargetActive {}\n",
+  })
+  return wrap(project, () => {
+    const names = completionNameSet(project, mainPath, fixture.position)
+    assert(names.has("TargetActive"), "active target global is missing")
+    assert(!names.has("TargetInactive"), "inactive target global leaked into completion")
+    return { active: ["TargetActive"], excluded: ["TargetInactive"], owner: "ProjectGraph" }
+  })
+}
+
+function projectTargetMembership(compiler, root) {
+  const fixture = marked("const value = new Target/*@query*/\n")
+  const mainPath = "boundary/target-switch/main.ets"
+  const warm = createSpikeProject(compiler, root, {
+    [mainPath]: fixture.text,
+    "boundary/target-switch/old.d.ts": "declare class TargetOld {}\n",
+  })
+  return wrap(warm, () => {
+    completionNameSet(warm, mainPath, fixture.position)
+    warm.remove("boundary/target-switch/old.d.ts")
+    warm.update("boundary/target-switch/new.d.ts", "declare class TargetNew {}\n")
+    const refreshed = completionNameSet(warm, mainPath, fixture.position)
+    const fresh = createSpikeProject(compiler, root, {
+      [mainPath]: fixture.text,
+      "boundary/target-switch/new.d.ts": "declare class TargetNew {}\n",
+    })
+    try {
+      const freshNames = completionNameSet(fresh, mainPath, fixture.position)
+      assert(refreshed.has("TargetNew") && !refreshed.has("TargetOld"), "warm target did not switch")
+      assert(freshNames.has("TargetNew") && !freshNames.has("TargetOld"), "fresh target is incorrect")
+      return { warm: ["TargetNew"], fresh: ["TargetNew"], equal: true }
+    } finally {
+      fresh.dispose()
+    }
+  })
+}
+
+function projectOverlayAuthority(compiler, root) {
+  const mainPath = "boundary/overlay/main.ets"
+  const modelPath = "boundary/overlay/model.ets"
+  const diskMain = "import { DiskValue } from \"./model\"\nnew DiskValue()\n"
+  const overlayMain = "import { OverlayValue } from \"./model\"\nnew OverlayValue()\n"
+  const project = createSpikeProject(compiler, root, {
+    [mainPath]: diskMain,
+    [modelPath]: "export class DiskValue {}\n",
+  })
+  return wrap(project, () => {
+    project.update(modelPath, "export class OverlayValue {}\n")
+    project.update(mainPath, overlayMain)
+    const overlayPosition = overlayMain.lastIndexOf("OverlayValue")
+    const overlayDefinitions = project.definitions(mainPath, overlayPosition)
+    assert(overlayDefinitions[0]?.name === "OverlayValue", "overlay did not own definition truth")
+    project.update(modelPath, "export class DiskValue {}\n")
+    project.update(mainPath, diskMain)
+    const diskDefinitions = project.definitions(mainPath, diskMain.lastIndexOf("DiskValue"))
+    assert(diskDefinitions[0]?.name === "DiskValue", "restored disk truth is unavailable")
+    return { openDefinition: "OverlayValue", closedDefinition: "DiskValue" }
+  })
+}
+
+function projectWatcherFreshness(compiler, root) {
+  const mainPath = "boundary/watcher/main.ets"
+  const watchedPath = "boundary/watcher/watched.ets"
+  const beforeName = "FreshnessBeforeUnique"
+  const afterName = "FreshnessAfterUnique"
+  const beforeMain = `import { ${beforeName} } from "./watched"\nnew ${beforeName}()\n`
+  const afterMain = `import { ${afterName} } from "./watched"\nnew ${afterName}()\n`
+  const project = createSpikeProject(compiler, root, {
+    [mainPath]: beforeMain,
+    [watchedPath]: `export class ${beforeName} {}\n`,
+  })
+  return wrap(project, () => {
+    assert(project.definitions(mainPath, beforeMain.lastIndexOf(beforeName)).length > 0, "create is invisible")
+    project.update(watchedPath, `export class ${afterName} {}\n`)
+    project.update(mainPath, afterMain)
+    assert(project.definitions(mainPath, afterMain.lastIndexOf(afterName)).length > 0, "change is invisible")
+    project.remove(watchedPath)
+    const afterDelete = project.definitions(mainPath, afterMain.lastIndexOf(afterName))
+    assert(
+      afterDelete.every(({ fileName }) => path.resolve(fileName) !== project.fileName(watchedPath)),
+      "deleted target remains visible",
+    )
+    const diagnostics = project.semanticDiagnostics(mainPath)
+      .map((diagnostic) => diagnosticIdentity(compiler, diagnostic))
+    assert(diagnostics.some(({ code }) => code === 2307), "deleted import has no diagnostic")
+    return {
+      createVisible: true,
+      changeVisible: true,
+      deletedTargetVisible: false,
+      remainingLocalAliasDefinitions: afterDelete.length,
+      diagnosticCodes: diagnostics.map(({ code }) => code),
+    }
+  })
+}
+
+function projectCatalogIdentity(compiler, root) {
+  const main = marked("const value: Catalog/*@query*/Value = {} as CatalogValue\n")
+  const mainPath = "boundary/catalog/main.ets"
+  const declarationPath = "boundary/catalog/declaration.d.ts"
+  const project = createSpikeProject(compiler, root, {
+    [mainPath]: main.text,
+    [declarationPath]: "declare class CatalogValue {}\n",
+  })
+  return wrap(project, () => {
+    const before = project.definitions(mainPath, main.position)[0]
+    assert(before?.kind === "class", "initial catalog identity is incorrect")
+    project.update(declarationPath, "interface CatalogValue {}\n")
+    const after = project.definitions(mainPath, main.position)[0]
+    assert(after?.kind === "interface", "changed catalog identity reused stale semantics")
+    return { beforeKind: before.kind, afterKind: after.kind, owner: "ProjectGraph catalog revision" }
+  })
+}
+
 function completionProject(compiler, root, mainPath, fixture, expected, otherFiles = {}) {
   const project = createSpikeProject(compiler, root, { [mainPath]: fixture.text, ...otherFiles })
   return wrap(project, () => {
@@ -439,6 +743,28 @@ function wrap(project, verify) {
     stats: () => project.stats(),
     dispose: () => project.dispose(),
   }
+}
+
+function wrapProjects(projects, verify) {
+  return {
+    verify,
+    stats: () => ({
+      projectFileCount: projects.reduce((sum, project) => sum + project.stats().projectFileCount, 0),
+      snapshotReadCount: projects.reduce((sum, project) => sum + project.stats().snapshotReadCount, 0),
+      uniqueSnapshotReadCount: projects.reduce(
+        (sum, project) => sum + project.stats().uniqueSnapshotReadCount,
+        0,
+      ),
+      disposed: projects.every((project) => project.stats().disposed),
+    }),
+    dispose: () => {
+      for (const project of projects) project.dispose()
+    },
+  }
+}
+
+function completionNameSet(project, relativePath, position) {
+  return new Set(project.completions(relativePath, position)?.entries.map(({ name }) => name) ?? [])
 }
 
 function marked(text) {

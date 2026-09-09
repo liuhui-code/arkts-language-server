@@ -9,6 +9,7 @@ import {
   summarizeSpikeResults,
 } from "../scripts/semantic/ohos-typescript-spike/spike-report.mjs"
 import {
+  BOUNDARY_POLICY_SCENARIO_IDS,
   CORE_SEMANTIC_SCENARIO_IDS,
   DIRECT_SCENARIO_IDS,
   REFERENCE_RENAME_SCENARIO_IDS,
@@ -65,17 +66,17 @@ test("PASS requires the minimum case count and every required category without d
   assert.equal(summary.semanticContractFailures, 0)
 })
 
-test("the committed spike report remains explicitly incomplete until every contract executes", () => {
+test("the committed spike report passes only after every contract executes", () => {
   const reportPath = path.join(projectRoot, "docs", "reports", "ohos-typescript-spike.json")
   const reportBytes = fs.readFileSync(reportPath)
   assert.ok(reportBytes.length <= 64 * 1024)
   assert.equal(reportBytes.includes(Buffer.from(projectRoot)), false)
   const report = JSON.parse(reportBytes.toString("utf8"))
-  assert.equal(report.status, "INCOMPLETE")
+  assert.equal(report.status, "PASS")
   assert.equal(report.summary.totals.total, 34)
-  assert.equal(report.summary.totals.passed, 21)
+  assert.equal(report.summary.totals.passed, 34)
   assert.equal(report.summary.totals.failed, 0)
-  assert.equal(report.summary.totals.deferred, 13)
+  assert.equal(report.summary.totals.deferred, 0)
   assert.equal(report.backendRevision, "9cc62fe98f47c0bf113676e3fb33fe932b493052")
   assert.equal(
     report.sdkDeclarationDigest,
@@ -117,6 +118,27 @@ test("references and rename contracts have direct official-backend scenarios", (
       "rename.explicit-barrel-alias",
       "rename.non-bmp-prepare",
       "rename.same-scope-conflict",
+    ],
+  )
+})
+
+test("freshness and project-boundary contracts have direct backend scenarios", () => {
+  assert.deepEqual(
+    [...BOUNDARY_POLICY_SCENARIO_IDS].sort(),
+    [
+      "completion.sdk-hot-switch",
+      "definition.cross-module",
+      "diagnostics.invalid-sdk",
+      "diagnostics.overlay-freshness",
+      "incomplete.completion-result-limit",
+      "incomplete.references-membership",
+      "project-boundary.catalog-identity",
+      "project-boundary.declared-module",
+      "project-boundary.ghost-module",
+      "project-boundary.inactive-target",
+      "project-boundary.overlay-authority",
+      "project-boundary.target-membership",
+      "project-boundary.watcher-freshness",
     ],
   )
 })
