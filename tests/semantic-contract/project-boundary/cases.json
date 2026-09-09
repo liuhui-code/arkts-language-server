@@ -2,6 +2,7 @@
   {
     "id": "project-boundary.declared-module",
     "mandatory": true,
+    "scenario": "direct",
     "evidence": { "file": "tests/semantic/project-target-membership.test.mjs", "testName": "module-root entries and installed package dependency closures remain available" },
     "oracleFields": ["definition.uri", "completion.items[].label", "diagnostics"],
     "assertions": ["Declared module roots and dependency closures remain semantically visible."]
@@ -9,6 +10,7 @@
   {
     "id": "project-boundary.ghost-module",
     "mandatory": true,
+    "scenario": "direct",
     "evidence": { "file": "tests/semantic/project-target-membership.test.mjs", "testName": "project membership prunes inactive directories before enumeration or source reads" },
     "oracleFields": ["membership.paths", "filesystemAccesses"],
     "assertions": ["Undeclared ghost modules are excluded before semantic enumeration or reads."]
@@ -16,6 +18,7 @@
   {
     "id": "project-boundary.inactive-target",
     "mandatory": true,
+    "scenario": "direct",
     "evidence": { "file": "tests/semantic/project-target-membership.test.mjs", "testName": "completion does not expose globals from an inactive target source directory" },
     "oracleFields": ["completion.items[].label", "isIncomplete"],
     "assertions": ["Inactive target globals never appear in active target completion."]
@@ -23,6 +26,7 @@
   {
     "id": "project-boundary.target-membership",
     "mandatory": true,
+    "scenario": "direct",
     "evidence": { "file": "tests/semantic/project-target-membership.test.mjs", "testName": "a watched target switch replaces membership and matches a fresh session" },
     "oracleFields": ["warm", "fresh", "membership"],
     "assertions": ["A watched target switch replaces membership and equals a fresh process result."]
@@ -30,6 +34,7 @@
   {
     "id": "project-boundary.overlay-authority",
     "mandatory": true,
+    "scenario": "direct",
     "evidence": { "file": "tests/semantic/local-package-resolution.test.mjs", "testName": "an open workspace alias owns a relative import until the overlay closes" },
     "oracleFields": ["openDefinition", "closedDefinition", "uri", "range"],
     "assertions": ["An open overlay is authoritative across path aliases until close restores disk truth."]
@@ -37,6 +42,7 @@
   {
     "id": "project-boundary.watcher-freshness",
     "mandatory": true,
+    "scenario": "direct",
     "evidence": { "file": "tests/lsp-workspace-file-changes.test.mjs", "testName": "watched create delete and rename are visible to the immediately following semantic request" },
     "oracleFields": ["createDefinition", "deleteDefinition", "renameDefinition"],
     "assertions": ["Watched create, delete, and rename are visible to the next semantic request."]
@@ -44,6 +50,7 @@
   {
     "id": "project-boundary.catalog-identity",
     "mandatory": true,
+    "scenario": "direct",
     "evidence": { "file": "tests/project-file-set-cache.test.mjs", "testName": "advances the catalog revision when a member identity changes" },
     "oracleFields": ["catalogRevision", "memberIdentity"],
     "assertions": ["A changed member identity advances catalog generation without stale semantic reuse."]

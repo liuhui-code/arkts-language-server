@@ -26,6 +26,7 @@
   {
     "id": "completion.sdk-hot-switch",
     "mandatory": true,
+    "scenario": "direct",
     "evidence": { "file": "tests/semantic/project-sdk-selection.test.mjs", "testName": "Zed runtime SDK configuration rebuilds semantics without losing the open overlay" },
     "oracleFields": ["definition.uri", "completion.items[].label", "diagnostics[].code"],
     "assertions": ["A hot SDK switch changes completion and diagnostics while preserving the open overlay."]

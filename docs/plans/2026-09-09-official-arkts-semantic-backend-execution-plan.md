@@ -1,7 +1,7 @@
 # Zed + ArkTS Language Server：官方语义后端与超大型工程低内存执行计划
 
-状态：当前权威执行计划；Foundation、S1、S2a、S2b core semantic batch 已完成；
-S2c references/rename batch 已完成，hard gate 仍关闭（21/34 executed，13 deferred）。
+状态：当前权威执行计划；Foundation 与 S1–S2d semantic contract 已完成（34/34 PASS）；
+Backend Spike lifecycle/memory gate 仍关闭，production cutover 尚未开始。
 
 计划基线：`e90cacb9ace47292ac0869d09b3a64f7c7fe2144`（P2.1b，PR #5）。
 
@@ -464,8 +464,8 @@ S2a 完成证据（2026-09-09）：
 - [x] report hard-bound 为 64 KiB，context 在记录 stats 前已经 dispose；
 - [x] 默认命令对 INCOMPLETE 返回 42；仅显式 allow-incomplete 可保存阶段证据；
 - [x] `pnpm check:fast`：847/847，0 fail/cancel/skip/todo；
-- [ ] 其余 29 个公共 transcript 尚未转成 direct official-backend scenario，故
-  [spike report](../reports/ohos-typescript-spike.json) 明确为 INCOMPLETE，不得进入 cutover。
+- [x] 其余 29 个公共 transcript 已由 S2b–S2d 转成 direct official-backend scenario；
+  S2a 当时的 INCOMPLETE 状态未被改写或跳过。
 
 this-dot 编辑尾部当前观测到 TS1003，但 DevEco oracle 尚未确认，因此 S2a 只以 completion
 可用性作 gate，不把“无诊断”伪造成已确认合同。RED/GREEN 记录见
@@ -499,11 +499,42 @@ S2c references/rename batch 完成证据（2026-09-09）：
 - [x] 当前 [spike report](../reports/ohos-typescript-spike.json) 为 21 passed、0 failed、
   13 deferred，仍为 INCOMPLETE；
 - [x] `pnpm check:fast`：849/849，0 fail/cancel/skip/todo；
-- [ ] SDK hot switch、diagnostic freshness、result-limit policy、partial-membership fail-closed 与
-  project-boundary 仍需 direct scenario。
+- [x] SDK hot switch、diagnostic freshness、result-limit policy、partial-membership fail-closed 与
+  project-boundary 已由 S2d 直接执行。
 
 RED/GREEN 与可复现命令见
 [Backend Spike S2c references/rename TDD 记录](../tdd/backend-spike-references-rename.md)。
+
+S2d ownership-boundary batch 完成证据（2026-09-09）：
+
+- [x] SDK context 切换只保留 DocumentAuthority 提供的 overlay，旧 SDK global 不泄漏；
+- [x] cross-module definition 与 overlay diagnostic freshness 直接通过 backend；
+- [x] invalid SDK 不发生隐式 fallback，并明确由 ProjectGraph 生成配置诊断；
+- [x] backend 返回 129 个完整 completion candidate，LSP policy 截为 128 并标 incomplete；
+- [x] partial/complete membership 对照证明 Coordinator 必须在 partial 时 fail closed；
+- [x] declared/ghost/inactive/target-switch file set 按 ProjectGraph ownership 隔离；
+- [x] overlay、watcher create/change/delete 与 catalog identity 均在下一 backend query 可见；
+- [x] [spike report](../reports/ohos-typescript-spike.json) 为 `PASS`：34 passed、0 failed、
+  0 deferred、position mapping failure 0、target visibility failure 0；
+- [x] 所有 direct context 均在 report stats 前 dispose，报告不含本机绝对路径；
+- [x] `pnpm check:fast`：850/850，0 fail/cancel/skip/todo；
+- [ ] 20 次 context lifecycle churn 与进程 memory 回落仍需 S3 通过，未授权 cutover。
+
+RED/GREEN 与可复现命令见
+[Backend Spike S2d boundary contracts TDD 记录](../tdd/backend-spike-boundary-contracts.md)。
+
+### S3：lifecycle 与 memory spike
+
+S2d 只关闭 semantic correctness gate。进入 Backend Cutover 前必须继续满足：
+
+- [ ] 同一 SDK/context identity 的稳定查询不重复读取完整 SDK declaration set；
+- [ ] 普通 overlay comment edit 不触发全 SDK/全项目无界重建；
+- [ ] 连续 20 次 context create/query/dispose 不出现无界 RSS/heap 增长；
+- [ ] `cleanupSemanticCache()`/`dispose()` 的释放范围与 registry reference lifecycle 有机器证据；
+- [ ] 删除、SDK switch 与 target switch 的重建策略保留最新 overlay；
+- [ ] lifecycle/memory report 与固定阈值进入 fast 或显式 acceptance gate。
+
+S3 任一项失败时 Backend Cutover 保持关闭；不得以 regex rewrite 或双 backend 常驻规避。
 
 ## 11. Backend Cutover 清单
 

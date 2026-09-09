@@ -12,6 +12,7 @@
   {
     "id": "incomplete.completion-result-limit",
     "mandatory": true,
+    "scenario": "direct",
     "evidence": { "file": "tests/semantic/semantic-characterization.test.mjs", "testName": "reports an incomplete ordered completion list when TypeScript has more than 128 members" },
     "oracleFields": ["isIncomplete", "items.length", "items[].sortText"],
     "assertions": ["A bounded completion response declares incompleteness and preserves deterministic ordering."]
@@ -19,6 +20,7 @@
   {
     "id": "incomplete.references-membership",
     "mandatory": true,
+    "scenario": "direct",
     "evidence": { "file": "tests/semantic/references-completeness.test.mjs", "testName": "fails references closed when public workspace membership is partial" },
     "oracleFields": ["error.code", "error.message", "result"],
     "assertions": ["References fail closed instead of returning a partial result when membership is incomplete."]
