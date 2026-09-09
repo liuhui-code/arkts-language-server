@@ -45,6 +45,7 @@ Focused and repository evidence:
 product-gate + layer-manifest: 11/11 passed
 pnpm check:fast: 876/876 passed, 0 fail/cancel/skip/todo
 generated fixture disk use: 1.8 GiB (development host; not a release metric)
+canonical validate: run 34355082083 PASS; PR #20 merged as 0e820e2
 ```
 
 ## Current release evidence boundary
