@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-09-10",
+  "platform": {
+    "os": "macOS 26.6.2",
+    "build": "25G83",
+    "kernel": "Darwin 25.6.0 x86_64",
+    "cpu": "Intel(R) Core(TM) i7-9750H CPU @ 2.60GHz",
+    "physicalMemoryBytes": 17179869184
+  },
+  "zed": {
+    "version": "1.18.0",
+    "application": "/Applications/Zed.app",
+    "profile": "isolated"
+  },
+  "deveco": {
+    "version": "6.1.1.280",
+    "build": "DS-243.24978.46.36.611280",
+    "workflowStatus": "not-run"
+  },
+  "sdk": {
+    "apiLevel": 24,
+    "componentVersion": "6.1.1.125",
+    "declarationDigest": "8098b8abbc6b06fce0e7322d6f8f82a5bbce41e847dbd39e9a98811a33d4c6e4"
+  },
+  "candidateRevision": "caf0f5828600c2a19b7cdb361d26a0e54cc7a215"
+}

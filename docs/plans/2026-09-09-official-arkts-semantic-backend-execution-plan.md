@@ -752,6 +752,15 @@ DevEco 对照固定 IDE/JDK/SDK/workspace/config 和进程集合，不含 emulat
   scaling、eviction 与 latency gate，identity/workflow 不一致时 fail closed；
 - [x] [Product Gate benchmark protocol](../benchmarks/product-gate.md) 固定生成、环境、工作流、
   进程归属和最终命令；
+- [x] macOS 上完成 API 24、455-file 真实工程与 10k/100k 的 3/10/5 生产 stdio E2E；100k
+  completion/definition/references/edit/L3 rebuild 全绿，详见
+  [Mac Product Gate 摘要](../reports/macos-product-gate-summary.md)；
+- [x] 隔离 Zed 1.18.0 profile 打开 100k workspace，catalog 100000/100000，Zed 自动语义请求、
+  server/sidecar 进程链及 `.zed/settings.json` 自定义 API 24 SDK 均已验证；
+- [x] 修正 fixture ownership：无关文件位于声明 module 之外；10k/100k 的 semantic project
+  file count 均固定为 201，steady RSS 比率 1.034；
+- [ ] macOS L3 后 RSS 回落仍为 initial warm 的 1.282，高于 1.20 目标；需用 heap/PSS 继续区分
+  live retention 与 allocator retained pages；
 - [ ] 固定 Linux/cgroup 环境完成 Zed + server + sidecar 的 3/10/5 测量；
 - [ ] 同一 identity 下完成首次 DevEco UI workflow 与进程归属确认；
 - [ ] `memory-zed-arkts.json` / `memory-deveco.json` 通过两行 release gate；

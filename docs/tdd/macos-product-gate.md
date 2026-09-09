@@ -2,6 +2,8 @@
 
 Parent revision: `eea12f024b0c767aa6eb96161fb8de3f027bd10f`.
 
+Final verification candidate: `caf0f5828600c2a19b7cdb361d26a0e54cc7a215`.
+
 ## RED 1 — the unrelated fixture was inside the active module
 
 ```text

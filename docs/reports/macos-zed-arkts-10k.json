@@ -1,0 +1,483 @@
+{
+  "schemaVersion": 1,
+  "measurementStatus": "complete",
+  "measurementKind": "macos-rss-development-gate",
+  "releasePssComparable": false,
+  "comparisonIdentity": {
+    "gitRevision": "caf0f5828600c2a19b7cdb361d26a0e54cc7a215",
+    "sdkApiLevel": 24,
+    "sdkDeclarationDigest": "8098b8abbc6b06fce0e7322d6f8f82a5bbce41e847dbd39e9a98811a33d4c6e4",
+    "workspaceManifestDigest": "e927f96066f5937814edd4ed310f0756d6b7514a2a218b58ca1d1a6be9e67a8d",
+    "workspaceFiles": 10000,
+    "activeDependencyFiles": 200,
+    "platform": "Darwin 25.6.0 x64"
+  },
+  "workflowRuns": {
+    "cold": 3,
+    "warm": 10,
+    "stress": 5
+  },
+  "correctness": {
+    "failures": 0,
+    "operationsPerRun": [
+      "completion",
+      "definition",
+      "references",
+      "edit-comment",
+      "completion"
+    ],
+    "stressModuleVisits": 20
+  },
+  "memory": {
+    "steadyWarmRssBytes": 416712704,
+    "peakRssBytes": 452009984,
+    "initialWarmRssBytes": 414945280,
+    "postEvictionRssBytes": 443203584
+  },
+  "latency": {
+    "warmCompletionP95Ms": 2395.4514470000013,
+    "warmDefinitionP95Ms": 134.763251999997,
+    "warmReferencesP95Ms": 168.77419499999814
+  },
+  "runs": [
+    {
+      "kind": "cold",
+      "index": 0,
+      "indexedFiles": 10000,
+      "latency": {
+        "initializeAndIndexMs": 2943.6805759999997,
+        "completionMs": 2397.339516,
+        "definitionMs": 118.93359800000053,
+        "referencesMs": 162.56912399999965,
+        "editedCompletionMs": 134.01912400000037
+      },
+      "memory": {
+        "peakProductRssBytes": 407822336,
+        "finalProductRssBytes": 407822336,
+        "sampleCount": 18,
+        "maxProcessCount": 2
+      },
+      "semantic": {
+        "maxResidentContexts": 1,
+        "maxProjectFiles": 201,
+        "maxOpenDocuments": 1,
+        "level3Observed": false
+      }
+    },
+    {
+      "kind": "cold",
+      "index": 1,
+      "indexedFiles": 10000,
+      "latency": {
+        "initializeAndIndexMs": 846.890907,
+        "completionMs": 2363.3618400000005,
+        "definitionMs": 116.91299400000025,
+        "referencesMs": 161.6045699999995,
+        "editedCompletionMs": 140.2756819999995
+      },
+      "memory": {
+        "peakProductRssBytes": 409636864,
+        "finalProductRssBytes": 409636864,
+        "sampleCount": 11,
+        "maxProcessCount": 2
+      },
+      "semantic": {
+        "maxResidentContexts": 1,
+        "maxProjectFiles": 201,
+        "maxOpenDocuments": 1,
+        "level3Observed": false
+      }
+    },
+    {
+      "kind": "cold",
+      "index": 2,
+      "indexedFiles": 10000,
+      "latency": {
+        "initializeAndIndexMs": 843.1379019999986,
+        "completionMs": 2377.1301679999997,
+        "definitionMs": 114.88250700000026,
+        "referencesMs": 160.80602800000088,
+        "editedCompletionMs": 142.54604400000062
+      },
+      "memory": {
+        "peakProductRssBytes": 408096768,
+        "finalProductRssBytes": 408096768,
+        "sampleCount": 11,
+        "maxProcessCount": 2
+      },
+      "semantic": {
+        "maxResidentContexts": 1,
+        "maxProjectFiles": 201,
+        "maxOpenDocuments": 1,
+        "level3Observed": false
+      }
+    },
+    {
+      "kind": "warm",
+      "index": 0,
+      "indexedFiles": 10000,
+      "latency": {
+        "initializeAndIndexMs": 833.7878369999999,
+        "completionMs": 2395.4514470000013,
+        "definitionMs": 120.76532999999836,
+        "referencesMs": 161.70781599999827,
+        "editedCompletionMs": 140.93982300000062
+      },
+      "memory": {
+        "peakProductRssBytes": 414945280,
+        "finalProductRssBytes": 414945280,
+        "sampleCount": 11,
+        "maxProcessCount": 2
+      },
+      "semantic": {
+        "maxResidentContexts": 1,
+        "maxProjectFiles": 201,
+        "maxOpenDocuments": 1,
+        "level3Observed": false
+      }
+    },
+    {
+      "kind": "warm",
+      "index": 1,
+      "indexedFiles": 10000,
+      "latency": {
+        "initializeAndIndexMs": 1045.222138000001,
+        "completionMs": 2335.690010000002,
+        "definitionMs": 123.10111099999995,
+        "referencesMs": 163.26967200000217,
+        "editedCompletionMs": 134.18666699999812
+      },
+      "memory": {
+        "peakProductRssBytes": 414793728,
+        "finalProductRssBytes": 414793728,
+        "sampleCount": 12,
+        "maxProcessCount": 2
+      },
+      "semantic": {
+        "maxResidentContexts": 1,
+        "maxProjectFiles": 201,
+        "maxOpenDocuments": 1,
+        "level3Observed": false
+      }
+    },
+    {
+      "kind": "warm",
+      "index": 2,
+      "indexedFiles": 10000,
+      "latency": {
+        "initializeAndIndexMs": 1031.950928000002,
+        "completionMs": 2341.5661069999987,
+        "definitionMs": 112.5087470000035,
+        "referencesMs": 162.48733899999934,
+        "editedCompletionMs": 130.3777160000027
+      },
+      "memory": {
+        "peakProductRssBytes": 407322624,
+        "finalProductRssBytes": 407322624,
+        "sampleCount": 12,
+        "maxProcessCount": 2
+      },
+      "semantic": {
+        "maxResidentContexts": 1,
+        "maxProjectFiles": 201,
+        "maxOpenDocuments": 1,
+        "level3Observed": false
+      }
+    },
+    {
+      "kind": "warm",
+      "index": 3,
+      "indexedFiles": 10000,
+      "latency": {
+        "initializeAndIndexMs": 1034.0574070000002,
+        "completionMs": 2309.1133059999993,
+        "definitionMs": 111.96560300000056,
+        "referencesMs": 166.43258699999933,
+        "editedCompletionMs": 145.08514999999898
+      },
+      "memory": {
+        "peakProductRssBytes": 423120896,
+        "finalProductRssBytes": 423120896,
+        "sampleCount": 11,
+        "maxProcessCount": 2
+      },
+      "semantic": {
+        "maxResidentContexts": 1,
+        "maxProjectFiles": 201,
+        "maxOpenDocuments": 1,
+        "level3Observed": false
+      }
+    },
+    {
+      "kind": "warm",
+      "index": 4,
+      "indexedFiles": 10000,
+      "latency": {
+        "initializeAndIndexMs": 1073.508546000001,
+        "completionMs": 2305.2247819999975,
+        "definitionMs": 117.95949499999551,
+        "referencesMs": 162.39916999999696,
+        "editedCompletionMs": 136.49702499999694
+      },
+      "memory": {
+        "peakProductRssBytes": 418398208,
+        "finalProductRssBytes": 418398208,
+        "sampleCount": 12,
+        "maxProcessCount": 2
+      },
+      "semantic": {
+        "maxResidentContexts": 1,
+        "maxProjectFiles": 201,
+        "maxOpenDocuments": 1,
+        "level3Observed": false
+      }
+    },
+    {
+      "kind": "warm",
+      "index": 5,
+      "indexedFiles": 10000,
+      "latency": {
+        "initializeAndIndexMs": 1046.725449999998,
+        "completionMs": 2329.9584069999983,
+        "definitionMs": 115.24517899999773,
+        "referencesMs": 167.8831710000013,
+        "editedCompletionMs": 133.02125499999966
+      },
+      "memory": {
+        "peakProductRssBytes": 419131392,
+        "finalProductRssBytes": 419131392,
+        "sampleCount": 12,
+        "maxProcessCount": 2
+      },
+      "semantic": {
+        "maxResidentContexts": 1,
+        "maxProjectFiles": 201,
+        "maxOpenDocuments": 1,
+        "level3Observed": false
+      }
+    },
+    {
+      "kind": "warm",
+      "index": 6,
+      "indexedFiles": 10000,
+      "latency": {
+        "initializeAndIndexMs": 1040.2672160000002,
+        "completionMs": 2331.9725580000013,
+        "definitionMs": 120.66392699999415,
+        "referencesMs": 161.41209700000036,
+        "editedCompletionMs": 134.101327999997
+      },
+      "memory": {
+        "peakProductRssBytes": 415027200,
+        "finalProductRssBytes": 415027200,
+        "sampleCount": 12,
+        "maxProcessCount": 2
+      },
+      "semantic": {
+        "maxResidentContexts": 1,
+        "maxProjectFiles": 201,
+        "maxOpenDocuments": 1,
+        "level3Observed": false
+      }
+    },
+    {
+      "kind": "warm",
+      "index": 7,
+      "indexedFiles": 10000,
+      "latency": {
+        "initializeAndIndexMs": 1042.2055309999996,
+        "completionMs": 2326.9741989999966,
+        "definitionMs": 134.763251999997,
+        "referencesMs": 168.77419499999814,
+        "editedCompletionMs": 142.24607099999412
+      },
+      "memory": {
+        "peakProductRssBytes": 430817280,
+        "finalProductRssBytes": 430817280,
+        "sampleCount": 12,
+        "maxProcessCount": 2
+      },
+      "semantic": {
+        "maxResidentContexts": 1,
+        "maxProjectFiles": 201,
+        "maxOpenDocuments": 1,
+        "level3Observed": false
+      }
+    },
+    {
+      "kind": "warm",
+      "index": 8,
+      "indexedFiles": 10000,
+      "latency": {
+        "initializeAndIndexMs": 1081.657361999998,
+        "completionMs": 2372.6978430000017,
+        "definitionMs": 121.74913699999888,
+        "referencesMs": 161.0919589999976,
+        "editedCompletionMs": 143.6595559999987
+      },
+      "memory": {
+        "peakProductRssBytes": 414081024,
+        "finalProductRssBytes": 414081024,
+        "sampleCount": 12,
+        "maxProcessCount": 2
+      },
+      "semantic": {
+        "maxResidentContexts": 1,
+        "maxProjectFiles": 201,
+        "maxOpenDocuments": 1,
+        "level3Observed": false
+      }
+    },
+    {
+      "kind": "warm",
+      "index": 9,
+      "indexedFiles": 10000,
+      "latency": {
+        "initializeAndIndexMs": 1012.6459099999993,
+        "completionMs": 2318.8292289999954,
+        "definitionMs": 113.60324799999944,
+        "referencesMs": 162.97141900000133,
+        "editedCompletionMs": 133.86970299999666
+      },
+      "memory": {
+        "peakProductRssBytes": 420179968,
+        "finalProductRssBytes": 420179968,
+        "sampleCount": 11,
+        "maxProcessCount": 2
+      },
+      "semantic": {
+        "maxResidentContexts": 1,
+        "maxProjectFiles": 201,
+        "maxOpenDocuments": 1,
+        "level3Observed": false
+      }
+    },
+    {
+      "kind": "stress",
+      "index": 0,
+      "indexedFiles": 10000,
+      "latency": {
+        "initializeAndIndexMs": 996.3977349999986,
+        "completionMs": 2325.7545430000027,
+        "definitionMs": 111.51956100000098,
+        "referencesMs": 166.39896399999998,
+        "editedCompletionMs": 131.23743100000138,
+        "postPressureCompletionMs": 1644.8234000000011
+      },
+      "memory": {
+        "peakProductRssBytes": 445460480,
+        "finalProductRssBytes": 442925056,
+        "sampleCount": 16,
+        "maxProcessCount": 2
+      },
+      "semantic": {
+        "maxResidentContexts": 1,
+        "maxProjectFiles": 201,
+        "maxOpenDocuments": 1,
+        "level3Observed": true
+      }
+    },
+    {
+      "kind": "stress",
+      "index": 1,
+      "indexedFiles": 10000,
+      "latency": {
+        "initializeAndIndexMs": 1159.218108000001,
+        "completionMs": 2553.9531510000015,
+        "definitionMs": 125.3675990000047,
+        "referencesMs": 164.55124799999612,
+        "editedCompletionMs": 138.0165599999964,
+        "postPressureCompletionMs": 1769.1346350000022
+      },
+      "memory": {
+        "peakProductRssBytes": 452009984,
+        "finalProductRssBytes": 449949696,
+        "sampleCount": 18,
+        "maxProcessCount": 2
+      },
+      "semantic": {
+        "maxResidentContexts": 1,
+        "maxProjectFiles": 201,
+        "maxOpenDocuments": 1,
+        "level3Observed": true
+      }
+    },
+    {
+      "kind": "stress",
+      "index": 2,
+      "indexedFiles": 10000,
+      "latency": {
+        "initializeAndIndexMs": 1134.3890970000066,
+        "completionMs": 2708.175951000012,
+        "definitionMs": 125.72462199999427,
+        "referencesMs": 167.31111599999713,
+        "editedCompletionMs": 137.51830699999118,
+        "postPressureCompletionMs": 1792.1806680000009
+      },
+      "memory": {
+        "peakProductRssBytes": 445460480,
+        "finalProductRssBytes": 443203584,
+        "sampleCount": 18,
+        "maxProcessCount": 2
+      },
+      "semantic": {
+        "maxResidentContexts": 1,
+        "maxProjectFiles": 201,
+        "maxOpenDocuments": 1,
+        "level3Observed": true
+      }
+    },
+    {
+      "kind": "stress",
+      "index": 3,
+      "indexedFiles": 10000,
+      "latency": {
+        "initializeAndIndexMs": 1279.5009870000067,
+        "completionMs": 2560.874152999997,
+        "definitionMs": 129.08207800000673,
+        "referencesMs": 163.95444699999643,
+        "editedCompletionMs": 137.8721569999907,
+        "postPressureCompletionMs": 1791.0449870000011
+      },
+      "memory": {
+        "peakProductRssBytes": 449736704,
+        "finalProductRssBytes": 446820352,
+        "sampleCount": 18,
+        "maxProcessCount": 2
+      },
+      "semantic": {
+        "maxResidentContexts": 1,
+        "maxProjectFiles": 201,
+        "maxOpenDocuments": 1,
+        "level3Observed": true
+      }
+    },
+    {
+      "kind": "stress",
+      "index": 4,
+      "indexedFiles": 10000,
+      "latency": {
+        "initializeAndIndexMs": 1153.3897850000067,
+        "completionMs": 2563.8643239999947,
+        "definitionMs": 125.12905299999693,
+        "referencesMs": 160.44089300000633,
+        "editedCompletionMs": 136.5388879999955,
+        "postPressureCompletionMs": 1782.4664360000024
+      },
+      "memory": {
+        "peakProductRssBytes": 442806272,
+        "finalProductRssBytes": 440164352,
+        "sampleCount": 18,
+        "maxProcessCount": 2
+      },
+      "semantic": {
+        "maxResidentContexts": 1,
+        "maxProjectFiles": 201,
+        "maxOpenDocuments": 1,
+        "level3Observed": true
+      }
+    }
+  ],
+  "note": "macOS RSS counts the server process tree only; it is not Linux PSS and cannot satisfy the release comparison gate.",
+  "output": "docs/reports/macos-zed-arkts-10k.json"
+}

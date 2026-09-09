@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "measurementStatus": "complete",
+  "candidateRevision": "caf0f5828600c2a19b7cdb361d26a0e54cc7a215",
+  "host": "Zed 1.18.0",
+  "profile": "isolated",
+  "workspaceFiles": 100000,
+  "workspaceRoot": ".bench/unrelated/ws-100000",
+  "sdk": {
+    "source": "configuration",
+    "apiLevel": 24,
+    "componentVersion": "6.1.1.125",
+    "ready": true
+  },
+  "catalog": {
+    "phase": "ready",
+    "discoveredFiles": 100000,
+    "indexedFiles": 100000,
+    "skippedEntries": 0
+  },
+  "observedRequests": [
+    "textDocument/documentHighlight",
+    "textDocument/codeAction"
+  ],
+  "processTree": [
+    "zed",
+    "arkts-language-server",
+    "arkts-index-sidecar"
+  ],
+  "result": "PASS"
+}
