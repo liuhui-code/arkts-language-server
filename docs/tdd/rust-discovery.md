@@ -67,8 +67,19 @@ name and module source match an official completion entry and
 entry data to produce the import edit. The existing `MAX_MODULE_EXPORT_COMPLETION_SCAN = 4096` remains
 unchanged.
 
-The true LSP test generates 4,999 filler exports followed by `ExactNeedleExport`, waits until the Rust
-catalog exposes ordinal 4,999, requests completion, and resolves an import edit naming `ManyExports`:
+The cross-layer evidence is intentionally split at the stable protocol boundary. A real Rust sidecar
+subprocess refreshes 5,000 exports and proves that `exports/search` returns ordinal 4,999 after a
+restart. The true LSP test then uses a deterministic protocol-v1 catalog fixture to deliver that exact
+candidate identity to production composition, while the real official Language Service reads the
+4,999 filler exports plus `ExactNeedleExport`, validates the official completion entry, and resolves an
+import edit naming `ManyExports`.
+
+The first PR run (`34345757995`) exposed why the split is required: the test depended on a debug
+sidecar build being available before `pnpm check:fast` and allowed only five seconds for a full 5,000
+file catalog. The clean runner reached the assertion without a committed generation. The hermetic LSP
+contract now waits only for the 20 ms scripted index-session handshake and separately asserts that
+production sent `exports/search { query: "ExactNeedle", limit: 128 }`; Rust scale and persistence remain
+owned by the real sidecar test rather than wall-clock timing in the Node layer.
 
 ```text
 recalls and semantically validates an auto-import beyond 4096 module exports: PASS

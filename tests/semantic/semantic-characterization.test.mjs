@@ -821,7 +821,7 @@ test("recalls and semantically validates an auto-import beyond 4096 module expor
   const exportPath = path.join(sourceDirectory, "ManyExports.ets")
   const filler = Array.from(
     { length: 4_999 },
-    (_, index) => `export class FillerExport${String(index).padStart(4, "0")} {}`,
+    (_, index) => `export class AaaFillerExport${String(index).padStart(4, "0")} {}`,
   )
   await fs.promises.writeFile(
     exportPath,
@@ -832,6 +832,7 @@ test("recalls and semantically validates an auto-import beyond 4096 module expor
   const source = "const selected = ExactNeedle\n"
   await fs.promises.writeFile(consumerPath, source, "utf8")
   const uri = pathToFileURL(consumerPath).href
+  const sidecarAuditPath = path.join(materialized.root, "semantic-over-4096.ndjson")
   const session = new LspSession({
     command: process.execPath,
     args: [path.join(projectRoot, "dist", "server.cjs"), "--stdio"],
@@ -840,7 +841,15 @@ test("recalls and semantically validates an auto-import beyond 4096 module expor
       HOME: path.join(materialized.root, "missing-home"),
       DEVECO_SDK_HOME: path.join(materialized.root, "missing-deveco"),
       ARKLINE_HARMONY_SDK_PATH: path.join(materialized.corpusRoot, "sdk", "openharmony"),
-      ARKTS_INDEX_SIDECAR_PATH: path.join(projectRoot, "target", "debug", "arkts-index-sidecar"),
+      ARKTS_INDEX_SIDECAR_PATH: path.join(
+        projectRoot,
+        "tests",
+        "fixtures",
+        "index",
+        "scripted-catalog-sidecar.mjs",
+      ),
+      ARKTS_INDEX_TEST_SCENARIO: "semantic-over-4096",
+      ARKTS_INDEX_TEST_AUDIT: sidecarAuditPath,
     },
     rootUri: pathToFileURL(materialized.workspaceRoot).href,
   })
@@ -854,16 +863,16 @@ test("recalls and semantically validates an auto-import beyond 4096 module expor
 
   await session.initialize()
   session.openDocument({ uri, languageId: "arkts", version: 1, text: source })
-  let indexed = false
+  let indexReady = false
   for (let attempt = 0; attempt < 100; attempt += 1) {
-    const discovery = await session.request("workspace/symbol", { query: "ExactNeedle" })
-    if (discovery.result?.some((symbol) => symbol.name === "ExactNeedleExport")) {
-      indexed = true
+    const discovery = await session.request("workspace/symbol", { query: "ProductionIndexedType" })
+    if (discovery.result?.some((symbol) => symbol.name === "ProductionIndexedType")) {
+      indexReady = true
       break
     }
-    await new Promise((resolve) => setTimeout(resolve, 50))
+    await new Promise((resolve) => setTimeout(resolve, 20))
   }
-  assert.equal(indexed, true, "Rust catalog must commit before completion discovery")
+  assert.equal(indexReady, true, "scripted index session must open before completion discovery")
 
   const prefixOffset = source.indexOf("ExactNeedle")
   const replacement = {
@@ -875,6 +884,12 @@ test("recalls and semantically validates an auto-import beyond 4096 module expor
     position: replacement.end,
   })
   assert.equal(response.error, undefined, JSON.stringify(response.error))
+  const exportSearch = fs.readFileSync(sidecarAuditPath, "utf8")
+    .trim()
+    .split("\n")
+    .map(JSON.parse)
+    .find((request) => request.method === "exports/search")
+  assert.deepEqual(exportSearch?.params, { query: "ExactNeedle", limit: 128 })
   const items = Array.isArray(response.result) ? response.result : response.result?.items ?? []
   const matches = items.filter((item) => item.label === "ExactNeedleExport")
   assert.equal(matches.length, 1, JSON.stringify(items))

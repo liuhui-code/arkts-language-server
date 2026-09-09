@@ -6,7 +6,9 @@ contract 34/34 PASS，lifecycle/memory PASS。Backend Cutover 的本地 `check:f
 单 Worker、Coordinator、L0-L3、metrics 与交付接线已在 `codex/memory-runtime` 完成，本地
 `check:fast` 864/864、bundle-e2e 271/271、完整本地 `check:release` 与 PR #17 canonical
 `validate` 均已通过，并合入 `68c8b51`。Rust Discovery 已在 `codex/rust-discovery` 完成
-本地退出门禁，等待 canonical PR `validate` 与合并。
+本地退出门禁；PR #18 首次 canonical run `34345757995` 暴露了 Node 层依赖 debug sidecar 与
+5 秒全量 catalog 的非密封时序，现已把真实 Rust 5,000-export 召回和真实 LSP 官方语义验证拆成
+两个稳定 contract，等待修复后的 canonical `validate` 与合并。
 
 计划基线：`e90cacb9ace47292ac0869d09b3a64f7c7fe2144`（P2.1b，PR #5）。
 
@@ -660,6 +662,9 @@ Rust 变更运行 focused crate tests、`pnpm check:fast` 和相关 release buil
 - [x] 单 semantic worker 只接受名称与 module source 匹配、且
   `getCompletionEntryDetails()` 验证成功的官方 completion entry；
 - [x] 真实 LSP completion/resolve 产生指向 `ManyExports` 的 import edit；4096 常量保持不变；
+- [x] CI RED run `34345757995` 的 5 秒 catalog/debug-binary 时序已移除：真实 Rust 子进程负责
+  ordinal 4999 的规模与持久化证据，真实 LSP 通过密封 protocol fixture 验证 production
+  `exports/search` 请求、官方 semantic validation 与 resolve edit；
 - [x] `cargo fmt`、三 crate clippy/tests、release sidecar build 全绿；
 - [x] `pnpm check:fast` 867/867；完整本地 `pnpm check:release` 通过：artifact 6/6，
   455-file large 1/1（cold 597.73 ms；warm first 3.90 ms；repeated P95 2.39 ms）；
