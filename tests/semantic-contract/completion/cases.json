@@ -2,6 +2,7 @@
   {
     "id": "completion.this-member",
     "mandatory": true,
+    "scenario": "direct",
     "evidence": { "file": "tests/semantic/semantic-characterization.test.mjs", "testName": "completes inherited fields and methods after this dot" },
     "oracleFields": ["items[].label", "items[].kind", "items[].textEdit.range"],
     "assertions": ["Completion returns inherited fields and methods after this. with exact edits."]
@@ -9,6 +10,7 @@
   {
     "id": "completion.imported-receiver",
     "mandatory": true,
+    "scenario": "direct",
     "evidence": { "file": "tests/semantic/semantic-characterization.test.mjs", "testName": "completes imported receiver fields and methods with exact kinds and UTF-16 range" },
     "oracleFields": ["items[].label", "items[].kind", "items[].textEdit.range"],
     "assertions": ["Imported receiver members retain exact kinds and UTF-16 replacement ranges."]
@@ -16,6 +18,7 @@
   {
     "id": "completion.auto-import",
     "mandatory": true,
+    "scenario": "direct",
     "evidence": { "file": "tests/semantic/semantic-characterization.test.mjs", "testName": "resolves and applies an unopened class auto-import through the production server" },
     "oracleFields": ["completion.label", "completion.additionalTextEdits", "appliedDocument"],
     "assertions": ["An unopened class auto-import resolves to an exact edit through production LSP."]

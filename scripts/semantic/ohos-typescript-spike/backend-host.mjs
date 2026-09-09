@@ -54,6 +54,9 @@ export function createSpikeProject(compiler, root, inputFiles) {
         includeInsertTextCompletions: true,
       })
     },
+    definitions(relativePath, position) {
+      return service.getDefinitionAtPosition(this.fileName(relativePath), position) ?? []
+    },
     sourceFile(relativePath) {
       return service.getProgram()?.getSourceFile(this.fileName(relativePath))
     },

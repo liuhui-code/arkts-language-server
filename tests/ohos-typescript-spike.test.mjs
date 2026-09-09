@@ -8,6 +8,7 @@ import {
   SPIKE_CATEGORIES,
   summarizeSpikeResults,
 } from "../scripts/semantic/ohos-typescript-spike/spike-report.mjs"
+import { DIRECT_SCENARIO_IDS } from "../scripts/semantic/ohos-typescript-spike/direct-scenarios.mjs"
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 
@@ -64,12 +65,13 @@ test("the committed spike report remains explicitly incomplete until every contr
   const reportPath = path.join(projectRoot, "docs", "reports", "ohos-typescript-spike.json")
   const reportBytes = fs.readFileSync(reportPath)
   assert.ok(reportBytes.length <= 64 * 1024)
+  assert.equal(reportBytes.includes(Buffer.from(projectRoot)), false)
   const report = JSON.parse(reportBytes.toString("utf8"))
   assert.equal(report.status, "INCOMPLETE")
   assert.equal(report.summary.totals.total, 34)
-  assert.equal(report.summary.totals.passed, 5)
+  assert.equal(report.summary.totals.passed, 13)
   assert.equal(report.summary.totals.failed, 0)
-  assert.equal(report.summary.totals.deferred, 29)
+  assert.equal(report.summary.totals.deferred, 21)
   assert.equal(report.backendRevision, "9cc62fe98f47c0bf113676e3fb33fe932b493052")
   assert.equal(
     report.sdkDeclarationDigest,
@@ -78,4 +80,23 @@ test("the committed spike report remains explicitly incomplete until every contr
   const executed = report.results.filter(({ status }) => status === "passed")
   assert.ok(executed.every(({ stats }) => stats.disposed === true))
   assert.ok(executed.every(({ observations }) => observations.completionNames === undefined))
+  for (const id of DIRECT_SCENARIO_IDS) {
+    assert.equal(report.results.find((result) => result.id === id)?.status, "passed")
+  }
+})
+
+test("the core semantic contracts have direct official-backend scenarios", () => {
+  assert.deepEqual(
+    [...DIRECT_SCENARIO_IDS].sort(),
+    [
+      "completion.auto-import",
+      "completion.imported-receiver",
+      "completion.this-member",
+      "definition.alias-reexport",
+      "definition.struct-source-map",
+      "definition.unopened-utf16",
+      "diagnostics.exact-code-range",
+      "unicode.identifier-completion",
+    ],
+  )
 })

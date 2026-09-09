@@ -1,7 +1,7 @@
 # Zed + ArkTS Language Server：官方语义后端与超大型工程低内存执行计划
 
-状态：当前权威执行计划；Foundation、S1 已完成；S2a raw official-backend host 已完成，
-S2 hard gate 仍关闭（5/34 executed，29 deferred）。
+状态：当前权威执行计划；Foundation、S1、S2a 已完成；S2b core semantic batch 已完成，
+S2 hard gate 仍关闭（13/34 executed，21 deferred）。
 
 计划基线：`e90cacb9ace47292ac0869d09b3a64f7c7fe2144`（P2.1b，PR #5）。
 
@@ -470,6 +470,21 @@ S2a 完成证据（2026-09-09）：
 this-dot 编辑尾部当前观测到 TS1003，但 DevEco oracle 尚未确认，因此 S2a 只以 completion
 可用性作 gate，不把“无诊断”伪造成已确认合同。RED/GREEN 记录见
 [Backend Spike S2a TDD 记录](../tdd/backend-spike-host.md)。
+
+S2b core semantic batch 完成证据（2026-09-09）：
+
+- [x] completion 直接覆盖 inherited member、imported receiver 与 unopened auto-import；
+- [x] definition 直接覆盖 non-BMP 前缀、ETS struct member 与 alias re-export origin；
+- [x] diagnostics 直接覆盖 TS2552 code 与精确 UTF-16 span；
+- [x] Unicode identifier completion 验证过滤结果与 replacement span；
+- [x] 8 个 scenario 均直接调用锁定 backend，所有 context 均在证据记录前 dispose；
+- [x] 当前 [spike report](../reports/ohos-typescript-spike.json) 为 13 passed、0 failed、
+  21 deferred，仍为 INCOMPLETE；
+- [x] `pnpm check:fast`：848/848，0 fail/cancel/skip/todo；
+- [ ] completion SDK hot switch、freshness、references、rename 与 project-boundary 仍需直接执行。
+
+RED/GREEN 与可复现命令见
+[Backend Spike S2b core contracts TDD 记录](../tdd/backend-spike-core-contracts.md)。
 
 ## 11. Backend Cutover 清单
 

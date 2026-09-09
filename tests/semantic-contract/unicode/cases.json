@@ -12,6 +12,7 @@
   {
     "id": "unicode.identifier-completion",
     "mandatory": true,
+    "scenario": "direct",
     "evidence": { "file": "tests/semantic/semantic-characterization.test.mjs", "testName": "filters a Unicode ArkTS identifier before the provider quota and replaces its exact UTF-16 prefix" },
     "oracleFields": ["items[].label", "items[].textEdit.range", "items[].textEdit.newText"],
     "assertions": ["Unicode identifier completion filters before quota and replaces the exact UTF-16 prefix."]

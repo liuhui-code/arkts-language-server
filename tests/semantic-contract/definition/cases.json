@@ -2,6 +2,7 @@
   {
     "id": "definition.unopened-utf16",
     "mandatory": true,
+    "scenario": "direct",
     "evidence": { "file": "tests/semantic/semantic-characterization.test.mjs", "testName": "returns the exact unopened definition range after an emoji prefix" },
     "oracleFields": ["result[].uri", "result[].range"],
     "assertions": ["Definition returns the exact unopened URI and UTF-16 range after a non-BMP prefix."]
@@ -9,6 +10,7 @@
   {
     "id": "definition.struct-source-map",
     "mandatory": true,
+    "scenario": "direct",
     "evidence": { "file": "tests/semantic/semantic-characterization.test.mjs", "testName": "maps a definition in a rewritten ArkTS struct back to source coordinates" },
     "oracleFields": ["result[].uri", "result[].range"],
     "assertions": ["Struct member definitions map to exact source coordinates."]
@@ -16,6 +18,7 @@
   {
     "id": "definition.alias-reexport",
     "mandatory": true,
+    "scenario": "direct",
     "evidence": { "file": "tests/semantic/semantic-characterization.test.mjs", "testName": "resolves a definition through an import alias and barrel export" },
     "oracleFields": ["result[].uri", "result[].range"],
     "assertions": ["Import aliases and barrel re-exports resolve to the declaration identity, URI, and range."]

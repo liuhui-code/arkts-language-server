@@ -11,6 +11,7 @@ import {
   diagnosticIdentity,
   materializeMarkedFixture,
 } from "./backend-host.mjs"
+import { runDirectScenario } from "./direct-scenarios.mjs"
 import { summarizeSpikeResults } from "./spike-report.mjs"
 
 const require = createRequire(import.meta.url)
@@ -47,6 +48,8 @@ function run() {
   const results = cases.map((record) => (
     record.fixture
       ? runRawCase(compiler, options.contracts, record)
+      : record.scenario === "direct"
+        ? runScenarioCase(compiler, options.contracts, record)
       : {
           id: record.id,
           category: record.category,
@@ -77,6 +80,19 @@ function run() {
       + " FAILED=" + summary.totals.failed + "\n",
   )
   if (summary.status !== "PASS" && !options.allowIncomplete) process.exitCode = 42
+}
+
+function runScenarioCase(compiler, contractsRoot, record) {
+  try {
+    return runDirectScenario(compiler, contractsRoot, record)
+  } catch (error) {
+    return {
+      id: record.id,
+      category: record.category,
+      status: "failed",
+      reason: boundedMessage(error),
+    }
+  }
 }
 
 function runRawCase(compiler, contractsRoot, record) {

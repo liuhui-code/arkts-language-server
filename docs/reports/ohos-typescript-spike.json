@@ -18,9 +18,9 @@
     "status": "INCOMPLETE",
     "totals": {
       "total": 34,
-      "passed": 5,
+      "passed": 13,
       "failed": 0,
-      "deferred": 29
+      "deferred": 21
     },
     "categories": {
       "syntax": {
@@ -29,14 +29,14 @@
         "deferred": 0
       },
       "completion": {
-        "passed": 0,
+        "passed": 3,
         "failed": 0,
-        "deferred": 4
+        "deferred": 1
       },
       "definition": {
-        "passed": 0,
+        "passed": 3,
         "failed": 0,
-        "deferred": 4
+        "deferred": 1
       },
       "references": {
         "passed": 0,
@@ -49,9 +49,9 @@
         "deferred": 4
       },
       "diagnostics": {
-        "passed": 0,
+        "passed": 1,
         "failed": 0,
-        "deferred": 3
+        "deferred": 2
       },
       "incomplete": {
         "passed": 1,
@@ -59,9 +59,9 @@
         "deferred": 2
       },
       "unicode": {
-        "passed": 1,
+        "passed": 2,
         "failed": 0,
-        "deferred": 1
+        "deferred": 0
       },
       "project-boundary": {
         "passed": 0,
@@ -140,20 +140,91 @@
     {
       "id": "completion.this-member",
       "category": "completion",
-      "status": "deferred",
-      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+      "status": "passed",
+      "observations": {
+        "matchedCompletions": [
+          {
+            "name": "inheritedField",
+            "kind": "property",
+            "kindModifiers": "",
+            "sortText": "11",
+            "hasAction": false,
+            "source": null
+          },
+          {
+            "name": "inheritedMethod",
+            "kind": "method",
+            "kindModifiers": "",
+            "sortText": "11",
+            "hasAction": false,
+            "source": null
+          }
+        ],
+        "replacementSpan": null
+      },
+      "stats": {
+        "projectFileCount": 1,
+        "snapshotReadCount": 51,
+        "uniqueSnapshotReadCount": 51,
+        "disposed": true
+      }
     },
     {
       "id": "completion.imported-receiver",
       "category": "completion",
-      "status": "deferred",
-      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+      "status": "passed",
+      "observations": {
+        "matchedCompletions": [
+          {
+            "name": "message",
+            "kind": "property",
+            "kindModifiers": "",
+            "sortText": "11",
+            "hasAction": false,
+            "source": null
+          },
+          {
+            "name": "greet",
+            "kind": "method",
+            "kindModifiers": "",
+            "sortText": "11",
+            "hasAction": false,
+            "source": null
+          }
+        ],
+        "replacementSpan": null
+      },
+      "stats": {
+        "projectFileCount": 2,
+        "snapshotReadCount": 52,
+        "uniqueSnapshotReadCount": 52,
+        "disposed": true
+      }
     },
     {
       "id": "completion.auto-import",
       "category": "completion",
-      "status": "deferred",
-      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+      "status": "passed",
+      "observations": {
+        "matchedCompletion": {
+          "name": "HiddenClass",
+          "kind": "class",
+          "kindModifiers": "export",
+          "sortText": "16",
+          "hasAction": true,
+          "source": "completion/hidden"
+        },
+        "replacementSpan": {
+          "start": 18,
+          "length": 6
+        }
+      },
+      "stats": {
+        "projectFileCount": 2,
+        "snapshotReadCount": 52,
+        "uniqueSnapshotReadCount": 52,
+        "disposed": true
+      }
     },
     {
       "id": "completion.sdk-hot-switch",
@@ -164,20 +235,62 @@
     {
       "id": "definition.unopened-utf16",
       "category": "definition",
-      "status": "deferred",
-      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+      "status": "passed",
+      "observations": {
+        "definition": {
+          "relativePath": "definition/model.ets",
+          "start": 13,
+          "length": 7,
+          "kind": "class",
+          "name": "Greeter"
+        }
+      },
+      "stats": {
+        "projectFileCount": 2,
+        "snapshotReadCount": 52,
+        "uniqueSnapshotReadCount": 52,
+        "disposed": true
+      }
     },
     {
       "id": "definition.struct-source-map",
       "category": "definition",
-      "status": "deferred",
-      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+      "status": "passed",
+      "observations": {
+        "definition": {
+          "relativePath": "definition/struct-source.ets",
+          "start": 16,
+          "length": 5,
+          "kind": "property",
+          "name": "title"
+        }
+      },
+      "stats": {
+        "projectFileCount": 1,
+        "snapshotReadCount": 51,
+        "uniqueSnapshotReadCount": 51,
+        "disposed": true
+      }
     },
     {
       "id": "definition.alias-reexport",
       "category": "definition",
-      "status": "deferred",
-      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+      "status": "passed",
+      "observations": {
+        "definition": {
+          "relativePath": "definition/origin.ets",
+          "start": 13,
+          "length": 8,
+          "kind": "class",
+          "name": "Original"
+        }
+      },
+      "stats": {
+        "projectFileCount": 3,
+        "snapshotReadCount": 53,
+        "uniqueSnapshotReadCount": 53,
+        "disposed": true
+      }
     },
     {
       "id": "definition.cross-module",
@@ -236,8 +349,21 @@
     {
       "id": "diagnostics.exact-code-range",
       "category": "diagnostics",
-      "status": "deferred",
-      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+      "status": "passed",
+      "observations": {
+        "diagnostic": {
+          "code": 2552,
+          "start": 72,
+          "length": 7,
+          "message": "Cannot find name 'greting'. Did you mean 'greeting'?"
+        }
+      },
+      "stats": {
+        "projectFileCount": 1,
+        "snapshotReadCount": 51,
+        "uniqueSnapshotReadCount": 51,
+        "disposed": true
+      }
     },
     {
       "id": "diagnostics.overlay-freshness",
@@ -314,8 +440,27 @@
     {
       "id": "unicode.identifier-completion",
       "category": "unicode",
-      "status": "deferred",
-      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+      "status": "passed",
+      "observations": {
+        "matchedCompletion": {
+          "name": "变量",
+          "kind": "const",
+          "kindModifiers": "",
+          "sortText": "11",
+          "hasAction": false,
+          "source": null
+        },
+        "replacementSpan": {
+          "start": 27,
+          "length": 1
+        }
+      },
+      "stats": {
+        "projectFileCount": 1,
+        "snapshotReadCount": 51,
+        "uniqueSnapshotReadCount": 51,
+        "disposed": true
+      }
     },
     {
       "id": "project-boundary.declared-module",
