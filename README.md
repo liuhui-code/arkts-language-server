@@ -140,6 +140,19 @@ on a machine with that SDK:
 ARKTS_REAL_SDK_PATH=/absolute/path/to/openharmony pnpm test:e2e:real-sdk
 ```
 
+Maintainers pin the semantic-backend revision and SDK declaration identity with:
+
+```sh
+node scripts/semantic/lock-toolchain.mjs \
+  --sdk /absolute/path/to/openharmony \
+  --api-level 24 \
+  --repo https://github.com/openharmony/third_party_typescript.git
+```
+
+The first run resolves upstream `HEAD` once; later runs reuse the exact revision
+already stored in `docs/toolchains/arkts-toolchain.lock.json`. Pass
+`--revision <40-character-sha>` to select a reviewed commit explicitly.
+
 This certifies those workflows, not the complete ArkTS dialect or official
 compiler. The current language backend consumes a TypeScript-compatible `.ets`
 subset; version metadata by itself is never treated as compatibility evidence.

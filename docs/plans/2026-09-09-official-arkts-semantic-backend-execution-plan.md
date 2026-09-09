@@ -1,6 +1,6 @@
 # Zed + ArkTS Language Server：官方语义后端与超大型工程低内存执行计划
 
-状态：当前权威执行计划；Foundation 进行中，F1 已完成。
+状态：当前权威执行计划；Foundation 进行中，F1–F2 已完成，F3 待推进。
 
 计划基线：`e90cacb9ace47292ac0869d09b3a64f7c7fe2144`（P2.1b，PR #5）。
 
@@ -268,7 +268,8 @@ PSS 仍过 release gate，才能实验第二 worker。
 
 - [x] 记录 P2.1b merge baseline：`e90cacb9ace47292ac0869d09b3a64f7c7fe2144`。
 - [x] PR #5 canonical release gate 通过。
-- [ ] 在本计划分支记录 `git rev-parse HEAD` 与 clean parent revision。
+- [x] F1 clean parent：`c8234a0bebf0aa08d08f55b184c895f0c9b1dc67`；
+  F2 clean parent：`07786a8`（PR #7 merge）。
 - [ ] 创建 `docs/toolchains/`、`docs/reports/`、`scripts/semantic/`、
   `tests/semantic-contract/`，且不提交 upstream checkout/cache。
 
@@ -332,6 +333,18 @@ node scripts/semantic/lock-toolchain.mjs \
 首次可从 upstream 默认分支解析 revision，但写入后所有后续命令只读取精确 SHA。digest 对相对路径
 排序后的 `.d.ts`、`.d.ets`、`.json5` 内容与路径计算，不依赖平台 `sha256sum` 命令。空 SDK、路径
 逃逸、符号链接竞态、非普通文件或超过预算必须 fail closed。
+
+完成证据（2026-09-09）：
+
+- [x] 实现跨平台 Node CLI、原子 lock 写入与已有 exact revision 复用；
+- [x] digest 同时绑定规范化相对路径、长度与内容；
+- [x] 首次无 lock 时通过 `git ls-remote <repo> HEAD` 解析一次；
+- [x] 声明输入 symlink、空输入、非普通文件和文件/总量/数量预算 fail closed；
+- [x] 已锁定 OpenHarmony API 24 / ETS `6.1.1.125` 本机 SDK：backend revision
+  `9cc62fe98f47c0bf113676e3fb33fe932b493052`，declaration digest
+  `8098b8abbc6b06fce0e7322d6f8f82a5bbce41e847dbd39e9a98811a33d4c6e4`。
+
+实现证据见 [Foundation F2 TDD 记录](../tdd/foundation-toolchain-lock.md)。
 
 ### F3：backend-independent semantic contracts
 
