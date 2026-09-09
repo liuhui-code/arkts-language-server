@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "seed": 20260909,
+  "runs": {
+    "cold": 3,
+    "warm": 10,
+    "stress": 5
+  },
+  "unrelatedWorkspaceFiles": [1000, 10000, 50000, 100000],
+  "unrelatedActiveDependencyFiles": 200,
+  "dependencyWorkspaceFiles": 100000,
+  "dependencyActiveDependencyFiles": [200, 1000, 5000, 10000],
+  "workflow": [
+    "open-entry",
+    "wait-initialize",
+    "type-this-dot",
+    "completion",
+    "definition",
+    "references",
+    "edit-comment",
+    "completion"
+  ],
+  "stress": {
+    "moduleVisits": 20,
+    "returnToFirstModule": true,
+    "applyLevel3Pressure": true,
+    "finalOperation": "completion"
+  },
+  "processAccounting": {
+    "nodeRssCount": "once-per-process",
+    "productPssRoles": ["zed", "arkts-language-server", "arkts-index-sidecar"],
+    "devecoPssRoles": ["deveco", "language-analysis"],
+    "excludedRoles": ["emulator", "device-manager", "build"]
+  }
+}
