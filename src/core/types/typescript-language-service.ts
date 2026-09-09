@@ -16,6 +16,7 @@ import type {
   SemanticCallHierarchyOutgoingQueryResult,
   SemanticCallHierarchyPrepareQueryResult,
   SemanticCompletionItem,
+  SemanticCompletionDiscoveryCandidate,
   SemanticCompletionItemList,
   SemanticCompletionTextEdit,
   SemanticDefinitionCandidate,
@@ -121,6 +122,10 @@ type CompletionEntryCompat = ts.CompletionEntry & {
 type CompletionInfoCompat = ts.CompletionInfo & {
   entries: CompletionEntryCompat[]
   defaultCommitCharacters?: string[]
+}
+
+function completionEntryIdentity(entry: CompletionEntryCompat): string {
+  return `${entry.name}\u0000${entry.source ?? ""}`
 }
 
 interface SafeCodeFix extends SemanticCodeFixCandidate {
@@ -442,6 +447,27 @@ export class TypeScriptLanguageServiceEngine {
       }
     }
     if (!stoppedEarly && hasTier) flushTier()
+    if (position.completionDiscovery) {
+      const discovered = this.validatedDiscoveryEntries(
+        filePath,
+        offset,
+        completionEntries,
+        position.completionDiscovery.candidates,
+        normalizedPrefix,
+        work,
+      )
+      const retained = new Set(candidates.map(({ entry }) => completionEntryIdentity(entry)))
+      for (const candidate of discovered) {
+        const identity = completionEntryIdentity(candidate.entry)
+        if (retained.has(identity)) continue
+        if (candidates.length >= MAX_COMPLETIONS) {
+          matchingOverflow = true
+          break
+        }
+        candidates.push(candidate)
+        retained.add(identity)
+      }
+    }
     const objectLiteralPropertyCompletion = candidates.some(({ entry }) => (
       entry.kind === ts.ScriptElementKind.memberVariableElement
     )) && isObjectLiteralPropertyCompletion(this.service, filePath, offset, work)
@@ -485,8 +511,60 @@ export class TypeScriptLanguageServiceEngine {
     })
     return work.finish({
       items: completions,
-      isIncomplete: info.isIncomplete === true || truncated || matchingOverflow,
+      isIncomplete: info.isIncomplete === true
+        || truncated
+        || matchingOverflow
+        || position.completionDiscovery?.incomplete === true,
     })
+  }
+
+  private validatedDiscoveryEntries(
+    filePath: string,
+    offset: number,
+    entries: readonly CompletionEntryCompat[],
+    discoveryCandidates: readonly SemanticCompletionDiscoveryCandidate[],
+    normalizedPrefix: string,
+    work: CooperativeWork,
+  ): CompletionCandidate[] {
+    const byName = new Map<string, SemanticCompletionDiscoveryCandidate[]>()
+    for (const candidate of discoveryCandidates) {
+      const existing = byName.get(candidate.exportedName)
+      if (existing) existing.push(candidate)
+      else byName.set(candidate.exportedName, [candidate])
+    }
+    if (byName.size === 0) return []
+
+    const validated: CompletionCandidate[] = []
+    for (let providerIndex = 0; providerIndex < entries.length; providerIndex += 1) {
+      const entry = entries[providerIndex]
+      const indexed = byName.get(entry.name)
+      if (!indexed || typeof entry.source !== "string") continue
+      const identityMatch = indexed.some(candidate => (
+        candidate.importSpecifier === entry.source || candidate.uri === entry.source
+      ))
+      if (!identityMatch) continue
+      const quality = completionMatchQuality(entry.filterText ?? entry.name, normalizedPrefix)
+      if (quality === undefined) continue
+      const details = this.service.getCompletionEntryDetails(
+        filePath,
+        offset,
+        entry.name,
+        {},
+        entry.source,
+        { includeCompletionsForModuleExports: true },
+        entry.data as ts.CompletionEntryData | undefined,
+      )
+      work.item()
+      if (!details) continue
+      validated.push({
+        entry,
+        filterText: entry.filterText,
+        providerIndex,
+        quality,
+      })
+      if (validated.length >= MAX_COMPLETIONS) break
+    }
+    return validated
   }
 
   resolveCompletion(

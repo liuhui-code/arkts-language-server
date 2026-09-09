@@ -89,6 +89,36 @@ input.on("line", (line) => {
       })
       break
     }
+    case "exports/search": {
+      const semanticFixture = process.env.ARKTS_INDEX_TEST_SCENARIO === "semantic-over-4096"
+      respond(request.id, {
+        items: semanticFixture ? [{
+          exportedName: "ExactNeedleExport",
+          kind: "class",
+          uri: pathToFileURL(path.join(
+            workspaceRoot,
+            "entry",
+            "src",
+            "main",
+            "ets",
+            "pages",
+            "ManyExports.ets",
+          )).href,
+          range: {
+            start: { line: 4_999, character: 13 },
+            end: { line: 4_999, character: 30 },
+          },
+          ordinal: 4_999,
+          declarationIdentity: "semantic-over-4096",
+          importSpecifier: "./ManyExports",
+          moduleId: "entry",
+          targetScope: "default",
+        }] : [],
+        servedGeneration: committedGeneration,
+        completeness: committedGeneration > 0 ? "ready" : "stale",
+      })
+      break
+    }
     case "status":
       respond(request.id, status("ready", "ready", "ready", null))
       break

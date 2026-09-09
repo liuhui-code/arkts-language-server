@@ -246,13 +246,32 @@ export interface SemanticWorkerPositionArgs {
   readonly position: SemanticWorkerPosition
 }
 
+export interface SemanticWorkerCompletionDiscoveryCandidate {
+  readonly exportedName: string
+  readonly kind: string
+  readonly uri: string
+  readonly ordinal: number
+  readonly declarationIdentity?: string
+  readonly importSpecifier?: string
+  readonly moduleId?: string
+  readonly targetScope?: string
+}
+
+export interface SemanticWorkerCompletionDiscovery {
+  readonly incomplete: boolean
+  readonly candidates: readonly SemanticWorkerCompletionDiscoveryCandidate[]
+}
+
 export interface SemanticWorkerReferencesArgs {
   readonly position: SemanticWorkerPosition
   readonly includeDeclaration: boolean
 }
 
 export interface SemanticWorkerRequestArgsByMethod {
-  readonly complete: SemanticWorkerPositionArgs & { readonly snippets?: boolean }
+  readonly complete: SemanticWorkerPositionArgs & {
+    readonly snippets?: boolean
+    readonly discovery?: SemanticWorkerCompletionDiscovery
+  }
   readonly resolveCompletion: SemanticWorkerPositionArgs & {
     readonly completion: SemanticWorkerJsonObject
     readonly snippets?: boolean
@@ -1227,15 +1246,72 @@ function decodePositionArgs(value: unknown): SemanticWorkerPositionArgs {
 }
 
 function decodeCompletionArgs(value: unknown): SemanticWorkerRequestArgsByMethod["complete"] {
-  const args = ownDataRecord(value, ["position"], ["snippets"])
+  const args = ownDataRecord(value, ["position"], ["snippets", "discovery"])
   if (
     !args
-    || !hasRequiredAndOnlyKeys(args, ["position"], ["snippets"])
+    || !hasRequiredAndOnlyKeys(args, ["position"], ["snippets", "discovery"])
     || (Object.hasOwn(args, "snippets") && typeof args.snippets !== "boolean")
   ) throw invalidRequest()
   return Object.freeze({
     position: decodePosition(args.position),
     ...(Object.hasOwn(args, "snippets") ? { snippets: args.snippets as boolean } : {}),
+    ...(Object.hasOwn(args, "discovery")
+      ? { discovery: decodeCompletionDiscovery(args.discovery) }
+      : {}),
+  })
+}
+
+function decodeCompletionDiscovery(value: unknown): SemanticWorkerCompletionDiscovery {
+  const discovery = ownDataRecord(value, ["incomplete", "candidates"])
+  if (
+    !discovery
+    || !hasExactKeys(discovery, ["incomplete", "candidates"])
+    || typeof discovery.incomplete !== "boolean"
+    || !Array.isArray(discovery.candidates)
+    || Object.getPrototypeOf(discovery.candidates) !== Array.prototype
+    || discovery.candidates.length > 256
+  ) throw invalidRequest()
+  const candidates = discovery.candidates.map((value) => {
+    const candidate = ownDataRecord(
+      value,
+      ["exportedName", "kind", "uri", "ordinal"],
+      ["declarationIdentity", "importSpecifier", "moduleId", "targetScope"],
+    )
+    const optionalStrings = [
+      "declarationIdentity",
+      "importSpecifier",
+      "moduleId",
+      "targetScope",
+    ] as const
+    if (
+      !candidate
+      || !hasRequiredAndOnlyKeys(
+        candidate,
+        ["exportedName", "kind", "uri", "ordinal"],
+        optionalStrings,
+      )
+      || typeof candidate.exportedName !== "string"
+      || candidate.exportedName.length === 0
+      || typeof candidate.kind !== "string"
+      || !isCanonicalSemanticWorkerFileUri(candidate.uri)
+      || !isNonNegativeSafeInteger(candidate.ordinal)
+      || optionalStrings.some((key) => (
+        Object.hasOwn(candidate, key) && typeof candidate[key] !== "string"
+      ))
+    ) throw invalidRequest()
+    return Object.freeze({
+      exportedName: candidate.exportedName,
+      kind: candidate.kind,
+      uri: candidate.uri,
+      ordinal: candidate.ordinal,
+      ...Object.fromEntries(optionalStrings.flatMap((key) => (
+        Object.hasOwn(candidate, key) ? [[key, candidate[key]]] : []
+      ))),
+    }) as SemanticWorkerCompletionDiscoveryCandidate
+  })
+  return Object.freeze({
+    incomplete: discovery.incomplete,
+    candidates: Object.freeze(candidates),
   })
 }
 

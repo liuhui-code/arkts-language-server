@@ -29,6 +29,33 @@ export interface WorkspaceSymbolSearchResult {
   completeness: WorkspaceIndexCompleteness
 }
 
+export interface WorkspaceExportCandidate {
+  exportedName: string
+  kind: string
+  uri: DocumentUri
+  range: TextRange
+  ordinal: number
+  declarationIdentity?: string
+  importSpecifier?: string
+  moduleId?: string
+  targetScope?: string
+}
+
+export interface WorkspaceExportSearchResult {
+  items: WorkspaceExportCandidate[]
+  servedGeneration: number
+  completeness: WorkspaceIndexCompleteness
+}
+
+export interface WorkspaceExportIndexPort {
+  searchExports(
+    workspaceId: WorkspaceId,
+    query: string,
+    limit: number,
+    signal?: AbortSignal,
+  ): Promise<WorkspaceExportSearchResult>
+}
+
 export interface WorkspaceIndexPort {
   open(workspace: WorkspaceDescriptor, cacheDir: string): Promise<WorkspaceIndexStatus>
   refresh(

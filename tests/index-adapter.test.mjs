@@ -257,6 +257,53 @@ test("maps one workspace session to protocol-v1 requests with canonical paths an
   await driver.gracefulExit()
 })
 
+test("maps export discovery candidates from the sidecar without treating them as semantic truth", async (t) => {
+  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-export-adapter-"))
+  t.after(() => fs.rmSync(temporaryRoot, { recursive: true, force: true }))
+  const workspace = path.join(temporaryRoot, "workspace")
+  fs.mkdirSync(workspace)
+  const auditPath = path.join(temporaryRoot, "audit.ndjson")
+  const driver = new DriverProcess(buildDriver(temporaryRoot), {
+    ARKTS_INDEX_SIDECAR_PATH: makeExecutableFixture(temporaryRoot, "scripted-sidecar.mjs"),
+    ARKTS_INDEX_TEST_AUDIT: auditPath,
+  })
+  t.after(() => driver.close())
+  const workspaceId = "export-workspace"
+  await driver.call("open", {
+    workspace: { id: workspaceId, rootUri: pathToFileURL(workspace).href },
+    cacheDir: path.join(temporaryRoot, "cache"),
+  })
+  await driver.call("refresh", { workspaceId, generation: 7, changed: [], removedUris: [] })
+
+  assert.deepEqual(await driver.call("exportsSearch", {
+    workspaceId,
+    query: "Fixture",
+    limit: 20,
+  }), {
+    items: [{
+      exportedName: "FixtureExport",
+      kind: "class",
+      uri: pathToFileURL(path.join(workspace, "FixtureExport.ets")).href,
+      range: {
+        start: { line: 0, character: 13 },
+        end: { line: 0, character: 26 },
+      },
+      ordinal: 4999,
+      declarationIdentity: "fixture-export-identity",
+      importSpecifier: "./FixtureExport",
+      moduleId: "entry",
+      targetScope: "default",
+    }],
+    servedGeneration: 7,
+    completeness: "ready",
+  })
+  const request = readAudit(auditPath)
+    .find((entry) => entry.event === "request" && entry.request.method === "exports/search")
+    .request
+  assert.deepEqual(request.params, { query: "Fixture", limit: 20 })
+  await driver.call("close", { workspaceId })
+})
+
 test("rejects an aborted request promptly and drains its late response without corrupting the session", async (t) => {
   const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-index-cancel-"))
   t.after(() => fs.rmSync(temporaryRoot, { recursive: true, force: true }))

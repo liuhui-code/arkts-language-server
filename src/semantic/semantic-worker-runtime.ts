@@ -194,6 +194,7 @@ function invoke(
       document,
       position: request.args.position,
       completionOptions: { snippets: request.args.snippets === true },
+      completionDiscovery: request.args.discovery,
       signal,
     }))
     case "resolveCompletion": return valueOf(engine.resolveCompletion({

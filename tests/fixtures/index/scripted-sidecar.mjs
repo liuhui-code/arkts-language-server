@@ -138,6 +138,26 @@ input.on("line", (line) => {
         respond(request.id, true, searchResult)
       }
       break
+    case "exports/search":
+      respond(request.id, true, {
+        items: [{
+          exportedName: "FixtureExport",
+          kind: "class",
+          uri: pathToFileURL(path.join(workspaceRoot, "FixtureExport.ets")).href,
+          range: {
+            start: { line: 0, character: 13 },
+            end: { line: 0, character: 26 },
+          },
+          ordinal: 4999,
+          declarationIdentity: "fixture-export-identity",
+          importSpecifier: "./FixtureExport",
+          moduleId: "entry",
+          targetScope: "default",
+        }],
+        servedGeneration: committedGeneration,
+        completeness: state === "ready" ? "ready" : "stale",
+      })
+      break
     case "status":
       respond(request.id, true, status())
       break

@@ -9,9 +9,10 @@ use std::{
 };
 
 use arkts_index_core::{
-    CommitReceipt, DocumentSymbols, FullCatalogBatch, Position, RefreshBatch, StoreError,
-    StoreErrorKind, StoreMetadata, SymbolKind, SymbolQuery, SymbolSearchResult, SymbolStore,
-    TextRange, WorkspaceSymbol, acronym_for_search, fold_for_search, rank_symbols,
+    CommitReceipt, DocumentSymbols, ExportQuery, ExportSearchResult, FullCatalogBatch, Position,
+    RefreshBatch, StoreError, StoreErrorKind, StoreMetadata, SymbolKind, SymbolQuery,
+    SymbolSearchResult, SymbolStore, TextRange, WorkspaceExport, WorkspaceSymbol,
+    acronym_for_search, fold_for_search, rank_symbols,
 };
 use rusqlite::types::Value as SqlValue;
 use rusqlite::{
@@ -24,7 +25,8 @@ use sha2::{Digest, Sha256};
 use std::sync::{Arc, Barrier, Mutex};
 
 const APPLICATION_ID: i64 = 0x4152_4B49;
-const SCHEMA_VERSION: i64 = 2;
+const SCHEMA_VERSION: i64 = 3;
+const PREVIOUS_SCHEMA_VERSION: i64 = 2;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WorkspaceCacheLocation {
@@ -146,6 +148,10 @@ impl SqliteStore {
             (0, 0) => initialize_schema(&mut connection, workspace_identity)?,
             (APPLICATION_ID, SCHEMA_VERSION) => {
                 verify_workspace_identity(&connection, workspace_identity)?
+            }
+            (APPLICATION_ID, PREVIOUS_SCHEMA_VERSION) => {
+                verify_workspace_identity(&connection, workspace_identity)?;
+                migrate_schema_v2_to_v3(&mut connection)?;
             }
             _ => {
                 return Err(StoreError::new(
@@ -381,6 +387,7 @@ impl SymbolStore for SqliteStore {
             .map_err(map_sqlite_error)?;
         insert_catalog_documents(&transaction, &batch.documents, generation)?;
         insert_symbol_documents(&transaction, &batch.documents)?;
+        insert_export_documents(&transaction, &batch.documents, generation)?;
         for uri in &batch.rejected_uris {
             transaction
                 .execute(
@@ -460,13 +467,45 @@ impl SymbolStore for SqliteStore {
             served_generation: generation,
         })
     }
+
+    fn search_exports(&self, query: &ExportQuery) -> Result<ExportSearchResult, StoreError> {
+        let transaction =
+            Transaction::new_unchecked(&self.connection, TransactionBehavior::Deferred)
+                .map_err(map_sqlite_error)?;
+        let mut items = if query.folded().is_empty() {
+            Vec::new()
+        } else {
+            read_export_rows(&transaction, &prefix_parameters(query.folded()))?
+        };
+        items.sort_by(|left, right| {
+            fold_for_search(&left.exported_name)
+                .cmp(&fold_for_search(&right.exported_name))
+                .then_with(|| left.uri.cmp(&right.uri))
+                .then_with(|| left.ordinal.cmp(&right.ordinal))
+        });
+        items.truncate(query.limit());
+        let generation = read_committed_generation(&transaction)?;
+        transaction.commit().map_err(map_sqlite_error)?;
+        Ok(ExportSearchResult {
+            items,
+            served_generation: generation,
+        })
+    }
 }
 
 fn insert_document_symbols(
     transaction: &Transaction<'_>,
     replacement: &DocumentSymbols,
 ) -> Result<(), StoreError> {
-    insert_symbol_documents(transaction, std::slice::from_ref(replacement))
+    insert_symbol_documents(transaction, std::slice::from_ref(replacement))?;
+    let generation: i64 = transaction
+        .query_row(
+            "SELECT generation FROM documents WHERE uri = ?1",
+            [&replacement.uri],
+            |row| row.get(0),
+        )
+        .map_err(map_sqlite_error)?;
+    insert_export_documents(transaction, std::slice::from_ref(replacement), generation)
 }
 
 fn insert_catalog_documents(
@@ -557,6 +596,45 @@ fn insert_symbol_values(
         .map_err(map_sqlite_error)
 }
 
+fn insert_export_documents(
+    transaction: &Transaction<'_>,
+    documents: &[DocumentSymbols],
+    generation: i64,
+) -> Result<(), StoreError> {
+    let mut statement = transaction
+        .prepare_cached(
+            "INSERT INTO exports(\
+                document_uri, generation, ordinal, exported_name, name_folded, symbol_kind, \
+                declaration_identity, import_specifier, module_id, target_scope, \
+                start_line, start_character, end_line, end_character\
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+        )
+        .map_err(map_sqlite_error)?;
+    for document in documents {
+        for item in &document.exports {
+            statement
+                .execute(params![
+                    document.uri,
+                    generation,
+                    i64::from(item.ordinal),
+                    item.exported_name,
+                    fold_for_search(&item.exported_name),
+                    kind_to_i64(item.kind),
+                    item.declaration_identity,
+                    item.import_specifier,
+                    item.module_id,
+                    item.target_scope,
+                    i64::from(item.range.start.line),
+                    i64::from(item.range.start.character),
+                    i64::from(item.range.end.line),
+                    i64::from(item.range.end.character),
+                ])
+                .map_err(map_sqlite_error)?;
+        }
+    }
+    Ok(())
+}
+
 const NAME_PREFIX_SQL: &str = "SELECT name, kind, document_uri, container, \
             start_line, start_character, end_line, end_character \
      FROM symbols INDEXED BY symbols_name_folded \
@@ -573,6 +651,81 @@ const LONG_SUBSTRING_SQL: &str = "SELECT symbols.name, symbols.kind, symbols.doc
      FROM symbol_name_trigrams \
      JOIN symbols ON symbols.rowid = symbol_name_trigrams.rowid \
      WHERE symbol_name_trigrams MATCH ?1";
+
+const EXPORT_PREFIX_SQL: &str = "SELECT exported_name, symbol_kind, document_uri, ordinal, \
+            declaration_identity, import_specifier, module_id, target_scope, \
+            start_line, start_character, end_line, end_character \
+     FROM exports INDEXED BY exports_name_prefix \
+     WHERE name_folded >= ?1 AND name_folded < ?2";
+
+fn read_export_rows(
+    connection: &Connection,
+    parameters: &[String],
+) -> Result<Vec<WorkspaceExport>, StoreError> {
+    let mut statement = connection
+        .prepare(EXPORT_PREFIX_SQL)
+        .map_err(map_sqlite_error)?;
+    let parameter_refs: Vec<&dyn ToSql> = parameters
+        .iter()
+        .map(|parameter| parameter as &dyn ToSql)
+        .collect();
+    let rows = statement
+        .query_map(parameter_refs.as_slice(), |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, i64>(3)?,
+                row.get::<_, Option<String>>(4)?,
+                row.get::<_, Option<String>>(5)?,
+                row.get::<_, Option<String>>(6)?,
+                row.get::<_, Option<String>>(7)?,
+                row.get::<_, i64>(8)?,
+                row.get::<_, i64>(9)?,
+                row.get::<_, i64>(10)?,
+                row.get::<_, i64>(11)?,
+            ))
+        })
+        .map_err(map_sqlite_error)?;
+    let mut exports = Vec::new();
+    for row in rows {
+        let (
+            exported_name,
+            kind,
+            uri,
+            ordinal,
+            declaration_identity,
+            import_specifier,
+            module_id,
+            target_scope,
+            start_line,
+            start_character,
+            end_line,
+            end_character,
+        ) = row.map_err(map_sqlite_error)?;
+        exports.push(WorkspaceExport {
+            exported_name,
+            kind: kind_from_i64(kind)?,
+            uri,
+            range: TextRange::new(
+                Position::new(
+                    to_u32(start_line, "start_line")?,
+                    to_u32(start_character, "start_character")?,
+                ),
+                Position::new(
+                    to_u32(end_line, "end_line")?,
+                    to_u32(end_character, "end_character")?,
+                ),
+            ),
+            ordinal: to_u32(ordinal, "ordinal")?,
+            declaration_identity,
+            import_specifier,
+            module_id,
+            target_scope,
+        });
+    }
+    Ok(exports)
+}
 
 fn read_symbol_rows(
     connection: &Connection,
@@ -702,6 +855,24 @@ fn initialize_schema(
              );\
              CREATE INDEX symbols_name_folded ON symbols(name_folded);\
              CREATE INDEX symbols_acronym_folded ON symbols(acronym_folded);\
+             CREATE TABLE exports(\
+                document_uri TEXT NOT NULL REFERENCES documents(uri) ON DELETE CASCADE,\
+                generation INTEGER NOT NULL CHECK(generation >= 0),\
+                ordinal INTEGER NOT NULL CHECK(ordinal >= 0),\
+                exported_name TEXT NOT NULL,\
+                name_folded TEXT NOT NULL,\
+                symbol_kind INTEGER NOT NULL,\
+                declaration_identity TEXT,\
+                import_specifier TEXT,\
+                module_id TEXT,\
+                target_scope TEXT,\
+                start_line INTEGER NOT NULL,\
+                start_character INTEGER NOT NULL,\
+                end_line INTEGER NOT NULL,\
+                end_character INTEGER NOT NULL,\
+                PRIMARY KEY(document_uri, ordinal)\
+             );\
+             CREATE INDEX exports_name_prefix ON exports(name_folded);\
              CREATE VIRTUAL TABLE symbol_name_trigrams USING fts5(\
                 name_folded,\
                 content = 'symbols',\
@@ -727,6 +898,38 @@ fn initialize_schema(
         .map_err(map_sqlite_error)?;
     transaction
         .pragma_update(None, "application_id", APPLICATION_ID)
+        .map_err(map_sqlite_error)?;
+    transaction
+        .pragma_update(None, "user_version", SCHEMA_VERSION)
+        .map_err(map_sqlite_error)?;
+    transaction.commit().map_err(map_sqlite_error)
+}
+
+fn migrate_schema_v2_to_v3(connection: &mut Connection) -> Result<(), StoreError> {
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(map_sqlite_error)?;
+    transaction
+        .execute_batch(
+            "CREATE TABLE exports(\
+                document_uri TEXT NOT NULL REFERENCES documents(uri) ON DELETE CASCADE,\
+                generation INTEGER NOT NULL CHECK(generation >= 0),\
+                ordinal INTEGER NOT NULL CHECK(ordinal >= 0),\
+                exported_name TEXT NOT NULL,\
+                name_folded TEXT NOT NULL,\
+                symbol_kind INTEGER NOT NULL,\
+                declaration_identity TEXT,\
+                import_specifier TEXT,\
+                module_id TEXT,\
+                target_scope TEXT,\
+                start_line INTEGER NOT NULL,\
+                start_character INTEGER NOT NULL,\
+                end_line INTEGER NOT NULL,\
+                end_character INTEGER NOT NULL,\
+                PRIMARY KEY(document_uri, ordinal)\
+             );\
+             CREATE INDEX exports_name_prefix ON exports(name_folded);",
+        )
         .map_err(map_sqlite_error)?;
     transaction
         .pragma_update(None, "user_version", SCHEMA_VERSION)
@@ -798,6 +1001,7 @@ fn validate_replacement(document: &DocumentSymbols) -> Result<(), StoreError> {
         .symbols
         .iter()
         .all(|symbol| symbol.uri == document.uri)
+        && document.exports.iter().all(|item| item.uri == document.uri)
     {
         Ok(())
     } else {

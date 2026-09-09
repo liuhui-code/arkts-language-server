@@ -62,6 +62,19 @@ pub struct WorkspaceSymbol {
     pub container: Option<String>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WorkspaceExport {
+    pub exported_name: String,
+    pub kind: SymbolKind,
+    pub uri: String,
+    pub range: TextRange,
+    pub ordinal: u32,
+    pub declaration_identity: Option<String>,
+    pub import_specifier: Option<String>,
+    pub module_id: Option<String>,
+    pub target_scope: Option<String>,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct RefreshReport {
     pub indexed_documents: usize,
@@ -127,6 +140,7 @@ pub struct StoreMetadata {
 pub struct DocumentSymbols {
     pub uri: String,
     pub symbols: Vec<WorkspaceSymbol>,
+    pub exports: Vec<WorkspaceExport>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -165,6 +179,35 @@ pub struct CommitReceipt {
 pub struct SymbolSearchResult {
     pub items: Vec<WorkspaceSymbol>,
     pub served_generation: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExportSearchResult {
+    pub items: Vec<WorkspaceExport>,
+    pub served_generation: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExportQuery {
+    folded: String,
+    limit: usize,
+}
+
+impl ExportQuery {
+    pub fn new(query: &str, limit: usize) -> Self {
+        Self {
+            folded: fold_for_search(query),
+            limit,
+        }
+    }
+
+    pub fn folded(&self) -> &str {
+        &self.folded
+    }
+
+    pub const fn limit(&self) -> usize {
+        self.limit
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -211,11 +254,12 @@ pub trait SymbolStore {
     fn apply_batch(&mut self, batch: RefreshBatch) -> Result<CommitReceipt, StoreError>;
     fn replace_all(&mut self, batch: FullCatalogBatch) -> Result<CommitReceipt, StoreError>;
     fn search(&self, query: &SymbolQuery) -> Result<SymbolSearchResult, StoreError>;
+    fn search_exports(&self, query: &ExportQuery) -> Result<ExportSearchResult, StoreError>;
 }
 
 #[derive(Default)]
 pub struct MemoryStore {
-    documents: HashMap<String, Vec<WorkspaceSymbol>>,
+    documents: HashMap<String, DocumentSymbols>,
     rejected_documents: BTreeSet<String>,
     committed_generation: u64,
 }
@@ -239,7 +283,7 @@ impl SymbolStore for MemoryStore {
         for replacement in batch.replacements {
             ensure_symbol_uris(&replacement)?;
             next_rejected_documents.remove(&replacement.uri);
-            next_documents.insert(replacement.uri, replacement.symbols);
+            next_documents.insert(replacement.uri.clone(), replacement);
         }
         for uri in batch.rejected_uris {
             next_documents.remove(&uri);
@@ -259,7 +303,7 @@ impl SymbolStore for MemoryStore {
         let mut documents = HashMap::new();
         for document in batch.documents {
             ensure_symbol_uris(&document)?;
-            documents.insert(document.uri, document.symbols);
+            documents.insert(document.uri.clone(), document);
         }
         self.documents = documents;
         self.rejected_documents = batch.rejected_uris.into_iter().collect();
@@ -272,7 +316,34 @@ impl SymbolStore for MemoryStore {
 
     fn search(&self, query: &SymbolQuery) -> Result<SymbolSearchResult, StoreError> {
         Ok(SymbolSearchResult {
-            items: rank_symbols(query, self.documents.values().flatten().cloned()),
+            items: rank_symbols(
+                query,
+                self.documents
+                    .values()
+                    .flat_map(|document| document.symbols.iter())
+                    .cloned(),
+            ),
+            served_generation: self.committed_generation,
+        })
+    }
+
+    fn search_exports(&self, query: &ExportQuery) -> Result<ExportSearchResult, StoreError> {
+        let mut items: Vec<_> = self
+            .documents
+            .values()
+            .flat_map(|document| document.exports.iter())
+            .filter(|item| fold_for_search(&item.exported_name).starts_with(query.folded()))
+            .cloned()
+            .collect();
+        items.sort_by(|left, right| {
+            fold_for_search(&left.exported_name)
+                .cmp(&fold_for_search(&right.exported_name))
+                .then_with(|| left.uri.cmp(&right.uri))
+                .then_with(|| left.ordinal.cmp(&right.ordinal))
+        });
+        items.truncate(query.limit());
+        Ok(ExportSearchResult {
+            items,
             served_generation: self.committed_generation,
         })
     }
@@ -330,6 +401,7 @@ fn ensure_symbol_uris(document: &DocumentSymbols) -> Result<(), StoreError> {
         .symbols
         .iter()
         .all(|symbol| symbol.uri == document.uri)
+        && document.exports.iter().all(|item| item.uri == document.uri)
     {
         Ok(())
     } else {
@@ -448,6 +520,14 @@ impl WorkspaceIndex {
         self.store.search(&SymbolQuery::new(query, limit))
     }
 
+    pub fn search_exports(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> Result<ExportSearchResult, StoreError> {
+        self.store.search_exports(&ExportQuery::new(query, limit))
+    }
+
     pub fn search_excluding(
         &self,
         query: &str,
@@ -512,16 +592,20 @@ impl<'a> LineIndex<'a> {
 }
 
 pub fn parse_document_symbols(document: &Document) -> Result<DocumentSymbols, DocumentParseError> {
-    parse_symbols(document).map(|symbols| DocumentSymbols {
+    parse_symbols(document).map(|(symbols, exports)| DocumentSymbols {
         uri: document.uri.clone(),
         symbols,
+        exports,
     })
 }
 
-fn parse_symbols(document: &Document) -> Result<Vec<WorkspaceSymbol>, DocumentParseError> {
+fn parse_symbols(
+    document: &Document,
+) -> Result<(Vec<WorkspaceSymbol>, Vec<WorkspaceExport>), DocumentParseError> {
     let tokens = tokenize(&document.text)?;
     let line_index = LineIndex::new(&document.text);
     let mut symbols = Vec::new();
+    let mut exports = Vec::new();
     let mut containers: Vec<Container> = Vec::new();
     let mut pending_container: Option<String> = None;
     let mut brace_depth = 0usize;
@@ -543,6 +627,15 @@ fn parse_symbols(document: &Document) -> Result<Vec<WorkspaceSymbol>, DocumentPa
                     SymbolKind::Struct
                 };
                 symbols.push(symbol(document, &line_index, name, kind, None));
+                if is_exported_declaration(&tokens, index, brace_depth) {
+                    exports.push(workspace_export(
+                        document,
+                        &line_index,
+                        name,
+                        kind,
+                        exports.len(),
+                    )?);
+                }
                 pending_container = Some(name.text.to_owned());
             }
             "function" => {
@@ -557,6 +650,15 @@ fn parse_symbols(document: &Document) -> Result<Vec<WorkspaceSymbol>, DocumentPa
                         SymbolKind::Function,
                         None,
                     ));
+                    if is_exported_declaration(&tokens, index, brace_depth) {
+                        exports.push(workspace_export(
+                            document,
+                            &line_index,
+                            name,
+                            SymbolKind::Function,
+                            exports.len(),
+                        )?);
+                    }
                 }
             }
             "{" => {
@@ -621,9 +723,22 @@ fn parse_symbols(document: &Document) -> Result<Vec<WorkspaceSymbol>, DocumentPa
     }
 
     if brace_depth == 0 && parenthesis_depth == 0 && bracket_depth == 0 {
-        Ok(symbols)
+        Ok((symbols, exports))
     } else {
         Err(DocumentParseError)
+    }
+}
+
+fn is_exported_declaration(tokens: &[Token<'_>], index: usize, brace_depth: usize) -> bool {
+    if brace_depth != 0 {
+        return false;
+    }
+    match tokens.get(index.wrapping_sub(1)).map(|token| token.text) {
+        Some("export") => true,
+        Some("default") => {
+            tokens.get(index.wrapping_sub(2)).map(|token| token.text) == Some("export")
+        }
+        _ => false,
     }
 }
 
@@ -644,6 +759,34 @@ fn symbol(
         ),
         container,
     }
+}
+
+fn workspace_export(
+    document: &Document,
+    line_index: &LineIndex<'_>,
+    name: &Token<'_>,
+    kind: SymbolKind,
+    ordinal: usize,
+) -> Result<WorkspaceExport, DocumentParseError> {
+    let ordinal = u32::try_from(ordinal).map_err(|_| DocumentParseError)?;
+    let range = TextRange::new(
+        line_index.position(name.start),
+        line_index.position(name.end),
+    );
+    Ok(WorkspaceExport {
+        exported_name: name.text.to_owned(),
+        kind,
+        uri: document.uri.clone(),
+        range,
+        ordinal,
+        declaration_identity: Some(format!(
+            "{}#{}:{}:{}",
+            document.uri, range.start.line, range.start.character, name.text
+        )),
+        import_specifier: None,
+        module_id: None,
+        target_scope: None,
+    })
 }
 
 fn is_non_method_keyword(identifier: &str) -> bool {

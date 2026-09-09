@@ -7,6 +7,23 @@ export interface SemanticDocumentPosition {
   documentVersion?: number
   workspaceRoot?: string
   allowSnippets?: boolean
+  completionDiscovery?: SemanticCompletionDiscovery
+}
+
+export interface SemanticCompletionDiscoveryCandidate {
+  exportedName: string
+  kind: string
+  uri: string
+  ordinal: number
+  declarationIdentity?: string
+  importSpecifier?: string
+  moduleId?: string
+  targetScope?: string
+}
+
+export interface SemanticCompletionDiscovery {
+  candidates: readonly SemanticCompletionDiscoveryCandidate[]
+  incomplete: boolean
 }
 
 export interface SemanticReplayDocument {

@@ -38,6 +38,22 @@ export interface SemanticCompletionList {
   isIncomplete: boolean
 }
 
+export interface SemanticCompletionDiscoveryCandidate {
+  exportedName: string
+  kind: string
+  uri: DocumentUri
+  ordinal: number
+  declarationIdentity?: string
+  importSpecifier?: string
+  moduleId?: string
+  targetScope?: string
+}
+
+export interface SemanticCompletionDiscovery {
+  candidates: readonly SemanticCompletionDiscoveryCandidate[]
+  incomplete: boolean
+}
+
 export interface SemanticCompletionTextEdit {
   uri: DocumentUri
   range: TextRange
@@ -291,6 +307,7 @@ export interface SemanticQuery {
   document: DocumentSnapshot
   position: TextPosition
   completionOptions?: { snippets?: boolean }
+  completionDiscovery?: SemanticCompletionDiscovery
   signal?: AbortSignal
 }
 

@@ -1,5 +1,6 @@
 use std::{
     collections::VecDeque,
+    fmt::Write as _,
     fs,
     io::{BufRead, BufReader, Read, Write},
     path::{Path, PathBuf},
@@ -182,6 +183,55 @@ fn initialize(process: &mut SidecarProcess, root: &Path, cache: &Path, id: u64) 
             "cacheDirectory": cache
         }
     }))
+}
+
+#[test]
+fn sidecar_discovers_an_export_beyond_the_old_completion_scan_bound() {
+    const FILLER_EXPORTS: usize = 4_999;
+    let temp = TestDir::new("exports-over-4096");
+    let workspace = temp.path().join("workspace");
+    let cache = temp.path().join("cache");
+    fs::create_dir_all(&workspace).expect("workspace should exist");
+    let mut source = String::new();
+    for ordinal in 0..FILLER_EXPORTS {
+        writeln!(&mut source, "export class FillerExport{ordinal:04} {{}}")
+            .expect("writing to String should succeed");
+    }
+    source.push_str("export class ExactNeedleExport {}\n");
+
+    let mut process = SidecarProcess::spawn();
+    assert_eq!(initialize(&mut process, &workspace, &cache, 1)["ok"], true);
+    assert_eq!(
+        process.request(json!({
+            "protocol": 1,
+            "id": 2,
+            "method": "refresh",
+            "params": {
+                "generation": 1,
+                "changed": [{
+                    "uri": "file:///workspace/Exports.ets",
+                    "text": source
+                }],
+                "removedUris": []
+            }
+        }))["ok"],
+        true
+    );
+
+    let searched = process.request(json!({
+        "protocol": 1,
+        "id": 3,
+        "method": "exports/search",
+        "params": { "query": "ExactNeedle", "limit": 20 }
+    }));
+    assert_eq!(searched["ok"], true);
+    assert_eq!(searched["result"]["servedGeneration"], 1);
+    assert_eq!(
+        searched["result"]["items"][0]["exportedName"],
+        "ExactNeedleExport"
+    );
+    assert_eq!(searched["result"]["items"][0]["ordinal"], FILLER_EXPORTS);
+    process.shutdown(4);
 }
 
 #[test]
