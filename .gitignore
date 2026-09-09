@@ -8,3 +8,4 @@ editors/zed/grammars/*
 editors/zed/grammars/.arkts-source
 .DS_Store
 *.log
+.cache/upstream/

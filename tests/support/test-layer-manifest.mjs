@@ -45,6 +45,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/test-layer-manifest.test.mjs",
       "tests/test-layer-runner.test.mjs",
       "tests/toolchain-lock.test.mjs",
+      "tests/upstream-identity.test.mjs",
       "tests/workspace-file-change-coordinator.test.mjs",
       "tests/workspace-path-consistency.test.mjs",
       "tests/workspace-symbol-service.test.mjs",
