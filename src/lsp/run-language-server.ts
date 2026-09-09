@@ -191,6 +191,7 @@ export function runLanguageServer(services?: LanguageServerServices): void {
     const rootUris = initialRootUris(params)
     projects.configure(rootUris)
     semantic.configureProject?.(params.initializationOptions?.project)
+    semantic.configureSdk?.(params.initializationOptions?.sdk)
     workspaceRoots = rootUris.map((rootUri) => ({
       id: projects.projectFor(rootUri).id,
       rootUri,
@@ -321,14 +322,23 @@ export function runLanguageServer(services?: LanguageServerServices): void {
   })
   connection.onDidChangeConfiguration(({ settings }) => {
     const configured = settings?.arkts
-    if (!configured || !Object.prototype.hasOwnProperty.call(configured, "project")) return
+    if (!configured) return
+    const projectChanged = Object.prototype.hasOwnProperty.call(configured, "project")
+    const sdkChanged = Object.prototype.hasOwnProperty.call(configured, "sdk")
+    if (!projectChanged && !sdkChanged) return
     for (const workspace of workspaceRoots) freshness.cancelWorkspace(workspace.id)
-    semantic.configureProject?.(configured.project)
+    if (projectChanged) semantic.configureProject?.(configured.project)
+    if (sdkChanged) semantic.configureSdk?.(configured.sdk)
     semantic.workspaceFilesChanged?.(workspaceRoots.map(({ rootUri }) => ({
       rootUri, rootDirty: true, changes: [],
     })))
     for (const document of documents.all()) diagnostics.update(document)
-    logger.info("project.selection.changed", { workspaceCount: workspaceRoots.length })
+    if (projectChanged) {
+      logger.info("project.selection.changed", { workspaceCount: workspaceRoots.length })
+    }
+    if (sdkChanged) {
+      logger.info("sdk.configuration.changed", { workspaceCount: workspaceRoots.length })
+    }
   })
   connection.onDidChangeWatchedFiles(({ changes }) => {
     workspaceFileChanges.accept(changes)

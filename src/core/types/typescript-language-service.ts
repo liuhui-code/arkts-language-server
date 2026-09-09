@@ -136,6 +136,7 @@ export interface TypeScriptLanguageServiceEngineOptions {
     maxFiles?: number
     maxBytes?: number
   }
+  sdkConfiguration?: unknown
 }
 
 export class TypeScriptLanguageServiceEngine {
@@ -145,6 +146,7 @@ export class TypeScriptLanguageServiceEngine {
   private readonly lazySnapshots = new Map<string, LazySnapshotRecord>()
   private readonly sdkDeclarationPaths: string[]
   private readonly sdkRoot: string | null
+  private readonly sdkSelection: ProjectSdkSelection
   private readonly workspacePhysicalRoot: string | undefined
   private readonly sdkPhysicalRoot: string | undefined
   private membershipFileNames: string[]
@@ -188,6 +190,7 @@ export class TypeScriptLanguageServiceEngine {
       readSourceFile = safeRead,
       projectFileAccess,
       lazySnapshotLimits = {},
+      sdkConfiguration,
     }: TypeScriptLanguageServiceEngineOptions = {},
   ) {
     this.packageResolver = packageResolver
@@ -216,7 +219,12 @@ export class TypeScriptLanguageServiceEngine {
       skipLibCheck: true,
       target: ts.ScriptTarget.ES2022,
     }
-    const sdk = discoverProjectSdk(rootPath)
+    const sdk = discoverProjectSdk(
+      rootPath,
+      process.env.ARKLINE_HARMONY_SDK_PATH,
+      sdkConfiguration,
+    )
+    this.sdkSelection = sdk
     this.sdkRoot = sdk.path
     this.sdkPhysicalRoot = this.sdkRoot ? canonicalExistingPath(this.sdkRoot) : undefined
     onSdkSelected?.(rootPath, sdk)
@@ -1124,12 +1132,22 @@ export class TypeScriptLanguageServiceEngine {
     work.boundary()
     const semanticDiagnostics = this.service.getSemanticDiagnostics(filePath)
     work.boundary()
-    const diagnostics = mapTypescriptDiagnosticGroups(
+    const diagnostics: SemanticDiagnostic[] = mapTypescriptDiagnosticGroups(
       filePath,
       script.virtualDocument,
       [syntacticDiagnostics, semanticDiagnostics],
       work,
     )
+    if (this.sdkSelection.source === "configuration" && !this.sdkSelection.ready) {
+      diagnostics.unshift({
+        source: "language",
+        severity: "error",
+        code: "arkts.sdk.configuration",
+        path: filePath,
+        range: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 },
+        message: "The configured ArkTS SDK path is invalid. Set initializationOptions.sdk.path or arkts.sdk.path to an absolute OpenHarmony SDK directory.",
+      })
+    }
     return work.finish(diagnostics)
   }
 

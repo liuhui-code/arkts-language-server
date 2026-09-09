@@ -97,6 +97,10 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     this.packageResolver.configureProject(selection)
   }
 
+  configureSdk(selection: unknown): void {
+    this.engines.configureSdk(selection)
+  }
+
   isResourceFile(rootUri: string, fileUri: string): boolean {
     const root = toFilePath(rootUri)
     const candidate = toFilePath(fileUri)

@@ -1,6 +1,6 @@
 # Zed + ArkTS Language Server：官方语义后端与超大型工程低内存执行计划
 
-状态：当前权威执行计划；Foundation 待启动。
+状态：当前权威执行计划；Foundation 进行中，F1 已完成。
 
 计划基线：`e90cacb9ace47292ac0869d09b3a64f7c7fe2144`（P2.1b，PR #5）。
 
@@ -285,6 +285,17 @@ PSS 仍过 release gate，才能实验第二 worker。
 
 每个行为一条 RED→GREEN 纵切。实现不得让 Zed Rust extension 解析 SDK；extension 只转发 Zed 的
 标准 LSP initialization options，SDK selection 仍由 server/ProjectGraph 唯一拥有。
+
+完成证据（2026-09-09）：
+
+- [x] `initializationOptions.sdk.path` 覆盖 `local.properties`；
+- [x] `settings.arkts.sdk.path` 热切换并保留 open overlay；
+- [x] 无效显式路径 fail closed，发布 `arkts.sdk.configuration`；
+- [x] `{}` 清除 override 并恢复工程选择；
+- [x] 既有单进程双 workspace SDK 隔离契约继续通过。
+
+完整 RED/GREEN 与命令记录见
+[`docs/tdd/foundation-zed-sdk-configuration.md`](../tdd/foundation-zed-sdk-configuration.md)。
 
 ### F2：锁定 backend revision 与 SDK digest
 

@@ -9,6 +9,101 @@ import { pathToFileURL } from "node:url"
 import { LspSession } from "../support/lsp-session.mjs"
 import { LspProcess, projectRoot, withTimeout } from "../support/lsp-process.mjs"
 
+test("Zed initialization SDK configuration overrides local.properties", async (t) => {
+  const fixture = await sdkSession(t, { initializationSdk: "sdkB" })
+  const response = await fixture.session.request(
+    "textDocument/definition",
+    fixture.query("ProjectApi"),
+  )
+  assert.equal(response.error, undefined)
+  assert.deepEqual(response.result, [{
+    uri: pathToFileURL(fixture.sdkB.module).href,
+    range: rangeOf(fixture.sdkB.moduleText, "ProjectApi"),
+  }])
+})
+
+test("Zed runtime SDK configuration rebuilds semantics without losing the open overlay", async (t) => {
+  const fixture = await sdkSession(t)
+  const overlayText = `// unsaved overlay\n${fixture.text}const picked = api.se\n`
+  fixture.session.changeDocument({ uri: fixture.uri, version: 2, text: overlayText })
+  const refreshedDiagnostics = fixture.session.transport.notification(
+    "textDocument/publishDiagnostics",
+    (message) => message.params.uri === fixture.uri
+      && message.params.version === 2
+      && message.params.diagnostics.some((diagnostic) => diagnostic.code === 2353),
+  )
+  fixture.session.transport.send({
+    jsonrpc: "2.0",
+    method: "workspace/didChangeConfiguration",
+    params: { settings: { arkts: { sdk: { path: fixture.sdkB.root } } } },
+  })
+
+  const response = await fixture.session.request("textDocument/definition", {
+    textDocument: { uri: fixture.uri },
+    position: positionAt(overlayText, overlayText.lastIndexOf("ProjectApi") + 1),
+  })
+  assert.equal(response.error, undefined)
+  assert.deepEqual(response.result, [{
+    uri: pathToFileURL(fixture.sdkB.module).href,
+    range: rangeOf(fixture.sdkB.moduleText, "ProjectApi"),
+  }])
+  const completion = await fixture.session.request("textDocument/completion", {
+    textDocument: { uri: fixture.uri },
+    position: positionAt(overlayText, overlayText.lastIndexOf("api.se") + "api.se".length),
+  })
+  const items = Array.isArray(completion.result) ? completion.result : completion.result?.items ?? []
+  assert.ok(items.some((item) => item.label === "secondOnly"))
+  assert.ok(!items.some((item) => item.label === "projectOnly"))
+  assert.ok((await refreshedDiagnostics).params.diagnostics.some((diagnostic) => (
+    diagnostic.code === 2353
+  )))
+})
+
+test("an invalid explicit Zed SDK fails closed with a stable configuration diagnostic", async (t) => {
+  const fixture = await sdkSession(t, { initializationSdkPath: "relative/missing-sdk" })
+  const diagnostics = await fixture.session.transport.notification(
+    "textDocument/publishDiagnostics",
+    (message) => message.params.uri === fixture.uri && message.params.version === 1,
+  )
+  assert.ok(diagnostics.params.diagnostics.some((diagnostic) => (
+    diagnostic.code === "arkts.sdk.configuration"
+  )))
+  const response = await fixture.session.request(
+    "textDocument/definition",
+    fixture.query("ProjectApi"),
+  )
+  assert.ok(!response.result?.some((definition) => (
+    definition.uri.startsWith(pathToFileURL(fixture.sdkA.root).href)
+    || definition.uri.startsWith(pathToFileURL(fixture.fallback.root).href)
+  )))
+})
+
+test("clearing Zed SDK configuration restores local.properties selection", async (t) => {
+  const fixture = await sdkSession(t, { initializationSdk: "sdkB" })
+  const overridden = await fixture.session.request(
+    "textDocument/definition",
+    fixture.query("ProjectApi"),
+  )
+  assert.deepEqual(overridden.result, [{
+    uri: pathToFileURL(fixture.sdkB.module).href,
+    range: rangeOf(fixture.sdkB.moduleText, "ProjectApi"),
+  }])
+
+  fixture.session.transport.send({
+    jsonrpc: "2.0",
+    method: "workspace/didChangeConfiguration",
+    params: { settings: { arkts: { sdk: {} } } },
+  })
+  const restored = await fixture.session.request(
+    "textDocument/definition",
+    fixture.query("ProjectApi"),
+  )
+  assert.deepEqual(restored.result, [{
+    uri: pathToFileURL(fixture.sdkA.module).href,
+    range: rangeOf(fixture.sdkA.moduleText, "ProjectApi"),
+  }])
+})
+
 test("project sdk.dir overrides the process fallback for SDK module definitions", async (t) => {
   const fixture = await sdkSession(t)
   const response = await fixture.session.request("textDocument/definition", fixture.query("ProjectApi"))
@@ -457,7 +552,12 @@ test("two workspace SDK selections remain isolated in one language-server proces
   }
 })
 
-async function sdkSession(t, { beforeStart, source } = {}) {
+async function sdkSession(t, {
+  beforeStart,
+  initializationSdk,
+  initializationSdkPath,
+  source,
+} = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "arkts-project-sdk-"))
   const workspaceRoot = path.join(root, "workspace")
   const documentPath = path.join(workspaceRoot, "entry", "src", "main", "ets", "Page.ets")
@@ -491,7 +591,11 @@ async function sdkSession(t, { beforeStart, source } = {}) {
       capabilities: { textDocument: { publishDiagnostics: { versionSupport: true } } },
     })
     sessions.push(session)
-    await session.initialize()
+    await session.initialize({
+      initializationOptions: initializationSdk || initializationSdkPath
+        ? { sdk: { path: initializationSdkPath ?? fixture[initializationSdk].root } }
+        : undefined,
+    })
     session.openDocument({ uri, version: 1, text })
     return session
   }
