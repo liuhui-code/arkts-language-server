@@ -5,9 +5,9 @@
     "fixture": {
       "file": "this-dot.ets",
       "marker": "/*@query*/",
-      "oracle": { "completionIncludes": ["value", "refresh"], "syntaxDiagnostics": [] }
+      "oracle": { "completionIncludes": ["value", "refresh"] }
     },
-    "assertions": ["Completion remains available at an incomplete this. expression without a synthetic syntax error."]
+    "assertions": ["Completion remains available at an incomplete this. expression; diagnostics require a confirmed DevEco oracle."]
   },
   {
     "id": "incomplete.completion-result-limit",

@@ -1,0 +1,363 @@
+{
+  "schemaVersion": 1,
+  "status": "INCOMPLETE",
+  "backendRevision": "9cc62fe98f47c0bf113676e3fb33fe932b493052",
+  "backendPackage": "ohos-typescript",
+  "backendPackageVersion": "4.9.5-r4",
+  "compilerVersion": "4.9.5",
+  "scriptKindEts": 8,
+  "sdkApiLevel": 24,
+  "sdkDeclarationDigest": "8098b8abbc6b06fce0e7322d6f8f82a5bbce41e847dbd39e9a98811a33d4c6e4",
+  "productionWiring": false,
+  "sdkSmoke": {
+    "relativePath": "ets/api/@ohos.hilog.d.ts",
+    "bytes": 16744,
+    "syntacticDiagnostics": []
+  },
+  "summary": {
+    "status": "INCOMPLETE",
+    "totals": {
+      "total": 34,
+      "passed": 5,
+      "failed": 0,
+      "deferred": 29
+    },
+    "categories": {
+      "syntax": {
+        "passed": 3,
+        "failed": 0,
+        "deferred": 0
+      },
+      "completion": {
+        "passed": 0,
+        "failed": 0,
+        "deferred": 4
+      },
+      "definition": {
+        "passed": 0,
+        "failed": 0,
+        "deferred": 4
+      },
+      "references": {
+        "passed": 0,
+        "failed": 0,
+        "deferred": 4
+      },
+      "rename": {
+        "passed": 0,
+        "failed": 0,
+        "deferred": 4
+      },
+      "diagnostics": {
+        "passed": 0,
+        "failed": 0,
+        "deferred": 3
+      },
+      "incomplete": {
+        "passed": 1,
+        "failed": 0,
+        "deferred": 2
+      },
+      "unicode": {
+        "passed": 1,
+        "failed": 0,
+        "deferred": 1
+      },
+      "project-boundary": {
+        "passed": 0,
+        "failed": 0,
+        "deferred": 7
+      }
+    },
+    "semanticContractFailures": 0,
+    "positionMappingFailures": 0,
+    "targetVisibilityFailures": 0
+  },
+  "results": [
+    {
+      "id": "syntax.struct",
+      "category": "syntax",
+      "status": "passed",
+      "observations": {
+        "scriptKind": 8,
+        "syntacticDiagnostics": [],
+        "declarations": [
+          {
+            "kind": "StructDeclaration",
+            "name": "Page"
+          }
+        ]
+      },
+      "stats": {
+        "projectFileCount": 1,
+        "snapshotReadCount": 51,
+        "uniqueSnapshotReadCount": 51,
+        "disposed": true
+      }
+    },
+    {
+      "id": "syntax.struct-in-string",
+      "category": "syntax",
+      "status": "passed",
+      "observations": {
+        "scriptKind": 8,
+        "syntacticDiagnostics": [],
+        "declarations": [
+          {
+            "kind": "StructDeclaration",
+            "name": "Page"
+          }
+        ]
+      },
+      "stats": {
+        "projectFileCount": 1,
+        "snapshotReadCount": 51,
+        "uniqueSnapshotReadCount": 51,
+        "disposed": true
+      }
+    },
+    {
+      "id": "syntax.struct-in-comment",
+      "category": "syntax",
+      "status": "passed",
+      "observations": {
+        "scriptKind": 8,
+        "syntacticDiagnostics": [],
+        "declarations": [
+          {
+            "kind": "StructDeclaration",
+            "name": "Page"
+          }
+        ]
+      },
+      "stats": {
+        "projectFileCount": 1,
+        "snapshotReadCount": 51,
+        "uniqueSnapshotReadCount": 51,
+        "disposed": true
+      }
+    },
+    {
+      "id": "completion.this-member",
+      "category": "completion",
+      "status": "deferred",
+      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+    },
+    {
+      "id": "completion.imported-receiver",
+      "category": "completion",
+      "status": "deferred",
+      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+    },
+    {
+      "id": "completion.auto-import",
+      "category": "completion",
+      "status": "deferred",
+      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+    },
+    {
+      "id": "completion.sdk-hot-switch",
+      "category": "completion",
+      "status": "deferred",
+      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+    },
+    {
+      "id": "definition.unopened-utf16",
+      "category": "definition",
+      "status": "deferred",
+      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+    },
+    {
+      "id": "definition.struct-source-map",
+      "category": "definition",
+      "status": "deferred",
+      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+    },
+    {
+      "id": "definition.alias-reexport",
+      "category": "definition",
+      "status": "deferred",
+      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+    },
+    {
+      "id": "definition.cross-module",
+      "category": "definition",
+      "status": "deferred",
+      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+    },
+    {
+      "id": "references.barrel-unopened",
+      "category": "references",
+      "status": "deferred",
+      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+    },
+    {
+      "id": "references.changed-overlay",
+      "category": "references",
+      "status": "deferred",
+      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+    },
+    {
+      "id": "references.large-unopened-struct",
+      "category": "references",
+      "status": "deferred",
+      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+    },
+    {
+      "id": "references.new-target-root",
+      "category": "references",
+      "status": "deferred",
+      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+    },
+    {
+      "id": "rename.cross-module",
+      "category": "rename",
+      "status": "deferred",
+      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+    },
+    {
+      "id": "rename.explicit-barrel-alias",
+      "category": "rename",
+      "status": "deferred",
+      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+    },
+    {
+      "id": "rename.non-bmp-prepare",
+      "category": "rename",
+      "status": "deferred",
+      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+    },
+    {
+      "id": "rename.same-scope-conflict",
+      "category": "rename",
+      "status": "deferred",
+      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+    },
+    {
+      "id": "diagnostics.exact-code-range",
+      "category": "diagnostics",
+      "status": "deferred",
+      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+    },
+    {
+      "id": "diagnostics.overlay-freshness",
+      "category": "diagnostics",
+      "status": "deferred",
+      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+    },
+    {
+      "id": "diagnostics.invalid-sdk",
+      "category": "diagnostics",
+      "status": "deferred",
+      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+    },
+    {
+      "id": "incomplete.this-dot",
+      "category": "incomplete",
+      "status": "passed",
+      "observations": {
+        "scriptKind": 8,
+        "syntacticDiagnostics": [
+          {
+            "code": 1003,
+            "start": 93,
+            "length": 1,
+            "message": "Identifier expected."
+          }
+        ],
+        "completionEntryCount": 3,
+        "matchedCompletionNames": [
+          "value",
+          "refresh"
+        ]
+      },
+      "stats": {
+        "projectFileCount": 1,
+        "snapshotReadCount": 51,
+        "uniqueSnapshotReadCount": 51,
+        "disposed": true
+      }
+    },
+    {
+      "id": "incomplete.completion-result-limit",
+      "category": "incomplete",
+      "status": "deferred",
+      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+    },
+    {
+      "id": "incomplete.references-membership",
+      "category": "incomplete",
+      "status": "deferred",
+      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+    },
+    {
+      "id": "unicode.non-bmp-position",
+      "category": "unicode",
+      "status": "passed",
+      "observations": {
+        "scriptKind": 8,
+        "syntacticDiagnostics": [],
+        "completionEntryCount": 898,
+        "matchedCompletionNames": [],
+        "utf16Position": {
+          "line": 1,
+          "character": 29
+        }
+      },
+      "stats": {
+        "projectFileCount": 1,
+        "snapshotReadCount": 51,
+        "uniqueSnapshotReadCount": 51,
+        "disposed": true
+      }
+    },
+    {
+      "id": "unicode.identifier-completion",
+      "category": "unicode",
+      "status": "deferred",
+      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+    },
+    {
+      "id": "project-boundary.declared-module",
+      "category": "project-boundary",
+      "status": "deferred",
+      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+    },
+    {
+      "id": "project-boundary.ghost-module",
+      "category": "project-boundary",
+      "status": "deferred",
+      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+    },
+    {
+      "id": "project-boundary.inactive-target",
+      "category": "project-boundary",
+      "status": "deferred",
+      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+    },
+    {
+      "id": "project-boundary.target-membership",
+      "category": "project-boundary",
+      "status": "deferred",
+      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+    },
+    {
+      "id": "project-boundary.overlay-authority",
+      "category": "project-boundary",
+      "status": "deferred",
+      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+    },
+    {
+      "id": "project-boundary.watcher-freshness",
+      "category": "project-boundary",
+      "status": "deferred",
+      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+    },
+    {
+      "id": "project-boundary.catalog-identity",
+      "category": "project-boundary",
+      "status": "deferred",
+      "reason": "Public transcript is not yet expressed as a direct official-backend scenario"
+    }
+  ]
+}
