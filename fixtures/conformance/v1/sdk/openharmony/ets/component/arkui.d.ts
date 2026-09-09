@@ -8,8 +8,8 @@ interface ArkUICommonAttribute {
   width(value: ArkUILength): this
 }
 
-interface ArkUIColumnAttribute extends ArkUICommonAttribute {}
-interface ArkUITextAttribute extends ArkUICommonAttribute {}
+interface ColumnAttribute extends ArkUICommonAttribute {}
+interface TextAttribute extends ArkUICommonAttribute {}
 
-declare function Column(): ArkUIColumnAttribute
-declare function Text(value: string): ArkUITextAttribute
+declare function Column(): ColumnAttribute
+declare function Text(value: string): TextAttribute

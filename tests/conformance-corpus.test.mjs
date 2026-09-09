@@ -284,9 +284,19 @@ test("materializes installed ArkUI resource and nested builder semantic probes",
     "pages",
     "ArkuiBuilderTailPage.ets",
   )
+  const etsLoaderConfigPath = path.join(
+    materialized.corpusRoot,
+    "sdk",
+    "openharmony",
+    "ets",
+    "build-tools",
+    "ets-loader",
+    "tsconfig.json",
+  )
   const resourceText = await fs.readFile(resourcePath, "utf8")
   const resourcePage = await fs.readFile(resourcePagePath, "utf8")
   const builderPage = await fs.readFile(builderPagePath, "utf8")
+  const etsLoaderConfig = JSON.parse(await fs.readFile(etsLoaderConfigPath, "utf8"))
   const completion = materialized.cases["arkui.resource.completion"]
   const definition = materialized.cases["arkui.resource.definition"]
   const missing = materialized.cases["arkui.resource.missing"]
@@ -303,6 +313,11 @@ test("materializes installed ArkUI resource and nested builder semantic probes",
   assert.equal(textInRange(resourcePage, definition.range), "title")
   assert.equal(textInRange(resourcePage, missing.range), "missing_title")
   assert.equal(textInRange(builderPage, width.range), "width")
+  assert.deepEqual(etsLoaderConfig.compilerOptions.ets.render, {
+    method: ["build"],
+    decorator: ["Builder", "LocalBuilder"],
+  })
+  assert.deepEqual(etsLoaderConfig.compilerOptions.ets.components, ["Column", "Text"])
   for (const markerCase of [completion, missing, width]) {
     const line = (markerCase.uri === pathToFileURL(builderPagePath).href
       ? builderPage

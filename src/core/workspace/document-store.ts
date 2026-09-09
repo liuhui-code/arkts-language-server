@@ -1368,7 +1368,6 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
       && stat?.isFile()
       && stat.size <= MAX_DISK_SNAPSHOT_BYTES
       && isInside(canonicalRoot, physicalPath)
-      && this.isActiveProjectSource(rootPath, resolvedPath)
     ) {
       const diskIdentity = sourceStatIdentity(stat)
       if (entry.diskIdentities.get(resolvedPath) !== diskIdentity) {

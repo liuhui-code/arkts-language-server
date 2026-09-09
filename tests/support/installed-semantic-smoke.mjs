@@ -99,7 +99,7 @@ export async function assertInstalledSemanticSmoke({
       completion: materialized.cases["arkui.sdk-completion.column"],
       usage: materialized.cases["arkui.component.column"],
       definitionAnchor: "declare function Column",
-      hoverPattern: /function Column\(\): ArkUIColumnAttribute/,
+      hoverPattern: /function Column\(\): ColumnAttribute/,
     },
     {
       label: "Text",
@@ -108,7 +108,7 @@ export async function assertInstalledSemanticSmoke({
       completion: materialized.cases["arkui.sdk-completion.text"],
       usage: materialized.cases["arkui.component.text"],
       definitionAnchor: "declare function Text",
-      hoverPattern: /function Text\(value: string\): ArkUITextAttribute/,
+      hoverPattern: /function Text\(value: string\): TextAttribute/,
     },
   ]
   assert.ok(signature, "the installed-artifact corpus must expose signature.format-call")
@@ -1567,7 +1567,7 @@ export async function assertInstalledSemanticSmoke({
     assert.equal(builderHoverResponse.result?.contents?.kind, "markdown")
     assert.match(
       builderHoverResponse.result.contents.value,
-      /ArkUICommonAttribute\.width\(value: ArkUILength\): ArkUIColumnAttribute/,
+      /ArkUICommonAttribute\.width\(value: ArkUILength\): ColumnAttribute/,
     )
     assert.deepEqual(builderHoverResponse.result.range, builderWidth.range)
 
@@ -1944,7 +1944,7 @@ async function assertInstalledLegacyNegotiation({
     assert.equal(plaintextHover.error, undefined, JSON.stringify(plaintextHover.error))
     assert.deepEqual(plaintextHover.result?.contents, {
       kind: "plaintext",
-      value: "(method) ArkUICommonAttribute.width(value: ArkUILength): ArkUITextAttribute",
+      value: "(method) ArkUICommonAttribute.width(value: ArkUILength): TextAttribute",
     })
     assert.doesNotMatch(plaintextHover.result.contents.value, /```/)
     assert.deepEqual(plaintextHover.result.range, hoverRange)
