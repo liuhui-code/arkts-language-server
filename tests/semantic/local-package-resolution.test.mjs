@@ -21,6 +21,24 @@ test("resolves a local Harmony dependency name through its unopened main and Ark
   }])
 })
 
+test("resolves a local Harmony dependency declared by a bare relative path", async (t) => {
+  const fixture = await localPackageSession(t, { beforeStart: async ({ workspaceRoot }) => {
+    await fs.writeFile(
+      path.join(workspaceRoot, "entry", "oh-package.json5"),
+      "{ dependencies: { shared: '../shared' } }",
+    )
+  } })
+  const response = await fixture.session.request("textDocument/definition", {
+    textDocument: { uri: fixture.consumerUri },
+    position: positionAt(fixture.consumer, fixture.consumer.indexOf("new LibraryThing") + 5),
+  })
+  assert.equal(response.error, undefined)
+  assert.deepEqual(response.result, [{
+    uri: fixture.libraryUri,
+    range: rangeOf(fixture.library, "LibraryThing"),
+  }])
+})
+
 test("a relative ArkTS import prefers its source over same-name declaration files for definitions, members and diagnostics", async (t) => {
   const source = "// 😀 source implementation\nexport class Foo {\n  sourceOnly(): number { return 1 }\n  common(): number { return 7 }\n}\n"
   let sourcePath

@@ -9,7 +9,8 @@ comparison release gate.
 | Check | Result |
 |---|---:|
 | API 24 real-SDK stdio acceptance | PASS, 10/10 |
-| Pinned 455-file real workspace | PASS, 455/455 indexed; cold 300.57 ms |
+| Pinned 455-file real workspace | PASS, 455/455 indexed; latest cold 194.48 ms |
+| Real source completion/definition/references/rename | PASS after bare-relative dependency fix |
 | 10k generated workspace, cold/warm/stress 3/10/5 | PASS |
 | 100k generated workspace, cold/warm/stress 3/10/5 | PASS |
 | 100k completion/definition/references/edit/completion | 18/18 PASS |
@@ -38,6 +39,7 @@ Verification on candidate `caf0f5828600c2a19b7cdb361d26a0e54cc7a215`:
 
 Raw evidence:
 
+- [real-project semantic E2E](macos-real-project-semantic-e2e.json)
 - [10k raw evidence](macos-zed-arkts-10k.json)
 - [100k raw evidence](macos-zed-arkts-100k.json)
 - [Zed host smoke](macos-zed-host-smoke.json)
