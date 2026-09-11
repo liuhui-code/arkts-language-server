@@ -155,6 +155,15 @@ fn sqlite_persists_reference_binding_sources_across_reopen() {
         })
         .expect("persisted reference bindings should be searchable");
 
+    assert!(result.identity_complete);
+    assert_eq!(
+        result.identity_uris,
+        [
+            "file:///workspace/Barrel.ets",
+            "file:///workspace/Consumer.ets",
+            "file:///workspace/Target.ets",
+        ]
+    );
     assert_eq!(result.bindings.len(), 2);
     assert_eq!(result.bindings[0].kind, ReferenceBindingKind::ReExport);
     assert_eq!(result.bindings[0].source_specifier, "./Target");

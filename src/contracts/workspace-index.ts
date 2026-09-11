@@ -60,6 +60,8 @@ export interface WorkspaceExportIndexPort {
 export interface WorkspaceReferenceCandidateResult {
   supported: boolean
   complete: boolean
+  identityComplete: boolean
+  identityUris: DocumentUri[]
   declarationIdentity?: string
   names: string[]
   uris: DocumentUri[]

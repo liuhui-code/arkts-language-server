@@ -867,6 +867,10 @@ function mapReferenceCandidateResult(
   const result = asRecord(value)
   if (typeof result.supported !== "boolean"
     || typeof result.complete !== "boolean"
+    || typeof result.identityComplete !== "boolean"
+    || !Array.isArray(result.identityUris)
+    || result.identityUris.some(uri => typeof uri !== "string")
+    || (!result.identityComplete && result.identityUris.length !== 0)
     || !Array.isArray(result.names)
     || result.names.some(name => typeof name !== "string")
     || !Array.isArray(result.uris)
@@ -884,6 +888,8 @@ function mapReferenceCandidateResult(
   return {
     supported: result.supported,
     complete: result.complete,
+    identityComplete: result.identityComplete,
+    identityUris: (result.identityUris as string[]).map(mapUri),
     ...(typeof result.declarationIdentity === "string"
       ? { declarationIdentity: result.declarationIdentity }
       : {}),
@@ -937,6 +943,8 @@ function unsupportedReferenceCandidates(
   return {
     supported: false,
     complete: false,
+    identityComplete: false,
+    identityUris: [],
     names: [],
     uris: [],
     servedGeneration,

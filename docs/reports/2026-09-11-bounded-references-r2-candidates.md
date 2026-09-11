@@ -576,3 +576,23 @@ points but does not yet prove that every occurrence in the name-based candidate 
 is distinct from, the target declaration. Consequently it makes no RSS claim and cannot switch the
 default from `legacy`. The next RED must prove complete relative alias/re-export reachability and
 fall back when any occurrence is unclassified, any edge is non-unique, or the generation is stale.
+
+### Complete directional binding-chain proof
+
+Parent revision: `64ac8476f112780b26a7a03f4a9fe46e691f2604`.
+
+The next public RED requires the relative `Target -> Barrel -> Consumer` graph to return
+`identityComplete=true` and the exact three proven URIs. The ambiguous/package-source fixture must
+return `identityComplete=false` and an empty URI set. The proof starts at the selected declaration,
+walks only uniquely resolved directional bindings, and classifies occurrences by both URI and the
+name established at that point in the chain. Every returned relevant binding must be reached; one
+unreached binding or occurrence invalidates the whole proof.
+
+Memory and reopened SQLite stores run the same proof. The sidecar additionally masks proof
+completeness unless its committed catalog completeness is `ready`, and the TypeScript adapter
+strictly validates and workspace-rebases every identity URI.
+
+This is still not a candidate-narrowing change. The existing collision fixture deliberately contains
+an unrelated `Thing` declaration, so its sidecar result stays incomplete and retains the conservative
+URI set. The next slice must classify independent declaration identities before the planner can use
+the proof without dropping references.

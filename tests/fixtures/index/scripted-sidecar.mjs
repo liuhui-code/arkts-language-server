@@ -162,6 +162,12 @@ input.on("line", (line) => {
       respond(request.id, true, {
         supported: true,
         complete: true,
+        identityComplete: true,
+        identityUris: [
+          pathToFileURL(path.join(workspaceRoot, "Barrel.ets")).href,
+          pathToFileURL(path.join(workspaceRoot, "Consumer.ets")).href,
+          pathToFileURL(path.join(workspaceRoot, "Target.ets")).href,
+        ],
         declarationIdentity: "fixture-reference-identity",
         names: ["Alias", "PublicThing", "Thing"],
         uris: [

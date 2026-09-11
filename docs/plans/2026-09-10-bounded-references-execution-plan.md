@@ -377,3 +377,11 @@ TypeScript adapter 暴露确定顺序的 binding chain。此切片**没有**据�
 `indexed-batched` planner 或默认 `legacy` 策略，因此没有新的性能结论。下一 RED 是以唯一解析边
 从目标 declaration 向外证明完整 alias/re-export 可达链；任一候选 occurrence 无法归属时必须
 回退现有保守集合。
+
+2026-09-11 binding-chain proof 切片：索引以 declaration URI/name 为锚，只沿 `unique` 的方向性
+binding 扩张，并要求所有相关 binding 和 occurrence 均能归属到这条链。证明成功时返回
+`identityComplete=true` 与确定顺序的 `identityUris`；出现同名碰撞、歧义、包名边或任何未归属
+occurrence 时返回 `identityComplete=false` 和空 URI 集。该 proof 已贯通内存 store、SQLite、
+sidecar 与 TypeScript adapter，但 planner 尚不消费它，所以 candidate roots 与默认策略不变。
+下一 RED 应分类“具有独立 declaration identity 的同名文档”，只有排除后剩余 occurrence 全部
+属于目标链时，才把 `identityUris` 用作 indexed batch 输入。

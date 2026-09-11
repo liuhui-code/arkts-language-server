@@ -331,6 +331,12 @@ test("maps conservative reference candidates and preserves their generation and 
   }), {
     supported: true,
     complete: true,
+    identityComplete: true,
+    identityUris: [
+      pathToFileURL(path.join(workspace, "Barrel.ets")).href,
+      pathToFileURL(path.join(workspace, "Consumer.ets")).href,
+      declarationUri,
+    ],
     declarationIdentity: "fixture-reference-identity",
     names: ["Alias", "PublicThing", "Thing"],
     uris: [
