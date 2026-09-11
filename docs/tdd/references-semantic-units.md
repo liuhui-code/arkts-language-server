@@ -295,3 +295,27 @@ returned the exact six legacy Locations and 107 diagnostics using one indexed tw
 request times were 8.456 / 7.401 / 7.655 seconds and peaks were 569,102,336 / 566,415,360 /
 566,480,896 bytes. This is a GREEN declaration-kind slice, not authorization to treat unknown enum
 members or other export forms as indexed declarations.
+
+## Exported interface candidate slice (2026-09-11)
+
+Parent revision: `a64a1f6f07b283e63e49b6a616f67c71eee54f2c`.
+
+RED command:
+
+```text
+cargo test -p arkts-index-core exported_interface_is_searchable_for_reference_candidates -- --exact
+```
+
+The public in-memory store returned `supported=false` for a position inside
+`export interface ConflictContent`. The minimal implementation adds `SymbolKind::Interface`, its
+SQLite value and `interface` protocol spelling, and recognizes the same named top-level declaration
+shape already used for class/struct/enum. The sidecar public protocol checks the exact persisted
+identity, two candidate URIs, and workspace-symbol kind.
+
+The higher-level RED was the fixed Photos `ConflictContent` query. Before support, it returned the
+correct three Locations only after 20 batches and 65.470 seconds. Three GREEN child-process LSP
+runs each used one indexed two-file batch, returned the exact three-item legacy Location set, and
+published 107 diagnostics. Request times were 7.900 / 7.927 / 7.796 seconds; peaks were
+570,470,400 / 578,605,056 / 567,791,616 bytes. The 570,470,400-byte median is 26.99% below
+this symbol's legacy peak, so the per-case 30% memory gate remains failed even though correctness
+and latency are green.

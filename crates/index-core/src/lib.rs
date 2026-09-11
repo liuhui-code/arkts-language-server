@@ -52,6 +52,7 @@ pub enum SymbolKind {
     Class,
     Struct,
     Enum,
+    Interface,
     Function,
     Method,
 }
@@ -768,7 +769,7 @@ fn parse_symbols(document: &Document) -> Result<ParsedSymbols, DocumentParseErro
 
     for (index, token) in tokens.iter().enumerate() {
         match token.text {
-            "class" | "struct" | "enum" => {
+            "class" | "struct" | "enum" | "interface" => {
                 let Some(name) = tokens
                     .get(index + 1)
                     .filter(|next| next.kind == TokenKind::Identifier)
@@ -779,6 +780,7 @@ fn parse_symbols(document: &Document) -> Result<ParsedSymbols, DocumentParseErro
                     "class" => SymbolKind::Class,
                     "struct" => SymbolKind::Struct,
                     "enum" => SymbolKind::Enum,
+                    "interface" => SymbolKind::Interface,
                     _ => unreachable!(),
                 };
                 symbols.push(symbol(document, &line_index, name, kind, None));
