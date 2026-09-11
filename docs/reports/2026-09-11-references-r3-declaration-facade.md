@@ -119,31 +119,60 @@ The owner batch alone had 50 SourceFiles, 426,569 text bytes and 19,111 AST
 nodes. These are compiler-structure observations from a sequential process, not
 external memory measurements.
 
-## Gate decision
+## Independent-process external RSS A/B
 
-This spike establishes that the locked frontend can produce useful ArkTS-aware
-façades and that consumer plus owner-source batching can preserve the covered
-definition/reference sets exactly. It does **not** establish a material memory
-win: the real FilePicker closure reduction is small and there is no isolated
-RSS A/B yet.
+The source and façade paths now have explicit child-process modes. The benchmark
+runner starts a new process for every mode, samples its process tree externally,
+and keeps the raw time series. The FilePicker checkout remained fixed at
+`d691e8ec5da1e75e25dbefc922df0ea3fe361ee5`; all three runs used the same API 24
+SDK, file, symbol, and zero-based UTF-16 position described above.
 
-Therefore no façade is admitted to production. The next vertical slice is:
+| Run | Source peak RSS | On-demand façade tree peak RSS | Source duration | Façade duration | Exact references |
+|---:|---:|---:|---:|---:|---|
+| 1 | 161,886,208 | 526,385,152 | 630 ms | 3,376 ms | yes |
+| 2 | 162,770,944 | 526,540,800 | 604 ms | 3,260 ms | yes |
+| 3 | 167,919,616 | 518,459,392 | 598 ms | 3,270 ms | yes |
+
+The worst façade/source peak ratio is `3.1357`; the required gate is at most
+`0.70` (30% reduction). Semantic status is `PASS`, but the memory gate is
+`FAIL`. The peak includes the façade coordinator plus the on-demand declaration
+emit child because both are resident during the interactive operation. This is
+the product cost of the current design, not double-counted worker RSS.
+
+As a diagnostic cross-check, samples after the emit child exited still showed
+the single façade coordinator/query process peaking at 183,390,208–185,802,752
+bytes, above the corresponding full-source processes. The small 1.26% text and
+2.8% AST reduction is therefore not hiding a useful query-only memory win.
+
+Reproduction command:
 
 ```text
-full source semantic-unit closure (independent process)
-        vs
-consumer façades + owner source batch (independent batches/processes)
-        -> exact merged definition/reference locations
-        -> Program nodes/bytes + latency + external RSS A/B
+node scripts/bench/run-declaration-facade-memory-ab.mjs \
+  --declaration /private/tmp/applications_filepicker-6.1-lts/audiopicker/src/main/ets/pages/model/AudioPickerViewData.ets \
+  --consumer /private/tmp/applications_filepicker-6.1-lts/audiopicker/src/main/ets/pages/viewmodel/AudioPickerViewModel.ets \
+  --line 31 --character 32 \
+  --sdk /Applications/DevEco-Studio.app/Contents/sdk/default/openharmony \
+  --runs 3 --sample-interval-ms 25 \
+  --out /private/tmp/filepicker-facade-memory-ab.json
 ```
 
-Any definition/reference mismatch stops the R3 route. Approximate declarations,
-text search, and index-only reference answers remain forbidden.
+## Gate decision
+
+The on-demand declaration-façade route is stopped. No façade is admitted to
+production, and no further implementation should attempt to pay declaration
+emit cost inside `textDocument/references`. R3 can be reopened only if the
+toolchain/build provides trustworthy precomputed `.d.ets` outputs that pass the
+same exact semantic and external-memory harness.
+
+Work returns to conservative R1/R2 batching and real large-project validation.
+Approximate declarations, text search, and index-only reference answers remain
+forbidden.
 
 ## Verification
 
-- Focused `node --test tests/ohos-typescript-spike.test.mjs`: 22/22 passed.
-- Full `pnpm check:fast`: 897/897 passed; 0 failed, skipped, cancelled, or todo.
+- Focused `node --test tests/ohos-typescript-spike.test.mjs`: 24/24 passed.
+- Full `pnpm check:fast`: 899/899 passed; 0 failed, skipped, cancelled, or todo.
+- PR #24 merge CI: passed after Rust 1.95 Clippy verification.
 - `git diff --check`: passed.
 - The cumulative R1/R2 Rust workspace tests remain 40 executed passes with one
   existing release-only ignored test; R3 changed no Rust source.

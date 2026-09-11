@@ -219,11 +219,22 @@ negative；相对 R1 batch 数和延迟下降；真实压力工程峰值不回�
 merge`，不能只查询声明文件。两批合并后，generic dependency fixture 与 FilePicker 真实 consumer
 均和 source-closure exact equality，且 consumer façade Program 未加载被替换的源文件。
 
-FilePicker 这条真实闭包的最大 Program 文本仅下降约 1.26%，AST node 下降约 2.8%，尚未做独立
-进程 RSS A/B，因此 **不证明 memory gate 通过，也未接入 production references**。下一切片必须
-把 façade replacement 扩展到一个完整 non-owner semantic unit/dependency closure，再以独立进程
-测 Program nodes、延迟与外部 RSS；收益不足即停止，不凭小样本外推。详细证据见
+FilePicker 这条真实闭包的最大 Program 文本仅下降约 1.26%，AST node 下降约 2.8%；该结构计数
+本身不证明 memory gate 通过，也未接入 production references。详细证据见
 [R3 declaration façade spike](../reports/2026-09-11-references-r3-declaration-facade.md)。
+
+### R3.2 独立进程 RSS A/B 与停止决定（2026-09-11）
+
+已增加 source 与 façade 两种独立 child-process 模式，以及外部 process-tree RSS sampler。固定
+FilePicker commit、API 24 SDK、目标文件、符号和 UTF-16 位置运行三次后：五个 reference Location
+每次都 exact equality；source 最大 peak 为 167,919,616 bytes、中位 604 ms；on-demand façade
+最大 peak 为 526,540,800 bytes、中位 3,270 ms，peak ratio 为 3.1357。所提交的 30% 降幅 gate
+要求 ratio `<= 0.70`，因此 semantic gate PASS、memory gate FAIL。
+
+按本计划“收益不足即停止”的规则，**R3 on-demand declaration-façade 路线停止，不进入 production**。
+只有构建工具链未来提供可信、预生成的 `.d.ets`，并重新通过同一 exact semantic/RSS harness，才允许
+重开 R3。当前后续工作回到 R1/R2：在真实大型、多模块且 legacy-complete 的工程上验证 conservative
+batching 与 index-assisted candidate narrowing；没有 >3 GB reproducer 时 release memory gate 保持未验收。
 
 ## 6. Benchmark 与发布门
 
