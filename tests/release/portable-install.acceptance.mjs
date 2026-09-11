@@ -35,6 +35,7 @@ function makeCheckout(temporaryRoot) {
   copy("bin/arkts-language-server")
   copy("config/semantic-runtime.json")
   copy("dist/semantic-worker.cjs")
+  copy("dist/reference-verifier-worker.cjs")
   copy("dist/server.cjs")
   copy("target/release/arkts-index-sidecar")
   copy(
@@ -135,6 +136,7 @@ test("installs one verified artifact without source dependencies or a rebuild", 
     "bin/arkts-language-server",
     "config/semantic-runtime.json",
     "dist/semantic-worker.cjs",
+    "dist/reference-verifier-worker.cjs",
     "dist/server.cjs",
     `target/release/${sidecarName}`,
   ]

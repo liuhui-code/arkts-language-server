@@ -13,7 +13,8 @@ use std::{
 };
 
 use arkts_index_core::{
-    Document, IndexState, StoreError, StoreErrorKind, SymbolKind, WorkspaceIndex,
+    Document, IndexState, Position, ReferenceCandidateQuery, StoreError, StoreErrorKind,
+    SymbolKind, WorkspaceIndex,
 };
 use arkts_index_sqlite::{SqliteStore, workspace_cache_location};
 use catalog::{CatalogControl, CatalogProgress, CatalogUpdate, spawn_catalog};
@@ -24,6 +25,7 @@ const PROTOCOL_VERSION: u32 = 1;
 const MAX_EXCLUDED_URIS: usize = 256;
 const MAX_EXCLUDED_URI_BYTES: usize = 4_096;
 const MAX_EXCLUDED_URI_TOTAL_BYTES: usize = 64 * 1_024;
+const MAX_REFERENCE_CANDIDATES: usize = 65_536;
 const CATALOG_HEARTBEAT_INTERVAL: Duration = Duration::from_millis(250);
 
 #[derive(Deserialize)]
@@ -64,6 +66,20 @@ struct SearchParams {
     limit: usize,
     #[serde(default)]
     excluded_uris: Vec<String>,
+}
+
+#[derive(Deserialize)]
+struct ProtocolPosition {
+    line: u32,
+    character: u32,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReferenceCandidatesParams {
+    declaration_uri: String,
+    declaration_position: ProtocolPosition,
+    limit: usize,
 }
 
 #[derive(Deserialize)]
@@ -334,6 +350,54 @@ impl Runtime {
                 Ok((
                     json!({
                         "items": items,
+                        "servedGeneration": result.served_generation,
+                        "completeness": self.completeness,
+                    }),
+                    false,
+                ))
+            }
+            "references/candidates" => {
+                let params: ReferenceCandidatesParams = parse_params(request.params)?;
+                if params.declaration_uri.is_empty()
+                    || params.declaration_uri.len() > MAX_EXCLUDED_URI_BYTES
+                    || params.limit == 0
+                    || params.limit > MAX_REFERENCE_CANDIDATES
+                {
+                    return Err(ProtocolError::new(
+                        "invalid_params",
+                        format!(
+                            "declarationUri must contain 1..={MAX_EXCLUDED_URI_BYTES} UTF-8 bytes \
+                             and limit must be in 1..={MAX_REFERENCE_CANDIDATES}"
+                        ),
+                    ));
+                }
+                let search_result = self
+                    .index
+                    .as_ref()
+                    .ok_or_else(not_initialized)?
+                    .search_reference_candidates(ReferenceCandidateQuery {
+                        declaration_uri: params.declaration_uri,
+                        declaration_position: Position::new(
+                            params.declaration_position.line,
+                            params.declaration_position.character,
+                        ),
+                        limit: params.limit,
+                    });
+                let result = match search_result {
+                    Ok(result) => result,
+                    Err(error) => {
+                        self.state = IndexState::Degraded;
+                        self.completeness = "stale";
+                        return Err(protocol_store_error(error));
+                    }
+                };
+                Ok((
+                    json!({
+                        "supported": result.supported,
+                        "complete": result.complete && self.completeness == "ready",
+                        "declarationIdentity": result.declaration_identity,
+                        "names": result.names,
+                        "uris": result.uris,
                         "servedGeneration": result.served_generation,
                         "completeness": self.completeness,
                     }),

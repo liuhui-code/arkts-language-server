@@ -8,7 +8,9 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use arkts_index_core::{Document, IndexState, MemoryStore, WorkspaceIndex};
+use arkts_index_core::{
+    Document, IndexState, MemoryStore, Position, ReferenceCandidateQuery, WorkspaceIndex,
+};
 use arkts_index_sqlite::{SqliteStore, workspace_cache_location};
 use rusqlite::Connection;
 
@@ -74,6 +76,16 @@ fn assert_store_contract(mut index: WorkspaceIndex) {
     assert_eq!(exports.served_generation, 1);
     assert_eq!(exports.items.len(), 1);
     assert_eq!(exports.items[0].exported_name, "MainPanel");
+    let references = index
+        .search_reference_candidates(ReferenceCandidateQuery {
+            declaration_uri: "file:///workspace/Ranking.ets".to_owned(),
+            declaration_position: Position::new(1, 13),
+            limit: 20,
+        })
+        .expect("reference candidates should be searchable");
+    assert!(references.supported);
+    assert!(references.complete);
+    assert_eq!(references.uris, ["file:///workspace/Ranking.ets"]);
 }
 
 #[test]
@@ -94,6 +106,18 @@ fn memory_and_sqlite_implement_the_same_store_contract_and_sqlite_reopens() {
     assert_eq!(restored.served_generation, 1);
     assert_eq!(restored.items.len(), 1);
     assert_eq!(restored.items[0].container.as_deref(), Some("MainPage"));
+
+    let reopened =
+        SqliteStore::open(&database, "file:///workspace").expect("SQLite store should reopen");
+    let references = WorkspaceIndex::with_store(reopened)
+        .search_reference_candidates(ReferenceCandidateQuery {
+            declaration_uri: "file:///workspace/Ranking.ets".to_owned(),
+            declaration_position: Position::new(1, 13),
+            limit: 20,
+        })
+        .expect("persisted reference candidates should be searchable after reopen");
+    assert!(references.supported);
+    assert_eq!(references.served_generation, 1);
 }
 
 #[test]
@@ -663,7 +687,12 @@ fn version_two_database_migrates_in_place_without_losing_committed_symbols() {
 
     let legacy = Connection::open(&database).expect("database should open directly");
     legacy
-        .execute_batch("DROP TABLE exports; PRAGMA user_version = 2;")
+        .execute_batch(
+            "DROP TABLE reference_aliases; \
+             DROP TABLE reference_occurrences; \
+             DROP TABLE exports; \
+             PRAGMA user_version = 2;",
+        )
         .expect("test fixture should emulate the previous schema");
     drop(legacy);
 
@@ -701,7 +730,7 @@ fn version_two_database_migrates_in_place_without_losing_committed_symbols() {
     let version: i64 = migrated
         .pragma_query_value(None, "user_version", |row| row.get(0))
         .expect("schema version should be readable");
-    assert_eq!(version, 3);
+    assert_eq!(version, 4);
 }
 
 #[test]

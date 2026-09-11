@@ -13,7 +13,7 @@ import { SidecarWorkspaceIndex } from "../../../src/index/sidecar-workspace-inde
 
 interface DriverCommand {
   id: number
-  method: "open" | "refresh" | "search" | "exportsSearch" | "status" | "close" | "abort" | "events" | "resolveCache" | "resolveSidecar" | "exit"
+  method: "open" | "refresh" | "search" | "exportsSearch" | "referenceCandidates" | "status" | "close" | "abort" | "events" | "resolveCache" | "resolveSidecar" | "exit"
   workspace?: WorkspaceDescriptor
   workspaceId?: string
   cacheDir?: string
@@ -23,6 +23,8 @@ interface DriverCommand {
   excludedUris?: string[]
   query?: string
   limit?: number
+  declarationUri?: string
+  declarationPosition?: { line: number; character: number }
   requestKey?: string
   options?: Record<string, unknown>
 }
@@ -49,7 +51,11 @@ input.on("line", (line) => {
 })
 
 async function dispatch(command: DriverCommand): Promise<void> {
-  const controller = command.requestKey && (command.method === "refresh" || command.method === "search")
+  const controller = command.requestKey && (
+    command.method === "refresh"
+    || command.method === "search"
+    || command.method === "referenceCandidates"
+  )
     ? new AbortController()
     : undefined
   if (command.requestKey && controller) controllers.set(command.requestKey, controller)
@@ -81,6 +87,15 @@ async function dispatch(command: DriverCommand): Promise<void> {
         result = await index.searchExports(
           required(command.workspaceId, "workspaceId"),
           command.query ?? "",
+          required(command.limit, "limit"),
+          controller?.signal,
+        )
+        break
+      case "referenceCandidates":
+        result = await index.searchReferenceCandidates(
+          required(command.workspaceId, "workspaceId"),
+          required(command.declarationUri, "declarationUri"),
+          required(command.declarationPosition, "declarationPosition"),
           required(command.limit, "limit"),
           controller?.signal,
         )

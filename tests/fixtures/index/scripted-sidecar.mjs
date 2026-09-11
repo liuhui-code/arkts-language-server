@@ -158,6 +158,20 @@ input.on("line", (line) => {
         completeness: state === "ready" ? "ready" : "stale",
       })
       break
+    case "references/candidates":
+      respond(request.id, true, {
+        supported: true,
+        complete: true,
+        declarationIdentity: "fixture-reference-identity",
+        names: ["Alias", "PublicThing", "Thing"],
+        uris: [
+          pathToFileURL(path.join(workspaceRoot, "Consumer.ets")).href,
+          pathToFileURL(path.join(workspaceRoot, "Target.ets")).href,
+        ],
+        servedGeneration: committedGeneration,
+        completeness: state === "ready" ? "ready" : "stale",
+      })
+      break
     case "status":
       respond(request.id, true, status())
       break

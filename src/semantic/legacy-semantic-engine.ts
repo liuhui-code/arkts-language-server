@@ -61,10 +61,12 @@ import { SemanticDocumentStore } from "../core/workspace/document-store.js"
 import { LocalPackageResolver } from "../core/sdk/local-package-resolver.js"
 import type { StructuredLogger } from "../observability/logger.js"
 import type { SemanticMemoryLevel } from "./coordinator/semantic-coordinator.js"
+import type { ReferenceSearchRuntimeConfig } from "./references/reference-runtime.js"
 
 export interface LegacySemanticEngineRuntimeOptions {
   readonly maxResidentContexts?: number
   readonly hostCancellationToken?: import("typescript").HostCancellationToken
+  readonly references?: ReferenceSearchRuntimeConfig
 }
 
 export class LegacySemanticEngine implements SemanticEnginePort {
@@ -89,7 +91,12 @@ export class LegacySemanticEngine implements SemanticEnginePort {
         })
       } : undefined,
       this.documents,
-      runtime,
+      {
+        ...runtime,
+        onReferenceTrace: logger
+          ? (event, fields) => logger.info(event, fields)
+          : undefined,
+      },
     )
   }
 
@@ -114,6 +121,7 @@ export class LegacySemanticEngine implements SemanticEnginePort {
 
   configureProject(selection: unknown): void {
     this.packageResolver.configureProject(selection)
+    this.engines.configureProject(selection)
   }
 
   configureSdk(selection: unknown): void {
@@ -241,10 +249,26 @@ export class LegacySemanticEngine implements SemanticEnginePort {
   async references(
     query: SemanticReferencesQuery,
   ): Promise<VersionedSemanticResult<SemanticReferencesOutcome>> {
+    return this.referencesWithCandidates(query)
+  }
+
+  async referencesWithCandidates(
+    query: SemanticReferencesQuery,
+    candidateUris?: readonly string[],
+  ): Promise<VersionedSemanticResult<SemanticReferencesOutcome>> {
     assertActive(query.signal)
     this.sync(query.document)
-    const prepared = this.prepare(query.document, query.position, true)
-    const result = prepared.engine.references(prepared.position, query.includeDeclaration)
+    const workspace = this.projects.projectFor(query.document.uri)
+    const position = toLegacyPosition(query.document, query.position, workspace)
+    const result = await this.engines.references(
+      this.documents.prepare(position, true),
+      position,
+      query.includeDeclaration,
+      candidateUris?.flatMap((uri) => {
+        const filePath = toFilePath(uri)
+        return filePath ? [filePath] : []
+      }),
+    )
     return {
       documentVersion: query.document.version,
       value: result.status === "complete"
@@ -256,6 +280,26 @@ export class LegacySemanticEngine implements SemanticEnginePort {
             })),
           }
         : result,
+    }
+  }
+
+  async referenceAnchor(
+    query: SemanticQuery,
+  ): Promise<VersionedSemanticResult<SemanticDefinition[]>> {
+    assertActive(query.signal)
+    this.sync(query.document)
+    const workspace = this.projects.projectFor(query.document.uri)
+    const position = toLegacyPosition(query.document, query.position, workspace)
+    const definitions = await this.engines.referenceAnchor(
+      this.documents.prepare(position, true),
+      position,
+    )
+    return {
+      documentVersion: query.document.version,
+      value: definitions.map(target => ({
+        uri: pathToFileURL(target.path).href,
+        range: toPublicRange(target.range),
+      })),
     }
   }
 

@@ -24,6 +24,7 @@ export function createProductionLanguageServerServices(
   const semantic = createProductionSemanticEngine(projects, logger, {
     env: environment,
     exportIndex: index,
+    referenceIndex: index,
   })
   const workspaceSymbols = new DefaultWorkspaceSymbolService({
     index,

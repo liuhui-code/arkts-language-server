@@ -235,6 +235,151 @@ fn sidecar_discovers_an_export_beyond_the_old_completion_scan_bound() {
 }
 
 #[test]
+fn sidecar_returns_conservative_reference_candidates_across_alias_reexports() {
+    let temp = TestDir::new("reference-candidates");
+    let workspace = temp.path().join("workspace");
+    let cache = temp.path().join("cache");
+    fs::create_dir_all(&workspace).expect("workspace should exist");
+
+    let mut process = SidecarProcess::spawn();
+    assert_eq!(initialize(&mut process, &workspace, &cache, 1)["ok"], true);
+    assert_eq!(
+        process.request(json!({
+            "protocol": 1,
+            "id": 2,
+            "method": "refresh",
+            "params": {
+                "generation": 1,
+                "changed": [
+                    {
+                        "uri": "file:///workspace/Target.ets",
+                        "text": "export class Thing {}\n"
+                    },
+                    {
+                        "uri": "file:///workspace/Barrel.ets",
+                        "text": "export { Thing as PublicThing } from \"./Target\"\n"
+                    },
+                    {
+                        "uri": "file:///workspace/Consumer.ets",
+                        "text": "import { PublicThing as Alias } from \"./Barrel\"\nconst value = new Alias()\n"
+                    },
+                    {
+                        "uri": "file:///workspace/SameName.ets",
+                        "text": "export class Thing {}\nconst other = new Thing()\n"
+                    },
+                    {
+                        "uri": "file:///workspace/Unrelated.ets",
+                        "text": "export class Other {}\n"
+                    },
+                    {
+                        "uri": "file:///workspace/Member.ets",
+                        "text": "export class MemberOwner { action() {} }\n"
+                    }
+                ],
+                "removedUris": []
+            }
+        }))["ok"],
+        true
+    );
+
+    let candidates = process.request(json!({
+        "protocol": 1,
+        "id": 3,
+        "method": "references/candidates",
+        "params": {
+            "declarationUri": "file:///workspace/Target.ets",
+            "declarationPosition": {"line": 0, "character": 16},
+            "limit": 100
+        }
+    }));
+    assert_eq!(candidates["ok"], true);
+    assert_eq!(candidates["result"]["supported"], true);
+    assert_eq!(candidates["result"]["complete"], true);
+    assert_eq!(candidates["result"]["servedGeneration"], 1);
+    assert_eq!(
+        candidates["result"]["declarationIdentity"],
+        "file:///workspace/Target.ets#0:13:Thing"
+    );
+    assert_eq!(
+        candidates["result"]["names"],
+        json!(["Alias", "PublicThing", "Thing"])
+    );
+    assert_eq!(
+        candidates["result"]["uris"],
+        json!([
+            "file:///workspace/Barrel.ets",
+            "file:///workspace/Consumer.ets",
+            "file:///workspace/SameName.ets",
+            "file:///workspace/Target.ets"
+        ])
+    );
+
+    let member = process.request(json!({
+        "protocol": 1,
+        "id": 4,
+        "method": "references/candidates",
+        "params": {
+            "declarationUri": "file:///workspace/Member.ets",
+            "declarationPosition": {"line": 0, "character": 30},
+            "limit": 100
+        }
+    }));
+    assert_eq!(member["ok"], true);
+    assert_eq!(member["result"]["supported"], false);
+    assert_eq!(member["result"]["complete"], false);
+
+    let unsupported = process.request(json!({
+        "protocol": 1,
+        "id": 5,
+        "method": "refresh",
+        "params": {
+            "generation": 2,
+            "changed": [{
+                "uri": "file:///workspace/Default.ets",
+                "text": "export default class DefaultThing {}\n"
+            }],
+            "removedUris": []
+        }
+    }));
+    assert_eq!(unsupported["ok"], true);
+    let unsupported = process.request(json!({
+        "protocol": 1,
+        "id": 6,
+        "method": "references/candidates",
+        "params": {
+            "declarationUri": "file:///workspace/Default.ets",
+            "declarationPosition": {"line": 0, "character": 21},
+            "limit": 100
+        }
+    }));
+    assert_eq!(unsupported["ok"], true);
+    assert_eq!(unsupported["result"]["supported"], false);
+    assert_eq!(unsupported["result"]["complete"], false);
+    assert_eq!(unsupported["result"]["uris"], json!([]));
+    process.shutdown(7);
+
+    let mut restarted = SidecarProcess::spawn();
+    let initialized = initialize(&mut restarted, &workspace, &cache, 1);
+    assert_eq!(initialized["result"]["status"]["completeness"], "stale");
+    let stale = restarted.request(json!({
+        "protocol": 1,
+        "id": 2,
+        "method": "references/candidates",
+        "params": {
+            "declarationUri": "file:///workspace/Target.ets",
+            "declarationPosition": {"line": 0, "character": 16},
+            "limit": 100
+        }
+    }));
+    assert_eq!(stale["ok"], true);
+    assert_eq!(stale["result"]["supported"], true);
+    assert_eq!(stale["result"]["complete"], false);
+    assert_eq!(stale["result"]["completeness"], "stale");
+    assert_eq!(stale["result"]["servedGeneration"], 2);
+    restarted.shutdown(3);
+}
+
+#[test]
 fn sidecar_persists_symbols_and_restores_them_as_stale_after_restart() {
     let temp = TestDir::new("restart");
     let workspace = temp.path().join("workspace");

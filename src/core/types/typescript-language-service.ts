@@ -159,6 +159,7 @@ export interface TypeScriptLanguageServiceEngineOptions {
 export class TypeScriptLanguageServiceEngine {
   private readonly scripts = new Map<string, ScriptRecord>()
   private readonly projectMembershipPaths = new Set<string>()
+  private semanticRootPaths: Set<string> | undefined
   private readonly projectContentVersions = new Map<string, number>()
   private readonly lazySnapshots = new Map<string, LazySnapshotRecord>()
   private readonly sdkDeclarationPaths: string[]
@@ -259,6 +260,7 @@ export class TypeScriptLanguageServiceEngine {
     this.projectMembershipRootId = workspace.canonicalRootId ?? path.resolve(workspace.rootPath)
     const protectedPaths = new Set<string>()
     this.updateProjectMembership(workspace.projectMembership)
+    this.updateSemanticRootPaths(workspace.semanticRootPaths)
     this.updateProjectContent(workspace.contentRevision, workspace.changedPaths)
     this.removeProjectFiles(workspace.removedPaths)
     for (const document of workspace.documents) {
@@ -301,6 +303,22 @@ export class TypeScriptLanguageServiceEngine {
         maxBytes: this.maxLazySnapshotBytes,
       },
     }
+  }
+
+  programFileStats(): {
+    programSourceFiles: number
+    programProjectFiles: number
+    sdkSourceFiles: number
+  } {
+    const sourceFiles = this.service.getProgram()?.getSourceFiles() ?? []
+    let programProjectFiles = 0
+    let sdkSourceFiles = 0
+    for (const sourceFile of sourceFiles) {
+      const filePath = path.resolve(sourceFile.fileName)
+      if (this.sdkRoot && isWithinRoot(this.sdkRoot, filePath)) sdkSourceFiles += 1
+      else if (isWithinRoot(this.rootPath, filePath)) programProjectFiles += 1
+    }
+    return { programSourceFiles: sourceFiles.length, programProjectFiles, sdkSourceFiles }
   }
 
   scriptFileNames(): string[] {
@@ -1594,6 +1612,7 @@ export class TypeScriptLanguageServiceEngine {
     this.overlayPaths = undefined
     this.scripts.clear()
     this.projectMembershipPaths.clear()
+    this.semanticRootPaths = undefined
     this.projectContentVersions.clear()
     this.projectMembershipSourceUnavailable = false
     this.relativeResolutionFailures.clear()
@@ -1847,11 +1866,7 @@ export class TypeScriptLanguageServiceEngine {
       this.removeLazySnapshot(filePath)
     }
     if (!membershipChanged) return
-    this.membershipFileNames = [
-      ...this.projectMembershipPaths,
-      ...this.sdkDeclarationPaths.filter((filePath) => !this.projectMembershipPaths.has(filePath)),
-    ]
-    this.combinedFileNames = undefined
+    this.rebuildMembershipFileNames()
     this.generation += 1
   }
 
@@ -1871,8 +1886,7 @@ export class TypeScriptLanguageServiceEngine {
       this.projectMembershipPaths.clear()
       this.projectContentVersions.clear()
       this.clearLazySnapshots()
-      this.membershipFileNames = [...this.sdkDeclarationPaths]
-      this.combinedFileNames = undefined
+      this.rebuildMembershipFileNames()
       this.generation += 1
       return
     }
@@ -1893,12 +1907,30 @@ export class TypeScriptLanguageServiceEngine {
     }
     this.projectMembershipPaths.clear()
     for (const filePath of nextPaths) this.projectMembershipPaths.add(filePath)
+    this.rebuildMembershipFileNames()
+    this.generation += 1
+  }
+
+  private updateSemanticRootPaths(paths: readonly string[] | undefined): void {
+    const next = paths === undefined
+      ? undefined
+      : new Set(paths.map(filePath => path.resolve(filePath)))
+    if (samePathSet(this.semanticRootPaths, next)) return
+    this.semanticRootPaths = next
+    this.rebuildMembershipFileNames()
+    this.relativeResolutionFailures.clear()
+    this.generation += 1
+  }
+
+  private rebuildMembershipFileNames(): void {
+    const roots = this.projectMembershipStatus === "complete"
+      ? this.semanticRootPaths ?? this.projectMembershipPaths
+      : new Set<string>()
     this.membershipFileNames = [
-      ...this.projectMembershipPaths,
-      ...this.sdkDeclarationPaths.filter((filePath) => !this.projectMembershipPaths.has(filePath)),
+      ...roots,
+      ...this.sdkDeclarationPaths.filter(filePath => !roots.has(filePath)),
     ]
     this.combinedFileNames = undefined
-    this.generation += 1
   }
 
   private updateProjectContent(
@@ -3543,4 +3575,11 @@ function identifierAtPosition(
   }
   visit(sourceFile)
   return result
+}
+
+function samePathSet(left: Set<string> | undefined, right: Set<string> | undefined): boolean {
+  if (left === undefined || right === undefined) return left === right
+  if (left.size !== right.size) return false
+  for (const value of left) if (!right.has(value)) return false
+  return true
 }
