@@ -66,7 +66,48 @@ façade-only batch has two and the owner batch has three before deduplication.
 The same runner accepts an explicit zero-based line/UTF-16 character so a real
 business source can be queried without modifying or copying it.
 
-R3 remains incomplete at the scale/memory boundary. The next mandatory slice
-must replace a full non-owner semantic-unit closure, run source and façade modes
-in independent processes, and collect external RSS. The current sequential
-spike is semantic evidence, not a memory benchmark.
+That sequential spike established semantic fidelity but did not constitute a
+memory benchmark. The following slice therefore moved both modes into fresh
+processes and added external RSS sampling.
+
+## Independent-process RSS RED → GREEN
+
+Parent revision: `146a2cbe16d3949b0d2a1dfcc21b97e69e44ca67`.
+
+The first new public contract required the source closure and hybrid
+façade/owner query to execute in different child processes. It was RED because
+the existing runner rejected `--mode source|facade`. The second contract was
+RED because `scripts/bench/run-declaration-facade-memory-ab.mjs` did not exist.
+The final report contract was RED until the report exposed the committed 30%
+peak-reduction gate separately from semantic correctness.
+
+The implementation now:
+
+- reports a stable owner file/span from the source process without exposing an
+  absolute path;
+- reconstructs the same owner in a fresh façade process;
+- samples the child process tree externally at a configurable interval;
+- preserves every raw RSS sample and process contribution;
+- treats exact definition/reference equality as the semantic status while
+  reporting the memory gate independently.
+
+The focused final command was:
+
+```text
+node --test tests/ohos-typescript-spike.test.mjs
+```
+
+It is GREEN with 24/24 tests and no skips.
+
+The three-run FilePicker measurement kept all five reference locations exact,
+but failed the memory gate: full-source peak was 167,919,616 bytes, while the
+on-demand façade process-tree peak was 526,540,800 bytes (3.136×). Median
+duration changed from 604 ms to 3,270 ms. Even after the emit child exited, the
+single façade coordinator/query process peaked between 183,390,208 and
+185,802,752 bytes, above every corresponding source run.
+
+Therefore the on-demand declaration-façade route stops here. It remains a
+research tool only and is not wired into production references. R3 may be
+reopened only if the build supplies trustworthy precomputed `.d.ets` outputs;
+the current server must not pay declaration emission during an interactive
+references request.

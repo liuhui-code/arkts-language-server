@@ -11,136 +11,172 @@ const QUERY_MARKER = "/*@query*/"
 const MAX_SOURCE_BYTES = 1024 * 1024
 
 try {
-  const { declarationPath, consumerPath, sdkRoot, line, character } = parseInputs(process.argv.slice(2))
-  const declarationText = readSource(declarationPath)
-  const consumerText = readSource(consumerPath)
-  const queryMarker = consumerText.indexOf(QUERY_MARKER)
-  let queryPosition
-  if (line !== null && character !== null) {
-    queryPosition = checkedOffsetAt(consumerText, line, character)
-  } else {
-    if (queryMarker === -1 || consumerText.indexOf(QUERY_MARKER, queryMarker + 1) !== -1) {
-      throw new Error("--consumer must contain exactly one /*@query*/ marker or an explicit position")
+  const report = run(parseInputs(process.argv.slice(2)))
+  process.stdout.write(`${JSON.stringify(report)}\n`)
+  if (report.status !== "PASS") process.exitCode = 42
+} catch (error) {
+  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)
+  process.exitCode = 2
+}
+
+function run(input) {
+  const declarationText = readSource(input.declarationPath)
+  const consumerText = readSource(input.consumerPath)
+  const queryPosition = resolveQueryPosition(consumerText, input.line, input.character)
+  const source = input.mode === "facade"
+    ? null
+    : queryService({
+        roots: [input.consumerPath, input.declarationPath],
+        files: new Map([
+          [input.consumerPath, consumerText],
+          [input.declarationPath, declarationText],
+        ]),
+        queryPath: input.consumerPath,
+        queryPosition,
+      })
+  const definitionTarget = source?.definitionTarget ?? (
+    input.ownerPath && input.ownerStart !== null
+      ? { fileName: input.ownerPath, start: input.ownerStart }
+      : null
+  )
+  if (!definitionTarget) throw new Error("source query has no definition target")
+  if (input.mode === "source") {
+    delete source.definitionTarget
+    return {
+      schemaVersion: 1,
+      status: "PASS",
+      mode: "source",
+      compilerVersion: ts.version,
+      pid: process.pid,
+      owner: {
+        relativeFileName: path.relative(path.dirname(input.declarationPath), definitionTarget.fileName),
+        start: definitionTarget.start,
+      },
+      source,
     }
-    queryPosition = queryMarker + QUERY_MARKER.length
   }
 
+  const { facadeFiles, replacements, remaps } = emitFacadeClosure(input)
+  const facadeConsumer = queryService({
+    roots: [input.consumerPath, ...facadeFiles.keys()],
+    files: new Map([
+      [input.consumerPath, consumerText],
+      ...facadeFiles,
+    ]),
+    queryPath: input.consumerPath,
+    queryPosition,
+    replacements,
+    remaps,
+  })
+  const ownerPath = path.resolve(definitionTarget.fileName)
+  const ownerFacadePath = replacements.get(ownerPath)
+  if (!ownerFacadePath) throw new Error("source definition is outside emitted façade closure")
+  const ownerFiles = new Map(facadeFiles)
+  ownerFiles.delete(ownerFacadePath)
+  ownerFiles.set(ownerPath, readSource(ownerPath))
+  const ownerReplacements = new Map(replacements)
+  ownerReplacements.delete(ownerPath)
+  const ownerRemaps = new Map(remaps)
+  ownerRemaps.delete(ownerFacadePath)
+  const owner = queryService({
+    roots: [ownerPath, ...ownerFiles.keys()],
+    files: ownerFiles,
+    queryPath: ownerPath,
+    queryPosition: definitionTarget.start,
+    replacements: ownerReplacements,
+    remaps: ownerRemaps,
+  })
+  const facade = {
+    ...facadeConsumer,
+    references: uniqueSorted([...facadeConsumer.references, ...owner.references]),
+    facadeOnlyReferences: facadeConsumer.references,
+    ownerReferences: owner.references,
+    programSourceFiles: Math.max(facadeConsumer.programSourceFiles, owner.programSourceFiles),
+    programTextBytes: Math.max(facadeConsumer.programTextBytes, owner.programTextBytes),
+    programAstNodes: Math.max(facadeConsumer.programAstNodes, owner.programAstNodes),
+    ownerProgramSourceFiles: owner.programSourceFiles,
+    ownerProgramTextBytes: owner.programTextBytes,
+    ownerProgramAstNodes: owner.programAstNodes,
+    ownerSourceFiles: 1,
+  }
+  delete facade.definitionTarget
+  delete facadeConsumer.definitionTarget
+  delete owner.definitionTarget
+  if (input.mode === "facade") {
+    return {
+      schemaVersion: 1,
+      status: facade.loadedSourceDeclaration ? "FAIL" : "PASS",
+      mode: "facade",
+      compilerVersion: ts.version,
+      pid: process.pid,
+      facade,
+    }
+  }
+
+  delete source.definitionTarget
+  const definitionExact = sameLocations(source.definition, facade.definition)
+  const referencesExact = sameLocations(source.references, facade.references)
+  return {
+    schemaVersion: 1,
+    status: definitionExact && referencesExact && !facade.loadedSourceDeclaration
+      ? "PASS"
+      : "FAIL",
+    compilerVersion: ts.version,
+    definitionExact,
+    referencesExact,
+    source,
+    facade,
+  }
+}
+
+function resolveQueryPosition(consumerText, line, character) {
+  if (line !== null && character !== null) return checkedOffsetAt(consumerText, line, character)
+  const queryMarker = consumerText.indexOf(QUERY_MARKER)
+  if (queryMarker === -1 || consumerText.indexOf(QUERY_MARKER, queryMarker + 1) !== -1) {
+    throw new Error("--consumer must contain exactly one /*@query*/ marker or an explicit position")
+  }
+  return queryMarker + QUERY_MARKER.length
+}
+
+function emitFacadeClosure(input) {
   const emitRunner = path.join(
     path.dirname(fileURLToPath(import.meta.url)),
     "ets-declaration-facade-spike.mjs",
   )
-  const emitArgs = [emitRunner, "--source", declarationPath]
-  if (sdkRoot) emitArgs.push("--sdk", sdkRoot)
+  const emitArgs = [emitRunner, "--source", input.declarationPath]
+  if (input.sdkRoot) emitArgs.push("--sdk", input.sdkRoot)
   const emitted = spawnSync(process.execPath, emitArgs, {
     encoding: "utf8",
     maxBuffer: 8 * 1024 * 1024,
   })
   if (emitted.status !== 0) {
-    process.stdout.write(emitted.stdout)
-    process.stderr.write(emitted.stderr)
-    process.exitCode = emitted.status ?? 42
-  } else {
-    const facadeReport = JSON.parse(emitted.stdout)
-    const facadeFiles = new Map()
-    const replacements = new Map()
-    const remaps = new Map()
-    for (const declaration of facadeReport.declarations) {
-      const facadePath = path.resolve(path.dirname(declarationPath), declaration.relativeFileName)
-      const sourceMap = facadeReport.sourceMaps.find(({ relativeFileName }) => (
-        relativeFileName === `${declaration.relativeFileName}.map`
-      ))
-      if (!sourceMap || sourceMap.sources.length !== 1) {
-        throw new Error(`emitted façade has no single-source map: ${declaration.fileName}`)
-      }
-      const sourcePath = path.resolve(path.dirname(facadePath), sourceMap.sources[0])
-      const sourceText = readSource(sourcePath)
-      facadeFiles.set(facadePath, declaration.text)
-      replacements.set(sourcePath, facadePath)
-      remaps.set(facadePath, {
-        facadePath,
-        sourcePath,
-        sourceText,
-        facadeText: declaration.text,
-        mappings: sourceMap.mappings,
-      })
-    }
-
-    const source = queryService({
-      roots: [consumerPath, declarationPath],
-      files: new Map([
-        [consumerPath, consumerText],
-        [declarationPath, declarationText],
-      ]),
-      queryPath: consumerPath,
-      queryPosition,
-    })
-    const facadeConsumer = queryService({
-      roots: [consumerPath, ...facadeFiles.keys()],
-      files: new Map([
-        [consumerPath, consumerText],
-        ...facadeFiles,
-      ]),
-      queryPath: consumerPath,
-      queryPosition,
-      replacements,
-      remaps,
-    })
-    const definitionTarget = source.definitionTarget
-    if (!definitionTarget) throw new Error("source query has no definition target")
-    const ownerPath = path.resolve(definitionTarget.fileName)
-    const ownerFacadePath = replacements.get(ownerPath)
-    if (!ownerFacadePath) throw new Error("source definition is outside emitted façade closure")
-    const ownerFiles = new Map(facadeFiles)
-    ownerFiles.delete(ownerFacadePath)
-    ownerFiles.set(ownerPath, readSource(ownerPath))
-    const ownerReplacements = new Map(replacements)
-    ownerReplacements.delete(ownerPath)
-    const ownerRemaps = new Map(remaps)
-    ownerRemaps.delete(ownerFacadePath)
-    const owner = queryService({
-      roots: [ownerPath, ...ownerFiles.keys()],
-      files: ownerFiles,
-      queryPath: ownerPath,
-      queryPosition: definitionTarget.start,
-      replacements: ownerReplacements,
-      remaps: ownerRemaps,
-    })
-    const facade = {
-      ...facadeConsumer,
-      references: uniqueSorted([...facadeConsumer.references, ...owner.references]),
-      facadeOnlyReferences: facadeConsumer.references,
-      ownerReferences: owner.references,
-      programSourceFiles: Math.max(facadeConsumer.programSourceFiles, owner.programSourceFiles),
-      programTextBytes: Math.max(facadeConsumer.programTextBytes, owner.programTextBytes),
-      programAstNodes: Math.max(facadeConsumer.programAstNodes, owner.programAstNodes),
-      ownerProgramSourceFiles: owner.programSourceFiles,
-      ownerProgramTextBytes: owner.programTextBytes,
-      ownerProgramAstNodes: owner.programAstNodes,
-      ownerSourceFiles: 1,
-    }
-    delete source.definitionTarget
-    delete facade.definitionTarget
-    delete facadeConsumer.definitionTarget
-    delete owner.definitionTarget
-    const definitionExact = sameLocations(source.definition, facade.definition)
-    const referencesExact = sameLocations(source.references, facade.references)
-    const status = definitionExact && referencesExact && !facade.loadedSourceDeclaration
-      ? "PASS"
-      : "FAIL"
-    process.stdout.write(`${JSON.stringify({
-      schemaVersion: 1,
-      status,
-      compilerVersion: ts.version,
-      definitionExact,
-      referencesExact,
-      source,
-      facade,
-    })}\n`)
-    if (status !== "PASS") process.exitCode = 42
+    throw new Error(emitted.stderr.trim() || `façade emit failed with status ${emitted.status}`)
   }
-} catch (error) {
-  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)
-  process.exitCode = 2
+  const facadeReport = JSON.parse(emitted.stdout)
+  const facadeFiles = new Map()
+  const replacements = new Map()
+  const remaps = new Map()
+  for (const declaration of facadeReport.declarations) {
+    const facadePath = path.resolve(path.dirname(input.declarationPath), declaration.relativeFileName)
+    const sourceMap = facadeReport.sourceMaps.find(({ relativeFileName }) => (
+      relativeFileName === `${declaration.relativeFileName}.map`
+    ))
+    if (!sourceMap || sourceMap.sources.length !== 1) {
+      throw new Error(`emitted façade has no single-source map: ${declaration.fileName}`)
+    }
+    const sourcePath = path.resolve(path.dirname(facadePath), sourceMap.sources[0])
+    const sourceText = readSource(sourcePath)
+    facadeFiles.set(facadePath, declaration.text)
+    replacements.set(sourcePath, facadePath)
+    remaps.set(facadePath, {
+      facadePath,
+      sourcePath,
+      sourceText,
+      facadeText: declaration.text,
+      mappings: sourceMap.mappings,
+    })
+  }
+  return { facadeFiles, replacements, remaps }
 }
 
 function queryService({
@@ -351,16 +387,21 @@ function readSource(fileName) {
 
 function parseInputs(args) {
   const parsed = {
+    mode: "combined",
     declarationPath: null,
     consumerPath: null,
     sdkRoot: null,
     line: null,
     character: null,
+    ownerPath: null,
+    ownerStart: null,
   }
   for (let index = 0; index < args.length; index += 2) {
     const value = args[index + 1]
     if (!value) throw new Error(usage())
-    if (args[index] === "--declaration" && !parsed.declarationPath) {
+    if (args[index] === "--mode" && parsed.mode === "combined" && ["source", "facade"].includes(value)) {
+      parsed.mode = value
+    } else if (args[index] === "--declaration" && !parsed.declarationPath) {
       parsed.declarationPath = path.resolve(value)
     } else if (args[index] === "--consumer" && !parsed.consumerPath) {
       parsed.consumerPath = path.resolve(value)
@@ -370,6 +411,10 @@ function parseInputs(args) {
       parsed.line = Number(value)
     } else if (args[index] === "--character" && parsed.character === null && /^\d+$/u.test(value)) {
       parsed.character = Number(value)
+    } else if (args[index] === "--owner" && !parsed.ownerPath) {
+      parsed.ownerPath = path.resolve(value)
+    } else if (args[index] === "--owner-start" && parsed.ownerStart === null && /^\d+$/u.test(value)) {
+      parsed.ownerStart = Number(value)
     } else {
       throw new Error(usage())
     }
@@ -379,9 +424,15 @@ function parseInputs(args) {
   if (!parsed.declarationPath.endsWith(".ets") || !parsed.consumerPath.endsWith(".ets")) {
     throw new Error("--declaration and --consumer must end in .ets")
   }
+  if ((parsed.ownerPath === null) !== (parsed.ownerStart === null)) throw new Error(usage())
+  if (parsed.mode === "facade" && parsed.ownerPath === null) throw new Error(usage())
+  if (parsed.mode !== "facade" && parsed.ownerPath !== null) throw new Error(usage())
+  if (parsed.ownerPath !== null && !parsed.ownerPath.endsWith(".ets")) {
+    throw new Error("--owner must end in .ets")
+  }
   return parsed
 }
 
 function usage() {
-  return "usage: ets-declaration-facade-consumer-spike.mjs --declaration <file.ets> --consumer <file.ets> [--line <0-based> --character <UTF-16>] [--sdk <sdk-root>]"
+  return "usage: ets-declaration-facade-consumer-spike.mjs [--mode source|facade] --declaration <file.ets> --consumer <file.ets> [--line <0-based> --character <UTF-16>] [--sdk <sdk-root>] [--owner <file.ets> --owner-start <offset>]"
 }

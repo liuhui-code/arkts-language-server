@@ -422,6 +422,97 @@ test("declaration façade consumer accepts an explicit UTF-16 position for an un
   assert.equal(report.facade.definition[0].fileName, "Box.ets")
 })
 
+test("declaration façade source and hybrid queries run in independent processes with exact results", () => {
+  const fixtureDirectory = path.join(projectRoot, "fixtures", "semantic", "declaration-facade-chain")
+  const declarationPath = path.join(fixtureDirectory, "Box.ets")
+  const consumerPath = path.join(fixtureDirectory, "UseBox.ets")
+  const runner = path.join(
+    projectRoot,
+    "scripts",
+    "semantic",
+    "ets-declaration-facade-consumer-spike.mjs",
+  )
+  const sourceResult = spawnSync(
+    process.execPath,
+    [
+      runner,
+      "--mode", "source",
+      "--declaration", declarationPath,
+      "--consumer", consumerPath,
+    ],
+    { cwd: projectRoot, encoding: "utf8" },
+  )
+
+  assert.equal(sourceResult.status, 0, `${sourceResult.stderr}\n${sourceResult.stdout}`)
+  const sourceReport = JSON.parse(sourceResult.stdout)
+  assert.equal(sourceReport.status, "PASS")
+  assert.equal(sourceReport.mode, "source")
+  assert.ok(Number.isSafeInteger(sourceReport.pid))
+  assert.deepEqual(sourceReport.owner, { relativeFileName: "Model.ets", start: 26 })
+
+  const facadeResult = spawnSync(
+    process.execPath,
+    [
+      runner,
+      "--mode", "facade",
+      "--declaration", declarationPath,
+      "--consumer", consumerPath,
+      "--owner", path.join(fixtureDirectory, sourceReport.owner.relativeFileName),
+      "--owner-start", String(sourceReport.owner.start),
+    ],
+    { cwd: projectRoot, encoding: "utf8" },
+  )
+
+  assert.equal(facadeResult.status, 0, `${facadeResult.stderr}\n${facadeResult.stdout}`)
+  const facadeReport = JSON.parse(facadeResult.stdout)
+  assert.equal(facadeReport.status, "PASS")
+  assert.equal(facadeReport.mode, "facade")
+  assert.ok(Number.isSafeInteger(facadeReport.pid))
+  assert.notEqual(facadeReport.pid, sourceReport.pid)
+  assert.deepEqual(facadeReport.facade.definition, sourceReport.source.definition)
+  assert.deepEqual(facadeReport.facade.references, sourceReport.source.references)
+  assert.equal(facadeReport.facade.loadedSourceDeclarations, 0)
+})
+
+test("declaration façade A/B runner records external RSS curves for independent processes", (t) => {
+  const fixtureDirectory = path.join(projectRoot, "fixtures", "semantic", "declaration-facade-chain")
+  const reportDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-facade-memory-ab-"))
+  t.after(() => fs.rmSync(reportDirectory, { recursive: true, force: true }))
+  const reportPath = path.join(reportDirectory, "report.json")
+  const result = spawnSync(
+    process.execPath,
+    [
+      path.join(projectRoot, "scripts", "bench", "run-declaration-facade-memory-ab.mjs"),
+      "--declaration", path.join(fixtureDirectory, "Box.ets"),
+      "--consumer", path.join(fixtureDirectory, "UseBox.ets"),
+      "--runs", "1",
+      "--sample-interval-ms", "25",
+      "--out", reportPath,
+    ],
+    { cwd: projectRoot, encoding: "utf8", timeout: 30_000 },
+  )
+
+  assert.equal(result.status, 0, `${result.stderr}\n${result.stdout}`)
+  assert.match(
+    result.stdout,
+    /^FACADE_MEMORY_AB=PASS\nFACADE_MEMORY_GATE=(?:PASS|FAIL)\nREPORT=.+\n$/u,
+  )
+  const report = JSON.parse(fs.readFileSync(reportPath, "utf8"))
+  assert.equal(report.status, "PASS")
+  assert.equal(report.measurementKind, "external-process-tree-rss")
+  assert.equal(report.memoryGate.requiredPeakReductionRatio, 0.30)
+  assert.match(report.memoryGate.status, /^(PASS|FAIL)$/u)
+  assert.equal(report.runs.length, 1)
+  assert.notEqual(report.runs[0].source.pid, report.runs[0].facade.pid)
+  assert.ok(report.runs[0].source.samples.length > 0)
+  assert.ok(report.runs[0].facade.samples.length > 0)
+  assert.ok(report.runs[0].source.peakRssBytes > 0)
+  assert.ok(report.runs[0].facade.peakRssBytes > 0)
+  assert.equal(report.runs[0].definitionExact, true)
+  assert.equal(report.runs[0].referencesExact, true)
+  assert.ok(report.runs[0].facade.programAstNodes < report.runs[0].source.programAstNodes)
+})
+
 test("an incomplete official-backend run cannot be reported as a pass", () => {
   const results = [
     ...Array.from({ length: 5 }, (_, index) => ({
