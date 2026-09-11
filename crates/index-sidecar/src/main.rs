@@ -13,8 +13,8 @@ use std::{
 };
 
 use arkts_index_core::{
-    Document, IndexState, Position, ReferenceBindingKind, ReferenceCandidateQuery, StoreError,
-    StoreErrorKind, SymbolKind, WorkspaceIndex,
+    Document, IndexState, Position, ReferenceBindingKind, ReferenceBindingResolution,
+    ReferenceCandidateQuery, StoreError, StoreErrorKind, SymbolKind, WorkspaceIndex,
 };
 use arkts_index_sqlite::{SqliteStore, workspace_cache_location};
 use catalog::{CatalogControl, CatalogProgress, CatalogUpdate, spawn_catalog};
@@ -401,6 +401,10 @@ impl Runtime {
                             "importedName": binding.imported_name,
                             "localName": binding.local_name,
                             "sourceSpecifier": binding.source_specifier,
+                            "sourceResolution": reference_binding_resolution_name(
+                                binding.source_resolution,
+                            ),
+                            "resolvedSourceUri": binding.resolved_source_uri,
                         })
                     })
                     .collect();
@@ -823,5 +827,14 @@ fn reference_binding_kind_name(kind: ReferenceBindingKind) -> &'static str {
     match kind {
         ReferenceBindingKind::Import => "import",
         ReferenceBindingKind::ReExport => "reexport",
+    }
+}
+
+fn reference_binding_resolution_name(resolution: ReferenceBindingResolution) -> &'static str {
+    match resolution {
+        ReferenceBindingResolution::Unique => "unique",
+        ReferenceBindingResolution::Unresolved => "unresolved",
+        ReferenceBindingResolution::Ambiguous => "ambiguous",
+        ReferenceBindingResolution::Unsupported => "unsupported",
     }
 }

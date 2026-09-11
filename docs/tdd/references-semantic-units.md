@@ -373,3 +373,27 @@ All existing candidate URIs remain conservative. Binding data is not yet an excl
 this slice cannot introduce a reference false negative and makes no memory-performance claim. The
 next RED must prove unique module resolution plus complete alias/re-export reachability before the
 planner may narrow a high-collision name.
+
+## Relative binding resolution slice (2026-09-11)
+
+Parent revision: `415c98bdb9dc6c69a90a0997fd1e19683caea9c9`.
+
+RED commands:
+
+```text
+cargo test -p arkts-index-core --test workspace_symbols
+cargo test -p arkts-index-sqlite sqlite_persists_reference_binding_sources_across_reopen
+cargo test -p arkts-index-sidecar sidecar_returns_conservative_reference_candidates_across_alias_reexports
+node --test tests/index-adapter.test.mjs
+```
+
+The first test did not compile because the binding contract had no resolution state or resolved
+source URI. The sidecar and adapter tests then failed on the missing public protocol fields. The
+minimal implementation resolves relative specifiers against the committed catalog and publishes
+exactly four states: `unique`, `unresolved`, `ambiguous`, and `unsupported`. Only `unique` carries a
+resolved URI. SQLite recomputes the state after reopen instead of persisting derived truth.
+
+All candidate URI sets and compiler verification behavior remain unchanged. This is still a
+fail-conservative evidence slice. The next RED may narrow only after it proves every relevant
+occurrence is classified by a complete chain rooted at the target declaration; otherwise it must
+retain the current name-based candidate set.

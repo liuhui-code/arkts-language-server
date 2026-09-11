@@ -899,6 +899,11 @@ function mapReferenceCandidateResult(
               importedName: item.importedName as string,
               localName: item.localName as string,
               sourceSpecifier: item.sourceSpecifier as string,
+              sourceResolution: item.sourceResolution as
+                "unique" | "unresolved" | "ambiguous" | "unsupported",
+              ...(typeof item.resolvedSourceUri === "string"
+                ? { resolvedSourceUri: mapUri(item.resolvedSourceUri) }
+                : {}),
             }
           }),
         }
@@ -915,6 +920,15 @@ function isReferenceBinding(value: unknown): boolean {
     && typeof binding.importedName === "string"
     && typeof binding.localName === "string"
     && typeof binding.sourceSpecifier === "string"
+    && (binding.sourceResolution === "unique"
+      || binding.sourceResolution === "unresolved"
+      || binding.sourceResolution === "ambiguous"
+      || binding.sourceResolution === "unsupported")
+    && (binding.resolvedSourceUri === null
+      || binding.resolvedSourceUri === undefined
+      || typeof binding.resolvedSourceUri === "string")
+    && ((binding.sourceResolution === "unique")
+      === (typeof binding.resolvedSourceUri === "string"))
 }
 
 function unsupportedReferenceCandidates(

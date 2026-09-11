@@ -74,6 +74,8 @@ export interface WorkspaceReferenceBinding {
   importedName: string
   localName: string
   sourceSpecifier: string
+  sourceResolution: "unique" | "unresolved" | "ambiguous" | "unsupported"
+  resolvedSourceUri?: DocumentUri
 }
 
 export interface WorkspaceReferenceIndexPort {

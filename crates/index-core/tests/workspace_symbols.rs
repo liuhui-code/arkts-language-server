@@ -1,8 +1,8 @@
 use std::fs;
 
 use arkts_index_core::{
-    Document, Position, ReferenceBindingKind, ReferenceCandidateQuery, SymbolKind, TextRange,
-    WorkspaceIndex, WorkspaceSymbol, parse_document_symbols,
+    Document, Position, ReferenceBindingKind, ReferenceBindingResolution, ReferenceCandidateQuery,
+    SymbolKind, TextRange, WorkspaceIndex, WorkspaceSymbol, parse_document_symbols,
 };
 
 fn fixture(name: &str) -> String {
@@ -88,11 +88,83 @@ fn reference_candidates_expose_the_binding_chain_for_later_identity_narrowing() 
     assert_eq!(result.bindings[0].imported_name, "Thing");
     assert_eq!(result.bindings[0].local_name, "PublicThing");
     assert_eq!(result.bindings[0].source_specifier, "./Target");
+    assert_eq!(
+        result.bindings[0].source_resolution,
+        ReferenceBindingResolution::Unique
+    );
+    assert_eq!(
+        result.bindings[0].resolved_source_uri.as_deref(),
+        Some("file:///workspace/Target.ets")
+    );
     assert_eq!(result.bindings[1].kind, ReferenceBindingKind::Import);
     assert_eq!(result.bindings[1].uri, "file:///workspace/Consumer.ets");
     assert_eq!(result.bindings[1].imported_name, "PublicThing");
     assert_eq!(result.bindings[1].local_name, "Alias");
     assert_eq!(result.bindings[1].source_specifier, "./Barrel");
+    assert_eq!(
+        result.bindings[1].source_resolution,
+        ReferenceBindingResolution::Unique
+    );
+    assert_eq!(
+        result.bindings[1].resolved_source_uri.as_deref(),
+        Some("file:///workspace/Barrel.ets")
+    );
+}
+
+#[test]
+fn relative_binding_resolution_fails_conservative_for_ambiguous_and_package_sources() {
+    let mut index = WorkspaceIndex::in_memory();
+    index
+        .refresh(
+            1,
+            [
+                Document::new("file:///workspace/Target.ets", "export class Thing {}\n"),
+                Document::new(
+                    "file:///workspace/Target/index.ets",
+                    "export class OtherThing {}\n",
+                ),
+                Document::new(
+                    "file:///workspace/Ambiguous.ets",
+                    "export { Thing } from './Target'\n",
+                ),
+                Document::new(
+                    "file:///workspace/Package.ets",
+                    "export { Thing as PackageThing } from '@scope/model'\n",
+                ),
+            ],
+            &[],
+        )
+        .expect("reference generation should commit");
+
+    let result = index
+        .search_reference_candidates(ReferenceCandidateQuery {
+            declaration_uri: "file:///workspace/Target.ets".to_owned(),
+            declaration_position: Position::new(0, 14),
+            limit: 20,
+        })
+        .expect("reference candidates should be searchable");
+
+    let ambiguous = result
+        .bindings
+        .iter()
+        .find(|binding| binding.uri.ends_with("/Ambiguous.ets"))
+        .expect("ambiguous relative binding should be present");
+    assert_eq!(
+        ambiguous.source_resolution,
+        ReferenceBindingResolution::Ambiguous
+    );
+    assert_eq!(ambiguous.resolved_source_uri, None);
+
+    let package = result
+        .bindings
+        .iter()
+        .find(|binding| binding.uri.ends_with("/Package.ets"))
+        .expect("package binding should be present");
+    assert_eq!(
+        package.source_resolution,
+        ReferenceBindingResolution::Unsupported
+    );
+    assert_eq!(package.resolved_source_uri, None);
 }
 
 #[test]
