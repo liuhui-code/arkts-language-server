@@ -105,6 +105,7 @@ exit 97
     "bin/arkts-language-server",
     "config/semantic-runtime.json",
     "dist/semantic-worker.cjs",
+    "dist/reference-verifier-worker.cjs",
     "dist/server.cjs",
     `target/release/${process.platform === "win32"
       ? "arkts-index-sidecar.exe"

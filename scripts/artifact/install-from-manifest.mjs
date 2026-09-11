@@ -30,6 +30,7 @@ async function installFromManifest({ artifactRoot, binDirectory }) {
     "bin/arkts-language-server",
     "config/semantic-runtime.json",
     "dist/semantic-worker.cjs",
+    "dist/reference-verifier-worker.cjs",
     "dist/server.cjs",
     `target/release/${sidecarName}`,
   ]

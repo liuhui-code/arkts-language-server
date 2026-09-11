@@ -1,6 +1,7 @@
 import type {
   DocumentSnapshot,
   DocumentUri,
+  TextPosition,
   TextRange,
   WorkspaceDescriptor,
   WorkspaceId,
@@ -54,6 +55,27 @@ export interface WorkspaceExportIndexPort {
     limit: number,
     signal?: AbortSignal,
   ): Promise<WorkspaceExportSearchResult>
+}
+
+export interface WorkspaceReferenceCandidateResult {
+  supported: boolean
+  complete: boolean
+  declarationIdentity?: string
+  names: string[]
+  uris: DocumentUri[]
+  servedGeneration: number
+  completeness: WorkspaceIndexCompleteness
+}
+
+export interface WorkspaceReferenceIndexPort {
+  searchReferenceCandidates(
+    workspaceId: WorkspaceId,
+    declarationUri: DocumentUri,
+    declarationPosition: TextPosition,
+    limit: number,
+    signal?: AbortSignal,
+  ): Promise<WorkspaceReferenceCandidateResult>
+  status(workspaceId: WorkspaceId): Promise<WorkspaceIndexStatus>
 }
 
 export interface WorkspaceIndexPort {

@@ -12,6 +12,7 @@ export const MAX_SEMANTIC_WORKER_CALL_HIERARCHY_PREPARE_ITEMS = 16
 export const MAX_SEMANTIC_WORKER_CALL_HIERARCHY_EDGES = 256
 export const MAX_SEMANTIC_WORKER_CALL_HIERARCHY_RANGES_PER_EDGE = 64
 export const MAX_SEMANTIC_WORKER_CALL_HIERARCHY_TOTAL_RANGES = 2_048
+export const MAX_SEMANTIC_WORKER_REFERENCE_CANDIDATES = 4_096
 
 const sharedArrayBufferByteLengthGetter = Object.getOwnPropertyDescriptor(
   SharedArrayBuffer.prototype,
@@ -265,6 +266,7 @@ export interface SemanticWorkerCompletionDiscovery {
 export interface SemanticWorkerReferencesArgs {
   readonly position: SemanticWorkerPosition
   readonly includeDeclaration: boolean
+  readonly candidateUris?: readonly string[]
 }
 
 export interface SemanticWorkerRequestArgsByMethod {
@@ -276,7 +278,7 @@ export interface SemanticWorkerRequestArgsByMethod {
     readonly completion: SemanticWorkerJsonObject
     readonly snippets?: boolean
   }
-  readonly define: SemanticWorkerPositionArgs
+  readonly define: SemanticWorkerPositionArgs & { readonly isolate?: boolean }
   readonly typeDefinitions: SemanticWorkerPositionArgs
   readonly implementations: SemanticWorkerPositionArgs
   readonly references: SemanticWorkerReferencesArgs
@@ -1156,7 +1158,6 @@ function decodeRequestArgs(
   switch (method) {
     case "complete":
       return decodeCompletionArgs(value)
-    case "define":
     case "typeDefinitions":
     case "implementations":
     case "prepareRename":
@@ -1164,6 +1165,8 @@ function decodeRequestArgs(
     case "hover":
     case "prepareCallHierarchy":
       return decodePositionArgs(value)
+    case "define":
+      return decodeDefinitionArgs(value)
     case "resolveCompletion":
       return decodeResolveCompletionArgs(value)
     case "references":
@@ -1343,13 +1346,46 @@ function decodeJsonFieldArgs(
 }
 
 function decodeReferencesArgs(value: unknown): SemanticWorkerReferencesArgs {
-  const args = ownDataRecord(value, ["position", "includeDeclaration"])
-  if (!args || !hasExactKeys(args, ["position", "includeDeclaration"])) {
+  const args = ownDataRecord(value, ["position", "includeDeclaration"], ["candidateUris"])
+  if (!args || !hasRequiredAndOnlyKeys(
+    args,
+    ["position", "includeDeclaration"],
+    ["candidateUris"],
+  )) {
     throw invalidRequest()
   }
   const position = decodePosition(args.position)
   if (typeof args.includeDeclaration !== "boolean") throw invalidRequest()
-  return Object.freeze({ position, includeDeclaration: args.includeDeclaration })
+  let candidateUris: readonly string[] | undefined
+  if (Object.hasOwn(args, "candidateUris")) {
+    candidateUris = Object.freeze(readBoundedDenseArray(
+      args.candidateUris,
+      MAX_SEMANTIC_WORKER_REFERENCE_CANDIDATES,
+      invalidRequest,
+    ).map((uri) => {
+      if (!isCanonicalSemanticWorkerFileUri(uri)) throw invalidRequest()
+      return uri
+    }))
+  }
+  return Object.freeze({
+    position,
+    includeDeclaration: args.includeDeclaration,
+    ...(candidateUris ? { candidateUris } : {}),
+  })
+}
+
+function decodeDefinitionArgs(
+  value: unknown,
+): SemanticWorkerRequestArgsByMethod["define"] {
+  const args = ownDataRecord(value, ["position"], ["isolate"])
+  if (!args || !hasRequiredAndOnlyKeys(args, ["position"], ["isolate"])
+    || (Object.hasOwn(args, "isolate") && typeof args.isolate !== "boolean")) {
+    throw invalidRequest()
+  }
+  return Object.freeze({
+    position: decodePosition(args.position),
+    ...(Object.hasOwn(args, "isolate") ? { isolate: args.isolate as boolean } : {}),
+  })
 }
 
 function decodeRenameArgs(value: unknown): SemanticWorkerRequestArgsByMethod["rename"] {

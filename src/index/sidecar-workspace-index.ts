@@ -16,6 +16,8 @@ import type {
   WorkspaceExportSearchResult,
   WorkspaceIndexPort,
   WorkspaceIndexStatus,
+  WorkspaceReferenceCandidateResult,
+  WorkspaceReferenceIndexPort,
   WorkspaceSymbol,
   WorkspaceSymbolSearchResult,
 } from "../contracts/workspace-index.js"
@@ -75,7 +77,8 @@ interface CatalogRun {
   cleanup(): void
 }
 
-export class SidecarWorkspaceIndex implements WorkspaceIndexPort, WorkspaceCatalogPort, WorkspaceExportIndexPort {
+export class SidecarWorkspaceIndex implements WorkspaceIndexPort, WorkspaceCatalogPort,
+  WorkspaceExportIndexPort, WorkspaceReferenceIndexPort {
   private readonly sessions = new Map<WorkspaceId, SidecarSession>()
   private readonly openingWorkspaces = new Map<WorkspaceId, Promise<WorkspaceIndexStatus>>()
   private readonly catalogRuns = new Map<WorkspaceId, CatalogRun>()
@@ -212,6 +215,34 @@ export class SidecarWorkspaceIndex implements WorkspaceIndexPort, WorkspaceCatal
       return mapExportSearchResult(await session.request(
         "exports/search",
         { query, limit },
+        signal,
+      ), (uri) => toClientWorkspaceUri(session, uri))
+    } catch (error) {
+      if (error instanceof SidecarProtocolError) session.protocolFailure(error)
+      throw error
+    }
+  }
+
+  async searchReferenceCandidates(
+    workspaceId: WorkspaceId,
+    declarationUri: DocumentUri,
+    declarationPosition: { line: number; character: number },
+    limit: number,
+    signal?: AbortSignal,
+  ): Promise<WorkspaceReferenceCandidateResult> {
+    const session = this.session(workspaceId)
+    try {
+      const rebasedDeclarationUri = tryWorkspaceIdentityUri(session, declarationUri)
+      if (rebasedDeclarationUri === undefined) {
+        return unsupportedReferenceCandidates(session.lastStatus.committedGeneration)
+      }
+      return mapReferenceCandidateResult(await session.request(
+        "references/candidates",
+        {
+          declarationUri: rebasedDeclarationUri,
+          declarationPosition,
+          limit,
+        },
         signal,
       ), (uri) => toClientWorkspaceUri(session, uri))
     } catch (error) {
@@ -826,6 +857,50 @@ function mapExportSearchResult(
     }),
     servedGeneration: result.servedGeneration,
     completeness: result.completeness,
+  }
+}
+
+function mapReferenceCandidateResult(
+  value: unknown,
+  mapUri: (uri: DocumentUri) => DocumentUri = (uri) => uri,
+): WorkspaceReferenceCandidateResult {
+  const result = asRecord(value)
+  if (typeof result.supported !== "boolean"
+    || typeof result.complete !== "boolean"
+    || !Array.isArray(result.names)
+    || result.names.some(name => typeof name !== "string")
+    || !Array.isArray(result.uris)
+    || result.uris.some(uri => typeof uri !== "string")
+    || !isNonNegativeInteger(result.servedGeneration)
+    || !isCompleteness(result.completeness)
+    || (result.declarationIdentity !== null
+      && result.declarationIdentity !== undefined
+      && typeof result.declarationIdentity !== "string")) {
+    throw new SidecarProtocolError("index sidecar returned invalid reference candidates")
+  }
+  return {
+    supported: result.supported,
+    complete: result.complete,
+    ...(typeof result.declarationIdentity === "string"
+      ? { declarationIdentity: result.declarationIdentity }
+      : {}),
+    names: result.names as string[],
+    uris: (result.uris as string[]).map(mapUri),
+    servedGeneration: result.servedGeneration,
+    completeness: result.completeness,
+  }
+}
+
+function unsupportedReferenceCandidates(
+  servedGeneration: number,
+): WorkspaceReferenceCandidateResult {
+  return {
+    supported: false,
+    complete: false,
+    names: [],
+    uris: [],
+    servedGeneration,
+    completeness: "stale",
   }
 }
 

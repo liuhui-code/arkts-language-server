@@ -141,6 +141,13 @@ export interface SemanticWorkspaceView {
     overlay: boolean
   }>
   projectMembership?: ProjectMembershipSnapshot
+  /** Immutable disk identities used by an isolated verifier to preserve membership admission. */
+  projectFileIdentities?: readonly (readonly [string, ProjectFileAdmissionToken])[]
+  /**
+   * Optional compiler root subset for an operation-scoped semantic query.
+   * Project membership remains the authority for file admission and result mapping.
+   */
+  semanticRootPaths?: readonly string[]
   removedPaths?: string[]
   changedPaths?: string[]
   contentRevision: number

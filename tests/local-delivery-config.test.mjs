@@ -154,6 +154,7 @@ printf '%s\\n' "$*" >> "$ARKTS_INSTALL_TEST_LOG"
 if [ "$1" = "build" ]; then
   mkdir -p dist
   printf '%s\\n' 'process.stdin.resume()' > dist/semantic-worker.cjs
+  printf '%s\\n' 'process.stdin.resume()' > dist/reference-verifier-worker.cjs
   printf '%s\\n' 'process.stdin.resume()' > dist/server.cjs
 fi
 exit 0

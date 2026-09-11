@@ -1,4 +1,5 @@
 import assert from "node:assert/strict"
+import { spawnSync } from "node:child_process"
 import { createRequire } from "node:module"
 import fs from "node:fs"
 import os from "node:os"
@@ -84,6 +85,341 @@ test("official ETS options come from the selected SDK loader configuration", (t)
   const options = officialEtsCompilerOptions(sdkRoot)
   assert.deepEqual(options.ets?.components, ["Column", "Text"])
   assert.equal(options.etsLoaderPath, path.join(sdkRoot, "ets", "build-tools", "ets-loader"))
+})
+
+test("declaration-facade spike emits an in-memory .d.ets for an exported ArkTS class", (t) => {
+  const fixtureDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-facade-spike-"))
+  t.after(() => fs.rmSync(fixtureDirectory, { recursive: true, force: true }))
+  const sourcePath = path.join(fixtureDirectory, "Box.ets")
+  fs.writeFileSync(sourcePath, [
+    "export class Box {",
+    "  value: string = \"\"",
+    "  getValue(): string { return this.value }",
+    "}",
+    "",
+  ].join("\n"))
+
+  const result = spawnSync(
+    process.execPath,
+    [path.join(projectRoot, "scripts", "semantic", "ets-declaration-facade-spike.mjs"), "--source", sourcePath],
+    { cwd: projectRoot, encoding: "utf8" },
+  )
+
+  assert.equal(result.status, 0, `${result.stderr}\n${result.stdout}`)
+  const report = JSON.parse(result.stdout)
+  assert.equal(report.status, "PASS")
+  assert.equal(report.compilerVersion, "4.9.5")
+  assert.equal(report.outputExtension, ".d.ets")
+  assert.match(report.declarationText, /export declare class Box/u)
+  assert.match(report.declarationText, /getValue\(\): string/u)
+  assert.equal(report.errorDiagnostics, 0)
+})
+
+test("declaration-facade spike preserves a generic cross-file type dependency", (t) => {
+  const fixtureDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-facade-generic-"))
+  t.after(() => fs.rmSync(fixtureDirectory, { recursive: true, force: true }))
+  fs.writeFileSync(path.join(fixtureDirectory, "Model.ets"), [
+    "export interface Box<T> {",
+    "  value: T",
+    "}",
+    "",
+  ].join("\n"))
+  const sourcePath = path.join(fixtureDirectory, "Service.ets")
+  fs.writeFileSync(sourcePath, [
+    "import { Box } from \"./Model\"",
+    "export function unwrap<T>(box: Box<T>): T { return box.value }",
+    "",
+  ].join("\n"))
+
+  const result = spawnSync(
+    process.execPath,
+    [path.join(projectRoot, "scripts", "semantic", "ets-declaration-facade-spike.mjs"), "--source", sourcePath],
+    { cwd: projectRoot, encoding: "utf8" },
+  )
+
+  assert.equal(result.status, 0, `${result.stderr}\n${result.stdout}`)
+  const report = JSON.parse(result.stdout)
+  assert.equal(report.status, "PASS")
+  assert.deepEqual(report.declarations.map(({ fileName }) => fileName), [
+    "Model.d.ets",
+    "Service.d.ets",
+  ])
+  assert.match(
+    report.declarations.find(({ fileName }) => fileName === "Service.d.ets").text,
+    /export declare function unwrap<T>\(box: Box<T>\): T/u,
+  )
+  assert.match(
+    report.declarations.find(({ fileName }) => fileName === "Model.d.ets").text,
+    /export interface Box<T>/u,
+  )
+})
+
+test("declaration-facade spike preserves SDK-configured ArkTS component decorators", (t) => {
+  const fixtureDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-facade-component-"))
+  t.after(() => fs.rmSync(fixtureDirectory, { recursive: true, force: true }))
+  const sdkRoot = path.join(fixtureDirectory, "sdk")
+  const loaderRoot = path.join(sdkRoot, "ets", "build-tools", "ets-loader")
+  const componentRoot = path.join(sdkRoot, "ets", "component")
+  const apiRoot = path.join(sdkRoot, "ets", "api")
+  fs.mkdirSync(loaderRoot, { recursive: true })
+  fs.mkdirSync(componentRoot, { recursive: true })
+  fs.mkdirSync(apiRoot, { recursive: true })
+  fs.writeFileSync(path.join(loaderRoot, "tsconfig.json"), JSON.stringify({
+    compilerOptions: {
+      ets: {
+        render: { method: ["build"], decorator: ["Builder", "LocalBuilder"] },
+        components: ["Text"],
+        libs: [],
+        extend: { decorator: [], components: [] },
+        styles: {
+          decorator: "Styles",
+          component: { name: "", type: "", instance: "" },
+          property: "",
+        },
+        concurrent: { decorator: "Concurrent" },
+        propertyDecorators: [],
+        emitDecorators: [
+          { name: "Component", emitParameters: false },
+          { name: "State", emitParameters: false },
+        ],
+      },
+    },
+  }))
+  fs.writeFileSync(path.join(componentRoot, "index-full.d.ts"), [
+    "declare const Component: (target: object) => void",
+    "declare const State: (target: object, propertyKey: string) => void",
+    "interface TextInterface { (value: string): void }",
+    "declare const Text: TextInterface",
+    "",
+  ].join("\n"))
+  fs.writeFileSync(path.join(apiRoot, "@future.annotation.d.ets"), [
+    "export @interface FutureAnnotation {",
+    "}",
+    "",
+  ].join("\n"))
+  const sourcePath = path.join(fixtureDirectory, "Card.ets")
+  fs.writeFileSync(sourcePath, [
+    "@Component",
+    "export struct Card {",
+    "  @State title: string = \"Ready\"",
+    "  build(): void { Text(this.title) }",
+    "}",
+    "",
+  ].join("\n"))
+
+  const result = spawnSync(
+    process.execPath,
+    [
+      path.join(projectRoot, "scripts", "semantic", "ets-declaration-facade-spike.mjs"),
+      "--source", sourcePath,
+      "--sdk", sdkRoot,
+    ],
+    { cwd: projectRoot, encoding: "utf8" },
+  )
+
+  assert.equal(result.status, 0, `${result.stderr}\n${result.stdout}`)
+  const report = JSON.parse(result.stdout)
+  assert.equal(report.status, "PASS")
+  assert.equal(report.sdkDeclarationFiles, 1)
+  assert.ok(report.programSourceFiles >= 3)
+  assert.match(report.declarationText, /@Component\s+export declare struct Card/u)
+  assert.match(report.declarationText, /@State\s+title: string/u)
+})
+
+test("declaration-facade spike emits a declaration map back to the original .ets source", (t) => {
+  const fixtureDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-facade-map-"))
+  t.after(() => fs.rmSync(fixtureDirectory, { recursive: true, force: true }))
+  const sourcePath = path.join(fixtureDirectory, "MappedBox.ets")
+  fs.writeFileSync(sourcePath, [
+    "export class MappedBox {",
+    "  value: string = \"\"",
+    "}",
+    "",
+  ].join("\n"))
+
+  const result = spawnSync(
+    process.execPath,
+    [path.join(projectRoot, "scripts", "semantic", "ets-declaration-facade-spike.mjs"), "--source", sourcePath],
+    { cwd: projectRoot, encoding: "utf8" },
+  )
+
+  assert.equal(result.status, 0, `${result.stderr}\n${result.stdout}`)
+  const report = JSON.parse(result.stdout)
+  assert.deepEqual(report.sourceMaps.map(({ fileName }) => fileName), ["MappedBox.d.ets.map"])
+  assert.deepEqual(report.sourceMaps[0].sources, ["MappedBox.ets"])
+  assert.ok(report.sourceMaps[0].mappings.length > 0)
+  const generatedColumn = report.declarationText.indexOf("MappedBox")
+  const original = originalPositionForGenerated(report.sourceMaps[0].mappings, 0, generatedColumn)
+  assert.deepEqual(original, { line: 0, character: "export class ".length })
+})
+
+test("declaration-facade spike reports a bounded relative diagnostic location", (t) => {
+  const fixtureDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-facade-diagnostic-"))
+  t.after(() => fs.rmSync(fixtureDirectory, { recursive: true, force: true }))
+  const sourcePath = path.join(fixtureDirectory, "Broken.ets")
+  fs.writeFileSync(sourcePath, "export class Broken {\n")
+
+  const result = spawnSync(
+    process.execPath,
+    [path.join(projectRoot, "scripts", "semantic", "ets-declaration-facade-spike.mjs"), "--source", sourcePath],
+    { cwd: projectRoot, encoding: "utf8" },
+  )
+
+  assert.equal(result.status, 42, `${result.stderr}\n${result.stdout}`)
+  assert.equal(result.stdout.includes(fixtureDirectory), false)
+  const report = JSON.parse(result.stdout)
+  assert.equal(report.status, "FAIL")
+  assert.equal(report.diagnostics[0].fileName, "Broken.ets")
+  assert.equal(report.diagnostics[0].line, 2)
+  assert.equal(typeof report.diagnostics[0].character, "number")
+})
+
+test("declaration-facade spike resolves an SDK module used by a public type", (t) => {
+  const fixtureDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-facade-sdk-module-"))
+  t.after(() => fs.rmSync(fixtureDirectory, { recursive: true, force: true }))
+  const sdkRoot = path.join(fixtureDirectory, "sdk")
+  const loaderRoot = path.join(sdkRoot, "ets", "build-tools", "ets-loader")
+  const componentRoot = path.join(sdkRoot, "ets", "component")
+  const apiRoot = path.join(sdkRoot, "ets", "api")
+  fs.mkdirSync(loaderRoot, { recursive: true })
+  fs.mkdirSync(componentRoot, { recursive: true })
+  fs.mkdirSync(apiRoot, { recursive: true })
+  fs.writeFileSync(path.join(loaderRoot, "tsconfig.json"), JSON.stringify({
+    compilerOptions: {
+      ets: {
+        render: { method: ["build"], decorator: [] },
+        components: [],
+        libs: [],
+        extend: { decorator: [], components: [] },
+        styles: {
+          decorator: "Styles",
+          component: { name: "", type: "", instance: "" },
+          property: "",
+        },
+        concurrent: { decorator: "Concurrent" },
+        propertyDecorators: [],
+        emitDecorators: [],
+      },
+    },
+  }))
+  fs.writeFileSync(path.join(componentRoot, "index-full.d.ts"), "")
+  fs.writeFileSync(path.join(apiRoot, "@ohos.multimedia.image.d.ets"), [
+    "declare namespace image {",
+    "  export interface PixelMap { readonly width: number }",
+    "}",
+    "export default image",
+    "",
+  ].join("\n"))
+  const sourcePath = path.join(fixtureDirectory, "Thumbnail.ets")
+  fs.writeFileSync(sourcePath, [
+    "import image from \"@ohos.multimedia.image\"",
+    "export interface Thumbnail { pixel: image.PixelMap }",
+    "",
+  ].join("\n"))
+
+  const result = spawnSync(
+    process.execPath,
+    [
+      path.join(projectRoot, "scripts", "semantic", "ets-declaration-facade-spike.mjs"),
+      "--source", sourcePath,
+      "--sdk", sdkRoot,
+    ],
+    { cwd: projectRoot, encoding: "utf8" },
+  )
+
+  assert.equal(result.status, 0, `${result.stderr}\n${result.stdout}`)
+  const report = JSON.parse(result.stdout)
+  assert.equal(report.status, "PASS")
+  assert.match(report.declarationText, /pixel: image\.PixelMap/u)
+})
+
+test("declaration façade consumer maps exact definition and references back to source", (t) => {
+  const fixtureDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-facade-consumer-"))
+  t.after(() => fs.rmSync(fixtureDirectory, { recursive: true, force: true }))
+  const declarationPath = path.join(fixtureDirectory, "Box.ets")
+  const consumerPath = path.join(fixtureDirectory, "UseBox.ets")
+  fs.writeFileSync(declarationPath, [
+    "export class Box {",
+    "  value: string = \"\"",
+    "}",
+    "",
+  ].join("\n"))
+  fs.writeFileSync(consumerPath, [
+    "import { Box } from \"./Box\"",
+    "export const value = new /*@query*/Box()",
+    "",
+  ].join("\n"))
+
+  const result = spawnSync(
+    process.execPath,
+    [
+      path.join(projectRoot, "scripts", "semantic", "ets-declaration-facade-consumer-spike.mjs"),
+      "--declaration", declarationPath,
+      "--consumer", consumerPath,
+    ],
+    { cwd: projectRoot, encoding: "utf8" },
+  )
+
+  assert.equal(result.status, 0, `${result.stderr}\n${result.stdout}`)
+  assert.equal(result.stdout.includes(fixtureDirectory), false)
+  const report = JSON.parse(result.stdout)
+  assert.equal(report.status, "PASS")
+  assert.equal(report.definitionExact, true)
+  assert.equal(report.referencesExact, true)
+  assert.deepEqual(report.facade.definition, report.source.definition)
+  assert.deepEqual(report.facade.references, report.source.references)
+  assert.equal(report.facade.definition[0].fileName, "Box.ets")
+  assert.equal(report.facade.loadedSourceDeclaration, false)
+})
+
+test("declaration façade consumer follows a generic façade dependency without loading its source", () => {
+  const fixtureDirectory = path.join(projectRoot, "fixtures", "semantic", "declaration-facade-chain")
+  const declarationPath = path.join(fixtureDirectory, "Box.ets")
+  const consumerPath = path.join(fixtureDirectory, "UseBox.ets")
+
+  const result = spawnSync(
+    process.execPath,
+    [
+      path.join(projectRoot, "scripts", "semantic", "ets-declaration-facade-consumer-spike.mjs"),
+      "--declaration", declarationPath,
+      "--consumer", consumerPath,
+    ],
+    { cwd: projectRoot, encoding: "utf8" },
+  )
+
+  assert.equal(result.status, 0, `${result.stderr}\n${result.stdout}`)
+  const report = JSON.parse(result.stdout)
+  assert.equal(report.status, "PASS")
+  assert.equal(report.definitionExact, true)
+  assert.equal(report.referencesExact, true)
+  assert.equal(report.facade.definition[0].fileName, "Model.ets")
+  assert.equal(report.facade.loadedSourceDeclarations, 0)
+  assert.ok(report.facade.programTextBytes < report.source.programTextBytes)
+  assert.ok(report.facade.programAstNodes < report.source.programAstNodes)
+})
+
+test("declaration façade consumer accepts an explicit UTF-16 position for an unmodified source", () => {
+  const fixtureDirectory = path.join(projectRoot, "fixtures", "semantic", "declaration-facade-chain")
+  const declarationPath = path.join(fixtureDirectory, "Box.ets")
+  const consumerPath = path.join(fixtureDirectory, "UseBoxPosition.ets")
+  const result = spawnSync(
+    process.execPath,
+    [
+      path.join(projectRoot, "scripts", "semantic", "ets-declaration-facade-consumer-spike.mjs"),
+      "--declaration", declarationPath,
+      "--consumer", consumerPath,
+      "--line", "1",
+      "--character", "25",
+    ],
+    { cwd: projectRoot, encoding: "utf8" },
+  )
+
+  assert.equal(result.status, 0, `${result.stderr}\n${result.stdout}`)
+  const report = JSON.parse(result.stdout)
+  assert.equal(report.status, "PASS")
+  assert.equal(report.definitionExact, true)
+  assert.equal(report.referencesExact, true)
+  assert.equal(report.facade.definition[0].fileName, "Box.ets")
 })
 
 test("an incomplete official-backend run cannot be reported as a pass", () => {
@@ -334,4 +670,50 @@ function buildOfficialBackendSupportDriver(t) {
     outfile: driverPath,
   })
   return createRequire(import.meta.url)(driverPath)
+}
+
+function originalPositionForGenerated(mappings, targetLine, targetColumn) {
+  const state = { source: 0, originalLine: 0, originalColumn: 0 }
+  const lines = mappings.split(";")
+  for (let line = 0; line <= targetLine; line += 1) {
+    let generatedColumn = 0
+    let best = null
+    for (const segment of lines[line].split(",").filter(Boolean)) {
+      const fields = decodeSourceMapSegment(segment)
+      generatedColumn += fields[0]
+      if (fields.length >= 4) {
+        state.source += fields[1]
+        state.originalLine += fields[2]
+        state.originalColumn += fields[3]
+        if (line === targetLine && generatedColumn <= targetColumn) {
+          best = {
+            line: state.originalLine,
+            character: state.originalColumn + targetColumn - generatedColumn,
+          }
+        }
+      }
+    }
+    if (line === targetLine) return best
+  }
+  return null
+}
+
+function decodeSourceMapSegment(segment) {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+  const values = []
+  let value = 0
+  let shift = 0
+  for (const character of segment) {
+    const digit = alphabet.indexOf(character)
+    assert.notEqual(digit, -1)
+    value += (digit & 31) << shift
+    if ((digit & 32) !== 0) {
+      shift += 5
+      continue
+    }
+    values.push((value >> 1) * ((value & 1) === 1 ? -1 : 1))
+    value = 0
+    shift = 0
+  }
+  return values
 }

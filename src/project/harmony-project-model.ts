@@ -15,9 +15,33 @@ export interface HarmonyProjectScope {
   readonly reason?: string
 }
 
+export interface HarmonySemanticUnitIdentity {
+  readonly workspace: string
+  readonly product: string
+  readonly module: string
+  readonly target: string
+}
+
+export interface HarmonySemanticUnit {
+  readonly identity: HarmonySemanticUnitIdentity
+  readonly moduleRoot: string
+  readonly sourceRoots: readonly string[]
+  readonly dependencies: readonly HarmonySemanticUnitIdentity[]
+  readonly reverseDependencies: readonly HarmonySemanticUnitIdentity[]
+}
+
+export interface HarmonySemanticGraph {
+  readonly status: "unconfigured" | "ready" | "unavailable"
+  readonly complete: boolean
+  readonly units: readonly HarmonySemanticUnit[]
+  readonly reason?: string
+}
+
 const PHYSICAL_SOURCE_ROOTS = new WeakMap<HarmonyProjectScope, readonly string[]>()
 
 interface ModuleScope {
+  readonly name: string
+  readonly rootPath: string
   readonly physicalRoot: string
   readonly scope: HarmonyProjectScope
 }
@@ -35,6 +59,7 @@ export class HarmonyProjectModel {
   private readonly rootPath: string
   private readonly selection: ProjectSelection | undefined
   private snapshot?: ProjectSnapshot
+  private graph?: HarmonySemanticGraph
 
   constructor(rootPath: string, selection?: unknown) {
     this.rootPath = path.resolve(rootPath)
@@ -66,8 +91,27 @@ export class HarmonyProjectModel {
     return PHYSICAL_SOURCE_ROOTS.get(scope) ?? []
   }
 
+  semanticGraph(): HarmonySemanticGraph {
+    if (this.graph) return this.graph
+    const snapshot = this.snapshot ??= this.load()
+    if (snapshot.status !== "ready") {
+      return this.graph = Object.freeze({
+        status: snapshot.status,
+        complete: false,
+        units: Object.freeze([]),
+        ...(snapshot.scope.reason ? { reason: snapshot.scope.reason } : {}),
+      })
+    }
+    return this.graph = buildSemanticGraph(
+      this.rootPath,
+      this.selection!.product,
+      snapshot.modules,
+    )
+  }
+
   invalidate(): void {
     this.snapshot = undefined
+    this.graph = undefined
   }
 
   private load(): ProjectSnapshot {
@@ -122,6 +166,8 @@ export class HarmonyProjectModel {
       roots.add(physicalModule)
       const scope = moduleScope(module, moduleRoot, physicalModule, selection)
       modules.push(Object.freeze({
+        name: module.name,
+        rootPath: moduleRoot,
         physicalRoot: physicalModule,
         scope: scope.status === "unavailable" ? Object.freeze({ ...scope, moduleRoot }) : scope,
       }))
@@ -132,6 +178,109 @@ export class HarmonyProjectModel {
     modules.sort((left, right) => right.physicalRoot.length - left.physicalRoot.length)
     return Object.freeze({ status: "ready", physicalRoot, modules: Object.freeze(modules) })
   }
+}
+
+function buildSemanticGraph(
+  workspace: string,
+  product: string,
+  modules: readonly ModuleScope[],
+): HarmonySemanticGraph {
+  if (modules.some(module => module.scope.status !== "ready" || !module.scope.targetName)) {
+    return Object.freeze({
+      status: "unavailable",
+      complete: false,
+      units: Object.freeze([]),
+      reason: "semantic-unit-unavailable",
+    })
+  }
+  let complete = true
+  const identities = new Map<string, HarmonySemanticUnitIdentity>()
+  const manifests = new Map<ModuleScope, Record<string, unknown> | null | undefined>()
+  for (const module of modules) {
+    const identity = Object.freeze({
+      workspace,
+      product,
+      module: module.name,
+      target: module.scope.targetName!,
+    })
+    identities.set(module.name, identity)
+    const manifest = readProfile(path.join(module.rootPath, "oh-package.json5"))
+    manifests.set(module, manifest)
+    if (!manifest) {
+      complete = false
+      continue
+    }
+    if (manifest.dynamicDependencies !== undefined && (
+      !plainRecord(manifest.dynamicDependencies)
+      || Reflect.ownKeys(manifest.dynamicDependencies).length > 0
+    )) complete = false
+  }
+  const dependencies = new Map<string, Set<string>>()
+  const reverseDependencies = new Map<string, Set<string>>()
+  for (const module of modules) {
+    dependencies.set(module.name, new Set())
+    reverseDependencies.set(module.name, new Set())
+  }
+  for (const module of modules) {
+    const manifest = manifests.get(module)
+    if (!manifest) continue
+    const declared = manifest.dependencies
+    if (declared === undefined) continue
+    if (!plainRecord(declared) || Reflect.ownKeys(declared).length > MAX_MODULES) {
+      complete = false
+      continue
+    }
+    for (const dependencyName of Reflect.ownKeys(declared)) {
+      if (typeof dependencyName !== "string") {
+        complete = false
+        continue
+      }
+      const version = declared[dependencyName]
+      if (typeof version !== "string" || !version) {
+        complete = false
+        continue
+      }
+      const relative = version.startsWith("file:")
+        ? version.slice(5)
+        : version.startsWith("./") || version.startsWith("../") ? version : undefined
+      let target: ModuleScope | undefined
+      if (relative !== undefined) {
+        if (!relative || path.isAbsolute(relative)) {
+          complete = false
+          continue
+        }
+        const dependencyRoot = physicalPath(path.resolve(module.rootPath, relative))
+        if (dependencyRoot && inside(module.physicalRoot, dependencyRoot)) continue
+        target = dependencyRoot
+          ? modules.find(candidate => candidate.physicalRoot === dependencyRoot)
+          : undefined
+        if (!target) {
+          complete = false
+          continue
+        }
+      }
+      // Versioned packages resolve through oh_modules and are not project-module edges.
+      if (!target || target.name === module.name) continue
+      dependencies.get(module.name)!.add(target.name)
+      reverseDependencies.get(target.name)!.add(module.name)
+    }
+  }
+  const units = modules.map((module): HarmonySemanticUnit => Object.freeze({
+    identity: identities.get(module.name)!,
+    moduleRoot: module.rootPath,
+    sourceRoots: module.scope.sourceRoots,
+    dependencies: Object.freeze([...dependencies.get(module.name)!]
+      .sort(ordinalCompare)
+      .map(name => identities.get(name)!)),
+    reverseDependencies: Object.freeze([...reverseDependencies.get(module.name)!]
+      .sort(ordinalCompare)
+      .map(name => identities.get(name)!)),
+  })).sort((left, right) => ordinalCompare(left.identity.module, right.identity.module))
+  return Object.freeze({
+    status: "ready",
+    complete,
+    units: Object.freeze(units),
+  })
 }
 
 function moduleScope(
@@ -328,4 +477,8 @@ function inside(rootPath: string, candidate: string): boolean {
   const relative = path.relative(rootPath, candidate)
   return relative === "" || (!path.isAbsolute(relative) && relative !== ".."
     && !relative.startsWith(`..${path.sep}`))
+}
+
+function ordinalCompare(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0
 }

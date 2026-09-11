@@ -40,6 +40,102 @@ test("preserves an unconfigured workspace root without inventing a module", (t) 
   })
 })
 
+test("exposes declared module dependency and reverse-dependency semantic units", (t) => {
+  const fixture = modelFixture(t)
+  const entryRoot = path.join(fixture.root, "entry")
+  const sharedRoot = path.join(fixture.root, "shared")
+  for (const moduleRoot of [entryRoot, sharedRoot]) {
+    fs.mkdirSync(path.join(moduleRoot, "src", "main", "ets"), { recursive: true })
+    fs.writeFileSync(path.join(moduleRoot, "build-profile.json5"), "{ targets: [{ name: 'default' }] }")
+  }
+  fs.writeFileSync(fixture.profilePath, JSON.stringify({
+    app: { products: [{ name: "default" }] },
+    modules: [
+      { name: "entry", srcPath: "./entry", targets: [{ name: "default", applyToProducts: ["default"] }] },
+      { name: "shared", srcPath: "./shared", targets: [{ name: "default", applyToProducts: ["default"] }] },
+    ],
+  }))
+  fs.writeFileSync(path.join(entryRoot, "oh-package.json5"), "{ name: 'entry', dependencies: { shared: 'file:../shared' } }")
+  fs.writeFileSync(path.join(sharedRoot, "oh-package.json5"), "{ name: 'shared', dependencies: {} }")
+
+  const graph = fixture.model.semanticGraph()
+  assert.equal(graph.status, "ready")
+  assert.equal(graph.complete, true)
+  assert.deepEqual(graph.units.map((unit) => ({
+    module: unit.identity.module,
+    target: unit.identity.target,
+    dependencies: unit.dependencies.map((dependency) => dependency.module),
+    reverseDependencies: unit.reverseDependencies.map((dependency) => dependency.module),
+  })), [
+    { module: "entry", target: "default", dependencies: ["shared"], reverseDependencies: [] },
+    { module: "shared", target: "default", dependencies: [], reverseDependencies: ["entry"] },
+  ])
+  assert.throws(() => graph.units.push(graph.units[0]), TypeError)
+  assert.throws(() => graph.units[0].dependencies.push(graph.units[1].identity), TypeError)
+})
+
+test("marks the semantic graph incomplete when a local dependency is not a declared module", (t) => {
+  const fixture = declaredModule(t)
+  fs.writeFileSync(path.join(fixture.moduleRoot, "oh-package.json5"),
+    "{ name: 'alpha', dependencies: { ghost: 'file:../ghost' } }")
+  fs.mkdirSync(path.join(fixture.root, "ghost"))
+
+  const graph = fixture.model.semanticGraph()
+  assert.equal(graph.status, "ready")
+  assert.equal(graph.complete, false)
+  assert.equal(graph.units.length, 1)
+  assert.deepEqual(graph.units[0].dependencies, [])
+})
+
+test("keeps a local package nested inside its owning module in the same semantic unit", (t) => {
+  const fixture = declaredModule(t)
+  const privatePackage = path.join(fixture.moduleRoot, "src", "main", "native", "private")
+  fs.mkdirSync(privatePackage, { recursive: true })
+  fs.writeFileSync(path.join(fixture.moduleRoot, "oh-package.json5"),
+    "{ name: 'alpha', dependencies: { native: 'file:./src/main/native/private' } }")
+
+  const graph = fixture.model.semanticGraph()
+  assert.equal(graph.status, "ready")
+  assert.equal(graph.complete, true)
+  assert.deepEqual(graph.units[0].dependencies, [])
+})
+
+test("marks non-empty dynamic module dependencies incomplete instead of guessing edges", (t) => {
+  const fixture = declaredModule(t)
+  fs.writeFileSync(path.join(fixture.moduleRoot, "oh-package.json5"),
+    "{ name: 'alpha', dependencies: {}, dynamicDependencies: { shared: 'file:../shared' } }")
+
+  const graph = fixture.model.semanticGraph()
+  assert.equal(graph.status, "ready")
+  assert.equal(graph.complete, false)
+  assert.deepEqual(graph.units[0].dependencies, [])
+})
+
+test("does not infer a project edge from a versioned package with the same module name", (t) => {
+  const fixture = modelFixture(t)
+  for (const name of ["entry", "shared"]) {
+    const moduleRoot = path.join(fixture.root, name)
+    fs.mkdirSync(path.join(moduleRoot, "src", "main", "ets"), { recursive: true })
+    fs.writeFileSync(path.join(moduleRoot, "build-profile.json5"),
+      "{ targets: [{ name: 'default' }] }")
+    fs.writeFileSync(path.join(moduleRoot, "oh-package.json5"), name === "entry"
+      ? "{ name: 'entry', dependencies: { shared: '^1.0.0' } }"
+      : "{ name: 'shared', dependencies: {} }")
+  }
+  fs.writeFileSync(fixture.profilePath, JSON.stringify({
+    app: { products: [{ name: "default" }] },
+    modules: ["entry", "shared"].map(name => ({
+      name,
+      srcPath: `./${name}`,
+      targets: [{ name: "default", applyToProducts: ["default"] }],
+    })),
+  }))
+
+  const graph = fixture.model.semanticGraph()
+  assert.equal(graph.complete, true)
+  assert.deepEqual(graph.units.map(unit => unit.dependencies), [[], []])
+})
+
 test("provides selected target source roots before the retained main source root", (t) => {
   const fixture = declaredModule(t)
   const tablet = path.join(fixture.moduleRoot, "src", "tablet")

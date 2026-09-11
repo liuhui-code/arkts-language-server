@@ -6,7 +6,11 @@ import { Worker } from "node:worker_threads"
 
 import type { DocumentSnapshot } from "../contracts/document.js"
 import type { ProjectResolverPort } from "../contracts/project-resolver.js"
-import type { WorkspaceExportIndexPort } from "../contracts/workspace-index.js"
+import type {
+  WorkspaceExportIndexPort,
+  WorkspaceReferenceCandidateResult,
+  WorkspaceReferenceIndexPort,
+} from "../contracts/workspace-index.js"
 import type * as Contract from "../contracts/semantic-engine.js"
 import { isArkUIStringResourcePath } from "../core/arkui/resource-path.js"
 import { LocalPackageResolver } from "../core/sdk/local-package-resolver.js"
@@ -14,6 +18,7 @@ import type { StructuredLogger } from "../observability/logger.js"
 import { OHOS_TYPESCRIPT_BACKEND_IDENTITY } from "./backends/ohos-typescript/identity.js"
 import type { SemanticBackend } from "./backends/semantic-backend.js"
 import { semanticRuntimeConfig } from "./coordinator/runtime-config.js"
+import { referenceSearchRuntimeConfig } from "./references/reference-runtime.js"
 import {
   RootSemanticWorkerSupervisor,
   SemanticWorkerCancelState,
@@ -29,11 +34,13 @@ import type {
   SemanticWorkerMethod,
   SemanticWorkerRequestArgsByMethod,
 } from "./worker-protocol.js"
+import { MAX_SEMANTIC_WORKER_REFERENCE_CANDIDATES } from "./worker-protocol.js"
 
 interface SemanticWorkerProxyOptions {
   readonly env?: NodeJS.ProcessEnv
   readonly workerPath?: string
   readonly exportIndex?: WorkspaceExportIndexPort
+  readonly referenceIndex?: WorkspaceReferenceIndexPort
 }
 
 type TrackedDocument = DocumentSnapshot
@@ -52,6 +59,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
   readonly #environment: NodeJS.ProcessEnv
   readonly #workerPath: string
   readonly #exportIndex: WorkspaceExportIndexPort | undefined
+  readonly #referenceIndex: WorkspaceReferenceIndexPort | undefined
   readonly #packageResolver = new LocalPackageResolver()
   readonly #documents = new Map<string, TrackedDocument>()
   readonly #supervisors = new Map<string, RootSemanticWorkerSupervisor>()
@@ -72,6 +80,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
     this.#logger = logger
     this.#environment = options.env ?? process.env
     this.#exportIndex = options.exportIndex
+    this.#referenceIndex = options.referenceIndex
     const adjacentWorker = path.join(__dirname, "semantic-worker.cjs")
     this.#workerPath = options.workerPath ?? (fs.existsSync(adjacentWorker)
       ? adjacentWorker
@@ -182,10 +191,12 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
     })
   }
 
-  references(query: Contract.SemanticReferencesQuery) {
+  async references(query: Contract.SemanticReferencesQuery) {
+    const candidateUris = await this.#referenceCandidates(query)
     return this.#documentRequest<Contract.SemanticReferencesOutcome>("references", query, {
       position: query.position,
       includeDeclaration: query.includeDeclaration,
+      ...(candidateUris ? { candidateUris } : {}),
     })
   }
 
@@ -331,6 +342,103 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
     }
   }
 
+  async #referenceCandidates(
+    query: Contract.SemanticReferencesQuery,
+  ): Promise<readonly string[] | undefined> {
+    if (referenceSearchRuntimeConfig(this.#environment).strategy !== "indexed-batched"
+      || !this.#referenceIndex) return undefined
+    try {
+      const direct = await this.#referenceIndex.searchReferenceCandidates(
+        query.document.workspaceId,
+        query.document.uri,
+        query.position,
+        MAX_SEMANTIC_WORKER_REFERENCE_CANDIDATES,
+        query.signal,
+      )
+      if (await this.#eligibleReferenceCandidates(query.document.workspaceId, direct)) {
+        this.#logger?.info("references.index.accepted", {
+          anchorMode: "indexed-declaration",
+          candidateFiles: direct.uris.length,
+          servedGeneration: direct.servedGeneration,
+        })
+        return direct.uris
+      }
+      if (direct.completeness !== "ready" || direct.supported) {
+        this.#logger?.info("references.index.fallback", {
+          reason: "direct-candidate-ineligible",
+          supported: direct.supported,
+          complete: direct.complete,
+          completeness: direct.completeness,
+          hasDeclarationIdentity: Boolean(direct.declarationIdentity),
+          servedGeneration: direct.servedGeneration,
+        })
+        return undefined
+      }
+      const definition = await this.#documentRequest<Contract.SemanticDefinition[]>(
+        "define",
+        query,
+        { position: query.position, isolate: true },
+      )
+      if (definition.value.length !== 1) {
+        this.#logger?.info("references.index.fallback", {
+          reason: "definition-count",
+          definitionCount: definition.value.length,
+        })
+        return undefined
+      }
+      const target = definition.value[0]
+      const result = await this.#referenceIndex.searchReferenceCandidates(
+        query.document.workspaceId,
+        target.uri,
+        target.range.start,
+        MAX_SEMANTIC_WORKER_REFERENCE_CANDIDATES,
+        query.signal,
+      )
+      const status = await this.#referenceIndex.status(query.document.workspaceId)
+      if (!result.supported
+        || !result.complete
+        || result.completeness !== "ready"
+        || !result.declarationIdentity
+        || result.servedGeneration !== status.committedGeneration) {
+        this.#logger?.info("references.index.fallback", {
+          reason: "candidate-ineligible",
+          targetUri: target.uri,
+          targetLine: target.range.start.line,
+          targetCharacter: target.range.start.character,
+          supported: result.supported,
+          complete: result.complete,
+          completeness: result.completeness,
+          hasDeclarationIdentity: Boolean(result.declarationIdentity),
+          servedGeneration: result.servedGeneration,
+          committedGeneration: status.committedGeneration,
+        })
+        return undefined
+      }
+      this.#logger?.info("references.index.accepted", {
+        anchorMode: "compiler-definition",
+        candidateFiles: result.uris.length,
+        servedGeneration: result.servedGeneration,
+      })
+      return result.uris
+    } catch (error) {
+      this.#logger?.info("references.index.fallback", {
+        reason: "index-error",
+        message: error instanceof Error ? error.message : String(error),
+      })
+      return undefined
+    }
+  }
+
+  async #eligibleReferenceCandidates(
+    workspaceId: string,
+    result: WorkspaceReferenceCandidateResult,
+  ): Promise<boolean> {
+    if (!result.supported || !result.complete || result.completeness !== "ready"
+      || !result.declarationIdentity) return false
+    const status = await this.#referenceIndex?.status(workspaceId)
+    return status !== undefined && result.servedGeneration === status.committedGeneration
+  }
+
   async dispose(): Promise<void> {
     if (this.#disposed) return
     this.#disposed = true
@@ -458,12 +566,14 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
   #ensureWorker(rootUri: string): Worker {
     if (this.#worker) return this.#worker
     const config = semanticRuntimeConfig(this.#environment)
+    const references = referenceSearchRuntimeConfig(this.#environment)
     const worker = new Worker(this.#workerPath, {
       workerData: {
         rootUri,
         projectConfiguration: this.#projectConfiguration,
         sdkConfiguration: this.#sdkConfiguration,
         runtimeConfig: config,
+        references,
         metricsPath: this.#environment.ARKTS_MEMORY_METRICS_FILE,
       },
     })

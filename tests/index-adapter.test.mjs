@@ -304,6 +304,53 @@ test("maps export discovery candidates from the sidecar without treating them as
   await driver.call("close", { workspaceId })
 })
 
+test("maps conservative reference candidates and preserves their generation and completeness", async (t) => {
+  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-reference-adapter-"))
+  t.after(() => fs.rmSync(temporaryRoot, { recursive: true, force: true }))
+  const workspace = path.join(temporaryRoot, "workspace")
+  fs.mkdirSync(workspace)
+  const auditPath = path.join(temporaryRoot, "audit.ndjson")
+  const driver = new DriverProcess(buildDriver(temporaryRoot), {
+    ARKTS_INDEX_SIDECAR_PATH: makeExecutableFixture(temporaryRoot, "scripted-sidecar.mjs"),
+    ARKTS_INDEX_TEST_AUDIT: auditPath,
+  })
+  t.after(() => driver.close())
+  const workspaceId = "reference-workspace"
+  const declarationUri = pathToFileURL(path.join(workspace, "Target.ets")).href
+  await driver.call("open", {
+    workspace: { id: workspaceId, rootUri: pathToFileURL(workspace).href },
+    cacheDir: path.join(temporaryRoot, "cache"),
+  })
+  await driver.call("refresh", { workspaceId, generation: 7, changed: [], removedUris: [] })
+
+  assert.deepEqual(await driver.call("referenceCandidates", {
+    workspaceId,
+    declarationUri,
+    declarationPosition: { line: 0, character: 13 },
+    limit: 100,
+  }), {
+    supported: true,
+    complete: true,
+    declarationIdentity: "fixture-reference-identity",
+    names: ["Alias", "PublicThing", "Thing"],
+    uris: [
+      pathToFileURL(path.join(workspace, "Consumer.ets")).href,
+      declarationUri,
+    ],
+    servedGeneration: 7,
+    completeness: "ready",
+  })
+  const request = readAudit(auditPath)
+    .find((entry) => entry.event === "request" && entry.request.method === "references/candidates")
+    .request
+  assert.deepEqual(request.params, {
+    declarationUri: pathToFileURL(path.join(fs.realpathSync(workspace), "Target.ets")).href,
+    declarationPosition: { line: 0, character: 13 },
+    limit: 100,
+  })
+  await driver.call("close", { workspaceId })
+})
+
 test("rejects an aborted request promptly and drains its late response without corrupting the session", async (t) => {
   const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-index-cancel-"))
   t.after(() => fs.rmSync(temporaryRoot, { recursive: true, force: true }))

@@ -18,6 +18,7 @@ function portableSourceFiles() {
     ["bin/arkts-language-server", "#!/bin/sh\n# source-root launcher marker\n"],
     ["config/semantic-runtime.json", "{}\n"],
     ["dist/semantic-worker.cjs", "// source-root worker marker\n"],
+    ["dist/reference-verifier-worker.cjs", "// source-root verifier marker\n"],
     ["dist/server.cjs", "// source-root server marker\n"],
     [sidecarPath, "source-root sidecar marker\n"],
     ["scripts/install-local.sh", "#!/bin/sh\n# source-root installer marker\n"],

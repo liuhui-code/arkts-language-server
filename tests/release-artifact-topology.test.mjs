@@ -234,6 +234,7 @@ if [ "\${1:-}" = "install" ]; then exit 0; fi
 if [ "\${1:-}" = "build" ]; then
   mkdir -p dist
   printf '%s\\n' '// staged semantic worker fixture' > dist/semantic-worker.cjs
+  printf '%s\\n' '// staged reference verifier worker fixture' > dist/reference-verifier-worker.cjs
   printf '%s\\n' '// staged server fixture' > dist/server.cjs
   exit 0
 fi

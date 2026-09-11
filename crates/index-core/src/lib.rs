@@ -6,6 +6,8 @@ use std::{
     fmt,
 };
 
+pub const MAX_REFERENCE_ALIAS_NAMES: usize = 1_024;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Document {
     pub uri: String,
@@ -73,6 +75,21 @@ pub struct WorkspaceExport {
     pub import_specifier: Option<String>,
     pub module_id: Option<String>,
     pub target_scope: Option<String>,
+    pub reference_searchable: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReferenceOccurrence {
+    pub name: String,
+    pub uri: String,
+    pub range: TextRange,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReferenceAlias {
+    pub from_name: String,
+    pub to_name: String,
+    pub uri: String,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -141,6 +158,8 @@ pub struct DocumentSymbols {
     pub uri: String,
     pub symbols: Vec<WorkspaceSymbol>,
     pub exports: Vec<WorkspaceExport>,
+    pub occurrences: Vec<ReferenceOccurrence>,
+    pub aliases: Vec<ReferenceAlias>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -185,6 +204,23 @@ pub struct SymbolSearchResult {
 pub struct ExportSearchResult {
     pub items: Vec<WorkspaceExport>,
     pub served_generation: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReferenceCandidateSearchResult {
+    pub supported: bool,
+    pub complete: bool,
+    pub declaration_identity: Option<String>,
+    pub names: Vec<String>,
+    pub uris: Vec<String>,
+    pub served_generation: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReferenceCandidateQuery {
+    pub declaration_uri: String,
+    pub declaration_position: Position,
+    pub limit: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -255,6 +291,10 @@ pub trait SymbolStore {
     fn replace_all(&mut self, batch: FullCatalogBatch) -> Result<CommitReceipt, StoreError>;
     fn search(&self, query: &SymbolQuery) -> Result<SymbolSearchResult, StoreError>;
     fn search_exports(&self, query: &ExportQuery) -> Result<ExportSearchResult, StoreError>;
+    fn search_reference_candidates(
+        &self,
+        query: &ReferenceCandidateQuery,
+    ) -> Result<ReferenceCandidateSearchResult, StoreError>;
 }
 
 #[derive(Default)]
@@ -346,6 +386,80 @@ impl SymbolStore for MemoryStore {
             items,
             served_generation: self.committed_generation,
         })
+    }
+
+    fn search_reference_candidates(
+        &self,
+        query: &ReferenceCandidateQuery,
+    ) -> Result<ReferenceCandidateSearchResult, StoreError> {
+        let declaration = self
+            .documents
+            .get(&query.declaration_uri)
+            .and_then(|document| {
+                document.exports.iter().find(|item| {
+                    item.reference_searchable
+                        && item.range.start.line == query.declaration_position.line
+                        && item.range.end.line == query.declaration_position.line
+                        && item.range.start.character <= query.declaration_position.character
+                        && query.declaration_position.character < item.range.end.character
+                })
+            });
+        let Some(declaration) = declaration else {
+            return Ok(unsupported_reference_candidates(self.committed_generation));
+        };
+        let mut names = BTreeSet::from([declaration.exported_name.clone()]);
+        loop {
+            let before = names.len();
+            for alias in self
+                .documents
+                .values()
+                .flat_map(|document| document.aliases.iter())
+            {
+                if names.contains(&alias.from_name) {
+                    names.insert(alias.to_name.clone());
+                }
+                if names.contains(&alias.to_name) {
+                    names.insert(alias.from_name.clone());
+                }
+                if names.len() > MAX_REFERENCE_ALIAS_NAMES {
+                    return Ok(unsupported_reference_candidates(self.committed_generation));
+                }
+            }
+            if names.len() == before {
+                break;
+            }
+        }
+        if names.contains("default") {
+            return Ok(unsupported_reference_candidates(self.committed_generation));
+        }
+        let uris: BTreeSet<_> = self
+            .documents
+            .values()
+            .flat_map(|document| document.occurrences.iter())
+            .filter(|occurrence| names.contains(&occurrence.name))
+            .map(|occurrence| occurrence.uri.clone())
+            .collect();
+        let complete = uris.len() <= query.limit;
+        let uris = uris.iter().take(query.limit).cloned().collect();
+        Ok(ReferenceCandidateSearchResult {
+            supported: true,
+            complete,
+            declaration_identity: declaration.declaration_identity.clone(),
+            names: names.into_iter().collect(),
+            uris,
+            served_generation: self.committed_generation,
+        })
+    }
+}
+
+fn unsupported_reference_candidates(generation: u64) -> ReferenceCandidateSearchResult {
+    ReferenceCandidateSearchResult {
+        supported: false,
+        complete: false,
+        declaration_identity: None,
+        names: Vec::new(),
+        uris: Vec::new(),
+        served_generation: generation,
     }
 }
 
@@ -528,6 +642,13 @@ impl WorkspaceIndex {
         self.store.search_exports(&ExportQuery::new(query, limit))
     }
 
+    pub fn search_reference_candidates(
+        &self,
+        query: ReferenceCandidateQuery,
+    ) -> Result<ReferenceCandidateSearchResult, StoreError> {
+        self.store.search_reference_candidates(&query)
+    }
+
     pub fn search_excluding(
         &self,
         query: &str,
@@ -592,20 +713,55 @@ impl<'a> LineIndex<'a> {
 }
 
 pub fn parse_document_symbols(document: &Document) -> Result<DocumentSymbols, DocumentParseError> {
-    parse_symbols(document).map(|(symbols, exports)| DocumentSymbols {
+    parse_symbols(document).map(|(symbols, exports, occurrences, aliases)| DocumentSymbols {
         uri: document.uri.clone(),
         symbols,
         exports,
+        occurrences,
+        aliases,
     })
 }
 
 fn parse_symbols(
     document: &Document,
-) -> Result<(Vec<WorkspaceSymbol>, Vec<WorkspaceExport>), DocumentParseError> {
+) -> Result<
+    (
+        Vec<WorkspaceSymbol>,
+        Vec<WorkspaceExport>,
+        Vec<ReferenceOccurrence>,
+        Vec<ReferenceAlias>,
+    ),
+    DocumentParseError,
+> {
     let tokens = tokenize(&document.text)?;
     let line_index = LineIndex::new(&document.text);
     let mut symbols = Vec::new();
     let mut exports = Vec::new();
+    let occurrences = tokens
+        .iter()
+        .filter(|token| token.kind == TokenKind::Identifier)
+        .map(|token| ReferenceOccurrence {
+            name: token.text.to_owned(),
+            uri: document.uri.clone(),
+            range: TextRange::new(
+                line_index.position(token.start),
+                line_index.position(token.end),
+            ),
+        })
+        .collect();
+    let aliases = tokens
+        .windows(3)
+        .filter(|window| {
+            window[0].kind == TokenKind::Identifier
+                && window[1].text == "as"
+                && window[2].kind == TokenKind::Identifier
+        })
+        .map(|window| ReferenceAlias {
+            from_name: window[0].text.to_owned(),
+            to_name: window[2].text.to_owned(),
+            uri: document.uri.clone(),
+        })
+        .collect();
     let mut containers: Vec<Container> = Vec::new();
     let mut pending_container: Option<String> = None;
     let mut brace_depth = 0usize;
@@ -634,6 +790,7 @@ fn parse_symbols(
                         name,
                         kind,
                         exports.len(),
+                        !is_default_exported_declaration(&tokens, index),
                     )?);
                 }
                 pending_container = Some(name.text.to_owned());
@@ -657,6 +814,7 @@ fn parse_symbols(
                             name,
                             SymbolKind::Function,
                             exports.len(),
+                            !is_default_exported_declaration(&tokens, index),
                         )?);
                     }
                 }
@@ -723,7 +881,7 @@ fn parse_symbols(
     }
 
     if brace_depth == 0 && parenthesis_depth == 0 && bracket_depth == 0 {
-        Ok((symbols, exports))
+        Ok((symbols, exports, occurrences, aliases))
     } else {
         Err(DocumentParseError)
     }
@@ -767,6 +925,7 @@ fn workspace_export(
     name: &Token<'_>,
     kind: SymbolKind,
     ordinal: usize,
+    reference_searchable: bool,
 ) -> Result<WorkspaceExport, DocumentParseError> {
     let ordinal = u32::try_from(ordinal).map_err(|_| DocumentParseError)?;
     let range = TextRange::new(
@@ -786,7 +945,14 @@ fn workspace_export(
         import_specifier: None,
         module_id: None,
         target_scope: None,
+        reference_searchable,
     })
+}
+
+fn is_default_exported_declaration(tokens: &[Token<'_>], keyword_index: usize) -> bool {
+    keyword_index >= 2
+        && tokens[keyword_index - 2].text == "export"
+        && tokens[keyword_index - 1].text == "default"
 }
 
 fn is_non_method_keyword(identifier: &str) -> bool {

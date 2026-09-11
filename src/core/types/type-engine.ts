@@ -31,6 +31,12 @@ import {
   type SemanticManagedContext,
   type SemanticMemoryLevel,
 } from "../../semantic/coordinator/semantic-coordinator.js"
+import { ReferenceSearchExecutor } from "../../semantic/references/reference-search-executor.js"
+import type { ReferenceSearchRuntimeConfig } from "../../semantic/references/reference-runtime.js"
+import {
+  resolveReferenceAnchorInWorker,
+  verifyReferenceBatchInWorker,
+} from "../../semantic/references/reference-batch-worker.js"
 
 export type SemanticTypeStatus = "ready" | "partial" | "unsupported"
 
@@ -152,11 +158,49 @@ interface WorkspaceEngineEntry extends SemanticManagedContext {
 
 export class SemanticTypeEngineRegistry {
   private readonly coordinator: SemanticCoordinator<WorkspaceEngineEntry>
+  private readonly referenceSearch: ReferenceSearchExecutor | undefined
   private accessClock = 0
   private sdkConfiguration: unknown
+  private projectConfiguration: unknown
 
   private get workspaces(): { get(rootPath: string): WorkspaceEngineEntry | undefined } {
     return { get: rootPath => this.coordinator.peek(rootPath) }
+  }
+
+  async referenceAnchor(
+    workspace: SemanticWorkspaceView,
+    position: SemanticDocumentPosition,
+  ): Promise<readonly SemanticDefinitionCandidate[]> {
+    const isolatedWorkspace = this.withProjectFileIdentities(workspace)
+    if (!isolatedWorkspace) return []
+    const rootPaths = new Set([path.resolve(workspace.state.path)])
+    for (const document of workspace.documents) {
+      if (document.overlay) rootPaths.add(path.resolve(document.path))
+    }
+    const admitted = new Set(rootPaths)
+    const started = performance.now()
+    const verification = await resolveReferenceAnchorInWorker({
+      ...isolatedWorkspace,
+      semanticRootPaths: [...rootPaths],
+      documents: isolatedWorkspace.documents.filter(document => (
+        document.overlay || admitted.has(path.resolve(document.path))
+      )),
+    }, position, {
+      projectConfiguration: this.projectConfiguration,
+      sdkConfiguration: this.sdkConfiguration,
+      isCancellationRequested: this.options.hostCancellationToken
+        ? () => this.options.hostCancellationToken?.isCancellationRequested() === true
+        : undefined,
+    })
+    this.options.onReferenceTrace?.("references.anchor.complete", {
+      verifierIsolation: "transient-worker",
+      definitions: verification.definitions.length,
+      ...verification.stats,
+      durationMs: Math.round((performance.now() - started) * 100) / 100,
+      rss: verification.memory.rss,
+      heapUsed: verification.memory.heapUsed,
+    })
+    return verification.definitions
   }
 
   constructor(
@@ -166,17 +210,50 @@ export class SemanticTypeEngineRegistry {
     private readonly options: {
       maxResidentContexts?: number
       hostCancellationToken?: TypeScriptLanguageServiceEngineOptions["hostCancellationToken"]
+      references?: ReferenceSearchRuntimeConfig
+      onReferenceTrace?: (
+        event: string,
+        fields: Readonly<Record<string, string | number | boolean | null | undefined>>,
+      ) => void
     } = {},
   ) {
     this.coordinator = new SemanticCoordinator({
       maxResidentContexts: options.maxResidentContexts ?? 2,
       createContext: rootPath => this.createContext(rootPath),
     })
+    if (options.references?.strategy === "batched"
+      || options.references?.strategy === "indexed-batched") {
+      this.referenceSearch = new ReferenceSearchExecutor({
+        batchRootLimit: options.references.batchRootLimit,
+        verifyBatch: (workspace, position, includeDeclaration) => (
+          verifyReferenceBatchInWorker(workspace, position, includeDeclaration, {
+            projectConfiguration: this.projectConfiguration,
+            sdkConfiguration: this.sdkConfiguration,
+            isCancellationRequested: options.hostCancellationToken
+              ? () => options.hostCancellationToken?.isCancellationRequested() === true
+              : undefined,
+          })
+        ),
+        disposeResidentContext: rootPath => { this.coordinator.remove(rootPath) },
+        checkpoint: options.hostCancellationToken
+          ? () => {
+              if (options.hostCancellationToken?.isCancellationRequested()) {
+                throw new Error("Semantic request cancelled")
+              }
+            }
+          : undefined,
+        trace: options.references.trace ? options.onReferenceTrace : undefined,
+      })
+    }
   }
 
   configureSdk(selection: unknown): void {
     this.sdkConfiguration = selection
     this.dispose()
+  }
+
+  configureProject(selection: unknown): void {
+    this.projectConfiguration = selection
   }
 
   prepare(workspace: SemanticWorkspaceView): SemanticTypeQueryContext {
@@ -286,6 +363,30 @@ export class SemanticTypeEngineRegistry {
     }
   }
 
+  references(
+    workspace: SemanticWorkspaceView,
+    position: SemanticDocumentPosition,
+    includeDeclaration: boolean,
+    candidatePaths?: readonly string[],
+  ): Promise<SemanticReferenceQueryResult> {
+    if (this.referenceSearch) {
+      const isolatedWorkspace = this.withProjectFileIdentities(workspace)
+      if (!isolatedWorkspace) {
+        return Promise.resolve({ status: "incomplete", reason: "source-unavailable" })
+      }
+      return this.referenceSearch.execute(
+        isolatedWorkspace,
+        position,
+        includeDeclaration,
+        candidatePaths,
+        candidatePaths
+          ? this.packageResolver.projectFor(workspace.rootPath).semanticGraph()
+          : undefined,
+      )
+    }
+    return Promise.resolve(this.prepare(workspace).references(position, includeDeclaration))
+  }
+
   workspaceCount(): number {
     return this.coordinator.stats().residentContextCount
   }
@@ -311,13 +412,7 @@ export class SemanticTypeEngineRegistry {
   }
 
   private createContext(rootPath: string): WorkspaceEngineEntry {
-    const engine = new TypeScriptLanguageServiceEngine(rootPath, {
-      packageResolver: this.packageResolver,
-      onSdkSelected: this.onSdkSelected,
-      projectFileAccess: this.projectFileAccess,
-      sdkConfiguration: this.sdkConfiguration,
-      hostCancellationToken: this.options.hostCancellationToken,
-    })
+    const engine = this.createTypeScriptEngine(rootPath)
     return {
       engine,
       arkui: new ArkUIResourceLanguageProvider(rootPath),
@@ -340,6 +435,41 @@ export class SemanticTypeEngineRegistry {
         return { projectFiles: this.projectFiles, openDocuments: this.openDocuments }
       },
     }
+  }
+
+  private createTypeScriptEngine(rootPath: string): TypeScriptLanguageServiceEngine {
+    return new TypeScriptLanguageServiceEngine(rootPath, {
+      packageResolver: this.packageResolver,
+      onSdkSelected: this.onSdkSelected,
+      projectFileAccess: this.projectFileAccess,
+      sdkConfiguration: this.sdkConfiguration,
+      hostCancellationToken: this.options.hostCancellationToken,
+    })
+  }
+
+  private withProjectFileIdentities(
+    workspace: SemanticWorkspaceView,
+  ): SemanticWorkspaceView | undefined {
+    const membership = workspace.projectMembership
+    if (!this.projectFileAccess || !membership || membership.status !== "complete") return workspace
+    const overlays = new Set(workspace.documents.filter(document => document.overlay).map(document => (
+      path.resolve(document.path)
+    )))
+    const projectFileIdentities: Array<readonly [string, string]> = []
+    for (const memberPath of membership.paths) {
+      const filePath = path.resolve(memberPath)
+      const token = this.projectFileAccess.tokenFor(
+        workspace.canonicalRootId,
+        membership.revision,
+        filePath,
+      )
+      if (token === undefined) {
+        if (overlays.has(filePath)) continue
+        return undefined
+      }
+      projectFileIdentities.push([filePath, token])
+    }
+    return { ...workspace, projectFileIdentities }
   }
 }
 

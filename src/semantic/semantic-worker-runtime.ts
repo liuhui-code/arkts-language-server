@@ -9,6 +9,7 @@ import { OhosTypeScriptSemanticEngine } from "./backends/ohos-typescript/engine.
 import { semanticRuntimeMetrics } from "./coordinator/metrics.js"
 import { SemanticMemoryPolicy } from "./coordinator/memory-policy.js"
 import type { SemanticRuntimeConfig } from "./coordinator/runtime-config.js"
+import type { ReferenceSearchRuntimeConfig } from "./references/reference-runtime.js"
 import { SemanticCancellationScope } from "./semantic-cancellation-scope.js"
 import {
   SEMANTIC_WORKER_PROTOCOL_VERSION,
@@ -27,6 +28,7 @@ interface RuntimeWorkerData {
   readonly projectConfiguration?: unknown
   readonly sdkConfiguration?: unknown
   readonly runtimeConfig: SemanticRuntimeConfig & { readonly memoryBudgetBytes: number }
+  readonly references?: ReferenceSearchRuntimeConfig
   readonly metricsPath?: string
 }
 
@@ -62,6 +64,7 @@ const logger: StructuredLogger = {
 const engine = new OhosTypeScriptSemanticEngine(projects, logger, {
   maxResidentContexts: data.runtimeConfig.maxResidentContexts,
   hostCancellationToken: cancellation.hostToken,
+  references: data.references,
 })
 const memoryPolicy = new SemanticMemoryPolicy(data.runtimeConfig)
 
@@ -210,15 +213,17 @@ function invoke(
       completionOptions: { snippets: request.args.snippets === true },
       signal,
     }))
-    case "define": return valueOf(engine.define({ document, position: request.args.position, signal }))
+    case "define": return valueOf(request.args.isolate
+      ? engine.referenceAnchor({ document, position: request.args.position, signal })
+      : engine.define({ document, position: request.args.position, signal }))
     case "typeDefinitions": return valueOf(engine.typeDefinitions({ document, position: request.args.position, signal }))
     case "implementations": return valueOf(engine.implementations({ document, position: request.args.position, signal }))
-    case "references": return valueOf(engine.references({
+    case "references": return valueOf(engine.referencesWithCandidates({
       document,
       position: request.args.position,
       includeDeclaration: request.args.includeDeclaration,
       signal,
-    }))
+    }, request.args.candidateUris))
     case "prepareRename": return valueOf(engine.prepareRename({ document, position: request.args.position, signal }))
     case "rename": return valueOf(engine.rename({
       document,

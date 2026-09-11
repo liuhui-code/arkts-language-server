@@ -33,6 +33,10 @@ async function buildPortableArtifact({ sourceRoot, output, version, commit, tool
       destination: "dist/semantic-worker.cjs",
     },
     {
+      source: "dist/reference-verifier-worker.cjs",
+      destination: "dist/reference-verifier-worker.cjs",
+    },
+    {
       source: "dist/server.cjs",
       destination: "dist/server.cjs",
     },

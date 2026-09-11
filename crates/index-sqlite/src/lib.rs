@@ -9,7 +9,8 @@ use std::{
 };
 
 use arkts_index_core::{
-    CommitReceipt, DocumentSymbols, ExportQuery, ExportSearchResult, FullCatalogBatch, Position,
+    CommitReceipt, DocumentSymbols, ExportQuery, ExportSearchResult, FullCatalogBatch,
+    MAX_REFERENCE_ALIAS_NAMES, Position, ReferenceCandidateQuery, ReferenceCandidateSearchResult,
     RefreshBatch, StoreError, StoreErrorKind, StoreMetadata, SymbolKind, SymbolQuery,
     SymbolSearchResult, SymbolStore, TextRange, WorkspaceExport, WorkspaceSymbol,
     acronym_for_search, fold_for_search, rank_symbols,
@@ -25,7 +26,8 @@ use sha2::{Digest, Sha256};
 use std::sync::{Arc, Barrier, Mutex};
 
 const APPLICATION_ID: i64 = 0x4152_4B49;
-const SCHEMA_VERSION: i64 = 3;
+const SCHEMA_VERSION: i64 = 4;
+const EXPORT_SCHEMA_VERSION: i64 = 3;
 const PREVIOUS_SCHEMA_VERSION: i64 = 2;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -149,9 +151,14 @@ impl SqliteStore {
             (APPLICATION_ID, SCHEMA_VERSION) => {
                 verify_workspace_identity(&connection, workspace_identity)?
             }
+            (APPLICATION_ID, EXPORT_SCHEMA_VERSION) => {
+                verify_workspace_identity(&connection, workspace_identity)?;
+                migrate_schema_v3_to_v4(&mut connection)?;
+            }
             (APPLICATION_ID, PREVIOUS_SCHEMA_VERSION) => {
                 verify_workspace_identity(&connection, workspace_identity)?;
                 migrate_schema_v2_to_v3(&mut connection)?;
+                migrate_schema_v3_to_v4(&mut connection)?;
             }
             _ => {
                 return Err(StoreError::new(
@@ -388,6 +395,7 @@ impl SymbolStore for SqliteStore {
         insert_catalog_documents(&transaction, &batch.documents, generation)?;
         insert_symbol_documents(&transaction, &batch.documents)?;
         insert_export_documents(&transaction, &batch.documents, generation)?;
+        insert_reference_documents(&transaction, &batch.documents)?;
         for uri in &batch.rejected_uris {
             transaction
                 .execute(
@@ -491,6 +499,65 @@ impl SymbolStore for SqliteStore {
             served_generation: generation,
         })
     }
+
+    fn search_reference_candidates(
+        &self,
+        query: &ReferenceCandidateQuery,
+    ) -> Result<ReferenceCandidateSearchResult, StoreError> {
+        let transaction =
+            Transaction::new_unchecked(&self.connection, TransactionBehavior::Deferred)
+                .map_err(map_sqlite_error)?;
+        let generation = read_committed_generation(&transaction)?;
+        let mut declaration_statement = transaction
+            .prepare(
+                "SELECT exported_name, declaration_identity, reference_searchable \
+                 FROM exports \
+                 WHERE document_uri = ?1 AND start_line = ?2 AND end_line = ?2 \
+                   AND start_character <= ?3 AND ?3 < end_character \
+                 ORDER BY ordinal LIMIT 2",
+            )
+            .map_err(map_sqlite_error)?;
+        let declaration_rows = declaration_statement
+            .query_map(
+                params![
+                    query.declaration_uri,
+                    i64::from(query.declaration_position.line),
+                    i64::from(query.declaration_position.character),
+                ],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                        row.get::<_, bool>(2)?,
+                    ))
+                },
+            )
+            .map_err(map_sqlite_error)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(map_sqlite_error)?;
+        drop(declaration_statement);
+        let [(exported_name, declaration_identity, true)] = declaration_rows.as_slice() else {
+            return Ok(unsupported_reference_candidates(generation));
+        };
+
+        let names = read_reference_names(&transaction, exported_name)?;
+        if names.len() > MAX_REFERENCE_ALIAS_NAMES || names.iter().any(|name| name == "default") {
+            return Ok(unsupported_reference_candidates(generation));
+        }
+        let mut uris =
+            read_reference_uris(&transaction, exported_name, query.limit.saturating_add(1))?;
+        let complete = uris.len() <= query.limit;
+        uris.truncate(query.limit);
+        transaction.commit().map_err(map_sqlite_error)?;
+        Ok(ReferenceCandidateSearchResult {
+            supported: true,
+            complete,
+            declaration_identity: declaration_identity.clone(),
+            names,
+            uris,
+            served_generation: generation,
+        })
+    }
 }
 
 fn insert_document_symbols(
@@ -505,7 +572,8 @@ fn insert_document_symbols(
             |row| row.get(0),
         )
         .map_err(map_sqlite_error)?;
-    insert_export_documents(transaction, std::slice::from_ref(replacement), generation)
+    insert_export_documents(transaction, std::slice::from_ref(replacement), generation)?;
+    insert_reference_documents(transaction, std::slice::from_ref(replacement))
 }
 
 fn insert_catalog_documents(
@@ -606,8 +674,8 @@ fn insert_export_documents(
             "INSERT INTO exports(\
                 document_uri, generation, ordinal, exported_name, name_folded, symbol_kind, \
                 declaration_identity, import_specifier, module_id, target_scope, \
-                start_line, start_character, end_line, end_character\
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                start_line, start_character, end_line, end_character, reference_searchable\
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
         )
         .map_err(map_sqlite_error)?;
     for document in documents {
@@ -628,11 +696,139 @@ fn insert_export_documents(
                     i64::from(item.range.start.character),
                     i64::from(item.range.end.line),
                     i64::from(item.range.end.character),
+                    item.reference_searchable,
                 ])
                 .map_err(map_sqlite_error)?;
         }
     }
     Ok(())
+}
+
+fn insert_reference_documents(
+    transaction: &Transaction<'_>,
+    documents: &[DocumentSymbols],
+) -> Result<(), StoreError> {
+    let mut occurrence_statement = transaction
+        .prepare_cached(
+            "INSERT INTO reference_occurrences(\
+                document_uri, ordinal, name, start_line, start_character, end_line, end_character\
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        )
+        .map_err(map_sqlite_error)?;
+    let mut alias_statement = transaction
+        .prepare_cached(
+            "INSERT INTO reference_aliases(document_uri, ordinal, from_name, to_name) \
+             VALUES (?1, ?2, ?3, ?4)",
+        )
+        .map_err(map_sqlite_error)?;
+    for document in documents {
+        for (ordinal, occurrence) in document.occurrences.iter().enumerate() {
+            occurrence_statement
+                .execute(params![
+                    document.uri,
+                    sqlite_ordinal(ordinal, "reference occurrence")?,
+                    occurrence.name,
+                    i64::from(occurrence.range.start.line),
+                    i64::from(occurrence.range.start.character),
+                    i64::from(occurrence.range.end.line),
+                    i64::from(occurrence.range.end.character),
+                ])
+                .map_err(map_sqlite_error)?;
+        }
+        for (ordinal, alias) in document.aliases.iter().enumerate() {
+            alias_statement
+                .execute(params![
+                    document.uri,
+                    sqlite_ordinal(ordinal, "reference alias")?,
+                    alias.from_name,
+                    alias.to_name,
+                ])
+                .map_err(map_sqlite_error)?;
+        }
+    }
+    Ok(())
+}
+
+fn sqlite_ordinal(ordinal: usize, item: &str) -> Result<i64, StoreError> {
+    i64::try_from(ordinal).map_err(|_| {
+        StoreError::new(
+            StoreErrorKind::InvalidData,
+            format!("{item} ordinal exceeds SQLite integer range"),
+        )
+    })
+}
+
+const REFERENCE_NAMES_SQL: &str = "WITH RECURSIVE \
+    edges(source, target) AS (\
+        SELECT from_name, to_name FROM reference_aliases \
+        UNION SELECT to_name, from_name FROM reference_aliases\
+    ), \
+    names(name) AS (\
+        VALUES (?1) \
+        UNION SELECT edges.target FROM edges JOIN names ON edges.source = names.name\
+    ) \
+    SELECT name FROM names ORDER BY name LIMIT ?2";
+
+const REFERENCE_URIS_SQL: &str = "WITH RECURSIVE \
+    edges(source, target) AS (\
+        SELECT from_name, to_name FROM reference_aliases \
+        UNION SELECT to_name, from_name FROM reference_aliases\
+    ), \
+    names(name) AS (\
+        VALUES (?1) \
+        UNION SELECT edges.target FROM edges JOIN names ON edges.source = names.name\
+    ) \
+    SELECT DISTINCT reference_occurrences.document_uri \
+    FROM reference_occurrences JOIN names USING(name) \
+    ORDER BY reference_occurrences.document_uri LIMIT ?2";
+
+fn read_reference_names(
+    connection: &Connection,
+    exported_name: &str,
+) -> Result<Vec<String>, StoreError> {
+    let mut statement = connection
+        .prepare(REFERENCE_NAMES_SQL)
+        .map_err(map_sqlite_error)?;
+    let rows = statement
+        .query_map(
+            params![exported_name, (MAX_REFERENCE_ALIAS_NAMES + 1) as i64],
+            |row| row.get::<_, String>(0),
+        )
+        .map_err(map_sqlite_error)?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(map_sqlite_error)
+}
+
+fn read_reference_uris(
+    connection: &Connection,
+    exported_name: &str,
+    limit: usize,
+) -> Result<Vec<String>, StoreError> {
+    let limit = i64::try_from(limit).map_err(|_| {
+        StoreError::new(
+            StoreErrorKind::InvalidData,
+            "reference candidate limit exceeds SQLite integer range",
+        )
+    })?;
+    let mut statement = connection
+        .prepare(REFERENCE_URIS_SQL)
+        .map_err(map_sqlite_error)?;
+    let rows = statement
+        .query_map(params![exported_name, limit], |row| row.get::<_, String>(0))
+        .map_err(map_sqlite_error)?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(map_sqlite_error)
+}
+
+fn unsupported_reference_candidates(generation: u64) -> ReferenceCandidateSearchResult {
+    ReferenceCandidateSearchResult {
+        supported: false,
+        complete: false,
+        declaration_identity: None,
+        names: Vec::new(),
+        uris: Vec::new(),
+        served_generation: generation,
+    }
 }
 
 const NAME_PREFIX_SQL: &str = "SELECT name, kind, document_uri, container, \
@@ -654,7 +850,7 @@ const LONG_SUBSTRING_SQL: &str = "SELECT symbols.name, symbols.kind, symbols.doc
 
 const EXPORT_PREFIX_SQL: &str = "SELECT exported_name, symbol_kind, document_uri, ordinal, \
             declaration_identity, import_specifier, module_id, target_scope, \
-            start_line, start_character, end_line, end_character \
+            start_line, start_character, end_line, end_character, reference_searchable \
      FROM exports INDEXED BY exports_name_prefix \
      WHERE name_folded >= ?1 AND name_folded < ?2";
 
@@ -684,6 +880,7 @@ fn read_export_rows(
                 row.get::<_, i64>(9)?,
                 row.get::<_, i64>(10)?,
                 row.get::<_, i64>(11)?,
+                row.get::<_, bool>(12)?,
             ))
         })
         .map_err(map_sqlite_error)?;
@@ -702,6 +899,7 @@ fn read_export_rows(
             start_character,
             end_line,
             end_character,
+            reference_searchable,
         ) = row.map_err(map_sqlite_error)?;
         exports.push(WorkspaceExport {
             exported_name,
@@ -722,6 +920,7 @@ fn read_export_rows(
             import_specifier,
             module_id,
             target_scope,
+            reference_searchable,
         });
     }
     Ok(exports)
@@ -870,9 +1069,30 @@ fn initialize_schema(
                 start_character INTEGER NOT NULL,\
                 end_line INTEGER NOT NULL,\
                 end_character INTEGER NOT NULL,\
+                reference_searchable INTEGER NOT NULL CHECK(reference_searchable IN (0, 1)),\
                 PRIMARY KEY(document_uri, ordinal)\
              );\
              CREATE INDEX exports_name_prefix ON exports(name_folded);\
+             CREATE TABLE reference_occurrences(\
+                document_uri TEXT NOT NULL REFERENCES documents(uri) ON DELETE CASCADE,\
+                ordinal INTEGER NOT NULL CHECK(ordinal >= 0),\
+                name TEXT NOT NULL,\
+                start_line INTEGER NOT NULL,\
+                start_character INTEGER NOT NULL,\
+                end_line INTEGER NOT NULL,\
+                end_character INTEGER NOT NULL,\
+                PRIMARY KEY(document_uri, ordinal)\
+             );\
+             CREATE INDEX reference_occurrences_name ON reference_occurrences(name);\
+             CREATE TABLE reference_aliases(\
+                document_uri TEXT NOT NULL REFERENCES documents(uri) ON DELETE CASCADE,\
+                ordinal INTEGER NOT NULL CHECK(ordinal >= 0),\
+                from_name TEXT NOT NULL,\
+                to_name TEXT NOT NULL,\
+                PRIMARY KEY(document_uri, ordinal)\
+             );\
+             CREATE INDEX reference_aliases_from_name ON reference_aliases(from_name);\
+             CREATE INDEX reference_aliases_to_name ON reference_aliases(to_name);\
              CREATE VIRTUAL TABLE symbol_name_trigrams USING fts5(\
                 name_folded,\
                 content = 'symbols',\
@@ -898,6 +1118,42 @@ fn initialize_schema(
         .map_err(map_sqlite_error)?;
     transaction
         .pragma_update(None, "application_id", APPLICATION_ID)
+        .map_err(map_sqlite_error)?;
+    transaction
+        .pragma_update(None, "user_version", SCHEMA_VERSION)
+        .map_err(map_sqlite_error)?;
+    transaction.commit().map_err(map_sqlite_error)
+}
+
+fn migrate_schema_v3_to_v4(connection: &mut Connection) -> Result<(), StoreError> {
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(map_sqlite_error)?;
+    transaction
+        .execute_batch(
+            "ALTER TABLE exports ADD COLUMN reference_searchable \
+                INTEGER NOT NULL DEFAULT 0 CHECK(reference_searchable IN (0, 1));\
+             CREATE TABLE reference_occurrences(\
+                document_uri TEXT NOT NULL REFERENCES documents(uri) ON DELETE CASCADE,\
+                ordinal INTEGER NOT NULL CHECK(ordinal >= 0),\
+                name TEXT NOT NULL,\
+                start_line INTEGER NOT NULL,\
+                start_character INTEGER NOT NULL,\
+                end_line INTEGER NOT NULL,\
+                end_character INTEGER NOT NULL,\
+                PRIMARY KEY(document_uri, ordinal)\
+             );\
+             CREATE INDEX reference_occurrences_name ON reference_occurrences(name);\
+             CREATE TABLE reference_aliases(\
+                document_uri TEXT NOT NULL REFERENCES documents(uri) ON DELETE CASCADE,\
+                ordinal INTEGER NOT NULL CHECK(ordinal >= 0),\
+                from_name TEXT NOT NULL,\
+                to_name TEXT NOT NULL,\
+                PRIMARY KEY(document_uri, ordinal)\
+             );\
+             CREATE INDEX reference_aliases_from_name ON reference_aliases(from_name);\
+             CREATE INDEX reference_aliases_to_name ON reference_aliases(to_name);",
+        )
         .map_err(map_sqlite_error)?;
     transaction
         .pragma_update(None, "user_version", SCHEMA_VERSION)
@@ -932,7 +1188,7 @@ fn migrate_schema_v2_to_v3(connection: &mut Connection) -> Result<(), StoreError
         )
         .map_err(map_sqlite_error)?;
     transaction
-        .pragma_update(None, "user_version", SCHEMA_VERSION)
+        .pragma_update(None, "user_version", EXPORT_SCHEMA_VERSION)
         .map_err(map_sqlite_error)?;
     transaction.commit().map_err(map_sqlite_error)
 }
@@ -1002,6 +1258,11 @@ fn validate_replacement(document: &DocumentSymbols) -> Result<(), StoreError> {
         .iter()
         .all(|symbol| symbol.uri == document.uri)
         && document.exports.iter().all(|item| item.uri == document.uri)
+        && document
+            .occurrences
+            .iter()
+            .all(|item| item.uri == document.uri)
+        && document.aliases.iter().all(|item| item.uri == document.uri)
     {
         Ok(())
     } else {

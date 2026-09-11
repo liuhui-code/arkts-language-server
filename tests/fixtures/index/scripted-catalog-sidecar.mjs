@@ -119,6 +119,30 @@ input.on("line", (line) => {
       })
       break
     }
+    case "references/candidates": {
+      const supported = request.params.declarationUri.endsWith("/Target.ets")
+      const semanticUnits = process.env.ARKTS_INDEX_TEST_SCENARIO === "semantic-units"
+      const candidateFiles = semanticUnits
+        ? [
+            path.join("shared", "src", "main", "ets", "Target.ets"),
+            path.join("shared", "src", "main", "ets", "Barrel.ets"),
+            path.join("entry", "src", "main", "ets", "Query.ets"),
+            path.join("entry", "src", "main", "ets", "Use.ets"),
+          ]
+        : ["Target.ets", "Barrel.ets", "Query.ets", "Use.ets"]
+      respond(request.id, {
+        supported,
+        complete: supported,
+        declarationIdentity: supported ? "scripted-reference-candidate" : null,
+        names: supported ? ["Alias", "PublicThing", "Thing"] : [],
+        uris: supported
+          ? candidateFiles.map(file => pathToFileURL(path.join(workspaceRoot, file)).href)
+          : [],
+        servedGeneration: committedGeneration,
+        completeness: committedGeneration > 0 ? "ready" : "stale",
+      })
+      break
+    }
     case "status":
       respond(request.id, status("ready", "ready", "ready", null))
       break
