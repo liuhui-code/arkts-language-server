@@ -348,3 +348,13 @@ Location，但需 20 个 conservative batches 和 65.470 秒。显式 `Interface
 并发布 107 条 diagnostics；请求中位 7.900 秒，下降 87.93%。peak 中位 570,470,400 bytes，
 相对该符号 legacy 只下降 26.99%，未达到单用例 30% prototype memory gate。因此该声明类型可
 作为 opt-in R2 的正确候选扩展合并，但不能据此切换默认策略或宣布内存目标完成。
+
+2026-09-11 `export type` slice：新增独立 `TypeAlias` 索引类型，只接受顶层具名导出类型别名；
+`import type`、type re-export、非导出 alias、default export、普通值和 member 继续 fail closed。
+Photos 6.1 的真实业务符号 `AlbumChangeData` 三次新进程均与 legacy 三个 Location 和 20 条
+diagnostics exact equality，只使用三个 name candidates、两个 batch roots、一个 278-SourceFile
+verifier。请求中位 5.609 秒，峰值中位 529,199,104 bytes；相对该符号 legacy 7.538 秒 /
+822,280,192 bytes，分别下降 25.59% 和 35.64%，通过单用例 correctness/latency/memory 门。
+但同工程常见名 `PhotoAsset` 仍保守召回 1,154 个文件、需要 11 批，证明 name-only index 对高
+碰撞符号尚未解决；下一 slice 应以真实 RED 验证 module/declaration identity narrowing，未知或
+歧义 identity 必须继续保守扩张。默认仍为 `legacy`。

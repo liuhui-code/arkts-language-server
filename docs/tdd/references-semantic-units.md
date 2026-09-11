@@ -319,3 +319,30 @@ published 107 diagnostics. Request times were 7.900 / 7.927 / 7.796 seconds; pea
 570,470,400 / 578,605,056 / 567,791,616 bytes. The 570,470,400-byte median is 26.99% below
 this symbol's legacy peak, so the per-case 30% memory gate remains failed even though correctness
 and latency are green.
+
+## Exported type-alias candidate slice (2026-09-11)
+
+Parent revision: `bcb51b5edd905232aaa1439b5cd09a463e5fea88`.
+
+RED command:
+
+```text
+cargo test -p arkts-index-core exported_type_alias_is_searchable_for_reference_candidates
+```
+
+The public store test did not compile because `SymbolKind::TypeAlias` did not exist. The minimal
+implementation adds that explicit kind, SQLite value 7, protocol spelling `type`, and a parser branch
+restricted to named top-level `export type` declarations. The cross-file store test and the
+SQLite-backed sidecar protocol test both require exact declaration identity and candidate URIs.
+
+The real Photos query used `AlbumChangeData` at zero-based UTF-16 `75:30` in
+`MediaObserverCallback.ets`. Legacy returned all three known occurrences and 20 diagnostics. Three
+fresh-process GREEN runs each returned the exact same Location set and diagnostics using one indexed
+batch, two batch roots, and 278 Program SourceFiles. Request times were 5.636 / 5.513 / 5.609 seconds;
+peaks were 529,199,104 / 523,751,424 / 536,268,800 bytes. Median peak is 35.64% below the
+822,280,192-byte legacy run.
+
+The companion `PhotoAsset` collision run is intentionally retained as a limit case: type-alias
+recognition removed `candidate-ineligible`, but conservative name matching found 1,154 files and
+needed 11 batches. It stayed exact and is not reported as a performance success. Declaration/module
+identity remains a later R2 requirement.
