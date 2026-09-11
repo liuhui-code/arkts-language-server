@@ -341,3 +341,10 @@ identity 安全回退为 20 个 conservative batches，虽然与 legacy 六个 L
 完全一致。请求中位 7.655 秒，peak 中位 566,480,896 bytes；相对 legacy 834,555,904-byte peak
 下降 32.12%。该 slice 达到当前 symbol-kind 门禁，但默认继续为 `legacy`；下一步仍按真实 RED
 逐类扩展 export/alias/member 形态，未知类型必须 fail closed。
+
+2026-09-11 `export interface` slice：Photos 的 `ConflictContent` 在支持前 exact 返回三个
+Location，但需 20 个 conservative batches 和 65.470 秒。显式 `Interface` 索引类型加入后，
+三次新进程均只使用两个 candidate files 和一个 714-SourceFile verifier，返回同样三个 Location
+并发布 107 条 diagnostics；请求中位 7.900 秒，下降 87.93%。peak 中位 570,470,400 bytes，
+相对该符号 legacy 只下降 26.99%，未达到单用例 30% prototype memory gate。因此该声明类型可
+作为 opt-in R2 的正确候选扩展合并，但不能据此切换默认策略或宣布内存目标完成。

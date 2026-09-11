@@ -1,7 +1,7 @@
 # R2 indexed references candidates — implementation and macOS evidence
 
 Status: **R2 candidate narrowing is progressing by proven declaration kind. Class/struct/function,
-named exported const arrow functions, and named exported enums are green; unproven kinds still fail
+named exported const arrow functions, named exported enums, and named exported interfaces are green; unproven kinds still fail
 closed. `indexed-batched` remains experimental and the product default remains `legacy`.**
 
 The investigation began at parent revision `b70367964bf7b32e66524b08b4aeb1acde6bd8ff`; each later
@@ -437,3 +437,39 @@ This validates another real declaration kind without weakening fallback behavior
 itself justify changing the default: remaining export kinds and alias/member shapes still require
 their own real RED/exact-differential slices, and the original >3 GB release reproducer remains
 unavailable.
+
+### Exported interface candidate coverage
+
+Parent revision: `a64a1f6f07b283e63e49b6a616f67c71eee54f2c`.
+
+The public store RED used the real declaration shape
+`export interface ConflictContent`. Before implementation it returned `supported=false`. The
+minimal change adds an explicit persisted `Interface` symbol kind and routes named interface
+declarations through the existing top-level export and stable declaration-identity checks. It does
+not enable type aliases, values, default exports, or member references. The SQLite-backed sidecar
+contract verifies the `interface` workspace-symbol kind, identity
+`file:///workspace/Interface.ets#0:17:ConflictContent`, and exact two-file candidate set.
+
+The fixed Photos replay used the same commit, SDK, and `BottomToolbar.ets` as the enum case. The
+import position was `92:12` and the declaration was `Consts.ets:74:17` (zero-based UTF-16). Legacy
+returned three Locations and 107 diagnostics in 7.130 seconds, peaking at 781,402,112 bytes. Before
+interface support, indexed batching returned the exact same result but required 20 conservative
+batches and 65.470 seconds.
+
+Three post-change fresh processes each returned the exact legacy set and 107 version-1 diagnostics.
+Every run used one indexed batch, two candidate files, and 714 Program SourceFiles, with no
+fallback. Request times were 7.900, 7.927, and 7.796 seconds; peaks were 570,470,400,
+578,605,056, and 567,791,616 bytes. Median request time was 7.900 seconds, 87.93% below the
+fallback. Median peak was 570,470,400 bytes, 26.99% below this symbol's legacy run. Correctness and
+latency pass; the per-case 30% prototype memory threshold does not. The default therefore remains
+`legacy`.
+
+Raw reports:
+
+```text
+/private/tmp/arkts-photos-conflict-content-legacy-a-main-a64a1f6-rss.json
+/private/tmp/arkts-photos-conflict-content-indexed-before-interface-rss.json
+/private/tmp/arkts-photos-conflict-content-indexed-interface-a-rss.json
+/private/tmp/arkts-photos-conflict-content-indexed-interface-b-rss.json
+/private/tmp/arkts-photos-conflict-content-indexed-interface-c-rss.json
+```

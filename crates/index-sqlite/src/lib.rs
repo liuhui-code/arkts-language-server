@@ -1280,6 +1280,7 @@ fn kind_to_i64(kind: SymbolKind) -> i64 {
         SymbolKind::Function => 3,
         SymbolKind::Method => 4,
         SymbolKind::Enum => 5,
+        SymbolKind::Interface => 6,
     }
 }
 
@@ -1290,6 +1291,7 @@ fn kind_from_i64(value: i64) -> Result<SymbolKind, StoreError> {
         3 => Ok(SymbolKind::Function),
         4 => Ok(SymbolKind::Method),
         5 => Ok(SymbolKind::Enum),
+        6 => Ok(SymbolKind::Interface),
         _ => Err(StoreError::new(
             StoreErrorKind::InvalidData,
             format!("unknown persisted symbol kind {value}"),
