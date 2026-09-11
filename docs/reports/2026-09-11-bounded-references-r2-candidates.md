@@ -330,3 +330,39 @@ Raw accepted lifecycle reports:
 /private/tmp/arkts-photos-persist-utils-indexed-diagnostic-gate-b-rss.json
 /private/tmp/arkts-photos-persist-utils-indexed-diagnostic-gate-c-rss.json
 ```
+
+### SQLite reference-candidate name-index correction
+
+The accepted lifecycle runs also made the remaining request gap measurable. The fixed Photos SQLite
+database contained 1,096,191 `reference_occurrences` rows. `REFERENCE_URIS_SQL` joined the bounded
+name set but ordered by `document_uri`; SQLite consequently scanned the occurrence primary key in URI
+order instead of using `reference_occurrences_name`. The exact production query took 5.06 seconds.
+Adding `INDEXED BY reference_occurrences_name` changed neither schema nor results and reduced that
+same direct query to 0.11 seconds.
+
+A store-level RED case inserts 500,000 irrelevant URI-ordered occurrences and requires the exact two
+`FastNeedle` candidate URIs within 100 ms. The old query took 136 ms on the development Mac; the
+single-line index selection made it GREEN. All 12 `arkts-index-sqlite` tests and the release sidecar
+build pass.
+
+Three fresh Photos end-to-end processes then returned the exact five `PersistInfoUtils` Locations and
+published 119 diagnostics. Request times were 7.800, 6.775, and 6.575 seconds; the 6.775-second median
+is 39.79% below the pre-fix 11.253-second median and 1.28 times the 5.303-second legacy run. Peaks were
+571,305,984, 581,206,016, and 575,754,240 bytes; the 575,754,240-byte median remains 31.66% below the
+original 842,514,432-byte indexed baseline. Both current prototype gates now pass for this class case.
+
+Raw reports:
+
+```text
+/private/tmp/arkts-photos-persist-utils-indexed-name-index-a-rss.json
+/private/tmp/arkts-photos-persist-utils-indexed-name-index-b-rss.json
+/private/tmp/arkts-photos-persist-utils-indexed-name-index-c-rss.json
+```
+
+The first cross-kind check is intentionally not counted as a pass for default activation.
+`getMutuallyExclusiveDesc` is an `export const` function, which the current lexical index does not
+register as a searchable declaration. It safely fell back to 20 conservative batches and returned the
+exact three legacy Locations, but took 63.279 seconds. The replay harness's 20-second diagnostic wait
+expired before references completed, so this run does not prove post-request diagnostic publication.
+The next slice must add conservative index coverage for declared export kinds and rerun with a diagnostic
+window longer than the request; it must not reinterpret the timeout as a missing diagnostic or a pass.

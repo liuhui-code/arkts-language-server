@@ -212,6 +212,19 @@ verifier 从 632 个 SDK files / 18,915,581 code units / 约 269 MiB prepared he
 planning 时间并扩充不同 symbol kind 的真实 exact differential；不得通过提前恢复诊断、并发多个
 verifier 或缩小结果集换取延迟。
 
+SQLite candidate lookup 的首个延迟 slice 已完成。Photos 数据库有 1,096,191 条 reference
+occurrence；原 SQL 因 `ORDER BY document_uri` 选择主键 URI 顺序并扫描 occurrence 表，真实直接
+查询耗时 5.06 秒。强制使用既有 `reference_occurrences_name` 索引后，同库同结果为 0.11 秒。
+端到端三次新进程 request 为 7.800 / 6.775 / 6.575 秒，中位 6.775 秒，较上一版中位降低
+39.79%，为 legacy 单次基线的 1.28×；peak 中位 575,754,240 bytes，仍较原 indexed baseline
+降低 31.66%。五个 Location 与 119 条 diagnostics 保持不变，延迟和内存 prototype gate 均通过。
+
+不同 symbol kind 的真实检查同时暴露了下一项约束：`export const` 函数
+`getMutuallyExclusiveDesc` 尚无 index declaration identity，因而安全回退为 20 个 conservative
+batches。结果与 legacy 三个 Location exact，但耗时 63.279 秒，诊断因回放工具 20 秒观察窗而未
+被记录。下一 slice 必须先扩展 index 对已声明导出种类的保守 candidate 支持，并用延长后的诊断
+观察窗证明最终诊断发布；在此之前不得切默认。
+
 前置：R1 exact differential 全绿，并已用实际 Program 计数识别不能仅靠固定 root 数约束的
 dependency closure。若连 Program cardinality 都不能下降，应停止而不是用索引掩盖问题；当前
 三个工程的 cardinality 已下降，但峰值/延迟未过门，因此 R2 只以实验策略继续，不切生产默认。

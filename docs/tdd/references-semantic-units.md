@@ -222,3 +222,25 @@ settle. The diagnostic scheduler now shares one quiescence promise across nested
 Both responses remain behind that barrier, the existing references freshness lane still supersedes the
 older request, and diagnostics resume only after the final lease releases. The focused suite passed 17
 tests, and the elevated full `pnpm check:fast` gate passed 905/905.
+
+## SQLite reference-candidate name index (2026-09-11)
+
+Parent revision: `ca9ec12e02a0bb11359483a7b4f65947d9a5c0d5`.
+
+The real Photos trace left 4.3–5 seconds between compiler anchor completion and candidate acceptance.
+Direct inspection of the retained SQLite database showed 1,096,191 occurrence rows. The production
+recursive candidate query took 5.06 seconds and its query plan scanned the URI-ordered primary key;
+the exact query with `INDEXED BY reference_occurrences_name` took 0.11 seconds and returned the same
+two candidate URIs.
+
+The public store RED case creates 500,000 irrelevant occurrences before the target URI and calls
+`WorkspaceIndex.search_reference_candidates`. The old code returned the correct result but took
+136.382851 ms, failing the 100 ms bound. The one-line SQL index selection passed the same result and
+deadline; all 12 SQLite store tests and the release sidecar build passed.
+
+Three fresh Photos LSP processes returned exact five-item reference sets and 119 diagnostics. Median
+request time fell from 11.253 to 6.775 seconds (39.79%), meeting the 2x-over-legacy production target
+at 1.28x. Median peak remained bounded at 575,754,240 bytes, 31.66% below the original indexed
+baseline. An `export const` function check remained exact but fell back to 20 batches and 63.279
+seconds because that declaration kind is not yet searchable in the index; this becomes the next RED
+slice rather than a reason to activate indexed batching by default.

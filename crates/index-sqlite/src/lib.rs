@@ -779,7 +779,7 @@ const REFERENCE_URIS_SQL: &str = "WITH RECURSIVE \
         UNION SELECT edges.target FROM edges JOIN names ON edges.source = names.name\
     ) \
     SELECT DISTINCT reference_occurrences.document_uri \
-    FROM reference_occurrences JOIN names USING(name) \
+    FROM reference_occurrences INDEXED BY reference_occurrences_name JOIN names USING(name) \
     ORDER BY reference_occurrences.document_uri LIMIT ?2";
 
 fn read_reference_names(

@@ -5,7 +5,7 @@ use std::{
     process,
     sync::{Arc, Barrier},
     thread,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use arkts_index_core::{
@@ -666,6 +666,88 @@ fn export_discovery_persists_a_candidate_beyond_the_old_completion_scan_bound() 
     assert_eq!(result.items[0].exported_name, "ExactNeedleExport");
     assert_eq!(result.items[0].uri, "file:///workspace/Exports.ets");
     assert_eq!(result.items[0].ordinal, FILLER_EXPORTS as u32);
+}
+
+#[test]
+fn reference_candidates_do_not_scan_irrelevant_occurrences_in_uri_order() {
+    const IRRELEVANT_OCCURRENCES: usize = 500_000;
+    const QUERY_DEADLINE: Duration = Duration::from_millis(100);
+    let temp = TestDir::new("reference-name-index");
+    let database = temp.path().join("symbols.sqlite3");
+    let store =
+        SqliteStore::open(&database, "file:///workspace").expect("SQLite store should open");
+    WorkspaceIndex::with_store(store)
+        .refresh(
+            1,
+            [
+                Document::new(
+                    "file:///workspace/ZTarget.ets",
+                    "export class FastNeedle {}\n",
+                ),
+                Document::new(
+                    "file:///workspace/ZConsumer.ets",
+                    "const value: FastNeedle = new FastNeedle()\n",
+                ),
+            ],
+            &[],
+        )
+        .expect("reference generation should commit");
+
+    let mut connection = Connection::open(&database).expect("database should open directly");
+    let transaction = connection
+        .transaction()
+        .expect("filler transaction should begin");
+    transaction
+        .execute(
+            "INSERT INTO documents(uri, generation) VALUES (?1, 1)",
+            ["file:///workspace/AFiller.ets"],
+        )
+        .expect("filler document should insert");
+    {
+        let mut insert = transaction
+            .prepare(
+                "INSERT INTO reference_occurrences(\
+                    document_uri, ordinal, name, start_line, start_character, end_line, end_character\
+                 ) VALUES (?1, ?2, 'IrrelevantName', 0, 0, 0, 1)",
+            )
+            .expect("filler insert should prepare");
+        for ordinal in 0..IRRELEVANT_OCCURRENCES {
+            insert
+                .execute(("file:///workspace/AFiller.ets", ordinal as i64))
+                .expect("filler occurrence should insert");
+        }
+    }
+    transaction
+        .commit()
+        .expect("filler transaction should commit");
+    drop(connection);
+
+    let store =
+        SqliteStore::open(&database, "file:///workspace").expect("SQLite store should reopen");
+    let index = WorkspaceIndex::with_store(store);
+    let started = Instant::now();
+    let result = index
+        .search_reference_candidates(ReferenceCandidateQuery {
+            declaration_uri: "file:///workspace/ZTarget.ets".to_owned(),
+            declaration_position: Position::new(0, 13),
+            limit: 20,
+        })
+        .expect("reference candidates should use the name index");
+    let elapsed = started.elapsed();
+
+    assert!(result.supported);
+    assert!(result.complete);
+    assert_eq!(
+        result.uris,
+        [
+            "file:///workspace/ZConsumer.ets",
+            "file:///workspace/ZTarget.ets",
+        ]
+    );
+    assert!(
+        elapsed < QUERY_DEADLINE,
+        "reference candidate lookup took {elapsed:?}, expected less than {QUERY_DEADLINE:?}"
+    );
 }
 
 #[test]
