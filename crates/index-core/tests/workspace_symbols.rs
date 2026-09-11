@@ -22,7 +22,8 @@ fn first_match(index: &WorkspaceIndex, query: &str) -> WorkspaceSymbol {
 fn records_named_import_and_reexport_bindings_with_their_source_specifier() {
     let imported = parse_document_symbols(&Document::new(
         "file:///workspace/Consumer.ets",
-        "import type { PhotoAsset as LocalAsset, Album } from './models/Media'\n\
+        "const inertDelimiter = '{'\n\
+         import type { PhotoAsset as LocalAsset, Album } from './models/Media'\n\
          import lazy { DeferredPanel } from \"./ui/DeferredPanel\"\n",
     ))
     .expect("named imports should parse");

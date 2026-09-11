@@ -1000,6 +1000,9 @@ fn reference_bindings(document: &Document, tokens: &[Token<'_>]) -> Vec<Referenc
     let mut brace_depth = 0usize;
 
     for (index, token) in tokens.iter().enumerate() {
+        if token.kind == TokenKind::StringLiteral {
+            continue;
+        }
         match token.text {
             "{" => brace_depth += 1,
             "}" => brace_depth = brace_depth.saturating_sub(1),
