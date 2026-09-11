@@ -167,6 +167,16 @@ median peak 从 424.1 MiB 升到 664.6 MiB，median request 从 2.820 s 升到 4
 verifier 与 576 个 SDK SourceFiles 的固定成本会占主导。未经更多跨规模数据，不提交猜测性的
 文件数阈值。
 
+2026-09-11 Photos 补充：DevEco 允许 root module 省略 `targets`，也允许 module profile
+省略 target list 并使用隐式 `default` target。ProjectGraph 已保守支持这两种形式，使固定 Photos
+checkout 从 unavailable 变为 complete 18-unit graph，同时继续拒绝多 target 歧义。ordinary-import
+`PersistInfoUtils` 在单个 indexed batch 中返回与 legacy 完全相同的五个 Location，并把 1,246 个
+membership 文件收缩为 716 个 admitted project files。但产品 gate 仍失败：indexed peak 为
+842,514,432 bytes、11.769 s，legacy 为 728,735,744 bytes、5.303 s。usage-site indexed 路径为
+锚点解析与引用验证分别构造了一次等价的 710-SourceFile Program。下一 R2 slice 因而是消除重复
+compiler-anchor 工作，同时保留 compiler proof；禁止从 name-only index 猜测 import identity，
+歧义或不完整锚点继续 fail closed。默认仍为 `legacy`。
+
 前置：R1 exact differential 全绿，并已用实际 Program 计数识别不能仅靠固定 root 数约束的
 dependency closure。若连 Program cardinality 都不能下降，应停止而不是用索引掩盖问题；当前
 三个工程的 cardinality 已下降，但峰值/延迟未过门，因此 R2 只以实验策略继续，不切生产默认。

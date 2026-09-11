@@ -235,6 +235,23 @@ Raw reports:
 
 ## Current gate decision
 
+### Photos ordinary-import follow-up
+
+The fixed Photos 6.1 checkout also contains a legacy-complete ordinary import that is independent
+of the earlier `import lazy` limitation. At commit
+`98ea1d9cd6a363c576e2c6ff17844e51723baec5`, the usage of `PersistInfoUtils` in
+`imageEditor/common/src/main/ets/service/BaseEditor.ets` produced five normalized Locations in
+legacy and indexed modes. Supporting DevEco's valid omitted-target configuration changed the graph
+to complete with 18 semantic units. The indexed run used one batch, admitted 716 of 1,246 project
+membership files, and built a Program with 78 project plus 632 SDK SourceFiles.
+
+This is a correctness pass and a product-memory failure. Legacy peaked at 728,735,744 bytes in
+5.303 seconds; indexed peaked at 842,514,432 bytes in 11.769 seconds. The trace shows two equivalent
+710-SourceFile compiler initializations on the indexed usage-site path: a transient definition
+anchor followed by the verifier. The next experiment must eliminate this duplicate compiler work
+without allowing the index to become semantic truth. Until that experiment passes the existing
+memory and exactness gates, the default remains `legacy`.
+
 Dependency-closure admission is implemented and its public fail-conservative contract is green.
 It produces a real reduction on Gramony, but it has not passed the 30% real-project peak target and
 cannot activate on RemoteDesk or Settings without inventing project boundaries. Photos 6.1 has

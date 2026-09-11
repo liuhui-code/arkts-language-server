@@ -273,6 +273,25 @@ test("an omitted applyToProducts maps a non-ohosTest target to the default produ
   assert.equal(scope.targetName, "default")
 })
 
+test("an omitted root targets list uses the sole module-profile target", (t) => {
+  const fixture = declaredModule(t)
+  delete fixture.profile.modules[0].targets
+  fs.writeFileSync(fixture.profilePath, JSON.stringify(fixture.profile))
+  fs.writeFileSync(fixture.moduleProfilePath, "{ targets: [{ name: 'default' }] }")
+  const scope = fixture.model.scopeFor(fixture.sourcePath)
+  assert.equal(scope.status, "ready")
+  assert.equal(scope.targetName, "default")
+  assert.equal(fixture.model.semanticGraph().status, "ready")
+})
+
+test("an omitted module-profile targets list provides the default target", (t) => {
+  const fixture = declaredModule(t)
+  fs.writeFileSync(fixture.moduleProfilePath, "{ apiType: 'stageMode', buildOption: {} }")
+  const scope = fixture.model.scopeFor(fixture.sourcePath)
+  assert.equal(scope.status, "ready")
+  assert.equal(scope.targetName, "default")
+})
+
 test("implicit default mapping excludes ohosTest and does not replace an explicit empty mapping", (t) => {
   const fixture = declaredModule(t)
   fixture.profile.modules[0].targets = [{ name: "ohosTest" }]

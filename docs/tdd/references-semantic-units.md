@@ -100,3 +100,38 @@ independent indexed runs each matched all 49 normalized legacy locations. The ac
 reduced 80 membership files to 58 admitted files and 56 project SourceFiles, but median peak RSS
 regressed from 424.1 to 664.6 MiB. This negative result keeps the strategy experimental and shows
 that working-set reduction must exceed the transient verifier plus SDK fixed cost.
+
+## Root target omission compatibility (2026-09-11)
+
+Parent revision: `0b2a321bd575a85a19c866b550563942eef69ab8`.
+
+The Photos checkout exposed a valid DevEco configuration shape that the model rejected: root
+`modules[]` entries may omit `targets`, and module `build-profile.json5` may also omit `targets` to
+use the implicit `default` target. The installed DevEco project schema requires only `name` and
+`srcPath` for root module entries; the module schema documents the implicit default target.
+
+Two model-level tests were added before the implementation. The first failed because omitted root
+targets returned `module-target-unavailable`; the second failed because an omitted module-profile
+target list returned `module-profile-unavailable`:
+
+```bash
+node --test --test-name-pattern="an omitted root targets list uses the sole module-profile target" \
+  tests/harmony-project-model.test.mjs
+node --test --test-name-pattern="an omitted module-profile targets list provides the default target" \
+  tests/harmony-project-model.test.mjs
+```
+
+The model now selects the sole non-test module-profile target when the root mapping is omitted and
+synthesizes only the documented `default` target when the module profile omits the list. Multiple,
+invalid, or test-only targets remain fail-closed. The full project-model suite passes 25/25.
+
+This compatibility fix changes Photos from an unavailable graph to a complete 18-unit graph while
+FilePicker remains complete and Settings remains unavailable for its independent configuration
+problems. A real Photos ordinary-import query for `PersistInfoUtils` then returned the same five
+normalized locations as legacy in one indexed semantic-unit batch. It reduced 1,246 membership
+files to 716 admitted project files and the compiler Program to 78 project plus 632 SDK SourceFiles.
+The result is semantically GREEN but not a memory improvement: indexed peak RSS was 842,514,432
+bytes in 11.769 seconds versus legacy 728,735,744 bytes in 5.303 seconds. Trace evidence shows the
+usage-site path paid for two equivalent 710-SourceFile Programs: one transient compiler anchor and
+one verifier. The next slice must remove that duplicate anchor cost without weakening compiler
+proof; the production default remains `legacy`.
