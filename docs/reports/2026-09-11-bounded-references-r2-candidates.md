@@ -341,9 +341,10 @@ Adding `INDEXED BY reference_occurrences_name` changed neither schema nor result
 same direct query to 0.11 seconds.
 
 A store-level RED case inserts 500,000 irrelevant URI-ordered occurrences and requires the exact two
-`FastNeedle` candidate URIs within 100 ms. The old query took 136 ms on the development Mac; the
-single-line index selection made it GREEN. All 12 `arkts-index-sqlite` tests and the release sidecar
-build pass.
+`FastNeedle` candidate URIs. The old query took 136 ms on the development Mac; the single-line index
+selection made it GREEN. A deterministic unit gate additionally requires SQLite's execution plan to use
+`reference_occurrences_name`; wall-clock timing is retained as benchmark evidence rather than a
+cross-machine correctness assertion. All SQLite store tests and the release sidecar build pass.
 
 Three fresh Photos end-to-end processes then returned the exact five `PersistInfoUtils` Locations and
 published 119 diagnostics. Request times were 7.800, 6.775, and 6.575 seconds; the 6.775-second median
@@ -366,3 +367,30 @@ exact three legacy Locations, but took 63.279 seconds. The replay harness's 20-s
 expired before references completed, so this run does not prove post-request diagnostic publication.
 The next slice must add conservative index coverage for declared export kinds and rerun with a diagnostic
 window longer than the request; it must not reinterpret the timeout as a missing diagnostic or a pass.
+
+### Exported const arrow-function candidate coverage
+
+The next TDD slice narrowed that requirement to the real syntax proven by Photos: a named, top-level
+`export const` whose initializer is directly an arrow function. The index assigns the declaration a stable
+identity and records it as a function export. It deliberately keeps ordinary exported values unsupported;
+a separate RED case proves that a semicolonless scalar export cannot capture a later local arrow function.
+The sidecar protocol contract also persists and returns the exact declaration identity, name, and two URIs.
+
+With a 180-second diagnostic observation window, three fresh Photos processes queried
+`getMutuallyExclusiveDesc` at `BottomToolbar.ets:352:19`. All three used two index candidate files and one
+714-source-file verifier Program, returned the exact three legacy Locations, and later published 107
+version-1 diagnostics. Request times were 7.609, 7.345, and 7.357 seconds; the 7.357-second median is
+88.37% below the previous 63.279-second conservative fallback. Peak RSS values were 579,092,480,
+568,172,544, and 579,428,352 bytes; median peak was 579,092,480 bytes.
+
+Raw reports:
+
+```text
+/private/tmp/arkts-photos-get-mutually-usage-indexed-export-const-a-rss.json
+/private/tmp/arkts-photos-get-mutually-usage-indexed-export-const-b-rss.json
+/private/tmp/arkts-photos-get-mutually-usage-indexed-export-const-c-rss.json
+```
+
+This closes only the exported arrow-function gap. It does not claim that exported enums, interfaces,
+type aliases, or non-function values are reference-searchable, and it is not sufficient by itself to switch
+`indexed-batched` on by default.

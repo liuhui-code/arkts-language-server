@@ -5,7 +5,7 @@ use std::{
     process,
     sync::{Arc, Barrier},
     thread,
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use arkts_index_core::{
@@ -671,7 +671,6 @@ fn export_discovery_persists_a_candidate_beyond_the_old_completion_scan_bound() 
 #[test]
 fn reference_candidates_do_not_scan_irrelevant_occurrences_in_uri_order() {
     const IRRELEVANT_OCCURRENCES: usize = 500_000;
-    const QUERY_DEADLINE: Duration = Duration::from_millis(100);
     let temp = TestDir::new("reference-name-index");
     let database = temp.path().join("symbols.sqlite3");
     let store =
@@ -725,7 +724,6 @@ fn reference_candidates_do_not_scan_irrelevant_occurrences_in_uri_order() {
     let store =
         SqliteStore::open(&database, "file:///workspace").expect("SQLite store should reopen");
     let index = WorkspaceIndex::with_store(store);
-    let started = Instant::now();
     let result = index
         .search_reference_candidates(ReferenceCandidateQuery {
             declaration_uri: "file:///workspace/ZTarget.ets".to_owned(),
@@ -733,8 +731,6 @@ fn reference_candidates_do_not_scan_irrelevant_occurrences_in_uri_order() {
             limit: 20,
         })
         .expect("reference candidates should use the name index");
-    let elapsed = started.elapsed();
-
     assert!(result.supported);
     assert!(result.complete);
     assert_eq!(
@@ -743,10 +739,6 @@ fn reference_candidates_do_not_scan_irrelevant_occurrences_in_uri_order() {
             "file:///workspace/ZConsumer.ets",
             "file:///workspace/ZTarget.ets",
         ]
-    );
-    assert!(
-        elapsed < QUERY_DEADLINE,
-        "reference candidate lookup took {elapsed:?}, expected less than {QUERY_DEADLINE:?}"
     );
 }
 

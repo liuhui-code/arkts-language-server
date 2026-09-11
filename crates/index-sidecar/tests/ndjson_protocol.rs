@@ -274,6 +274,14 @@ fn sidecar_returns_conservative_reference_candidates_across_alias_reexports() {
                     {
                         "uri": "file:///workspace/Member.ets",
                         "text": "export class MemberOwner { action() {} }\n"
+                    },
+                    {
+                        "uri": "file:///workspace/ConstFunction.ets",
+                        "text": "export const describe = (key: string): string => key\n"
+                    },
+                    {
+                        "uri": "file:///workspace/ConstConsumer.ets",
+                        "text": "import { describe } from './ConstFunction'\nconst value = describe('key')\n"
                     }
                 ],
                 "removedUris": []
@@ -314,9 +322,35 @@ fn sidecar_returns_conservative_reference_candidates_across_alias_reexports() {
         ])
     );
 
-    let member = process.request(json!({
+    let const_function = process.request(json!({
         "protocol": 1,
         "id": 4,
+        "method": "references/candidates",
+        "params": {
+            "declarationUri": "file:///workspace/ConstFunction.ets",
+            "declarationPosition": {"line": 0, "character": 15},
+            "limit": 100
+        }
+    }));
+    assert_eq!(const_function["ok"], true);
+    assert_eq!(const_function["result"]["supported"], true);
+    assert_eq!(const_function["result"]["complete"], true);
+    assert_eq!(
+        const_function["result"]["declarationIdentity"],
+        "file:///workspace/ConstFunction.ets#0:13:describe"
+    );
+    assert_eq!(const_function["result"]["names"], json!(["describe"]));
+    assert_eq!(
+        const_function["result"]["uris"],
+        json!([
+            "file:///workspace/ConstConsumer.ets",
+            "file:///workspace/ConstFunction.ets"
+        ])
+    );
+
+    let member = process.request(json!({
+        "protocol": 1,
+        "id": 5,
         "method": "references/candidates",
         "params": {
             "declarationUri": "file:///workspace/Member.ets",
@@ -330,7 +364,7 @@ fn sidecar_returns_conservative_reference_candidates_across_alias_reexports() {
 
     let unsupported = process.request(json!({
         "protocol": 1,
-        "id": 5,
+        "id": 6,
         "method": "refresh",
         "params": {
             "generation": 2,
@@ -344,7 +378,7 @@ fn sidecar_returns_conservative_reference_candidates_across_alias_reexports() {
     assert_eq!(unsupported["ok"], true);
     let unsupported = process.request(json!({
         "protocol": 1,
-        "id": 6,
+        "id": 7,
         "method": "references/candidates",
         "params": {
             "declarationUri": "file:///workspace/Default.ets",
@@ -356,7 +390,7 @@ fn sidecar_returns_conservative_reference_candidates_across_alias_reexports() {
     assert_eq!(unsupported["result"]["supported"], false);
     assert_eq!(unsupported["result"]["complete"], false);
     assert_eq!(unsupported["result"]["uris"], json!([]));
-    process.shutdown(7);
+    process.shutdown(8);
 
     let mut restarted = SidecarProcess::spawn();
     let initialized = initialize(&mut restarted, &workspace, &cache, 1);

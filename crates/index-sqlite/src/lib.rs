@@ -1325,3 +1325,43 @@ fn map_sqlite_error(error: rusqlite::Error) -> StoreError {
     };
     StoreError::new(kind, format!("SQLite index error: {error}"))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reference_uri_query_forces_the_occurrence_name_index() {
+        let connection = Connection::open_in_memory().expect("in-memory database should open");
+        connection
+            .execute_batch(
+                "CREATE TABLE reference_aliases(\
+                    from_name TEXT NOT NULL,\
+                    to_name TEXT NOT NULL\
+                 );\
+                 CREATE TABLE reference_occurrences(\
+                    document_uri TEXT NOT NULL,\
+                    name TEXT NOT NULL\
+                 );\
+                 CREATE INDEX reference_occurrences_name \
+                    ON reference_occurrences(name, document_uri);",
+            )
+            .expect("reference query schema should exist");
+
+        let mut statement = connection
+            .prepare(&format!("EXPLAIN QUERY PLAN {REFERENCE_URIS_SQL}"))
+            .expect("reference query plan should prepare");
+        let details: Vec<String> = statement
+            .query_map(params!["Needle", 20], |row| row.get(3))
+            .expect("reference query plan should execute")
+            .collect::<Result<_, _>>()
+            .expect("reference query plan should decode");
+
+        assert!(
+            details
+                .iter()
+                .any(|detail| detail.contains("reference_occurrences_name")),
+            "reference query plan did not use the name index: {details:?}"
+        );
+    }
+}

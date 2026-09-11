@@ -1,8 +1,8 @@
 use std::fs;
 
 use arkts_index_core::{
-    Document, Position, SymbolKind, TextRange, WorkspaceIndex, WorkspaceSymbol,
-    parse_document_symbols,
+    Document, Position, ReferenceCandidateQuery, SymbolKind, TextRange, WorkspaceIndex,
+    WorkspaceSymbol, parse_document_symbols,
 };
 
 fn fixture(name: &str) -> String {
@@ -122,6 +122,74 @@ fn refreshes_arkts_documents_and_searches_workspace_symbols() {
     let display_name = first_match(&index, "displayName");
     assert_eq!(display_name.kind, SymbolKind::Method);
     assert_eq!(display_name.container.as_deref(), Some("Person"));
+}
+
+#[test]
+fn exported_const_function_is_searchable_for_reference_candidates() {
+    let mut index = WorkspaceIndex::in_memory();
+    index
+        .refresh(
+            1,
+            [
+                Document::new(
+                    "file:///workspace/Consts.ets",
+                    "export const getMutuallyExclusiveDesc = (key: string): string => key\n",
+                ),
+                Document::new(
+                    "file:///workspace/Consumer.ets",
+                    "import { getMutuallyExclusiveDesc } from './Consts'\n\
+                     const value = getMutuallyExclusiveDesc('key')\n",
+                ),
+            ],
+            &[],
+        )
+        .expect("reference generation should commit");
+
+    let result = index
+        .search_reference_candidates(ReferenceCandidateQuery {
+            declaration_uri: "file:///workspace/Consts.ets".to_owned(),
+            declaration_position: Position::new(0, 15),
+            limit: 20,
+        })
+        .expect("exported const reference candidates should be searchable");
+
+    assert!(result.supported);
+    assert!(result.complete);
+    assert_eq!(result.names, ["getMutuallyExclusiveDesc"]);
+    assert_eq!(
+        result.uris,
+        [
+            "file:///workspace/Consts.ets",
+            "file:///workspace/Consumer.ets",
+        ]
+    );
+}
+
+#[test]
+fn semicolonless_exported_value_does_not_capture_a_later_arrow_function() {
+    let mut index = WorkspaceIndex::in_memory();
+    index
+        .refresh(
+            1,
+            [Document::new(
+                "file:///workspace/Values.ets",
+                "export const count = 1\nconst local = () => count\n",
+            )],
+            &[],
+        )
+        .expect("reference generation should commit");
+
+    let result = index
+        .search_reference_candidates(ReferenceCandidateQuery {
+            declaration_uri: "file:///workspace/Values.ets".to_owned(),
+            declaration_position: Position::new(0, 14),
+            limit: 20,
+        })
+        .expect("unsupported exported values should fail conservative");
+
+    assert!(!result.supported);
+    assert!(!result.complete);
+    assert!(result.uris.is_empty());
 }
 
 #[test]

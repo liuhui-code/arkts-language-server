@@ -816,6 +816,26 @@ fn parse_symbols(document: &Document) -> Result<ParsedSymbols, DocumentParseErro
                     }
                 }
             }
+            "const" => {
+                let Some(name) = exported_const_arrow_name(&tokens, index, brace_depth) else {
+                    continue;
+                };
+                symbols.push(symbol(
+                    document,
+                    &line_index,
+                    name,
+                    SymbolKind::Function,
+                    None,
+                ));
+                exports.push(workspace_export(
+                    document,
+                    &line_index,
+                    name,
+                    SymbolKind::Function,
+                    exports.len(),
+                    true,
+                )?);
+            }
             "{" => {
                 brace_depth += 1;
                 if let Some(name) = pending_container.take() {
@@ -895,6 +915,50 @@ fn is_exported_declaration(tokens: &[Token<'_>], index: usize, brace_depth: usiz
         }
         _ => false,
     }
+}
+
+fn exported_const_arrow_name<'a>(
+    tokens: &'a [Token<'a>],
+    index: usize,
+    brace_depth: usize,
+) -> Option<&'a Token<'a>> {
+    if !is_exported_declaration(tokens, index, brace_depth) {
+        return None;
+    }
+    let name = tokens
+        .get(index + 1)
+        .filter(|next| next.kind == TokenKind::Identifier)?;
+    let equals = tokens[index + 2..]
+        .iter()
+        .position(|token| token.text == "=")?
+        + index
+        + 2;
+    if tokens.get(equals + 1).is_none_or(|token| token.text != "(") {
+        return None;
+    }
+
+    let mut parenthesis_depth = 0usize;
+    let mut close = None;
+    for (offset, token) in tokens[equals + 1..].iter().enumerate() {
+        match token.text {
+            "(" => parenthesis_depth += 1,
+            ")" => {
+                parenthesis_depth = parenthesis_depth.checked_sub(1)?;
+                if parenthesis_depth == 0 {
+                    close = Some(equals + 1 + offset);
+                    break;
+                }
+            }
+            ";" | "{" | "}" | "export" if parenthesis_depth == 0 => return None,
+            _ => {}
+        }
+    }
+    let close = close?;
+    tokens[close + 1..]
+        .iter()
+        .take_while(|token| !matches!(token.text, ";" | "{" | "}" | "export"))
+        .any(|token| token.text == "=>")
+        .then_some(name)
 }
 
 fn symbol(
