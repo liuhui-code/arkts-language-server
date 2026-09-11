@@ -9,7 +9,8 @@ use std::{
 };
 
 use arkts_index_core::{
-    Document, IndexState, MemoryStore, Position, ReferenceCandidateQuery, WorkspaceIndex,
+    Document, IndexState, MemoryStore, Position, ReferenceBindingKind, ReferenceCandidateQuery,
+    WorkspaceIndex,
 };
 use arkts_index_sqlite::{SqliteStore, workspace_cache_location};
 use rusqlite::Connection;
@@ -118,6 +119,102 @@ fn memory_and_sqlite_implement_the_same_store_contract_and_sqlite_reopens() {
         .expect("persisted reference candidates should be searchable after reopen");
     assert!(references.supported);
     assert_eq!(references.served_generation, 1);
+}
+
+#[test]
+fn sqlite_persists_reference_binding_sources_across_reopen() {
+    let temp = TestDir::new("reference-bindings");
+    let database = temp.path().join("symbols.sqlite3");
+    let store =
+        SqliteStore::open(&database, "file:///workspace").expect("SQLite store should open");
+    WorkspaceIndex::with_store(store)
+        .refresh(
+            1,
+            [
+                Document::new("file:///workspace/Target.ets", "export class Thing {}\n"),
+                Document::new(
+                    "file:///workspace/Barrel.ets",
+                    "export { Thing as PublicThing } from './Target'\n",
+                ),
+                Document::new(
+                    "file:///workspace/Consumer.ets",
+                    "import { PublicThing as Alias } from './Barrel'\nconst value = new Alias()\n",
+                ),
+            ],
+            &[],
+        )
+        .expect("reference generation should commit");
+
+    let reopened =
+        SqliteStore::open(&database, "file:///workspace").expect("SQLite store should reopen");
+    let result = WorkspaceIndex::with_store(reopened)
+        .search_reference_candidates(ReferenceCandidateQuery {
+            declaration_uri: "file:///workspace/Target.ets".to_owned(),
+            declaration_position: Position::new(0, 14),
+            limit: 20,
+        })
+        .expect("persisted reference bindings should be searchable");
+
+    assert_eq!(result.bindings.len(), 2);
+    assert_eq!(result.bindings[0].kind, ReferenceBindingKind::ReExport);
+    assert_eq!(result.bindings[0].source_specifier, "./Target");
+    assert_eq!(result.bindings[1].kind, ReferenceBindingKind::Import);
+    assert_eq!(result.bindings[1].source_specifier, "./Barrel");
+}
+
+#[test]
+fn version_four_database_migrates_in_place_before_binding_data_is_refreshed() {
+    let temp = TestDir::new("v4-reference-binding-migration");
+    let database = temp.path().join("symbols-v4.sqlite3");
+    let store =
+        SqliteStore::open(&database, "file:///workspace").expect("SQLite store should open");
+    WorkspaceIndex::with_store(store)
+        .refresh(
+            1,
+            [Document::new(
+                "file:///workspace/Existing.ets",
+                "export class Existing {}\n",
+            )],
+            &[],
+        )
+        .expect("generation one should commit");
+
+    let legacy = Connection::open(&database).expect("database should open directly");
+    legacy
+        .execute_batch("DROP TABLE reference_bindings; PRAGMA user_version = 4;")
+        .expect("test fixture should emulate schema version four");
+    drop(legacy);
+
+    let store = SqliteStore::open(&database, "file:///workspace")
+        .expect("version four database should migrate in place");
+    let mut index = WorkspaceIndex::with_store(store);
+    assert_eq!(
+        index
+            .search("Existing", 20)
+            .expect("existing symbols should survive migration")
+            .items
+            .len(),
+        1
+    );
+    index
+        .refresh(
+            2,
+            [Document::new(
+                "file:///workspace/Consumer.ets",
+                "import { Existing as Alias } from './Existing'\nconst value: Alias = new Alias()\n",
+            )],
+            &[],
+        )
+        .expect("migrated database should accept binding data");
+    let result = index
+        .search_reference_candidates(ReferenceCandidateQuery {
+            declaration_uri: "file:///workspace/Existing.ets".to_owned(),
+            declaration_position: Position::new(0, 14),
+            limit: 20,
+        })
+        .expect("binding data should be queryable after refresh");
+    assert_eq!(result.bindings.len(), 1);
+    assert_eq!(result.bindings[0].local_name, "Alias");
 }
 
 #[test]
@@ -762,7 +859,8 @@ fn version_two_database_migrates_in_place_without_losing_committed_symbols() {
     let legacy = Connection::open(&database).expect("database should open directly");
     legacy
         .execute_batch(
-            "DROP TABLE reference_aliases; \
+            "DROP TABLE reference_bindings; \
+             DROP TABLE reference_aliases; \
              DROP TABLE reference_occurrences; \
              DROP TABLE exports; \
              PRAGMA user_version = 2;",
@@ -804,7 +902,7 @@ fn version_two_database_migrates_in_place_without_losing_committed_symbols() {
     let version: i64 = migrated
         .pragma_query_value(None, "user_version", |row| row.get(0))
         .expect("schema version should be readable");
-    assert_eq!(version, 4);
+    assert_eq!(version, 5);
 }
 
 #[test]

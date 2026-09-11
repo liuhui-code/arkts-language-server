@@ -1,8 +1,8 @@
 use std::fs;
 
 use arkts_index_core::{
-    Document, Position, ReferenceCandidateQuery, SymbolKind, TextRange, WorkspaceIndex,
-    WorkspaceSymbol, parse_document_symbols,
+    Document, Position, ReferenceBindingKind, ReferenceCandidateQuery, SymbolKind, TextRange,
+    WorkspaceIndex, WorkspaceSymbol, parse_document_symbols,
 };
 
 fn fixture(name: &str) -> String {
@@ -16,6 +16,83 @@ fn first_match(index: &WorkspaceIndex, query: &str) -> WorkspaceSymbol {
         .expect("in-memory search should succeed")
         .items
         .remove(0)
+}
+
+#[test]
+fn records_named_import_and_reexport_bindings_with_their_source_specifier() {
+    let imported = parse_document_symbols(&Document::new(
+        "file:///workspace/Consumer.ets",
+        "const inertDelimiter = '{'\n\
+         import type { PhotoAsset as LocalAsset, Album } from './models/Media'\n\
+         import lazy { DeferredPanel } from \"./ui/DeferredPanel\"\n",
+    ))
+    .expect("named imports should parse");
+
+    assert_eq!(imported.bindings.len(), 3);
+    assert_eq!(imported.bindings[0].kind, ReferenceBindingKind::Import);
+    assert_eq!(imported.bindings[0].imported_name, "PhotoAsset");
+    assert_eq!(imported.bindings[0].local_name, "LocalAsset");
+    assert_eq!(imported.bindings[0].source_specifier, "./models/Media");
+    assert_eq!(imported.bindings[1].imported_name, "Album");
+    assert_eq!(imported.bindings[1].local_name, "Album");
+    assert_eq!(imported.bindings[2].imported_name, "DeferredPanel");
+    assert_eq!(imported.bindings[2].source_specifier, "./ui/DeferredPanel");
+
+    let reexported = parse_document_symbols(&Document::new(
+        "file:///workspace/PublicApi.ets",
+        "export { PhotoAsset as PublicPhotoAsset, Album } from './models/Media'\n",
+    ))
+    .expect("named re-exports should parse");
+
+    assert_eq!(reexported.bindings.len(), 2);
+    assert_eq!(reexported.bindings[0].kind, ReferenceBindingKind::ReExport);
+    assert_eq!(reexported.bindings[0].imported_name, "PhotoAsset");
+    assert_eq!(reexported.bindings[0].local_name, "PublicPhotoAsset");
+    assert_eq!(reexported.bindings[0].source_specifier, "./models/Media");
+    assert_eq!(reexported.bindings[1].imported_name, "Album");
+    assert_eq!(reexported.bindings[1].local_name, "Album");
+}
+
+#[test]
+fn reference_candidates_expose_the_binding_chain_for_later_identity_narrowing() {
+    let mut index = WorkspaceIndex::in_memory();
+    index
+        .refresh(
+            1,
+            [
+                Document::new("file:///workspace/Target.ets", "export class Thing {}\n"),
+                Document::new(
+                    "file:///workspace/Barrel.ets",
+                    "export { Thing as PublicThing } from './Target'\n",
+                ),
+                Document::new(
+                    "file:///workspace/Consumer.ets",
+                    "import { PublicThing as Alias } from './Barrel'\nconst value = new Alias()\n",
+                ),
+            ],
+            &[],
+        )
+        .expect("reference generation should commit");
+
+    let result = index
+        .search_reference_candidates(ReferenceCandidateQuery {
+            declaration_uri: "file:///workspace/Target.ets".to_owned(),
+            declaration_position: Position::new(0, 14),
+            limit: 20,
+        })
+        .expect("reference candidates should be searchable");
+
+    assert_eq!(result.bindings.len(), 2);
+    assert_eq!(result.bindings[0].kind, ReferenceBindingKind::ReExport);
+    assert_eq!(result.bindings[0].uri, "file:///workspace/Barrel.ets");
+    assert_eq!(result.bindings[0].imported_name, "Thing");
+    assert_eq!(result.bindings[0].local_name, "PublicThing");
+    assert_eq!(result.bindings[0].source_specifier, "./Target");
+    assert_eq!(result.bindings[1].kind, ReferenceBindingKind::Import);
+    assert_eq!(result.bindings[1].uri, "file:///workspace/Consumer.ets");
+    assert_eq!(result.bindings[1].imported_name, "PublicThing");
+    assert_eq!(result.bindings[1].local_name, "Alias");
+    assert_eq!(result.bindings[1].source_specifier, "./Barrel");
 }
 
 #[test]

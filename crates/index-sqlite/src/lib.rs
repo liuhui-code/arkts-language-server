@@ -10,10 +10,11 @@ use std::{
 
 use arkts_index_core::{
     CommitReceipt, DocumentSymbols, ExportQuery, ExportSearchResult, FullCatalogBatch,
-    MAX_REFERENCE_ALIAS_NAMES, Position, ReferenceCandidateQuery, ReferenceCandidateSearchResult,
-    RefreshBatch, StoreError, StoreErrorKind, StoreMetadata, SymbolKind, SymbolQuery,
-    SymbolSearchResult, SymbolStore, TextRange, WorkspaceExport, WorkspaceSymbol,
-    acronym_for_search, fold_for_search, rank_symbols,
+    MAX_REFERENCE_ALIAS_NAMES, Position, ReferenceBinding, ReferenceBindingKind,
+    ReferenceCandidateQuery, ReferenceCandidateSearchResult, RefreshBatch, StoreError,
+    StoreErrorKind, StoreMetadata, SymbolKind, SymbolQuery, SymbolSearchResult, SymbolStore,
+    TextRange, WorkspaceExport, WorkspaceSymbol, acronym_for_search, fold_for_search, rank_symbols,
+    sort_reference_bindings,
 };
 use rusqlite::types::Value as SqlValue;
 use rusqlite::{
@@ -26,7 +27,8 @@ use sha2::{Digest, Sha256};
 use std::sync::{Arc, Barrier, Mutex};
 
 const APPLICATION_ID: i64 = 0x4152_4B49;
-const SCHEMA_VERSION: i64 = 4;
+const SCHEMA_VERSION: i64 = 5;
+const REFERENCE_SCHEMA_VERSION: i64 = 4;
 const EXPORT_SCHEMA_VERSION: i64 = 3;
 const PREVIOUS_SCHEMA_VERSION: i64 = 2;
 
@@ -151,14 +153,20 @@ impl SqliteStore {
             (APPLICATION_ID, SCHEMA_VERSION) => {
                 verify_workspace_identity(&connection, workspace_identity)?
             }
+            (APPLICATION_ID, REFERENCE_SCHEMA_VERSION) => {
+                verify_workspace_identity(&connection, workspace_identity)?;
+                migrate_schema_v4_to_v5(&mut connection)?;
+            }
             (APPLICATION_ID, EXPORT_SCHEMA_VERSION) => {
                 verify_workspace_identity(&connection, workspace_identity)?;
                 migrate_schema_v3_to_v4(&mut connection)?;
+                migrate_schema_v4_to_v5(&mut connection)?;
             }
             (APPLICATION_ID, PREVIOUS_SCHEMA_VERSION) => {
                 verify_workspace_identity(&connection, workspace_identity)?;
                 migrate_schema_v2_to_v3(&mut connection)?;
                 migrate_schema_v3_to_v4(&mut connection)?;
+                migrate_schema_v4_to_v5(&mut connection)?;
             }
             _ => {
                 return Err(StoreError::new(
@@ -546,6 +554,7 @@ impl SymbolStore for SqliteStore {
         }
         let mut uris =
             read_reference_uris(&transaction, exported_name, query.limit.saturating_add(1))?;
+        let bindings = read_reference_bindings(&transaction, exported_name)?;
         let complete = uris.len() <= query.limit;
         uris.truncate(query.limit);
         transaction.commit().map_err(map_sqlite_error)?;
@@ -555,6 +564,7 @@ impl SymbolStore for SqliteStore {
             declaration_identity: declaration_identity.clone(),
             names,
             uris,
+            bindings,
             served_generation: generation,
         })
     }
@@ -721,6 +731,13 @@ fn insert_reference_documents(
              VALUES (?1, ?2, ?3, ?4)",
         )
         .map_err(map_sqlite_error)?;
+    let mut binding_statement = transaction
+        .prepare_cached(
+            "INSERT INTO reference_bindings(\
+                document_uri, ordinal, imported_name, local_name, source_specifier, kind\
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        )
+        .map_err(map_sqlite_error)?;
     for document in documents {
         for (ordinal, occurrence) in document.occurrences.iter().enumerate() {
             occurrence_statement
@@ -742,6 +759,18 @@ fn insert_reference_documents(
                     sqlite_ordinal(ordinal, "reference alias")?,
                     alias.from_name,
                     alias.to_name,
+                ])
+                .map_err(map_sqlite_error)?;
+        }
+        for (ordinal, binding) in document.bindings.iter().enumerate() {
+            binding_statement
+                .execute(params![
+                    document.uri,
+                    sqlite_ordinal(ordinal, "reference binding")?,
+                    binding.imported_name,
+                    binding.local_name,
+                    binding.source_specifier,
+                    reference_binding_kind_to_i64(binding.kind),
                 ])
                 .map_err(map_sqlite_error)?;
         }
@@ -782,6 +811,21 @@ const REFERENCE_URIS_SQL: &str = "WITH RECURSIVE \
     FROM reference_occurrences INDEXED BY reference_occurrences_name JOIN names USING(name) \
     ORDER BY reference_occurrences.document_uri LIMIT ?2";
 
+const REFERENCE_BINDINGS_SQL: &str = "WITH RECURSIVE \
+    edges(source, target) AS (\
+        SELECT from_name, to_name FROM reference_aliases \
+        UNION SELECT to_name, from_name FROM reference_aliases\
+    ), \
+    names(name) AS (\
+        VALUES (?1) \
+        UNION SELECT edges.target FROM edges JOIN names ON edges.source = names.name\
+    ) \
+    SELECT document_uri, imported_name, local_name, source_specifier, kind \
+    FROM reference_bindings \
+    WHERE imported_name IN (SELECT name FROM names) \
+       OR local_name IN (SELECT name FROM names) \
+    ORDER BY document_uri, source_specifier, imported_name, local_name, kind";
+
 fn read_reference_names(
     connection: &Connection,
     exported_name: &str,
@@ -820,6 +864,37 @@ fn read_reference_uris(
         .map_err(map_sqlite_error)
 }
 
+fn read_reference_bindings(
+    connection: &Connection,
+    exported_name: &str,
+) -> Result<Vec<ReferenceBinding>, StoreError> {
+    let mut statement = connection
+        .prepare(REFERENCE_BINDINGS_SQL)
+        .map_err(map_sqlite_error)?;
+    let rows = statement
+        .query_map([exported_name], |row| {
+            Ok(ReferenceBinding {
+                uri: row.get(0)?,
+                imported_name: row.get(1)?,
+                local_name: row.get(2)?,
+                source_specifier: row.get(3)?,
+                kind: reference_binding_kind_from_i64(row.get(4)?).map_err(|error| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        4,
+                        rusqlite::types::Type::Integer,
+                        Box::new(error),
+                    )
+                })?,
+            })
+        })
+        .map_err(map_sqlite_error)?;
+    let mut bindings = rows
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(map_sqlite_error)?;
+    sort_reference_bindings(&mut bindings);
+    Ok(bindings)
+}
+
 fn unsupported_reference_candidates(generation: u64) -> ReferenceCandidateSearchResult {
     ReferenceCandidateSearchResult {
         supported: false,
@@ -827,6 +902,7 @@ fn unsupported_reference_candidates(generation: u64) -> ReferenceCandidateSearch
         declaration_identity: None,
         names: Vec::new(),
         uris: Vec::new(),
+        bindings: Vec::new(),
         served_generation: generation,
     }
 }
@@ -1093,6 +1169,19 @@ fn initialize_schema(
              );\
              CREATE INDEX reference_aliases_from_name ON reference_aliases(from_name);\
              CREATE INDEX reference_aliases_to_name ON reference_aliases(to_name);\
+             CREATE TABLE reference_bindings(\
+                document_uri TEXT NOT NULL REFERENCES documents(uri) ON DELETE CASCADE,\
+                ordinal INTEGER NOT NULL CHECK(ordinal >= 0),\
+                imported_name TEXT NOT NULL,\
+                local_name TEXT NOT NULL,\
+                source_specifier TEXT NOT NULL,\
+                kind INTEGER NOT NULL CHECK(kind IN (1, 2)),\
+                PRIMARY KEY(document_uri, ordinal)\
+             );\
+             CREATE INDEX reference_bindings_imported_name \
+                ON reference_bindings(imported_name);\
+             CREATE INDEX reference_bindings_local_name \
+                ON reference_bindings(local_name);\
              CREATE VIRTUAL TABLE symbol_name_trigrams USING fts5(\
                 name_folded,\
                 content = 'symbols',\
@@ -1118,6 +1207,33 @@ fn initialize_schema(
         .map_err(map_sqlite_error)?;
     transaction
         .pragma_update(None, "application_id", APPLICATION_ID)
+        .map_err(map_sqlite_error)?;
+    transaction
+        .pragma_update(None, "user_version", SCHEMA_VERSION)
+        .map_err(map_sqlite_error)?;
+    transaction.commit().map_err(map_sqlite_error)
+}
+
+fn migrate_schema_v4_to_v5(connection: &mut Connection) -> Result<(), StoreError> {
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(map_sqlite_error)?;
+    transaction
+        .execute_batch(
+            "CREATE TABLE reference_bindings(\
+                document_uri TEXT NOT NULL REFERENCES documents(uri) ON DELETE CASCADE,\
+                ordinal INTEGER NOT NULL CHECK(ordinal >= 0),\
+                imported_name TEXT NOT NULL,\
+                local_name TEXT NOT NULL,\
+                source_specifier TEXT NOT NULL,\
+                kind INTEGER NOT NULL CHECK(kind IN (1, 2)),\
+                PRIMARY KEY(document_uri, ordinal)\
+             );\
+             CREATE INDEX reference_bindings_imported_name \
+                ON reference_bindings(imported_name);\
+             CREATE INDEX reference_bindings_local_name \
+                ON reference_bindings(local_name);",
+        )
         .map_err(map_sqlite_error)?;
     transaction
         .pragma_update(None, "user_version", SCHEMA_VERSION)
@@ -1297,6 +1413,24 @@ fn kind_from_i64(value: i64) -> Result<SymbolKind, StoreError> {
         _ => Err(StoreError::new(
             StoreErrorKind::InvalidData,
             format!("unknown persisted symbol kind {value}"),
+        )),
+    }
+}
+
+fn reference_binding_kind_to_i64(kind: ReferenceBindingKind) -> i64 {
+    match kind {
+        ReferenceBindingKind::Import => 1,
+        ReferenceBindingKind::ReExport => 2,
+    }
+}
+
+fn reference_binding_kind_from_i64(value: i64) -> Result<ReferenceBindingKind, StoreError> {
+    match value {
+        1 => Ok(ReferenceBindingKind::Import),
+        2 => Ok(ReferenceBindingKind::ReExport),
+        _ => Err(StoreError::new(
+            StoreErrorKind::InvalidData,
+            format!("unknown persisted reference binding kind {value}"),
         )),
     }
 }

@@ -358,3 +358,13 @@ verifier。请求中位 5.609 秒，峰值中位 529,199,104 bytes；相对该�
 但同工程常见名 `PhotoAsset` 仍保守召回 1,154 个文件、需要 11 批，证明 name-only index 对高
 碰撞符号尚未解决；下一 slice 应以真实 RED 验证 module/declaration identity narrowing，未知或
 歧义 identity 必须继续保守扩张。默认仍为 `legacy`。
+
+2026-09-11 binding-source 基础切片：索引现已把具名 `import`、`import type`、ArkTS
+`import lazy` 与具名 re-export 解析为带 `sourceSpecifier` 的方向性 binding，而不再只能看到
+全局无来源的 `A as B` 名称边。SQLite schema v5 在同一数据库中持久化
+`importedName/localName/sourceSpecifier/kind/documentUri`，v4 数据库原地迁移；迁移后的旧 generation
+没有伪造 binding，需正常 refresh/catalog 才会补齐。`references/candidates` 通过 sidecar 和
+TypeScript adapter 暴露确定顺序的 binding chain。此切片**没有**据此排除任何 URI，既有 name-only
+候选及 compiler proof 完全不变；它只关闭 identity narrowing 所需的首个数据缺口。下一 RED 必须
+证明模块说明符能唯一解析到目标 declaration，且 alias/re-export 链完整，才允许减少 `PhotoAsset`
+候选。无法解析、非相对模块、缺边或 generation 不完整时继续使用当前保守集合。

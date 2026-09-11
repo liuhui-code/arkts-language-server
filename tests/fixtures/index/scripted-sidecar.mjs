@@ -168,6 +168,22 @@ input.on("line", (line) => {
           pathToFileURL(path.join(workspaceRoot, "Consumer.ets")).href,
           pathToFileURL(path.join(workspaceRoot, "Target.ets")).href,
         ],
+        bindings: [
+          {
+            kind: "reexport",
+            uri: pathToFileURL(path.join(workspaceRoot, "Barrel.ets")).href,
+            importedName: "Thing",
+            localName: "PublicThing",
+            sourceSpecifier: "./Target",
+          },
+          {
+            kind: "import",
+            uri: pathToFileURL(path.join(workspaceRoot, "Consumer.ets")).href,
+            importedName: "PublicThing",
+            localName: "Alias",
+            sourceSpecifier: "./Barrel",
+          },
+        ],
         servedGeneration: committedGeneration,
         completeness: state === "ready" ? "ready" : "stale",
       })
