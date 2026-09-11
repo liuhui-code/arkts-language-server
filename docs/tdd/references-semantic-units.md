@@ -346,3 +346,30 @@ The companion `PhotoAsset` collision run is intentionally retained as a limit ca
 recognition removed `candidate-ineligible`, but conservative name matching found 1,154 files and
 needed 11 batches. It stayed exact and is not reported as a performance success. Declaration/module
 identity remains a later R2 requirement.
+
+## Directional reference-binding slice (2026-09-11)
+
+Parent revision: `fe2768a0549264bc43510a369174d2cbcf9334b1`.
+
+The first RED was:
+
+```text
+cargo test -p arkts-index-core records_named_import_and_reexport_bindings_with_their_source_specifier
+```
+
+It failed because `DocumentSymbols` had neither a binding collection nor a binding kind. The minimal
+parser change preserves quoted module specifiers and records named `import`, `import type`, ArkTS
+`import lazy`, and named re-export entries as directional `importedName -> localName` bindings.
+Comments, template literals, escaped specifiers, default imports, and namespace imports are not
+promoted into proven bindings by this slice.
+
+A second public-store RED required `references/candidates` to expose the exact two-edge
+`Target -> Barrel -> Consumer` chain. SQLite schema v5 persists those edges in the existing database;
+tests cover reopen and direct v4-to-v5 migration. The sidecar NDJSON contract and TypeScript index
+adapter require the same camel-case payload and rebase every binding URI through the owning
+workspace identity.
+
+All existing candidate URIs remain conservative. Binding data is not yet an exclusion authority, so
+this slice cannot introduce a reference false negative and makes no memory-performance claim. The
+next RED must prove unique module resolution plus complete alias/re-export reachability before the
+planner may narrow a high-collision name.

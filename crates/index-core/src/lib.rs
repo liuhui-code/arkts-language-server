@@ -95,6 +95,21 @@ pub struct ReferenceAlias {
     pub uri: String,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ReferenceBindingKind {
+    Import,
+    ReExport,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReferenceBinding {
+    pub imported_name: String,
+    pub local_name: String,
+    pub source_specifier: String,
+    pub kind: ReferenceBindingKind,
+    pub uri: String,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct RefreshReport {
     pub indexed_documents: usize,
@@ -163,6 +178,7 @@ pub struct DocumentSymbols {
     pub exports: Vec<WorkspaceExport>,
     pub occurrences: Vec<ReferenceOccurrence>,
     pub aliases: Vec<ReferenceAlias>,
+    pub bindings: Vec<ReferenceBinding>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -216,6 +232,7 @@ pub struct ReferenceCandidateSearchResult {
     pub declaration_identity: Option<String>,
     pub names: Vec<String>,
     pub uris: Vec<String>,
+    pub bindings: Vec<ReferenceBinding>,
     pub served_generation: u64,
 }
 
@@ -444,12 +461,23 @@ impl SymbolStore for MemoryStore {
             .collect();
         let complete = uris.len() <= query.limit;
         let uris = uris.iter().take(query.limit).cloned().collect();
+        let mut bindings: Vec<_> = self
+            .documents
+            .values()
+            .flat_map(|document| document.bindings.iter())
+            .filter(|binding| {
+                names.contains(&binding.imported_name) || names.contains(&binding.local_name)
+            })
+            .cloned()
+            .collect();
+        sort_reference_bindings(&mut bindings);
         Ok(ReferenceCandidateSearchResult {
             supported: true,
             complete,
             declaration_identity: declaration.declaration_identity.clone(),
             names: names.into_iter().collect(),
             uris,
+            bindings,
             served_generation: self.committed_generation,
         })
     }
@@ -462,8 +490,20 @@ fn unsupported_reference_candidates(generation: u64) -> ReferenceCandidateSearch
         declaration_identity: None,
         names: Vec::new(),
         uris: Vec::new(),
+        bindings: Vec::new(),
         served_generation: generation,
     }
+}
+
+pub fn sort_reference_bindings(bindings: &mut [ReferenceBinding]) {
+    bindings.sort_by(|left, right| {
+        left.uri
+            .cmp(&right.uri)
+            .then_with(|| left.source_specifier.cmp(&right.source_specifier))
+            .then_with(|| left.imported_name.cmp(&right.imported_name))
+            .then_with(|| left.local_name.cmp(&right.local_name))
+            .then_with(|| left.kind.cmp(&right.kind))
+    });
 }
 
 pub fn fold_for_search(value: &str) -> String {
@@ -519,6 +559,15 @@ fn ensure_symbol_uris(document: &DocumentSymbols) -> Result<(), StoreError> {
         .iter()
         .all(|symbol| symbol.uri == document.uri)
         && document.exports.iter().all(|item| item.uri == document.uri)
+        && document
+            .occurrences
+            .iter()
+            .all(|item| item.uri == document.uri)
+        && document.aliases.iter().all(|item| item.uri == document.uri)
+        && document
+            .bindings
+            .iter()
+            .all(|item| item.uri == document.uri)
     {
         Ok(())
     } else {
@@ -671,6 +720,7 @@ impl WorkspaceIndex {
 enum TokenKind {
     Identifier,
     Punctuation,
+    StringLiteral,
 }
 
 #[derive(Clone, Debug)]
@@ -716,12 +766,15 @@ impl<'a> LineIndex<'a> {
 }
 
 pub fn parse_document_symbols(document: &Document) -> Result<DocumentSymbols, DocumentParseError> {
-    parse_symbols(document).map(|(symbols, exports, occurrences, aliases)| DocumentSymbols {
-        uri: document.uri.clone(),
-        symbols,
-        exports,
-        occurrences,
-        aliases,
+    parse_symbols(document).map(|(symbols, exports, occurrences, aliases, bindings)| {
+        DocumentSymbols {
+            uri: document.uri.clone(),
+            symbols,
+            exports,
+            occurrences,
+            aliases,
+            bindings,
+        }
     })
 }
 
@@ -730,6 +783,7 @@ type ParsedSymbols = (
     Vec<WorkspaceExport>,
     Vec<ReferenceOccurrence>,
     Vec<ReferenceAlias>,
+    Vec<ReferenceBinding>,
 );
 
 fn parse_symbols(document: &Document) -> Result<ParsedSymbols, DocumentParseError> {
@@ -762,6 +816,7 @@ fn parse_symbols(document: &Document) -> Result<ParsedSymbols, DocumentParseErro
             uri: document.uri.clone(),
         })
         .collect();
+    let bindings = reference_bindings(document, &tokens);
     let mut containers: Vec<Container> = Vec::new();
     let mut pending_container: Option<String> = None;
     let mut brace_depth = 0usize;
@@ -769,6 +824,9 @@ fn parse_symbols(document: &Document) -> Result<ParsedSymbols, DocumentParseErro
     let mut bracket_depth = 0usize;
 
     for (index, token) in tokens.iter().enumerate() {
+        if token.kind == TokenKind::StringLiteral {
+            continue;
+        }
         match token.text {
             "class" | "struct" | "enum" | "interface" => {
                 let Some(name) = tokens
@@ -931,10 +989,114 @@ fn parse_symbols(document: &Document) -> Result<ParsedSymbols, DocumentParseErro
     }
 
     if brace_depth == 0 && parenthesis_depth == 0 && bracket_depth == 0 {
-        Ok((symbols, exports, occurrences, aliases))
+        Ok((symbols, exports, occurrences, aliases, bindings))
     } else {
         Err(DocumentParseError)
     }
+}
+
+fn reference_bindings(document: &Document, tokens: &[Token<'_>]) -> Vec<ReferenceBinding> {
+    let mut bindings = Vec::new();
+    let mut brace_depth = 0usize;
+
+    for (index, token) in tokens.iter().enumerate() {
+        match token.text {
+            "{" => brace_depth += 1,
+            "}" => brace_depth = brace_depth.saturating_sub(1),
+            "import" if brace_depth == 0 => bindings.extend(named_source_bindings(
+                document,
+                tokens,
+                index,
+                ReferenceBindingKind::Import,
+            )),
+            "export" if brace_depth == 0 => bindings.extend(named_source_bindings(
+                document,
+                tokens,
+                index,
+                ReferenceBindingKind::ReExport,
+            )),
+            _ => {}
+        }
+    }
+
+    bindings
+}
+
+fn named_source_bindings(
+    document: &Document,
+    tokens: &[Token<'_>],
+    statement_index: usize,
+    kind: ReferenceBindingKind,
+) -> Vec<ReferenceBinding> {
+    let mut cursor = statement_index + 1;
+    while tokens
+        .get(cursor)
+        .is_some_and(|token| matches!(token.text, "type" | "lazy"))
+    {
+        cursor += 1;
+    }
+    if tokens.get(cursor).map(|token| token.text) != Some("{") {
+        return Vec::new();
+    }
+    let open = cursor;
+    let Some(close) = tokens[open + 1..]
+        .iter()
+        .position(|token| token.text == "}")
+        .map(|offset| open + 1 + offset)
+    else {
+        return Vec::new();
+    };
+    let Some(source) = tokens.get(close + 2).filter(|source| {
+        tokens.get(close + 1).map(|token| token.text) == Some("from")
+            && source.kind == TokenKind::StringLiteral
+            && !source.text.contains('\\')
+    }) else {
+        return Vec::new();
+    };
+
+    let mut parsed = Vec::new();
+    cursor = open + 1;
+    while cursor < close {
+        if tokens[cursor].text == "," {
+            cursor += 1;
+            continue;
+        }
+        if tokens[cursor].text == "type" {
+            cursor += 1;
+        }
+        let Some(imported) = tokens
+            .get(cursor)
+            .filter(|token| token.kind == TokenKind::Identifier)
+        else {
+            return Vec::new();
+        };
+        cursor += 1;
+        let local = if tokens.get(cursor).map(|token| token.text) == Some("as") {
+            cursor += 1;
+            let Some(local) = tokens
+                .get(cursor)
+                .filter(|token| token.kind == TokenKind::Identifier)
+            else {
+                return Vec::new();
+            };
+            cursor += 1;
+            local
+        } else {
+            imported
+        };
+        if cursor < close && tokens[cursor].text != "," {
+            return Vec::new();
+        }
+        parsed.push(ReferenceBinding {
+            imported_name: imported.text.to_owned(),
+            local_name: local.text.to_owned(),
+            source_specifier: source.text.to_owned(),
+            kind,
+            uri: document.uri.clone(),
+        });
+    }
+
+    parsed
 }
 
 fn is_exported_declaration(tokens: &[Token<'_>], index: usize, brace_depth: usize) -> bool {
@@ -1081,7 +1243,16 @@ fn tokenize(source: &str) -> Result<Vec<Token<'_>>, DocumentParseError> {
             continue;
         }
         if matches!(character, '\'' | '"' | '`') {
-            offset = skip_quoted(source, offset, character).ok_or(DocumentParseError)?;
+            let end = skip_quoted(source, offset, character).ok_or(DocumentParseError)?;
+            if character != '`' {
+                tokens.push(Token {
+                    text: &source[offset + character.len_utf8()..end - character.len_utf8()],
+                    kind: TokenKind::StringLiteral,
+                    start: offset + character.len_utf8(),
+                    end: end - character.len_utf8(),
+                });
+            }
+            offset = end;
             regex_allowed = false;
             continue;
         }

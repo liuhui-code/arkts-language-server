@@ -13,8 +13,8 @@ use std::{
 };
 
 use arkts_index_core::{
-    Document, IndexState, Position, ReferenceCandidateQuery, StoreError, StoreErrorKind,
-    SymbolKind, WorkspaceIndex,
+    Document, IndexState, Position, ReferenceBindingKind, ReferenceCandidateQuery, StoreError,
+    StoreErrorKind, SymbolKind, WorkspaceIndex,
 };
 use arkts_index_sqlite::{SqliteStore, workspace_cache_location};
 use catalog::{CatalogControl, CatalogProgress, CatalogUpdate, spawn_catalog};
@@ -391,6 +391,19 @@ impl Runtime {
                         return Err(protocol_store_error(error));
                     }
                 };
+                let bindings: Vec<_> = result
+                    .bindings
+                    .into_iter()
+                    .map(|binding| {
+                        json!({
+                            "kind": reference_binding_kind_name(binding.kind),
+                            "uri": binding.uri,
+                            "importedName": binding.imported_name,
+                            "localName": binding.local_name,
+                            "sourceSpecifier": binding.source_specifier,
+                        })
+                    })
+                    .collect();
                 Ok((
                     json!({
                         "supported": result.supported,
@@ -398,6 +411,7 @@ impl Runtime {
                         "declarationIdentity": result.declaration_identity,
                         "names": result.names,
                         "uris": result.uris,
+                        "bindings": bindings,
                         "servedGeneration": result.served_generation,
                         "completeness": self.completeness,
                     }),
@@ -802,5 +816,12 @@ fn symbol_kind_name(kind: SymbolKind) -> &'static str {
         SymbolKind::TypeAlias => "type",
         SymbolKind::Function => "function",
         SymbolKind::Method => "method",
+    }
+}
+
+fn reference_binding_kind_name(kind: ReferenceBindingKind) -> &'static str {
+    match kind {
+        ReferenceBindingKind::Import => "import",
+        ReferenceBindingKind::ReExport => "reexport",
     }
 }

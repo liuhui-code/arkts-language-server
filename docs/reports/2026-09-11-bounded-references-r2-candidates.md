@@ -12,10 +12,11 @@ was added.
 
 ## Implemented slice
 
-- The existing Rust parser records identifier occurrences and conservative `A as B` alias edges.
-- SQLite schema v4 stores occurrences, aliases, declaration identity and whether an exported
-  declaration is safe for this first narrowing slice. v2 databases migrate through v3 to v4;
-  migrated rows default to unsupported until a fresh generation is committed.
+- The Rust parser records identifier occurrences, conservative `A as B` alias edges, and directional
+  named import/re-export bindings with their source specifiers.
+- SQLite schema v5 stores occurrences, aliases, bindings, declaration identity and whether an exported
+  declaration is safe for narrowing. v2 databases migrate through v3/v4 to v5; migrated rows default
+  to unsupported or have no binding data until a fresh generation is committed.
 - `references/candidates` accepts a declaration URI plus a UTF-16 position inside its identifier.
   It returns a deterministic alias-closure name set and candidate URI set.
 - Named top-level exported class/struct/function declarations are supported. Default exports,
@@ -522,3 +523,25 @@ Raw reports:
 /private/tmp/arkts-photos-album-change-data-indexed-b.json
 /private/tmp/arkts-photos-album-change-data-indexed-c.json
 ```
+
+### Directional import/re-export binding data
+
+Parent revision: `fe2768a0549264bc43510a369174d2cbcf9334b1`.
+
+The next public RED made `parse_document_symbols` return directional bindings for named imports and
+re-exports. The previous index retained only source-free `A as B` pairs, so it could not distinguish
+`PhotoAsset` imported from the target declaration from the same spelling imported from another
+module. The new record contains document URI, imported name, local/exported name, source specifier,
+and `import`/`reexport` kind. Parser coverage includes `import type`, ArkTS `import lazy`, unaliased
+names, and aliased names; escaped module specifiers are left unproven.
+
+SQLite schema v5 stores these records in the existing workspace database and migrates v4 in place.
+The memory store, reopened SQLite store, Rust sidecar NDJSON response, and TypeScript adapter all
+expose the same deterministic `Target -> Barrel -> Consumer` binding chain. Focused tests also prove
+the v4 migration preserves existing symbols and accepts binding rows after the next refresh.
+
+This is deliberately a data-contract slice, not a narrowing claim. Candidate URI calculation still
+uses the previous conservative name closure, and the product default remains `legacy`. No new real
+RSS number is attributed to this change. The next identity slice must resolve a binding's source
+specifier to one indexed declaration and prove chain completeness before excluding colliding files;
+unknown, ambiguous, stale, or non-resolvable bindings continue to fail conservative.

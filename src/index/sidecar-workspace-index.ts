@@ -871,6 +871,9 @@ function mapReferenceCandidateResult(
     || result.names.some(name => typeof name !== "string")
     || !Array.isArray(result.uris)
     || result.uris.some(uri => typeof uri !== "string")
+    || (result.bindings !== undefined
+      && (!Array.isArray(result.bindings)
+        || result.bindings.some(binding => !isReferenceBinding(binding))))
     || !isNonNegativeInteger(result.servedGeneration)
     || !isCompleteness(result.completeness)
     || (result.declarationIdentity !== null
@@ -886,9 +889,32 @@ function mapReferenceCandidateResult(
       : {}),
     names: result.names as string[],
     uris: (result.uris as string[]).map(mapUri),
+    ...(Array.isArray(result.bindings)
+      ? {
+          bindings: result.bindings.map((binding) => {
+            const item = binding as Record<string, unknown>
+            return {
+              kind: item.kind as "import" | "reexport",
+              uri: mapUri(item.uri as string),
+              importedName: item.importedName as string,
+              localName: item.localName as string,
+              sourceSpecifier: item.sourceSpecifier as string,
+            }
+          }),
+        }
+      : {}),
     servedGeneration: result.servedGeneration,
     completeness: result.completeness,
   }
+}
+
+function isReferenceBinding(value: unknown): boolean {
+  const binding = asRecord(value)
+  return (binding.kind === "import" || binding.kind === "reexport")
+    && typeof binding.uri === "string"
+    && typeof binding.importedName === "string"
+    && typeof binding.localName === "string"
+    && typeof binding.sourceSpecifier === "string"
 }
 
 function unsupportedReferenceCandidates(

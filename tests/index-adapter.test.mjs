@@ -337,6 +337,22 @@ test("maps conservative reference candidates and preserves their generation and 
       pathToFileURL(path.join(workspace, "Consumer.ets")).href,
       declarationUri,
     ],
+    bindings: [
+      {
+        kind: "reexport",
+        uri: pathToFileURL(path.join(workspace, "Barrel.ets")).href,
+        importedName: "Thing",
+        localName: "PublicThing",
+        sourceSpecifier: "./Target",
+      },
+      {
+        kind: "import",
+        uri: pathToFileURL(path.join(workspace, "Consumer.ets")).href,
+        importedName: "PublicThing",
+        localName: "Alias",
+        sourceSpecifier: "./Barrel",
+      },
+    ],
     servedGeneration: 7,
     completeness: "ready",
   })

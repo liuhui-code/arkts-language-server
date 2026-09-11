@@ -345,6 +345,25 @@ fn sidecar_returns_conservative_reference_candidates_across_alias_reexports() {
             "file:///workspace/Target.ets"
         ])
     );
+    assert_eq!(
+        candidates["result"]["bindings"],
+        json!([
+            {
+                "kind": "reexport",
+                "uri": "file:///workspace/Barrel.ets",
+                "importedName": "Thing",
+                "localName": "PublicThing",
+                "sourceSpecifier": "./Target"
+            },
+            {
+                "kind": "import",
+                "uri": "file:///workspace/Consumer.ets",
+                "importedName": "PublicThing",
+                "localName": "Alias",
+                "sourceSpecifier": "./Barrel"
+            }
+        ])
+    );
 
     let const_function = process.request(json!({
         "protocol": 1,

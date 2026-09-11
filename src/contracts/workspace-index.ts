@@ -63,8 +63,17 @@ export interface WorkspaceReferenceCandidateResult {
   declarationIdentity?: string
   names: string[]
   uris: DocumentUri[]
+  bindings?: WorkspaceReferenceBinding[]
   servedGeneration: number
   completeness: WorkspaceIndexCompleteness
+}
+
+export interface WorkspaceReferenceBinding {
+  kind: "import" | "reexport"
+  uri: DocumentUri
+  importedName: string
+  localName: string
+  sourceSpecifier: string
 }
 
 export interface WorkspaceReferenceIndexPort {
