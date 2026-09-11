@@ -83,6 +83,7 @@ test("parses Linux proc stat fields when the process name contains parentheses",
     pid: 912,
     parentPid: 410,
     command: "arkts worker (io)",
+    state: "S",
     totalCpuTicks: 150,
     startTimeTicks: 5_000,
     rssPages: 32,
@@ -294,6 +295,38 @@ test("samples an injected Linux proc server and sidecar tree", async () => {
   ])
 })
 
+test("treats a Linux zombie without VmRSS as an exited process", async () => {
+  let statReads = 0
+  const probe = createProcessResourceProbe({
+    platform: "linux",
+    procRoot: "/virtual-proc",
+    clockTicksPerSecond: 100,
+    now: () => 4_000,
+    readFile: async (filePath) => {
+      if (filePath === "/virtual-proc/410/stat") {
+        statReads += 1
+        return linuxStat({
+          pid: 410,
+          parentPid: 1,
+          command: "node",
+          state: statReads === 1 ? "S" : "Z",
+          userTicks: 1,
+          systemTicks: 1,
+          startTimeTicks: 5_000,
+        })
+      }
+      if (filePath === "/virtual-proc/uptime") return "100.00 50.00\n"
+      throw Object.assign(new Error("missing fixture"), { code: "ENOENT" })
+    },
+  })
+
+  const identity = await probe.identify(410)
+  await assert.rejects(() => probe.sample(identity), {
+    code: "EPROCESS_NOT_FOUND",
+    message: "process 410 has exited",
+  })
+})
+
 test("rejects a Linux proc file after the injected read exceeds its byte limit", async () => {
   const probe = createProcessResourceProbe({
     platform: "linux",
@@ -380,6 +413,7 @@ function linuxStat({
   pid,
   parentPid,
   command,
+  state = "S",
   userTicks,
   systemTicks,
   startTimeTicks,
@@ -389,5 +423,5 @@ function linuxStat({
   fields[10] = String(userTicks)
   fields[11] = String(systemTicks)
   fields[18] = String(startTimeTicks)
-  return `${pid} (${command}) S ${fields.join(" ")}`
+  return `${pid} (${command}) ${state} ${fields.join(" ")}`
 }

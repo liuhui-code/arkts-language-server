@@ -76,8 +76,18 @@ immutable output field before the focused command returned GREEN.
 
 ```text
 node --test tests/process-resource-probe.test.mjs
-15 passed, 0 failed, 0 skipped, 0 todo
+16 passed, 0 failed, 0 skipped, 0 todo
 ```
+
+## Linux exit-race regression (2026-09-11)
+
+PR #26's canonical Linux release gate exposed a process-exit race in the declaration-façade RSS
+runner. `/proc/<pid>/stat` remained readable for a zombie while `/proc/<pid>/status` no longer
+contained `VmRSS`; the probe reported `EPROBE_PARSE` instead of letting the runner finish its
+already collected curve. A focused injected test first reproduced this as an unexpected missing
+fixture read. The stat parser now retains the kernel process state, and sampling classifies `Z` or
+`X` as `EPROCESS_NOT_FOUND` before attempting RSS collection. The runner already treats that code
+as the normal end of a phase. Malformed status for a live process remains a hard parse error.
 
 ## Honest remaining gaps
 
