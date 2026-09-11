@@ -55,6 +55,7 @@ interface SemanticCapabilityDependencies {
   connection: Connection
   semantic: SemanticEnginePort
   requests: SemanticRequestRunner
+  suspendDiagnostics?: () => Promise<() => void>
 }
 
 interface SemanticCapabilityRegistration {
@@ -69,6 +70,7 @@ export function registerSemanticCapabilities({
   connection,
   semantic,
   requests,
+  suspendDiagnostics = async () => () => {},
 }: SemanticCapabilityDependencies): SemanticCapabilityRegistration {
   let hierarchicalDocumentSymbols = false
   let documentSymbolKindValueSet: readonly SymbolKind[] | undefined
@@ -315,32 +317,37 @@ export function registerSemanticCapabilities({
   })
 
   connection.onReferences(async (params, token) => {
-    const outcome = await requests.run<SemanticReferencesOutcome | { status: "stale" }>({
-      method: "textDocument/references",
-      documentUri: params.textDocument.uri,
-      token,
-      fallback: { status: "stale" },
-      scope: "workspace",
-      execute: (document, signal) => semantic.references({
-        document,
-        position: params.position,
-        includeDeclaration: params.context.includeDeclaration,
-        signal,
-      }),
-    })
-    if (outcome.status === "stale") {
-      throw new ResponseError(
-        LSPErrorCodes.ContentModified,
-        "References request is stale",
-      )
+    const resumeDiagnostics = await suspendDiagnostics()
+    try {
+      const outcome = await requests.run<SemanticReferencesOutcome | { status: "stale" }>({
+        method: "textDocument/references",
+        documentUri: params.textDocument.uri,
+        token,
+        fallback: { status: "stale" },
+        scope: "workspace",
+        execute: (document, signal) => semantic.references({
+          document,
+          position: params.position,
+          includeDeclaration: params.context.includeDeclaration,
+          signal,
+        }),
+      })
+      if (outcome.status === "stale") {
+        throw new ResponseError(
+          LSPErrorCodes.ContentModified,
+          "References request is stale",
+        )
+      }
+      if (outcome.status === "incomplete") {
+        throw new ResponseError(
+          LSPErrorCodes.RequestFailed,
+          "References require a complete workspace snapshot",
+        )
+      }
+      return outcome.references
+    } finally {
+      resumeDiagnostics()
     }
-    if (outcome.status === "incomplete") {
-      throw new ResponseError(
-        LSPErrorCodes.RequestFailed,
-        "References require a complete workspace snapshot",
-      )
-    }
-    return outcome.references
   })
 
   connection.onPrepareRename(async (params, token) => {
