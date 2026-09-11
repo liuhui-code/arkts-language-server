@@ -722,17 +722,14 @@ pub fn parse_document_symbols(document: &Document) -> Result<DocumentSymbols, Do
     })
 }
 
-fn parse_symbols(
-    document: &Document,
-) -> Result<
-    (
-        Vec<WorkspaceSymbol>,
-        Vec<WorkspaceExport>,
-        Vec<ReferenceOccurrence>,
-        Vec<ReferenceAlias>,
-    ),
-    DocumentParseError,
-> {
+type ParsedSymbols = (
+    Vec<WorkspaceSymbol>,
+    Vec<WorkspaceExport>,
+    Vec<ReferenceOccurrence>,
+    Vec<ReferenceAlias>,
+);
+
+fn parse_symbols(document: &Document) -> Result<ParsedSymbols, DocumentParseError> {
     let tokens = tokenize(&document.text)?;
     let line_index = LineIndex::new(&document.text);
     let mut symbols = Vec::new();
