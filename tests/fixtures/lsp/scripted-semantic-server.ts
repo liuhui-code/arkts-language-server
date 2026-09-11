@@ -42,6 +42,7 @@ import { DefaultWorkspaceSymbolService } from "../../../src/workspace/default-wo
 
 class ScriptedSemanticEngine implements SemanticEnginePort {
   private completionCount = 0
+  private readonly diagnosticCounts = new Map<string, number>()
   private readonly resistantCallHierarchyResolvers = new Map<string, Set<() => void>>()
   private readonly resistantCodeActionResolvers = new Map<string, () => void>()
   private readonly resistantRenameResolvers = new Map<string, () => void>()
@@ -313,7 +314,31 @@ class ScriptedSemanticEngine implements SemanticEnginePort {
     })
   }
 
-  async diagnose(query: { document: DocumentSnapshot }) {
+  async diagnose(query: SemanticDocumentQuery) {
+    if (query.document.text.includes("DIAGNOSTICS_ABORT_THEN_RETURN")) {
+      const count = (this.diagnosticCounts.get(query.document.uri) ?? 0) + 1
+      this.diagnosticCounts.set(query.document.uri, count)
+      if (count === 1) {
+        console.log(`scripted diagnostics entered ${query.document.uri}`)
+        if (query.document.text.includes("DIAGNOSTICS_ABORT_THEN_RETURN_DELAYED")) {
+          try {
+            return await waitForAbortValue(query.signal)
+          } catch (error) {
+            await new Promise((resolve) => setTimeout(resolve, 150))
+            console.log(`scripted diagnostics settled ${query.document.uri}`)
+            throw error
+          }
+        }
+        return waitForAbortValue(query.signal)
+      }
+      return scriptedSemanticResult(query, [{
+        range: zeroRange(),
+        severity: "error" as const,
+        code: 9001,
+        message: "Scripted deferred diagnostic",
+        source: "arkts" as const,
+      }])
+    }
     return { documentVersion: query.document.version, value: [] }
   }
 

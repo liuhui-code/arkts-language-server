@@ -282,14 +282,51 @@ the admitted source text. The next bounded experiment is consequently an SDK amb
 spike, with unchanged full SDK roots as the default. It may proceed only if references and
 diagnostics remain exact; otherwise it is rejected like anchor reuse.
 
+That SDK ambient-root spike has now been run and rejected for production. A reference-verifier-only
+`common.d.ts` profile left the interactive/diagnostic engine on the full SDK and passed the public
+LSP differential. In Photos it returned the same five references in three fresh processes and the
+normal diagnostic publication remained at 119 items. The verifier fell from 632 SDK files and
+18,915,581 SDK text code units to 502 files and 13,876,398 code units; prepared heap fell from about
+269 MiB to about 201 MiB.
+
+Product peaks were 559,480,832, 789,028,864, and 777,347,072 bytes, with a 777,347,072-byte median.
+That is only about 7.7% below the prior 842,514,432-byte indexed run and remains about 6.7% above the
+728,735,744-byte legacy run. Median request time was 8.039 seconds. The 30% peak gate therefore
+failed and the profile code was removed. This A/B shows that shrinking the transient verifier works
+inside its own isolate, but the full Program already created by normal diagnostics leaves a product
+RSS floor that dominates the final peak.
+
+The lifecycle slice now prevents the normal diagnostic context and explicit reference verification
+from contributing retained heavy heaps to the same peak. At the public LSP boundary, an explicit
+references request suspends diagnostics, cancels and awaits any in-flight diagnostic task, and then
+requeues diagnostics for the current document version after references terminates. Public child-process
+tests cover both a cancellation-responsive in-flight diagnostic and a document edit during references;
+the latter publishes only the latest diagnostic version.
+
+On the same fixed Photos case, three independent processes returned the exact five-item legacy
+Location set and then published 119 diagnostics for document version 1. Peaks were 562,184,192,
+571,596,800, and 578,387,968 bytes. The 571,596,800-byte median is 32.16% below the prior
+842,514,432-byte indexed run and passes the 30% prototype gate. Request times were 10.720, 11.537,
+and 11.253 seconds; diagnostics arrived 2.536, 2.601, and 2.616 seconds after the references response.
+This validates lifecycle overlap as the product-peak amplifier without weakening the SDK profile or
+diagnostic semantics.
+
+The scheduling change is accepted, but `indexed-batched` remains opt-in. Its median request time is
+about 2.12 times the prior single legacy run, slightly above the 2x production target. The next R2
+slice is latency/cross-symbol validation, not more memory work: reduce anchor/index planning time and
+prove exactness on additional symbol categories before considering a default-strategy cutover.
+
 Dependency-closure admission is implemented and its public fail-conservative contract is green.
-It produces a real reduction on Gramony, but it has not passed the 30% real-project peak target and
-cannot activate on RemoteDesk or Settings without inventing project boundaries. Photos 6.1 has
-suitable real scale and project structure, but the locked backend does not provide a complete
-`import lazy` references oracle. R2 therefore remains experimental and the default remains
-`legacy`. FilePicker supplies an exact ordinary-import oracle but shows a stable 56.7% median peak
-regression when only 24 project files are removed. The Photos anchor-reuse experiment also shows
-that avoiding a second construction of the same Program improves time but not peak memory. The next
-evidence step must isolate which of the 78 project files, 632 SDK declarations, and checker work
-dominate the retained 710-file Program before selecting another production change; this report does
-not invent an unsafe file threshold or make the index semantic truth.
+The Photos ordinary-import workload now passes the prototype memory gate once automatic diagnostics
+and the transient verifier are serialized. This does not repair the locked backend's incomplete
+`import lazy` oracle, make RemoteDesk/Settings configuration complete, or make the Rust index semantic
+truth. R2 therefore remains experimental and the default remains `legacy` until latency and broader
+symbol-category exactness gates pass.
+
+Raw accepted lifecycle reports:
+
+```text
+/private/tmp/arkts-photos-persist-utils-indexed-diagnostic-gate-a-rss.json
+/private/tmp/arkts-photos-persist-utils-indexed-diagnostic-gate-b-rss.json
+/private/tmp/arkts-photos-persist-utils-indexed-diagnostic-gate-c-rss.json
+```

@@ -173,10 +173,17 @@ export function runLanguageServer(services?: LanguageServerServices): void {
     assertRunning,
     snapshot: (document) => snapshot(document, projects),
   })
+  const diagnostics = createDocumentDiagnostics({
+    connection,
+    documents,
+    semantic,
+    snapshot: (document) => snapshot(document, projects),
+  })
   const semanticCapabilities = registerSemanticCapabilities({
     connection,
     semantic,
     requests,
+    suspendDiagnostics: () => diagnostics.suspend(),
   })
   if (process.env.ARKTS_BENCHMARK_CONTROL === "1") {
     connection.onRequest("arkts/benchmark/applyMemoryPressure", (params: unknown) => {
@@ -188,12 +195,6 @@ export function runLanguageServer(services?: LanguageServerServices): void {
       return { applied: "level3" }
     })
   }
-  const diagnostics = createDocumentDiagnostics({
-    connection,
-    documents,
-    semantic,
-    snapshot: (document) => snapshot(document, projects),
-  })
   logger.info("server.started", { transport: "stdio" })
 
   connection.onInitialize((params: InitializeParams) => {

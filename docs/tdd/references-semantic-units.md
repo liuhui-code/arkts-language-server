@@ -167,3 +167,58 @@ UTF-16 code units while 632 SDK declarations contributed 18,915,581, about 96.0%
 source text. Definition showed the same shape: 270,729,512 prepared heap and a 5,955,792-byte query
 delta. This is evidence for testing SDK ambient-root cardinality next; it is not a license to remove
 SDK declarations without exact reference and diagnostic differentials.
+
+## Rejected reference-only SDK ambient profile (2026-09-11)
+
+A public LSP test first compared full and `common.d.ts` reference-verifier profiles against the same
+fake SDK. It required exact references and diagnostics while proving that only the verifier loaded
+fewer SDK files/text. The test failed while both runs used `index-full.d.ts`, then passed with the
+experimental profile threaded only through transient anchor/batch workers. The production diagnostic
+engine remained unchanged.
+
+The real Photos result still failed the product gate. Three fresh processes returned exact five-item
+reference sets and published 119 diagnostics. The common verifier reduced prepared heap from about
+269 MiB to about 201 MiB, but product peak median was 777,347,072 bytes: only 7.7% below indexed and
+6.7% above legacy. The experimental code and its proposed public switch were removed. This isolates
+the next problem: the long-lived normal diagnostic context pays for the full Program before the
+transient reference verifier runs, and disposing compiler objects does not immediately remove the
+worker isolate's reserved heap from product RSS.
+
+## Diagnostic lifecycle isolation (2026-09-11)
+
+Parent revision: `c6f4d3c5bb55d324f7ad1114dad52ee3b59dc2fa`.
+
+RED command:
+
+```text
+node --test --test-name-pattern='explicit references' tests/lsp-diagnostics.test.mjs
+```
+
+The public child-process test timed out waiting for `textDocument/publishDiagnostics`: the first
+diagnostic request remained in flight while references returned, and no retry existed. The minimal
+implementation gives `DocumentDiagnostics` a nest-safe suspension lease. Acquiring it aborts and
+awaits pending diagnostic tasks; updates received while suspended are retained by URI; releasing the
+last lease snapshots the current open document and schedules diagnostics again. The references LSP
+handler holds this lease through every success, stale, incomplete, cancellation, and error path.
+
+GREEN coverage additionally changes the document while a cancellation-resistant workspace references
+request is active. The references response becomes `ContentModified`, version 1 diagnostics never
+publish, and the exact version 2 diagnostic publishes after release. Focused command:
+
+```text
+node --test tests/lsp-diagnostics.test.mjs tests/lsp-workspace-global-freshness.test.mjs
+```
+
+All 16 tests passed. The fixed Photos `PersistInfoUtils` workload was then replayed in three fresh
+processes with `indexed-batched`. Each run returned the exact five legacy Locations and published 119
+version-1 diagnostics after references. Peak RSS was 562,184,192 / 571,596,800 / 578,387,968 bytes;
+the 571,596,800-byte median is 32.16% below the 842,514,432-byte indexed baseline and passes the 30%
+prototype gate. Median request time remains above the production 2x latency target, so this slice does
+not switch the default strategy.
+
+A concurrency review then added a second RED case: two overlapping references requests could
+let the later request pass while the first request was still waiting for diagnostic cancellation to
+settle. The diagnostic scheduler now shares one quiescence promise across nested suspension leases.
+Both responses remain behind that barrier, the existing references freshness lane still supersedes the
+older request, and diagnostics resume only after the final lease releases. The focused suite passed 17
+tests, and the elevated full `pnpm check:fast` gate passed 905/905.

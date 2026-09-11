@@ -194,6 +194,24 @@ SDK declarations 共 18,915,581 code units，SDK 占约 96.0%。因此下一实�
 references Location、diagnostics code/category/range 全部 exact，且真实 peak 过门，才允许考虑接线。
 任何 diagnostic 缺失都立即停止，不以 low memory 为由降级语义。
 
+SDK ambient-root spike 结果：reference-verifier-only `common.d.ts` profile 在公开 LSP case 中
+保持 references/diagnostics exact；Photos 三次均返回五个 reference，正常诊断仍发布 119 条。
+verifier 从 632 个 SDK files / 18,915,581 code units / 约 269 MiB prepared heap 降到 502 /
+13,876,398 / 约 201 MiB。但外部 product peak 为 559,480,832 / 789,028,864 / 777,347,072 bytes，
+中位只比 indexed baseline 低约 7.7%，未达到 30% gate，且仍高于 legacy。profile 实现已撤销。
+
+重语义生命周期隔离 slice 已完成：显式 references 在 LSP 入口暂停自动诊断，取消并等待已开始的
+诊断安静退出；references 完成后按当前文档版本重新排队。公开子进程测试证明 diagnostics 不丢失，
+并且 references 期间编辑文档时只发布最新版本。Photos 三个独立新进程均返回 legacy oracle 的
+五个 exact Location，随后发布 version 1 的 119 条正常诊断。外部 peak 为 562,184,192 /
+571,596,800 / 578,387,968 bytes，中位 571,596,800，相对 indexed baseline 842,514,432 降低
+32.16%，通过 30% prototype gate；请求时间为 10.720 / 11.537 / 11.253 秒。
+
+这一 slice 可以合并，但不单独把 `indexed-batched` 切成默认策略：其三次请求中位仍约为 legacy
+单次 5.303 秒的 2.12 倍，略高于 production 2× latency 目标。下一 slice 应缩短 anchor/index
+planning 时间并扩充不同 symbol kind 的真实 exact differential；不得通过提前恢复诊断、并发多个
+verifier 或缩小结果集换取延迟。
+
 前置：R1 exact differential 全绿，并已用实际 Program 计数识别不能仅靠固定 root 数约束的
 dependency closure。若连 Program cardinality 都不能下降，应停止而不是用索引掩盖问题；当前
 三个工程的 cardinality 已下降，但峰值/延迟未过门，因此 R2 只以实验策略继续，不切生产默认。
