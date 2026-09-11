@@ -177,6 +177,23 @@ membership 文件收缩为 716 个 admitted project files。但产品 gate 仍�
 compiler-anchor 工作，同时保留 compiler proof；禁止从 name-only index 猜测 import identity，
 歧义或不完整锚点继续 fail closed。默认仍为 `legacy`。
 
+2026-09-11 anchor-reuse 结果：公开 LSP exact differential 和 under-declared dependency 的
+fail-conservative 回退均通过；Photos 三个新进程也都返回相同五个 Location，并确认 anchor 与首批
+共用同一个 710-SourceFile context。外部峰值为 818,987,008 / 883,437,568 / 885,207,040 bytes，
+中位 883,437,568 bytes，比此前 indexed 单次峰值高约 4.9%；中位请求时间降至 7.439 s。结论是
+重复构造主要影响延迟，不是这个 workload 的 peak 主因。该实现已撤销，不进入 main。下一 slice
+必须先把 78 个 project SourceFiles、632 个 SDK SourceFiles 和 checker 派生状态的贡献分开测量，
+再决定缩小 project closure 还是 SDK declaration roots；不得通过延长同一 Program 生命周期冒充
+低内存改进。
+
+同日 phase trace 已完成这个拆分：Photos verifier 在 `prepare()` 后为 268,754,608-byte heap，
+`findReferences` 仅增加 9,139,288 bytes；anchor definition 仅在 270,729,512-byte prepared heap
+上增加 5,955,792 bytes。Program 输入中 78 个 project files 共 797,335 UTF-16 code units，632 个
+SDK declarations 共 18,915,581 code units，SDK 占约 96.0%。因此下一实验限定为“reference verifier
+的 SDK ambient root profile”，默认仍使用 `index-full.d.ts`；只有 full/common profile 的
+references Location、diagnostics code/category/range 全部 exact，且真实 peak 过门，才允许考虑接线。
+任何 diagnostic 缺失都立即停止，不以 low memory 为由降级语义。
+
 前置：R1 exact differential 全绿，并已用实际 Program 计数识别不能仅靠固定 root 数约束的
 dependency closure。若连 Program cardinality 都不能下降，应停止而不是用索引掩盖问题；当前
 三个工程的 cardinality 已下降，但峰值/延迟未过门，因此 R2 只以实验策略继续，不切生产默认。

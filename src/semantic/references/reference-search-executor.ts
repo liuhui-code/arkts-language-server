@@ -6,13 +6,26 @@ import type { SemanticWorkspaceView } from "../../core/workspace/document-store.
 import type { HarmonySemanticGraph } from "../../project/harmony-project-model.js"
 import { planConservativeReferenceBatches } from "./reference-search-planner.js"
 
+export interface ReferenceProgramStats {
+  readonly programSourceFiles: number
+  readonly programProjectFiles: number
+  readonly sdkSourceFiles: number
+  readonly projectTextCodeUnits: number
+  readonly sdkTextCodeUnits: number
+  readonly otherSourceFiles: number
+  readonly otherTextCodeUnits: number
+}
+
 export interface ReferenceBatchVerification {
   readonly result: SemanticReferenceQueryResult
-  readonly stats: {
-    programSourceFiles: number
-    programProjectFiles: number
-    sdkSourceFiles: number
+  readonly prepared: {
+    readonly stats: ReferenceProgramStats
+    readonly memory: {
+      rss: number
+      heapUsed: number
+    }
   }
+  readonly stats: ReferenceProgramStats
   readonly memory: {
     rss: number
     heapUsed: number
@@ -102,6 +115,17 @@ export class ReferenceSearchExecutor {
         candidateMode: plan.candidateMode,
         semanticUnitMode: plan.semanticUnitMode,
         semanticUnits: plan.semanticUnits,
+        preparedProgramSourceFiles: verification.prepared.stats.programSourceFiles,
+        preparedProgramProjectFiles: verification.prepared.stats.programProjectFiles,
+        preparedSdkSourceFiles: verification.prepared.stats.sdkSourceFiles,
+        preparedProjectTextCodeUnits: verification.prepared.stats.projectTextCodeUnits,
+        preparedSdkTextCodeUnits: verification.prepared.stats.sdkTextCodeUnits,
+        preparedOtherSourceFiles: verification.prepared.stats.otherSourceFiles,
+        preparedOtherTextCodeUnits: verification.prepared.stats.otherTextCodeUnits,
+        preparedRss: verification.prepared.memory.rss,
+        preparedHeapUsed: verification.prepared.memory.heapUsed,
+        queryRssDelta: verification.memory.rss - verification.prepared.memory.rss,
+        queryHeapUsedDelta: verification.memory.heapUsed - verification.prepared.memory.heapUsed,
         ...verification.stats,
         locations: result.references.length,
         durationMs: Math.round((performance.now() - started) * 100) / 100,

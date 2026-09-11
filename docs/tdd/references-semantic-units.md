@@ -135,3 +135,35 @@ bytes in 11.769 seconds versus legacy 728,735,744 bytes in 5.303 seconds. Trace 
 usage-site path paid for two equivalent 710-SourceFile Programs: one transient compiler anchor and
 one verifier. The next slice must remove that duplicate anchor cost without weakening compiler
 proof; the production default remains `legacy`.
+
+## Rejected anchor-context reuse (2026-09-11)
+
+The closest public purported behavior was changed first: the indexed LSP case required the compiler
+anchor and first references batch to report `resident-anchor-context` while retaining exact Location
+equality. It failed against the transient-worker implementation, then passed after the smallest
+reuse implementation. The full suite exposed a safety defect: an under-declared dependency had
+already been loaded while resolving the anchor and could bypass the restricted batch. Recording the
+anchor Program's membership paths and requiring them to be a subset of batch admission restored the
+existing conservative fallback; all four public batching cases passed.
+
+The real Photos gate then rejected the implementation. Three new processes returned the exact five
+`PersistInfoUtils` Locations and reused one 710-SourceFile Program, but peaks were 818,987,008,
+883,437,568, and 885,207,040 bytes. The 883,437,568-byte median regressed about 4.9% from the prior
+842,514,432-byte indexed run, despite reducing median request time to 7.439 seconds. Per the plan,
+the behavior/test changes were removed. This leaves main's transient isolation intact and records
+that duplicate construction is not sufficient evidence for a peak-memory fix.
+
+## Compiler phase observability (2026-09-11)
+
+The public indexed LSP test first required each isolated anchor/batch trace to expose Program counts,
+source-text composition, prepared memory, and semantic-query heap delta. It failed with the old
+single end-of-worker sample, then passed after the verifier captured a snapshot immediately after
+`engine.prepare()` and retained the existing post-query sample. The fields remain behind
+`ARKTS_REFERENCES_TRACE=1`; stdout remains protocol-only.
+
+The fixed Photos replay reported 268,754,608 bytes of verifier heap after preparing 710 SourceFiles
+and only 9,139,288 additional bytes after references. The 78 project files contributed 797,335
+UTF-16 code units while 632 SDK declarations contributed 18,915,581, about 96.0% of the measured
+source text. Definition showed the same shape: 270,729,512 prepared heap and a 5,955,792-byte query
+delta. This is evidence for testing SDK ambient-root cardinality next; it is not a license to remove
+SDK declarations without exact reference and diagnostic differentials.

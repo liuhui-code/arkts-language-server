@@ -230,10 +230,19 @@ test("indexed batching narrows compiler batches but keeps the exact references r
     location.uri === pathToFileURL(overlayPath).href
     && location.range.start.line === 1
   )))
-  assert.ok(indexed.indexEvents.some(event => (
+  const anchor = indexed.indexEvents.find(event => (
     event.event === "references.anchor.complete"
     && event.verifierIsolation === "transient-worker"
+  ))
+  assert.ok(anchor)
+  assert.ok(anchor.preparedProgramSourceFiles > 0)
+  assert.ok(anchor.preparedProjectTextCodeUnits > 0)
+  assert.equal(typeof anchor.queryHeapUsedDelta, "number")
+  assert.ok(indexed.batchEvents.every(event => event.preparedProgramSourceFiles > 0))
+  assert.ok(indexed.batchEvents.every(event => (
+    typeof event.preparedSdkTextCodeUnits === "number"
   )))
+  assert.ok(indexed.batchEvents.every(event => typeof event.queryHeapUsedDelta === "number"))
 })
 
 test("indexed batching keeps declared project semantic units intact", async (t) => {
