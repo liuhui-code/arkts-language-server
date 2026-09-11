@@ -90,6 +90,7 @@ export function parseLinuxProcStat(output) {
     pid,
     parentPid,
     command: match[2],
+    state: match[3],
     totalCpuTicks,
     startTimeTicks,
     rssPages,
@@ -226,6 +227,9 @@ function createLinuxProbe({
       while (queue.length > 0 && processes.length < maxProcesses) {
         const { pid, expectedParentPid } = queue.shift()
         const stat = await readStat(pid)
+        if (stat.state === "Z" || stat.state === "X") {
+          throw probeError("EPROCESS_NOT_FOUND", `process ${pid} has exited`)
+        }
         const process = {
           pid,
           parentPid: stat.parentPid,

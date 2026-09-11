@@ -289,28 +289,37 @@ function moduleScope(
   physicalModule: string,
   selection: ProjectSelection,
 ): HarmonyProjectScope {
-  if (!Array.isArray(module.targets) || module.targets.length > MAX_MODULES) {
+  const profile = readProfile(path.join(moduleRoot, "build-profile.json5"))
+  if (!profile || (profile.targets !== undefined && !Array.isArray(profile.targets))) {
+    return unavailable("module-profile-unavailable")
+  }
+  const moduleProfileTargets = profile.targets === undefined
+    ? [{ name: "default" }]
+    : profile.targets
+  if (moduleProfileTargets.length > MAX_MODULES) return unavailable("module-profile-unavailable")
+  if (module.targets !== undefined
+    && (!Array.isArray(module.targets) || module.targets.length > MAX_MODULES)) {
     return unavailable("module-target-unavailable")
   }
-  const appliedTargets = module.targets.filter((value) => {
-    const target = object(value)
-    if (!target) return false
-    if (!Object.hasOwn(target, "applyToProducts")) {
-      return target.name !== "ohosTest" && selection.product === "default"
-    }
-    return Array.isArray(target.applyToProducts) && target.applyToProducts.includes(selection.product)
-  })
+  const appliedTargets = module.targets === undefined
+    ? moduleProfileTargets.length === 1 && object(moduleProfileTargets[0])?.name !== "ohosTest"
+      ? moduleProfileTargets
+      : []
+    : module.targets.filter((value) => {
+        const target = object(value)
+        if (!target) return false
+        if (!Object.hasOwn(target, "applyToProducts")) {
+          return target.name !== "ohosTest" && selection.product === "default"
+        }
+        return Array.isArray(target.applyToProducts) && target.applyToProducts.includes(selection.product)
+      })
   const selectedTarget = selection.targets.get(module.name as string)
   const selectedTargets = selectedTarget === undefined ? appliedTargets
     : appliedTargets.filter((value) => object(value)?.name === selectedTarget)
   if (selectedTargets.length !== 1) return unavailable("ambiguous-product-target")
   const targetName = object(selectedTargets[0])?.name
   if (typeof targetName !== "string" || !targetName) return unavailable("invalid-target-name")
-  const profile = readProfile(path.join(moduleRoot, "build-profile.json5"))
-  if (!profile || !Array.isArray(profile.targets) || profile.targets.length > MAX_MODULES) {
-    return unavailable("module-profile-unavailable")
-  }
-  const targets = profile.targets.filter((value) => object(value)?.name === targetName)
+  const targets = moduleProfileTargets.filter((value) => object(value)?.name === targetName)
   if (targets.length !== 1) return unavailable("module-target-unavailable")
   const target = object(targets[0])!
   const mainSourceRoot = path.join(moduleRoot, "src", "main")
