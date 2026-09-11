@@ -545,3 +545,34 @@ uses the previous conservative name closure, and the product default remains `le
 RSS number is attributed to this change. The next identity slice must resolve a binding's source
 specifier to one indexed declaration and prove chain completeness before excluding colliding files;
 unknown, ambiguous, stale, or non-resolvable bindings continue to fail conservative.
+
+### Unique relative binding-source resolution
+
+Parent revision: `415c98bdb9dc6c69a90a0997fd1e19683caea9c9`.
+
+The public in-memory RED extended the existing `Target -> Barrel -> Consumer` contract with a
+required `unique` resolution and exact resolved source URI for both relative edges. A second RED
+created both `Target.ets` and `Target/index.ets`, plus a bare package re-export, and required the
+former to be `ambiguous` and the latter `unsupported`; neither may expose a resolved URI.
+
+The implementation derives resolution from the committed document catalog at query time, so an
+incremental refresh cannot leave a persisted resolution pointing at an old file set. It supports
+explicit ArkTS/TypeScript declaration extensions and the conventional extension/index candidates.
+SQLite stores only the directional binding facts introduced by schema v5 and recomputes resolution
+after reopen. The sidecar returns `sourceResolution` and nullable `resolvedSourceUri`; the
+TypeScript adapter validates and workspace-rebases the URI.
+
+GREEN commands:
+
+```text
+cargo test -p arkts-index-core
+cargo test -p arkts-index-sqlite
+cargo test -p arkts-index-sidecar
+node --test tests/index-adapter.test.mjs
+```
+
+Candidate URI calculation is intentionally unchanged. This slice proves where a relative edge
+points but does not yet prove that every occurrence in the name-based candidate set belongs to, or
+is distinct from, the target declaration. Consequently it makes no RSS claim and cannot switch the
+default from `legacy`. The next RED must prove complete relative alias/re-export reachability and
+fall back when any occurrence is unclassified, any edge is non-unique, or the generation is stale.

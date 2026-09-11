@@ -9,8 +9,8 @@ use std::{
 };
 
 use arkts_index_core::{
-    Document, IndexState, MemoryStore, Position, ReferenceBindingKind, ReferenceCandidateQuery,
-    WorkspaceIndex,
+    Document, IndexState, MemoryStore, Position, ReferenceBindingKind, ReferenceBindingResolution,
+    ReferenceCandidateQuery, WorkspaceIndex,
 };
 use arkts_index_sqlite::{SqliteStore, workspace_cache_location};
 use rusqlite::Connection;
@@ -158,8 +158,24 @@ fn sqlite_persists_reference_binding_sources_across_reopen() {
     assert_eq!(result.bindings.len(), 2);
     assert_eq!(result.bindings[0].kind, ReferenceBindingKind::ReExport);
     assert_eq!(result.bindings[0].source_specifier, "./Target");
+    assert_eq!(
+        result.bindings[0].source_resolution,
+        ReferenceBindingResolution::Unique
+    );
+    assert_eq!(
+        result.bindings[0].resolved_source_uri.as_deref(),
+        Some("file:///workspace/Target.ets")
+    );
     assert_eq!(result.bindings[1].kind, ReferenceBindingKind::Import);
     assert_eq!(result.bindings[1].source_specifier, "./Barrel");
+    assert_eq!(
+        result.bindings[1].source_resolution,
+        ReferenceBindingResolution::Unique
+    );
+    assert_eq!(
+        result.bindings[1].resolved_source_uri.as_deref(),
+        Some("file:///workspace/Barrel.ets")
+    );
 }
 
 #[test]

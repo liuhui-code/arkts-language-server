@@ -368,3 +368,12 @@ TypeScript adapter 暴露确定顺序的 binding chain。此切片**没有**据�
 候选及 compiler proof 完全不变；它只关闭 identity narrowing 所需的首个数据缺口。下一 RED 必须
 证明模块说明符能唯一解析到目标 declaration，且 alias/re-export 链完整，才允许减少 `PhotoAsset`
 候选。无法解析、非相对模块、缺边或 generation 不完整时继续使用当前保守集合。
+
+2026-09-11 binding-resolution 切片：`references/candidates` 现在会在 committed catalog 内解析
+方向性 binding 的相对 source specifier。显式扩展名以及 ArkTS/TS 文件和 `index` façade 候选只有
+唯一命中时才标为 `unique` 并返回 `resolvedSourceUri`；零命中标为 `unresolved`，多命中标为
+`ambiguous`，包名/非相对 specifier 标为 `unsupported`。内存 store、SQLite 重启、Rust sidecar
+和 TypeScript adapter 使用同一状态契约。此切片仍不排除任何 candidate URI，也不改变
+`indexed-batched` planner 或默认 `legacy` 策略，因此没有新的性能结论。下一 RED 是以唯一解析边
+从目标 declaration 向外证明完整 alias/re-export 可达链；任一候选 occurrence 无法归属时必须
+回退现有保守集合。

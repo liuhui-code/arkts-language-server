@@ -175,6 +175,8 @@ input.on("line", (line) => {
             importedName: "Thing",
             localName: "PublicThing",
             sourceSpecifier: "./Target",
+            sourceResolution: "unique",
+            resolvedSourceUri: pathToFileURL(path.join(workspaceRoot, "Target.ets")).href,
           },
           {
             kind: "import",
@@ -182,6 +184,8 @@ input.on("line", (line) => {
             importedName: "PublicThing",
             localName: "Alias",
             sourceSpecifier: "./Barrel",
+            sourceResolution: "unique",
+            resolvedSourceUri: pathToFileURL(path.join(workspaceRoot, "Barrel.ets")).href,
           },
         ],
         servedGeneration: committedGeneration,

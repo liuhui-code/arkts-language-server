@@ -11,9 +11,10 @@ use std::{
 use arkts_index_core::{
     CommitReceipt, DocumentSymbols, ExportQuery, ExportSearchResult, FullCatalogBatch,
     MAX_REFERENCE_ALIAS_NAMES, Position, ReferenceBinding, ReferenceBindingKind,
-    ReferenceCandidateQuery, ReferenceCandidateSearchResult, RefreshBatch, StoreError,
-    StoreErrorKind, StoreMetadata, SymbolKind, SymbolQuery, SymbolSearchResult, SymbolStore,
-    TextRange, WorkspaceExport, WorkspaceSymbol, acronym_for_search, fold_for_search, rank_symbols,
+    ReferenceBindingResolution, ReferenceCandidateQuery, ReferenceCandidateSearchResult,
+    RefreshBatch, StoreError, StoreErrorKind, StoreMetadata, SymbolKind, SymbolQuery,
+    SymbolSearchResult, SymbolStore, TextRange, WorkspaceExport, WorkspaceSymbol,
+    acronym_for_search, fold_for_search, rank_symbols, resolve_reference_binding_sources,
     sort_reference_bindings,
 };
 use rusqlite::types::Value as SqlValue;
@@ -554,7 +555,9 @@ impl SymbolStore for SqliteStore {
         }
         let mut uris =
             read_reference_uris(&transaction, exported_name, query.limit.saturating_add(1))?;
-        let bindings = read_reference_bindings(&transaction, exported_name)?;
+        let mut bindings = read_reference_bindings(&transaction, exported_name)?;
+        let document_uris = read_document_uris(&transaction)?;
+        resolve_reference_binding_sources(&mut bindings, &document_uris);
         let complete = uris.len() <= query.limit;
         uris.truncate(query.limit);
         transaction.commit().map_err(map_sqlite_error)?;
@@ -885,6 +888,8 @@ fn read_reference_bindings(
                         Box::new(error),
                     )
                 })?,
+                source_resolution: ReferenceBindingResolution::Unresolved,
+                resolved_source_uri: None,
             })
         })
         .map_err(map_sqlite_error)?;
@@ -893,6 +898,17 @@ fn read_reference_bindings(
         .map_err(map_sqlite_error)?;
     sort_reference_bindings(&mut bindings);
     Ok(bindings)
+}
+
+fn read_document_uris(connection: &Connection) -> Result<BTreeSet<String>, StoreError> {
+    let mut statement = connection
+        .prepare("SELECT uri FROM documents ORDER BY uri")
+        .map_err(map_sqlite_error)?;
+    let rows = statement
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(map_sqlite_error)?;
+    rows.collect::<Result<BTreeSet<_>, _>>()
+        .map_err(map_sqlite_error)
 }
 
 fn unsupported_reference_candidates(generation: u64) -> ReferenceCandidateSearchResult {

@@ -353,14 +353,18 @@ fn sidecar_returns_conservative_reference_candidates_across_alias_reexports() {
                 "uri": "file:///workspace/Barrel.ets",
                 "importedName": "Thing",
                 "localName": "PublicThing",
-                "sourceSpecifier": "./Target"
+                "sourceSpecifier": "./Target",
+                "sourceResolution": "unique",
+                "resolvedSourceUri": "file:///workspace/Target.ets"
             },
             {
                 "kind": "import",
                 "uri": "file:///workspace/Consumer.ets",
                 "importedName": "PublicThing",
                 "localName": "Alias",
-                "sourceSpecifier": "./Barrel"
+                "sourceSpecifier": "./Barrel",
+                "sourceResolution": "unique",
+                "resolvedSourceUri": "file:///workspace/Barrel.ets"
             }
         ])
     );

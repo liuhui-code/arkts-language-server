@@ -344,6 +344,8 @@ test("maps conservative reference candidates and preserves their generation and 
         importedName: "Thing",
         localName: "PublicThing",
         sourceSpecifier: "./Target",
+        sourceResolution: "unique",
+        resolvedSourceUri: declarationUri,
       },
       {
         kind: "import",
@@ -351,6 +353,8 @@ test("maps conservative reference candidates and preserves their generation and 
         importedName: "PublicThing",
         localName: "Alias",
         sourceSpecifier: "./Barrel",
+        sourceResolution: "unique",
+        resolvedSourceUri: pathToFileURL(path.join(workspace, "Barrel.ets")).href,
       },
     ],
     servedGeneration: 7,

@@ -101,6 +101,14 @@ pub enum ReferenceBindingKind {
     ReExport,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ReferenceBindingResolution {
+    Unique,
+    Unresolved,
+    Ambiguous,
+    Unsupported,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ReferenceBinding {
     pub imported_name: String,
@@ -108,6 +116,8 @@ pub struct ReferenceBinding {
     pub source_specifier: String,
     pub kind: ReferenceBindingKind,
     pub uri: String,
+    pub source_resolution: ReferenceBindingResolution,
+    pub resolved_source_uri: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -470,6 +480,8 @@ impl SymbolStore for MemoryStore {
             })
             .cloned()
             .collect();
+        let document_uris: BTreeSet<_> = self.documents.keys().cloned().collect();
+        resolve_reference_binding_sources(&mut bindings, &document_uris);
         sort_reference_bindings(&mut bindings);
         Ok(ReferenceCandidateSearchResult {
             supported: true,
@@ -504,6 +516,78 @@ pub fn sort_reference_bindings(bindings: &mut [ReferenceBinding]) {
             .then_with(|| left.local_name.cmp(&right.local_name))
             .then_with(|| left.kind.cmp(&right.kind))
     });
+}
+
+pub fn resolve_reference_binding_sources(
+    bindings: &mut [ReferenceBinding],
+    document_uris: &BTreeSet<String>,
+) {
+    for binding in bindings {
+        let Some(candidates) =
+            relative_source_uri_candidates(&binding.uri, &binding.source_specifier)
+        else {
+            binding.source_resolution = ReferenceBindingResolution::Unsupported;
+            binding.resolved_source_uri = None;
+            continue;
+        };
+        let matches: Vec<_> = candidates
+            .into_iter()
+            .filter(|candidate| document_uris.contains(candidate))
+            .collect();
+        match matches.as_slice() {
+            [uri] => {
+                binding.source_resolution = ReferenceBindingResolution::Unique;
+                binding.resolved_source_uri = Some(uri.clone());
+            }
+            [] => {
+                binding.source_resolution = ReferenceBindingResolution::Unresolved;
+                binding.resolved_source_uri = None;
+            }
+            _ => {
+                binding.source_resolution = ReferenceBindingResolution::Ambiguous;
+                binding.resolved_source_uri = None;
+            }
+        }
+    }
+}
+
+fn relative_source_uri_candidates(owner_uri: &str, source: &str) -> Option<Vec<String>> {
+    if !owner_uri.starts_with("file:///")
+        || !(source.starts_with("./") || source.starts_with("../"))
+        || source.contains(['?', '#', '\\'])
+    {
+        return None;
+    }
+    let owner_path = owner_uri.strip_prefix("file://")?;
+    let parent_end = owner_path.rfind('/')?;
+    let combined = format!("{}/{}", &owner_path[..parent_end], source);
+    let mut segments = Vec::new();
+    for segment in combined.split('/') {
+        match segment {
+            "" | "." => {}
+            ".." => {
+                segments.pop()?;
+            }
+            value => segments.push(value),
+        }
+    }
+    let base = format!("file:///{}", segments.join("/"));
+    if [".ets", ".ts", ".d.ets", ".d.ts"]
+        .iter()
+        .any(|suffix| base.ends_with(suffix))
+    {
+        return Some(vec![base]);
+    }
+    Some(vec![
+        format!("{base}.ets"),
+        format!("{base}.ts"),
+        format!("{base}.d.ets"),
+        format!("{base}.d.ts"),
+        format!("{base}/index.ets"),
+        format!("{base}/index.ts"),
+        format!("{base}/index.d.ets"),
+        format!("{base}/index.d.ts"),
+    ])
 }
 
 pub fn fold_for_search(value: &str) -> String {
@@ -1096,6 +1180,8 @@ fn named_source_bindings(
             source_specifier: source.text.to_owned(),
             kind,
             uri: document.uri.clone(),
+            source_resolution: ReferenceBindingResolution::Unresolved,
+            resolved_source_uri: None,
         });
     }
 
