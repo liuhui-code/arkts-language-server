@@ -333,3 +333,11 @@ legacy 50%；cold references 不高于 legacy 2×。没有真实 >3 GB reproduce
 
 不允许通过减少 references、只返回前 N 条、忽略未安装但声明必需的依赖、关闭诊断、静默返回
 stale 结果或 OOM 自动重启来通过内存门。
+
+2026-09-11 `export enum` slice：Photos 6.1 的 `ConflictFunc` 在 main 上因没有 declaration
+identity 安全回退为 20 个 conservative batches，虽然与 legacy 六个 Location exact equality，
+请求仍耗时 63.101 秒。新增显式 `Enum` 索引类型并仅支持顶层具名导出枚举后，三次独立进程均由
+两个 candidate files 形成一个 verifier batch，六个 Location 与 107 条 version-1 diagnostics
+完全一致。请求中位 7.655 秒，peak 中位 566,480,896 bytes；相对 legacy 834,555,904-byte peak
+下降 32.12%。该 slice 达到当前 symbol-kind 门禁，但默认继续为 `legacy`；下一步仍按真实 RED
+逐类扩展 export/alias/member 形态，未知类型必须 fail closed。
