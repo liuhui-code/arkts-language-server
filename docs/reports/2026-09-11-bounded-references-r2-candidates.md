@@ -248,9 +248,39 @@ membership files, and built a Program with 78 project plus 632 SDK SourceFiles.
 This is a correctness pass and a product-memory failure. Legacy peaked at 728,735,744 bytes in
 5.303 seconds; indexed peaked at 842,514,432 bytes in 11.769 seconds. The trace shows two equivalent
 710-SourceFile compiler initializations on the indexed usage-site path: a transient definition
-anchor followed by the verifier. The next experiment must eliminate this duplicate compiler work
-without allowing the index to become semantic truth. Until that experiment passes the existing
-memory and exactness gates, the default remains `legacy`.
+anchor followed by the verifier.
+
+The follow-up reused the compiler anchor as the first verifier only when the document/project
+snapshot matched and the batch admission contained every project file already loaded by the anchor.
+The public LSP differential stayed exact, including the under-declared-dependency fallback. Three
+fresh Photos processes returned the same five Locations and confirmed one 710-SourceFile resident
+context for both phases. Their peaks were 818,987,008, 883,437,568, and 885,207,040 bytes; the median
+was 883,437,568 bytes, about 4.9% above the earlier 842,514,432-byte indexed run. Median request time
+was 7.439 seconds versus the earlier single-run 11.769 seconds, so reuse removed setup time but did
+not reduce the product peak. The code experiment was therefore discarded rather than merged.
+
+This result changes the next decision: duplicate Program construction was a latency cost, not the
+dominant peak-memory cause in this workload. The 710-file Program itself—78 project files plus 632
+SDK declarations—and the semantic work performed on it remain the memory floor. Further R2 work
+must reduce the admitted compiler closure or the SDK declaration working set while preserving exact
+compiler proof; keeping the same Program alive longer is not an acceptable memory optimization.
+Until such an experiment passes the existing memory and exactness gates, the default remains
+`legacy`.
+
+A default-off trace follow-up measured the isolated worker immediately after `prepare()` and again
+after the semantic query. On the same Photos case, the anchor had 270,729,512 bytes heap after
+preparing the 710-file Program and added 5,955,792 bytes for definition. The references verifier had
+268,754,608 bytes heap after prepare and added 9,139,288 bytes for `findReferences`. Its prepared
+inputs were 797,335 UTF-16 code units from 78 project files and 18,915,581 from 632 SDK declarations;
+SDK declarations therefore represented about 96.0% of measured Program source text. The external
+process peak was 856,199,168 bytes and all five Locations remained exact.
+
+These observations do not assign object-level heap bytes to individual files, but they do falsify
+the hypothesis that result search/mapping is the first-order cost in this workload: more than 96%
+of the verifier heap was already present after Program preparation, and the SDK surface dominates
+the admitted source text. The next bounded experiment is consequently an SDK ambient-root profile
+spike, with unchanged full SDK roots as the default. It may proceed only if references and
+diagnostics remain exact; otherwise it is rejected like anchor reuse.
 
 Dependency-closure admission is implemented and its public fail-conservative contract is green.
 It produces a real reduction on Gramony, but it has not passed the 30% real-project peak target and
@@ -258,8 +288,8 @@ cannot activate on RemoteDesk or Settings without inventing project boundaries. 
 suitable real scale and project structure, but the locked backend does not provide a complete
 `import lazy` references oracle. R2 therefore remains experimental and the default remains
 `legacy`. FilePicker supplies an exact ordinary-import oracle but shows a stable 56.7% median peak
-regression when only 24 project files are removed. The next evidence step needs a larger, correctly
-configured real multi-module checkout with a legacy-complete symbol; otherwise the plan must move
-to the R3 façade/partitioning spike without claiming a product memory fix. A future production
-strategy also needs evidence-based admission that avoids paying the verifier/SDK fixed cost when
-the reducible project working set is small; this report does not invent such a threshold.
+regression when only 24 project files are removed. The Photos anchor-reuse experiment also shows
+that avoiding a second construction of the same Program improves time but not peak memory. The next
+evidence step must isolate which of the 78 project files, 632 SDK declarations, and checker work
+dominate the retained 710-file Program before selecting another production change; this report does
+not invent an unsafe file threshold or make the index semantic truth.

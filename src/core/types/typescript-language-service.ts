@@ -309,16 +309,40 @@ export class TypeScriptLanguageServiceEngine {
     programSourceFiles: number
     programProjectFiles: number
     sdkSourceFiles: number
+    projectTextCodeUnits: number
+    sdkTextCodeUnits: number
+    otherSourceFiles: number
+    otherTextCodeUnits: number
   } {
     const sourceFiles = this.service.getProgram()?.getSourceFiles() ?? []
     let programProjectFiles = 0
     let sdkSourceFiles = 0
+    let projectTextCodeUnits = 0
+    let sdkTextCodeUnits = 0
+    let otherSourceFiles = 0
+    let otherTextCodeUnits = 0
     for (const sourceFile of sourceFiles) {
       const filePath = path.resolve(sourceFile.fileName)
-      if (this.sdkRoot && isWithinRoot(this.sdkRoot, filePath)) sdkSourceFiles += 1
-      else if (isWithinRoot(this.rootPath, filePath)) programProjectFiles += 1
+      if (this.sdkRoot && isWithinRoot(this.sdkRoot, filePath)) {
+        sdkSourceFiles += 1
+        sdkTextCodeUnits += sourceFile.text.length
+      } else if (isWithinRoot(this.rootPath, filePath)) {
+        programProjectFiles += 1
+        projectTextCodeUnits += sourceFile.text.length
+      } else {
+        otherSourceFiles += 1
+        otherTextCodeUnits += sourceFile.text.length
+      }
     }
-    return { programSourceFiles: sourceFiles.length, programProjectFiles, sdkSourceFiles }
+    return {
+      programSourceFiles: sourceFiles.length,
+      programProjectFiles,
+      sdkSourceFiles,
+      projectTextCodeUnits,
+      sdkTextCodeUnits,
+      otherSourceFiles,
+      otherTextCodeUnits,
+    }
   }
 
   scriptFileNames(): string[] {

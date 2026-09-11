@@ -16,6 +16,7 @@ interface ReferenceBatchWorkerFailure {
 
 export interface ReferenceAnchorVerification {
   readonly definitions: readonly SemanticDefinitionCandidate[]
+  readonly prepared: ReferenceBatchVerification["prepared"]
   readonly stats: ReferenceBatchVerification["stats"]
   readonly memory: ReferenceBatchVerification["memory"]
 }
@@ -61,6 +62,7 @@ export async function verifyReferenceBatchInWorker(
         settled = true
         if (message.ok) resolve({
           result: message.result,
+          prepared: message.prepared,
           stats: message.stats,
           memory: message.memory,
         })
@@ -134,6 +136,7 @@ async function runReferenceWorker(
         settled = true
         if (message.ok) resolve({
           definitions: message.definitions,
+          prepared: message.prepared,
           stats: message.stats,
           memory: message.memory,
         })

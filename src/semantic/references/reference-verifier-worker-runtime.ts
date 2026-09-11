@@ -36,10 +36,15 @@ const engine = new TypeScriptLanguageServiceEngine(data.workspace.rootPath, {
 
 try {
   engine.prepare(data.workspace)
+  const prepared = {
+    stats: engine.programFileStats(),
+    memory: process.memoryUsage(),
+  }
   if (data.operation === "definition") {
     port.postMessage({
       ok: true,
       definitions: engine.define(data.position),
+      prepared,
       stats: engine.programFileStats(),
       memory: process.memoryUsage(),
     })
@@ -48,6 +53,7 @@ try {
     port.postMessage({
       ok: true,
       result,
+      prepared,
       stats: engine.programFileStats(),
       memory: process.memoryUsage(),
     })
