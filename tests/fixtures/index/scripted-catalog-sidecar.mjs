@@ -133,6 +133,8 @@ input.on("line", (line) => {
       respond(request.id, {
         supported,
         complete: supported,
+        identityComplete: false,
+        identityUris: [],
         declarationIdentity: supported ? "scripted-reference-candidate" : null,
         names: supported ? ["Alias", "PublicThing", "Thing"] : [],
         uris: supported

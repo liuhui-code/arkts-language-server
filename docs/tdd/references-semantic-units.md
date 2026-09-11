@@ -397,3 +397,17 @@ All candidate URI sets and compiler verification behavior remain unchanged. This
 fail-conservative evidence slice. The next RED may narrow only after it proves every relevant
 occurrence is classified by a complete chain rooted at the target declaration; otherwise it must
 retain the current name-based candidate set.
+
+## Directional binding-chain proof slice (2026-09-11)
+
+Parent revision: `64ac8476f112780b26a7a03f4a9fe46e691f2604`.
+
+The public RED required a complete `Target -> Barrel -> Consumer` proof and failed because reference
+candidate results had no identity-completeness contract. The negative RED reused ambiguous relative
+and bare-package bindings and required an empty proof URI set rather than a partial answer.
+
+The minimal implementation walks only uniquely resolved directional bindings from the selected
+declaration and classifies each relevant occurrence by URI plus the name established in that file.
+All relevant bindings and occurrences must be reached, the result must fit the query limit, and the
+sidecar catalog must be ready. Otherwise the proof is false and its URI set is empty. The planner
+does not consume this field yet; conservative candidate behavior remains unchanged.

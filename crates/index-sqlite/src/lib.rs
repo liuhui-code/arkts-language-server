@@ -12,10 +12,10 @@ use arkts_index_core::{
     CommitReceipt, DocumentSymbols, ExportQuery, ExportSearchResult, FullCatalogBatch,
     MAX_REFERENCE_ALIAS_NAMES, Position, ReferenceBinding, ReferenceBindingKind,
     ReferenceBindingResolution, ReferenceCandidateQuery, ReferenceCandidateSearchResult,
-    RefreshBatch, StoreError, StoreErrorKind, StoreMetadata, SymbolKind, SymbolQuery,
-    SymbolSearchResult, SymbolStore, TextRange, WorkspaceExport, WorkspaceSymbol,
-    acronym_for_search, fold_for_search, rank_symbols, resolve_reference_binding_sources,
-    sort_reference_bindings,
+    ReferenceOccurrence, RefreshBatch, StoreError, StoreErrorKind, StoreMetadata, SymbolKind,
+    SymbolQuery, SymbolSearchResult, SymbolStore, TextRange, WorkspaceExport, WorkspaceSymbol,
+    acronym_for_search, fold_for_search, prove_reference_binding_chain, rank_symbols,
+    resolve_reference_binding_sources, sort_reference_bindings,
 };
 use rusqlite::types::Value as SqlValue;
 use rusqlite::{
@@ -558,12 +558,22 @@ impl SymbolStore for SqliteStore {
         let mut bindings = read_reference_bindings(&transaction, exported_name)?;
         let document_uris = read_document_uris(&transaction)?;
         resolve_reference_binding_sources(&mut bindings, &document_uris);
+        let occurrences = read_reference_occurrences(&transaction, exported_name)?;
+        let (identity_complete, identity_uris) = prove_reference_binding_chain(
+            &bindings,
+            &occurrences,
+            &query.declaration_uri,
+            exported_name,
+            query.limit,
+        );
         let complete = uris.len() <= query.limit;
         uris.truncate(query.limit);
         transaction.commit().map_err(map_sqlite_error)?;
         Ok(ReferenceCandidateSearchResult {
             supported: true,
             complete,
+            identity_complete,
+            identity_uris,
             declaration_identity: declaration_identity.clone(),
             names,
             uris,
@@ -829,6 +839,19 @@ const REFERENCE_BINDINGS_SQL: &str = "WITH RECURSIVE \
        OR local_name IN (SELECT name FROM names) \
     ORDER BY document_uri, source_specifier, imported_name, local_name, kind";
 
+const REFERENCE_OCCURRENCES_SQL: &str = "WITH RECURSIVE \
+    edges(source, target) AS (\
+        SELECT from_name, to_name FROM reference_aliases \
+        UNION SELECT to_name, from_name FROM reference_aliases\
+    ), \
+    names(name) AS (\
+        VALUES (?1) \
+        UNION SELECT edges.target FROM edges JOIN names ON edges.source = names.name\
+    ) \
+    SELECT reference_occurrences.name, reference_occurrences.document_uri, \
+           start_line, start_character, end_line, end_character \
+    FROM reference_occurrences INDEXED BY reference_occurrences_name JOIN names USING(name)";
+
 fn read_reference_names(
     connection: &Connection,
     exported_name: &str,
@@ -911,10 +934,53 @@ fn read_document_uris(connection: &Connection) -> Result<BTreeSet<String>, Store
         .map_err(map_sqlite_error)
 }
 
+fn read_reference_occurrences(
+    connection: &Connection,
+    exported_name: &str,
+) -> Result<Vec<ReferenceOccurrence>, StoreError> {
+    let mut statement = connection
+        .prepare(REFERENCE_OCCURRENCES_SQL)
+        .map_err(map_sqlite_error)?;
+    let rows = statement
+        .query_map([exported_name], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, i64>(3)?,
+                row.get::<_, i64>(4)?,
+                row.get::<_, i64>(5)?,
+            ))
+        })
+        .map_err(map_sqlite_error)?;
+    let mut occurrences = Vec::new();
+    for row in rows {
+        let (name, uri, start_line, start_character, end_line, end_character) =
+            row.map_err(map_sqlite_error)?;
+        occurrences.push(ReferenceOccurrence {
+            name,
+            uri,
+            range: TextRange::new(
+                Position::new(
+                    to_u32(start_line, "start_line")?,
+                    to_u32(start_character, "start_character")?,
+                ),
+                Position::new(
+                    to_u32(end_line, "end_line")?,
+                    to_u32(end_character, "end_character")?,
+                ),
+            ),
+        });
+    }
+    Ok(occurrences)
+}
+
 fn unsupported_reference_candidates(generation: u64) -> ReferenceCandidateSearchResult {
     ReferenceCandidateSearchResult {
         supported: false,
         complete: false,
+        identity_complete: false,
+        identity_uris: Vec::new(),
         declaration_identity: None,
         names: Vec::new(),
         uris: Vec::new(),

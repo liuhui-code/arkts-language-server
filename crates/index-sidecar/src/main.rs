@@ -412,6 +412,9 @@ impl Runtime {
                     json!({
                         "supported": result.supported,
                         "complete": result.complete && self.completeness == "ready",
+                        "identityComplete": result.identity_complete
+                            && self.completeness == "ready",
+                        "identityUris": result.identity_uris,
                         "declarationIdentity": result.declaration_identity,
                         "names": result.names,
                         "uris": result.uris,

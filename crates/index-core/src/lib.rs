@@ -239,6 +239,8 @@ pub struct ExportSearchResult {
 pub struct ReferenceCandidateSearchResult {
     pub supported: bool,
     pub complete: bool,
+    pub identity_complete: bool,
+    pub identity_uris: Vec<String>,
     pub declaration_identity: Option<String>,
     pub names: Vec<String>,
     pub uris: Vec<String>,
@@ -482,10 +484,26 @@ impl SymbolStore for MemoryStore {
             .collect();
         let document_uris: BTreeSet<_> = self.documents.keys().cloned().collect();
         resolve_reference_binding_sources(&mut bindings, &document_uris);
+        let occurrences: Vec<_> = self
+            .documents
+            .values()
+            .flat_map(|document| document.occurrences.iter())
+            .filter(|occurrence| names.contains(&occurrence.name))
+            .cloned()
+            .collect();
+        let (identity_complete, identity_uris) = prove_reference_binding_chain(
+            &bindings,
+            &occurrences,
+            &declaration.uri,
+            &declaration.exported_name,
+            query.limit,
+        );
         sort_reference_bindings(&mut bindings);
         Ok(ReferenceCandidateSearchResult {
             supported: true,
             complete,
+            identity_complete,
+            identity_uris,
             declaration_identity: declaration.declaration_identity.clone(),
             names: names.into_iter().collect(),
             uris,
@@ -499,6 +517,8 @@ fn unsupported_reference_candidates(generation: u64) -> ReferenceCandidateSearch
     ReferenceCandidateSearchResult {
         supported: false,
         complete: false,
+        identity_complete: false,
+        identity_uris: Vec::new(),
         declaration_identity: None,
         names: Vec::new(),
         uris: Vec::new(),
@@ -549,6 +569,61 @@ pub fn resolve_reference_binding_sources(
             }
         }
     }
+}
+
+pub fn prove_reference_binding_chain(
+    bindings: &[ReferenceBinding],
+    occurrences: &[ReferenceOccurrence],
+    declaration_uri: &str,
+    declaration_name: &str,
+    limit: usize,
+) -> (bool, Vec<String>) {
+    let mut proven = HashMap::<String, BTreeSet<String>>::from([(
+        declaration_uri.to_owned(),
+        BTreeSet::from([declaration_name.to_owned()]),
+    )]);
+    let mut reached_bindings = BTreeSet::new();
+    loop {
+        let before = reached_bindings.len();
+        for (index, binding) in bindings.iter().enumerate() {
+            let Some(source_uri) = binding.resolved_source_uri.as_deref() else {
+                continue;
+            };
+            if binding.source_resolution != ReferenceBindingResolution::Unique
+                || !proven
+                    .get(source_uri)
+                    .is_some_and(|names| names.contains(&binding.imported_name))
+            {
+                continue;
+            }
+            reached_bindings.insert(index);
+            let names = proven.entry(binding.uri.clone()).or_default();
+            names.insert(binding.imported_name.clone());
+            names.insert(binding.local_name.clone());
+        }
+        if reached_bindings.len() == before {
+            break;
+        }
+    }
+    let classified = reached_bindings.len() == bindings.len()
+        && occurrences.iter().all(|occurrence| {
+            proven
+                .get(&occurrence.uri)
+                .is_some_and(|names| names.contains(&occurrence.name))
+        });
+    let identity_uris: BTreeSet<_> = occurrences
+        .iter()
+        .filter(|occurrence| {
+            proven
+                .get(&occurrence.uri)
+                .is_some_and(|names| names.contains(&occurrence.name))
+        })
+        .map(|occurrence| occurrence.uri.clone())
+        .collect();
+    if !classified || identity_uris.len() > limit {
+        return (false, Vec::new());
+    }
+    (true, identity_uris.into_iter().collect())
 }
 
 fn relative_source_uri_candidates(owner_uri: &str, source: &str) -> Option<Vec<String>> {

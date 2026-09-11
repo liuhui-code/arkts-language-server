@@ -82,6 +82,15 @@ fn reference_candidates_expose_the_binding_chain_for_later_identity_narrowing() 
         })
         .expect("reference candidates should be searchable");
 
+    assert!(result.identity_complete);
+    assert_eq!(
+        result.identity_uris,
+        [
+            "file:///workspace/Barrel.ets",
+            "file:///workspace/Consumer.ets",
+            "file:///workspace/Target.ets",
+        ]
+    );
     assert_eq!(result.bindings.len(), 2);
     assert_eq!(result.bindings[0].kind, ReferenceBindingKind::ReExport);
     assert_eq!(result.bindings[0].uri, "file:///workspace/Barrel.ets");
@@ -144,6 +153,8 @@ fn relative_binding_resolution_fails_conservative_for_ambiguous_and_package_sour
         })
         .expect("reference candidates should be searchable");
 
+    assert!(!result.identity_complete);
+    assert!(result.identity_uris.is_empty());
     let ambiguous = result
         .bindings
         .iter()
