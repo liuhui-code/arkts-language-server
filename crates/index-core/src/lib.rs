@@ -53,6 +53,7 @@ pub enum SymbolKind {
     Struct,
     Enum,
     Interface,
+    TypeAlias,
     Function,
     Method,
 }
@@ -821,6 +822,32 @@ fn parse_symbols(document: &Document) -> Result<ParsedSymbols, DocumentParseErro
                         )?);
                     }
                 }
+            }
+            "type" => {
+                if !is_exported_declaration(&tokens, index, brace_depth) {
+                    continue;
+                }
+                let Some(name) = tokens
+                    .get(index + 1)
+                    .filter(|next| next.kind == TokenKind::Identifier)
+                else {
+                    continue;
+                };
+                symbols.push(symbol(
+                    document,
+                    &line_index,
+                    name,
+                    SymbolKind::TypeAlias,
+                    None,
+                ));
+                exports.push(workspace_export(
+                    document,
+                    &line_index,
+                    name,
+                    SymbolKind::TypeAlias,
+                    exports.len(),
+                    !is_default_exported_declaration(&tokens, index),
+                )?);
             }
             "const" => {
                 let Some(name) = exported_const_arrow_name(&tokens, index, brace_depth) else {

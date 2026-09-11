@@ -1,7 +1,8 @@
 # R2 indexed references candidates — implementation and macOS evidence
 
 Status: **R2 candidate narrowing is progressing by proven declaration kind. Class/struct/function,
-named exported const arrow functions, named exported enums, and named exported interfaces are green; unproven kinds still fail
+named exported const arrow functions, named exported enums, named exported interfaces, and named
+exported type aliases are green; unproven kinds still fail
 closed. `indexed-batched` remains experimental and the product default remains `legacy`.**
 
 The investigation began at parent revision `b70367964bf7b32e66524b08b4aeb1acde6bd8ff`; each later
@@ -472,4 +473,52 @@ Raw reports:
 /private/tmp/arkts-photos-conflict-content-indexed-interface-a-rss.json
 /private/tmp/arkts-photos-conflict-content-indexed-interface-b-rss.json
 /private/tmp/arkts-photos-conflict-content-indexed-interface-c-rss.json
+```
+
+### Exported type-alias candidate coverage
+
+Parent revision: `bcb51b5edd905232aaa1439b5cd09a463e5fea88`.
+
+The public `WorkspaceIndex.search_reference_candidates` RED used the real declaration shape
+`export type PhotoAsset = photoAccessHelper.PhotoAsset`. It failed to compile because the index had
+no type-alias kind. The minimal implementation adds an explicit `TypeAlias` symbol kind, persists it
+as the new non-conflicting SQLite value 7, serializes it as the existing protocol kind `type`, and
+recognizes only a named top-level exported type declaration. `import type`, `export type { ... }`,
+non-exported aliases, default exports, values, and members do not become declarations through this
+path. The SQLite-backed sidecar contract verifies identity
+`file:///workspace/TypeAlias.ets#0:12:PhotoAsset`, the exact two-file candidate set, and the `type`
+workspace-symbol kind.
+
+The real validation used OpenHarmony Photos commit
+`98ea1d9cd6a363c576e2c6ff17844e51723baec5`, DevEco OpenHarmony API 24 / ETS 6.1.1.125, and
+`common/src/main/ets/default/model/browser/dataObserver/MediaObserverCallback.ets`. The query was
+inside `AlbumChangeData` at zero-based UTF-16 `75:30`; its exported alias declaration is
+`common/src/main/ets/default/access/UserFileManagerAccess.ets:118:12`. Legacy returned exactly the
+three source occurrences and published 20 version-1 diagnostics in 7.538 seconds, peaking at
+822,280,192 bytes.
+
+Three post-change fresh processes returned the exact legacy Location set and the same 20 diagnostics.
+Every run used one indexed batch, three name candidates, two batch roots, and 278 Program SourceFiles,
+with no fallback. Request times were 5.636, 5.513, and 5.609 seconds; peaks were 529,199,104,
+523,751,424, and 536,268,800 bytes. The medians are 5.609 seconds and 529,199,104 bytes: 25.59%
+less request time and 35.64% less peak RSS than this symbol's legacy run. Correctness, latency, and
+the per-case 30% prototype memory threshold pass. The production default remains `legacy` pending
+broader declaration/alias coverage and the unavailable original >3 GB release reproducer.
+
+A collision check used the real `PhotoAsset` alias imported by `RecoverMenuOperation.ets`. It
+remained exact but name-only lookup conservatively returned 1,154 files and required 11 batches,
+rather than one. This is not counted as a performance pass: it records the remaining need for
+module/declaration identity narrowing and prevents treating type-alias support as a solution for
+common-name symbols.
+
+Raw reports:
+
+```text
+/private/tmp/arkts-photos-photoasset-type-legacy-main-bcb51b5.json
+/private/tmp/arkts-photos-photoasset-type-indexed-before-typealias.json
+/private/tmp/arkts-photos-photoasset-type-indexed-a.json
+/private/tmp/arkts-photos-album-change-data-legacy.json
+/private/tmp/arkts-photos-album-change-data-indexed-a.json
+/private/tmp/arkts-photos-album-change-data-indexed-b.json
+/private/tmp/arkts-photos-album-change-data-indexed-c.json
 ```

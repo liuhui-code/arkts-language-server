@@ -799,6 +799,7 @@ fn symbol_kind_name(kind: SymbolKind) -> &'static str {
         SymbolKind::Struct => "struct",
         SymbolKind::Enum => "enum",
         SymbolKind::Interface => "interface",
+        SymbolKind::TypeAlias => "type",
         SymbolKind::Function => "function",
         SymbolKind::Method => "method",
     }

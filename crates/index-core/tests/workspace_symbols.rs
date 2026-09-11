@@ -253,6 +253,51 @@ fn exported_interface_is_searchable_for_reference_candidates() {
 }
 
 #[test]
+fn exported_type_alias_is_searchable_for_reference_candidates() {
+    let mut index = WorkspaceIndex::in_memory();
+    index
+        .refresh(
+            1,
+            [
+                Document::new(
+                    "file:///workspace/MoveDialog.ets",
+                    "export type PhotoAsset = photoAccessHelper.PhotoAsset;\n",
+                ),
+                Document::new(
+                    "file:///workspace/RecoverMenuOperation.ets",
+                    "import { PhotoAsset } from './MoveDialog'\n\
+                     const assets: PhotoAsset[] = []\n",
+                ),
+            ],
+            &[],
+        )
+        .expect("reference generation should commit");
+
+    let result = index
+        .search_reference_candidates(ReferenceCandidateQuery {
+            declaration_uri: "file:///workspace/MoveDialog.ets".to_owned(),
+            declaration_position: Position::new(0, 14),
+            limit: 20,
+        })
+        .expect("exported type alias reference candidates should be searchable");
+
+    assert!(result.supported);
+    assert!(result.complete);
+    assert_eq!(result.names, ["PhotoAsset"]);
+    assert_eq!(
+        result.uris,
+        [
+            "file:///workspace/MoveDialog.ets",
+            "file:///workspace/RecoverMenuOperation.ets",
+        ]
+    );
+    assert_eq!(
+        first_match(&index, "PhotoAsset").kind,
+        SymbolKind::TypeAlias
+    );
+}
+
+#[test]
 fn semicolonless_exported_value_does_not_capture_a_later_arrow_function() {
     let mut index = WorkspaceIndex::in_memory();
     index

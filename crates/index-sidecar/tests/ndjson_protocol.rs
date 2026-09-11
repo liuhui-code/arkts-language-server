@@ -298,6 +298,14 @@ fn sidecar_returns_conservative_reference_candidates_across_alias_reexports() {
                     {
                         "uri": "file:///workspace/InterfaceConsumer.ets",
                         "text": "import { ConflictContent } from './Interface'\nconst value: ConflictContent = { type: 1 }\n"
+                    },
+                    {
+                        "uri": "file:///workspace/TypeAlias.ets",
+                        "text": "export type PhotoAsset = photoAccessHelper.PhotoAsset;\n"
+                    },
+                    {
+                        "uri": "file:///workspace/TypeAliasConsumer.ets",
+                        "text": "import { PhotoAsset } from './TypeAlias'\nconst assets: PhotoAsset[] = []\n"
                     }
                 ],
                 "removedUris": []
@@ -440,9 +448,47 @@ fn sidecar_returns_conservative_reference_candidates_across_alias_reexports() {
         "interface"
     );
 
-    let member = process.request(json!({
+    let type_alias = process.request(json!({
         "protocol": 1,
         "id": 9,
+        "method": "references/candidates",
+        "params": {
+            "declarationUri": "file:///workspace/TypeAlias.ets",
+            "declarationPosition": {"line": 0, "character": 14},
+            "limit": 100
+        }
+    }));
+    assert_eq!(type_alias["ok"], true);
+    assert_eq!(type_alias["result"]["supported"], true);
+    assert_eq!(type_alias["result"]["complete"], true);
+    assert_eq!(
+        type_alias["result"]["declarationIdentity"],
+        "file:///workspace/TypeAlias.ets#0:12:PhotoAsset"
+    );
+    assert_eq!(type_alias["result"]["names"], json!(["PhotoAsset"]));
+    assert_eq!(
+        type_alias["result"]["uris"],
+        json!([
+            "file:///workspace/TypeAlias.ets",
+            "file:///workspace/TypeAliasConsumer.ets"
+        ])
+    );
+
+    let type_alias_workspace_symbol = process.request(json!({
+        "protocol": 1,
+        "id": 10,
+        "method": "search",
+        "params": { "query": "PhotoAsset", "limit": 20 }
+    }));
+    assert_eq!(type_alias_workspace_symbol["ok"], true);
+    assert_eq!(
+        type_alias_workspace_symbol["result"]["items"][0]["kind"],
+        "type"
+    );
+
+    let member = process.request(json!({
+        "protocol": 1,
+        "id": 11,
         "method": "references/candidates",
         "params": {
             "declarationUri": "file:///workspace/Member.ets",
@@ -456,7 +502,7 @@ fn sidecar_returns_conservative_reference_candidates_across_alias_reexports() {
 
     let unsupported = process.request(json!({
         "protocol": 1,
-        "id": 10,
+        "id": 12,
         "method": "refresh",
         "params": {
             "generation": 2,
@@ -470,7 +516,7 @@ fn sidecar_returns_conservative_reference_candidates_across_alias_reexports() {
     assert_eq!(unsupported["ok"], true);
     let unsupported = process.request(json!({
         "protocol": 1,
-        "id": 11,
+        "id": 13,
         "method": "references/candidates",
         "params": {
             "declarationUri": "file:///workspace/Default.ets",
@@ -482,7 +528,7 @@ fn sidecar_returns_conservative_reference_candidates_across_alias_reexports() {
     assert_eq!(unsupported["result"]["supported"], false);
     assert_eq!(unsupported["result"]["complete"], false);
     assert_eq!(unsupported["result"]["uris"], json!([]));
-    process.shutdown(12);
+    process.shutdown(14);
 
     let mut restarted = SidecarProcess::spawn();
     let initialized = initialize(&mut restarted, &workspace, &cache, 1);
