@@ -51,6 +51,7 @@ impl TextRange {
 pub enum SymbolKind {
     Class,
     Struct,
+    Enum,
     Function,
     Method,
 }
@@ -767,17 +768,18 @@ fn parse_symbols(document: &Document) -> Result<ParsedSymbols, DocumentParseErro
 
     for (index, token) in tokens.iter().enumerate() {
         match token.text {
-            "class" | "struct" => {
+            "class" | "struct" | "enum" => {
                 let Some(name) = tokens
                     .get(index + 1)
                     .filter(|next| next.kind == TokenKind::Identifier)
                 else {
                     continue;
                 };
-                let kind = if token.text == "class" {
-                    SymbolKind::Class
-                } else {
-                    SymbolKind::Struct
+                let kind = match token.text {
+                    "class" => SymbolKind::Class,
+                    "struct" => SymbolKind::Struct,
+                    "enum" => SymbolKind::Enum,
+                    _ => unreachable!(),
                 };
                 symbols.push(symbol(document, &line_index, name, kind, None));
                 if is_exported_declaration(&tokens, index, brace_depth) {
@@ -790,7 +792,9 @@ fn parse_symbols(document: &Document) -> Result<ParsedSymbols, DocumentParseErro
                         !is_default_exported_declaration(&tokens, index),
                     )?);
                 }
-                pending_container = Some(name.text.to_owned());
+                if kind != SymbolKind::Enum {
+                    pending_container = Some(name.text.to_owned());
+                }
             }
             "function" => {
                 if let Some(name) = tokens

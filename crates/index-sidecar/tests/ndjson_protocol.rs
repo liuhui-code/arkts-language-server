@@ -282,6 +282,14 @@ fn sidecar_returns_conservative_reference_candidates_across_alias_reexports() {
                     {
                         "uri": "file:///workspace/ConstConsumer.ets",
                         "text": "import { describe } from './ConstFunction'\nconst value = describe('key')\n"
+                    },
+                    {
+                        "uri": "file:///workspace/Enum.ets",
+                        "text": "export enum ConflictFunc { AI, EDIT }\n"
+                    },
+                    {
+                        "uri": "file:///workspace/EnumConsumer.ets",
+                        "text": "import { ConflictFunc } from './Enum'\nconst value = ConflictFunc.AI\n"
                     }
                 ],
                 "removedUris": []
@@ -348,9 +356,44 @@ fn sidecar_returns_conservative_reference_candidates_across_alias_reexports() {
         ])
     );
 
-    let member = process.request(json!({
+    let enum_symbol = process.request(json!({
         "protocol": 1,
         "id": 5,
+        "method": "references/candidates",
+        "params": {
+            "declarationUri": "file:///workspace/Enum.ets",
+            "declarationPosition": {"line": 0, "character": 14},
+            "limit": 100
+        }
+    }));
+    assert_eq!(enum_symbol["ok"], true);
+    assert_eq!(enum_symbol["result"]["supported"], true);
+    assert_eq!(enum_symbol["result"]["complete"], true);
+    assert_eq!(
+        enum_symbol["result"]["declarationIdentity"],
+        "file:///workspace/Enum.ets#0:12:ConflictFunc"
+    );
+    assert_eq!(enum_symbol["result"]["names"], json!(["ConflictFunc"]));
+    assert_eq!(
+        enum_symbol["result"]["uris"],
+        json!([
+            "file:///workspace/Enum.ets",
+            "file:///workspace/EnumConsumer.ets"
+        ])
+    );
+
+    let enum_workspace_symbol = process.request(json!({
+        "protocol": 1,
+        "id": 6,
+        "method": "search",
+        "params": { "query": "ConflictFunc", "limit": 20 }
+    }));
+    assert_eq!(enum_workspace_symbol["ok"], true);
+    assert_eq!(enum_workspace_symbol["result"]["items"][0]["kind"], "enum");
+
+    let member = process.request(json!({
+        "protocol": 1,
+        "id": 7,
         "method": "references/candidates",
         "params": {
             "declarationUri": "file:///workspace/Member.ets",
@@ -364,7 +407,7 @@ fn sidecar_returns_conservative_reference_candidates_across_alias_reexports() {
 
     let unsupported = process.request(json!({
         "protocol": 1,
-        "id": 6,
+        "id": 8,
         "method": "refresh",
         "params": {
             "generation": 2,
@@ -378,7 +421,7 @@ fn sidecar_returns_conservative_reference_candidates_across_alias_reexports() {
     assert_eq!(unsupported["ok"], true);
     let unsupported = process.request(json!({
         "protocol": 1,
-        "id": 7,
+        "id": 9,
         "method": "references/candidates",
         "params": {
             "declarationUri": "file:///workspace/Default.ets",
@@ -390,7 +433,7 @@ fn sidecar_returns_conservative_reference_candidates_across_alias_reexports() {
     assert_eq!(unsupported["result"]["supported"], false);
     assert_eq!(unsupported["result"]["complete"], false);
     assert_eq!(unsupported["result"]["uris"], json!([]));
-    process.shutdown(8);
+    process.shutdown(10);
 
     let mut restarted = SidecarProcess::spawn();
     let initialized = initialize(&mut restarted, &workspace, &cache, 1);

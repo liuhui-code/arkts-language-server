@@ -166,6 +166,48 @@ fn exported_const_function_is_searchable_for_reference_candidates() {
 }
 
 #[test]
+fn exported_enum_is_searchable_for_reference_candidates() {
+    let mut index = WorkspaceIndex::in_memory();
+    index
+        .refresh(
+            1,
+            [
+                Document::new(
+                    "file:///workspace/Consts.ets",
+                    "export enum ConflictFunc { AI, EDIT, CROP }\n",
+                ),
+                Document::new(
+                    "file:///workspace/Consumer.ets",
+                    "import { ConflictFunc } from './Consts'\n\
+                     const value = ConflictFunc.AI\n",
+                ),
+            ],
+            &[],
+        )
+        .expect("reference generation should commit");
+
+    let result = index
+        .search_reference_candidates(ReferenceCandidateQuery {
+            declaration_uri: "file:///workspace/Consts.ets".to_owned(),
+            declaration_position: Position::new(0, 14),
+            limit: 20,
+        })
+        .expect("exported enum reference candidates should be searchable");
+
+    assert!(result.supported);
+    assert!(result.complete);
+    assert_eq!(result.names, ["ConflictFunc"]);
+    assert_eq!(
+        result.uris,
+        [
+            "file:///workspace/Consts.ets",
+            "file:///workspace/Consumer.ets",
+        ]
+    );
+    assert_eq!(first_match(&index, "ConflictFunc").kind, SymbolKind::Enum);
+}
+
+#[test]
 fn semicolonless_exported_value_does_not_capture_a_later_arrow_function() {
     let mut index = WorkspaceIndex::in_memory();
     index

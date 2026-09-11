@@ -1,11 +1,13 @@
 # R2 indexed references candidates — implementation and macOS evidence
 
-Status: **candidate narrowing slice complete; correctness gate green; peak-memory gate failed;
-`indexed-batched` remains experimental and the product default remains `legacy`.**
+Status: **R2 candidate narrowing is progressing by proven declaration kind. Class/struct/function,
+named exported const arrow functions, and named exported enums are green; unproven kinds still fail
+closed. `indexed-batched` remains experimental and the product default remains `legacy`.**
 
-Parent revision is `b70367964bf7b32e66524b08b4aeb1acde6bd8ff`. Measurements use the
-current uncommitted build, Node v26.3.0, macOS x64, DevEco SDK API 24 / ETS 6.1.1.125, and the
-existing SQLite/WAL sidecar. No second database or second semantic backend was added.
+The investigation began at parent revision `b70367964bf7b32e66524b08b4aeb1acde6bd8ff`; each later
+slice records its own parent below. Measurements use Node v26.3.0, macOS x64, DevEco SDK API 24 /
+ETS 6.1.1.125, and the existing SQLite/WAL sidecar. No second database or second semantic backend
+was added.
 
 ## Implemented slice
 
@@ -394,3 +396,44 @@ Raw reports:
 This closes only the exported arrow-function gap. It does not claim that exported enums, interfaces,
 type aliases, or non-function values are reference-searchable, and it is not sufficient by itself to switch
 `indexed-batched` on by default.
+
+### Exported enum candidate coverage
+
+Parent revision: `856e25f0856bd8c127e79257d7d6464ac94bf5e2`.
+
+The next public `WorkspaceIndex.search_reference_candidates` RED case used
+`export enum ConflictFunc { AI, EDIT, CROP }`. Before implementation it returned
+`supported=false`. The minimal parser change adds an explicit persisted `Enum` symbol kind and
+only makes named top-level exported enums reference-searchable; the existing default-export rule
+continues to fail closed. The sidecar protocol test verifies the `enum` kind, stable declaration
+identity, exact names, and exact candidate URIs after SQLite persistence.
+
+The fixed real replay used OpenHarmony Photos at commit
+`98ea1d9cd6a363c576e2c6ff17844e51723baec5`, source
+`imageEditor/product/editor_phone/src/main/ets/component/menu/BottomToolbar.ets`, usage position
+`320:18` (zero-based UTF-16), and declaration `Consts.ets:67:12`. Legacy returned six normalized
+Locations and published 107 version-1 diagnostics in 7.609 seconds, peaking at 834,555,904 bytes.
+Before enum support, `indexed-batched` safely returned the same six Locations but used 20
+conservative batches and took 63.101 seconds.
+
+After the change, three independent new processes each returned the exact six-item legacy set,
+published the same 107 diagnostics, used one indexed batch with two candidate files, and prepared
+714 Program SourceFiles. Request times were 8.456, 7.401, and 7.655 seconds; peaks were
+569,102,336, 566,415,360, and 566,480,896 bytes. Median request time was 7.655 seconds, 87.87%
+below the conservative fallback and 1.006x the legacy run. Median peak was 566,480,896 bytes,
+32.12% below legacy. No index fallback or workspace/document-symbol request occurred.
+
+Raw reports:
+
+```text
+/private/tmp/arkts-photos-conflict-func-legacy-a-main-856e25f-rss.json
+/private/tmp/arkts-photos-conflict-func-indexed-before-enum-rss.json
+/private/tmp/arkts-photos-conflict-func-indexed-enum-a-rss.json
+/private/tmp/arkts-photos-conflict-func-indexed-enum-b-rss.json
+/private/tmp/arkts-photos-conflict-func-indexed-enum-c-rss.json
+```
+
+This validates another real declaration kind without weakening fallback behavior. It does not by
+itself justify changing the default: remaining export kinds and alias/member shapes still require
+their own real RED/exact-differential slices, and the original >3 GB release reproducer remains
+unavailable.

@@ -266,3 +266,32 @@ Program source files, and returned the exact three-item legacy Location set. Req
 observed 107 version-1 diagnostics after the references response using the extended 180-second observation
 window. This converts the prior 63.279-second fallback into a stable indexed path without broadening support
 to unrelated const values or unproven export kinds.
+
+## Exported enum candidate slice (2026-09-11)
+
+Parent revision: `856e25f0856bd8c127e79257d7d6464ac94bf5e2`.
+
+RED command:
+
+```text
+cargo test -p arkts-index-core exported_enum_is_searchable_for_reference_candidates -- --exact
+```
+
+The public store returned `supported=false` for a position inside
+`export enum ConflictFunc`. The minimal implementation adds `SymbolKind::Enum`, persists it as a
+new non-conflicting kind value, serializes it as `enum`, and parses named enum declarations through
+the existing export/declaration-identity path. Enums are not treated as class containers, and the
+existing default-export safety rule remains unchanged.
+
+GREEN coverage includes the in-memory public store and the sidecar's SQLite-backed NDJSON protocol.
+The protocol assertion checks the exact declaration identity
+`file:///workspace/Enum.ets#0:12:ConflictFunc`, exact two-file candidate set, and `enum` workspace
+symbol kind. Full tests passed for `arkts-index-core`, `arkts-index-sqlite`, and
+`arkts-index-sidecar`, followed by the release sidecar build.
+
+The real Photos query at `BottomToolbar.ets:320:18` supplied the higher-level RED: before the change
+it used 20 conservative batches and 63.101 seconds. Three post-change child-process LSP runs each
+returned the exact six legacy Locations and 107 diagnostics using one indexed two-file batch. Their
+request times were 8.456 / 7.401 / 7.655 seconds and peaks were 569,102,336 / 566,415,360 /
+566,480,896 bytes. This is a GREEN declaration-kind slice, not authorization to treat unknown enum
+members or other export forms as indexed declarations.

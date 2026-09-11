@@ -797,6 +797,7 @@ fn symbol_kind_name(kind: SymbolKind) -> &'static str {
     match kind {
         SymbolKind::Class => "class",
         SymbolKind::Struct => "struct",
+        SymbolKind::Enum => "enum",
         SymbolKind::Function => "function",
         SymbolKind::Method => "method",
     }
