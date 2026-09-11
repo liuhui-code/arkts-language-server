@@ -197,7 +197,7 @@ function createLinuxProbe({
   }
 
   async function readStat(pid) {
-    const stat = parseLinuxProcStat(await readProc(`${pid}/stat`))
+    const stat = parseLinuxProcStat(await readProcessFile(pid, "stat"))
     if (stat.pid !== pid) {
       throw probeError(
         "EPROCESS_IDENTITY_CHANGED",
@@ -205,6 +205,17 @@ function createLinuxProbe({
       )
     }
     return stat
+  }
+
+  async function readProcessFile(pid, relativePath) {
+    try {
+      return await readProc(`${pid}/${relativePath}`)
+    } catch (error) {
+      if (error?.code === "ENOENT" || error?.code === "ESRCH") {
+        throw probeError("EPROCESS_NOT_FOUND", `process ${pid} has exited`)
+      }
+      throw error
+    }
   }
 
   return Object.freeze({
@@ -226,15 +237,27 @@ function createLinuxProbe({
 
       while (queue.length > 0 && processes.length < maxProcesses) {
         const { pid, expectedParentPid } = queue.shift()
-        const stat = await readStat(pid)
-        if (stat.state === "Z" || stat.state === "X") {
-          throw probeError("EPROCESS_NOT_FOUND", `process ${pid} has exited`)
+        let stat
+        let rssBytes
+        let childPids
+        try {
+          stat = await readStat(pid)
+          if (stat.state === "Z" || stat.state === "X") {
+            throw probeError("EPROCESS_NOT_FOUND", `process ${pid} has exited`)
+          }
+          rssBytes = parseLinuxProcStatus(await readProcessFile(pid, "status"))
+          childPids = parseLinuxProcChildren(
+            await readProcessFile(pid, `task/${pid}/children`),
+          )
+        } catch (error) {
+          if (pid !== serverPid && error?.code === "EPROCESS_NOT_FOUND") continue
+          throw error
         }
         const process = {
           pid,
           parentPid: stat.parentPid,
           startIdentity: `linux:${stat.startTimeTicks}`,
-          rssBytes: parseLinuxProcStatus(await readProc(`${pid}/status`)),
+          rssBytes,
           cpuPercent: lifetimeCpuPercent(stat, uptimeSeconds, clockTicksPerSecond),
         }
         if (expectedParentPid !== undefined && stat.parentPid !== expectedParentPid) {
@@ -249,9 +272,6 @@ function createLinuxProbe({
           ...process,
         }))
 
-        const childPids = parseLinuxProcChildren(
-          await readProc(`${pid}/task/${pid}/children`),
-        )
         for (const childPid of childPids) {
           if (visited.has(childPid)) continue
           visited.add(childPid)

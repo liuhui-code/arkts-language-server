@@ -235,8 +235,10 @@ two candidate URIs.
 
 The public store RED case creates 500,000 irrelevant occurrences before the target URI and calls
 `WorkspaceIndex.search_reference_candidates`. The old code returned the correct result but took
-136.382851 ms, failing the 100 ms bound. The one-line SQL index selection passed the same result and
-deadline; all 12 SQLite store tests and the release sidecar build passed.
+136.382851 ms on the development Mac. The one-line SQL index selection preserved the result, while a
+deterministic unit gate now requires SQLite's query plan to use `reference_occurrences_name`. Wall-clock
+timing remains benchmark evidence instead of a cross-machine test threshold; the SQLite store tests and
+release sidecar build pass.
 
 Three fresh Photos LSP processes returned exact five-item reference sets and 119 diagnostics. Median
 request time fell from 11.253 to 6.775 seconds (39.79%), meeting the 2x-over-legacy production target
@@ -244,3 +246,23 @@ at 1.28x. Median peak remained bounded at 575,754,240 bytes, 31.66% below the or
 baseline. An `export const` function check remained exact but fell back to 20 batches and 63.279
 seconds because that declaration kind is not yet searchable in the index; this becomes the next RED
 slice rather than a reason to activate indexed batching by default.
+
+## Exported const arrow-function candidates (2026-09-11)
+
+Parent revision: `076af90a65f63fac7a4841eb1df772450d98e311`.
+
+The public `WorkspaceIndex.search_reference_candidates` RED case used the exact Photos declaration shape,
+`export const getMutuallyExclusiveDesc = (...) => ...`. Before implementation it returned
+`supported=false`. The minimal parser slice recognizes only a top-level named const whose initializer starts
+with a parameter list and reaches `=>`; it records the existing stable declaration identity as a function
+export. A second RED case showed that a naive forward scan incorrectly classified
+`export const count = 1` when a later semicolonless declaration was an arrow function. The stricter
+initializer-bound parser leaves that value unsupported. The sidecar protocol contract exercises the same
+result after SQLite persistence.
+
+Three fresh-process Photos replays then accepted two candidate files, ran one verifier batch with 714
+Program source files, and returned the exact three-item legacy Location set. Request times were 7.609,
+7.345, and 7.357 seconds; peaks were 579,092,480, 568,172,544, and 579,428,352 bytes. All three runs
+observed 107 version-1 diagnostics after the references response using the extended 180-second observation
+window. This converts the prior 63.279-second fallback into a stable indexed path without broadening support
+to unrelated const values or unproven export kinds.

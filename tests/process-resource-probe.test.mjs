@@ -327,6 +327,73 @@ test("treats a Linux zombie without VmRSS as an exited process", async () => {
   })
 })
 
+test("treats a Linux proc entry disappearing before sampling as an exited process", async () => {
+  let statReads = 0
+  const probe = createProcessResourceProbe({
+    platform: "linux",
+    procRoot: "/virtual-proc",
+    clockTicksPerSecond: 100,
+    now: () => 4_000,
+    readFile: async (filePath) => {
+      if (filePath === "/virtual-proc/410/stat") {
+        statReads += 1
+        if (statReads > 1) {
+          throw Object.assign(new Error("process disappeared"), { code: "ENOENT" })
+        }
+        return linuxStat({
+          pid: 410,
+          parentPid: 1,
+          command: "node",
+          userTicks: 1,
+          systemTicks: 1,
+          startTimeTicks: 5_000,
+        })
+      }
+      if (filePath === "/virtual-proc/uptime") return "100.00 50.00\n"
+      throw Object.assign(new Error("missing fixture"), { code: "ENOENT" })
+    },
+  })
+
+  const identity = await probe.identify(410)
+  await assert.rejects(() => probe.sample(identity), {
+    code: "EPROCESS_NOT_FOUND",
+    message: "process 410 has exited",
+  })
+})
+
+test("omits a Linux child that exits while its process tree is sampled", async () => {
+  const files = new Map([
+    ["/virtual-proc/uptime", "100.00 50.00\n"],
+    ["/virtual-proc/410/stat", linuxStat({
+      pid: 410,
+      parentPid: 1,
+      command: "node",
+      userTicks: 1,
+      systemTicks: 1,
+      startTimeTicks: 5_000,
+    })],
+    ["/virtual-proc/410/status", "Name:\tnode\nVmRSS:\t2048 kB\n"],
+    ["/virtual-proc/410/task/410/children", "411\n"],
+  ])
+  const probe = createProcessResourceProbe({
+    platform: "linux",
+    procRoot: "/virtual-proc",
+    clockTicksPerSecond: 100,
+    now: () => 4_000,
+    readFile: async (filePath) => {
+      if (!files.has(filePath)) {
+        throw Object.assign(new Error("process disappeared"), { code: "ENOENT" })
+      }
+      return files.get(filePath)
+    },
+  })
+
+  const sample = await probe.sample(await probe.identify(410))
+
+  assert.deepEqual(sample.processes.map(({ pid }) => pid), [410])
+  assert.equal(sample.truncated, false)
+})
+
 test("rejects a Linux proc file after the injected read exceeds its byte limit", async () => {
   const probe = createProcessResourceProbe({
     platform: "linux",

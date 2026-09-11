@@ -89,6 +89,15 @@ fixture read. The stat parser now retains the kernel process state, and sampling
 `X` as `EPROCESS_NOT_FOUND` before attempting RSS collection. The runner already treats that code
 as the normal end of a phase. Malformed status for a live process remains a hard parse error.
 
+Two later PR #30 release-gate attempts exposed the remaining form of the same race: the process could
+leave `/proc` before the second `stat` read, producing raw `ESRCH` or `ENOENT` instead of
+`EPROCESS_NOT_FOUND`. The new injected RED case identifies a live process, removes its proc entry before
+`sample()`, and requires the stable exited-process error. Per-process stat, status, and children reads now
+translate only `ENOENT`/`ESRCH` to that error; unrelated I/O and parse failures remain fatal. A child that
+disappears while its tree is sampled is omitted, while disappearance of the identified server terminates
+the curve. The focused probe suite now passes 18 tests, and the declaration-façade A/B runner passes with
+real external sampling.
+
 ## Honest remaining gaps
 
 - Node `heapUsed`, `heapTotal`, and `external` are **not sampled**. They require

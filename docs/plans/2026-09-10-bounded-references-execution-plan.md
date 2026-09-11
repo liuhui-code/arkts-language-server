@@ -222,8 +222,12 @@ occurrence；原 SQL 因 `ORDER BY document_uri` 选择主键 URI 顺序并扫�
 不同 symbol kind 的真实检查同时暴露了下一项约束：`export const` 函数
 `getMutuallyExclusiveDesc` 尚无 index declaration identity，因而安全回退为 20 个 conservative
 batches。结果与 legacy 三个 Location exact，但耗时 63.279 秒，诊断因回放工具 20 秒观察窗而未
-被记录。下一 slice 必须先扩展 index 对已声明导出种类的保守 candidate 支持，并用延长后的诊断
-观察窗证明最终诊断发布；在此之前不得切默认。
+被记录。后续 slice 已对顶层具名 `export const` 箭头函数增加保守 candidate 支持，同时保持普通
+导出值 unsupported。三次新进程均从 index 得到两个 candidate files，仅运行一个 verifier batch，
+精确返回 legacy 的三个 Location；request 为 7.609 / 7.345 / 7.357 秒，中位 7.357 秒，较回退
+降低 88.37%。peak 中位 579,092,480 bytes，三次均在 references 后发布 version 1 的 107 条
+diagnostics。该 symbol kind 的正确性、诊断和延迟 gate 通过；其他导出种类仍须逐类以真实 RED
+case 扩展，在更广泛 exact differential 完成前不得切默认。
 
 前置：R1 exact differential 全绿，并已用实际 Program 计数识别不能仅靠固定 root 数约束的
 dependency closure。若连 Program cardinality 都不能下降，应停止而不是用索引掩盖问题；当前
