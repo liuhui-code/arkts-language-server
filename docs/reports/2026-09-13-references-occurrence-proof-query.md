@@ -114,3 +114,14 @@ Status: **candidate-query gate GREEN; real LSP correctness and bounded-memory re
 production latency gate FAIL**. The next slice must address the two unresolved project-contained SDK
 mirror edges or otherwise make declaration identity narrower through an authoritative boundary. It
 must not increase timeouts, discard candidates, weaken compiler proof, or switch the default strategy.
+
+## Release-gate follow-up
+
+The first PR validation exposed a cold-catalog regression in the pinned 455-file fixture: the new
+projection initially maintained both the raw occurrence name index and the identity name index row by
+row, and CI measured 3.350 seconds against the unchanged 3-second gate. The failure reproduced locally
+at 3.51--3.59 seconds. The final implementation batches identity rows, builds their covering index once
+at the end of the same atomic full-catalog transaction, and routes name-only reference discovery through
+that projection. The raw occurrence table remains the authoritative UTF-16 range store but no longer
+maintains a redundant name index. The pinned fixture then passed the unchanged gate in three consecutive
+local runs; migration, exact-result, rollback, and focused Rust suites remained green.

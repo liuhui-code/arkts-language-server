@@ -500,3 +500,9 @@ SDK mirror 且指向缺失 `./@ohos.base` 的 relative binding；proof 因此正
 latency gate 仍失败，默认保持 `legacy`。下一 RED 只能从权威工程/SDK 边界处理这两条 mirror edge
 或进一步收紧 declaration identity；不得按路径猜测、提高 timeout 或漏掉 candidates。详细证据见
 [occurrence-proof query 报告](../reports/2026-09-13-references-occurrence-proof-query.md)。
+
+PR release gate 随后揭示 identity projection 的首次写入曾使固定 455-file fixture 冷 catalog 达到
+3.350 秒并越过既有 3 秒上限，本机可重复为 3.51--3.59 秒。门限未放宽：全量 transaction 改为批量
+写 identity、事务末尾一次建立 covering index；所有 name-only reference discovery 改读该 projection，
+原始 range 表不再维护重复 name index。固定 fixture 随后连续三次通过原门限，故该修复属于当前
+occurrence-proof slice 的 release-gate 收口，不改变下一 RED 或默认 references 策略。

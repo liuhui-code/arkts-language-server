@@ -385,7 +385,7 @@ fn version_four_database_migrates_in_place_before_binding_data_is_refreshed() {
         .execute_batch(
             "DROP TABLE reference_bindings; \
              DROP TABLE reference_occurrence_identities; \
-             DROP INDEX reference_occurrences_name; \
+             DROP INDEX IF EXISTS reference_occurrences_name; \
              ALTER TABLE reference_occurrences DROP COLUMN qualified; \
              CREATE INDEX reference_occurrences_name ON reference_occurrences(name); \
              PRAGMA user_version = 4;",
@@ -960,7 +960,7 @@ fn version_five_occurrence_qualification_stays_unknown_until_refresh() {
     legacy
         .execute_batch(
             "DROP TABLE reference_occurrence_identities; \
-             DROP INDEX reference_occurrences_name; \
+             DROP INDEX IF EXISTS reference_occurrences_name; \
              ALTER TABLE reference_occurrences DROP COLUMN qualified; \
              CREATE INDEX reference_occurrences_name ON reference_occurrences(name); \
              PRAGMA user_version = 5;",
@@ -1025,6 +1025,7 @@ fn version_six_database_migrates_to_the_covering_occurrence_identity_index() {
     legacy
         .execute_batch(
             "DROP TABLE reference_occurrence_identities; \
+             CREATE INDEX reference_occurrences_name ON reference_occurrences(name); \
              PRAGMA user_version = 6;",
         )
         .expect("test fixture should emulate schema version six");

@@ -415,6 +415,9 @@ impl SymbolStore for SqliteStore {
         }
 
         transaction
+            .execute("DROP INDEX reference_occurrence_identities_name", [])
+            .map_err(map_sqlite_error)?;
+        transaction
             .execute("DELETE FROM documents", [])
             .map_err(map_sqlite_error)?;
         transaction
@@ -424,6 +427,13 @@ impl SymbolStore for SqliteStore {
         insert_symbol_documents(&transaction, &batch.documents)?;
         insert_export_documents(&transaction, &batch.documents, generation)?;
         insert_reference_documents(&transaction, &batch.documents)?;
+        transaction
+            .execute(
+                "CREATE INDEX reference_occurrence_identities_name \
+                 ON reference_occurrence_identities(name, document_uri, qualification)",
+                [],
+            )
+            .map_err(map_sqlite_error)?;
         for uri in &batch.rejected_uris {
             transaction
                 .execute(
@@ -881,18 +891,13 @@ fn insert_reference_documents(
     transaction: &Transaction<'_>,
     documents: &[DocumentSymbols],
 ) -> Result<(), StoreError> {
+    const OCCURRENCE_IDENTITIES_PER_INSERT: usize = 256;
+    const VALUES_PER_OCCURRENCE_IDENTITY: usize = 3;
     let mut occurrence_statement = transaction
         .prepare_cached(
             "INSERT INTO reference_occurrences(\
                 document_uri, ordinal, name, start_line, start_character, end_line, end_character, qualified\
              ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-        )
-        .map_err(map_sqlite_error)?;
-    let mut occurrence_identity_statement = transaction
-        .prepare_cached(
-            "INSERT INTO reference_occurrence_identities(\
-                document_uri, name, qualification\
-             ) VALUES (?1, ?2, ?3)",
         )
         .map_err(map_sqlite_error)?;
     let mut alias_statement = transaction
@@ -908,8 +913,11 @@ fn insert_reference_documents(
              ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         )
         .map_err(map_sqlite_error)?;
+    let mut occurrence_identity_values =
+        Vec::with_capacity(OCCURRENCE_IDENTITIES_PER_INSERT * VALUES_PER_OCCURRENCE_IDENTITY);
+    let mut occurrence_identity_count = 0usize;
     for document in documents {
-        let mut occurrence_identities = BTreeSet::new();
+        let mut occurrence_identities = Vec::with_capacity(document.occurrences.len());
         for (ordinal, occurrence) in document.occurrences.iter().enumerate() {
             occurrence_statement
                 .execute(params![
@@ -923,7 +931,7 @@ fn insert_reference_documents(
                     occurrence.qualified,
                 ])
                 .map_err(map_sqlite_error)?;
-            occurrence_identities.insert((
+            occurrence_identities.push((
                 occurrence.name.as_str(),
                 match occurrence.qualified {
                     None => -1_i64,
@@ -932,10 +940,24 @@ fn insert_reference_documents(
                 },
             ));
         }
+        occurrence_identities.sort_unstable();
+        occurrence_identities.dedup();
         for (name, qualification) in occurrence_identities {
-            occurrence_identity_statement
-                .execute(params![document.uri, name, qualification])
-                .map_err(map_sqlite_error)?;
+            occurrence_identity_values.extend([
+                SqlValue::Text(document.uri.clone()),
+                SqlValue::Text(name.to_owned()),
+                SqlValue::Integer(qualification),
+            ]);
+            occurrence_identity_count += 1;
+            if occurrence_identity_count == OCCURRENCE_IDENTITIES_PER_INSERT {
+                insert_occurrence_identity_values(
+                    transaction,
+                    occurrence_identity_count,
+                    &occurrence_identity_values,
+                )?;
+                occurrence_identity_values.clear();
+                occurrence_identity_count = 0;
+            }
         }
         for (ordinal, alias) in document.aliases.iter().enumerate() {
             alias_statement
@@ -960,7 +982,33 @@ fn insert_reference_documents(
                 .map_err(map_sqlite_error)?;
         }
     }
+    if occurrence_identity_count > 0 {
+        insert_occurrence_identity_values(
+            transaction,
+            occurrence_identity_count,
+            &occurrence_identity_values,
+        )?;
+    }
     Ok(())
+}
+
+fn insert_occurrence_identity_values(
+    transaction: &Transaction<'_>,
+    row_count: usize,
+    values: &[SqlValue],
+) -> Result<(), StoreError> {
+    const VALUES_PER_OCCURRENCE_IDENTITY: usize = 3;
+    let mut sql = String::from(
+        "INSERT INTO reference_occurrence_identities(document_uri, name, qualification) VALUES ",
+    );
+    let value_group = format!("({})", ["?"; VALUES_PER_OCCURRENCE_IDENTITY].join(","));
+    sql.push_str(&vec![value_group; row_count].join(","));
+    transaction
+        .prepare_cached(&sql)
+        .map_err(map_sqlite_error)?
+        .execute(params_from_iter(values.iter()))
+        .map(|_| ())
+        .map_err(map_sqlite_error)
 }
 
 fn sqlite_ordinal(ordinal: usize, item: &str) -> Result<i64, StoreError> {
@@ -992,9 +1040,10 @@ const REFERENCE_URIS_SQL: &str = "WITH RECURSIVE \
         VALUES (?1) \
         UNION SELECT edges.target FROM edges JOIN names ON edges.source = names.name\
     ) \
-    SELECT DISTINCT reference_occurrences.document_uri \
-    FROM reference_occurrences INDEXED BY reference_occurrences_name JOIN names USING(name) \
-    ORDER BY reference_occurrences.document_uri LIMIT ?2";
+    SELECT DISTINCT reference_occurrence_identities.document_uri \
+    FROM reference_occurrence_identities \
+         INDEXED BY reference_occurrence_identities_name JOIN names USING(name) \
+    ORDER BY reference_occurrence_identities.document_uri LIMIT ?2";
 
 const REFERENCE_BINDINGS_SQL: &str = "WITH RECURSIVE \
     edges(source, target) AS (\
@@ -1615,7 +1664,6 @@ fn initialize_schema(
                 qualified INTEGER CHECK(qualified IN (0, 1)),\
                 PRIMARY KEY(document_uri, ordinal)\
              );\
-             CREATE INDEX reference_occurrences_name ON reference_occurrences(name);\
              CREATE TABLE reference_occurrence_identities(\
                 document_uri TEXT NOT NULL REFERENCES documents(uri) ON DELETE CASCADE,\
                 name TEXT NOT NULL,\
@@ -1711,7 +1759,8 @@ fn migrate_schema_v6_to_v7(connection: &mut Connection) -> Result<(), StoreError
              INSERT INTO reference_occurrence_identities(document_uri, name, qualification) \
              SELECT document_uri, name, COALESCE(qualified, -1) \
              FROM reference_occurrences \
-             GROUP BY document_uri, name, qualified;",
+             GROUP BY document_uri, name, qualified;\
+             DROP INDEX reference_occurrences_name;",
         )
         .map_err(map_sqlite_error)?;
     transaction
@@ -1989,7 +2038,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn reference_uri_query_forces_the_occurrence_name_index() {
+    fn reference_uri_query_uses_the_covering_occurrence_identity_index() {
         let connection = Connection::open_in_memory().expect("in-memory database should open");
         connection
             .execute_batch(
@@ -1997,12 +2046,13 @@ mod tests {
                     from_name TEXT NOT NULL,\
                     to_name TEXT NOT NULL\
                  );\
-                 CREATE TABLE reference_occurrences(\
+                 CREATE TABLE reference_occurrence_identities(\
                     document_uri TEXT NOT NULL,\
-                    name TEXT NOT NULL\
+                    name TEXT NOT NULL,\
+                    qualification INTEGER NOT NULL\
                  );\
-                 CREATE INDEX reference_occurrences_name \
-                    ON reference_occurrences(name, document_uri);",
+                 CREATE INDEX reference_occurrence_identities_name \
+                    ON reference_occurrence_identities(name, document_uri, qualification);",
             )
             .expect("reference query schema should exist");
 
@@ -2016,10 +2066,10 @@ mod tests {
             .expect("reference query plan should decode");
 
         assert!(
-            details
-                .iter()
-                .any(|detail| detail.contains("reference_occurrences_name")),
-            "reference query plan did not use the name index: {details:?}"
+            details.iter().any(|detail| {
+                detail.contains("COVERING INDEX reference_occurrence_identities_name")
+            }),
+            "reference query plan did not use the covering identity index: {details:?}"
         );
     }
 
