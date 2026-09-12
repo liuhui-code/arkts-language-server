@@ -120,9 +120,20 @@ input.on("line", (line) => {
       break
     }
     case "references/candidates": {
-      const supported = request.params.declarationUri.endsWith("/Target.ets")
+      const packageResolutions = process.env.ARKTS_INDEX_TEST_SCENARIO === "reference-package-resolutions"
+      const supported = packageResolutions
+        ? request.params.declarationUri.endsWith("/shared/src/main/ets/Index.ets")
+        : request.params.declarationUri.endsWith("/Target.ets")
       const semanticUnits = process.env.ARKTS_INDEX_TEST_SCENARIO === "semantic-units"
-      const candidateFiles = semanticUnits
+      const candidateFiles = packageResolutions
+        ? [
+            path.join("shared", "src", "main", "ets", "Index.ets"),
+            path.join("entry", "src", "main", "ets", "Barrel.ets"),
+            path.join("entry", "src", "main", "ets", "Query.ets"),
+            path.join("entry", "src", "main", "ets", "Use.ets"),
+            path.join("entry", "src", "main", "ets", "SameName.ets"),
+          ]
+        : semanticUnits
         ? [
             path.join("shared", "src", "main", "ets", "Target.ets"),
             path.join("shared", "src", "main", "ets", "Barrel.ets"),
@@ -130,14 +141,26 @@ input.on("line", (line) => {
             path.join("entry", "src", "main", "ets", "Use.ets"),
           ]
         : ["Target.ets", "Barrel.ets", "Query.ets", "Use.ets", "SameName.ets"]
+      const packageSourceResolved = request.params.sourceResolutions?.some((resolution) => (
+        resolution.bindingUri.endsWith("/entry/src/main/ets/Barrel.ets")
+        && resolution.sourceSpecifier === "shared"
+        && resolution.resolvedSourceUri.endsWith("/shared/src/main/ets/Index.ets")
+      )) ?? false
       const identityFiles = semanticUnits
         ? []
+        : packageResolutions
+          ? [
+              path.join("shared", "src", "main", "ets", "Index.ets"),
+              path.join("entry", "src", "main", "ets", "Barrel.ets"),
+              path.join("entry", "src", "main", "ets", "Query.ets"),
+              path.join("entry", "src", "main", "ets", "Use.ets"),
+            ]
         : ["Target.ets", "Barrel.ets", "Query.ets", "Use.ets"]
       respond(request.id, {
         supported,
         complete: supported,
-        identityComplete: supported && !semanticUnits,
-        identityUris: supported
+        identityComplete: supported && !semanticUnits && (!packageResolutions || packageSourceResolved),
+        identityUris: supported && (!packageResolutions || packageSourceResolved)
           ? identityFiles.map(file => pathToFileURL(path.join(workspaceRoot, file)).href)
           : [],
         declarationIdentity: supported ? "scripted-reference-candidate" : null,
@@ -145,6 +168,17 @@ input.on("line", (line) => {
         uris: supported
           ? candidateFiles.map(file => pathToFileURL(path.join(workspaceRoot, file)).href)
           : [],
+        bindings: supported && packageResolutions ? [{
+          kind: "reexport",
+          uri: pathToFileURL(path.join(workspaceRoot, "entry", "src", "main", "ets", "Barrel.ets")).href,
+          importedName: "Thing",
+          localName: "PublicThing",
+          sourceSpecifier: "shared",
+          sourceResolution: packageSourceResolved ? "unique" : "unsupported",
+          resolvedSourceUri: packageSourceResolved
+            ? pathToFileURL(path.join(workspaceRoot, "shared", "src", "main", "ets", "Index.ets")).href
+            : null,
+        }] : undefined,
         servedGeneration: committedGeneration,
         completeness: committedGeneration > 0 ? "ready" : "stale",
       })

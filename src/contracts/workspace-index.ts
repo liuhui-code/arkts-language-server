@@ -80,12 +80,19 @@ export interface WorkspaceReferenceBinding {
   resolvedSourceUri?: DocumentUri
 }
 
+export interface WorkspaceReferenceSourceResolution {
+  bindingUri: DocumentUri
+  sourceSpecifier: string
+  resolvedSourceUri: DocumentUri
+}
+
 export interface WorkspaceReferenceIndexPort {
   searchReferenceCandidates(
     workspaceId: WorkspaceId,
     declarationUri: DocumentUri,
     declarationPosition: TextPosition,
     limit: number,
+    sourceResolutions?: readonly WorkspaceReferenceSourceResolution[],
     signal?: AbortSignal,
   ): Promise<WorkspaceReferenceCandidateResult>
   status(workspaceId: WorkspaceId): Promise<WorkspaceIndexStatus>

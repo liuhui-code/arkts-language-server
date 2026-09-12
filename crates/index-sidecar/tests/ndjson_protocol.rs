@@ -584,6 +584,113 @@ fn sidecar_returns_conservative_reference_candidates_across_alias_reexports() {
 }
 
 #[test]
+fn sidecar_proves_package_bindings_only_with_authoritative_source_resolutions() {
+    let temp = TestDir::new("reference-package-resolutions");
+    let workspace = temp.path().join("workspace");
+    let cache = temp.path().join("cache");
+    fs::create_dir_all(&workspace).expect("workspace should exist");
+
+    let mut process = SidecarProcess::spawn();
+    assert_eq!(initialize(&mut process, &workspace, &cache, 1)["ok"], true);
+    assert_eq!(
+        process.request(json!({
+            "protocol": 1,
+            "id": 2,
+            "method": "refresh",
+            "params": {
+                "generation": 1,
+                "changed": [
+                    {
+                        "uri": "file:///workspace/Target.ets",
+                        "text": "export class Thing {}\n"
+                    },
+                    {
+                        "uri": "file:///workspace/Barrel.ets",
+                        "text": "export { Thing as PackageThing } from '@scope/model'\n"
+                    },
+                    {
+                        "uri": "file:///workspace/Consumer.ets",
+                        "text": "import { PackageThing } from './Barrel'\nconst value = new PackageThing()\n"
+                    },
+                    {
+                        "uri": "file:///workspace/Other.ets",
+                        "text": "export class OtherThing {}\n"
+                    }
+                ],
+                "removedUris": []
+            }
+        }))["ok"],
+        true
+    );
+
+    let unresolved = process.request(json!({
+        "protocol": 1,
+        "id": 3,
+        "method": "references/candidates",
+        "params": {
+            "declarationUri": "file:///workspace/Target.ets",
+            "declarationPosition": {"line": 0, "character": 14},
+            "limit": 100
+        }
+    }));
+    assert_eq!(unresolved["result"]["identityComplete"], false);
+    assert_eq!(unresolved["result"]["identityUris"], json!([]));
+
+    let resolved = process.request(json!({
+        "protocol": 1,
+        "id": 4,
+        "method": "references/candidates",
+        "params": {
+            "declarationUri": "file:///workspace/Target.ets",
+            "declarationPosition": {"line": 0, "character": 14},
+            "limit": 100,
+            "sourceResolutions": [{
+                "bindingUri": "file:///workspace/Barrel.ets",
+                "sourceSpecifier": "@scope/model",
+                "resolvedSourceUri": "file:///workspace/Target.ets"
+            }]
+        }
+    }));
+    assert_eq!(resolved["ok"], true);
+    assert_eq!(resolved["result"]["identityComplete"], true);
+    assert_eq!(
+        resolved["result"]["identityUris"],
+        json!([
+            "file:///workspace/Barrel.ets",
+            "file:///workspace/Consumer.ets",
+            "file:///workspace/Target.ets"
+        ])
+    );
+
+    let conflicting = process.request(json!({
+        "protocol": 1,
+        "id": 5,
+        "method": "references/candidates",
+        "params": {
+            "declarationUri": "file:///workspace/Target.ets",
+            "declarationPosition": {"line": 0, "character": 14},
+            "limit": 100,
+            "sourceResolutions": [
+                {
+                    "bindingUri": "file:///workspace/Barrel.ets",
+                    "sourceSpecifier": "@scope/model",
+                    "resolvedSourceUri": "file:///workspace/Target.ets"
+                },
+                {
+                    "bindingUri": "file:///workspace/Barrel.ets",
+                    "sourceSpecifier": "@scope/model",
+                    "resolvedSourceUri": "file:///workspace/Other.ets"
+                }
+            ]
+        }
+    }));
+    assert_eq!(conflicting["ok"], true);
+    assert_eq!(conflicting["result"]["identityComplete"], false);
+    assert_eq!(conflicting["result"]["identityUris"], json!([]));
+    process.shutdown(6);
+}
+
+#[test]
 fn sidecar_persists_symbols_and_restores_them_as_stale_after_restart() {
     let temp = TestDir::new("restart");
     let workspace = temp.path().join("workspace");

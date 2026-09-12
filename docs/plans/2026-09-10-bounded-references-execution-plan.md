@@ -399,3 +399,23 @@ Location，但 index proof 因包级/无法唯一解析的 binding 保持 incomp
 个候选并运行 11 批；本次请求 45.339 秒、进程树 RSS 峰值 779,599,872 bytes。此数据不构成性能
 成功。下一 RED 必须为 bare package/SDK import 建立由 ProjectGraph/SDK identity 支持的唯一解析，
 或继续 fail closed；禁止把字符串相同的 package import 当作同一 declaration。
+
+2026-09-12 本地包 binding-resolution 切片：`references/candidates` 新增有界
+`sourceResolutions` 输入。该输入不是索引自行猜测的模块真值；它只能由已有
+`LocalPackageResolver` 根据当前 ProjectGraph、声明依赖、包 manifest 和 containing file 产生。
+sidecar 只接受非空、受大小限制的 URI/specifier 三元组，且 resolved URI 必须存在于同一 committed
+catalog；同一 binding 的冲突覆盖、未知目标或未覆盖边继续使 identity proof incomplete。
+
+`indexed-batched` 先读取 bindings；当 generation ready、declaration identity 有效而 proof 尚不完整时，
+只解析非 unique source，再以同一 declaration/position 和 resolution overlay 请求第二次 proof。真实
+LSP 子进程合同覆盖 `entry -> shared: file:../shared` 的裸包名 re-export：identity candidates 从五个
+收窄为四个，最终 Location set 与 conservative batching 完全一致。默认仍为 `legacy`；这一切片只
+支持 ProjectGraph 内的声明本地包，不把 `@ohos.*` 等 SDK specifier 误当作本地包。下一 RED 是由
+已锁定 SDK identity 提供 SDK module declaration URI；无法唯一匹配时继续使用 conservative `uris`。
+
+同日固定 Photos 6.1 `PhotoAsset` 再回放确认了该边界：九个 Location 与 legacy oracle exact，
+请求 46.002 秒、进程树 RSS 峰值 784,023,552 bytes；index 返回 1,586 个 conservative URI，
+membership 过滤后仍有 1,154 个 compiler candidates 和 11 批。日志没有
+`references.index.source-resolutions`，说明本地包 resolver 没有把 SDK/非本地包边误分类。该结果是
+正确性与 fail-conservative 证据，不是性能改善；原始报告为
+`/private/tmp/arkts-photos-photoasset-local-package-retry.json`。
