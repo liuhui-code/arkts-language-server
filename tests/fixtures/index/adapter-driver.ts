@@ -1,6 +1,7 @@
 import { createInterface } from "node:readline"
 
 import type { DocumentSnapshot, WorkspaceDescriptor } from "../../../src/contracts/document.js"
+import type { WorkspaceReferenceSourceResolution } from "../../../src/contracts/workspace-index.js"
 import {
   resolveIndexCacheDirectory,
   type CacheDirectoryOptions,
@@ -25,6 +26,7 @@ interface DriverCommand {
   limit?: number
   declarationUri?: string
   declarationPosition?: { line: number; character: number }
+  sourceResolutions?: WorkspaceReferenceSourceResolution[]
   requestKey?: string
   options?: Record<string, unknown>
 }
@@ -97,6 +99,7 @@ async function dispatch(command: DriverCommand): Promise<void> {
           required(command.declarationUri, "declarationUri"),
           required(command.declarationPosition, "declarationPosition"),
           required(command.limit, "limit"),
+          command.sourceResolutions,
           controller?.signal,
         )
         break

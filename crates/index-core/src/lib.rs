@@ -257,6 +257,13 @@ pub struct ReferenceCandidateQuery {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReferenceSourceResolution {
+    pub binding_uri: String,
+    pub source_specifier: String,
+    pub resolved_source_uri: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExportQuery {
     folded: String,
     limit: usize,
@@ -327,6 +334,7 @@ pub trait SymbolStore {
     fn search_reference_candidates(
         &self,
         query: &ReferenceCandidateQuery,
+        source_resolutions: &[ReferenceSourceResolution],
     ) -> Result<ReferenceCandidateSearchResult, StoreError>;
 }
 
@@ -424,6 +432,7 @@ impl SymbolStore for MemoryStore {
     fn search_reference_candidates(
         &self,
         query: &ReferenceCandidateQuery,
+        source_resolutions: &[ReferenceSourceResolution],
     ) -> Result<ReferenceCandidateSearchResult, StoreError> {
         let declaration = self
             .documents
@@ -485,6 +494,7 @@ impl SymbolStore for MemoryStore {
             .collect();
         let document_uris: BTreeSet<_> = self.documents.keys().cloned().collect();
         resolve_reference_binding_sources(&mut bindings, &document_uris);
+        apply_reference_source_resolutions(&mut bindings, source_resolutions, &document_uris);
         let occurrences: Vec<_> = self
             .documents
             .values()
@@ -582,6 +592,42 @@ pub fn resolve_reference_binding_sources(
                 binding.resolved_source_uri = None;
             }
         }
+    }
+}
+
+pub fn apply_reference_source_resolutions(
+    bindings: &mut [ReferenceBinding],
+    source_resolutions: &[ReferenceSourceResolution],
+    document_uris: &BTreeSet<String>,
+) {
+    let mut resolved = HashMap::<(&str, &str), Option<&str>>::new();
+    for resolution in source_resolutions {
+        if !document_uris.contains(&resolution.resolved_source_uri) {
+            continue;
+        }
+        let key = (
+            resolution.binding_uri.as_str(),
+            resolution.source_specifier.as_str(),
+        );
+        resolved
+            .entry(key)
+            .and_modify(|value| {
+                if *value != Some(resolution.resolved_source_uri.as_str()) {
+                    *value = None;
+                }
+            })
+            .or_insert(Some(resolution.resolved_source_uri.as_str()));
+    }
+    for binding in bindings {
+        if binding.source_resolution == ReferenceBindingResolution::Unique {
+            continue;
+        }
+        let key = (binding.uri.as_str(), binding.source_specifier.as_str());
+        let Some(Some(uri)) = resolved.get(&key) else {
+            continue;
+        };
+        binding.source_resolution = ReferenceBindingResolution::Unique;
+        binding.resolved_source_uri = Some((*uri).to_owned());
     }
 }
 
@@ -875,7 +921,16 @@ impl WorkspaceIndex {
         &self,
         query: ReferenceCandidateQuery,
     ) -> Result<ReferenceCandidateSearchResult, StoreError> {
-        self.store.search_reference_candidates(&query)
+        self.store.search_reference_candidates(&query, &[])
+    }
+
+    pub fn search_reference_candidates_with_source_resolutions(
+        &self,
+        query: ReferenceCandidateQuery,
+        source_resolutions: &[ReferenceSourceResolution],
+    ) -> Result<ReferenceCandidateSearchResult, StoreError> {
+        self.store
+            .search_reference_candidates(&query, source_resolutions)
     }
 
     pub fn search_excluding(

@@ -445,3 +445,31 @@ The fixed Photos `PhotoAsset` replay preserved all nine legacy Locations but did
 identity proof because its remaining bindings include package/SDK sources. It retained 1,154
 candidates and 11 batches, taking 45.339 seconds with a 779,599,872-byte process-tree RSS peak.
 The next slice must resolve package/SDK identities or remain conservative.
+
+## Local-package binding-resolution overlay (2026-09-12)
+
+Parent revision: `0f1fa18f5233166d95a409996a031a2b3c05784d`.
+
+The first RED exercised the real sidecar NDJSON boundary. A bare package re-export stayed incomplete
+even when the request included an authoritative resolved source URI, because the protocol discarded
+that input. GREEN adds a bounded resolution overlay, verifies that its target belongs to the active
+catalog, and reruns the same binding-chain proof. A conflicting duplicate overlay is explicitly
+covered and must keep `identityUris` empty.
+
+The second RED used a real LSP child process and a two-module Harmony fixture with
+`shared: file:../shared`. Before the production connection, references remained exact but the trace
+reported `compiler-definition`, showing that all five conservative candidates were admitted. GREEN
+uses the existing `LocalPackageResolver`, sends one resolved binding back to the index, receives four
+identity candidates, and reports `compiler-definition-identity`; the normalized Location set is
+unchanged.
+
+The safety boundary is intentional: Rust does not read package manifests to invent language module
+semantics, stale/partial generations are ineligible, out-of-workspace targets are rejected, and an
+unresolved SDK specifier cannot narrow candidates. The next RED must first resolve a subpath of a
+manifest-declared local package, such as `@ohos/common/src/...`, through `LocalPackageResolver` while
+proving containment in that package. SDK module identity remains a later RED owned by the locked SDK.
+
+The post-GREEN Photos `PhotoAsset` replay also stayed fail-conservative: exact nine Locations,
+46.002 seconds, 784,023,552-byte peak RSS, 1,154 admitted candidates, and 11 batches. It emitted no
+local-package resolution event. This is expected negative evidence for the next declared
+local-package-subpath RED, not a memory-gate pass.

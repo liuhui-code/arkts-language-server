@@ -18,6 +18,7 @@ import type {
   WorkspaceIndexStatus,
   WorkspaceReferenceCandidateResult,
   WorkspaceReferenceIndexPort,
+  WorkspaceReferenceSourceResolution,
   WorkspaceSymbol,
   WorkspaceSymbolSearchResult,
 } from "../contracts/workspace-index.js"
@@ -228,6 +229,7 @@ export class SidecarWorkspaceIndex implements WorkspaceIndexPort, WorkspaceCatal
     declarationUri: DocumentUri,
     declarationPosition: { line: number; character: number },
     limit: number,
+    sourceResolutions?: readonly WorkspaceReferenceSourceResolution[],
     signal?: AbortSignal,
   ): Promise<WorkspaceReferenceCandidateResult> {
     const session = this.session(workspaceId)
@@ -236,12 +238,25 @@ export class SidecarWorkspaceIndex implements WorkspaceIndexPort, WorkspaceCatal
       if (rebasedDeclarationUri === undefined) {
         return unsupportedReferenceCandidates(session.lastStatus.committedGeneration)
       }
+      const rebasedSourceResolutions = sourceResolutions?.map((resolution) => {
+        const bindingUri = tryWorkspaceIdentityUri(session, resolution.bindingUri)
+        const resolvedSourceUri = tryWorkspaceIdentityUri(session, resolution.resolvedSourceUri)
+        return bindingUri && resolvedSourceUri
+          ? { bindingUri, sourceSpecifier: resolution.sourceSpecifier, resolvedSourceUri }
+          : undefined
+      })
+      if (rebasedSourceResolutions?.some(resolution => resolution === undefined)) {
+        return unsupportedReferenceCandidates(session.lastStatus.committedGeneration)
+      }
       return mapReferenceCandidateResult(await session.request(
         "references/candidates",
         {
           declarationUri: rebasedDeclarationUri,
           declarationPosition,
           limit,
+          ...(rebasedSourceResolutions?.length
+            ? { sourceResolutions: rebasedSourceResolutions }
+            : {}),
         },
         signal,
       ), (uri) => toClientWorkspaceUri(session, uri))

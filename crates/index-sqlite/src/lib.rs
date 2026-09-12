@@ -12,9 +12,10 @@ use arkts_index_core::{
     CommitReceipt, DocumentSymbols, ExportQuery, ExportSearchResult, FullCatalogBatch,
     MAX_REFERENCE_ALIAS_NAMES, Position, ReferenceBinding, ReferenceBindingKind,
     ReferenceBindingResolution, ReferenceCandidateQuery, ReferenceCandidateSearchResult,
-    ReferenceOccurrence, RefreshBatch, StoreError, StoreErrorKind, StoreMetadata, SymbolKind,
-    SymbolQuery, SymbolSearchResult, SymbolStore, TextRange, WorkspaceExport, WorkspaceSymbol,
-    acronym_for_search, fold_for_search, prove_reference_binding_chain, rank_symbols,
+    ReferenceOccurrence, ReferenceSourceResolution, RefreshBatch, StoreError, StoreErrorKind,
+    StoreMetadata, SymbolKind, SymbolQuery, SymbolSearchResult, SymbolStore, TextRange,
+    WorkspaceExport, WorkspaceSymbol, acronym_for_search, apply_reference_source_resolutions,
+    fold_for_search, prove_reference_binding_chain, rank_symbols,
     resolve_reference_binding_sources, sort_reference_bindings,
 };
 use rusqlite::types::Value as SqlValue;
@@ -520,6 +521,7 @@ impl SymbolStore for SqliteStore {
     fn search_reference_candidates(
         &self,
         query: &ReferenceCandidateQuery,
+        source_resolutions: &[ReferenceSourceResolution],
     ) -> Result<ReferenceCandidateSearchResult, StoreError> {
         let transaction =
             Transaction::new_unchecked(&self.connection, TransactionBehavior::Deferred)
@@ -566,6 +568,7 @@ impl SymbolStore for SqliteStore {
         let mut bindings = read_reference_bindings(&transaction, exported_name)?;
         let document_uris = read_document_uris(&transaction)?;
         resolve_reference_binding_sources(&mut bindings, &document_uris);
+        apply_reference_source_resolutions(&mut bindings, source_resolutions, &document_uris);
         let occurrences = read_reference_occurrences(&transaction, exported_name)?;
         let independent_declarations = read_independent_reference_declarations(
             &transaction,

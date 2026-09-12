@@ -14,7 +14,8 @@ use std::{
 
 use arkts_index_core::{
     Document, IndexState, Position, ReferenceBindingKind, ReferenceBindingResolution,
-    ReferenceCandidateQuery, StoreError, StoreErrorKind, SymbolKind, WorkspaceIndex,
+    ReferenceCandidateQuery, ReferenceSourceResolution, StoreError, StoreErrorKind, SymbolKind,
+    WorkspaceIndex,
 };
 use arkts_index_sqlite::{SqliteStore, workspace_cache_location};
 use catalog::{CatalogControl, CatalogProgress, CatalogUpdate, spawn_catalog};
@@ -26,6 +27,9 @@ const MAX_EXCLUDED_URIS: usize = 256;
 const MAX_EXCLUDED_URI_BYTES: usize = 4_096;
 const MAX_EXCLUDED_URI_TOTAL_BYTES: usize = 64 * 1_024;
 const MAX_REFERENCE_CANDIDATES: usize = 65_536;
+const MAX_REFERENCE_SOURCE_RESOLUTIONS: usize = 4_096;
+const MAX_REFERENCE_SOURCE_SPECIFIER_BYTES: usize = 4_096;
+const MAX_REFERENCE_SOURCE_RESOLUTION_BYTES: usize = 8 * 1_024 * 1_024;
 const CATALOG_HEARTBEAT_INTERVAL: Duration = Duration::from_millis(250);
 
 #[derive(Deserialize)]
@@ -80,6 +84,16 @@ struct ReferenceCandidatesParams {
     declaration_uri: String,
     declaration_position: ProtocolPosition,
     limit: usize,
+    #[serde(default)]
+    source_resolutions: Vec<ProtocolReferenceSourceResolution>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProtocolReferenceSourceResolution {
+    binding_uri: String,
+    source_specifier: String,
+    resolved_source_uri: String,
 }
 
 #[derive(Deserialize)]
@@ -362,27 +376,41 @@ impl Runtime {
                     || params.declaration_uri.len() > MAX_EXCLUDED_URI_BYTES
                     || params.limit == 0
                     || params.limit > MAX_REFERENCE_CANDIDATES
+                    || !valid_reference_source_resolutions(&params.source_resolutions)
                 {
                     return Err(ProtocolError::new(
                         "invalid_params",
                         format!(
                             "declarationUri must contain 1..={MAX_EXCLUDED_URI_BYTES} UTF-8 bytes \
-                             and limit must be in 1..={MAX_REFERENCE_CANDIDATES}"
+                             and limit must be in 1..={MAX_REFERENCE_CANDIDATES}; sourceResolutions \
+                             must be bounded, non-empty URI/specifier triples"
                         ),
                     ));
                 }
+                let source_resolutions: Vec<_> = params
+                    .source_resolutions
+                    .into_iter()
+                    .map(|resolution| ReferenceSourceResolution {
+                        binding_uri: resolution.binding_uri,
+                        source_specifier: resolution.source_specifier,
+                        resolved_source_uri: resolution.resolved_source_uri,
+                    })
+                    .collect();
                 let search_result = self
                     .index
                     .as_ref()
                     .ok_or_else(not_initialized)?
-                    .search_reference_candidates(ReferenceCandidateQuery {
-                        declaration_uri: params.declaration_uri,
-                        declaration_position: Position::new(
-                            params.declaration_position.line,
-                            params.declaration_position.character,
-                        ),
-                        limit: params.limit,
-                    });
+                    .search_reference_candidates_with_source_resolutions(
+                        ReferenceCandidateQuery {
+                            declaration_uri: params.declaration_uri,
+                            declaration_position: Position::new(
+                                params.declaration_position.line,
+                                params.declaration_position.character,
+                            ),
+                            limit: params.limit,
+                        },
+                        &source_resolutions,
+                    );
                 let result = match search_result {
                     Ok(result) => result,
                     Err(error) => {
@@ -783,6 +811,32 @@ fn validate_excluded_uris(uris: &[String]) -> Result<(), ProtocolError> {
         }
     }
     Ok(())
+}
+
+fn valid_reference_source_resolutions(resolutions: &[ProtocolReferenceSourceResolution]) -> bool {
+    if resolutions.len() > MAX_REFERENCE_SOURCE_RESOLUTIONS {
+        return false;
+    }
+    let mut total_bytes = 0usize;
+    for resolution in resolutions {
+        if resolution.binding_uri.is_empty()
+            || resolution.binding_uri.len() > MAX_EXCLUDED_URI_BYTES
+            || resolution.source_specifier.is_empty()
+            || resolution.source_specifier.len() > MAX_REFERENCE_SOURCE_SPECIFIER_BYTES
+            || resolution.resolved_source_uri.is_empty()
+            || resolution.resolved_source_uri.len() > MAX_EXCLUDED_URI_BYTES
+        {
+            return false;
+        }
+        total_bytes = total_bytes
+            .saturating_add(resolution.binding_uri.len())
+            .saturating_add(resolution.source_specifier.len())
+            .saturating_add(resolution.resolved_source_uri.len());
+        if total_bytes > MAX_REFERENCE_SOURCE_RESOLUTION_BYTES {
+            return false;
+        }
+    }
+    true
 }
 
 fn protocol_store_error(error: StoreError) -> ProtocolError {

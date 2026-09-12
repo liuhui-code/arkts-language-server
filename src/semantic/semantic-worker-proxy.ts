@@ -1,15 +1,16 @@
 import fs from "node:fs"
 import { createHash } from "node:crypto"
 import path from "node:path"
-import { fileURLToPath } from "node:url"
+import { fileURLToPath, pathToFileURL } from "node:url"
 import { Worker } from "node:worker_threads"
 
-import type { DocumentSnapshot } from "../contracts/document.js"
+import type { DocumentSnapshot, TextPosition } from "../contracts/document.js"
 import type { ProjectResolverPort } from "../contracts/project-resolver.js"
 import type {
   WorkspaceExportIndexPort,
   WorkspaceReferenceCandidateResult,
   WorkspaceReferenceIndexPort,
+  WorkspaceReferenceSourceResolution,
 } from "../contracts/workspace-index.js"
 import type * as Contract from "../contracts/semantic-engine.js"
 import { isArkUIStringResourcePath } from "../core/arkui/resource-path.js"
@@ -348,11 +349,19 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
     if (referenceSearchRuntimeConfig(this.#environment).strategy !== "indexed-batched"
       || !this.#referenceIndex) return undefined
     try {
-      const direct = await this.#referenceIndex.searchReferenceCandidates(
+      let direct = await this.#referenceIndex.searchReferenceCandidates(
         query.document.workspaceId,
         query.document.uri,
         query.position,
         MAX_SEMANTIC_WORKER_REFERENCE_CANDIDATES,
+        undefined,
+        query.signal,
+      )
+      direct = await this.#resolveReferenceCandidateSources(
+        query.document.workspaceId,
+        query.document.uri,
+        query.position,
+        direct,
         query.signal,
       )
       if (await this.#eligibleReferenceCandidates(query.document.workspaceId, direct)) {
@@ -389,11 +398,19 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
         return undefined
       }
       const target = definition.value[0]
-      const result = await this.#referenceIndex.searchReferenceCandidates(
+      let result = await this.#referenceIndex.searchReferenceCandidates(
         query.document.workspaceId,
         target.uri,
         target.range.start,
         MAX_SEMANTIC_WORKER_REFERENCE_CANDIDATES,
+        undefined,
+        query.signal,
+      )
+      result = await this.#resolveReferenceCandidateSources(
+        query.document.workspaceId,
+        target.uri,
+        target.range.start,
+        result,
         query.signal,
       )
       const status = await this.#referenceIndex.status(query.document.workspaceId)
@@ -441,6 +458,66 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
       || !result.declarationIdentity) return false
     const status = await this.#referenceIndex?.status(workspaceId)
     return status !== undefined && result.servedGeneration === status.committedGeneration
+  }
+
+  async #resolveReferenceCandidateSources(
+    workspaceId: string,
+    declarationUri: string,
+    declarationPosition: TextPosition,
+    result: WorkspaceReferenceCandidateResult,
+    signal?: AbortSignal,
+  ): Promise<WorkspaceReferenceCandidateResult> {
+    if (result.identityComplete || !await this.#eligibleReferenceCandidates(workspaceId, result)) {
+      return result
+    }
+    const rootPath = toFilePath(workspaceId)
+    if (!rootPath) return result
+    const packageResolver = new LocalPackageResolver()
+    packageResolver.configureProject(this.#projectConfiguration)
+    const resolutions = new Map<string, WorkspaceReferenceSourceResolution>()
+    let unresolvedBindings = 0
+    for (const binding of result.bindings ?? []) {
+      if (binding.sourceResolution === "unique") continue
+      const bindingPath = toFilePath(binding.uri)
+      if (!bindingPath) {
+        unresolvedBindings += 1
+        continue
+      }
+      const resolved = packageResolver.resolve(
+        rootPath,
+        bindingPath,
+        binding.sourceSpecifier,
+      )
+      if (!resolved?.path) {
+        unresolvedBindings += 1
+        continue
+      }
+      const resolvedSourceUri = pathToFileURL(resolved.path).href
+      if (!isSemanticWorkerUriWithinRoot(resolvedSourceUri, workspaceId)) {
+        unresolvedBindings += 1
+        continue
+      }
+      const key = `${binding.uri}\0${binding.sourceSpecifier}`
+      resolutions.set(key, {
+        bindingUri: binding.uri,
+        sourceSpecifier: binding.sourceSpecifier,
+        resolvedSourceUri,
+      })
+    }
+    if (resolutions.size === 0) return result
+    this.#logger?.info("references.index.source-resolutions", {
+      resolvedBindings: resolutions.size,
+      unresolvedBindings,
+      servedGeneration: result.servedGeneration,
+    })
+    return this.#referenceIndex!.searchReferenceCandidates(
+      workspaceId,
+      declarationUri,
+      declarationPosition,
+      MAX_SEMANTIC_WORKER_REFERENCE_CANDIDATES,
+      [...resolutions.values()],
+      signal,
+    )
   }
 
   async dispose(): Promise<void> {

@@ -624,3 +624,40 @@ legacy oracle. It returned exact equality, but package/SDK bindings prevented id
 The executor still admitted 1,154 candidate files in 11 batches; request time was 45.339 seconds and
 peak macOS process-tree RSS was 779,599,872 bytes. This is negative boundary evidence, not a memory
 improvement. Package/SDK declaration identity resolution is the next required RED.
+
+### Authoritative local-package source resolutions
+
+Parent revision: `0f1fa18f5233166d95a409996a031a2b3c05784d`.
+
+The public sidecar RED sent a package re-export plus an explicit source-resolution overlay. The old
+protocol ignored the overlay and kept `identityComplete=false`. The minimal implementation adds a
+bounded `(bindingUri, sourceSpecifier) -> resolvedSourceUri` request payload and applies it only when
+the target URI exists in the same committed document catalog. Duplicate conflicting resolutions and
+targets absent from that catalog do not prove a binding.
+
+The TypeScript adapter rebases all three URI fields through the workspace identity. The semantic
+worker does not implement another package resolver: it asks the existing `LocalPackageResolver`,
+which owns manifest/dependency/containing-file semantics, then repeats the same index query with the
+resolved overlay. A real child-process LSP contract uses `shared: file:../shared`; the second proof
+returns four identity URIs instead of five conservative same-name candidates, while normalized
+Locations exactly equal conservative batching.
+
+RED commands:
+
+```text
+cargo test -p arkts-index-sidecar sidecar_proves_package_bindings_only_with_authoritative_source_resolutions -- --exact
+node --test --test-name-pattern="proves a declared local package binding" tests/semantic/references-batching.test.mjs
+```
+
+This slice makes no real-project RSS claim and does not change the default `legacy` strategy. It does
+not resolve SDK modules; `@ohos.*` and every package edge not uniquely resolved by project ownership
+remain fail-conservative.
+
+The fixed Photos 6.1 `PhotoAsset` case was replayed after this slice. It returned the exact legacy
+nine-Location set in 46.002 seconds with a 784,023,552-byte process-tree RSS peak. No local-package
+resolution event was emitted; the index retained 1,586 conservative URIs, of which project
+membership admitted 1,154 across 11 batches. The relevant imports are manifest-declared local-package
+subpaths such as `@ohos/common/src/...`, while the resolver currently supports only exact package
+names and self-package subpaths. This negative result therefore establishes the declared
+local-package-subpath boundary; SDK module identity remains a later, separate boundary. Raw report:
+`/private/tmp/arkts-photos-photoasset-local-package-retry.json`.
