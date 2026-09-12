@@ -656,6 +656,8 @@ remain fail-conservative.
 The fixed Photos 6.1 `PhotoAsset` case was replayed after this slice. It returned the exact legacy
 nine-Location set in 46.002 seconds with a 784,023,552-byte process-tree RSS peak. No local-package
 resolution event was emitted; the index retained 1,586 conservative URIs, of which project
-membership admitted 1,154 across 11 batches. This negative result confirms that the remaining real
-case is an SDK/non-local-package identity boundary. Raw report:
+membership admitted 1,154 across 11 batches. The relevant imports are manifest-declared local-package
+subpaths such as `@ohos/common/src/...`, while the resolver currently supports only exact package
+names and self-package subpaths. This negative result therefore establishes the declared
+local-package-subpath boundary; SDK module identity remains a later, separate boundary. Raw report:
 `/private/tmp/arkts-photos-photoasset-local-package-retry.json`.

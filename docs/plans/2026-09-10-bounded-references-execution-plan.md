@@ -410,12 +410,15 @@ catalog；同一 binding 的冲突覆盖、未知目标或未覆盖边继续使 
 只解析非 unique source，再以同一 declaration/position 和 resolution overlay 请求第二次 proof。真实
 LSP 子进程合同覆盖 `entry -> shared: file:../shared` 的裸包名 re-export：identity candidates 从五个
 收窄为四个，最终 Location set 与 conservative batching 完全一致。默认仍为 `legacy`；这一切片只
-支持 ProjectGraph 内的声明本地包，不把 `@ohos.*` 等 SDK specifier 误当作本地包。下一 RED 是由
-已锁定 SDK identity 提供 SDK module declaration URI；无法唯一匹配时继续使用 conservative `uris`。
+支持 ProjectGraph 内的声明本地包，不把 `@ohos.*` 等 SDK specifier 误当作本地包。下一 RED 先支持
+manifest 已声明的本地包子路径（例如 `@ohos/common/src/...`）：仍由 `LocalPackageResolver`/
+ProjectGraph 唯一解析且必须限制在目标包目录内；之后才单独验证由已锁定 SDK identity 提供 SDK
+module declaration URI。任何一步无法唯一匹配时都继续使用 conservative `uris`。
 
 同日固定 Photos 6.1 `PhotoAsset` 再回放确认了该边界：九个 Location 与 legacy oracle exact，
 请求 46.002 秒、进程树 RSS 峰值 784,023,552 bytes；index 返回 1,586 个 conservative URI，
 membership 过滤后仍有 1,154 个 compiler candidates 和 11 批。日志没有
-`references.index.source-resolutions`，说明本地包 resolver 没有把 SDK/非本地包边误分类。该结果是
-正确性与 fail-conservative 证据，不是性能改善；原始报告为
+`references.index.source-resolutions`。工程中的相关导入是 manifest 已声明的本地包子路径，而当前
+resolver 只支持裸包名和 self-subpath；因此该结果首先证明的是 declared local-package subpath 边界，
+SDK module identity 是之后的独立边界。该结果是正确性与 fail-conservative 证据，不是性能改善；原始报告为
 `/private/tmp/arkts-photos-photoasset-local-package-retry.json`。

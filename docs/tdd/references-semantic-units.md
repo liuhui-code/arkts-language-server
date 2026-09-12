@@ -465,10 +465,11 @@ unchanged.
 
 The safety boundary is intentional: Rust does not read package manifests to invent language module
 semantics, stale/partial generations are ineligible, out-of-workspace targets are rejected, and an
-unresolved SDK specifier cannot narrow candidates. The next RED must obtain SDK module identity from
-the locked SDK owner rather than extending package-name heuristics.
+unresolved SDK specifier cannot narrow candidates. The next RED must first resolve a subpath of a
+manifest-declared local package, such as `@ohos/common/src/...`, through `LocalPackageResolver` while
+proving containment in that package. SDK module identity remains a later RED owned by the locked SDK.
 
 The post-GREEN Photos `PhotoAsset` replay also stayed fail-conservative: exact nine Locations,
 46.002 seconds, 784,023,552-byte peak RSS, 1,154 admitted candidates, and 11 batches. It emitted no
-local-package resolution event. This is expected negative evidence for the next SDK-identity RED,
-not a memory-gate pass.
+local-package resolution event. This is expected negative evidence for the next declared
+local-package-subpath RED, not a memory-gate pass.
