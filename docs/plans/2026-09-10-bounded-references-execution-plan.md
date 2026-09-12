@@ -467,3 +467,19 @@ candidate selection、worker、预算或默认 `legacy` 策略。
 `./@ohos.base`。因此下一 slice 不修补路径解析，而是让完整 ProjectGraph 的 source roots 成为
 index identity proof 的显式 admission boundary。graph 不完整时禁止排除；admitted root 内的缺边
 仍须使 proof incomplete。随后再单独处理 2 条工程内复制 SDK 声明和 275 条锁定 SDK module edge。
+
+2026-09-12 锁定 SDK external-terminal 切片：`indexed-batched` 现在只通过现有
+`discoverProjectSdk()` 选择 SDK，因而继续支持 Zed `initializationOptions.sdk.path`、项目
+`local.properties`、环境回退和平台默认路径的既有优先级。只有 SDK metadata 已识别、官方模块解析
+找到声明、且 canonical declaration 仍位于 canonical SDK root 内时，Node 才向 Rust 发送不含路径的
+`sdk:<sha256>` 外部终点。Rust 将该 binding 及其 alias/re-export 传播链标为与 workspace target
+不相交，不把 SDK URI 放进 workspace catalog 或 target `identityUris`。无 SDK、无效 metadata、模块
+不存在、包外 symlink、畸形/冲突 identity 均保持 conservative。
+
+公开 LSP 差分用编辑器配置 SDK、故意使环境 SDK 无效，仍把五个 compiler candidates 安全收窄为
+四个并保持 Location exact equality；Rust sidecar 及 memory/SQLite 合同全绿。固定 Photos 6.1
+`PhotoAsset` 的三次独立新进程实测均在**第一次、尚未附加 SDK resolution 的** candidate 查询处超过
+未改变的 15 秒 timeout，随后保守回退并在 180 秒 harness 上限内未完成 20 批。因此本切片的单元/
+协议/LSP correctness GREEN，但 Photos 大型工程 gate 状态为“前置索引时限阻断”，不是性能 PASS；
+不提高 timeout、不缩短结果、不切换默认策略。下一纵向切片应先让 1M occurrence 级 identity proof
+在产品 timeout 内稳定完成，再复跑同一 Photos oracle，之后才能量化 229 个 SDK binding 的候选降幅。

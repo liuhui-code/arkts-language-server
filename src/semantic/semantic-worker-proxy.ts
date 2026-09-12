@@ -15,7 +15,11 @@ import type {
 import type * as Contract from "../contracts/semantic-engine.js"
 import { isArkUIStringResourcePath } from "../core/arkui/resource-path.js"
 import { LocalPackageResolver } from "../core/sdk/local-package-resolver.js"
-import { isHarmonySdkModuleSpecifier } from "../core/sdk/module-resolver.js"
+import {
+  isHarmonySdkModuleSpecifier,
+  resolveHarmonySdkModule,
+} from "../core/sdk/module-resolver.js"
+import { discoverProjectSdk, type ProjectSdkSelection } from "../core/sdk/project-sdk.js"
 import type { StructuredLogger } from "../observability/logger.js"
 import { OHOS_TYPESCRIPT_BACKEND_IDENTITY } from "./backends/ohos-typescript/identity.js"
 import type { SemanticBackend } from "./backends/semantic-backend.js"
@@ -483,6 +487,12 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
     if (!rootPath) return result
     const packageResolver = new LocalPackageResolver()
     packageResolver.configureProject(this.#projectConfiguration)
+    const sdk = discoverProjectSdk(
+      rootPath,
+      this.#environment.ARKLINE_HARMONY_SDK_PATH,
+      this.#sdkConfiguration,
+    )
+    const sdkTerminals = new Map<string, string | undefined>()
     const resolutions = new Map<string, WorkspaceReferenceSourceResolution>()
     let unresolvedBindings = 0
     const unresolvedByKind = {
@@ -500,6 +510,24 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
       const bindingPath = toFilePath(binding.uri)
       if (!bindingPath) {
         recordUnresolved(binding.sourceSpecifier)
+        continue
+      }
+      if (isHarmonySdkModuleSpecifier(binding.sourceSpecifier)) {
+        let externalTerminalIdentity = sdkTerminals.get(binding.sourceSpecifier)
+        if (!sdkTerminals.has(binding.sourceSpecifier)) {
+          externalTerminalIdentity = sdkExternalTerminalIdentity(sdk, binding.sourceSpecifier)
+          sdkTerminals.set(binding.sourceSpecifier, externalTerminalIdentity)
+        }
+        if (!externalTerminalIdentity) {
+          recordUnresolved(binding.sourceSpecifier)
+          continue
+        }
+        const key = `${binding.uri}\0${binding.sourceSpecifier}`
+        resolutions.set(key, {
+          bindingUri: binding.uri,
+          sourceSpecifier: binding.sourceSpecifier,
+          externalTerminalIdentity,
+        })
         continue
       }
       const resolved = packageResolver.resolve(
@@ -733,6 +761,37 @@ function referenceSourceKind(
   if (sourceSpecifier.startsWith("./") || sourceSpecifier.startsWith("../")) return "relative"
   if (/^(?:@[\w.-]+\/)?[\w.-]+(?:\/[^/\\]+)*$/.test(sourceSpecifier)) return "package"
   return "other"
+}
+
+function sdkExternalTerminalIdentity(
+  sdk: ProjectSdkSelection,
+  sourceSpecifier: string,
+): string | undefined {
+  if (!sdk.ready || !sdk.path || sdk.identity?.status !== "identified") return undefined
+  try {
+    const sdkRoot = fs.realpathSync.native(sdk.path)
+    const candidate = resolveHarmonySdkModule(sdkRoot, sourceSpecifier)
+    if (!candidate) return undefined
+    const resolved = fs.realpathSync.native(candidate)
+    const relative = path.relative(sdkRoot, resolved)
+    if (!relative || relative === ".." || relative.startsWith(`..${path.sep}`)
+      || path.isAbsolute(relative) || !fs.statSync(resolved).isFile()) return undefined
+    const identity = createHash("sha256")
+      .update("arkts-sdk-terminal-v1\0")
+      .update(sdkRoot)
+      .update("\0")
+      .update(sdk.identity.apiVersion ?? "")
+      .update("\0")
+      .update(sdk.identity.componentVersion ?? "")
+      .update("\0")
+      .update(sourceSpecifier)
+      .update("\0")
+      .update(relative.split(path.sep).join("/"))
+      .digest("hex")
+    return `sdk:${identity}`
+  } catch {
+    return undefined
+  }
 }
 
 function identityReferenceUris(

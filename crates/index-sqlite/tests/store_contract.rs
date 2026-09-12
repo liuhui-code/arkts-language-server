@@ -10,7 +10,7 @@ use std::{
 
 use arkts_index_core::{
     Document, IndexState, MemoryStore, Position, ReferenceBindingKind, ReferenceBindingResolution,
-    ReferenceCandidateQuery, WorkspaceIndex,
+    ReferenceCandidateQuery, ReferenceSourceResolution, WorkspaceIndex,
 };
 use arkts_index_sqlite::{SqliteStore, workspace_cache_location};
 use rusqlite::Connection;
@@ -216,6 +216,72 @@ fn reference_identity_proof_only_excludes_files_outside_an_explicit_admission_sc
     let store =
         SqliteStore::open(&database, "file:///workspace").expect("SQLite store should open");
     assert_reference_admission_scope(WorkspaceIndex::with_store(store));
+}
+
+fn assert_external_sdk_terminal_contract(mut index: WorkspaceIndex) {
+    index
+        .refresh(
+            1,
+            [
+                Document::new("file:///workspace/Target.ets", "export class Thing {}\n"),
+                Document::new(
+                    "file:///workspace/Consumer.ets",
+                    "import { Thing } from './Target'\nconst value = new Thing()\n",
+                ),
+                Document::new(
+                    "file:///workspace/SdkUse.ets",
+                    "import { Thing as SdkThing } from '@ohos.example'\n\
+                     const sdk = new SdkThing()\n",
+                ),
+            ],
+            &[],
+        )
+        .expect("external SDK terminal fixture should commit");
+    let result = index
+        .search_reference_candidates_with_source_resolutions(
+            ReferenceCandidateQuery {
+                declaration_uri: "file:///workspace/Target.ets".to_owned(),
+                declaration_position: Position::new(0, 14),
+                limit: 20,
+            },
+            &[ReferenceSourceResolution {
+                binding_uri: "file:///workspace/SdkUse.ets".to_owned(),
+                source_specifier: "@ohos.example".to_owned(),
+                resolved_source_uri: None,
+                external_terminal_identity: Some(
+                    "sdk:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                        .to_owned(),
+                ),
+            }],
+        )
+        .expect("external SDK terminal should be classifiable");
+    assert!(result.identity_complete);
+    assert_eq!(
+        result.identity_uris,
+        [
+            "file:///workspace/Consumer.ets",
+            "file:///workspace/Target.ets",
+        ]
+    );
+    let sdk = result
+        .bindings
+        .iter()
+        .find(|binding| binding.uri.ends_with("/SdkUse.ets"))
+        .expect("SDK binding should be returned");
+    assert_eq!(sdk.source_resolution, ReferenceBindingResolution::External);
+    assert!(sdk.resolved_source_uri.is_none());
+    assert!(sdk.external_terminal_identity.is_some());
+}
+
+#[test]
+fn memory_and_sqlite_classify_locked_sdk_modules_as_external_terminals() {
+    assert_external_sdk_terminal_contract(WorkspaceIndex::with_store(MemoryStore::default()));
+
+    let temp = TestDir::new("reference-sdk-terminal");
+    let database = temp.path().join("symbols.sqlite3");
+    let store =
+        SqliteStore::open(&database, "file:///workspace").expect("SQLite store should open");
+    assert_external_sdk_terminal_contract(WorkspaceIndex::with_store(store));
 }
 
 #[test]

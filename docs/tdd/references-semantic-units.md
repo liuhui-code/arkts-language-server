@@ -559,3 +559,47 @@ and two catalog watchdog expirations during live activation. A dedicated RED the
 `activating` heartbeats for longer than the 250 ms test watchdog. GREEN treats each monotonic valid
 heartbeat as liveness and resets the timer; the existing fixture that sends no heartbeat still
 fails. The final replay completed without increasing the production timeout.
+
+## Locked SDK external-terminal identity (2026-09-12)
+
+Parent revision: `3269b0b92497cefd2716a7084d1a2f8d0c2eb0ce`.
+
+The public child-process RED added a workspace declaration named `Thing` and an unrelated
+`Thing as SdkThing` import from `@ohos.example`. The environment fallback deliberately pointed at
+a missing SDK; the only valid SDK came from the same `initializationOptions.sdk.path` contract used
+by Zed. Before implementation the second index proof still reported one unresolved SDK binding,
+five compiler candidates, and `compiler-definition` instead of
+`compiler-definition-identity`, while the final Location set remained conservative and exact.
+
+The Rust sidecar RED sent an external terminal through `references/candidates`; the request was
+rejected because the protocol still required a workspace `resolvedSourceUri`. GREEN adds an
+exclusive resolution target: either a catalog-owned workspace URI or an opaque
+`sdk:<64 lowercase hex>` terminal. Malformed identities, both-target payloads, and conflicting
+duplicate identities fail closed. Memory and SQLite store contracts run the same proof.
+
+The Node resolver accepts an SDK terminal only when `discoverProjectSdk()` selects a ready SDK with
+valid API/component metadata, `resolveHarmonySdkModule()` finds the declaration through the same
+module rules as the language service, and the canonical declaration is a regular file physically
+inside the canonical SDK root. The hash binds the selected SDK root, metadata identity, module
+specifier, and SDK-relative declaration path without sending the SDK path to Rust. A terminal seeds
+only a disjoint name chain; it can classify unrelated SDK aliases/re-exports but can never enter the
+target `identityUris`.
+
+Focused GREEN:
+
+```text
+Public LSP: exact conservative/indexed Location equality; 5 -> 4 compiler candidates;
+            resolvedBindings=1; unresolvedSdkBindings=0
+Rust sidecar: external terminal, malformed identity, and conflicting identity cases pass
+Memory/SQLite: identical external-terminal proof and target URI set
+TypeScript: pnpm check passes on repository-locked Node 20.19.5
+```
+
+The fixed Photos `PhotoAsset` run did not reach this new resolution stage. Three independent fresh
+processes each completed the 1,794-file catalog and compiler anchor, then the first unaugmented
+`references/candidates` request exceeded the unchanged 15-second sidecar timeout. The server
+correctly fell back to 1,246 conservative candidates; the 180-second harness expired after six of
+20 batches. No response or RSS summary was promoted to a successful report. This is a stable
+precondition/time-limit blocker for this machine run, not an SDK-terminal correctness or memory
+result. Details are recorded in
+`docs/reports/2026-09-12-references-sdk-external-terminal.md`; default strategy remains `legacy`.

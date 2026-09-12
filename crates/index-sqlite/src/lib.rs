@@ -1035,6 +1035,7 @@ fn read_reference_bindings(
                 })?,
                 source_resolution: ReferenceBindingResolution::Unresolved,
                 resolved_source_uri: None,
+                external_terminal_identity: None,
             })
         })
         .map_err(map_sqlite_error)?;

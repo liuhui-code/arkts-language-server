@@ -146,6 +146,7 @@ input.on("line", (line) => {
       const packageResolutionScenario = process.env.ARKTS_INDEX_TEST_SCENARIO
       const packageSubpathResolutions = packageResolutionScenario === "reference-package-subpath-resolutions"
       const sourceClassification = packageResolutionScenario === "reference-source-classification"
+      const sdkTerminal = packageResolutionScenario === "reference-sdk-terminal"
       const packageResolutions = packageResolutionScenario === "reference-package-resolutions"
         || packageSubpathResolutions || sourceClassification
       const packageTarget = packageSubpathResolutions ? "Target.ets" : "Index.ets"
@@ -165,6 +166,8 @@ input.on("line", (line) => {
             path.join("entry", "src", "main", "ets", "Use.ets"),
             path.join("entry", "src", "main", "ets", "SameName.ets"),
           ]
+        : sdkTerminal
+        ? ["Target.ets", "Barrel.ets", "Query.ets", "Use.ets", "SdkUse.ets"]
         : semanticUnits
         ? [
             path.join("shared", "src", "main", "ets", "Target.ets"),
@@ -180,8 +183,16 @@ input.on("line", (line) => {
           : "shared")
         && resolution.resolvedSourceUri.endsWith(`/shared/src/main/ets/${packageTarget}`)
       )) ?? false
+      const sdkTerminalResolved = request.params.sourceResolutions?.some((resolution) => (
+        resolution.bindingUri.endsWith("/SdkUse.ets")
+        && resolution.sourceSpecifier === "@ohos.example"
+        && /^sdk:[0-9a-f]{64}$/.test(resolution.externalTerminalIdentity ?? "")
+        && resolution.resolvedSourceUri === undefined
+      )) ?? false
       const identityFiles = semanticUnits
         ? admittedSemanticUnits ? candidateFiles : []
+        : sdkTerminal
+          ? ["Target.ets", "Barrel.ets", "Query.ets", "Use.ets"]
         : packageResolutions
           ? [
               path.join("shared", "src", "main", "ets", packageTarget),
@@ -194,9 +205,10 @@ input.on("line", (line) => {
         supported,
         complete: supported,
         identityComplete: supported && (!semanticUnits || admittedSemanticUnits) && !sourceClassification
-          && (!packageResolutions || packageSourceResolved),
+          && (!packageResolutions || packageSourceResolved) && (!sdkTerminal || sdkTerminalResolved),
         identityUris: supported && (!semanticUnits || admittedSemanticUnits)
           && !sourceClassification && (!packageResolutions || packageSourceResolved)
+          && (!sdkTerminal || sdkTerminalResolved)
           ? identityFiles.map(file => pathToFileURL(path.join(workspaceRoot, file)).href)
           : [],
         declarationIdentity: supported ? "scripted-reference-candidate" : null,
@@ -204,7 +216,20 @@ input.on("line", (line) => {
         uris: supported
           ? candidateFiles.map(file => pathToFileURL(path.join(workspaceRoot, file)).href)
           : [],
-        bindings: supported && packageResolutions ? [{
+        bindings: supported && sdkTerminal ? [{
+          kind: "import",
+          uri: pathToFileURL(path.join(workspaceRoot, "SdkUse.ets")).href,
+          importedName: "Thing",
+          localName: "SdkThing",
+          sourceSpecifier: "@ohos.example",
+          sourceResolution: sdkTerminalResolved ? "external" : "unsupported",
+          externalTerminalIdentity: sdkTerminalResolved
+            ? request.params.sourceResolutions.find(resolution => (
+                resolution.sourceSpecifier === "@ohos.example"
+              )).externalTerminalIdentity
+            : null,
+          resolvedSourceUri: null,
+        }] : supported && packageResolutions ? [{
           kind: "reexport",
           uri: pathToFileURL(path.join(workspaceRoot, "entry", "src", "main", "ets", "Barrel.ets")).href,
           importedName: "Thing",

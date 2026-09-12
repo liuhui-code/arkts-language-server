@@ -691,6 +691,139 @@ fn sidecar_proves_package_bindings_only_with_authoritative_source_resolutions() 
 }
 
 #[test]
+fn sidecar_classifies_an_external_sdk_terminal_without_admitting_its_occurrences() {
+    let temp = TestDir::new("reference-sdk-terminal");
+    let workspace = temp.path().join("workspace");
+    let cache = temp.path().join("cache");
+    fs::create_dir_all(&workspace).expect("workspace should exist");
+
+    let mut process = SidecarProcess::spawn();
+    assert_eq!(initialize(&mut process, &workspace, &cache, 1)["ok"], true);
+    assert_eq!(
+        process.request(json!({
+            "protocol": 1,
+            "id": 2,
+            "method": "refresh",
+            "params": {
+                "generation": 1,
+                "changed": [
+                    {
+                        "uri": "file:///workspace/Target.ets",
+                        "text": "export class Thing {}\n"
+                    },
+                    {
+                        "uri": "file:///workspace/Barrel.ets",
+                        "text": "export { Thing as PublicThing } from './Target'\n"
+                    },
+                    {
+                        "uri": "file:///workspace/Consumer.ets",
+                        "text": "import { PublicThing } from './Barrel'\nconst value = new PublicThing()\n"
+                    },
+                    {
+                        "uri": "file:///workspace/SdkUse.ets",
+                        "text": "import { Thing as SdkThing } from '@ohos.example'\nconst sdk = new SdkThing()\n"
+                    }
+                ],
+                "removedUris": []
+            }
+        }))["ok"],
+        true
+    );
+
+    let unresolved = process.request(json!({
+        "protocol": 1,
+        "id": 3,
+        "method": "references/candidates",
+        "params": {
+            "declarationUri": "file:///workspace/Target.ets",
+            "declarationPosition": {"line": 0, "character": 14},
+            "limit": 100
+        }
+    }));
+    assert_eq!(unresolved["result"]["identityComplete"], false);
+
+    let malformed = process.request(json!({
+        "protocol": 1,
+        "id": 4,
+        "method": "references/candidates",
+        "params": {
+            "declarationUri": "file:///workspace/Target.ets",
+            "declarationPosition": {"line": 0, "character": 14},
+            "limit": 100,
+            "sourceResolutions": [{
+                "bindingUri": "file:///workspace/SdkUse.ets",
+                "sourceSpecifier": "@ohos.example",
+                "externalTerminalIdentity": "sdk:ABCDEF"
+            }]
+        }
+    }));
+    assert_eq!(malformed["ok"], false);
+
+    let conflicting = process.request(json!({
+        "protocol": 1,
+        "id": 5,
+        "method": "references/candidates",
+        "params": {
+            "declarationUri": "file:///workspace/Target.ets",
+            "declarationPosition": {"line": 0, "character": 14},
+            "limit": 100,
+            "sourceResolutions": [{
+                "bindingUri": "file:///workspace/SdkUse.ets",
+                "sourceSpecifier": "@ohos.example",
+                "externalTerminalIdentity": "sdk:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+            }, {
+                "bindingUri": "file:///workspace/SdkUse.ets",
+                "sourceSpecifier": "@ohos.example",
+                "externalTerminalIdentity": "sdk:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+            }]
+        }
+    }));
+    assert_eq!(conflicting["ok"], true);
+    assert_eq!(conflicting["result"]["identityComplete"], false);
+
+    let resolved = process.request(json!({
+        "protocol": 1,
+        "id": 6,
+        "method": "references/candidates",
+        "params": {
+            "declarationUri": "file:///workspace/Target.ets",
+            "declarationPosition": {"line": 0, "character": 14},
+            "limit": 100,
+            "sourceResolutions": [{
+                "bindingUri": "file:///workspace/SdkUse.ets",
+                "sourceSpecifier": "@ohos.example",
+                "externalTerminalIdentity": "sdk:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+            }]
+        }
+    }));
+    assert_eq!(resolved["ok"], true);
+    assert_eq!(resolved["result"]["identityComplete"], true);
+    assert_eq!(
+        resolved["result"]["identityUris"],
+        json!([
+            "file:///workspace/Barrel.ets",
+            "file:///workspace/Consumer.ets",
+            "file:///workspace/Target.ets"
+        ])
+    );
+    let sdk_binding = resolved["result"]["bindings"]
+        .as_array()
+        .and_then(|bindings| {
+            bindings
+                .iter()
+                .find(|binding| binding["uri"] == "file:///workspace/SdkUse.ets")
+        })
+        .expect("SDK binding should be returned");
+    assert_eq!(sdk_binding["sourceResolution"], "external");
+    assert_eq!(
+        sdk_binding["externalTerminalIdentity"],
+        "sdk:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    );
+    assert!(sdk_binding["resolvedSourceUri"].is_null());
+    process.shutdown(7);
+}
+
+#[test]
 fn sidecar_limits_reference_identity_proof_to_explicitly_admitted_roots() {
     let temp = TestDir::new("reference-admitted-roots");
     let workspace = temp.path().join("workspace");

@@ -556,6 +556,74 @@ test("indexed batching proves a declared local package subpath before narrowing"
   )))
 })
 
+test("indexed batching classifies a locked SDK module as an external terminal", async (t) => {
+  const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), "arkts-references-sdk-terminal-"))
+  t.after(() => fs.promises.rm(root, { recursive: true, force: true }))
+  const workspace = path.join(root, "workspace")
+  const sdk = path.join(root, "sdk", "openharmony")
+  await Promise.all([
+    fs.promises.mkdir(workspace, { recursive: true }),
+    fs.promises.mkdir(path.join(sdk, "ets", "api"), { recursive: true }),
+    fs.promises.mkdir(path.join(sdk, "toolchains"), { recursive: true }),
+  ])
+  await fs.promises.writeFile(path.join(sdk, "ets", "oh-uni-package.json"), JSON.stringify({
+    path: "ets",
+    apiVersion: "24",
+    version: "6.1.1.125",
+  }))
+  await fs.promises.writeFile(path.join(sdk, "ets", "api", "@ohos.example.d.ts"),
+    "export class Thing {}\n")
+  const queryText = [
+    'import { PublicThing } from "./Barrel"',
+    "export const query = new PublicThing()",
+    "",
+  ].join("\n")
+  await Promise.all([
+    fs.promises.writeFile(path.join(workspace, "Target.ets"), "export class Thing {}\n"),
+    fs.promises.writeFile(path.join(workspace, "Barrel.ets"),
+      'export { Thing as PublicThing } from "./Target"\n'),
+    fs.promises.writeFile(path.join(workspace, "Query.ets"), queryText),
+    fs.promises.writeFile(path.join(workspace, "Use.ets"), [
+      'import { PublicThing } from "./Barrel"',
+      "export const use = new PublicThing()",
+      "",
+    ].join("\n")),
+    fs.promises.writeFile(path.join(workspace, "SdkUse.ets"), [
+      'import { Thing as SdkThing } from "@ohos.example"',
+      "export const sdkUse = new SdkThing()",
+      "",
+    ].join("\n")),
+  ])
+  const queryUri = pathToFileURL(path.join(workspace, "Query.ets")).href
+  const position = positionAt(queryText, queryText.lastIndexOf("PublicThing") + 1)
+  const conservative = await runSingleReferenceRequest(t, {
+    root, workspace, queryUri, queryText, position,
+    strategy: "batched", runId: "sdk-terminal-conservative", sdkPath: sdk,
+  })
+  const indexed = await runSingleReferenceRequest(t, {
+    root, workspace, queryUri, queryText, position,
+    strategy: "indexed-batched", awaitIndexReady: true,
+    indexScenario: "reference-sdk-terminal", runId: "sdk-terminal-indexed", sdkPath: sdk,
+  })
+
+  assert.deepEqual(indexed.locations, conservative.locations)
+  const accepted = indexed.indexEvents.find(event => event.event === "references.index.accepted")
+  assert.equal(accepted?.anchorMode, "compiler-definition-identity",
+    JSON.stringify(indexed.referenceEvents))
+  assert.equal(accepted?.candidateFiles, 4)
+  assert.equal(accepted?.conservativeCandidateFiles, 5)
+  const resolution = indexed.referenceEvents.find(event => (
+    event.event === "references.index.source-resolutions"
+  ))
+  assert.equal(resolution?.resolvedBindings, 1)
+  assert.equal(resolution?.unresolvedSdkBindings, 0)
+  const external = indexed.indexRequests.flatMap(request => (
+    request.params.sourceResolutions ?? []
+  )).find(item => item.sourceSpecifier === "@ohos.example")
+  assert.match(external?.externalTerminalIdentity ?? "", /^sdk:[0-9a-f]{64}$/)
+  assert.equal(external?.resolvedSourceUri, undefined)
+})
+
 async function runReferences(t, {
   root,
   workspace,
@@ -621,6 +689,7 @@ async function runSingleReferenceRequest(t, {
   batchRoots = "2",
   runId = strategy,
   afterFirstRequest,
+  sdkPath,
 }) {
   const logDirectory = path.join(root, `logs-${runId}`)
   const indexAuditPath = path.join(root, `index-audit-${runId}.ndjson`)
@@ -653,7 +722,10 @@ async function runSingleReferenceRequest(t, {
     capabilities: awaitIndexReady ? { window: { workDoneProgress: true } } : {},
   })
   t.after(() => session.close().catch(() => {}))
-  await session.initialize({ timeoutMs: 10_000 })
+  await session.initialize({
+    ...(sdkPath ? { initializationOptions: { sdk: { path: sdkPath } } } : {}),
+    timeoutMs: 10_000,
+  })
   if (awaitIndexReady) {
     const create = await session.transport.serverRequest(
       "window/workDoneProgress/create",
