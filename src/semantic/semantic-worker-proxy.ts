@@ -15,6 +15,7 @@ import type {
 import type * as Contract from "../contracts/semantic-engine.js"
 import { isArkUIStringResourcePath } from "../core/arkui/resource-path.js"
 import { LocalPackageResolver } from "../core/sdk/local-package-resolver.js"
+import { isHarmonySdkModuleSpecifier } from "../core/sdk/module-resolver.js"
 import type { StructuredLogger } from "../observability/logger.js"
 import { OHOS_TYPESCRIPT_BACKEND_IDENTITY } from "./backends/ohos-typescript/identity.js"
 import type { SemanticBackend } from "./backends/semantic-backend.js"
@@ -476,11 +477,21 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
     packageResolver.configureProject(this.#projectConfiguration)
     const resolutions = new Map<string, WorkspaceReferenceSourceResolution>()
     let unresolvedBindings = 0
+    const unresolvedByKind = {
+      sdk: 0,
+      package: 0,
+      relative: 0,
+      other: 0,
+    }
+    const recordUnresolved = (sourceSpecifier: string): void => {
+      unresolvedBindings += 1
+      unresolvedByKind[referenceSourceKind(sourceSpecifier)] += 1
+    }
     for (const binding of result.bindings ?? []) {
       if (binding.sourceResolution === "unique") continue
       const bindingPath = toFilePath(binding.uri)
       if (!bindingPath) {
-        unresolvedBindings += 1
+        recordUnresolved(binding.sourceSpecifier)
         continue
       }
       const resolved = packageResolver.resolve(
@@ -489,12 +500,12 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
         binding.sourceSpecifier,
       )
       if (!resolved?.path) {
-        unresolvedBindings += 1
+        recordUnresolved(binding.sourceSpecifier)
         continue
       }
       const resolvedSourceUri = pathToFileURL(resolved.path).href
       if (!isSemanticWorkerUriWithinRoot(resolvedSourceUri, workspaceId)) {
-        unresolvedBindings += 1
+        recordUnresolved(binding.sourceSpecifier)
         continue
       }
       const key = `${binding.uri}\0${binding.sourceSpecifier}`
@@ -504,12 +515,18 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
         resolvedSourceUri,
       })
     }
+    if (resolutions.size > 0 || unresolvedBindings > 0) {
+      this.#logger?.info("references.index.source-resolutions", {
+        resolvedBindings: resolutions.size,
+        unresolvedBindings,
+        unresolvedSdkBindings: unresolvedByKind.sdk,
+        unresolvedPackageBindings: unresolvedByKind.package,
+        unresolvedRelativeBindings: unresolvedByKind.relative,
+        unresolvedOtherBindings: unresolvedByKind.other,
+        servedGeneration: result.servedGeneration,
+      })
+    }
     if (resolutions.size === 0) return result
-    this.#logger?.info("references.index.source-resolutions", {
-      resolvedBindings: resolutions.size,
-      unresolvedBindings,
-      servedGeneration: result.servedGeneration,
-    })
     return this.#referenceIndex!.searchReferenceCandidates(
       workspaceId,
       declarationUri,
@@ -688,6 +705,15 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
     if (this.#disposed) throw new Error("Semantic worker is disposed")
     if (this.#failure) throw this.#failure
   }
+}
+
+function referenceSourceKind(
+  sourceSpecifier: string,
+): "sdk" | "package" | "relative" | "other" {
+  if (isHarmonySdkModuleSpecifier(sourceSpecifier)) return "sdk"
+  if (sourceSpecifier.startsWith("./") || sourceSpecifier.startsWith("../")) return "relative"
+  if (/^(?:@[\w.-]+\/)?[\w.-]+(?:\/[^/\\]+)*$/.test(sourceSpecifier)) return "package"
+  return "other"
 }
 
 function identityReferenceUris(

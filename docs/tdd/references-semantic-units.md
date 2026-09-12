@@ -507,3 +507,22 @@ proof remained conservative at 1,154 candidates and 11 batches. It returned the 
 Locations in 47.677 seconds with 730,562,560-byte peak process-tree RSS. No performance claim is made
 from this run. The next RED must classify the remaining bindings and let only the locked SDK owner
 provide unique SDK declaration identities.
+
+## Unresolved source-binding classification (2026-09-12)
+
+Parent revision: `f06a5fc0b5eb46743e9dca999ceb1837dc47fecc`.
+
+The public child-process RED extended the declared-package reference case with one unresolved SDK,
+package, relative, and unsupported source. The previous trace exposed only the aggregate unresolved
+count, so every category assertion received `undefined`. The minimal GREEN classifies source shapes
+without logging source specifiers or paths. It preserves the conservative five-candidate
+`compiler-definition` mode and exact Location equality. The existing resolved-package case also
+requires every unresolved category count to remain zero.
+
+The fixed Photos 6.1 `PhotoAsset` replay returned the exact nine legacy Locations. Of 602 source
+bindings, 310 resolved and 292 remained unresolved: 275 SDK, 17 relative, zero package, and zero
+other. Candidate admission was unchanged at 1,586 index URIs, 1,154 membership candidates, and 11
+batches. The request took 51.313 seconds and product process-tree RSS peaked at 733,020,160 bytes.
+This is classification evidence, not a performance result. The next RED must explain the 17
+catalog-relative misses before a separate locked-SDK external-terminal identity contract is added.
+Raw report: `/private/tmp/arkts-photos-photoasset-source-classification.json`.

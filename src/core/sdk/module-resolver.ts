@@ -5,7 +5,7 @@ export function harmonySdkModuleCandidates(
   sdkRoot: string,
   moduleSpecifier: string,
 ): string[] {
-  if (moduleSpecifier.includes("/") || moduleSpecifier.includes("\\")) return []
+  if (!isHarmonySdkModuleSpecifier(moduleSpecifier)) return []
   if (moduleSpecifier.startsWith("@ohos.") || moduleSpecifier.startsWith("@system.")) {
     return [
       path.join(sdkRoot, "ets", "api", `${moduleSpecifier}.d.ts`),
@@ -27,6 +27,15 @@ export function harmonySdkModuleCandidates(
     ]
   }
   return []
+}
+
+export function isHarmonySdkModuleSpecifier(moduleSpecifier: string): boolean {
+  return !moduleSpecifier.includes("/")
+    && !moduleSpecifier.includes("\\")
+    && (moduleSpecifier.startsWith("@ohos.")
+      || moduleSpecifier.startsWith("@system.")
+      || moduleSpecifier.startsWith("@kit.")
+      || moduleSpecifier.startsWith("@arkts."))
 }
 
 export function resolveHarmonySdkModule(

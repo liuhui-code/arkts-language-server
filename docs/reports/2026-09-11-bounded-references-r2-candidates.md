@@ -694,3 +694,19 @@ could not persist their report due macOS `ENOSPC` are excluded. Raw valid report
 The next RED is now the remaining SDK-module identity boundary. Locked SDK ownership may supply a
 declaration URI only when the module maps uniquely; partial or unknown mappings must preserve the
 conservative set.
+
+### Remaining source-binding classification
+
+Parent revision: `f06a5fc0b5eb46743e9dca999ceb1837dc47fecc`.
+
+An opt-in structured event now reports counts only for unresolved SDK, package, relative, and other
+binding shapes. It does not emit the source specifier or path and does not change candidate
+selection. The real Photos `PhotoAsset` replay preserved all nine legacy Locations and remained
+conservative: 310 bindings resolved, while the remaining 292 classified as 275 SDK and 17 relative,
+with zero package or other bindings. The index still produced 1,586 conservative URIs, project
+membership admitted 1,154 candidates, and the verifier ran 11 batches.
+
+The request took 51.313 seconds and process-tree RSS peaked at 733,020,160 bytes. These values are not
+a performance claim because the compiler working set did not narrow. The 17 relative misses must be
+explained against the committed catalog before adding the distinct locked-SDK identity model. Raw
+report: `/private/tmp/arkts-photos-photoasset-source-classification.json`.
