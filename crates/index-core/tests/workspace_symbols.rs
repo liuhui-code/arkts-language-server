@@ -134,6 +134,50 @@ fn reference_candidates_expose_the_binding_chain_for_later_identity_narrowing() 
 }
 
 #[test]
+fn type_assertions_do_not_widen_cross_file_reference_names() {
+    let mut index = WorkspaceIndex::in_memory();
+    index
+        .refresh(
+            1,
+            [
+                Document::new("file:///workspace/Target.ets", "export class Thing {}\n"),
+                Document::new(
+                    "file:///workspace/Consumer.ets",
+                    "import { Thing } from './Target'\n\
+                     const typed = Thing as BusinessError\n\
+                     const use = new Thing()\n",
+                ),
+                Document::new(
+                    "file:///workspace/Unrelated.ets",
+                    "export class BusinessError {}\n\
+                     const unrelated = new BusinessError()\n",
+                ),
+            ],
+            &[],
+        )
+        .expect("reference generation should commit");
+
+    let result = index
+        .search_reference_candidates(ReferenceCandidateQuery {
+            declaration_uri: "file:///workspace/Target.ets".to_owned(),
+            declaration_position: Position::new(0, 14),
+            limit: 20,
+        })
+        .expect("reference candidates should be searchable");
+
+    assert_eq!(result.names, ["Thing"]);
+    assert_eq!(
+        result.uris,
+        [
+            "file:///workspace/Consumer.ets",
+            "file:///workspace/Target.ets",
+        ]
+    );
+    assert!(result.identity_complete);
+    assert_eq!(result.identity_uris, result.uris);
+}
+
+#[test]
 fn independent_declaration_does_not_hide_a_qualified_target_reference() {
     let mut index = WorkspaceIndex::in_memory();
     index

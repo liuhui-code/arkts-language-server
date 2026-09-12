@@ -1022,8 +1022,8 @@ fn sqlite_ordinal(ordinal: usize, item: &str) -> Result<i64, StoreError> {
 
 const REFERENCE_NAMES_SQL: &str = "WITH RECURSIVE \
     edges(source, target) AS (\
-        SELECT from_name, to_name FROM reference_aliases \
-        UNION SELECT to_name, from_name FROM reference_aliases\
+        SELECT imported_name, local_name FROM reference_bindings \
+        UNION SELECT local_name, imported_name FROM reference_bindings\
     ), \
     names(name) AS (\
         VALUES (?1) \
@@ -1033,8 +1033,8 @@ const REFERENCE_NAMES_SQL: &str = "WITH RECURSIVE \
 
 const REFERENCE_URIS_SQL: &str = "WITH RECURSIVE \
     edges(source, target) AS (\
-        SELECT from_name, to_name FROM reference_aliases \
-        UNION SELECT to_name, from_name FROM reference_aliases\
+        SELECT imported_name, local_name FROM reference_bindings \
+        UNION SELECT local_name, imported_name FROM reference_bindings\
     ), \
     names(name) AS (\
         VALUES (?1) \
@@ -1047,8 +1047,8 @@ const REFERENCE_URIS_SQL: &str = "WITH RECURSIVE \
 
 const REFERENCE_BINDINGS_SQL: &str = "WITH RECURSIVE \
     edges(source, target) AS (\
-        SELECT from_name, to_name FROM reference_aliases \
-        UNION SELECT to_name, from_name FROM reference_aliases\
+        SELECT imported_name, local_name FROM reference_bindings \
+        UNION SELECT local_name, imported_name FROM reference_bindings\
     ), \
     names(name) AS (\
         VALUES (?1) \
@@ -1062,8 +1062,8 @@ const REFERENCE_BINDINGS_SQL: &str = "WITH RECURSIVE \
 
 const REFERENCE_OCCURRENCES_SQL: &str = "WITH RECURSIVE \
     edges(source, target) AS (\
-        SELECT from_name, to_name FROM reference_aliases \
-        UNION SELECT to_name, from_name FROM reference_aliases\
+        SELECT imported_name, local_name FROM reference_bindings \
+        UNION SELECT local_name, imported_name FROM reference_bindings\
     ), \
     names(name) AS (\
         VALUES (?1) \
@@ -1077,8 +1077,8 @@ const REFERENCE_OCCURRENCES_SQL: &str = "WITH RECURSIVE \
 
 const INDEPENDENT_REFERENCE_DECLARATIONS_SQL: &str = "WITH RECURSIVE \
     edges(source, target) AS (\
-        SELECT from_name, to_name FROM reference_aliases \
-        UNION SELECT to_name, from_name FROM reference_aliases\
+        SELECT imported_name, local_name FROM reference_bindings \
+        UNION SELECT local_name, imported_name FROM reference_bindings\
     ), \
     names(name) AS (\
         VALUES (?1) \
@@ -1161,16 +1161,16 @@ fn read_scoped_reference_names(
 ) -> Result<Vec<String>, StoreError> {
     let mut from_statement = connection
         .prepare(
-            "SELECT document_uri, to_name FROM reference_aliases \
-             INDEXED BY reference_aliases_from_name WHERE from_name = ?1 \
-             ORDER BY document_uri, to_name",
+            "SELECT document_uri, local_name FROM reference_bindings \
+             INDEXED BY reference_bindings_imported_name WHERE imported_name = ?1 \
+             ORDER BY document_uri, local_name",
         )
         .map_err(map_sqlite_error)?;
     let mut to_statement = connection
         .prepare(
-            "SELECT document_uri, from_name FROM reference_aliases \
-             INDEXED BY reference_aliases_to_name WHERE to_name = ?1 \
-             ORDER BY document_uri, from_name",
+            "SELECT document_uri, imported_name FROM reference_bindings \
+             INDEXED BY reference_bindings_local_name WHERE local_name = ?1 \
+             ORDER BY document_uri, imported_name",
         )
         .map_err(map_sqlite_error)?;
     let mut names = BTreeSet::from([exported_name.to_owned()]);
@@ -2042,9 +2042,9 @@ mod tests {
         let connection = Connection::open_in_memory().expect("in-memory database should open");
         connection
             .execute_batch(
-                "CREATE TABLE reference_aliases(\
-                    from_name TEXT NOT NULL,\
-                    to_name TEXT NOT NULL\
+                "CREATE TABLE reference_bindings(\
+                    imported_name TEXT NOT NULL,\
+                    local_name TEXT NOT NULL\
                  );\
                  CREATE TABLE reference_occurrence_identities(\
                     document_uri TEXT NOT NULL,\

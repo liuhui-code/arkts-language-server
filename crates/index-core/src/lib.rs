@@ -474,7 +474,7 @@ impl SymbolStore for MemoryStore {
         let mut names = BTreeSet::from([declaration.exported_name.clone()]);
         loop {
             let before = names.len();
-            for alias in self
+            for binding in self
                 .documents
                 .values()
                 .filter(|document| {
@@ -484,13 +484,13 @@ impl SymbolStore for MemoryStore {
                         admitted_uri_roots,
                     )
                 })
-                .flat_map(|document| document.aliases.iter())
+                .flat_map(|document| document.bindings.iter())
             {
-                if names.contains(&alias.from_name) {
-                    names.insert(alias.to_name.clone());
+                if names.contains(&binding.imported_name) {
+                    names.insert(binding.local_name.clone());
                 }
-                if names.contains(&alias.to_name) {
-                    names.insert(alias.from_name.clone());
+                if names.contains(&binding.local_name) {
+                    names.insert(binding.imported_name.clone());
                 }
                 if names.len() > MAX_REFERENCE_ALIAS_NAMES {
                     return Ok(unsupported_reference_candidates(self.committed_generation));
