@@ -327,8 +327,15 @@ fn sidecar_returns_conservative_reference_candidates_across_alias_reexports() {
     assert_eq!(candidates["ok"], true);
     assert_eq!(candidates["result"]["supported"], true);
     assert_eq!(candidates["result"]["complete"], true);
-    assert_eq!(candidates["result"]["identityComplete"], false);
-    assert_eq!(candidates["result"]["identityUris"], json!([]));
+    assert_eq!(candidates["result"]["identityComplete"], true);
+    assert_eq!(
+        candidates["result"]["identityUris"],
+        json!([
+            "file:///workspace/Barrel.ets",
+            "file:///workspace/Consumer.ets",
+            "file:///workspace/Target.ets"
+        ])
+    );
     assert_eq!(candidates["result"]["servedGeneration"], 1);
     assert_eq!(
         candidates["result"]["declarationIdentity"],

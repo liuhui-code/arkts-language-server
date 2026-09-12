@@ -385,3 +385,17 @@ occurrence 时返回 `identityComplete=false` 和空 URI 集。该 proof 已贯�
 sidecar 与 TypeScript adapter，但 planner 尚不消费它，所以 candidate roots 与默认策略不变。
 下一 RED 应分类“具有独立 declaration identity 的同名文档”，只有排除后剩余 occurrence 全部
 属于目标链时，才把 `identityUris` 用作 indexed batch 输入。
+
+2026-09-12 独立 declaration collision 切片：索引现在可将带不同稳定 declaration identity 的
+顶层同名导出归入其自身声明，而不再让它破坏目标的相对 import/re-export chain。occurrence 同时
+记录点号限定状态；若出现 `Namespace.Thing` 之类可能指向目标的 qualified occurrence，proof 保持
+incomplete。SQLite schema v6 在同一数据库持久化该状态；v5 迁移数据保持 unknown，只有正常
+refresh 后才可参与排除。`indexed-batched` 仅在 `identityComplete=true` 且 `identityUris` 非空时
+使用证明集合，否则继续使用原保守 `uris`。公开 LSP 差分验证了同名独立文件从 compiler roots
+排除、open overlay 仍固定加入、最终 Location set 不变。
+
+真实 Photos `PhotoAsset` 复核仍未越过下一边界：固定 commit/API 24 用例精确返回 legacy 的九个
+Location，但 index proof 因包级/无法唯一解析的 binding 保持 incomplete，compiler 仍接收 1,154
+个候选并运行 11 批；本次请求 45.339 秒、进程树 RSS 峰值 779,599,872 bytes。此数据不构成性能
+成功。下一 RED 必须为 bare package/SDK import 建立由 ProjectGraph/SDK identity 支持的唯一解析，
+或继续 fail closed；禁止把字符串相同的 package import 当作同一 declaration。

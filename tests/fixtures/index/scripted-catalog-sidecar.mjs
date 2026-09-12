@@ -129,12 +129,17 @@ input.on("line", (line) => {
             path.join("entry", "src", "main", "ets", "Query.ets"),
             path.join("entry", "src", "main", "ets", "Use.ets"),
           ]
+        : ["Target.ets", "Barrel.ets", "Query.ets", "Use.ets", "SameName.ets"]
+      const identityFiles = semanticUnits
+        ? []
         : ["Target.ets", "Barrel.ets", "Query.ets", "Use.ets"]
       respond(request.id, {
         supported,
         complete: supported,
-        identityComplete: false,
-        identityUris: [],
+        identityComplete: supported && !semanticUnits,
+        identityUris: supported
+          ? identityFiles.map(file => pathToFileURL(path.join(workspaceRoot, file)).href)
+          : [],
         declarationIdentity: supported ? "scripted-reference-candidate" : null,
         names: supported ? ["Alias", "PublicThing", "Thing"] : [],
         uris: supported

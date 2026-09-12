@@ -69,6 +69,10 @@ fn reference_candidates_expose_the_binding_chain_for_later_identity_narrowing() 
                     "file:///workspace/Consumer.ets",
                     "import { PublicThing as Alias } from './Barrel'\nconst value = new Alias()\n",
                 ),
+                Document::new(
+                    "file:///workspace/SameName.ets",
+                    "export class Thing {}\nconst unrelated = new Thing()\n",
+                ),
             ],
             &[],
         )
@@ -83,6 +87,15 @@ fn reference_candidates_expose_the_binding_chain_for_later_identity_narrowing() 
         .expect("reference candidates should be searchable");
 
     assert!(result.identity_complete);
+    assert_eq!(
+        result.uris,
+        [
+            "file:///workspace/Barrel.ets",
+            "file:///workspace/Consumer.ets",
+            "file:///workspace/SameName.ets",
+            "file:///workspace/Target.ets",
+        ]
+    );
     assert_eq!(
         result.identity_uris,
         [
@@ -118,6 +131,37 @@ fn reference_candidates_expose_the_binding_chain_for_later_identity_narrowing() 
         result.bindings[1].resolved_source_uri.as_deref(),
         Some("file:///workspace/Barrel.ets")
     );
+}
+
+#[test]
+fn independent_declaration_does_not_hide_a_qualified_target_reference() {
+    let mut index = WorkspaceIndex::in_memory();
+    index
+        .refresh(
+            1,
+            [
+                Document::new("file:///workspace/Target.ets", "export class Thing {}\n"),
+                Document::new(
+                    "file:///workspace/Mixed.ets",
+                    "import * as Origin from './Target'\n\
+                     export class Thing {}\n\
+                     const target = new Origin.Thing()\n",
+                ),
+            ],
+            &[],
+        )
+        .expect("reference generation should commit");
+
+    let result = index
+        .search_reference_candidates(ReferenceCandidateQuery {
+            declaration_uri: "file:///workspace/Target.ets".to_owned(),
+            declaration_position: Position::new(0, 14),
+            limit: 20,
+        })
+        .expect("reference candidates should be searchable");
+
+    assert!(!result.identity_complete);
+    assert!(result.identity_uris.is_empty());
 }
 
 #[test]

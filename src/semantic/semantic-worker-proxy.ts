@@ -356,12 +356,14 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
         query.signal,
       )
       if (await this.#eligibleReferenceCandidates(query.document.workspaceId, direct)) {
+        const candidateUris = identityReferenceUris(direct)
         this.#logger?.info("references.index.accepted", {
-          anchorMode: "indexed-declaration",
-          candidateFiles: direct.uris.length,
+          anchorMode: direct.identityComplete ? "indexed-declaration-identity" : "indexed-declaration",
+          candidateFiles: candidateUris.length,
+          conservativeCandidateFiles: direct.uris.length,
           servedGeneration: direct.servedGeneration,
         })
-        return direct.uris
+        return candidateUris
       }
       if (direct.completeness !== "ready" || direct.supported) {
         this.#logger?.info("references.index.fallback", {
@@ -414,12 +416,14 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
         })
         return undefined
       }
+      const candidateUris = identityReferenceUris(result)
       this.#logger?.info("references.index.accepted", {
-        anchorMode: "compiler-definition",
-        candidateFiles: result.uris.length,
+        anchorMode: result.identityComplete ? "compiler-definition-identity" : "compiler-definition",
+        candidateFiles: candidateUris.length,
+        conservativeCandidateFiles: result.uris.length,
         servedGeneration: result.servedGeneration,
       })
-      return result.uris
+      return candidateUris
     } catch (error) {
       this.#logger?.info("references.index.fallback", {
         reason: "index-error",
@@ -607,6 +611,14 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
     if (this.#disposed) throw new Error("Semantic worker is disposed")
     if (this.#failure) throw this.#failure
   }
+}
+
+function identityReferenceUris(
+  result: WorkspaceReferenceCandidateResult,
+): readonly string[] {
+  return result.identityComplete && result.identityUris.length > 0
+    ? result.identityUris
+    : result.uris
 }
 
 function completionPrefixContext(

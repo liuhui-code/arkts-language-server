@@ -191,6 +191,7 @@ test("indexed batching narrows compiler batches but keeps the exact references r
     ["Barrel.ets", 'export { Thing as PublicThing } from "./Target"\n'],
     ["Query.ets", queryText],
     ["Use.ets", 'import { PublicThing as Alias } from "./Barrel"\nexport const use = new Alias()\n'],
+    ["SameName.ets", "export class PublicThing {}\nexport const unrelated = new PublicThing()\n"],
     ["Overlay.ets", "export const beforeOverlay = 1\n"],
     ...Array.from({ length: 12 }, (_, index) => [
       `Unrelated${index}.ets`,
@@ -226,6 +227,10 @@ test("indexed batching narrows compiler batches but keeps the exact references r
   )
   assert.ok(indexed.batchEvents.every(event => event.candidateMode === "indexed"))
   assert.ok(indexed.batchEvents.every(event => event.candidateFiles === 5))
+  const accepted = indexed.indexEvents.find(event => event.event === "references.index.accepted")
+  assert.equal(accepted?.anchorMode, "compiler-definition-identity")
+  assert.equal(accepted?.candidateFiles, 4)
+  assert.equal(accepted?.conservativeCandidateFiles, 5)
   assert.ok(indexed.locations.some(location => (
     location.uri === pathToFileURL(overlayPath).href
     && location.range.start.line === 1

@@ -411,3 +411,37 @@ declaration and classifies each relevant occurrence by URI plus the name establi
 All relevant bindings and occurrences must be reached, the result must fit the query limit, and the
 sidecar catalog must be ready. Otherwise the proof is false and its URI set is empty. The planner
 does not consume this field yet; conservative candidate behavior remains unchanged.
+
+## Independent declaration collision slice (2026-09-12)
+
+Parent revision: `e745ca76bb5c3f8339a9ab1894d955f4943db679`.
+
+The first public store RED added an unrelated same-name exported declaration to a complete relative
+binding chain. The old result set remained conservatively complete but `identityComplete` became
+false. The implementation now classifies only occurrences owned by a different stable declaration
+identity, so the conservative URI set is unchanged while `identityUris` excludes that document.
+
+The next RED used `import * as Origin` plus `Origin.Thing` in a file that also declares its own
+`Thing`. It exposed an unsafe classification until occurrences recorded whether their preceding
+token is `.`. Qualified or migrated-unknown occurrences cannot be assigned to an independent
+declaration. SQLite schema v6 persists known qualification; a v5 migration test proves old rows stay
+incomplete until generation refresh.
+
+The real child-process LSP RED then proved planner consumption. With five conservative index URIs,
+four identity URIs, and one open overlay, the old path reported six candidate files. The GREEN path
+uses four proof URIs plus the overlay and returns the exact same Locations. If identity proof is
+false or empty it still uses the conservative set.
+
+Focused GREEN commands:
+
+```text
+cargo test -p arkts-index-core
+cargo test -p arkts-index-sqlite
+cargo test -p arkts-index-sidecar
+node --test tests/index-adapter.test.mjs tests/semantic/references-batching.test.mjs
+```
+
+The fixed Photos `PhotoAsset` replay preserved all nine legacy Locations but did not produce an
+identity proof because its remaining bindings include package/SDK sources. It retained 1,154
+candidates and 11 batches, taking 45.339 seconds with a 779,599,872-byte process-tree RSS peak.
+The next slice must resolve package/SDK identities or remain conservative.
