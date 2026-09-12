@@ -422,3 +422,18 @@ membership 过滤后仍有 1,154 个 compiler candidates 和 11 批。日志没�
 resolver 只支持裸包名和 self-subpath；因此该结果首先证明的是 declared local-package subpath 边界，
 SDK module identity 是之后的独立边界。该结果是正确性与 fail-conservative 证据，不是性能改善；原始报告为
 `/private/tmp/arkts-photos-photoasset-local-package-retry.json`。
+
+2026-09-12 声明本地包子路径切片：`LocalPackageResolver` 在完整 specifier 不是精确 dependency key
+时，按 scoped/unscoped package 语法拆出 dependency name 与 subpath；只有 containing package manifest
+声明该 dependency、目标 package manifest 的 `name` 精确匹配、候选扩展属于
+`.ets/.ts/.d.ets/.d.ts`，且 lexical/physical path 均留在目标包目录内时才返回 source URI。安装包、
+file dependency 与未保存 overlay 共用该约束；未声明、名称不匹配、路径穿越、包外 symlink 均 fail
+closed。真实 LSP 子进程合同证明 `@ohos/shared/src/main/ets/Target` 可使第二次 index proof 从五个
+conservative candidates 收窄到四个 identity candidates，Location set 与 conservative batching exact。
+
+固定 Photos 6.1 `PhotoAsset` 成功回放解析了 310 条 source binding，但另有 292 条仍未解析，因此
+identity proof 正确保持 incomplete：index 仍返回 1,586 个 conservative URI，membership 后为 1,154
+个 candidates/11 批。九个 Location 与 legacy oracle exact；请求 47.677 秒，进程树 RSS 峰值
+730,562,560 bytes。单次峰值差异不作为性能结论；该 slice 证明本地包子路径已接通，也证明下一 RED
+必须分类并由锁定 SDK identity 解析剩余 SDK module edge，无法唯一解析时继续 conservative。
+原始报告：`/private/tmp/arkts-photos-photoasset-package-subpath-run1.json`。

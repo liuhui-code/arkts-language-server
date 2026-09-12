@@ -92,7 +92,17 @@ export class LocalPackageResolver {
           return { path: this.resolveSelfSource(root, directory, containingFile,
             name.slice(manifest.name.length + 1), hasOverlay, checkpoint, overlayPath) }
         }
-        const dependency = manifest?.dependencies.get(name)
+        let dependencyName = name
+        let dependency = manifest?.dependencies.get(dependencyName)
+        let dependencySubpath: string | undefined
+        if (dependency === undefined) {
+          const parsed = packageSubpath(name)
+          if (parsed !== undefined) {
+            dependencyName = parsed.packageName
+            dependencySubpath = parsed.subpath
+            dependency = manifest?.dependencies.get(dependencyName)
+          }
+        }
         if (dependency === undefined) return undefined
         let packageRoot: string
         const relative = dependency.startsWith("file:")
@@ -104,8 +114,13 @@ export class LocalPackageResolver {
           if (!relative || path.isAbsolute(relative)) return { path: null }
           packageRoot = path.resolve(directory, relative)
         } else {
-          if (!dependency || !/^(?:@[\w.-]+\/)?[\w.-]+$/.test(name)) return { path: null }
-          const installed = this.installedPackage(root, path.dirname(path.resolve(containingFile)), name, checkpoint)
+          if (!dependency || !/^(?:@[\w.-]+\/)?[\w.-]+$/.test(dependencyName)) return { path: null }
+          const installed = this.installedPackage(
+            root,
+            path.dirname(path.resolve(containingFile)),
+            dependencyName,
+            checkpoint,
+          )
           if (installed === undefined) return { path: null }
           packageRoot = installed
         }
@@ -118,6 +133,19 @@ export class LocalPackageResolver {
         } catch { return { path: null } }
         checkpoint()
         const target = this.readManifest(path.join(packageRoot, "oh-package.json5"))
+        if (dependencySubpath !== undefined) {
+          if (target?.name !== dependencyName) return { path: null }
+          return {
+            path: this.resolvePackageSource(
+              packageRoot,
+              physicalPackageRoot,
+              dependencySubpath,
+              hasOverlay,
+              checkpoint,
+              overlayPath,
+            ),
+          }
+        }
         if (!target?.entry || path.isAbsolute(target.entry)) return { path: null }
         const entry = path.resolve(packageRoot, target.entry)
         if (!/\.(?:ets|ts)$/.test(entry) || !inside(packageRoot, entry)) return { path: null }
@@ -216,6 +244,54 @@ export class LocalPackageResolver {
           if (stat.isFile() && stat.size <= 4 * 1024 * 1024) return candidate
         } catch { /* Missing candidates fall through to the common source space. */ }
       }
+    }
+    return null
+  }
+
+  private resolvePackageSource(
+    packageRoot: string,
+    physicalPackageRoot: string,
+    subpath: string,
+    hasOverlay: (filePath: string) => boolean,
+    checkpoint: () => void,
+    overlayPath?: (physicalPath: string) => string | undefined,
+  ): string | null {
+    if (!validPackageSubpath(subpath)) return null
+    const base = path.resolve(packageRoot, ...subpath.split("/"))
+    const candidates = path.extname(base)
+      ? [base]
+      : [base + ".ets", base + ".ts", base + ".d.ets", base + ".d.ts"]
+    for (const candidate of candidates) {
+      checkpoint()
+      if (!/\.(?:ets|ts)$/.test(candidate) || !inside(packageRoot, candidate)) continue
+      let physicalCandidate: string
+      let candidateExists = true
+      try {
+        physicalCandidate = fs.realpathSync.native(candidate)
+      } catch {
+        candidateExists = false
+        try {
+          fs.lstatSync(candidate)
+          continue
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") continue
+        }
+        try {
+          physicalCandidate = path.join(
+            fs.realpathSync.native(path.dirname(candidate)),
+            path.basename(candidate),
+          )
+        } catch { continue }
+      }
+      if (!inside(physicalPackageRoot, physicalCandidate)) continue
+      const openPath = overlayPath?.(physicalCandidate)
+      const overlay = openPath !== undefined || hasOverlay(candidate)
+      if (overlay) return openPath ?? candidate
+      if (!candidateExists) continue
+      try {
+        const stat = fs.statSync(physicalCandidate)
+        if (stat.isFile() && stat.size <= 4 * 1024 * 1024) return candidate
+      } catch { /* Missing candidates continue to the next supported extension. */ }
     }
     return null
   }
@@ -427,6 +503,25 @@ function readManifest(filePath: string): PackageManifest | null | undefined {
 
 function object(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
+}
+
+function packageSubpath(specifier: string): { packageName: string; subpath: string } | undefined {
+  if (!specifier || specifier.includes("\\")) return undefined
+  const segments = specifier.split("/")
+  const packageSegments = specifier.startsWith("@") ? 2 : 1
+  if (segments.length <= packageSegments) return undefined
+  const packageName = segments.slice(0, packageSegments).join("/")
+  const subpath = segments.slice(packageSegments).join("/")
+  if (!/^(?:@[\w.-]+\/)?[\w.-]+$/.test(packageName) || !validPackageSubpath(subpath)) {
+    return undefined
+  }
+  return { packageName, subpath }
+}
+
+function validPackageSubpath(subpath: string): boolean {
+  return Boolean(subpath)
+    && !subpath.includes("\\")
+    && subpath.split("/").every((part) => Boolean(part) && part !== "." && part !== "..")
 }
 
 function inside(root: string, candidate: string): boolean {

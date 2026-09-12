@@ -661,3 +661,36 @@ subpaths such as `@ohos/common/src/...`, while the resolver currently supports o
 names and self-package subpaths. This negative result therefore establishes the declared
 local-package-subpath boundary; SDK module identity remains a later, separate boundary. Raw report:
 `/private/tmp/arkts-photos-photoasset-local-package-retry.json`.
+
+### Manifest-declared local-package subpaths
+
+Parent revision: `3087e4c27bb4b8740a9d68a6d213379304d7596b`.
+
+The public resolver RED used the real Photos import shape
+`@ohos/common/src/main/ets/default/access/UserFileManagerAccess`. The containing manifest declared
+`@ohos/common: file:../common`, but the resolver returned `undefined` because it queried the full
+specifier as a dependency name. GREEN minimal implementation splits scoped and unscoped package
+identities only after an exact dependency lookup misses, reuses the existing declared dependency
+root resolution, and accepts a subpath only when the target manifest owns the exact package name.
+Candidate extensions are bounded to `.ets`, `.ts`, `.d.ets`, and `.d.ts`; lexical traversal, physical
+symlink escape, unknown packages, mismatched target ownership, and unsupported paths fail closed.
+Open overlays and declared installed packages are covered by the same containment rules.
+
+A real child-process LSP differential uses
+`@ohos/shared/src/main/ets/Target`. The initial index result is identity-incomplete; the Node-owned
+resolver supplies one authoritative target URI, the repeated proof returns four identity candidates
+instead of five conservative candidates, and the normalized reference Locations exactly match
+conservative batching. The Rust index still does not inspect manifests.
+
+The fixed Photos 6.1 replay at commit `98ea1d9cd6a363c576e2c6ff17844e51723baec5`
+resolved 310 source bindings and left 292 unresolved. Consequently the proof correctly retained
+`anchorMode=compiler-definition`, 1,586 conservative index URIs, 1,154 membership-admitted compiler
+candidates, and 11 batches. All nine Locations exactly equal the legacy oracle. The request took
+47.677 seconds and process-tree peak RSS was 730,562,560 bytes. This single-run RSS difference is not
+treated as a performance result because the identity set did not narrow. Two earlier attempts that
+could not persist their report due macOS `ENOSPC` are excluded. Raw valid report:
+`/private/tmp/arkts-photos-photoasset-package-subpath-run1.json`.
+
+The next RED is now the remaining SDK-module identity boundary. Locked SDK ownership may supply a
+declaration URI only when the module maps uniquely; partial or unknown mappings must preserve the
+conservative set.

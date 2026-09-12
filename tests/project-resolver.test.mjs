@@ -202,9 +202,14 @@ test("declared installed imports resolve directly without enumerating oh_modules
   fs.mkdirSync(shared, { recursive: true })
   fs.mkdirSync(path.join(modules, ".ohpm", "unrelated@1.0.0"), { recursive: true })
   fs.writeFileSync(path.join(root, "entry", "oh-package.json5"), "{ dependencies: { '@example/shared': '^1.0.0' } }")
-  fs.writeFileSync(path.join(shared, "oh-package.json5"), "{ types: 'Index.d.ets' }")
+  fs.writeFileSync(
+    path.join(shared, "oh-package.json5"),
+    "{ name: '@example/shared', types: 'Index.d.ets' }",
+  )
   const entry = path.join(shared, "Index.d.ets")
+  const feature = path.join(shared, "Feature.d.ets")
   fs.writeFileSync(entry, "export declare class Shared {}")
+  fs.writeFileSync(feature, "export declare class Feature {}")
   const resolver = new driver.LocalPackageResolver()
 
   let directoryEnumerations = 0
@@ -217,7 +222,108 @@ test("declared installed imports resolve directly without enumerating oh_modules
   for (let index = 0; index < 100; index += 1) {
     assert.deepEqual(resolver.resolve(root, path.join(directory, "Index.ets"), "@example/shared"), { path: entry })
   }
+  assert.deepEqual(
+    resolver.resolve(root, path.join(directory, "Index.ets"), "@example/shared/Feature"),
+    { path: feature },
+  )
   assert.equal(directoryEnumerations, 0, "cold and warm imports must select only the declared package")
+})
+
+test("declared local package subpaths resolve inside the target package", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-package-subpath-"))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const source = path.join(root, "browser", "src", "main", "ets", "Page.ets")
+  const common = path.join(root, "common")
+  const target = path.join(
+    common,
+    "src",
+    "main",
+    "ets",
+    "default",
+    "access",
+    "UserFileManagerAccess.ets",
+  )
+  fs.mkdirSync(path.dirname(source), { recursive: true })
+  fs.mkdirSync(path.dirname(target), { recursive: true })
+  fs.writeFileSync(
+    path.join(root, "browser", "oh-package.json5"),
+    "{ name: '@ohos/browser', dependencies: { '@ohos/common': 'file:../common' } }",
+  )
+  fs.writeFileSync(
+    path.join(common, "oh-package.json5"),
+    "{ name: '@ohos/common', main: 'index.ets' }",
+  )
+  fs.writeFileSync(target, "export type PhotoAsset = object\n")
+  const resolver = new driver.LocalPackageResolver()
+
+  assert.deepEqual(
+    resolver.resolve(
+      root,
+      source,
+      "@ohos/common/src/main/ets/default/access/UserFileManagerAccess",
+    ),
+    { path: target },
+  )
+  fs.unlinkSync(target)
+  assert.deepEqual(
+    resolver.resolve(
+      root,
+      source,
+      "@ohos/common/src/main/ets/default/access/UserFileManagerAccess",
+      { hasOverlay: (candidate) => candidate === target },
+    ),
+    { path: target },
+    "an unsaved target remains authoritative after its disk file is removed",
+  )
+})
+
+test("local package subpaths fail closed without target ownership or containment", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-package-subpath-boundary-"))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const browser = path.join(root, "browser")
+  const common = path.join(root, "common")
+  const outside = path.join(root, "outside")
+  const source = path.join(browser, "src", "Page.ets")
+  fs.mkdirSync(path.dirname(source), { recursive: true })
+  fs.mkdirSync(path.join(common, "src"), { recursive: true })
+  fs.mkdirSync(outside)
+  fs.writeFileSync(
+    path.join(browser, "oh-package.json5"),
+    "{ dependencies: { '@ohos/common': 'file:../common' } }",
+  )
+  fs.writeFileSync(
+    path.join(common, "oh-package.json5"),
+    "{ name: '@ohos/not-common', main: 'index.ets' }",
+  )
+  fs.writeFileSync(path.join(outside, "Escaped.ets"), "export class Escaped {}\n")
+  fs.symlinkSync(path.join(outside, "Escaped.ets"), path.join(common, "src", "Escaped.ets"))
+  const resolver = new driver.LocalPackageResolver()
+
+  assert.deepEqual(
+    resolver.resolve(root, source, "@ohos/common/src/Escaped"),
+    { path: null },
+    "the target package must own the declared package identity",
+  )
+  fs.writeFileSync(
+    path.join(common, "oh-package.json5"),
+    "{ name: '@ohos/common', main: 'index.ets' }",
+  )
+  resolver.invalidate(root)
+  assert.deepEqual(
+    resolver.resolve(root, source, "@ohos/common/src/Escaped"),
+    { path: null },
+    "a package subpath must not follow a source symlink outside its package",
+  )
+  assert.equal(
+    resolver.resolve(root, source, "@ohos/common/../outside/Escaped"),
+    undefined,
+    "path traversal is not a supported package declaration",
+  )
+  assert.equal(
+    resolver.resolve(root, source, "@ohos/undeclared/src/Escaped"),
+    undefined,
+    "a package subpath cannot authorize an undeclared dependency",
+  )
 })
 
 test("an installed but undeclared dependency is neither resolved nor inspected", (t) => {

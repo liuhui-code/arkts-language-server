@@ -120,14 +120,18 @@ input.on("line", (line) => {
       break
     }
     case "references/candidates": {
-      const packageResolutions = process.env.ARKTS_INDEX_TEST_SCENARIO === "reference-package-resolutions"
+      const packageResolutionScenario = process.env.ARKTS_INDEX_TEST_SCENARIO
+      const packageSubpathResolutions = packageResolutionScenario === "reference-package-subpath-resolutions"
+      const packageResolutions = packageResolutionScenario === "reference-package-resolutions"
+        || packageSubpathResolutions
+      const packageTarget = packageSubpathResolutions ? "Target.ets" : "Index.ets"
       const supported = packageResolutions
-        ? request.params.declarationUri.endsWith("/shared/src/main/ets/Index.ets")
+        ? request.params.declarationUri.endsWith(`/shared/src/main/ets/${packageTarget}`)
         : request.params.declarationUri.endsWith("/Target.ets")
       const semanticUnits = process.env.ARKTS_INDEX_TEST_SCENARIO === "semantic-units"
       const candidateFiles = packageResolutions
         ? [
-            path.join("shared", "src", "main", "ets", "Index.ets"),
+            path.join("shared", "src", "main", "ets", packageTarget),
             path.join("entry", "src", "main", "ets", "Barrel.ets"),
             path.join("entry", "src", "main", "ets", "Query.ets"),
             path.join("entry", "src", "main", "ets", "Use.ets"),
@@ -143,14 +147,16 @@ input.on("line", (line) => {
         : ["Target.ets", "Barrel.ets", "Query.ets", "Use.ets", "SameName.ets"]
       const packageSourceResolved = request.params.sourceResolutions?.some((resolution) => (
         resolution.bindingUri.endsWith("/entry/src/main/ets/Barrel.ets")
-        && resolution.sourceSpecifier === "shared"
-        && resolution.resolvedSourceUri.endsWith("/shared/src/main/ets/Index.ets")
+        && resolution.sourceSpecifier === (packageSubpathResolutions
+          ? "@ohos/shared/src/main/ets/Target"
+          : "shared")
+        && resolution.resolvedSourceUri.endsWith(`/shared/src/main/ets/${packageTarget}`)
       )) ?? false
       const identityFiles = semanticUnits
         ? []
         : packageResolutions
           ? [
-              path.join("shared", "src", "main", "ets", "Index.ets"),
+              path.join("shared", "src", "main", "ets", packageTarget),
               path.join("entry", "src", "main", "ets", "Barrel.ets"),
               path.join("entry", "src", "main", "ets", "Query.ets"),
               path.join("entry", "src", "main", "ets", "Use.ets"),
@@ -173,10 +179,12 @@ input.on("line", (line) => {
           uri: pathToFileURL(path.join(workspaceRoot, "entry", "src", "main", "ets", "Barrel.ets")).href,
           importedName: "Thing",
           localName: "PublicThing",
-          sourceSpecifier: "shared",
+          sourceSpecifier: packageSubpathResolutions
+            ? "@ohos/shared/src/main/ets/Target"
+            : "shared",
           sourceResolution: packageSourceResolved ? "unique" : "unsupported",
           resolvedSourceUri: packageSourceResolved
-            ? pathToFileURL(path.join(workspaceRoot, "shared", "src", "main", "ets", "Index.ets")).href
+            ? pathToFileURL(path.join(workspaceRoot, "shared", "src", "main", "ets", packageTarget)).href
             : null,
         }] : undefined,
         servedGeneration: committedGeneration,
