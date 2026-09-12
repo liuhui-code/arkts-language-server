@@ -506,3 +506,14 @@ PR release gate 随后揭示 identity projection 的首次写入曾使固定 455
 写 identity、事务末尾一次建立 covering index；所有 name-only reference discovery 改读该 projection，
 原始 range 表不再维护重复 name index。固定 fixture 随后连续三次通过原门限，故该修复属于当前
 occurrence-proof slice 的 release-gate 收口，不改变下一 RED 或默认 references 策略。
+
+2026-09-13 binding-name narrowing 切片：对剩余两条工程内 SDK mirror edge 的调查证明，问题并非
+mirror 路径本身，而是 index 把任意 `identifier as identifier` 类型断言当成跨文件 alias，使
+`PhotoAsset` 从一个名称扩张到 203 个名称并误连 `BusinessError`。Memory/SQLite 现在只使用具备
+source specifier 的 named import/re-export `ReferenceBinding` 扩展跨文件名称；不添加 SDK 路径特判。
+固定 Photos candidate 从 1,154 文件/824 bindings 收缩为 124 文件/87 bindings，冷查询约 42 ms；
+三次独立 LSP 新进程均精确返回 legacy 的九个 Location，请求为 14.492/14.085/13.668 秒，3 批、
+每批 61..288 project files，峰值 736,722,944..748,146,688 bytes。相对 legacy 7.996 秒的中位
+延迟约 1.76x，通过既定 `<=2x` gate；默认仍保持 `legacy`，下一步需在其他真实工程和 symbol kind
+复核后才讨论切换。详细证据见
+[binding-name narrowing 报告](../reports/2026-09-13-reference-binding-name-narrowing.md)。

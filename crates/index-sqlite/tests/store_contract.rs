@@ -121,6 +121,60 @@ fn memory_and_sqlite_implement_the_same_store_contract_and_sqlite_reopens() {
     assert_eq!(references.served_generation, 1);
 }
 
+fn assert_type_assertions_do_not_widen_reference_names(mut index: WorkspaceIndex) {
+    index
+        .refresh(
+            1,
+            [
+                Document::new("file:///workspace/Target.ets", "export class Thing {}\n"),
+                Document::new(
+                    "file:///workspace/Consumer.ets",
+                    "import { Thing } from './Target'\n\
+                     const typed = Thing as BusinessError\n\
+                     const use = new Thing()\n",
+                ),
+                Document::new(
+                    "file:///workspace/Unrelated.ets",
+                    "export class BusinessError {}\n\
+                     const unrelated = new BusinessError()\n",
+                ),
+            ],
+            &[],
+        )
+        .expect("reference generation should commit");
+
+    let result = index
+        .search_reference_candidates(ReferenceCandidateQuery {
+            declaration_uri: "file:///workspace/Target.ets".to_owned(),
+            declaration_position: Position::new(0, 14),
+            limit: 20,
+        })
+        .expect("reference candidates should be searchable");
+    assert_eq!(result.names, ["Thing"]);
+    assert_eq!(
+        result.uris,
+        [
+            "file:///workspace/Consumer.ets",
+            "file:///workspace/Target.ets",
+        ]
+    );
+    assert!(result.identity_complete);
+    assert_eq!(result.identity_uris, result.uris);
+}
+
+#[test]
+fn memory_and_sqlite_ignore_type_assertions_when_expanding_reference_names() {
+    assert_type_assertions_do_not_widen_reference_names(WorkspaceIndex::with_store(
+        MemoryStore::default(),
+    ));
+
+    let temp = TestDir::new("reference-type-assertion");
+    let database = temp.path().join("symbols.sqlite3");
+    let store =
+        SqliteStore::open(&database, "file:///workspace").expect("SQLite store should open");
+    assert_type_assertions_do_not_widen_reference_names(WorkspaceIndex::with_store(store));
+}
+
 fn assert_reference_admission_scope(mut index: WorkspaceIndex) {
     index
         .refresh(
