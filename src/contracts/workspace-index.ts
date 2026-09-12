@@ -76,15 +76,20 @@ export interface WorkspaceReferenceBinding {
   importedName: string
   localName: string
   sourceSpecifier: string
-  sourceResolution: "unique" | "unresolved" | "ambiguous" | "unsupported"
+  sourceResolution: "unique" | "external" | "unresolved" | "ambiguous" | "unsupported"
   resolvedSourceUri?: DocumentUri
+  externalTerminalIdentity?: string
 }
 
-export interface WorkspaceReferenceSourceResolution {
+interface WorkspaceReferenceSourceResolutionBase {
   bindingUri: DocumentUri
   sourceSpecifier: string
-  resolvedSourceUri: DocumentUri
 }
+
+export type WorkspaceReferenceSourceResolution = WorkspaceReferenceSourceResolutionBase & (
+  | { resolvedSourceUri: DocumentUri; externalTerminalIdentity?: never }
+  | { externalTerminalIdentity: string; resolvedSourceUri?: never }
+)
 
 export interface WorkspaceReferenceIndexPort {
   searchReferenceCandidates(

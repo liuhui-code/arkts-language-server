@@ -105,6 +105,7 @@ pub enum ReferenceBindingKind {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ReferenceBindingResolution {
     Unique,
+    External,
     Unresolved,
     Ambiguous,
     Unsupported,
@@ -119,6 +120,7 @@ pub struct ReferenceBinding {
     pub uri: String,
     pub source_resolution: ReferenceBindingResolution,
     pub resolved_source_uri: Option<String>,
+    pub external_terminal_identity: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -260,7 +262,8 @@ pub struct ReferenceCandidateQuery {
 pub struct ReferenceSourceResolution {
     pub binding_uri: String,
     pub source_specifier: String,
-    pub resolved_source_uri: String,
+    pub resolved_source_uri: Option<String>,
+    pub external_terminal_identity: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -604,6 +607,7 @@ pub fn resolve_reference_binding_sources(
         else {
             binding.source_resolution = ReferenceBindingResolution::Unsupported;
             binding.resolved_source_uri = None;
+            binding.external_terminal_identity = None;
             continue;
         };
         let matches: Vec<_> = candidates
@@ -614,14 +618,17 @@ pub fn resolve_reference_binding_sources(
             [uri] => {
                 binding.source_resolution = ReferenceBindingResolution::Unique;
                 binding.resolved_source_uri = Some(uri.clone());
+                binding.external_terminal_identity = None;
             }
             [] => {
                 binding.source_resolution = ReferenceBindingResolution::Unresolved;
                 binding.resolved_source_uri = None;
+                binding.external_terminal_identity = None;
             }
             _ => {
                 binding.source_resolution = ReferenceBindingResolution::Ambiguous;
                 binding.resolved_source_uri = None;
+                binding.external_terminal_identity = None;
             }
         }
     }
@@ -632,11 +639,27 @@ pub fn apply_reference_source_resolutions(
     source_resolutions: &[ReferenceSourceResolution],
     document_uris: &BTreeSet<String>,
 ) {
-    let mut resolved = HashMap::<(&str, &str), Option<&str>>::new();
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum Target<'a> {
+        Workspace(&'a str),
+        External(&'a str),
+    }
+
+    let mut resolved = HashMap::<(&str, &str), Option<Target<'_>>>::new();
     for resolution in source_resolutions {
-        if !document_uris.contains(&resolution.resolved_source_uri) {
-            continue;
-        }
+        let target = match (
+            resolution.resolved_source_uri.as_deref(),
+            resolution.external_terminal_identity.as_deref(),
+        ) {
+            (Some(uri), None) if document_uris.contains(uri) => Target::Workspace(uri),
+            (None, Some(identity))
+                if valid_external_terminal_identity(identity)
+                    && valid_sdk_module_specifier(&resolution.source_specifier) =>
+            {
+                Target::External(identity)
+            }
+            _ => continue,
+        };
         let key = (
             resolution.binding_uri.as_str(),
             resolution.source_specifier.as_str(),
@@ -644,23 +667,49 @@ pub fn apply_reference_source_resolutions(
         resolved
             .entry(key)
             .and_modify(|value| {
-                if *value != Some(resolution.resolved_source_uri.as_str()) {
+                if *value != Some(target) {
                     *value = None;
                 }
             })
-            .or_insert(Some(resolution.resolved_source_uri.as_str()));
+            .or_insert(Some(target));
     }
     for binding in bindings {
         if binding.source_resolution == ReferenceBindingResolution::Unique {
             continue;
         }
         let key = (binding.uri.as_str(), binding.source_specifier.as_str());
-        let Some(Some(uri)) = resolved.get(&key) else {
+        let Some(Some(target)) = resolved.get(&key) else {
             continue;
         };
-        binding.source_resolution = ReferenceBindingResolution::Unique;
-        binding.resolved_source_uri = Some((*uri).to_owned());
+        match target {
+            Target::Workspace(uri) => {
+                binding.source_resolution = ReferenceBindingResolution::Unique;
+                binding.resolved_source_uri = Some((*uri).to_owned());
+                binding.external_terminal_identity = None;
+            }
+            Target::External(identity) => {
+                binding.source_resolution = ReferenceBindingResolution::External;
+                binding.resolved_source_uri = None;
+                binding.external_terminal_identity = Some((*identity).to_owned());
+            }
+        }
     }
+}
+
+fn valid_external_terminal_identity(identity: &str) -> bool {
+    identity.len() == 68
+        && identity.starts_with("sdk:")
+        && identity[4..]
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+fn valid_sdk_module_specifier(specifier: &str) -> bool {
+    !specifier.contains(['/', '\\'])
+        && (specifier.starts_with("@ohos.")
+            || specifier.starts_with("@system.")
+            || specifier.starts_with("@kit.")
+            || specifier.starts_with("@arkts."))
 }
 
 pub fn prove_reference_binding_chain(
@@ -675,22 +724,41 @@ pub fn prove_reference_binding_chain(
         declaration_uri.to_owned(),
         BTreeSet::from([declaration_name.to_owned()]),
     )]);
+    let mut disjoint = HashMap::<String, BTreeSet<String>>::new();
     let mut reached_bindings = BTreeSet::new();
     loop {
         let before = reached_bindings.len();
         for (index, binding) in bindings.iter().enumerate() {
+            if binding.source_resolution == ReferenceBindingResolution::External
+                && binding.external_terminal_identity.is_some()
+            {
+                reached_bindings.insert(index);
+                let names = disjoint.entry(binding.uri.clone()).or_default();
+                names.insert(binding.imported_name.clone());
+                names.insert(binding.local_name.clone());
+                continue;
+            }
             let Some(source_uri) = binding.resolved_source_uri.as_deref() else {
                 continue;
             };
-            if binding.source_resolution != ReferenceBindingResolution::Unique
-                || !proven
-                    .get(source_uri)
-                    .is_some_and(|names| names.contains(&binding.imported_name))
-            {
+            if binding.source_resolution != ReferenceBindingResolution::Unique {
+                continue;
+            }
+            let source_is_proven = proven
+                .get(source_uri)
+                .is_some_and(|names| names.contains(&binding.imported_name));
+            let source_is_disjoint = disjoint
+                .get(source_uri)
+                .is_some_and(|names| names.contains(&binding.imported_name));
+            if source_is_proven == source_is_disjoint {
                 continue;
             }
             reached_bindings.insert(index);
-            let names = proven.entry(binding.uri.clone()).or_default();
+            let names = if source_is_proven {
+                proven.entry(binding.uri.clone()).or_default()
+            } else {
+                disjoint.entry(binding.uri.clone()).or_default()
+            };
             names.insert(binding.imported_name.clone());
             names.insert(binding.local_name.clone());
         }
@@ -703,6 +771,9 @@ pub fn prove_reference_binding_chain(
             proven
                 .get(&occurrence.uri)
                 .is_some_and(|names| names.contains(&occurrence.name))
+                || disjoint
+                    .get(&occurrence.uri)
+                    .is_some_and(|names| names.contains(&occurrence.name))
                 || independent_declarations
                     .contains(&(occurrence.uri.clone(), occurrence.name.clone()))
                     && occurrence.qualified == Some(false)
@@ -1374,6 +1445,7 @@ fn named_source_bindings(
             uri: document.uri.clone(),
             source_resolution: ReferenceBindingResolution::Unresolved,
             resolved_source_uri: None,
+            external_terminal_identity: None,
         });
     }
 

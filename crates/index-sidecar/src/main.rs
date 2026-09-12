@@ -95,7 +95,10 @@ struct ReferenceCandidatesParams {
 struct ProtocolReferenceSourceResolution {
     binding_uri: String,
     source_specifier: String,
-    resolved_source_uri: String,
+    #[serde(default)]
+    resolved_source_uri: Option<String>,
+    #[serde(default)]
+    external_terminal_identity: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -386,7 +389,7 @@ impl Runtime {
                         format!(
                             "declarationUri must contain 1..={MAX_EXCLUDED_URI_BYTES} UTF-8 bytes \
                              and limit must be in 1..={MAX_REFERENCE_CANDIDATES}; sourceResolutions \
-                             must be bounded, non-empty URI/specifier triples"
+                             must contain bounded binding/specifier pairs with exactly one valid target"
                         ),
                     ));
                 }
@@ -397,6 +400,7 @@ impl Runtime {
                         binding_uri: resolution.binding_uri,
                         source_specifier: resolution.source_specifier,
                         resolved_source_uri: resolution.resolved_source_uri,
+                        external_terminal_identity: resolution.external_terminal_identity,
                     })
                     .collect();
                 let search_result = self
@@ -427,7 +431,7 @@ impl Runtime {
                     .bindings
                     .into_iter()
                     .map(|binding| {
-                        json!({
+                        let mut value = json!({
                             "kind": reference_binding_kind_name(binding.kind),
                             "uri": binding.uri,
                             "importedName": binding.imported_name,
@@ -437,7 +441,11 @@ impl Runtime {
                                 binding.source_resolution,
                             ),
                             "resolvedSourceUri": binding.resolved_source_uri,
-                        })
+                        });
+                        if let Some(identity) = binding.external_terminal_identity {
+                            value["externalTerminalIdentity"] = json!(identity);
+                        }
+                        value
                     })
                     .collect();
                 Ok((
@@ -827,20 +835,59 @@ fn valid_reference_source_resolutions(resolutions: &[ProtocolReferenceSourceReso
             || resolution.binding_uri.len() > MAX_EXCLUDED_URI_BYTES
             || resolution.source_specifier.is_empty()
             || resolution.source_specifier.len() > MAX_REFERENCE_SOURCE_SPECIFIER_BYTES
-            || resolution.resolved_source_uri.is_empty()
-            || resolution.resolved_source_uri.len() > MAX_EXCLUDED_URI_BYTES
         {
+            return false;
+        }
+        let valid_target = match (
+            resolution.resolved_source_uri.as_deref(),
+            resolution.external_terminal_identity.as_deref(),
+        ) {
+            (Some(uri), None) => !uri.is_empty() && uri.len() <= MAX_EXCLUDED_URI_BYTES,
+            (None, Some(identity)) => {
+                valid_external_terminal_identity(identity)
+                    && valid_sdk_module_specifier(&resolution.source_specifier)
+            }
+            _ => false,
+        };
+        if !valid_target {
             return false;
         }
         total_bytes = total_bytes
             .saturating_add(resolution.binding_uri.len())
             .saturating_add(resolution.source_specifier.len())
-            .saturating_add(resolution.resolved_source_uri.len());
+            .saturating_add(
+                resolution
+                    .resolved_source_uri
+                    .as_ref()
+                    .map_or(0, String::len),
+            )
+            .saturating_add(
+                resolution
+                    .external_terminal_identity
+                    .as_ref()
+                    .map_or(0, String::len),
+            );
         if total_bytes > MAX_REFERENCE_SOURCE_RESOLUTION_BYTES {
             return false;
         }
     }
     true
+}
+
+fn valid_external_terminal_identity(identity: &str) -> bool {
+    identity.len() == 68
+        && identity.starts_with("sdk:")
+        && identity[4..]
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+fn valid_sdk_module_specifier(specifier: &str) -> bool {
+    !specifier.contains(['/', '\\'])
+        && (specifier.starts_with("@ohos.")
+            || specifier.starts_with("@system.")
+            || specifier.starts_with("@kit.")
+            || specifier.starts_with("@arkts."))
 }
 
 fn validate_admitted_root_uris(uris: &[String]) -> Result<(), ProtocolError> {
@@ -912,6 +959,7 @@ fn reference_binding_kind_name(kind: ReferenceBindingKind) -> &'static str {
 fn reference_binding_resolution_name(resolution: ReferenceBindingResolution) -> &'static str {
     match resolution {
         ReferenceBindingResolution::Unique => "unique",
+        ReferenceBindingResolution::External => "external",
         ReferenceBindingResolution::Unresolved => "unresolved",
         ReferenceBindingResolution::Ambiguous => "ambiguous",
         ReferenceBindingResolution::Unsupported => "unsupported",

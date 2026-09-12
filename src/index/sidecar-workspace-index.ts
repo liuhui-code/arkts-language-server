@@ -241,9 +241,20 @@ export class SidecarWorkspaceIndex implements WorkspaceIndexPort, WorkspaceCatal
       }
       const rebasedSourceResolutions = sourceResolutions?.map((resolution) => {
         const bindingUri = tryWorkspaceIdentityUri(session, resolution.bindingUri)
-        const resolvedSourceUri = tryWorkspaceIdentityUri(session, resolution.resolvedSourceUri)
-        return bindingUri && resolvedSourceUri
-          ? { bindingUri, sourceSpecifier: resolution.sourceSpecifier, resolvedSourceUri }
+        if (!bindingUri) return undefined
+        if ("resolvedSourceUri" in resolution
+          && typeof resolution.resolvedSourceUri === "string") {
+          const resolvedSourceUri = tryWorkspaceIdentityUri(session, resolution.resolvedSourceUri)
+          return resolvedSourceUri
+            ? { bindingUri, sourceSpecifier: resolution.sourceSpecifier, resolvedSourceUri }
+            : undefined
+        }
+        return isExternalTerminalIdentity(resolution.externalTerminalIdentity)
+          ? {
+              bindingUri,
+              sourceSpecifier: resolution.sourceSpecifier,
+              externalTerminalIdentity: resolution.externalTerminalIdentity,
+            }
           : undefined
       })
       if (rebasedSourceResolutions?.some(resolution => resolution === undefined)) {
@@ -930,9 +941,12 @@ function mapReferenceCandidateResult(
               localName: item.localName as string,
               sourceSpecifier: item.sourceSpecifier as string,
               sourceResolution: item.sourceResolution as
-                "unique" | "unresolved" | "ambiguous" | "unsupported",
+                "unique" | "external" | "unresolved" | "ambiguous" | "unsupported",
               ...(typeof item.resolvedSourceUri === "string"
                 ? { resolvedSourceUri: mapUri(item.resolvedSourceUri) }
+                : {}),
+              ...(typeof item.externalTerminalIdentity === "string"
+                ? { externalTerminalIdentity: item.externalTerminalIdentity }
                 : {}),
             }
           }),
@@ -951,14 +965,24 @@ function isReferenceBinding(value: unknown): boolean {
     && typeof binding.localName === "string"
     && typeof binding.sourceSpecifier === "string"
     && (binding.sourceResolution === "unique"
+      || binding.sourceResolution === "external"
       || binding.sourceResolution === "unresolved"
       || binding.sourceResolution === "ambiguous"
       || binding.sourceResolution === "unsupported")
     && (binding.resolvedSourceUri === null
       || binding.resolvedSourceUri === undefined
       || typeof binding.resolvedSourceUri === "string")
+    && (binding.externalTerminalIdentity === null
+      || binding.externalTerminalIdentity === undefined
+      || isExternalTerminalIdentity(binding.externalTerminalIdentity))
     && ((binding.sourceResolution === "unique")
       === (typeof binding.resolvedSourceUri === "string"))
+    && ((binding.sourceResolution === "external")
+      === (typeof binding.externalTerminalIdentity === "string"))
+}
+
+function isExternalTerminalIdentity(value: unknown): value is string {
+  return typeof value === "string" && /^sdk:[0-9a-f]{64}$/.test(value)
 }
 
 function unsupportedReferenceCandidates(
