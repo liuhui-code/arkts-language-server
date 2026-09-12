@@ -15,7 +15,7 @@ use arkts_index_core::{
     ReferenceOccurrence, ReferenceSourceResolution, RefreshBatch, StoreError, StoreErrorKind,
     StoreMetadata, SymbolKind, SymbolQuery, SymbolSearchResult, SymbolStore, TextRange,
     WorkspaceExport, WorkspaceSymbol, acronym_for_search, apply_reference_source_resolutions,
-    fold_for_search, prove_reference_binding_chain, rank_symbols,
+    fold_for_search, prove_reference_binding_chain, rank_symbols, reference_uri_admitted,
     resolve_reference_binding_sources, sort_reference_bindings,
 };
 use rusqlite::types::Value as SqlValue;
@@ -522,6 +522,7 @@ impl SymbolStore for SqliteStore {
         &self,
         query: &ReferenceCandidateQuery,
         source_resolutions: &[ReferenceSourceResolution],
+        admitted_uri_roots: &[String],
     ) -> Result<ReferenceCandidateSearchResult, StoreError> {
         let transaction =
             Transaction::new_unchecked(&self.connection, TransactionBehavior::Deferred)
@@ -559,22 +560,57 @@ impl SymbolStore for SqliteStore {
             return Ok(unsupported_reference_candidates(generation));
         };
 
-        let names = read_reference_names(&transaction, exported_name)?;
+        let names = if admitted_uri_roots.is_empty() {
+            read_reference_names(&transaction, exported_name)?
+        } else {
+            read_scoped_reference_names(
+                &transaction,
+                exported_name,
+                &query.declaration_uri,
+                admitted_uri_roots,
+            )?
+        };
         if names.len() > MAX_REFERENCE_ALIAS_NAMES || names.iter().any(|name| name == "default") {
             return Ok(unsupported_reference_candidates(generation));
         }
-        let mut uris =
-            read_reference_uris(&transaction, exported_name, query.limit.saturating_add(1))?;
         let mut bindings = read_reference_bindings(&transaction, exported_name)?;
+        bindings.retain(|binding| {
+            reference_uri_admitted(&binding.uri, &query.declaration_uri, admitted_uri_roots)
+                && (names.binary_search(&binding.imported_name).is_ok()
+                    || names.binary_search(&binding.local_name).is_ok())
+        });
         let document_uris = read_document_uris(&transaction)?;
         resolve_reference_binding_sources(&mut bindings, &document_uris);
         apply_reference_source_resolutions(&mut bindings, source_resolutions, &document_uris);
-        let occurrences = read_reference_occurrences(&transaction, exported_name)?;
-        let independent_declarations = read_independent_reference_declarations(
+        let occurrences: Vec<_> = read_reference_occurrences(&transaction, exported_name)?
+            .into_iter()
+            .filter(|occurrence| {
+                reference_uri_admitted(&occurrence.uri, &query.declaration_uri, admitted_uri_roots)
+                    && names.binary_search(&occurrence.name).is_ok()
+            })
+            .collect();
+        let independent_declarations: BTreeSet<_> = read_independent_reference_declarations(
             &transaction,
             exported_name,
             declaration_identity.as_deref(),
-        )?;
+        )?
+        .into_iter()
+        .filter(|(uri, name)| {
+            reference_uri_admitted(uri, &query.declaration_uri, admitted_uri_roots)
+                && names.binary_search(name).is_ok()
+        })
+        .collect();
+        let mut uris = if admitted_uri_roots.is_empty() {
+            read_reference_uris(&transaction, exported_name, query.limit.saturating_add(1))?
+        } else {
+            occurrences
+                .iter()
+                .map(|occurrence| occurrence.uri.clone())
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .take(query.limit.saturating_add(1))
+                .collect()
+        };
         let (identity_complete, identity_uris) = prove_reference_binding_chain(
             &bindings,
             &occurrences,
@@ -900,6 +936,59 @@ fn read_reference_names(
         .map_err(map_sqlite_error)?;
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(map_sqlite_error)
+}
+
+fn read_scoped_reference_names(
+    connection: &Connection,
+    exported_name: &str,
+    declaration_uri: &str,
+    admitted_uri_roots: &[String],
+) -> Result<Vec<String>, StoreError> {
+    let mut from_statement = connection
+        .prepare(
+            "SELECT document_uri, to_name FROM reference_aliases \
+             INDEXED BY reference_aliases_from_name WHERE from_name = ?1 \
+             ORDER BY document_uri, to_name",
+        )
+        .map_err(map_sqlite_error)?;
+    let mut to_statement = connection
+        .prepare(
+            "SELECT document_uri, from_name FROM reference_aliases \
+             INDEXED BY reference_aliases_to_name WHERE to_name = ?1 \
+             ORDER BY document_uri, from_name",
+        )
+        .map_err(map_sqlite_error)?;
+    let mut names = BTreeSet::from([exported_name.to_owned()]);
+    let mut pending = vec![exported_name.to_owned()];
+    while let Some(name) = pending.pop() {
+        let mut neighbors = from_statement
+            .query_map([&name], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(map_sqlite_error)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(map_sqlite_error)?;
+        neighbors.extend(
+            to_statement
+                .query_map([&name], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                })
+                .map_err(map_sqlite_error)?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(map_sqlite_error)?,
+        );
+        for (uri, neighbor) in neighbors {
+            if reference_uri_admitted(&uri, declaration_uri, admitted_uri_roots)
+                && names.insert(neighbor.clone())
+            {
+                pending.push(neighbor);
+                if names.len() > MAX_REFERENCE_ALIAS_NAMES {
+                    return Ok(names.into_iter().collect());
+                }
+            }
+        }
+    }
+    Ok(names.into_iter().collect())
 }
 
 fn read_reference_uris(

@@ -93,6 +93,19 @@ test("fails and terminates a catalog worker that stops making progress", async (
   })
 })
 
+test("keeps a long activation alive while the sidecar sends valid heartbeats", async (t) => {
+  const fixture = createFixture(t, { ARKTS_INDEX_TEST_SCENARIO: "activation-heartbeats" })
+  const workspace = fixture.workspace("workspace-a")
+  await fixture.driver.call("open", { workspace, cacheDir: fixture.cache })
+  const reports = await fixture.driver.call(
+    "catalog",
+    { workspace, requestKey: "activation-heartbeats" },
+    2_000,
+  )
+  assert.equal(reports.at(-1).phase, "ready")
+  assert.equal(reports.at(-1).indexedFiles, 1)
+})
+
 test("preserves the committed catalog generation when the child exits after ready", async (t) => {
   const fixture = createFixture(t, { ARKTS_INDEX_TEST_SCENARIO: "exit-after-ready" })
   const workspace = fixture.workspace("workspace-a")

@@ -314,16 +314,59 @@ test("indexed batching keeps declared project semantic units intact", async (t) 
     awaitIndexReady: true,
     indexScenario: "semantic-units",
     batchRoots: "1",
+    afterFirstRequest: async (session) => {
+      await fs.promises.writeFile(path.join(workspace, "build-profile.json5"), JSON.stringify({
+        app: { products: [{ name: "default" }] },
+        modules: [
+          { name: "entry", srcPath: "./entry", targets: [{ name: "default", applyToProducts: ["default"] }] },
+          { name: "shared", srcPath: "./shared", targets: [{ name: "default", applyToProducts: ["default"] }] },
+        ],
+      }))
+      session.transport.send({
+        jsonrpc: "2.0",
+        method: "workspace/didChangeWatchedFiles",
+        params: { changes: [{
+          uri: pathToFileURL(path.join(workspace, "build-profile.json5")).href,
+          type: 2,
+        }] },
+      })
+    },
   })
 
   assert.deepEqual(result.locations, conservative.locations)
-  assert.equal(result.batchEvents.length, 2, JSON.stringify(result.batchEvents))
-  assert.ok(result.batchEvents.every(event => event.semanticUnitMode === "project-graph"))
-  assert.ok(result.batchEvents.every(event => event.semanticUnits === 3))
-  assert.ok(result.batchEvents.every(event => event.admittedProjectFiles === 4))
-  assert.ok(result.batchEvents.every(event => event.admittedProjectFiles < event.membershipFiles))
-  assert.ok(result.batchEvents.some(event => event.batchCandidateRoots === 2),
+  const initialBatchEvents = result.batchEvents.filter(event => event.referenceSession === 1)
+  assert.equal(initialBatchEvents.length, 2, JSON.stringify(result.batchEvents))
+  assert.ok(initialBatchEvents.every(event => event.semanticUnitMode === "project-graph"))
+  assert.ok(initialBatchEvents.every(event => event.semanticUnits === 3))
+  assert.ok(initialBatchEvents.every(event => event.admittedProjectFiles === 4))
+  assert.ok(initialBatchEvents.every(event => event.admittedProjectFiles < event.membershipFiles))
+  assert.ok(initialBatchEvents.some(event => event.batchCandidateRoots === 2),
     "Target and Barrel from the shared unit must stay in one batch")
+  const accepted = result.indexEvents.find(event => event.event === "references.index.accepted")
+  const scopedRequest = result.indexRequests.find(request => (
+    request.method === "references/candidates"
+    && request.params.declarationUri.endsWith("/shared/src/main/ets/Target.ets")
+  ))
+  assert.deepEqual(scopedRequest?.params.admittedRootUris?.map(uri => (
+    new URL(uri).pathname.slice(new URL(uri).pathname.indexOf("/workspace/"))
+  )), [
+    "/workspace/entry/src/main",
+    "/workspace/shared/src/main",
+    "/workspace/unrelated/src/main",
+  ])
+  assert.equal(accepted?.anchorMode, "compiler-definition-identity",
+    JSON.stringify(result.referenceEvents))
+  assert.equal(accepted?.candidateFiles, 4)
+  const lastScopedRequest = result.indexRequests.filter(request => (
+    request.method === "references/candidates"
+    && request.params.declarationUri.endsWith("/shared/src/main/ets/Target.ets")
+  )).at(-1)
+  assert.deepEqual(lastScopedRequest?.params.admittedRootUris?.map(uri => (
+    new URL(uri).pathname.slice(new URL(uri).pathname.indexOf("/workspace/"))
+  )), [
+    "/workspace/entry/src/main",
+    "/workspace/shared/src/main",
+  ])
   assert.deepEqual([...new Set(result.locations.map(location => (
     path.basename(new URL(location.uri).pathname)
   )))].sort(), [
@@ -577,8 +620,10 @@ async function runSingleReferenceRequest(t, {
   indexScenario,
   batchRoots = "2",
   runId = strategy,
+  afterFirstRequest,
 }) {
   const logDirectory = path.join(root, `logs-${runId}`)
+  const indexAuditPath = path.join(root, `index-audit-${runId}.ndjson`)
   const session = new LspSession({
     command: process.execPath,
     args: [path.join(projectRoot, "dist", "server.cjs"), "--stdio"],
@@ -597,6 +642,7 @@ async function runSingleReferenceRequest(t, {
           "index",
           "scripted-catalog-sidecar.mjs",
         ),
+        ARKTS_INDEX_TEST_AUDIT: indexAuditPath,
         ...(indexScenario ? { ARKTS_INDEX_TEST_SCENARIO: indexScenario } : {}),
       } : {}),
       ARKTS_LSP_LOG_DIR: logDirectory,
@@ -629,6 +675,14 @@ async function runSingleReferenceRequest(t, {
     textDocument: { uri: queryUri }, position, context: { includeDeclaration: true },
   }, { timeoutMs: 30_000 })
   assert.equal(response.error, undefined, JSON.stringify(response.error))
+  if (afterFirstRequest) {
+    await afterFirstRequest(session)
+    const repeated = await session.request("textDocument/references", {
+      textDocument: { uri: queryUri }, position, context: { includeDeclaration: true },
+    }, { timeoutMs: 30_000 })
+    assert.equal(repeated.error, undefined, JSON.stringify(repeated.error))
+    assert.deepEqual(sortedLocations(repeated.result), sortedLocations(response.result))
+  }
   await session.close({ timeoutMs: 5_000 })
   const logs = fs.readFileSync(path.join(logDirectory, "server.log"), "utf8")
     .split("\n")
@@ -642,6 +696,9 @@ async function runSingleReferenceRequest(t, {
       entry.event.startsWith("references.index.")
       || entry.event === "references.anchor.complete"
     )),
+    indexRequests: fs.existsSync(indexAuditPath)
+      ? fs.readFileSync(indexAuditPath, "utf8").split("\n").filter(Boolean).map(JSON.parse)
+      : [],
   }
 }
 

@@ -121,6 +121,103 @@ fn memory_and_sqlite_implement_the_same_store_contract_and_sqlite_reopens() {
     assert_eq!(references.served_generation, 1);
 }
 
+fn assert_reference_admission_scope(mut index: WorkspaceIndex) {
+    index
+        .refresh(
+            1,
+            [
+                Document::new(
+                    "file:///workspace/shared/src/main/ets/Target.ets",
+                    "export class Thing {}\n",
+                ),
+                Document::new(
+                    "file:///workspace/entry/src/main/ets/Consumer.ets",
+                    "import { Thing } from '../../../../shared/src/main/ets/Target'\n\
+                     const value = new Thing()\n",
+                ),
+                Document::new(
+                    "file:///workspace/demo/Detached.ets",
+                    "export { Thing as DetachedThing } from './Missing'\n",
+                ),
+            ],
+            &[],
+        )
+        .expect("reference admission fixture should commit");
+    let query = || ReferenceCandidateQuery {
+        declaration_uri: "file:///workspace/shared/src/main/ets/Target.ets".to_owned(),
+        declaration_position: Position::new(0, 14),
+        limit: 20,
+    };
+
+    assert!(
+        !index
+            .search_reference_candidates(query())
+            .expect("unscoped reference candidates should remain conservative")
+            .identity_complete
+    );
+    let admitted = index
+        .search_reference_candidates_with_scope(
+            query(),
+            &[],
+            &[
+                "file:///workspace/entry/src/main/ets".to_owned(),
+                "file:///workspace/shared/src/main/ets".to_owned(),
+            ],
+        )
+        .expect("declared-module scope should be searchable");
+    assert!(admitted.identity_complete);
+    assert_eq!(admitted.names, ["Thing"]);
+    assert_eq!(admitted.names, ["Thing"]);
+    assert_eq!(
+        admitted.identity_uris,
+        [
+            "file:///workspace/entry/src/main/ets/Consumer.ets",
+            "file:///workspace/shared/src/main/ets/Target.ets",
+        ]
+    );
+    assert!(
+        admitted
+            .bindings
+            .iter()
+            .all(|binding| !binding.uri.contains("/demo/"))
+    );
+
+    index
+        .refresh(
+            2,
+            [Document::new(
+                "file:///workspace/entry/src/main/ets/Broken.ets",
+                "export { Thing as BrokenThing } from './Missing'\n",
+            )],
+            &[],
+        )
+        .expect("in-scope broken binding should commit");
+    assert!(
+        !index
+            .search_reference_candidates_with_scope(
+                query(),
+                &[],
+                &[
+                    "file:///workspace/entry/src/main/ets".to_owned(),
+                    "file:///workspace/shared/src/main/ets".to_owned(),
+                ],
+            )
+            .expect("in-scope missing bindings must stay conservative")
+            .identity_complete
+    );
+}
+
+#[test]
+fn reference_identity_proof_only_excludes_files_outside_an_explicit_admission_scope() {
+    assert_reference_admission_scope(WorkspaceIndex::with_store(MemoryStore::default()));
+
+    let temp = TestDir::new("reference-admission-scope");
+    let database = temp.path().join("symbols.sqlite3");
+    let store =
+        SqliteStore::open(&database, "file:///workspace").expect("SQLite store should open");
+    assert_reference_admission_scope(WorkspaceIndex::with_store(store));
+}
+
 #[test]
 fn sqlite_persists_reference_binding_sources_across_reopen() {
     let temp = TestDir::new("reference-bindings");

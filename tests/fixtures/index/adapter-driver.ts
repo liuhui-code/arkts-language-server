@@ -27,6 +27,7 @@ interface DriverCommand {
   declarationUri?: string
   declarationPosition?: { line: number; character: number }
   sourceResolutions?: WorkspaceReferenceSourceResolution[]
+  admittedRootUris?: string[]
   requestKey?: string
   options?: Record<string, unknown>
 }
@@ -100,6 +101,7 @@ async function dispatch(command: DriverCommand): Promise<void> {
           required(command.declarationPosition, "declarationPosition"),
           required(command.limit, "limit"),
           command.sourceResolutions,
+          command.admittedRootUris,
           controller?.signal,
         )
         break

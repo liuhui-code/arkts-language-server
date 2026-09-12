@@ -34,6 +34,29 @@ input.on("line", (line) => {
       })
       progress(status("discovering", "warming", "stale", generation))
       if (process.env.ARKTS_INDEX_TEST_SCENARIO === "stalled-catalog") break
+      if (process.env.ARKTS_INDEX_TEST_SCENARIO === "activation-heartbeats") {
+        let heartbeats = 0
+        catalogTimer = setInterval(() => {
+          heartbeats += 1
+          progress({
+            ...status("activating", "warming", "stale", generation),
+            discovered: 1,
+            indexed: 1,
+            totalFiles: 1,
+          })
+          if (heartbeats < 5) return
+          clearInterval(catalogTimer)
+          committedGeneration = generation
+          progress({
+            ...status("ready", "ready", "ready", null),
+            committedGeneration: generation,
+            discovered: 1,
+            indexed: 1,
+            totalFiles: 1,
+          })
+        }, 100)
+        break
+      }
       const catalogDelay = process.env.ARKTS_INDEX_TEST_SCENARIO === "slow-catalog"
         || process.env.ARKTS_INDEX_TEST_SCENARIO === "cancel-without-terminal"
         ? 1_000
@@ -130,6 +153,10 @@ input.on("line", (line) => {
         ? request.params.declarationUri.endsWith(`/shared/src/main/ets/${packageTarget}`)
         : request.params.declarationUri.endsWith("/Target.ets")
       const semanticUnits = process.env.ARKTS_INDEX_TEST_SCENARIO === "semantic-units"
+      const admittedSemanticUnits = semanticUnits
+        && request.params.admittedRootUris?.some(uri => uri.endsWith("/entry/src/main"))
+        && request.params.admittedRootUris?.some(uri => uri.endsWith("/shared/src/main"))
+        && request.params.admittedRootUris?.some(uri => uri.endsWith("/unrelated/src/main"))
       const candidateFiles = packageResolutions
         ? [
             path.join("shared", "src", "main", "ets", packageTarget),
@@ -154,7 +181,7 @@ input.on("line", (line) => {
         && resolution.resolvedSourceUri.endsWith(`/shared/src/main/ets/${packageTarget}`)
       )) ?? false
       const identityFiles = semanticUnits
-        ? []
+        ? admittedSemanticUnits ? candidateFiles : []
         : packageResolutions
           ? [
               path.join("shared", "src", "main", "ets", packageTarget),
@@ -166,9 +193,10 @@ input.on("line", (line) => {
       respond(request.id, {
         supported,
         complete: supported,
-        identityComplete: supported && !semanticUnits && !sourceClassification
+        identityComplete: supported && (!semanticUnits || admittedSemanticUnits) && !sourceClassification
           && (!packageResolutions || packageSourceResolved),
-        identityUris: supported && !sourceClassification && (!packageResolutions || packageSourceResolved)
+        identityUris: supported && (!semanticUnits || admittedSemanticUnits)
+          && !sourceClassification && (!packageResolutions || packageSourceResolved)
           ? identityFiles.map(file => pathToFileURL(path.join(workspaceRoot, file)).href)
           : [],
         declarationIdentity: supported ? "scripted-reference-candidate" : null,

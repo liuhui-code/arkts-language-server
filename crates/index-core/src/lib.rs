@@ -335,6 +335,7 @@ pub trait SymbolStore {
         &self,
         query: &ReferenceCandidateQuery,
         source_resolutions: &[ReferenceSourceResolution],
+        admitted_uri_roots: &[String],
     ) -> Result<ReferenceCandidateSearchResult, StoreError>;
 }
 
@@ -433,6 +434,7 @@ impl SymbolStore for MemoryStore {
         &self,
         query: &ReferenceCandidateQuery,
         source_resolutions: &[ReferenceSourceResolution],
+        admitted_uri_roots: &[String],
     ) -> Result<ReferenceCandidateSearchResult, StoreError> {
         let declaration = self
             .documents
@@ -455,6 +457,13 @@ impl SymbolStore for MemoryStore {
             for alias in self
                 .documents
                 .values()
+                .filter(|document| {
+                    reference_uri_admitted(
+                        &document.uri,
+                        &query.declaration_uri,
+                        admitted_uri_roots,
+                    )
+                })
                 .flat_map(|document| document.aliases.iter())
             {
                 if names.contains(&alias.from_name) {
@@ -477,6 +486,9 @@ impl SymbolStore for MemoryStore {
         let uris: BTreeSet<_> = self
             .documents
             .values()
+            .filter(|document| {
+                reference_uri_admitted(&document.uri, &query.declaration_uri, admitted_uri_roots)
+            })
             .flat_map(|document| document.occurrences.iter())
             .filter(|occurrence| names.contains(&occurrence.name))
             .map(|occurrence| occurrence.uri.clone())
@@ -486,6 +498,9 @@ impl SymbolStore for MemoryStore {
         let mut bindings: Vec<_> = self
             .documents
             .values()
+            .filter(|document| {
+                reference_uri_admitted(&document.uri, &query.declaration_uri, admitted_uri_roots)
+            })
             .flat_map(|document| document.bindings.iter())
             .filter(|binding| {
                 names.contains(&binding.imported_name) || names.contains(&binding.local_name)
@@ -498,6 +513,9 @@ impl SymbolStore for MemoryStore {
         let occurrences: Vec<_> = self
             .documents
             .values()
+            .filter(|document| {
+                reference_uri_admitted(&document.uri, &query.declaration_uri, admitted_uri_roots)
+            })
             .flat_map(|document| document.occurrences.iter())
             .filter(|occurrence| names.contains(&occurrence.name))
             .cloned()
@@ -505,6 +523,9 @@ impl SymbolStore for MemoryStore {
         let independent_declarations: BTreeSet<_> = self
             .documents
             .values()
+            .filter(|document| {
+                reference_uri_admitted(&document.uri, &query.declaration_uri, admitted_uri_roots)
+            })
             .flat_map(|document| document.exports.iter())
             .filter(|item| {
                 item.reference_searchable
@@ -549,6 +570,17 @@ fn unsupported_reference_candidates(generation: u64) -> ReferenceCandidateSearch
         bindings: Vec::new(),
         served_generation: generation,
     }
+}
+
+pub fn reference_uri_admitted(uri: &str, declaration_uri: &str, roots: &[String]) -> bool {
+    uri == declaration_uri
+        || roots.is_empty()
+        || roots.iter().any(|root| {
+            uri == root
+                || uri
+                    .strip_prefix(root)
+                    .is_some_and(|suffix| root.ends_with('/') || suffix.starts_with('/'))
+        })
 }
 
 pub fn sort_reference_bindings(bindings: &mut [ReferenceBinding]) {
@@ -921,7 +953,7 @@ impl WorkspaceIndex {
         &self,
         query: ReferenceCandidateQuery,
     ) -> Result<ReferenceCandidateSearchResult, StoreError> {
-        self.store.search_reference_candidates(&query, &[])
+        self.store.search_reference_candidates(&query, &[], &[])
     }
 
     pub fn search_reference_candidates_with_source_resolutions(
@@ -930,7 +962,17 @@ impl WorkspaceIndex {
         source_resolutions: &[ReferenceSourceResolution],
     ) -> Result<ReferenceCandidateSearchResult, StoreError> {
         self.store
-            .search_reference_candidates(&query, source_resolutions)
+            .search_reference_candidates(&query, source_resolutions, &[])
+    }
+
+    pub fn search_reference_candidates_with_scope(
+        &self,
+        query: ReferenceCandidateQuery,
+        source_resolutions: &[ReferenceSourceResolution],
+        admitted_uri_roots: &[String],
+    ) -> Result<ReferenceCandidateSearchResult, StoreError> {
+        self.store
+            .search_reference_candidates(&query, source_resolutions, admitted_uri_roots)
     }
 
     pub fn search_excluding(

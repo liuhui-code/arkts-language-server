@@ -147,6 +147,8 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
 
   workspaceFilesChanged(batches: readonly Contract.SemanticWorkspaceFileChangeBatch[]): void {
     for (const batch of batches) {
+      const rootPath = toFilePath(batch.rootUri)
+      if (rootPath) this.#packageResolver.invalidate(rootPath)
       this.#mutate(batch.rootUri, {
         kind: "workspaceFilesChanged",
         rootUri: batch.rootUri,
@@ -350,12 +352,14 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
     if (referenceSearchRuntimeConfig(this.#environment).strategy !== "indexed-batched"
       || !this.#referenceIndex) return undefined
     try {
+      const admittedRootUris = this.#referenceAdmissionRoots(query.document.workspaceId)
       let direct = await this.#referenceIndex.searchReferenceCandidates(
         query.document.workspaceId,
         query.document.uri,
         query.position,
         MAX_SEMANTIC_WORKER_REFERENCE_CANDIDATES,
         undefined,
+        admittedRootUris,
         query.signal,
       )
       direct = await this.#resolveReferenceCandidateSources(
@@ -363,6 +367,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
         query.document.uri,
         query.position,
         direct,
+        admittedRootUris,
         query.signal,
       )
       if (await this.#eligibleReferenceCandidates(query.document.workspaceId, direct)) {
@@ -405,6 +410,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
         target.range.start,
         MAX_SEMANTIC_WORKER_REFERENCE_CANDIDATES,
         undefined,
+        admittedRootUris,
         query.signal,
       )
       result = await this.#resolveReferenceCandidateSources(
@@ -412,6 +418,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
         target.uri,
         target.range.start,
         result,
+        admittedRootUris,
         query.signal,
       )
       const status = await this.#referenceIndex.status(query.document.workspaceId)
@@ -466,6 +473,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
     declarationUri: string,
     declarationPosition: TextPosition,
     result: WorkspaceReferenceCandidateResult,
+    admittedRootUris: readonly string[] | undefined,
     signal?: AbortSignal,
   ): Promise<WorkspaceReferenceCandidateResult> {
     if (result.identityComplete || !await this.#eligibleReferenceCandidates(workspaceId, result)) {
@@ -533,8 +541,19 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
       declarationPosition,
       MAX_SEMANTIC_WORKER_REFERENCE_CANDIDATES,
       [...resolutions.values()],
+      admittedRootUris,
       signal,
     )
+  }
+
+  #referenceAdmissionRoots(workspaceId: string): readonly string[] | undefined {
+    const rootPath = toFilePath(workspaceId)
+    if (!rootPath) return undefined
+    const graph = this.#packageResolver.projectFor(rootPath).semanticGraph()
+    if (graph.status !== "ready" || !graph.complete || graph.units.length === 0) return undefined
+    return [...new Set(graph.units.flatMap(unit => unit.sourceRoots).map(sourceRoot => (
+      pathToFileURL(sourceRoot).href
+    )))].sort()
   }
 
   async dispose(): Promise<void> {
