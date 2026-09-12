@@ -437,3 +437,16 @@ identity proof 正确保持 incomplete：index 仍返回 1,586 个 conservative 
 730,562,560 bytes。单次峰值差异不作为性能结论；该 slice 证明本地包子路径已接通，也证明下一 RED
 必须分类并由锁定 SDK identity 解析剩余 SDK module edge，无法唯一解析时继续 conservative。
 原始报告：`/private/tmp/arkts-photos-photoasset-package-subpath-run1.json`。
+
+2026-09-12 未解析 source binding 分类切片：新增默认不记录源码、specifier 或完整路径的计数型
+观测，将第二次 proof 后仍未解析的 binding 分为 `sdk/package/relative/other`。公开 LSP 差分先要求
+四类各出现一次时仍保持 `compiler-definition` 保守模式、五个 candidates 和完全相同的 Location
+集合；本地包已成功解析的既有用例同时要求四类未解析计数均为零。该切片不改变 source resolution、
+candidate selection、worker、预算或默认 `legacy` 策略。
+
+固定 Photos 6.1 `PhotoAsset` 回放仍精确返回 legacy 的九个 Location；310 条 binding 已解析，292 条
+未解析中 SDK 275、相对路径 17、package 0、other 0。请求耗时 51.313 秒，进程树 RSS 峰值
+733,020,160 bytes，仍为 1,586 个 index candidates、membership 后 1,154 个 compiler candidates/
+11 批。该结果仅确定下一调查顺序：先解释 committed catalog 中 17 条相对路径为何未唯一解析，再为
+锁定 SDK 设计 catalog 外部 terminal identity；不得直接放宽 workspace URI 边界或宣称性能改善。
+原始报告：`/private/tmp/arkts-photos-photoasset-source-classification.json`。

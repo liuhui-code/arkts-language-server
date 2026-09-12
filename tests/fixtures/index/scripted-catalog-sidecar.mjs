@@ -122,8 +122,9 @@ input.on("line", (line) => {
     case "references/candidates": {
       const packageResolutionScenario = process.env.ARKTS_INDEX_TEST_SCENARIO
       const packageSubpathResolutions = packageResolutionScenario === "reference-package-subpath-resolutions"
+      const sourceClassification = packageResolutionScenario === "reference-source-classification"
       const packageResolutions = packageResolutionScenario === "reference-package-resolutions"
-        || packageSubpathResolutions
+        || packageSubpathResolutions || sourceClassification
       const packageTarget = packageSubpathResolutions ? "Target.ets" : "Index.ets"
       const supported = packageResolutions
         ? request.params.declarationUri.endsWith(`/shared/src/main/ets/${packageTarget}`)
@@ -165,8 +166,9 @@ input.on("line", (line) => {
       respond(request.id, {
         supported,
         complete: supported,
-        identityComplete: supported && !semanticUnits && (!packageResolutions || packageSourceResolved),
-        identityUris: supported && (!packageResolutions || packageSourceResolved)
+        identityComplete: supported && !semanticUnits && !sourceClassification
+          && (!packageResolutions || packageSourceResolved),
+        identityUris: supported && !sourceClassification && (!packageResolutions || packageSourceResolved)
           ? identityFiles.map(file => pathToFileURL(path.join(workspaceRoot, file)).href)
           : [],
         declarationIdentity: supported ? "scripted-reference-candidate" : null,
@@ -186,7 +188,44 @@ input.on("line", (line) => {
           resolvedSourceUri: packageSourceResolved
             ? pathToFileURL(path.join(workspaceRoot, "shared", "src", "main", "ets", packageTarget)).href
             : null,
-        }] : undefined,
+        }, ...(sourceClassification ? [
+          {
+            kind: "import",
+            uri: pathToFileURL(path.join(workspaceRoot, "entry", "src", "main", "ets", "Use.ets")).href,
+            importedName: "Thing",
+            localName: "SdkThing",
+            sourceSpecifier: "@ohos.photoAccessHelper",
+            sourceResolution: "unsupported",
+            resolvedSourceUri: null,
+          },
+          {
+            kind: "import",
+            uri: pathToFileURL(path.join(workspaceRoot, "entry", "src", "main", "ets", "Use.ets")).href,
+            importedName: "Thing",
+            localName: "PackageThing",
+            sourceSpecifier: "missing-package",
+            sourceResolution: "unsupported",
+            resolvedSourceUri: null,
+          },
+          {
+            kind: "import",
+            uri: pathToFileURL(path.join(workspaceRoot, "entry", "src", "main", "ets", "Use.ets")).href,
+            importedName: "Thing",
+            localName: "RelativeThing",
+            sourceSpecifier: "../Missing",
+            sourceResolution: "unsupported",
+            resolvedSourceUri: null,
+          },
+          {
+            kind: "import",
+            uri: pathToFileURL(path.join(workspaceRoot, "entry", "src", "main", "ets", "Use.ets")).href,
+            importedName: "Thing",
+            localName: "OtherThing",
+            sourceSpecifier: "/absolute/Missing",
+            sourceResolution: "unsupported",
+            resolvedSourceUri: null,
+          },
+        ] : [])] : undefined,
         servedGeneration: committedGeneration,
         completeness: committedGeneration > 0 ? "ready" : "stale",
       })

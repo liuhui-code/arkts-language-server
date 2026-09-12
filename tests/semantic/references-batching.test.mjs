@@ -410,10 +410,35 @@ test("indexed batching proves a declared local package binding before narrowing"
   assert.equal(accepted?.anchorMode, "compiler-definition-identity")
   assert.equal(accepted?.candidateFiles, 4)
   assert.equal(accepted?.conservativeCandidateFiles, 5)
-  assert.ok(indexed.referenceEvents.some(event => (
+  const resolution = indexed.referenceEvents.find(event => (
     event.event === "references.index.source-resolutions"
-    && event.resolvedBindings === 1
-  )))
+  ))
+  assert.equal(resolution?.resolvedBindings, 1)
+  assert.equal(resolution?.unresolvedSdkBindings, 0)
+  assert.equal(resolution?.unresolvedPackageBindings, 0)
+  assert.equal(resolution?.unresolvedRelativeBindings, 0)
+  assert.equal(resolution?.unresolvedOtherBindings, 0)
+
+  const classified = await runSingleReferenceRequest(t, {
+    root, workspace, queryUri, queryText, position, strategy: "indexed-batched",
+    awaitIndexReady: true,
+    indexScenario: "reference-source-classification",
+    runId: "package-source-classification",
+  })
+  assert.deepEqual(classified.locations, conservative.locations)
+  const classifiedAccepted = classified.indexEvents.find(event => (
+    event.event === "references.index.accepted"
+  ))
+  assert.equal(classifiedAccepted?.anchorMode, "compiler-definition")
+  assert.equal(classifiedAccepted?.candidateFiles, 5)
+  const classifiedResolution = classified.referenceEvents.find(event => (
+    event.event === "references.index.source-resolutions"
+  ))
+  assert.equal(classifiedResolution?.resolvedBindings, 1)
+  assert.equal(classifiedResolution?.unresolvedSdkBindings, 1)
+  assert.equal(classifiedResolution?.unresolvedPackageBindings, 1)
+  assert.equal(classifiedResolution?.unresolvedRelativeBindings, 1)
+  assert.equal(classifiedResolution?.unresolvedOtherBindings, 1)
 })
 
 test("indexed batching proves a declared local package subpath before narrowing", async (t) => {
