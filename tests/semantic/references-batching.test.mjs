@@ -416,6 +416,78 @@ test("indexed batching proves a declared local package binding before narrowing"
   )))
 })
 
+test("indexed batching proves a declared local package subpath before narrowing", async (t) => {
+  const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), "arkts-references-package-subpath-"))
+  t.after(() => fs.promises.rm(root, { recursive: true, force: true }))
+  const workspace = path.join(root, "workspace")
+  const entryRoot = path.join(workspace, "entry")
+  const sharedRoot = path.join(workspace, "shared")
+  const entrySource = path.join(entryRoot, "src", "main", "ets")
+  const sharedSource = path.join(sharedRoot, "src", "main", "ets")
+  await Promise.all([entrySource, sharedSource].map(directory => (
+    fs.promises.mkdir(directory, { recursive: true })
+  )))
+  await fs.promises.writeFile(path.join(workspace, "build-profile.json5"), JSON.stringify({
+    app: { products: [{ name: "default" }] },
+    modules: [
+      { name: "entry", srcPath: "./entry", targets: [{ name: "default", applyToProducts: ["default"] }] },
+      { name: "shared", srcPath: "./shared", targets: [{ name: "default", applyToProducts: ["default"] }] },
+    ],
+  }))
+  await Promise.all([entryRoot, sharedRoot].map(moduleRoot => (
+    fs.promises.writeFile(path.join(moduleRoot, "build-profile.json5"),
+      "{ targets: [{ name: 'default' }] }")
+  )))
+  await fs.promises.writeFile(path.join(entryRoot, "oh-package.json5"),
+    "{ name: '@ohos/entry', dependencies: { '@ohos/shared': 'file:../shared' } }")
+  await fs.promises.writeFile(path.join(sharedRoot, "oh-package.json5"),
+    "{ name: '@ohos/shared', main: 'src/main/ets/Target.ets', dependencies: {} }")
+  const queryText = [
+    'import { PublicThing } from "./Barrel"',
+    "export const query = new PublicThing()",
+    "",
+  ].join("\n")
+  await Promise.all([
+    fs.promises.writeFile(path.join(sharedSource, "Target.ets"), "export class Thing {}\n"),
+    fs.promises.writeFile(path.join(entrySource, "Barrel.ets"),
+      'export { Thing as PublicThing } from "@ohos/shared/src/main/ets/Target"\n'),
+    fs.promises.writeFile(path.join(entrySource, "Query.ets"), queryText),
+    fs.promises.writeFile(path.join(entrySource, "Use.ets"), [
+      'import { PublicThing } from "./Barrel"',
+      "export const use = new PublicThing()",
+      "",
+    ].join("\n")),
+    fs.promises.writeFile(path.join(entrySource, "SameName.ets"),
+      "export class PublicThing {}\nexport const unrelated = new PublicThing()\n"),
+  ])
+  const queryUri = pathToFileURL(path.join(entrySource, "Query.ets")).href
+  const position = positionAt(queryText, queryText.lastIndexOf("PublicThing") + 1)
+  const conservative = await runSingleReferenceRequest(t, {
+    root, workspace, queryUri, queryText, position, strategy: "batched", runId: "package-subpath-conservative",
+  })
+  const indexed = await runSingleReferenceRequest(t, {
+    root, workspace, queryUri, queryText, position, strategy: "indexed-batched",
+    awaitIndexReady: true,
+    indexScenario: "reference-package-subpath-resolutions",
+    runId: "package-subpath-indexed",
+  })
+
+  assert.deepEqual(indexed.locations, conservative.locations)
+  const accepted = indexed.indexEvents.find(event => event.event === "references.index.accepted")
+  assert.ok(accepted, JSON.stringify(indexed.referenceEvents))
+  assert.equal(
+    accepted?.anchorMode,
+    "compiler-definition-identity",
+    JSON.stringify(indexed.referenceEvents),
+  )
+  assert.equal(accepted?.candidateFiles, 4)
+  assert.equal(accepted?.conservativeCandidateFiles, 5)
+  assert.ok(indexed.referenceEvents.some(event => (
+    event.event === "references.index.source-resolutions"
+    && event.resolvedBindings === 1
+  )))
+})
+
 async function runReferences(t, {
   root,
   workspace,

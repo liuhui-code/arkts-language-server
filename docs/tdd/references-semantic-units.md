@@ -473,3 +473,37 @@ The post-GREEN Photos `PhotoAsset` replay also stayed fail-conservative: exact n
 46.002 seconds, 784,023,552-byte peak RSS, 1,154 admitted candidates, and 11 batches. It emitted no
 local-package resolution event. This is expected negative evidence for the next declared
 local-package-subpath RED, not a memory-gate pass.
+
+## Declared local-package subpaths (2026-09-12)
+
+Parent revision: `3087e4c27bb4b8740a9d68a6d213379304d7596b`.
+
+The first stable resolver RED was:
+
+```text
+node --test --test-name-pattern="declared local package subpaths" tests/project-resolver.test.mjs
+```
+
+It expected a manifest-declared
+`@ohos/common/src/main/ets/default/access/UserFileManagerAccess` import to resolve within the target
+package and failed with actual `undefined`. GREEN reuses exact dependency-root ownership, validates
+the target manifest name, and resolves only bounded ArkTS/TypeScript source extensions under both
+lexical and physical package containment. Follow-up tests cover installed packages, a removed disk
+file retained by an open overlay, target-name mismatch, traversal, undeclared dependencies, and a
+symlink escaping the target package.
+
+The real LSP child-process test is:
+
+```text
+node --test --test-name-pattern="proves a declared local package subpath" tests/semantic/references-batching.test.mjs
+```
+
+It keeps the index incomplete until `LocalPackageResolver` supplies the declared package-subpath URI,
+then requires `compiler-definition-identity`, four rather than five candidate files, and exact
+Location equality with conservative batching. The existing bare-package LSP test remains GREEN.
+
+The valid post-GREEN Photos replay resolved 310 bindings but left 292 unresolved, so the production
+proof remained conservative at 1,154 candidates and 11 batches. It returned the exact legacy nine
+Locations in 47.677 seconds with 730,562,560-byte peak process-tree RSS. No performance claim is made
+from this run. The next RED must classify the remaining bindings and let only the locked SDK owner
+provide unique SDK declaration identities.
