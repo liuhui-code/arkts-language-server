@@ -415,6 +415,16 @@ manifest 已声明的本地包子路径（例如 `@ohos/common/src/...`）：仍
 ProjectGraph 唯一解析且必须限制在目标包目录内；之后才单独验证由已锁定 SDK identity 提供 SDK
 module declaration URI。任何一步无法唯一匹配时都继续使用 conservative `uris`。
 
+ProjectGraph admission 实现后，固定 Photos `PhotoAsset` 再次 exact 返回九个 Location。scope 内
+source proof 为 238 resolved / 231 unresolved；剩余是 SDK 229、relative 2、package/other 0。
+index conservative candidates 从 1,586 降为 1,154，但这正是 compiler membership 原本已接纳的
+集合，因此仍需 11 批，尚无 working-set 性能收益。请求 151.596 秒，进程树峰值
+717,840,384 bytes；测试盘接近满载，时间/RSS 只作环境记录。下一 RED 已收敛为锁定 SDK identity，
+不能把此次 catalog-scope 收缩当作最终 candidate narrowing。
+
+真实回放同时补上 catalog liveness 门禁：`activating` 阶段只要 sidecar 持续发送单调合法心跳，
+Node watchdog 必须保活；完全无心跳仍按既有 30 秒阈值失败。默认阈值不放宽。
+
 同日固定 Photos 6.1 `PhotoAsset` 再回放确认了该边界：九个 Location 与 legacy oracle exact，
 请求 46.002 秒、进程树 RSS 峰值 784,023,552 bytes；index 返回 1,586 个 conservative URI，
 membership 过滤后仍有 1,154 个 compiler candidates 和 11 批。日志没有
@@ -450,3 +460,10 @@ candidate selection、worker、预算或默认 `legacy` 策略。
 11 批。该结果仅确定下一调查顺序：先解释 committed catalog 中 17 条相对路径为何未唯一解析，再为
 锁定 SDK 设计 catalog 外部 terminal identity；不得直接放宽 workspace URI 边界或宣称性能改善。
 原始报告：`/private/tmp/arkts-photos-photoasset-source-classification.json`。
+
+2026-09-12 relative-source 诊断：固定 Photos 工程的 17 条未解析相对 binding 均没有可解析的
+磁盘/catalog 目标，不是 resolver 漏扩展名。15 条位于根 `build-profile.json5` 未声明的
+`demo/picker_demo/application1`，另 2 条位于 `common` 内复制的 SDK 声明并指向缺失的
+`./@ohos.base`。因此下一 slice 不修补路径解析，而是让完整 ProjectGraph 的 source roots 成为
+index identity proof 的显式 admission boundary。graph 不完整时禁止排除；admitted root 内的缺边
+仍须使 proof incomplete。随后再单独处理 2 条工程内复制 SDK 声明和 275 条锁定 SDK module edge。

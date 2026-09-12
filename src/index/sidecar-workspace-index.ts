@@ -230,6 +230,7 @@ export class SidecarWorkspaceIndex implements WorkspaceIndexPort, WorkspaceCatal
     declarationPosition: { line: number; character: number },
     limit: number,
     sourceResolutions?: readonly WorkspaceReferenceSourceResolution[],
+    admittedRootUris?: readonly DocumentUri[],
     signal?: AbortSignal,
   ): Promise<WorkspaceReferenceCandidateResult> {
     const session = this.session(workspaceId)
@@ -248,6 +249,12 @@ export class SidecarWorkspaceIndex implements WorkspaceIndexPort, WorkspaceCatal
       if (rebasedSourceResolutions?.some(resolution => resolution === undefined)) {
         return unsupportedReferenceCandidates(session.lastStatus.committedGeneration)
       }
+      const rebasedAdmittedRootUris = admittedRootUris?.map(uri => (
+        tryWorkspaceIdentityUri(session, uri)
+      ))
+      if (rebasedAdmittedRootUris?.some(uri => uri === undefined)) {
+        return unsupportedReferenceCandidates(session.lastStatus.committedGeneration)
+      }
       return mapReferenceCandidateResult(await session.request(
         "references/candidates",
         {
@@ -256,6 +263,9 @@ export class SidecarWorkspaceIndex implements WorkspaceIndexPort, WorkspaceCatal
           limit,
           ...(rebasedSourceResolutions?.length
             ? { sourceResolutions: rebasedSourceResolutions }
+            : {}),
+          ...(rebasedAdmittedRootUris?.length
+            ? { admittedRootUris: rebasedAdmittedRootUris }
             : {}),
         },
         signal,
@@ -490,7 +500,6 @@ export class SidecarWorkspaceIndex implements WorkspaceIndexPort, WorkspaceCatal
     const previous = run.lastProgress
     if (previous) {
       assertMonotonicCatalogProgress(previous, mark)
-      if (!catalogProgressAdvanced(previous, mark)) return
     }
     run.lastProgress = mark
     if (run.stallTimer) clearTimeout(run.stallTimer)
@@ -1176,22 +1185,6 @@ function assertMonotonicCatalogProgress(
   if (regressed) {
     throw new SidecarProtocolError("index sidecar catalog progress regressed")
   }
-}
-
-function catalogProgressAdvanced(
-  previous: CatalogProgressMark,
-  current: CatalogProgressMark,
-): boolean {
-  return catalogPhaseRank(current.phase) > catalogPhaseRank(previous.phase)
-    || current.discovered > previous.discovered
-    || current.indexed > previous.indexed
-    || current.rejected > previous.rejected
-    || current.policySkipped > previous.policySkipped
-    || current.ignored > previous.ignored
-    || (previous.totalFiles === undefined && current.totalFiles !== undefined)
-    || (previous.totalFiles !== undefined
-      && current.totalFiles !== undefined
-      && current.totalFiles > previous.totalFiles)
 }
 
 function catalogPhaseRank(phase: CatalogPhase): number {

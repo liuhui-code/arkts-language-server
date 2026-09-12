@@ -710,3 +710,40 @@ The request took 51.313 seconds and process-tree RSS peaked at 733,020,160 bytes
 a performance claim because the compiler working set did not narrow. The 17 relative misses must be
 explained against the committed catalog before adding the distinct locked-SDK identity model. Raw
 report: `/private/tmp/arkts-photos-photoasset-source-classification.json`.
+
+### Relative-source diagnosis and ProjectGraph admission boundary
+
+Parent revision: `b9e27f84efc823c479ea9c998c7da615f0681bab`.
+
+The retained Photos SQLite catalog was queried without changing the project or its module
+declarations. All 17 unresolved relative bindings point to targets absent from both disk and the
+committed catalog; there is no missing extension candidate or relative-resolver defect. Fifteen
+bindings belong to the undeclared `demo/picker_demo/application1` tree. The root
+`build-profile.json5` does not declare `demo` as one of its 18 modules. The remaining two are imports
+of `./@ohos.base` from copied SDK declarations under
+`common/src/main/ets/sdk/openharmony/ets/api`; those targets are also absent.
+
+The blocker is therefore proof scope: the name-only alias closure currently asks unrelated files
+outside the complete ProjectGraph to satisfy the `PhotoAsset` identity proof. The bounded change
+admits only source roots supplied by a complete ProjectGraph; an incomplete graph supplies no
+exclusion boundary and remains conservative. A missing binding inside an admitted root must still
+make `identityComplete=false`. A same-session build-profile mutation is an explicit regression case:
+the following request must recompute admitted roots rather than reuse the previous graph snapshot.
+Raw replay and retained-catalog analysis input:
+`/private/tmp/arkts-photos-photoasset-relative-diagnosis.json`.
+
+The post-change real replay completed against the same commit, API 24 SDK, symbol, and UTF-16
+position. All nine Locations exactly equal the legacy oracle. Scoped alias/binding proof resolved
+238 bindings and left 231 unresolved: 229 SDK and two relative, with zero package or other sources.
+The two remaining relative edges are the copied-SDK `./@ohos.base` cases already identified above.
+The index conservative set fell from 1,586 to the same 1,154 files already admitted by compiler
+membership, so the verifier still ran 11 batches and this slice does not claim a compiler-memory
+improvement. The request took 151.596 seconds and peak process-tree RSS was 717,840,384 bytes on the
+nearly-full test disk. Raw report: `/private/tmp/arkts-photos-photoasset-admitted-scope.json`.
+
+Real validation also exposed an independent liveness defect: SQLite activation can exceed the
+30-second catalog watchdog while the Rust sidecar continues to send valid heartbeat events. The old
+adapter reset the watchdog only when counters changed and therefore killed a live activation. A
+public adapter RED holds activation counters constant beyond the test timeout while sending
+heartbeats; the watchdog now resets on every monotonic valid heartbeat. The existing no-heartbeat
+stall test still times out, and the production 30-second threshold is unchanged.

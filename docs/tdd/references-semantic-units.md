@@ -526,3 +526,36 @@ batches. The request took 51.313 seconds and product process-tree RSS peaked at 
 This is classification evidence, not a performance result. The next RED must explain the 17
 catalog-relative misses before a separate locked-SDK external-terminal identity contract is added.
 Raw report: `/private/tmp/arkts-photos-photoasset-source-classification.json`.
+
+## ProjectGraph-scoped identity proof (2026-09-12)
+
+Parent revision: `b9e27f84efc823c479ea9c998c7da615f0681bab`.
+
+The retained real-project catalog explained every unresolved relative edge before implementation:
+15 are in an undeclared demo tree and two are copied SDK declarations whose relative target is
+absent. This rules out a relative-resolver patch. The public RED requires a complete three-module
+Harmony graph to send its source roots across the index boundary and enable identity candidates;
+removing a declared dependency makes the graph incomplete and must preserve conservative batching.
+
+The store contract independently requires both memory and SQLite implementations to ignore a
+missing binding outside explicit admitted roots while keeping an identical missing binding inside
+an admitted root proof-incomplete. The sidecar protocol carries only bounded canonical file-URI
+roots. No roots means the historical all-catalog behavior, so stale, unconfigured, or incomplete
+ProjectGraph state cannot narrow results.
+
+GREEN carries those roots through the TypeScript adapter and bounded sidecar protocol, scopes alias
+expansion, bindings, occurrences, independent declarations, and candidate URIs consistently in the
+memory and SQLite stores, and preserves the declaration URI even when it is outside the admitted
+roots. The public test also changes the root build profile in the same LSP session and requires the
+next references request to drop the removed module root. The proxy invalidates its bounded project
+snapshot on the ordered workspace-file mutation, preventing stale admission from excluding newly
+declared project sources. The fixed Photos replay returns the exact nine legacy Locations, reduces unresolved relative
+bindings from 17 to the two copied-SDK edges, and leaves 229 SDK bindings. It still supplies 1,154
+compiler candidates in 11 semantic-unit batches, so this is a correctness/scope result rather than a
+memory win. Raw report: `/private/tmp/arkts-photos-photoasset-admitted-scope.json`.
+
+The first three real attempts were separately recorded as environment failures: one SQLite ENOSPC
+and two catalog watchdog expirations during live activation. A dedicated RED then sent identical
+`activating` heartbeats for longer than the 250 ms test watchdog. GREEN treats each monotonic valid
+heartbeat as liveness and resets the timer; the existing fixture that sends no heartbeat still
+fails. The final replay completed without increasing the production timeout.

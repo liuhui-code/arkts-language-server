@@ -93,6 +93,7 @@ export interface WorkspaceReferenceIndexPort {
     declarationPosition: TextPosition,
     limit: number,
     sourceResolutions?: readonly WorkspaceReferenceSourceResolution[],
+    admittedRootUris?: readonly DocumentUri[],
     signal?: AbortSignal,
   ): Promise<WorkspaceReferenceCandidateResult>
   status(workspaceId: WorkspaceId): Promise<WorkspaceIndexStatus>

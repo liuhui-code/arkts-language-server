@@ -318,6 +318,8 @@ test("maps conservative reference candidates and preserves their generation and 
   const workspaceId = "reference-workspace"
   const declarationUri = pathToFileURL(path.join(workspace, "Target.ets")).href
   const barrelUri = pathToFileURL(path.join(workspace, "Barrel.ets")).href
+  const admittedRoot = path.join(workspace, "entry", "src", "main", "ets")
+  fs.mkdirSync(admittedRoot, { recursive: true })
   await driver.call("open", {
     workspace: { id: workspaceId, rootUri: pathToFileURL(workspace).href },
     cacheDir: path.join(temporaryRoot, "cache"),
@@ -334,6 +336,7 @@ test("maps conservative reference candidates and preserves their generation and 
       sourceSpecifier: "@scope/model",
       resolvedSourceUri: declarationUri,
     }],
+    admittedRootUris: [pathToFileURL(admittedRoot).href],
   }), {
     supported: true,
     complete: true,
@@ -384,6 +387,7 @@ test("maps conservative reference candidates and preserves their generation and 
       sourceSpecifier: "@scope/model",
       resolvedSourceUri: pathToFileURL(path.join(fs.realpathSync(workspace), "Target.ets")).href,
     }],
+    admittedRootUris: [pathToFileURL(fs.realpathSync(admittedRoot)).href],
   })
   await driver.call("close", { workspaceId })
 })

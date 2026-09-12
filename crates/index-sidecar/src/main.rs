@@ -86,6 +86,8 @@ struct ReferenceCandidatesParams {
     limit: usize,
     #[serde(default)]
     source_resolutions: Vec<ProtocolReferenceSourceResolution>,
+    #[serde(default)]
+    admitted_root_uris: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -372,6 +374,7 @@ impl Runtime {
             }
             "references/candidates" => {
                 let params: ReferenceCandidatesParams = parse_params(request.params)?;
+                validate_admitted_root_uris(&params.admitted_root_uris)?;
                 if params.declaration_uri.is_empty()
                     || params.declaration_uri.len() > MAX_EXCLUDED_URI_BYTES
                     || params.limit == 0
@@ -400,7 +403,7 @@ impl Runtime {
                     .index
                     .as_ref()
                     .ok_or_else(not_initialized)?
-                    .search_reference_candidates_with_source_resolutions(
+                    .search_reference_candidates_with_scope(
                         ReferenceCandidateQuery {
                             declaration_uri: params.declaration_uri,
                             declaration_position: Position::new(
@@ -410,6 +413,7 @@ impl Runtime {
                             limit: params.limit,
                         },
                         &source_resolutions,
+                        &params.admitted_root_uris,
                     );
                 let result = match search_result {
                     Ok(result) => result,
@@ -837,6 +841,24 @@ fn valid_reference_source_resolutions(resolutions: &[ProtocolReferenceSourceReso
         }
     }
     true
+}
+
+fn validate_admitted_root_uris(uris: &[String]) -> Result<(), ProtocolError> {
+    validate_excluded_uris(uris).map_err(|_| {
+        ProtocolError::new(
+            "invalid_params",
+            format!(
+                "admittedRootUris must contain at most {MAX_EXCLUDED_URIS} bounded URI entries"
+            ),
+        )
+    })?;
+    if uris.iter().any(|uri| !uri.starts_with("file://")) {
+        return Err(ProtocolError::new(
+            "invalid_params",
+            "each admittedRootUris entry must be a file URI",
+        ));
+    }
+    Ok(())
 }
 
 fn protocol_store_error(error: StoreError) -> ProtocolError {

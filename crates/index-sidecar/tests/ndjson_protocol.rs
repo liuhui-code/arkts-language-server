@@ -691,6 +691,84 @@ fn sidecar_proves_package_bindings_only_with_authoritative_source_resolutions() 
 }
 
 #[test]
+fn sidecar_limits_reference_identity_proof_to_explicitly_admitted_roots() {
+    let temp = TestDir::new("reference-admitted-roots");
+    let workspace = temp.path().join("workspace");
+    let cache = temp.path().join("cache");
+    fs::create_dir_all(&workspace).expect("workspace should exist");
+
+    let mut process = SidecarProcess::spawn();
+    assert_eq!(initialize(&mut process, &workspace, &cache, 1)["ok"], true);
+    assert_eq!(
+        process.request(json!({
+            "protocol": 1,
+            "id": 2,
+            "method": "refresh",
+            "params": {
+                "generation": 1,
+                "changed": [
+                    {
+                        "uri": "file:///workspace/shared/src/main/ets/Target.ets",
+                        "text": "export class Thing {}\n"
+                    },
+                    {
+                        "uri": "file:///workspace/entry/src/main/ets/Consumer.ets",
+                        "text": "import { Thing } from '../../../../shared/src/main/ets/Target'\nconst value = new Thing()\n"
+                    },
+                    {
+                        "uri": "file:///workspace/demo/Detached.ets",
+                        "text": "export { Thing as DetachedThing } from './Missing'\n"
+                    }
+                ],
+                "removedUris": []
+            }
+        }))["ok"],
+        true
+    );
+
+    let unscoped = process.request(json!({
+        "protocol": 1,
+        "id": 3,
+        "method": "references/candidates",
+        "params": {
+            "declarationUri": "file:///workspace/shared/src/main/ets/Target.ets",
+            "declarationPosition": {"line": 0, "character": 14},
+            "limit": 100
+        }
+    }));
+    assert_eq!(unscoped["result"]["identityComplete"], false);
+
+    let scoped = process.request(json!({
+        "protocol": 1,
+        "id": 4,
+        "method": "references/candidates",
+        "params": {
+            "declarationUri": "file:///workspace/shared/src/main/ets/Target.ets",
+            "declarationPosition": {"line": 0, "character": 14},
+            "limit": 100,
+            "admittedRootUris": [
+                "file:///workspace/entry/src/main/ets",
+                "file:///workspace/shared/src/main/ets"
+            ]
+        }
+    }));
+    assert_eq!(scoped["ok"], true);
+    assert_eq!(scoped["result"]["identityComplete"], true);
+    assert_eq!(
+        scoped["result"]["identityUris"],
+        json!([
+            "file:///workspace/entry/src/main/ets/Consumer.ets",
+            "file:///workspace/shared/src/main/ets/Target.ets"
+        ])
+    );
+    assert_eq!(
+        scoped["result"]["bindings"].as_array().map(Vec::len),
+        Some(1)
+    );
+    process.shutdown(5);
+}
+
+#[test]
 fn sidecar_persists_symbols_and_restores_them_as_stale_after_restart() {
     let temp = TestDir::new("restart");
     let workspace = temp.path().join("workspace");
