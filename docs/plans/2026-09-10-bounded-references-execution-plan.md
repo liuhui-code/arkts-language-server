@@ -483,3 +483,20 @@ index identity proof 的显式 admission boundary。graph 不完整时禁止排�
 协议/LSP correctness GREEN，但 Photos 大型工程 gate 状态为“前置索引时限阻断”，不是性能 PASS；
 不提高 timeout、不缩短结果、不切换默认策略。下一纵向切片应先让 1M occurrence 级 identity proof
 在产品 timeout 内稳定完成，再复跑同一 Photos oracle，之后才能量化 229 个 SDK binding 的候选降幅。
+
+2026-09-13 occurrence-proof query 切片：固定 Photos SQLite 数据库包含 1,096,191 条 occurrence。
+阶段计时证明旧 scoped proof 冷查询的 16.543 秒中有 15.340 秒用于读取和解码 95,541 条 occurrence
+rows；proof 实际只消费 name、URI 与 qualification，不消费每个 UTF-16 range。SQLite schema v7
+在同一数据库和 generation lifecycle 内增加去重 proof identity 投影，保留原始 occurrence/range；
+全库 1,096,191 条位置对应 200,319 个 identity classes。scoped SQL 同时复用已按 admission boundary
+证明的 203 个名称，不再三次重建全局 alias CTE。最终真实缓存为 448 MiB。
+
+全新 schema/cache 上的直接 `PhotoAsset` candidate query 从旧冷 14.206 秒降至 0.864 秒，热查询
+从 3.334 秒降至 0.270 秒，稳定进入未改变的 15 秒产品 timeout。最终真实 LSP 新进程完整执行
+11 个顺序 verifier batches，九个 Location 与 legacy oracle exact，峰值 659,488,768 bytes；但请求
+仍耗时 201.304 秒。SDK 275/229 类 edge 已全部由锁定 SDK terminal 分类，剩余仅 2 条位于工程内
+SDK mirror 且指向缺失 `./@ohos.base` 的 relative binding；proof 因此正确保持 incomplete，compiler
+候选仍为 1,154。该切片通过 candidate-query、correctness 与 bounded-memory gate，但 production
+latency gate 仍失败，默认保持 `legacy`。下一 RED 只能从权威工程/SDK 边界处理这两条 mirror edge
+或进一步收紧 declaration identity；不得按路径猜测、提高 timeout 或漏掉 candidates。详细证据见
+[occurrence-proof query 报告](../reports/2026-09-13-references-occurrence-proof-query.md)。

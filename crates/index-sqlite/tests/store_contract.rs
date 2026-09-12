@@ -384,7 +384,10 @@ fn version_four_database_migrates_in_place_before_binding_data_is_refreshed() {
     legacy
         .execute_batch(
             "DROP TABLE reference_bindings; \
+             DROP TABLE reference_occurrence_identities; \
+             DROP INDEX reference_occurrences_name; \
              ALTER TABLE reference_occurrences DROP COLUMN qualified; \
+             CREATE INDEX reference_occurrences_name ON reference_occurrences(name); \
              PRAGMA user_version = 4;",
         )
         .expect("test fixture should emulate schema version four");
@@ -956,7 +959,10 @@ fn version_five_occurrence_qualification_stays_unknown_until_refresh() {
     let legacy = Connection::open(&database).expect("database should open directly");
     legacy
         .execute_batch(
-            "ALTER TABLE reference_occurrences DROP COLUMN qualified; \
+            "DROP TABLE reference_occurrence_identities; \
+             DROP INDEX reference_occurrences_name; \
+             ALTER TABLE reference_occurrences DROP COLUMN qualified; \
+             CREATE INDEX reference_occurrences_name ON reference_occurrences(name); \
              PRAGMA user_version = 5;",
         )
         .expect("test fixture should emulate schema version five");
@@ -967,11 +973,15 @@ fn version_five_occurrence_qualification_stays_unknown_until_refresh() {
             .expect("version five database should migrate in place"),
     );
     let migrated = index
-        .search_reference_candidates(ReferenceCandidateQuery {
-            declaration_uri: "file:///workspace/Target.ets".to_owned(),
-            declaration_position: Position::new(0, 14),
-            limit: 20,
-        })
+        .search_reference_candidates_with_scope(
+            ReferenceCandidateQuery {
+                declaration_uri: "file:///workspace/Target.ets".to_owned(),
+                declaration_position: Position::new(0, 14),
+                limit: 20,
+            },
+            &[],
+            &["file:///workspace".to_owned()],
+        )
         .expect("migrated candidates should remain searchable");
     assert!(!migrated.identity_complete);
     assert!(migrated.identity_uris.is_empty());
@@ -980,14 +990,73 @@ fn version_five_occurrence_qualification_stays_unknown_until_refresh() {
         .refresh(2, documents, &[])
         .expect("refresh should populate occurrence qualification");
     let refreshed = index
+        .search_reference_candidates_with_scope(
+            ReferenceCandidateQuery {
+                declaration_uri: "file:///workspace/Target.ets".to_owned(),
+                declaration_position: Position::new(0, 14),
+                limit: 20,
+            },
+            &[],
+            &["file:///workspace".to_owned()],
+        )
+        .expect("refreshed candidates should be searchable");
+    assert!(refreshed.identity_complete);
+    assert_eq!(refreshed.identity_uris, ["file:///workspace/Target.ets"]);
+}
+
+#[test]
+fn version_six_database_migrates_to_the_covering_occurrence_identity_index() {
+    let temp = TestDir::new("v6-reference-occurrence-index-migration");
+    let database = temp.path().join("symbols-v6.sqlite3");
+    let documents = [
+        Document::new("file:///workspace/Target.ets", "export class Thing {}\n"),
+        Document::new(
+            "file:///workspace/Consumer.ets",
+            "import { Thing } from './Target'\nconst first = new Thing()\nconst second = new Thing()\n",
+        ),
+    ];
+    WorkspaceIndex::with_store(
+        SqliteStore::open(&database, "file:///workspace").expect("SQLite store should open"),
+    )
+    .refresh(1, documents, &[])
+    .expect("generation one should commit");
+
+    let legacy = Connection::open(&database).expect("database should open directly");
+    legacy
+        .execute_batch(
+            "DROP TABLE reference_occurrence_identities; \
+             PRAGMA user_version = 6;",
+        )
+        .expect("test fixture should emulate schema version six");
+    drop(legacy);
+
+    let store = SqliteStore::open(&database, "file:///workspace")
+        .expect("version six database should migrate in place");
+    let result = WorkspaceIndex::with_store(store)
         .search_reference_candidates(ReferenceCandidateQuery {
             declaration_uri: "file:///workspace/Target.ets".to_owned(),
             declaration_position: Position::new(0, 14),
             limit: 20,
         })
-        .expect("refreshed candidates should be searchable");
-    assert!(refreshed.identity_complete);
-    assert_eq!(refreshed.identity_uris, ["file:///workspace/Target.ets"]);
+        .expect("migrated reference candidates should remain searchable");
+    assert!(result.identity_complete);
+    assert_eq!(
+        result.identity_uris,
+        [
+            "file:///workspace/Consumer.ets",
+            "file:///workspace/Target.ets",
+        ]
+    );
+
+    let migrated = Connection::open(&database).expect("migrated database should reopen");
+    let columns: Vec<String> = migrated
+        .prepare("PRAGMA index_info(reference_occurrence_identities_name)")
+        .expect("covering index metadata should prepare")
+        .query_map([], |row| row.get(2))
+        .expect("covering index metadata should query")
+        .collect::<Result<_, _>>()
+        .expect("covering index metadata should decode");
+    assert_eq!(columns, ["name", "document_uri", "qualification"]);
 }
 
 #[test]
@@ -1119,6 +1188,7 @@ fn version_two_database_migrates_in_place_without_losing_committed_symbols() {
     legacy
         .execute_batch(
             "DROP TABLE reference_bindings; \
+             DROP TABLE reference_occurrence_identities; \
              DROP TABLE reference_aliases; \
              DROP TABLE reference_occurrences; \
              DROP TABLE exports; \
@@ -1161,7 +1231,7 @@ fn version_two_database_migrates_in_place_without_losing_committed_symbols() {
     let version: i64 = migrated
         .pragma_query_value(None, "user_version", |row| row.get(0))
         .expect("schema version should be readable");
-    assert_eq!(version, 6);
+    assert_eq!(version, 7);
 }
 
 #[test]
