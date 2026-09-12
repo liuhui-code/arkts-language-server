@@ -86,6 +86,7 @@ pub struct ReferenceOccurrence {
     pub name: String,
     pub uri: String,
     pub range: TextRange,
+    pub qualified: Option<bool>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -491,9 +492,22 @@ impl SymbolStore for MemoryStore {
             .filter(|occurrence| names.contains(&occurrence.name))
             .cloned()
             .collect();
+        let independent_declarations: BTreeSet<_> = self
+            .documents
+            .values()
+            .flat_map(|document| document.exports.iter())
+            .filter(|item| {
+                item.reference_searchable
+                    && names.contains(&item.exported_name)
+                    && item.declaration_identity.is_some()
+                    && item.declaration_identity != declaration.declaration_identity
+            })
+            .map(|item| (item.uri.clone(), item.exported_name.clone()))
+            .collect();
         let (identity_complete, identity_uris) = prove_reference_binding_chain(
             &bindings,
             &occurrences,
+            &independent_declarations,
             &declaration.uri,
             &declaration.exported_name,
             query.limit,
@@ -574,6 +588,7 @@ pub fn resolve_reference_binding_sources(
 pub fn prove_reference_binding_chain(
     bindings: &[ReferenceBinding],
     occurrences: &[ReferenceOccurrence],
+    independent_declarations: &BTreeSet<(String, String)>,
     declaration_uri: &str,
     declaration_name: &str,
     limit: usize,
@@ -610,6 +625,9 @@ pub fn prove_reference_binding_chain(
             proven
                 .get(&occurrence.uri)
                 .is_some_and(|names| names.contains(&occurrence.name))
+                || independent_declarations
+                    .contains(&(occurrence.uri.clone(), occurrence.name.clone()))
+                    && occurrence.qualified == Some(false)
         });
     let identity_uris: BTreeSet<_> = occurrences
         .iter()
@@ -952,14 +970,16 @@ fn parse_symbols(document: &Document) -> Result<ParsedSymbols, DocumentParseErro
     let mut exports = Vec::new();
     let occurrences = tokens
         .iter()
-        .filter(|token| token.kind == TokenKind::Identifier)
-        .map(|token| ReferenceOccurrence {
+        .enumerate()
+        .filter(|(_, token)| token.kind == TokenKind::Identifier)
+        .map(|(index, token)| ReferenceOccurrence {
             name: token.text.to_owned(),
             uri: document.uri.clone(),
             range: TextRange::new(
                 line_index.position(token.start),
                 line_index.position(token.end),
             ),
+            qualified: Some(index > 0 && tokens[index - 1].text == "."),
         })
         .collect();
     let aliases = tokens

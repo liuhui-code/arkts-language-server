@@ -28,7 +28,8 @@ use sha2::{Digest, Sha256};
 use std::sync::{Arc, Barrier, Mutex};
 
 const APPLICATION_ID: i64 = 0x4152_4B49;
-const SCHEMA_VERSION: i64 = 5;
+const SCHEMA_VERSION: i64 = 6;
+const BINDING_SCHEMA_VERSION: i64 = 5;
 const REFERENCE_SCHEMA_VERSION: i64 = 4;
 const EXPORT_SCHEMA_VERSION: i64 = 3;
 const PREVIOUS_SCHEMA_VERSION: i64 = 2;
@@ -154,20 +155,27 @@ impl SqliteStore {
             (APPLICATION_ID, SCHEMA_VERSION) => {
                 verify_workspace_identity(&connection, workspace_identity)?
             }
+            (APPLICATION_ID, BINDING_SCHEMA_VERSION) => {
+                verify_workspace_identity(&connection, workspace_identity)?;
+                migrate_schema_v5_to_v6(&mut connection)?;
+            }
             (APPLICATION_ID, REFERENCE_SCHEMA_VERSION) => {
                 verify_workspace_identity(&connection, workspace_identity)?;
                 migrate_schema_v4_to_v5(&mut connection)?;
+                migrate_schema_v5_to_v6(&mut connection)?;
             }
             (APPLICATION_ID, EXPORT_SCHEMA_VERSION) => {
                 verify_workspace_identity(&connection, workspace_identity)?;
                 migrate_schema_v3_to_v4(&mut connection)?;
                 migrate_schema_v4_to_v5(&mut connection)?;
+                migrate_schema_v5_to_v6(&mut connection)?;
             }
             (APPLICATION_ID, PREVIOUS_SCHEMA_VERSION) => {
                 verify_workspace_identity(&connection, workspace_identity)?;
                 migrate_schema_v2_to_v3(&mut connection)?;
                 migrate_schema_v3_to_v4(&mut connection)?;
                 migrate_schema_v4_to_v5(&mut connection)?;
+                migrate_schema_v5_to_v6(&mut connection)?;
             }
             _ => {
                 return Err(StoreError::new(
@@ -559,9 +567,15 @@ impl SymbolStore for SqliteStore {
         let document_uris = read_document_uris(&transaction)?;
         resolve_reference_binding_sources(&mut bindings, &document_uris);
         let occurrences = read_reference_occurrences(&transaction, exported_name)?;
+        let independent_declarations = read_independent_reference_declarations(
+            &transaction,
+            exported_name,
+            declaration_identity.as_deref(),
+        )?;
         let (identity_complete, identity_uris) = prove_reference_binding_chain(
             &bindings,
             &occurrences,
+            &independent_declarations,
             &query.declaration_uri,
             exported_name,
             query.limit,
@@ -734,8 +748,8 @@ fn insert_reference_documents(
     let mut occurrence_statement = transaction
         .prepare_cached(
             "INSERT INTO reference_occurrences(\
-                document_uri, ordinal, name, start_line, start_character, end_line, end_character\
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                document_uri, ordinal, name, start_line, start_character, end_line, end_character, qualified\
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
         )
         .map_err(map_sqlite_error)?;
     let mut alias_statement = transaction
@@ -762,6 +776,7 @@ fn insert_reference_documents(
                     i64::from(occurrence.range.start.character),
                     i64::from(occurrence.range.end.line),
                     i64::from(occurrence.range.end.character),
+                    occurrence.qualified,
                 ])
                 .map_err(map_sqlite_error)?;
         }
@@ -849,8 +864,23 @@ const REFERENCE_OCCURRENCES_SQL: &str = "WITH RECURSIVE \
         UNION SELECT edges.target FROM edges JOIN names ON edges.source = names.name\
     ) \
     SELECT reference_occurrences.name, reference_occurrences.document_uri, \
-           start_line, start_character, end_line, end_character \
+           start_line, start_character, end_line, end_character, qualified \
     FROM reference_occurrences INDEXED BY reference_occurrences_name JOIN names USING(name)";
+
+const INDEPENDENT_REFERENCE_DECLARATIONS_SQL: &str = "WITH RECURSIVE \
+    edges(source, target) AS (\
+        SELECT from_name, to_name FROM reference_aliases \
+        UNION SELECT to_name, from_name FROM reference_aliases\
+    ), \
+    names(name) AS (\
+        VALUES (?1) \
+        UNION SELECT edges.target FROM edges JOIN names ON edges.source = names.name\
+    ) \
+    SELECT exports.document_uri, exports.exported_name \
+    FROM exports JOIN names ON exports.exported_name = names.name \
+    WHERE exports.reference_searchable = 1 \
+      AND exports.declaration_identity IS NOT NULL \
+      AND exports.declaration_identity <> ?2";
 
 fn read_reference_names(
     connection: &Connection,
@@ -950,12 +980,13 @@ fn read_reference_occurrences(
                 row.get::<_, i64>(3)?,
                 row.get::<_, i64>(4)?,
                 row.get::<_, i64>(5)?,
+                row.get::<_, Option<bool>>(6)?,
             ))
         })
         .map_err(map_sqlite_error)?;
     let mut occurrences = Vec::new();
     for row in rows {
-        let (name, uri, start_line, start_character, end_line, end_character) =
+        let (name, uri, start_line, start_character, end_line, end_character, qualified) =
             row.map_err(map_sqlite_error)?;
         occurrences.push(ReferenceOccurrence {
             name,
@@ -970,9 +1001,30 @@ fn read_reference_occurrences(
                     to_u32(end_character, "end_character")?,
                 ),
             ),
+            qualified,
         });
     }
     Ok(occurrences)
+}
+
+fn read_independent_reference_declarations(
+    connection: &Connection,
+    exported_name: &str,
+    declaration_identity: Option<&str>,
+) -> Result<BTreeSet<(String, String)>, StoreError> {
+    let Some(declaration_identity) = declaration_identity else {
+        return Ok(BTreeSet::new());
+    };
+    let mut statement = connection
+        .prepare(INDEPENDENT_REFERENCE_DECLARATIONS_SQL)
+        .map_err(map_sqlite_error)?;
+    let rows = statement
+        .query_map(params![exported_name, declaration_identity], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(map_sqlite_error)?;
+    rows.collect::<Result<BTreeSet<_>, _>>()
+        .map_err(map_sqlite_error)
 }
 
 fn unsupported_reference_candidates(generation: u64) -> ReferenceCandidateSearchResult {
@@ -1239,6 +1291,7 @@ fn initialize_schema(
                 start_character INTEGER NOT NULL,\
                 end_line INTEGER NOT NULL,\
                 end_character INTEGER NOT NULL,\
+                qualified INTEGER CHECK(qualified IN (0, 1)),\
                 PRIMARY KEY(document_uri, ordinal)\
              );\
              CREATE INDEX reference_occurrences_name ON reference_occurrences(name);\
@@ -1296,6 +1349,22 @@ fn initialize_schema(
     transaction.commit().map_err(map_sqlite_error)
 }
 
+fn migrate_schema_v5_to_v6(connection: &mut Connection) -> Result<(), StoreError> {
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(map_sqlite_error)?;
+    transaction
+        .execute_batch(
+            "ALTER TABLE reference_occurrences ADD COLUMN qualified \
+                INTEGER CHECK(qualified IN (0, 1));",
+        )
+        .map_err(map_sqlite_error)?;
+    transaction
+        .pragma_update(None, "user_version", SCHEMA_VERSION)
+        .map_err(map_sqlite_error)?;
+    transaction.commit().map_err(map_sqlite_error)
+}
+
 fn migrate_schema_v4_to_v5(connection: &mut Connection) -> Result<(), StoreError> {
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -1318,7 +1387,7 @@ fn migrate_schema_v4_to_v5(connection: &mut Connection) -> Result<(), StoreError
         )
         .map_err(map_sqlite_error)?;
     transaction
-        .pragma_update(None, "user_version", SCHEMA_VERSION)
+        .pragma_update(None, "user_version", BINDING_SCHEMA_VERSION)
         .map_err(map_sqlite_error)?;
     transaction.commit().map_err(map_sqlite_error)
 }
@@ -1354,7 +1423,7 @@ fn migrate_schema_v3_to_v4(connection: &mut Connection) -> Result<(), StoreError
         )
         .map_err(map_sqlite_error)?;
     transaction
-        .pragma_update(None, "user_version", SCHEMA_VERSION)
+        .pragma_update(None, "user_version", REFERENCE_SCHEMA_VERSION)
         .map_err(map_sqlite_error)?;
     transaction.commit().map_err(map_sqlite_error)
 }

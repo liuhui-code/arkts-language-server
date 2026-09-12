@@ -596,3 +596,31 @@ This is still not a candidate-narrowing change. The existing collision fixture d
 an unrelated `Thing` declaration, so its sidecar result stays incomplete and retains the conservative
 URI set. The next slice must classify independent declaration identities before the planner can use
 the proof without dropping references.
+
+### Independent declaration collisions and planner consumption
+
+Parent revision: `e745ca76bb5c3f8339a9ab1894d955f4943db679`.
+
+The public in-memory RED added an unrelated `export class Thing` document to the proven
+`Target -> Barrel -> Consumer` chain. Conservative `uris` still contained all four documents, while
+the old proof became incomplete. The minimal implementation classifies occurrences owned by a
+different stable exported declaration and returns only the three target-chain `identityUris`.
+
+A second RED prevented an unsafe whole-document exclusion: a file that both declares its own
+`Thing` and uses `Origin.Thing` from a namespace import must remain unproven. Reference occurrences
+therefore persist whether the identifier is dot-qualified; only a known-unqualified occurrence may
+be assigned to the independent declaration. SQLite schema v6 stores this bit. Migrated v5 rows use
+NULL/unknown and remain fail-conservative until refresh. The SQLite reopen and sidecar NDJSON
+contracts expose the same distinction.
+
+The child-process LSP RED supplied five conservative indexed documents, four proven identity
+documents, and one open overlay. Before planner consumption the batch trace admitted six files.
+After the change it admitted the four proof URIs plus the overlay, while normalized references
+remained exactly equal to conservative batching. Incomplete identity results still use conservative
+`uris`; the default strategy remains `legacy`.
+
+The fixed Photos 6.1 `PhotoAsset` workload was replayed once against the existing nine-location
+legacy oracle. It returned exact equality, but package/SDK bindings prevented identity completeness.
+The executor still admitted 1,154 candidate files in 11 batches; request time was 45.339 seconds and
+peak macOS process-tree RSS was 779,599,872 bytes. This is negative boundary evidence, not a memory
+improvement. Package/SDK declaration identity resolution is the next required RED.

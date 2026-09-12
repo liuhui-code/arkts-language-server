@@ -140,6 +140,10 @@ fn sqlite_persists_reference_binding_sources_across_reopen() {
                     "file:///workspace/Consumer.ets",
                     "import { PublicThing as Alias } from './Barrel'\nconst value = new Alias()\n",
                 ),
+                Document::new(
+                    "file:///workspace/SameName.ets",
+                    "export class Thing {}\nconst unrelated = new Thing()\n",
+                ),
             ],
             &[],
         )
@@ -156,6 +160,15 @@ fn sqlite_persists_reference_binding_sources_across_reopen() {
         .expect("persisted reference bindings should be searchable");
 
     assert!(result.identity_complete);
+    assert_eq!(
+        result.uris,
+        [
+            "file:///workspace/Barrel.ets",
+            "file:///workspace/Consumer.ets",
+            "file:///workspace/SameName.ets",
+            "file:///workspace/Target.ets",
+        ]
+    );
     assert_eq!(
         result.identity_uris,
         [
@@ -206,7 +219,11 @@ fn version_four_database_migrates_in_place_before_binding_data_is_refreshed() {
 
     let legacy = Connection::open(&database).expect("database should open directly");
     legacy
-        .execute_batch("DROP TABLE reference_bindings; PRAGMA user_version = 4;")
+        .execute_batch(
+            "DROP TABLE reference_bindings; \
+             ALTER TABLE reference_occurrences DROP COLUMN qualified; \
+             PRAGMA user_version = 4;",
+        )
         .expect("test fixture should emulate schema version four");
     drop(legacy);
 
@@ -757,6 +774,60 @@ fn one_and_two_character_queries_use_bounded_prefix_and_acronym_indexes() {
 }
 
 #[test]
+fn version_five_occurrence_qualification_stays_unknown_until_refresh() {
+    let temp = TestDir::new("v5-reference-occurrence-migration");
+    let database = temp.path().join("symbols-v5.sqlite3");
+    let documents = [
+        Document::new("file:///workspace/Target.ets", "export class Thing {}\n"),
+        Document::new(
+            "file:///workspace/SameName.ets",
+            "export class Thing {}\nconst unrelated = new Thing()\n",
+        ),
+    ];
+    WorkspaceIndex::with_store(
+        SqliteStore::open(&database, "file:///workspace").expect("SQLite store should open"),
+    )
+    .refresh(1, documents.clone(), &[])
+    .expect("generation one should commit");
+
+    let legacy = Connection::open(&database).expect("database should open directly");
+    legacy
+        .execute_batch(
+            "ALTER TABLE reference_occurrences DROP COLUMN qualified; \
+             PRAGMA user_version = 5;",
+        )
+        .expect("test fixture should emulate schema version five");
+    drop(legacy);
+
+    let mut index = WorkspaceIndex::with_store(
+        SqliteStore::open(&database, "file:///workspace")
+            .expect("version five database should migrate in place"),
+    );
+    let migrated = index
+        .search_reference_candidates(ReferenceCandidateQuery {
+            declaration_uri: "file:///workspace/Target.ets".to_owned(),
+            declaration_position: Position::new(0, 14),
+            limit: 20,
+        })
+        .expect("migrated candidates should remain searchable");
+    assert!(!migrated.identity_complete);
+    assert!(migrated.identity_uris.is_empty());
+
+    index
+        .refresh(2, documents, &[])
+        .expect("refresh should populate occurrence qualification");
+    let refreshed = index
+        .search_reference_candidates(ReferenceCandidateQuery {
+            declaration_uri: "file:///workspace/Target.ets".to_owned(),
+            declaration_position: Position::new(0, 14),
+            limit: 20,
+        })
+        .expect("refreshed candidates should be searchable");
+    assert!(refreshed.identity_complete);
+    assert_eq!(refreshed.identity_uris, ["file:///workspace/Target.ets"]);
+}
+
+#[test]
 fn export_discovery_persists_a_candidate_beyond_the_old_completion_scan_bound() {
     const FILLER_EXPORTS: usize = 4_999;
     let temp = TestDir::new("exports-over-4096");
@@ -927,7 +998,7 @@ fn version_two_database_migrates_in_place_without_losing_committed_symbols() {
     let version: i64 = migrated
         .pragma_query_value(None, "user_version", |row| row.get(0))
         .expect("schema version should be readable");
-    assert_eq!(version, 5);
+    assert_eq!(version, 6);
 }
 
 #[test]
