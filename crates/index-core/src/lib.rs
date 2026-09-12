@@ -89,6 +89,23 @@ pub struct ReferenceOccurrence {
     pub qualified: Option<bool>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ReferenceOccurrenceIdentity {
+    pub name: String,
+    pub uri: String,
+    pub qualified: Option<bool>,
+}
+
+impl From<&ReferenceOccurrence> for ReferenceOccurrenceIdentity {
+    fn from(occurrence: &ReferenceOccurrence) -> Self {
+        Self {
+            name: occurrence.name.clone(),
+            uri: occurrence.uri.clone(),
+            qualified: occurrence.qualified,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ReferenceAlias {
     pub from_name: String,
@@ -538,9 +555,14 @@ impl SymbolStore for MemoryStore {
             })
             .map(|item| (item.uri.clone(), item.exported_name.clone()))
             .collect();
+        let occurrence_identities: BTreeSet<_> = occurrences
+            .iter()
+            .map(ReferenceOccurrenceIdentity::from)
+            .collect();
+        let occurrence_identities: Vec<_> = occurrence_identities.into_iter().collect();
         let (identity_complete, identity_uris) = prove_reference_binding_chain(
             &bindings,
-            &occurrences,
+            &occurrence_identities,
             &independent_declarations,
             &declaration.uri,
             &declaration.exported_name,
@@ -714,7 +736,7 @@ fn valid_sdk_module_specifier(specifier: &str) -> bool {
 
 pub fn prove_reference_binding_chain(
     bindings: &[ReferenceBinding],
-    occurrences: &[ReferenceOccurrence],
+    occurrences: &[ReferenceOccurrenceIdentity],
     independent_declarations: &BTreeSet<(String, String)>,
     declaration_uri: &str,
     declaration_name: &str,
