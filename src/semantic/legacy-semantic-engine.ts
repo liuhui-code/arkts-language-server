@@ -73,6 +73,7 @@ export interface LegacySemanticEngineRuntimeOptions {
   readonly references?: ReferenceSearchRuntimeConfig
   readonly interactiveSdkAmbientProfile?: import("../core/types/typescript-language-service.js").TypeScriptSdkAmbientProfile
   readonly interactiveProjectRootProfile?: "closure" | "current"
+  readonly memberCompletionProjectRootProfile?: "workspace" | "current"
 }
 
 export class LegacySemanticEngine implements SemanticEnginePort {
@@ -81,6 +82,7 @@ export class LegacySemanticEngine implements SemanticEnginePort {
   private readonly engines: SemanticTypeEngineRegistry
   private readonly foldingRangeProvider = new FoldingRangeProvider()
   private readonly interactiveProjectRootProfile: "closure" | "current"
+  private readonly memberCompletionProjectRootProfile: "workspace" | "current"
 
   constructor(
     private readonly projects: ProjectResolverPort,
@@ -88,6 +90,7 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     runtime: LegacySemanticEngineRuntimeOptions = {},
   ) {
     this.interactiveProjectRootProfile = runtime.interactiveProjectRootProfile ?? "closure"
+    this.memberCompletionProjectRootProfile = runtime.memberCompletionProjectRootProfile ?? "workspace"
     this.engines = new SemanticTypeEngineRegistry(
       this.packageResolver,
       logger ? (workspaceRoot, sdk) => {
@@ -190,9 +193,16 @@ export class LegacySemanticEngine implements SemanticEnginePort {
       query.position.line + 1,
       query.position.character + 1,
     )
-    const includeWorkspaceFiles = this.interactiveProjectRootProfile !== "current"
-      || !memberAccess
-    const prepared = this.prepare(query.document, query.position, includeWorkspaceFiles)
+    const currentProjectRoots = memberAccess && (
+      this.interactiveProjectRootProfile === "current"
+      || this.memberCompletionProjectRootProfile === "current"
+    )
+    const prepared = this.prepare(
+      query.document,
+      query.position,
+      !currentProjectRoots,
+      currentProjectRoots ? "current" : this.interactiveProjectRootProfile,
+    )
     const completion = prepared.engine.complete({
       ...prepared.position,
       allowSnippets: query.completionOptions?.snippets === true,
@@ -623,6 +633,7 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     document: DocumentSnapshot,
     position: TextPosition,
     includeWorkspaceFiles = false,
+    projectRootProfile = this.interactiveProjectRootProfile,
   ) {
     const workspace = this.projects.projectFor(document.uri)
     const legacyPosition = toLegacyPosition(document, position, workspace)
@@ -631,6 +642,7 @@ export class LegacySemanticEngine implements SemanticEnginePort {
       preparedWorkspace,
       legacyPosition.path,
       includeWorkspaceFiles,
+      projectRootProfile,
     ))
     return { engine, position: legacyPosition }
   }
@@ -678,8 +690,9 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     workspace: SemanticWorkspaceView,
     currentPath: string,
     includeWorkspaceFiles: boolean,
+    projectRootProfile = this.interactiveProjectRootProfile,
   ): SemanticWorkspaceView {
-    if (includeWorkspaceFiles || this.interactiveProjectRootProfile !== "current") return workspace
+    if (includeWorkspaceFiles || projectRootProfile !== "current") return workspace
     const roots = new Set([path.resolve(currentPath)])
     for (const document of workspace.documents) {
       if (document.overlay) roots.add(path.resolve(document.path))
