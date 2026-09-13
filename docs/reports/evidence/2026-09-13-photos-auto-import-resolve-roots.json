@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-09-13",
+  "repositoryRevision": "c18eb0255e625ba5413b2a7623d1567f5a3ea742",
+  "workspace": {
+    "name": "openharmony/applications_photos",
+    "revision": "98ea1d9cd6a363c576e2c6ff17844e51723baec5"
+  },
+  "sdk": {
+    "path": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony",
+    "apiVersion": "24",
+    "version": "6.1.1.125"
+  },
+  "nodeVersion": "v26.3.0",
+  "target": {
+    "file": "imageEditor/product/editor_phone/src/main/ets/component/menu/BottomToolbar.ets",
+    "symbol": "ConflictContent",
+    "position": { "line": 318, "character": 41 },
+    "positionEncoding": "utf-16",
+    "overlay": "removed ConflictContent from the existing ./Consts import and completed ConflictCont"
+  },
+  "workflow": [
+    "wait for index.catalog.terminal=ready",
+    "textDocument/didOpen",
+    "textDocument/completion",
+    "completionItem/resolve",
+    "textDocument/publishDiagnostics"
+  ],
+  "semanticEquality": {
+    "completion": true,
+    "resolvedCompletion": true,
+    "additionalTextEdit": "insert ConflictContent, at UTF-16 92:9",
+    "diagnosticsCount": 90,
+    "diagnosticsSha256": "99e981f9e8725f7a683cabb1138d21f8df8181c2f376e6f3889e8f35be3efdb1"
+  },
+  "profiles": {
+    "workspace": {
+      "programSourceFiles": 1928,
+      "programProjectFiles": 1246,
+      "programProjectRootFiles": 1246,
+      "sdkSourceFiles": 682,
+      "completionWorkerRssBytes": 724439040,
+      "resolveWorkerRssBytes": 743264256,
+      "completionElapsedMs": 21780,
+      "resolveElapsedMs": 1715,
+      "workflowPeakProductRssBytes": 780128256
+    },
+    "discovery": {
+      "programSourceFiles": 772,
+      "programProjectFiles": 107,
+      "programProjectRootFiles": 2,
+      "sdkSourceFiles": 665,
+      "completionWorkerRssBytes": 416636928,
+      "resolveWorkerRssBytes": 489156608,
+      "completionElapsedMs": 17506,
+      "resolveElapsedMs": 7039,
+      "workflowPeakProductRssBytes": 547852288
+    }
+  },
+  "observedReductionsPercent": {
+    "completionWorkerRss": 42.49,
+    "resolveWorkerRss": 34.19,
+    "workflowPeakProductRss": 29.77,
+    "completionElapsed": 19.62
+  },
+  "observedResolveLatencyRatio": 4.10,
+  "measurementBoundary": "one fresh-process A/B after committed Rust catalog; not a statistical release claim"
+}

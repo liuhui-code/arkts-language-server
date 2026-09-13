@@ -704,3 +704,20 @@ diagnostics 指纹完全相同。但完整 workflow peak 只下降 6.57%，因�
 discovered completion 的 resolve 保留同一官方 entry identity 与精确 import edit，同时避免无必要的
 full-workspace roots；ambient/global contribution discovery 仍是默认启用前置门。
 [报告](../reports/2026-09-13-auto-import-discovery-roots.md)。
+
+2026-09-13 ordinary auto-import resolve-root 切片：ready export discovery 现在把与返回补全项匹配的
+workspace 内声明 URI 保存在 server-owned resolution record；LSP 客户端仍只看到不可伪造的
+`arktsCompletionId`。`completionItem/resolve` 复用当前文档、open overlays 和这些声明 roots，由
+`ohos-typescript getCompletionEntryDetails()` 继续生成最终 detail/import edit。metadata
+missing/empty/malformed/outside-workspace、profile disabled 或 discovery 非 ready 时均恢复完整 workspace。
+
+公开 5,000-export child-process 合同中，ready completion/resolve 都保持 2 project roots 并返回同一
+`ManyExports` edit；stale completion/resolve 都保持 25 roots 并返回同一 edit。固定 Photos
+`ConflictContent` fresh-process A/B 在 completion/resolve 结果和 90 条 diagnostics 指纹完全一致时，
+resolve Program 从 1,928 files/1,246 project roots 降至 772/2，resolve worker RSS 从
+743,264,256 降至 489,156,608 bytes（-34.19%），外部采样的 product peak 从
+780,128,256 降至 547,852,288 bytes（-29.77%）。但单次 resolve latency 从 1.715 s 增至
+7.039 s（4.10x），明确不通过 latency gate；默认继续为 `workspace`。下一步先查明同一 two-root
+resolve 的重建成本并做跨真实工程与重复运行复核，ambient/global contribution completeness 仍是默认
+启用前置门。详见
+[resolve-root 报告](../reports/2026-09-13-auto-import-resolve-roots.md)。
