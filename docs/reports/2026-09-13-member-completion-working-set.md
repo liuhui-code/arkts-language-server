@@ -71,3 +71,32 @@ Raw process curves remain under `/private/tmp/arkts-photos-member-onoperationend
   member kinds, then isolate a member-only policy from the broader experimental profile.
 - Global completion narrowing remains a separate phase: Rust may recall module-export candidates,
   while the compiler remains the final semantic owner and stale/partial/ambiguous input fails closed.
+
+## Follow-up: cross-project gate and member-only policy
+
+The follow-up used three additional fixed business projects and member categories. Each closure run
+created the reference oracle from a normal response; each current run then validated that exact
+Location set. Automatic diagnostics stayed enabled.
+
+| Project / member | Kind | Program files full/current | Completion items | Completion RSS full/current | Completion time full/current | References / diagnostics |
+|---|---|---:|---:|---:|---:|---:|
+| Gramony `sameDay` | static method | 701 / 256 | 3 / 3 | 461,864,960 / 352,301,056 B | 3.591 / 1.677 s | 2 / 10 |
+| ChatCube `requestMap` | instance field | 940 / 304 | 3 / 3 | 502,554,624 / 379,633,664 B | 4.102 / 2.044 s | 5 / 70 |
+| RemoteDesk `passwordConfigured` | object field | 1,557 / 258 | 2 / 2 | 801,681,408 / 360,361,984 B | 7.362 / 1.955 s | 12 / 8 |
+
+This supports the working-set result across three independent codebases, but it still is not a
+universal proof that unopened project-global augmentations can be omitted. The optimization
+therefore remains opt-in.
+
+The runtime now exposes the independent, default-off
+`ARKTS_MEMBER_COMPLETION_PROJECT_ROOT_PROFILE=current`; its default is `workspace`. The existing
+broad interactive profile may remain `closure`, so diagnostics and definition do not inherit the
+member experiment. A fresh Photos replay with this combination produced the same 380-file,
+one-project-root member Program and three completion items in 3.104 seconds. The subsequent normal
+diagnostics deliberately rebuilt its complete 813-file/206-project-root Program, published the same
+27 diagnostics, and references returned the same 12 Locations.
+
+Normalized cross-project evidence is committed in
+[`evidence/2026-09-13-member-completion-cross-project.json`](evidence/2026-09-13-member-completion-cross-project.json).
+Raw reports remain under `/private/tmp/arkts-{gramony,chatcube,remotedesk}-member-*.json` and
+`/private/tmp/arkts-photos-member-only-policy-current.json`.

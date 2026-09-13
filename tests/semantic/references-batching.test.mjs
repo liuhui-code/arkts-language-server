@@ -756,6 +756,13 @@ test("a diagnostics core SDK closure retains required ArkUI globals without the 
     captureDiagnostics: true, captureInteractiveQueries: true,
     completionPosition, completionLabel: "value",
   })
+  const memberOnlyRoots = await runSingleReferenceRequest(t, {
+    root, workspace, queryUri, queryText, position,
+    strategy: "batched", runId: "diagnostics-member-completion-roots-current",
+    sdkPath: sdk, sdkAmbientProfile: "common", memberCompletionProjectRootProfile: "current",
+    captureDiagnostics: true, captureInteractiveQueries: true,
+    completionPosition, completionLabel: "value",
+  })
   const workspaceCompletionPosition = positionAt(
     queryText,
     queryText.lastIndexOf("PublicThing") + "Public".length,
@@ -763,7 +770,7 @@ test("a diagnostics core SDK closure retains required ArkUI globals without the 
   const currentWorkspaceCompletion = await runSingleReferenceRequest(t, {
     root, workspace, queryUri, queryText, position,
     strategy: "batched", runId: "diagnostics-project-roots-current-workspace-completion",
-    sdkPath: sdk, sdkAmbientProfile: "common", interactiveProjectRootProfile: "current",
+    sdkPath: sdk, sdkAmbientProfile: "common", memberCompletionProjectRootProfile: "current",
     captureInteractiveQueries: true, completionPosition: workspaceCompletionPosition,
     completionLabel: "PublicThing",
   })
@@ -783,6 +790,12 @@ test("a diagnostics core SDK closure retains required ArkUI globals without the 
   assert.equal(currentRoots.completionEvents.length, 1)
   assert.equal(currentRoots.completionEvents[0].programProjectFiles, 2)
   assert.equal(currentRoots.completionEvents[0].programProjectRootFiles, 1)
+  assert.deepEqual(memberOnlyRoots.completion, full.completion)
+  assert.deepEqual(memberOnlyRoots.definition, full.definition)
+  assert.deepEqual(memberOnlyRoots.diagnostics, full.diagnostics)
+  assert.equal(memberOnlyRoots.completionEvents.length, 1)
+  assert.equal(memberOnlyRoots.completionEvents[0].programProjectFiles, 2)
+  assert.equal(memberOnlyRoots.completionEvents[0].programProjectRootFiles, 1)
   assert.equal(currentWorkspaceCompletion.completion.length, 1)
   assert.equal(currentWorkspaceCompletion.completionEvents.length, 1)
   assert.equal(currentWorkspaceCompletion.completionEvents[0].programProjectRootFiles, 3)
@@ -1016,6 +1029,7 @@ async function runSingleReferenceRequest(t, {
   sdkAmbientProfile,
   interactiveSdkAmbientProfile,
   interactiveProjectRootProfile,
+  memberCompletionProjectRootProfile,
   captureDiagnostics = false,
   captureInteractiveQueries = false,
   completionPosition,
@@ -1056,6 +1070,9 @@ async function runSingleReferenceRequest(t, {
       } : {}),
       ...(interactiveProjectRootProfile ? {
         ARKTS_INTERACTIVE_PROJECT_ROOT_PROFILE: interactiveProjectRootProfile,
+      } : {}),
+      ...(memberCompletionProjectRootProfile ? {
+        ARKTS_MEMBER_COMPLETION_PROJECT_ROOT_PROFILE: memberCompletionProjectRootProfile,
       } : {}),
     },
     capabilities: awaitIndexReady ? { window: { workDoneProgress: true } } : {},

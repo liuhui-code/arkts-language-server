@@ -668,3 +668,22 @@ completion→definition→references workflow 的 peak 中位只下降 8.09%，�
 current profile 解耦；ordinary/global completion 必须等待 Rust module-export candidate recall + compiler
 proof 的独立合同，partial/stale/ambiguous 时 fail closed。详见
 [member completion working-set 报告](../reports/2026-09-13-member-completion-working-set.md)。
+
+2026-09-13 member-only policy 收口：Gramony 静态方法 `sameDay`、ChatCube 实例字段
+`requestMap`、RemoteDesk 对象字段 `passwordConfigured` 的真实 mode-B 回放均保持 completion item
+count、reference identity 与正常 diagnostics。三者 Program files 分别从 701/940/1,557 降到
+256/304/258，completion response RSS 分别从 461,864,960/502,554,624/801,681,408 降到
+352,301,056/379,633,664/360,361,984 bytes；completion latency 均下降。后续 legacy references
+仍会扩张 full Program，因此不得将 final workflow peak 当作此切片的成员补全指标。
+
+新增独立、默认关闭的 `ARKTS_MEMBER_COMPLETION_PROJECT_ROOT_PROFILE=current`；默认值为
+`workspace`。它只改变 member completion 的 roots，不再要求同时启用广义
+`ARKTS_INTERACTIVE_PROJECT_ROOT_PROFILE=current`。公开 LSP 合同证明 member-only 配置保持
+completion/definition/diagnostics exact，普通 module-export completion 仍使用完整 roots。真实 Photos
+复核在 broad profile=`closure` 时仍得到 380-file/1-project-root member Program，随后 diagnostics 按原
+策略恢复完整 813-file/206-project-root Program并发布 27 条，references 返回 12 个 exact Locations。
+
+该策略暂不切默认：真实样本不能证明 unopened project-global augmentation 可安全省略。下一阶段转向
+global/ambient contribution discovery 与 ordinary module-export completion candidate recall；Rust 只做
+保守召回，compiler 最终证明，unknown/partial/stale 必须保留完整 workspace fallback。详细数据见
+[member completion working-set 报告](../reports/2026-09-13-member-completion-working-set.md)。

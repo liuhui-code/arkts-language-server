@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-09-13",
+  "repositoryRevision": "a22e7e587a532c1720912d9b06d1f721ef2719fd",
+  "nodeVersion": "v26.3.0",
+  "sdk": { "apiVersion": "24", "version": "6.1.1.125" },
+  "cases": [
+    {
+      "project": "Gramony",
+      "workspaceRevision": "0a1ee4b026b6736671f0030ba9859aceaa962298",
+      "symbol": "sameDay",
+      "memberKind": "static-method",
+      "closure": {
+        "programSourceFiles": 701,
+        "programProjectFiles": 77,
+        "programProjectRootFiles": 77,
+        "completionItems": 3,
+        "completionProductRssBytes": 461864960,
+        "completionElapsedMs": 3591
+      },
+      "current": {
+        "programSourceFiles": 256,
+        "programProjectFiles": 1,
+        "programProjectRootFiles": 1,
+        "completionItems": 3,
+        "completionProductRssBytes": 352301056,
+        "completionElapsedMs": 1677
+      },
+      "validatedReferences": 2,
+      "diagnostics": 10
+    },
+    {
+      "project": "ChatCube",
+      "workspaceRevision": "fd729d0f5c607763adc8ce054ad29171c66c78dc",
+      "symbol": "requestMap",
+      "memberKind": "instance-field",
+      "closure": {
+        "programSourceFiles": 940,
+        "programProjectFiles": 263,
+        "programProjectRootFiles": 263,
+        "completionItems": 3,
+        "completionProductRssBytes": 502554624,
+        "completionElapsedMs": 4102
+      },
+      "current": {
+        "programSourceFiles": 304,
+        "programProjectFiles": 1,
+        "programProjectRootFiles": 1,
+        "completionItems": 3,
+        "completionProductRssBytes": 379633664,
+        "completionElapsedMs": 2044
+      },
+      "validatedReferences": 5,
+      "diagnostics": 70
+    },
+    {
+      "project": "RemoteDesk",
+      "workspaceRevision": "8edc187868e94ed41634e8a6c4c4c072e3a48679",
+      "symbol": "passwordConfigured",
+      "memberKind": "object-field",
+      "closure": {
+        "programSourceFiles": 1557,
+        "programProjectFiles": 829,
+        "programProjectRootFiles": 829,
+        "completionItems": 2,
+        "completionProductRssBytes": 801681408,
+        "completionElapsedMs": 7362
+      },
+      "current": {
+        "programSourceFiles": 258,
+        "programProjectFiles": 1,
+        "programProjectRootFiles": 1,
+        "completionItems": 2,
+        "completionProductRssBytes": 360361984,
+        "completionElapsedMs": 1955
+      },
+      "validatedReferences": 12,
+      "diagnostics": 8
+    }
+  ],
+  "memberOnlyPolicyPhotos": {
+    "broadInteractiveProjectRootProfile": "closure",
+    "memberCompletionProjectRootProfile": "current",
+    "programSourceFiles": 380,
+    "programProjectFiles": 29,
+    "programProjectRootFiles": 1,
+    "completionItems": 3,
+    "completionProductRssBytes": 456900608,
+    "completionElapsedMs": 3104,
+    "diagnosticsProgramSourceFiles": 813,
+    "diagnosticsProgramProjectRootFiles": 206,
+    "validatedReferences": 12,
+    "diagnostics": 27
+  }
+}

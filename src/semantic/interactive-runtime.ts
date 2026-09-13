@@ -3,6 +3,7 @@ import type { TypeScriptSdkAmbientProfile } from "../core/types/typescript-langu
 export interface InteractiveSemanticRuntimeConfig {
   readonly sdkAmbientProfile: Extract<TypeScriptSdkAmbientProfile, "full" | "core">
   readonly projectRootProfile: "closure" | "current"
+  readonly memberCompletionProjectRootProfile: "workspace" | "current"
 }
 
 export function interactiveSemanticRuntimeConfig(
@@ -16,5 +17,15 @@ export function interactiveSemanticRuntimeConfig(
   if (projectRootProfile !== "closure" && projectRootProfile !== "current") {
     throw new Error("ARKTS_INTERACTIVE_PROJECT_ROOT_PROFILE must be closure or current")
   }
-  return { sdkAmbientProfile, projectRootProfile }
+  const memberCompletionProjectRootProfile = environment.ARKTS_MEMBER_COMPLETION_PROJECT_ROOT_PROFILE
+    ?? "workspace"
+  if (
+    memberCompletionProjectRootProfile !== "workspace"
+    && memberCompletionProjectRootProfile !== "current"
+  ) {
+    throw new Error(
+      "ARKTS_MEMBER_COMPLETION_PROJECT_ROOT_PROFILE must be workspace or current",
+    )
+  }
+  return { sdkAmbientProfile, projectRootProfile, memberCompletionProjectRootProfile }
 }
