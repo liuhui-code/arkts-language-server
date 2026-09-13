@@ -687,3 +687,20 @@ completion/definition/diagnostics exact，普通 module-export completion 仍使
 global/ambient contribution discovery 与 ordinary module-export completion candidate recall；Rust 只做
 保守召回，compiler 最终证明，unknown/partial/stale 必须保留完整 workspace fallback。详细数据见
 [member completion working-set 报告](../reports/2026-09-13-member-completion-working-set.md)。
+
+2026-09-13 ordinary auto-import discovery-root 切片：新增默认关闭的
+`ARKTS_AUTO_IMPORT_PROJECT_ROOT_PROFILE=discovery`。只有 Rust export discovery 返回 ready、非空且
+全部可准入当前 workspace 的候选时，ordinary/module-export completion 才以当前/open documents 与
+候选声明文件作为 compiler roots；compiler 仍生成 completion entry 并通过
+`getCompletionEntryDetails()` 做最终证明。missing/empty/partial/stale/outside-workspace 均保留完整
+workspace fallback。公开 5,000-export LSP 合同中 ready roots 从 25 降至 2，stale case 仍为 25，
+两者都返回并 resolve 同一 `ExactNeedleExport`。
+
+固定 Photos `ConflictContent` 一次 fresh-process A/B 中，completion Program 从 1,928/1,246 project
+files/1,246 roots 降至 772/107/2；completion boundary worker RSS 从 767,074,304 降至
+481,456,128 bytes，响应从 8.766 s 降至 4.184 s。completion、resolve import edit 与 90 条
+diagnostics 指纹完全相同。但完整 workflow peak 只下降 6.57%，因为 resolve/diagnostics 后续仍恢复
+更广语义状态。这只是单次因果证据，不是统计 release 结论；默认继续为 `workspace`。下一 RED 是让
+discovered completion 的 resolve 保留同一官方 entry identity 与精确 import edit，同时避免无必要的
+full-workspace roots；ambient/global contribution discovery 仍是默认启用前置门。
+[报告](../reports/2026-09-13-auto-import-discovery-roots.md)。
