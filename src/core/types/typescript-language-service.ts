@@ -142,7 +142,7 @@ type RenameConflictPreflight =
   | "conflict"
   | "indeterminate"
 
-export type TypeScriptSdkAmbientProfile = "full" | "common"
+export type TypeScriptSdkAmbientProfile = "full" | "common" | "core"
 
 export interface TypeScriptLanguageServiceEngineOptions {
   onSdkSelected?: (workspaceRoot: string, selection: ProjectSdkSelection) => void
@@ -2484,6 +2484,14 @@ function discoverSdkAmbientDeclarations(
   profile: TypeScriptSdkAmbientProfile,
 ): string[] {
   if (!sdkRoot) return []
+  if (profile === "core") {
+    const core = [
+      path.join(sdkRoot, "ets", "component", "common.d.ts"),
+      path.join(sdkRoot, "ets", "component", "units.d.ts"),
+      path.join(sdkRoot, "ets", "component", "common_ts_ets_api.d.ts"),
+    ]
+    if (core.every((candidate) => fs.existsSync(candidate))) return core
+  }
   if (profile === "common") {
     const common = path.join(sdkRoot, "ets", "component", "common.d.ts")
     if (!fs.existsSync(common)) {

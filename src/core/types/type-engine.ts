@@ -25,7 +25,11 @@ import { LocalPackageResolver } from "../sdk/local-package-resolver.js"
 import type { HarmonyProjectModel } from "../../project/harmony-project-model.js"
 import type { ProjectFileAccessPort, SemanticWorkspaceView } from "../workspace/document-store.js"
 import { arbitrateCompletionLists } from "./completion-arbitrator.js"
-import { TypeScriptLanguageServiceEngine, type TypeScriptLanguageServiceEngineOptions } from "./typescript-language-service.js"
+import {
+  TypeScriptLanguageServiceEngine,
+  type TypeScriptLanguageServiceEngineOptions,
+  type TypeScriptSdkAmbientProfile,
+} from "./typescript-language-service.js"
 import {
   SemanticCoordinator,
   type SemanticManagedContext,
@@ -223,6 +227,7 @@ export class SemanticTypeEngineRegistry {
       maxResidentContexts?: number
       hostCancellationToken?: TypeScriptLanguageServiceEngineOptions["hostCancellationToken"]
       references?: ReferenceSearchRuntimeConfig
+      interactiveSdkAmbientProfile?: TypeScriptSdkAmbientProfile
       onReferenceTrace?: (
         event: string,
         fields: Readonly<Record<string, string | number | boolean | null | undefined>>,
@@ -469,6 +474,7 @@ export class SemanticTypeEngineRegistry {
       projectFileAccess: this.projectFileAccess,
       sdkConfiguration: this.sdkConfiguration,
       hostCancellationToken: this.options.hostCancellationToken,
+      sdkAmbientProfile: this.options.interactiveSdkAmbientProfile,
     })
   }
 

@@ -67,6 +67,7 @@ export interface LegacySemanticEngineRuntimeOptions {
   readonly maxResidentContexts?: number
   readonly hostCancellationToken?: import("typescript").HostCancellationToken
   readonly references?: ReferenceSearchRuntimeConfig
+  readonly interactiveSdkAmbientProfile?: import("../core/types/typescript-language-service.js").TypeScriptSdkAmbientProfile
 }
 
 export class LegacySemanticEngine implements SemanticEnginePort {

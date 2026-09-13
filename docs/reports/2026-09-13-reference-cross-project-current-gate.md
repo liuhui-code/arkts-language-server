@@ -92,6 +92,7 @@ release performance claim.
   SDK semantics.
 - `indexed-batched` remains opt-in because memory benefit is not monotonic across project size,
   the fixed verifier context can regress small projects, and no real >3 GB reproducer is fixed.
-- The next allowed experiment is a conservative interactive-diagnostics SDK closure with an
-  exact full-profile diagnostic oracle and fail-closed fallback. Static `common` replacement is
-  stopped because it already produced five false TS2304 diagnostics in Photos.
+- The conservative interactive-diagnostics core-seed experiment has now completed with an exact
+  full-profile diagnostic oracle and fail-closed fallback. It reduced Photos SDK text by 27.9%, but
+  product peak by only 6.5% at the median, so it remains default-off and does not change this gate.
+  See the [interactive SDK core-closure report](2026-09-13-interactive-sdk-core-spike.md).

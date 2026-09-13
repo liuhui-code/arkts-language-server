@@ -676,6 +676,154 @@ test("a verifier-only common SDK ambient profile preserves public semantics with
   assert.equal(common.diagnosticEvents[0].sdkSourceFiles, 3)
 })
 
+test("a diagnostics core SDK closure retains required ArkUI globals without the full ambient root", async (t) => {
+  const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), "arkts-diagnostics-sdk-core-"))
+  t.after(() => fs.promises.rm(root, { recursive: true, force: true }))
+  const workspace = path.join(root, "workspace")
+  const sdk = path.join(root, "sdk", "openharmony")
+  const component = path.join(sdk, "ets", "component")
+  await Promise.all([
+    fs.promises.mkdir(workspace, { recursive: true }),
+    fs.promises.mkdir(component, { recursive: true }),
+    fs.promises.mkdir(path.join(sdk, "toolchains"), { recursive: true }),
+  ])
+  await fs.promises.writeFile(path.join(sdk, "ets", "oh-uni-package.json"), JSON.stringify({
+    path: "ets",
+    apiVersion: "24",
+    version: "6.1.1.125",
+  }))
+  await fs.promises.writeFile(path.join(component, "index-full.d.ts"), [
+    '/// <reference path="./common.d.ts" />',
+    '/// <reference path="./units.d.ts" />',
+    '/// <reference path="./common_ts_ets_api.d.ts" />',
+    '/// <reference path="./full-only.d.ts" />',
+    "",
+  ].join("\n"))
+  await fs.promises.writeFile(path.join(component, "common.d.ts"),
+    "declare class SharedSdkType { value: number }\n")
+  await fs.promises.writeFile(path.join(component, "units.d.ts"),
+    "declare type Resource = string\n")
+  await fs.promises.writeFile(path.join(component, "common_ts_ets_api.d.ts"), [
+    "declare class AppStorage {",
+    "  static SetOrCreate(name: string, value: string): void",
+    "}",
+    "",
+  ].join("\n"))
+  await fs.promises.writeFile(path.join(component, "full-only.d.ts"),
+    "declare interface UnusedFullSdkMarker { marker: string }\n")
+
+  const queryText = [
+    'import { PublicThing } from "./Target"',
+    "AppStorage.SetOrCreate('resource', 'ready')",
+    "export const resource: Resource = 'ready'",
+    "export const query: PublicThing = new PublicThing()",
+    "",
+  ].join("\n")
+  await Promise.all([
+    fs.promises.writeFile(path.join(workspace, "Target.ets"), [
+      "export class PublicThing {",
+      "  sdk: SharedSdkType",
+      "}",
+      "",
+    ].join("\n")),
+    fs.promises.writeFile(path.join(workspace, "Query.ets"), queryText),
+    fs.promises.writeFile(path.join(workspace, "Use.ets"), [
+      'import { PublicThing } from "./Target"',
+      "export const use = new PublicThing()",
+      "",
+    ].join("\n")),
+  ])
+  const queryUri = pathToFileURL(path.join(workspace, "Query.ets")).href
+  const position = positionAt(queryText, queryText.lastIndexOf("PublicThing") + 1)
+  const full = await runSingleReferenceRequest(t, {
+    root, workspace, queryUri, queryText, position,
+    strategy: "batched", runId: "diagnostics-sdk-full", sdkPath: sdk,
+    sdkAmbientProfile: "common", captureDiagnostics: true,
+  })
+  const core = await runSingleReferenceRequest(t, {
+    root, workspace, queryUri, queryText, position,
+    strategy: "batched", runId: "diagnostics-sdk-core", sdkPath: sdk,
+    sdkAmbientProfile: "common", interactiveSdkAmbientProfile: "core",
+    captureDiagnostics: true,
+  })
+
+  assert.deepEqual(core.locations, full.locations)
+  assert.deepEqual(core.diagnostics, full.diagnostics)
+  assert.deepEqual(core.diagnostics, [])
+  assert.equal(full.diagnosticEvents.length, 1)
+  assert.equal(core.diagnosticEvents.length, 1)
+  assert.equal(full.diagnosticEvents[0].sdkSourceFiles, 5)
+  assert.equal(core.diagnosticEvents[0].sdkSourceFiles, 3)
+})
+
+test("an incomplete diagnostics core SDK closure fails closed to the full ambient root", async (t) => {
+  const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), "arkts-diagnostics-sdk-fallback-"))
+  t.after(() => fs.promises.rm(root, { recursive: true, force: true }))
+  const workspace = path.join(root, "workspace")
+  const sdk = path.join(root, "sdk", "openharmony")
+  const component = path.join(sdk, "ets", "component")
+  await Promise.all([
+    fs.promises.mkdir(workspace, { recursive: true }),
+    fs.promises.mkdir(component, { recursive: true }),
+    fs.promises.mkdir(path.join(sdk, "toolchains"), { recursive: true }),
+  ])
+  await fs.promises.writeFile(path.join(sdk, "ets", "oh-uni-package.json"), JSON.stringify({
+    path: "ets",
+    apiVersion: "24",
+    version: "6.1.1.125",
+  }))
+  await fs.promises.writeFile(path.join(component, "index-full.d.ts"), [
+    '/// <reference path="./common.d.ts" />',
+    '/// <reference path="./full-only.d.ts" />',
+    "",
+  ].join("\n"))
+  await fs.promises.writeFile(path.join(component, "common.d.ts"),
+    "declare class SharedSdkType { value: number }\n")
+  await fs.promises.writeFile(path.join(component, "full-only.d.ts"),
+    "declare interface FullOnlySdkMarker { marker: string }\n")
+
+  const queryText = [
+    'import { PublicThing } from "./Target"',
+    "export const query: PublicThing = new PublicThing()",
+    "",
+  ].join("\n")
+  await Promise.all([
+    fs.promises.writeFile(path.join(workspace, "Target.ets"), [
+      "export class PublicThing {",
+      "  sdk: SharedSdkType",
+      "}",
+      "",
+    ].join("\n")),
+    fs.promises.writeFile(path.join(workspace, "Query.ets"), queryText),
+    fs.promises.writeFile(path.join(workspace, "Use.ets"), [
+      'import { PublicThing } from "./Target"',
+      "export const use = new PublicThing()",
+      "",
+    ].join("\n")),
+  ])
+  const queryUri = pathToFileURL(path.join(workspace, "Query.ets")).href
+  const position = positionAt(queryText, queryText.lastIndexOf("PublicThing") + 1)
+  const full = await runSingleReferenceRequest(t, {
+    root, workspace, queryUri, queryText, position,
+    strategy: "batched", runId: "diagnostics-sdk-fallback-full", sdkPath: sdk,
+    sdkAmbientProfile: "common", captureDiagnostics: true,
+  })
+  const fallback = await runSingleReferenceRequest(t, {
+    root, workspace, queryUri, queryText, position,
+    strategy: "batched", runId: "diagnostics-sdk-fallback-core", sdkPath: sdk,
+    sdkAmbientProfile: "common", interactiveSdkAmbientProfile: "core",
+    captureDiagnostics: true,
+  })
+
+  assert.deepEqual(fallback.locations, full.locations)
+  assert.deepEqual(fallback.diagnostics, full.diagnostics)
+  assert.deepEqual(fallback.diagnostics, [])
+  assert.equal(full.diagnosticEvents.length, 1)
+  assert.equal(fallback.diagnosticEvents.length, 1)
+  assert.equal(full.diagnosticEvents[0].sdkSourceFiles, 3)
+  assert.equal(fallback.diagnosticEvents[0].sdkSourceFiles, 3)
+})
+
 test("indexed batching classifies a locked SDK module as an external terminal", async (t) => {
   const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), "arkts-references-sdk-terminal-"))
   t.after(() => fs.promises.rm(root, { recursive: true, force: true }))
@@ -819,6 +967,7 @@ async function runSingleReferenceRequest(t, {
   afterFirstRequest,
   sdkPath,
   sdkAmbientProfile,
+  interactiveSdkAmbientProfile,
   captureDiagnostics = false,
 }) {
   const logDirectory = path.join(root, `logs-${runId}`)
@@ -850,6 +999,9 @@ async function runSingleReferenceRequest(t, {
       ARKTS_REFERENCES_TRACE: "1",
       ...(sdkAmbientProfile ? {
         ARKTS_REFERENCES_SDK_AMBIENT_PROFILE: sdkAmbientProfile,
+      } : {}),
+      ...(interactiveSdkAmbientProfile ? {
+        ARKTS_INTERACTIVE_SDK_AMBIENT_PROFILE: interactiveSdkAmbientProfile,
       } : {}),
     },
     capabilities: awaitIndexReady ? { window: { workDoneProgress: true } } : {},

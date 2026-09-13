@@ -1,7 +1,7 @@
 import type { TypeScriptSdkAmbientProfile } from "../../core/types/typescript-language-service.js"
 
 export type ReferenceSearchStrategy = "legacy" | "batched" | "indexed-batched"
-export type ReferenceSdkAmbientProfile = TypeScriptSdkAmbientProfile
+export type ReferenceSdkAmbientProfile = Extract<TypeScriptSdkAmbientProfile, "full" | "common">
 
 export interface ReferenceSearchRuntimeConfig {
   readonly strategy: ReferenceSearchStrategy
