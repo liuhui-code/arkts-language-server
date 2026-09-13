@@ -1,0 +1,1895 @@
+{
+  "schemaVersion": 1,
+  "status": "PASS",
+  "replay": "A-fresh-process-references-first",
+  "environment": {
+    "repo": "/Users/liuhui/Documents/code/arkts-language-server",
+    "head": "385c309d8f500df033415526cf67d7f2c70ad540",
+    "worktreeStatus": "",
+    "workspace": "/private/tmp/arkts-business-gramony",
+    "workspaceRevision": "0a1ee4b026b6736671f0030ba9859aceaa962298",
+    "workspaceStatus": "",
+    "sdk": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony",
+    "sdkMetadata": {
+      "apiVersion": "24",
+      "displayName": "Ets",
+      "meta": {
+        "metaVersion": "3.0.0"
+      },
+      "path": "ets",
+      "releaseType": "Release",
+      "version": "6.1.1.125"
+    },
+    "node": "/Users/liuhui/.nvm/versions/node/v26.3.0/bin/node",
+    "nodeVersion": "v26.3.0",
+    "platform": "Darwin 25.6.0 x64",
+    "server": "/Users/liuhui/Documents/code/arkts-language-server/dist/server.cjs",
+    "serverSha256": "fbd539662080a420c862b3b280353aab429e2aecf827632f09e61daf10971111",
+    "sidecar": "/Users/liuhui/Documents/code/arkts-language-server/target/release/arkts-index-sidecar",
+    "sidecarSha256": "f498ead6998a052bb790d3a51914c12475f65aff13e440708823cf73a35c5591",
+    "launch": {
+      "command": "/Users/liuhui/.nvm/versions/node/v26.3.0/bin/node",
+      "args": [
+        "/Users/liuhui/Documents/code/arkts-language-server/dist/server.cjs",
+        "--stdio"
+      ]
+    },
+    "strategy": "indexed-batched",
+    "sdkProfile": "common"
+  },
+  "target": {
+    "file": "common/base/src/main/ets/utils/DateHelper/DateHelper.ets",
+    "uri": "file:///private/tmp/arkts-business-gramony/common/base/src/main/ets/utils/DateHelper/DateHelper.ets",
+    "symbol": "DateHelper",
+    "position": {
+      "line": 0,
+      "character": 16
+    },
+    "includeDeclaration": true
+  },
+  "targetPid": 69447,
+  "samplerPid": 69448,
+  "catalog": "Indexed 78/78 files; skipped 2 entries",
+  "requestEvidence": {
+    "explicitMethod": "textDocument/references",
+    "requestedMethods": [
+      "initialize",
+      "initialized",
+      "textDocument/didOpen",
+      "textDocument/references",
+      "shutdown",
+      "exit"
+    ],
+    "forbiddenSymbolRequests": [],
+    "transcript": {
+      "entries": [
+        {
+          "direction": "send",
+          "sequence": 1,
+          "kind": "request",
+          "method": "initialize",
+          "id": 1,
+          "byteSize": 395
+        },
+        {
+          "direction": "receive",
+          "sequence": 2,
+          "kind": "response",
+          "method": null,
+          "id": 1,
+          "byteSize": 709
+        },
+        {
+          "direction": "send",
+          "sequence": 3,
+          "kind": "notification",
+          "method": "initialized",
+          "id": null,
+          "byteSize": 52
+        },
+        {
+          "direction": "receive",
+          "sequence": 4,
+          "kind": "request",
+          "method": "window/workDoneProgress/create",
+          "id": 0,
+          "byteSize": 124
+        },
+        {
+          "direction": "send",
+          "sequence": 5,
+          "kind": "response",
+          "method": null,
+          "id": 0,
+          "byteSize": 38
+        },
+        {
+          "direction": "receive",
+          "sequence": 6,
+          "kind": "notification",
+          "method": "$/progress",
+          "id": null,
+          "byteSize": 211
+        },
+        {
+          "direction": "receive",
+          "sequence": 7,
+          "kind": "notification",
+          "method": "$/progress",
+          "id": null,
+          "byteSize": 174
+        },
+        {
+          "direction": "receive",
+          "sequence": 8,
+          "kind": "notification",
+          "method": "$/progress",
+          "id": null,
+          "byteSize": 191
+        },
+        {
+          "direction": "receive",
+          "sequence": 9,
+          "kind": "notification",
+          "method": "$/progress",
+          "id": null,
+          "byteSize": 191
+        },
+        {
+          "direction": "receive",
+          "sequence": 10,
+          "kind": "notification",
+          "method": "$/progress",
+          "id": null,
+          "byteSize": 191
+        },
+        {
+          "direction": "receive",
+          "sequence": 11,
+          "kind": "notification",
+          "method": "$/progress",
+          "id": null,
+          "byteSize": 120
+        },
+        {
+          "direction": "send",
+          "sequence": 12,
+          "kind": "notification",
+          "method": "textDocument/didOpen",
+          "id": null,
+          "byteSize": 1491
+        },
+        {
+          "direction": "send",
+          "sequence": 13,
+          "kind": "request",
+          "method": "textDocument/references",
+          "id": 2,
+          "byteSize": 270
+        },
+        {
+          "direction": "receive",
+          "sequence": 14,
+          "kind": "response",
+          "method": null,
+          "id": 2,
+          "byteSize": 1491
+        },
+        {
+          "direction": "receive",
+          "sequence": 15,
+          "kind": "notification",
+          "method": "textDocument/publishDiagnostics",
+          "id": null,
+          "byteSize": 1787
+        },
+        {
+          "direction": "send",
+          "sequence": 16,
+          "kind": "request",
+          "method": "shutdown",
+          "id": 3,
+          "byteSize": 58
+        },
+        {
+          "direction": "receive",
+          "sequence": 17,
+          "kind": "response",
+          "method": null,
+          "id": 3,
+          "byteSize": 38
+        },
+        {
+          "direction": "send",
+          "sequence": 18,
+          "kind": "notification",
+          "method": "exit",
+          "id": null,
+          "byteSize": 47
+        }
+      ],
+      "retainedBytes": 1841,
+      "totalEntries": 18,
+      "droppedEntries": 0
+    }
+  },
+  "diagnostic": {
+    "timestamp": 1789289849346,
+    "version": 1,
+    "diagnostics": [
+      {
+        "range": {
+          "start": {
+            "line": 1,
+            "character": 28
+          },
+          "end": {
+            "line": 1,
+            "character": 32
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'Date'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 1,
+            "character": 38
+          },
+          "end": {
+            "line": 1,
+            "character": 42
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'Date'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 7,
+            "character": 29
+          },
+          "end": {
+            "line": 7,
+            "character": 33
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'Date'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 7,
+            "character": 39
+          },
+          "end": {
+            "line": 7,
+            "character": 43
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'Date'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 8,
+            "character": 23
+          },
+          "end": {
+            "line": 8,
+            "character": 27
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'Date'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 10,
+            "character": 23
+          },
+          "end": {
+            "line": 10,
+            "character": 27
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'Date'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 15,
+            "character": 29
+          },
+          "end": {
+            "line": 15,
+            "character": 33
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'Date'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 15,
+            "character": 39
+          },
+          "end": {
+            "line": 15,
+            "character": 43
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'Date'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 23,
+            "character": 20
+          },
+          "end": {
+            "line": 23,
+            "character": 24
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'Date'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 24,
+            "character": 19
+          },
+          "end": {
+            "line": 24,
+            "character": 23
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'Date'."
+      }
+    ]
+  },
+  "responses": [
+    {
+      "iteration": 1,
+      "documentVersion": 1,
+      "error": null,
+      "normalizedReferences": [
+        {
+          "uri": "file:///private/tmp/arkts-business-gramony/common/base/Index.ets",
+          "range": {
+            "start": {
+              "line": 24,
+              "character": 9
+            },
+            "end": {
+              "line": 24,
+              "character": 19
+            }
+          }
+        },
+        {
+          "uri": "file:///private/tmp/arkts-business-gramony/common/base/src/main/ets/utils/DateHelper/DateHelper.ets",
+          "range": {
+            "start": {
+              "line": 0,
+              "character": 13
+            },
+            "end": {
+              "line": 0,
+              "character": 23
+            }
+          }
+        },
+        {
+          "uri": "file:///private/tmp/arkts-business-gramony/common/base/src/main/ets/utils/DateHelper/DateHelper.ets",
+          "range": {
+            "start": {
+              "line": 25,
+              "character": 8
+            },
+            "end": {
+              "line": 25,
+              "character": 18
+            }
+          }
+        },
+        {
+          "uri": "file:///private/tmp/arkts-business-gramony/common/base/src/main/ets/utils/DateHelper/DateHelper.ets",
+          "range": {
+            "start": {
+              "line": 29,
+              "character": 15
+            },
+            "end": {
+              "line": 29,
+              "character": 25
+            }
+          }
+        },
+        {
+          "uri": "file:///private/tmp/arkts-business-gramony/features/home/src/main/ets/views/Chat/ChatItem.ets",
+          "range": {
+            "start": {
+              "line": 17,
+              "character": 9
+            },
+            "end": {
+              "line": 17,
+              "character": 19
+            }
+          }
+        },
+        {
+          "uri": "file:///private/tmp/arkts-business-gramony/features/home/src/main/ets/views/Chat/ChatItem.ets",
+          "range": {
+            "start": {
+              "line": 84,
+              "character": 15
+            },
+            "end": {
+              "line": 84,
+              "character": 25
+            }
+          }
+        },
+        {
+          "uri": "file:///private/tmp/arkts-business-gramony/features/home/src/main/ets/views/Message/MessageBubble.ets",
+          "range": {
+            "start": {
+              "line": 0,
+              "character": 45
+            },
+            "end": {
+              "line": 0,
+              "character": 55
+            }
+          }
+        },
+        {
+          "uri": "file:///private/tmp/arkts-business-gramony/features/home/src/main/ets/views/Message/MessageBubble.ets",
+          "range": {
+            "start": {
+              "line": 323,
+              "character": 23
+            },
+            "end": {
+              "line": 323,
+              "character": 33
+            }
+          }
+        }
+      ],
+      "comparableLocations": [
+        {
+          "file": "common/base/Index.ets",
+          "range": {
+            "start": {
+              "line": 24,
+              "character": 9
+            },
+            "end": {
+              "line": 24,
+              "character": 19
+            }
+          }
+        },
+        {
+          "file": "common/base/src/main/ets/utils/DateHelper/DateHelper.ets",
+          "range": {
+            "start": {
+              "line": 0,
+              "character": 13
+            },
+            "end": {
+              "line": 0,
+              "character": 23
+            }
+          }
+        },
+        {
+          "file": "common/base/src/main/ets/utils/DateHelper/DateHelper.ets",
+          "range": {
+            "start": {
+              "line": 25,
+              "character": 8
+            },
+            "end": {
+              "line": 25,
+              "character": 18
+            }
+          }
+        },
+        {
+          "file": "common/base/src/main/ets/utils/DateHelper/DateHelper.ets",
+          "range": {
+            "start": {
+              "line": 29,
+              "character": 15
+            },
+            "end": {
+              "line": 29,
+              "character": 25
+            }
+          }
+        },
+        {
+          "file": "features/home/src/main/ets/views/Chat/ChatItem.ets",
+          "range": {
+            "start": {
+              "line": 17,
+              "character": 9
+            },
+            "end": {
+              "line": 17,
+              "character": 19
+            }
+          }
+        },
+        {
+          "file": "features/home/src/main/ets/views/Chat/ChatItem.ets",
+          "range": {
+            "start": {
+              "line": 84,
+              "character": 15
+            },
+            "end": {
+              "line": 84,
+              "character": 25
+            }
+          }
+        },
+        {
+          "file": "features/home/src/main/ets/views/Message/MessageBubble.ets",
+          "range": {
+            "start": {
+              "line": 0,
+              "character": 45
+            },
+            "end": {
+              "line": 0,
+              "character": 55
+            }
+          }
+        },
+        {
+          "file": "features/home/src/main/ets/views/Message/MessageBubble.ets",
+          "range": {
+            "start": {
+              "line": 323,
+              "character": 23
+            },
+            "end": {
+              "line": 323,
+              "character": 33
+            }
+          }
+        }
+      ],
+      "validation": {
+        "pass": true,
+        "expectedCount": 8,
+        "observedCount": 8,
+        "errors": []
+      }
+    }
+  ],
+  "repeatedResultsIdentical": null,
+  "normalizedReferences": [
+    {
+      "uri": "file:///private/tmp/arkts-business-gramony/common/base/Index.ets",
+      "range": {
+        "start": {
+          "line": 24,
+          "character": 9
+        },
+        "end": {
+          "line": 24,
+          "character": 19
+        }
+      }
+    },
+    {
+      "uri": "file:///private/tmp/arkts-business-gramony/common/base/src/main/ets/utils/DateHelper/DateHelper.ets",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 13
+        },
+        "end": {
+          "line": 0,
+          "character": 23
+        }
+      }
+    },
+    {
+      "uri": "file:///private/tmp/arkts-business-gramony/common/base/src/main/ets/utils/DateHelper/DateHelper.ets",
+      "range": {
+        "start": {
+          "line": 25,
+          "character": 8
+        },
+        "end": {
+          "line": 25,
+          "character": 18
+        }
+      }
+    },
+    {
+      "uri": "file:///private/tmp/arkts-business-gramony/common/base/src/main/ets/utils/DateHelper/DateHelper.ets",
+      "range": {
+        "start": {
+          "line": 29,
+          "character": 15
+        },
+        "end": {
+          "line": 29,
+          "character": 25
+        }
+      }
+    },
+    {
+      "uri": "file:///private/tmp/arkts-business-gramony/features/home/src/main/ets/views/Chat/ChatItem.ets",
+      "range": {
+        "start": {
+          "line": 17,
+          "character": 9
+        },
+        "end": {
+          "line": 17,
+          "character": 19
+        }
+      }
+    },
+    {
+      "uri": "file:///private/tmp/arkts-business-gramony/features/home/src/main/ets/views/Chat/ChatItem.ets",
+      "range": {
+        "start": {
+          "line": 84,
+          "character": 15
+        },
+        "end": {
+          "line": 84,
+          "character": 25
+        }
+      }
+    },
+    {
+      "uri": "file:///private/tmp/arkts-business-gramony/features/home/src/main/ets/views/Message/MessageBubble.ets",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 45
+        },
+        "end": {
+          "line": 0,
+          "character": 55
+        }
+      }
+    },
+    {
+      "uri": "file:///private/tmp/arkts-business-gramony/features/home/src/main/ets/views/Message/MessageBubble.ets",
+      "range": {
+        "start": {
+          "line": 323,
+          "character": 23
+        },
+        "end": {
+          "line": 323,
+          "character": 33
+        }
+      }
+    }
+  ],
+  "expectedComparableLocations": [
+    {
+      "file": "common/base/Index.ets",
+      "range": {
+        "start": {
+          "line": 24,
+          "character": 9
+        },
+        "end": {
+          "line": 24,
+          "character": 19
+        }
+      }
+    },
+    {
+      "file": "common/base/src/main/ets/utils/DateHelper/DateHelper.ets",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 13
+        },
+        "end": {
+          "line": 0,
+          "character": 23
+        }
+      }
+    },
+    {
+      "file": "common/base/src/main/ets/utils/DateHelper/DateHelper.ets",
+      "range": {
+        "start": {
+          "line": 25,
+          "character": 8
+        },
+        "end": {
+          "line": 25,
+          "character": 18
+        }
+      }
+    },
+    {
+      "file": "common/base/src/main/ets/utils/DateHelper/DateHelper.ets",
+      "range": {
+        "start": {
+          "line": 29,
+          "character": 15
+        },
+        "end": {
+          "line": 29,
+          "character": 25
+        }
+      }
+    },
+    {
+      "file": "features/home/src/main/ets/views/Chat/ChatItem.ets",
+      "range": {
+        "start": {
+          "line": 17,
+          "character": 9
+        },
+        "end": {
+          "line": 17,
+          "character": 19
+        }
+      }
+    },
+    {
+      "file": "features/home/src/main/ets/views/Chat/ChatItem.ets",
+      "range": {
+        "start": {
+          "line": 84,
+          "character": 15
+        },
+        "end": {
+          "line": 84,
+          "character": 25
+        }
+      }
+    },
+    {
+      "file": "features/home/src/main/ets/views/Message/MessageBubble.ets",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 45
+        },
+        "end": {
+          "line": 0,
+          "character": 55
+        }
+      }
+    },
+    {
+      "file": "features/home/src/main/ets/views/Message/MessageBubble.ets",
+      "range": {
+        "start": {
+          "line": 323,
+          "character": 23
+        },
+        "end": {
+          "line": 323,
+          "character": 33
+        }
+      }
+    }
+  ],
+  "memory": {
+    "measurementKind": "external-process-tree-rss",
+    "sampleIntervalMs": 50,
+    "sampleCount": 47,
+    "peakProductRssBytes": 461205504,
+    "peakSamplerRssBytes": 68546560,
+    "samples": [
+      {
+        "timestamp": 1789289844362,
+        "totalRssBytes": 55508992,
+        "samplerRssBytes": 47239168,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 55508992
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289844472,
+        "totalRssBytes": 59940864,
+        "samplerRssBytes": 48521216,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 56573952
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 3366912
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289844587,
+        "totalRssBytes": 70238208,
+        "samplerRssBytes": 49324032,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 56676352
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 13561856
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289844691,
+        "totalRssBytes": 71401472,
+        "samplerRssBytes": 49754112,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 56676352
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 14725120
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289844794,
+        "totalRssBytes": 71426048,
+        "samplerRssBytes": 49762304,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 56700928
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 14725120
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289844908,
+        "totalRssBytes": 133980160,
+        "samplerRssBytes": 49934336,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 122155008
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 11825152
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289845022,
+        "totalRssBytes": 162181120,
+        "samplerRssBytes": 50593792,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 150355968
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 11825152
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289845134,
+        "totalRssBytes": 184487936,
+        "samplerRssBytes": 50634752,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 172662784
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 11825152
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289845237,
+        "totalRssBytes": 217067520,
+        "samplerRssBytes": 51138560,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 205242368
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 11825152
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289845348,
+        "totalRssBytes": 241012736,
+        "samplerRssBytes": 53559296,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 229187584
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 11825152
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289845462,
+        "totalRssBytes": 247095296,
+        "samplerRssBytes": 55664640,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 235270144
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 11825152
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289845567,
+        "totalRssBytes": 242200576,
+        "samplerRssBytes": 56664064,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 230375424
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 11825152
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289845670,
+        "totalRssBytes": 259248128,
+        "samplerRssBytes": 57573376,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 247422976
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 11825152
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289845773,
+        "totalRssBytes": 277229568,
+        "samplerRssBytes": 58126336,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 265404416
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 11825152
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289845877,
+        "totalRssBytes": 299692032,
+        "samplerRssBytes": 58126336,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 287866880
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 11825152
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289845985,
+        "totalRssBytes": 321826816,
+        "samplerRssBytes": 58208256,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 310001664
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 11825152
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289846091,
+        "totalRssBytes": 330964992,
+        "samplerRssBytes": 58691584,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 319139840
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 11825152
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289846198,
+        "totalRssBytes": 344662016,
+        "samplerRssBytes": 58691584,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 332836864
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 11825152
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289846307,
+        "totalRssBytes": 343691264,
+        "samplerRssBytes": 58732544,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 331866112
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 11825152
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289846419,
+        "totalRssBytes": 355442688,
+        "samplerRssBytes": 59236352,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 343617536
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 11825152
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289846530,
+        "totalRssBytes": 362520576,
+        "samplerRssBytes": 59842560,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 350695424
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 11825152
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289846641,
+        "totalRssBytes": 370651136,
+        "samplerRssBytes": 59858944,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 358825984
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 11825152
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289846758,
+        "totalRssBytes": 377712640,
+        "samplerRssBytes": 60592128,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 365887488
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 11825152
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289846870,
+        "totalRssBytes": 385683456,
+        "samplerRssBytes": 61558784,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 373858304
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 11825152
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289846981,
+        "totalRssBytes": 400379904,
+        "samplerRssBytes": 61558784,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 388554752
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 11825152
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289847094,
+        "totalRssBytes": 401338368,
+        "samplerRssBytes": 61562880,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 389513216
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 11825152
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289847206,
+        "totalRssBytes": 422629376,
+        "samplerRssBytes": 61562880,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 410804224
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 11825152
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289847313,
+        "totalRssBytes": 433205248,
+        "samplerRssBytes": 61837312,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 421380096
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 11825152
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289847426,
+        "totalRssBytes": 439508992,
+        "samplerRssBytes": 62234624,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 427683840
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 11825152
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289847534,
+        "totalRssBytes": 450707456,
+        "samplerRssBytes": 62742528,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 438882304
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 11825152
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289847645,
+        "totalRssBytes": 457326592,
+        "samplerRssBytes": 63725568,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 445501440
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 11825152
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289847759,
+        "totalRssBytes": 461205504,
+        "samplerRssBytes": 63733760,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 449380352
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 11825152
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289847871,
+        "totalRssBytes": 433332224,
+        "samplerRssBytes": 63754240,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 421507072
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 11825152
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289847987,
+        "totalRssBytes": 416432128,
+        "samplerRssBytes": 64585728,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 404606976
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 11825152
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289848095,
+        "totalRssBytes": 422076416,
+        "samplerRssBytes": 65482752,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 410251264
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 11825152
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289848201,
+        "totalRssBytes": 424296448,
+        "samplerRssBytes": 66383872,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 412471296
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 11825152
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289848310,
+        "totalRssBytes": 424620032,
+        "samplerRssBytes": 67280896,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 412794880
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 11825152
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289848416,
+        "totalRssBytes": 425234432,
+        "samplerRssBytes": 67477504,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 413409280
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 11825152
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289848523,
+        "totalRssBytes": 433278976,
+        "samplerRssBytes": 67485696,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 421453824
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 11825152
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289848630,
+        "totalRssBytes": 427929600,
+        "samplerRssBytes": 67485696,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 416104448
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 11825152
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289848738,
+        "totalRssBytes": 428359680,
+        "samplerRssBytes": 67485696,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 416534528
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 11825152
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289848848,
+        "totalRssBytes": 430280704,
+        "samplerRssBytes": 67502080,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 418455552
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 11825152
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289848960,
+        "totalRssBytes": 435073024,
+        "samplerRssBytes": 67502080,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 423247872
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 11825152
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289849068,
+        "totalRssBytes": 435843072,
+        "samplerRssBytes": 67751936,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 424017920
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 11825152
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289849178,
+        "totalRssBytes": 434294784,
+        "samplerRssBytes": 68521984,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 422469632
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 11825152
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289849289,
+        "totalRssBytes": 434655232,
+        "samplerRssBytes": 68546560,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 422830080
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 11825152
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289849401,
+        "totalRssBytes": 412790784,
+        "samplerRssBytes": 68546560,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69447,
+            "rssBytes": 401006592
+          },
+          {
+            "role": "sidecar",
+            "pid": 69451,
+            "rssBytes": 11784192
+          }
+        ]
+      }
+    ]
+  },
+  "timeline": [
+    {
+      "phase": "server-process-started",
+      "timestamp": 1789289844423,
+      "harnessRssBytes": 47017984,
+      "targetPid": 69447,
+      "samplerPid": 69448,
+      "nearestSampleTimestamp": 1789289844472,
+      "productRssBytes": 59940864
+    },
+    {
+      "phase": "initialize-request-start",
+      "timestamp": 1789289844423,
+      "harnessRssBytes": 47030272,
+      "nearestSampleTimestamp": 1789289844472,
+      "productRssBytes": 59940864
+    },
+    {
+      "phase": "initialize-response-complete",
+      "timestamp": 1789289844428,
+      "harnessRssBytes": 47362048,
+      "nearestSampleTimestamp": 1789289844472,
+      "productRssBytes": 59940864
+    },
+    {
+      "phase": "catalog-complete",
+      "timestamp": 1789289844811,
+      "harnessRssBytes": 47493120,
+      "catalog": "Indexed 78/78 files; skipped 2 entries",
+      "nearestSampleTimestamp": 1789289844794,
+      "productRssBytes": 71426048
+    },
+    {
+      "phase": "didOpen-sent",
+      "timestamp": 1789289844812,
+      "harnessRssBytes": 47501312,
+      "version": 1,
+      "nearestSampleTimestamp": 1789289844794,
+      "productRssBytes": 71426048
+    },
+    {
+      "phase": "references-request-start",
+      "timestamp": 1789289844837,
+      "harnessRssBytes": 47505408,
+      "iteration": 1,
+      "method": "textDocument/references",
+      "position": {
+        "line": 0,
+        "character": 16
+      },
+      "includeDeclaration": true,
+      "nearestSampleTimestamp": 1789289844794,
+      "productRssBytes": 71426048
+    },
+    {
+      "phase": "references-response-complete",
+      "timestamp": 1789289847819,
+      "harnessRssBytes": 47558656,
+      "iteration": 1,
+      "error": null,
+      "locationCount": 8,
+      "validation": true,
+      "nearestSampleTimestamp": 1789289847871,
+      "productRssBytes": 433332224
+    },
+    {
+      "phase": "idle-complete",
+      "timestamp": 1789289848819,
+      "harnessRssBytes": 47562752,
+      "idleMs": 1000,
+      "nearestSampleTimestamp": 1789289848848,
+      "productRssBytes": 430280704
+    },
+    {
+      "phase": "publishDiagnostics",
+      "timestamp": 1789289849346,
+      "harnessRssBytes": 47566848,
+      "version": 1,
+      "count": 10,
+      "nearestSampleTimestamp": 1789289849401,
+      "productRssBytes": 412790784
+    },
+    {
+      "phase": "server-process-closed",
+      "timestamp": 1789289849450,
+      "harnessRssBytes": 47673344,
+      "closeResult": {
+        "shutdown": {
+          "jsonrpc": "2.0",
+          "id": 3,
+          "result": null
+        },
+        "exit": {
+          "code": 0,
+          "signal": null
+        }
+      },
+      "nearestSampleTimestamp": 1789289849401,
+      "productRssBytes": 412790784
+    }
+  ],
+  "serverEvents": [
+    {
+      "transport": "stdio",
+      "schema": 1,
+      "ts": "2026-09-13T08:57:24.336Z",
+      "level": "info",
+      "event": "server.started",
+      "pid": 69447
+    },
+    {
+      "workspaceCount": 1,
+      "positionEncoding": "utf-16",
+      "schema": 1,
+      "ts": "2026-09-13T08:57:24.427Z",
+      "level": "info",
+      "event": "lsp.initialized",
+      "pid": 69447
+    },
+    {
+      "phase": "ready",
+      "workspaceCount": 1,
+      "discoveredFiles": 78,
+      "indexedFiles": 78,
+      "skippedEntries": 2,
+      "totalFiles": 78,
+      "schema": 1,
+      "ts": "2026-09-13T08:57:24.810Z",
+      "level": "info",
+      "event": "index.catalog.terminal",
+      "pid": 69447
+    },
+    {
+      "semanticWorkerCount": 1,
+      "schema": 1,
+      "ts": "2026-09-13T08:57:24.815Z",
+      "level": "info",
+      "event": "semantic.worker.started",
+      "pid": 69447
+    },
+    {
+      "resolvedBindings": 2,
+      "unresolvedBindings": 0,
+      "unresolvedSdkBindings": 0,
+      "unresolvedPackageBindings": 0,
+      "unresolvedRelativeBindings": 0,
+      "unresolvedOtherBindings": 0,
+      "servedGeneration": 1,
+      "schema": 1,
+      "ts": "2026-09-13T08:57:24.855Z",
+      "level": "info",
+      "event": "references.index.source-resolutions",
+      "pid": 69447
+    },
+    {
+      "anchorMode": "indexed-declaration",
+      "candidateFiles": 3,
+      "conservativeCandidateFiles": 3,
+      "servedGeneration": 1,
+      "schema": 1,
+      "ts": "2026-09-13T08:57:24.856Z",
+      "level": "info",
+      "event": "references.index.accepted",
+      "pid": 69447
+    },
+    {
+      "referenceSession": 1,
+      "verifierIsolation": "transient-worker",
+      "batchIndex": 0,
+      "batchCount": 1,
+      "batchRootFiles": 3,
+      "batchCandidateRoots": 2,
+      "batchSemanticUnits": 1,
+      "admittedProjectFiles": 73,
+      "membershipFiles": 77,
+      "candidateFiles": 3,
+      "candidateMode": "indexed",
+      "semanticUnitMode": "project-graph",
+      "semanticUnits": 3,
+      "preparedProgramSourceFiles": 527,
+      "preparedProgramProjectFiles": 32,
+      "preparedSdkSourceFiles": 495,
+      "preparedProjectTextCodeUnits": 140640,
+      "preparedSdkTextCodeUnits": 14926306,
+      "preparedOtherSourceFiles": 0,
+      "preparedOtherTextCodeUnits": 0,
+      "preparedRss": 449073152,
+      "preparedHeapUsed": 182506864,
+      "queryRssDelta": 1105920,
+      "queryHeapUsedDelta": 9979192,
+      "programSourceFiles": 527,
+      "programProjectFiles": 32,
+      "sdkSourceFiles": 495,
+      "projectTextCodeUnits": 140640,
+      "sdkTextCodeUnits": 14926306,
+      "otherSourceFiles": 0,
+      "otherTextCodeUnits": 0,
+      "locations": 8,
+      "durationMs": 2622.12,
+      "rss": 450179072,
+      "heapUsed": 192486056,
+      "schema": 1,
+      "ts": "2026-09-13T08:57:27.815Z",
+      "level": "info",
+      "event": "references.batch.complete",
+      "pid": 69447
+    },
+    {
+      "method": "textDocument/references",
+      "durationMs": 2977.72,
+      "outcome": "ok",
+      "schema": 1,
+      "ts": "2026-09-13T08:57:27.816Z",
+      "level": "info",
+      "event": "request.completed",
+      "pid": 69447
+    },
+    {
+      "workspaceRoot": "/private/tmp/arkts-business-gramony",
+      "sdkPath": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony",
+      "source": "configuration",
+      "ready": true,
+      "metadataStatus": "identified",
+      "apiVersion": "24",
+      "componentVersion": "6.1.1.125",
+      "dialectCompatibility": "unverified",
+      "declarationSupport": "typescript-compatible-only",
+      "schema": 1,
+      "ts": "2026-09-13T08:57:27.905Z",
+      "level": "info",
+      "event": "sdk.selected",
+      "pid": 69447
+    },
+    {
+      "programSourceFiles": 256,
+      "programProjectFiles": 1,
+      "sdkSourceFiles": 255,
+      "projectTextCodeUnits": 1227,
+      "sdkTextCodeUnits": 10741499,
+      "otherSourceFiles": 0,
+      "otherTextCodeUnits": 0,
+      "diagnostics": 10,
+      "rss": 423665664,
+      "heapUsed": 162431144,
+      "schema": 1,
+      "ts": "2026-09-13T08:57:29.344Z",
+      "level": "info",
+      "event": "diagnostics.program.complete",
+      "pid": 69447
+    },
+    {
+      "reason": "shutdown",
+      "schema": 1,
+      "ts": "2026-09-13T08:57:29.410Z",
+      "level": "info",
+      "event": "server.stopped",
+      "pid": 69447
+    }
+  ],
+  "closeResult": {
+    "shutdown": {
+      "jsonrpc": "2.0",
+      "id": 3,
+      "result": null
+    },
+    "exit": {
+      "code": 0,
+      "signal": null
+    }
+  },
+  "samplerStderr": "",
+  "failure": null
+}

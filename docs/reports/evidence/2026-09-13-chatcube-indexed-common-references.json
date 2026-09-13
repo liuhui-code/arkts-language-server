@@ -1,0 +1,4713 @@
+{
+  "schemaVersion": 1,
+  "status": "PASS",
+  "replay": "A-fresh-process-references-first",
+  "environment": {
+    "repo": "/Users/liuhui/Documents/code/arkts-language-server",
+    "head": "e269a6498732177a8339bd0b11a3ce0b9e6ca409",
+    "worktreeStatus": "",
+    "workspace": "/private/tmp/arkts-business-chatcube",
+    "workspaceRevision": "fd729d0f5c607763adc8ce054ad29171c66c78dc",
+    "workspaceStatus": "",
+    "sdk": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony",
+    "sdkMetadata": {
+      "apiVersion": "24",
+      "displayName": "Ets",
+      "meta": {
+        "metaVersion": "3.0.0"
+      },
+      "path": "ets",
+      "releaseType": "Release",
+      "version": "6.1.1.125"
+    },
+    "node": "/Users/liuhui/.nvm/versions/node/v26.3.0/bin/node",
+    "nodeVersion": "v26.3.0",
+    "platform": "Darwin 25.6.0 x64",
+    "server": "/Users/liuhui/Documents/code/arkts-language-server/dist/server.cjs",
+    "serverSha256": "fbd539662080a420c862b3b280353aab429e2aecf827632f09e61daf10971111",
+    "sidecar": "/Users/liuhui/Documents/code/arkts-language-server/target/release/arkts-index-sidecar",
+    "sidecarSha256": "f498ead6998a052bb790d3a51914c12475f65aff13e440708823cf73a35c5591",
+    "launch": {
+      "command": "/Users/liuhui/.nvm/versions/node/v26.3.0/bin/node",
+      "args": [
+        "/Users/liuhui/Documents/code/arkts-language-server/dist/server.cjs",
+        "--stdio"
+      ]
+    },
+    "strategy": "indexed-batched",
+    "sdkProfile": "common"
+  },
+  "target": {
+    "file": "entry/src/main/ets/services/HttpService.ets",
+    "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/HttpService.ets",
+    "symbol": "HttpService",
+    "position": {
+      "line": 130,
+      "character": 16
+    },
+    "includeDeclaration": true
+  },
+  "targetPid": 69602,
+  "samplerPid": 69603,
+  "catalog": "Indexed 263/263 files; skipped 2 entries",
+  "requestEvidence": {
+    "explicitMethod": "textDocument/references",
+    "requestedMethods": [
+      "initialize",
+      "initialized",
+      "textDocument/didOpen",
+      "textDocument/references",
+      "shutdown",
+      "exit"
+    ],
+    "forbiddenSymbolRequests": [],
+    "transcript": {
+      "entries": [
+        {
+          "direction": "send",
+          "sequence": 1,
+          "kind": "request",
+          "method": "initialize",
+          "id": 1,
+          "byteSize": 396
+        },
+        {
+          "direction": "receive",
+          "sequence": 2,
+          "kind": "response",
+          "method": null,
+          "id": 1,
+          "byteSize": 709
+        },
+        {
+          "direction": "send",
+          "sequence": 3,
+          "kind": "notification",
+          "method": "initialized",
+          "id": null,
+          "byteSize": 52
+        },
+        {
+          "direction": "receive",
+          "sequence": 4,
+          "kind": "request",
+          "method": "window/workDoneProgress/create",
+          "id": 0,
+          "byteSize": 124
+        },
+        {
+          "direction": "send",
+          "sequence": 5,
+          "kind": "response",
+          "method": null,
+          "id": 0,
+          "byteSize": 38
+        },
+        {
+          "direction": "receive",
+          "sequence": 6,
+          "kind": "notification",
+          "method": "$/progress",
+          "id": null,
+          "byteSize": 211
+        },
+        {
+          "direction": "receive",
+          "sequence": 7,
+          "kind": "notification",
+          "method": "$/progress",
+          "id": null,
+          "byteSize": 174
+        },
+        {
+          "direction": "receive",
+          "sequence": 8,
+          "kind": "notification",
+          "method": "$/progress",
+          "id": null,
+          "byteSize": 175
+        },
+        {
+          "direction": "receive",
+          "sequence": 9,
+          "kind": "notification",
+          "method": "$/progress",
+          "id": null,
+          "byteSize": 175
+        },
+        {
+          "direction": "receive",
+          "sequence": 10,
+          "kind": "notification",
+          "method": "$/progress",
+          "id": null,
+          "byteSize": 175
+        },
+        {
+          "direction": "receive",
+          "sequence": 11,
+          "kind": "notification",
+          "method": "$/progress",
+          "id": null,
+          "byteSize": 193
+        },
+        {
+          "direction": "receive",
+          "sequence": 12,
+          "kind": "notification",
+          "method": "$/progress",
+          "id": null,
+          "byteSize": 193
+        },
+        {
+          "direction": "receive",
+          "sequence": 13,
+          "kind": "notification",
+          "method": "$/progress",
+          "id": null,
+          "byteSize": 193
+        },
+        {
+          "direction": "receive",
+          "sequence": 14,
+          "kind": "notification",
+          "method": "$/progress",
+          "id": null,
+          "byteSize": 193
+        },
+        {
+          "direction": "receive",
+          "sequence": 15,
+          "kind": "notification",
+          "method": "$/progress",
+          "id": null,
+          "byteSize": 193
+        },
+        {
+          "direction": "receive",
+          "sequence": 16,
+          "kind": "notification",
+          "method": "$/progress",
+          "id": null,
+          "byteSize": 193
+        },
+        {
+          "direction": "receive",
+          "sequence": 17,
+          "kind": "notification",
+          "method": "$/progress",
+          "id": null,
+          "byteSize": 193
+        },
+        {
+          "direction": "receive",
+          "sequence": 18,
+          "kind": "notification",
+          "method": "$/progress",
+          "id": null,
+          "byteSize": 193
+        },
+        {
+          "direction": "receive",
+          "sequence": 19,
+          "kind": "notification",
+          "method": "$/progress",
+          "id": null,
+          "byteSize": 193
+        },
+        {
+          "direction": "receive",
+          "sequence": 20,
+          "kind": "notification",
+          "method": "$/progress",
+          "id": null,
+          "byteSize": 193
+        },
+        {
+          "direction": "receive",
+          "sequence": 21,
+          "kind": "notification",
+          "method": "$/progress",
+          "id": null,
+          "byteSize": 193
+        },
+        {
+          "direction": "receive",
+          "sequence": 22,
+          "kind": "notification",
+          "method": "$/progress",
+          "id": null,
+          "byteSize": 193
+        },
+        {
+          "direction": "receive",
+          "sequence": 23,
+          "kind": "notification",
+          "method": "$/progress",
+          "id": null,
+          "byteSize": 120
+        },
+        {
+          "direction": "send",
+          "sequence": 24,
+          "kind": "notification",
+          "method": "textDocument/didOpen",
+          "id": null,
+          "byteSize": 25726
+        },
+        {
+          "direction": "send",
+          "sequence": 25,
+          "kind": "request",
+          "method": "textDocument/references",
+          "id": 2,
+          "byteSize": 260
+        },
+        {
+          "direction": "receive",
+          "sequence": 26,
+          "kind": "response",
+          "method": null,
+          "id": 2,
+          "byteSize": 5943
+        },
+        {
+          "direction": "receive",
+          "sequence": 27,
+          "kind": "notification",
+          "method": "textDocument/publishDiagnostics",
+          "id": null,
+          "byteSize": 13856
+        },
+        {
+          "direction": "send",
+          "sequence": 28,
+          "kind": "request",
+          "method": "shutdown",
+          "id": 3,
+          "byteSize": 58
+        },
+        {
+          "direction": "receive",
+          "sequence": 29,
+          "kind": "response",
+          "method": null,
+          "id": 3,
+          "byteSize": 38
+        },
+        {
+          "direction": "send",
+          "sequence": 30,
+          "kind": "notification",
+          "method": "exit",
+          "id": null,
+          "byteSize": 47
+        }
+      ],
+      "retainedBytes": 3115,
+      "totalEntries": 30,
+      "droppedEntries": 0
+    }
+  },
+  "diagnostic": {
+    "timestamp": 1789289953190,
+    "version": 1,
+    "diagnostics": [
+      {
+        "range": {
+          "start": {
+            "line": 17,
+            "character": 11
+          },
+          "end": {
+            "line": 17,
+            "character": 17
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'Record'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 18,
+            "character": 17
+          },
+          "end": {
+            "line": 18,
+            "character": 28
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'ArrayBuffer'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 62,
+            "character": 22
+          },
+          "end": {
+            "line": 62,
+            "character": 25
+          }
+        },
+        "severity": 1,
+        "code": 2583,
+        "source": "arkts",
+        "message": "Cannot find name 'Map'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2015' or later."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 62,
+            "character": 58
+          },
+          "end": {
+            "line": 62,
+            "character": 61
+          }
+        },
+        "severity": 1,
+        "code": 2583,
+        "source": "arkts",
+        "message": "Cannot find name 'Map'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2015' or later."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 63,
+            "character": 25
+          },
+          "end": {
+            "line": 63,
+            "character": 28
+          }
+        },
+        "severity": 1,
+        "code": 2583,
+        "source": "arkts",
+        "message": "Cannot find name 'Map'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2015' or later."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 63,
+            "character": 59
+          },
+          "end": {
+            "line": 63,
+            "character": 62
+          }
+        },
+        "severity": 1,
+        "code": 2583,
+        "source": "arkts",
+        "message": "Cannot find name 'Map'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2015' or later."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 79,
+            "character": 29
+          },
+          "end": {
+            "line": 79,
+            "character": 33
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'Date'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 100,
+            "character": 31
+          },
+          "end": {
+            "line": 100,
+            "character": 35
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'Date'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 148,
+            "character": 23
+          },
+          "end": {
+            "line": 148,
+            "character": 27
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'JSON'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 149,
+            "character": 21
+          },
+          "end": {
+            "line": 149,
+            "character": 25
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'JSON'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 149,
+            "character": 45
+          },
+          "end": {
+            "line": 149,
+            "character": 51
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'Record'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 149,
+            "character": 60
+          },
+          "end": {
+            "line": 149,
+            "character": 66
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'Object'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 157,
+            "character": 22
+          },
+          "end": {
+            "line": 157,
+            "character": 26
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'JSON'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 181,
+            "character": 20
+          },
+          "end": {
+            "line": 181,
+            "character": 24
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'JSON'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 222,
+            "character": 44
+          },
+          "end": {
+            "line": 222,
+            "character": 51
+          }
+        },
+        "severity": 1,
+        "code": 2583,
+        "source": "arkts",
+        "message": "Cannot find name 'Promise'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2015' or later."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 236,
+            "character": 94
+          },
+          "end": {
+            "line": 236,
+            "character": 101
+          }
+        },
+        "severity": 1,
+        "code": 2583,
+        "source": "arkts",
+        "message": "Cannot find name 'Promise'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2015' or later."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 269,
+            "character": 26
+          },
+          "end": {
+            "line": 269,
+            "character": 30
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'Math'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 322,
+            "character": 16
+          },
+          "end": {
+            "line": 322,
+            "character": 23
+          }
+        },
+        "severity": 1,
+        "code": 2583,
+        "source": "arkts",
+        "message": "Cannot find name 'Promise'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2015' or later."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 322,
+            "character": 66
+          },
+          "end": {
+            "line": 322,
+            "character": 76
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'setTimeout'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 331,
+            "character": 23
+          },
+          "end": {
+            "line": 331,
+            "character": 27
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'JSON'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 332,
+            "character": 21
+          },
+          "end": {
+            "line": 332,
+            "character": 25
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'JSON'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 332,
+            "character": 45
+          },
+          "end": {
+            "line": 332,
+            "character": 51
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'Record'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 332,
+            "character": 60
+          },
+          "end": {
+            "line": 332,
+            "character": 66
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'Object'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 343,
+            "character": 13
+          },
+          "end": {
+            "line": 343,
+            "character": 19
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'Record'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 345,
+            "character": 5
+          },
+          "end": {
+            "line": 345,
+            "character": 12
+          }
+        },
+        "severity": 1,
+        "code": 2583,
+        "source": "arkts",
+        "message": "Cannot find name 'Promise'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2015' or later."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 346,
+            "character": 26
+          },
+          "end": {
+            "line": 346,
+            "character": 32
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'Record'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 356,
+            "character": 25
+          },
+          "end": {
+            "line": 356,
+            "character": 31
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'Record'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 357,
+            "character": 24
+          },
+          "end": {
+            "line": 357,
+            "character": 30
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'Object'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 362,
+            "character": 23
+          },
+          "end": {
+            "line": 362,
+            "character": 29
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'Object'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 382,
+            "character": 13
+          },
+          "end": {
+            "line": 382,
+            "character": 19
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'Record'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 384,
+            "character": 5
+          },
+          "end": {
+            "line": 384,
+            "character": 12
+          }
+        },
+        "severity": 1,
+        "code": 2583,
+        "source": "arkts",
+        "message": "Cannot find name 'Promise'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2015' or later."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 400,
+            "character": 13
+          },
+          "end": {
+            "line": 400,
+            "character": 19
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'Record'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 403,
+            "character": 5
+          },
+          "end": {
+            "line": 403,
+            "character": 12
+          }
+        },
+        "severity": 1,
+        "code": 2583,
+        "source": "arkts",
+        "message": "Cannot find name 'Promise'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2015' or later."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 418,
+            "character": 13
+          },
+          "end": {
+            "line": 418,
+            "character": 19
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'Record'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 420,
+            "character": 5
+          },
+          "end": {
+            "line": 420,
+            "character": 12
+          }
+        },
+        "severity": 1,
+        "code": 2583,
+        "source": "arkts",
+        "message": "Cannot find name 'Promise'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2015' or later."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 434,
+            "character": 13
+          },
+          "end": {
+            "line": 434,
+            "character": 19
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'Record'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 436,
+            "character": 5
+          },
+          "end": {
+            "line": 436,
+            "character": 12
+          }
+        },
+        "severity": 1,
+        "code": 2583,
+        "source": "arkts",
+        "message": "Cannot find name 'Promise'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2015' or later."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 450,
+            "character": 10
+          },
+          "end": {
+            "line": 450,
+            "character": 21
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'ArrayBuffer'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 451,
+            "character": 13
+          },
+          "end": {
+            "line": 451,
+            "character": 19
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'Record'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 454,
+            "character": 5
+          },
+          "end": {
+            "line": 454,
+            "character": 12
+          }
+        },
+        "severity": 1,
+        "code": 2583,
+        "source": "arkts",
+        "message": "Cannot find name 'Promise'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2015' or later."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 530,
+            "character": 13
+          },
+          "end": {
+            "line": 530,
+            "character": 19
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'Record'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 533,
+            "character": 5
+          },
+          "end": {
+            "line": 533,
+            "character": 12
+          }
+        },
+        "severity": 1,
+        "code": 2583,
+        "source": "arkts",
+        "message": "Cannot find name 'Promise'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2015' or later."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 533,
+            "character": 13
+          },
+          "end": {
+            "line": 533,
+            "character": 24
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'ArrayBuffer'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 541,
+            "character": 18
+          },
+          "end": {
+            "line": 541,
+            "character": 23
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'Error'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 546,
+            "character": 18
+          },
+          "end": {
+            "line": 546,
+            "character": 23
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'Error'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 564,
+            "character": 18
+          },
+          "end": {
+            "line": 564,
+            "character": 23
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'Error'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 570,
+            "character": 18
+          },
+          "end": {
+            "line": 570,
+            "character": 23
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'Error'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 579,
+            "character": 28
+          },
+          "end": {
+            "line": 579,
+            "character": 39
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'ArrayBuffer'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 585,
+            "character": 92
+          },
+          "end": {
+            "line": 585,
+            "character": 103
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'ArrayBuffer'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 587,
+            "character": 16
+          },
+          "end": {
+            "line": 587,
+            "character": 21
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'Error'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 589,
+            "character": 6
+          },
+          "end": {
+            "line": 589,
+            "character": 13
+          }
+        },
+        "severity": 1,
+        "code": 2584,
+        "source": "arkts",
+        "message": "Cannot find name 'console'. Do you need to change your target library? Try changing the 'lib' compiler option to include 'dom'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 589,
+            "character": 57
+          },
+          "end": {
+            "line": 589,
+            "character": 61
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'JSON'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 590,
+            "character": 16
+          },
+          "end": {
+            "line": 590,
+            "character": 21
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'Error'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 590,
+            "character": 44
+          },
+          "end": {
+            "line": 590,
+            "character": 48
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'JSON'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 609,
+            "character": 13
+          },
+          "end": {
+            "line": 609,
+            "character": 19
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'Record'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 610,
+            "character": 20
+          },
+          "end": {
+            "line": 610,
+            "character": 31
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'ArrayBuffer'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 620,
+            "character": 23
+          },
+          "end": {
+            "line": 620,
+            "character": 34
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'ArrayBuffer'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 662,
+            "character": 71
+          },
+          "end": {
+            "line": 662,
+            "character": 81
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'Uint8Array'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 666,
+            "character": 10
+          },
+          "end": {
+            "line": 666,
+            "character": 17
+          }
+        },
+        "severity": 1,
+        "code": 2584,
+        "source": "arkts",
+        "message": "Cannot find name 'console'. Do you need to change your target library? Try changing the 'lib' compiler option to include 'dom'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 684,
+            "character": 46
+          },
+          "end": {
+            "line": 684,
+            "character": 52
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'Object'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 685,
+            "character": 6
+          },
+          "end": {
+            "line": 685,
+            "character": 13
+          }
+        },
+        "severity": 1,
+        "code": 2584,
+        "source": "arkts",
+        "message": "Cannot find name 'console'. Do you need to change your target library? Try changing the 'lib' compiler option to include 'dom'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 685,
+            "character": 68
+          },
+          "end": {
+            "line": 685,
+            "character": 72
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'JSON'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 689,
+            "character": 41
+          },
+          "end": {
+            "line": 689,
+            "character": 52
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'ArrayBuffer'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 690,
+            "character": 6
+          },
+          "end": {
+            "line": 690,
+            "character": 13
+          }
+        },
+        "severity": 1,
+        "code": 2584,
+        "source": "arkts",
+        "message": "Cannot find name 'console'. Do you need to change your target library? Try changing the 'lib' compiler option to include 'dom'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 697,
+            "character": 6
+          },
+          "end": {
+            "line": 697,
+            "character": 13
+          }
+        },
+        "severity": 1,
+        "code": 2584,
+        "source": "arkts",
+        "message": "Cannot find name 'console'. Do you need to change your target library? Try changing the 'lib' compiler option to include 'dom'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 702,
+            "character": 6
+          },
+          "end": {
+            "line": 702,
+            "character": 13
+          }
+        },
+        "severity": 1,
+        "code": 2584,
+        "source": "arkts",
+        "message": "Cannot find name 'console'. Do you need to change your target library? Try changing the 'lib' compiler option to include 'dom'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 726,
+            "character": 6
+          },
+          "end": {
+            "line": 726,
+            "character": 13
+          }
+        },
+        "severity": 1,
+        "code": 2584,
+        "source": "arkts",
+        "message": "Cannot find name 'console'. Do you need to change your target library? Try changing the 'lib' compiler option to include 'dom'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 729,
+            "character": 21
+          },
+          "end": {
+            "line": 729,
+            "character": 26
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'Error'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 730,
+            "character": 6
+          },
+          "end": {
+            "line": 730,
+            "character": 13
+          }
+        },
+        "severity": 1,
+        "code": 2584,
+        "source": "arkts",
+        "message": "Cannot find name 'console'. Do you need to change your target library? Try changing the 'lib' compiler option to include 'dom'."
+      },
+      {
+        "range": {
+          "start": {
+            "line": 730,
+            "character": 58
+          },
+          "end": {
+            "line": 730,
+            "character": 62
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "arkts",
+        "message": "Cannot find name 'JSON'."
+      }
+    ]
+  },
+  "responses": [
+    {
+      "iteration": 1,
+      "documentVersion": 1,
+      "error": null,
+      "normalizedReferences": [
+        {
+          "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/AIApiService.ets",
+          "range": {
+            "start": {
+              "line": 0,
+              "character": 39
+            },
+            "end": {
+              "line": 0,
+              "character": 50
+            }
+          }
+        },
+        {
+          "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/AIApiService.ets",
+          "range": {
+            "start": {
+              "line": 1463,
+              "character": 23
+            },
+            "end": {
+              "line": 1463,
+              "character": 34
+            }
+          }
+        },
+        {
+          "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/HttpService.ets",
+          "range": {
+            "start": {
+              "line": 130,
+              "character": 13
+            },
+            "end": {
+              "line": 130,
+              "character": 24
+            }
+          }
+        },
+        {
+          "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/HttpService.ets",
+          "range": {
+            "start": {
+              "line": 131,
+              "character": 27
+            },
+            "end": {
+              "line": 131,
+              "character": 38
+            }
+          }
+        },
+        {
+          "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/HttpService.ets",
+          "range": {
+            "start": {
+              "line": 136,
+              "character": 24
+            },
+            "end": {
+              "line": 136,
+              "character": 35
+            }
+          }
+        },
+        {
+          "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/HttpService.ets",
+          "range": {
+            "start": {
+              "line": 137,
+              "character": 8
+            },
+            "end": {
+              "line": 137,
+              "character": 19
+            }
+          }
+        },
+        {
+          "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/HttpService.ets",
+          "range": {
+            "start": {
+              "line": 138,
+              "character": 6
+            },
+            "end": {
+              "line": 138,
+              "character": 17
+            }
+          }
+        },
+        {
+          "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/HttpService.ets",
+          "range": {
+            "start": {
+              "line": 138,
+              "character": 33
+            },
+            "end": {
+              "line": 138,
+              "character": 44
+            }
+          }
+        },
+        {
+          "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/HttpService.ets",
+          "range": {
+            "start": {
+              "line": 140,
+              "character": 11
+            },
+            "end": {
+              "line": 140,
+              "character": 22
+            }
+          }
+        },
+        {
+          "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/HttpService.ets",
+          "range": {
+            "start": {
+              "line": 304,
+              "character": 24
+            },
+            "end": {
+              "line": 304,
+              "character": 35
+            }
+          }
+        },
+        {
+          "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/HttpService.ets",
+          "range": {
+            "start": {
+              "line": 505,
+              "character": 23
+            },
+            "end": {
+              "line": 505,
+              "character": 34
+            }
+          }
+        },
+        {
+          "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/HttpService.ets",
+          "range": {
+            "start": {
+              "line": 517,
+              "character": 22
+            },
+            "end": {
+              "line": 517,
+              "character": 33
+            }
+          }
+        },
+        {
+          "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/HttpService.ets",
+          "range": {
+            "start": {
+              "line": 568,
+              "character": 23
+            },
+            "end": {
+              "line": 568,
+              "character": 34
+            }
+          }
+        },
+        {
+          "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/HttpService.ets",
+          "range": {
+            "start": {
+              "line": 733,
+              "character": 18
+            },
+            "end": {
+              "line": 733,
+              "character": 29
+            }
+          }
+        },
+        {
+          "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/HttpService.ets",
+          "range": {
+            "start": {
+              "line": 765,
+              "character": 34
+            },
+            "end": {
+              "line": 765,
+              "character": 45
+            }
+          }
+        },
+        {
+          "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/HttpService.ets",
+          "range": {
+            "start": {
+              "line": 766,
+              "character": 9
+            },
+            "end": {
+              "line": 766,
+              "character": 20
+            }
+          }
+        },
+        {
+          "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/ImagePromptTemplateService.ets",
+          "range": {
+            "start": {
+              "line": 1,
+              "character": 25
+            },
+            "end": {
+              "line": 1,
+              "character": 36
+            }
+          }
+        },
+        {
+          "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/ImagePromptTemplateService.ets",
+          "range": {
+            "start": {
+              "line": 37,
+              "character": 23
+            },
+            "end": {
+              "line": 37,
+              "character": 34
+            }
+          }
+        },
+        {
+          "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/McpService.ets",
+          "range": {
+            "start": {
+              "line": 23,
+              "character": 9
+            },
+            "end": {
+              "line": 23,
+              "character": 20
+            }
+          }
+        },
+        {
+          "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/McpService.ets",
+          "range": {
+            "start": {
+              "line": 802,
+              "character": 27
+            },
+            "end": {
+              "line": 802,
+              "character": 38
+            }
+          }
+        },
+        {
+          "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/WebDAVService.ets",
+          "range": {
+            "start": {
+              "line": 10,
+              "character": 2
+            },
+            "end": {
+              "line": 10,
+              "character": 13
+            }
+          }
+        },
+        {
+          "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/WebDAVService.ets",
+          "range": {
+            "start": {
+              "line": 152,
+              "character": 24
+            },
+            "end": {
+              "line": 152,
+              "character": 35
+            }
+          }
+        },
+        {
+          "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/WebDAVService.ets",
+          "range": {
+            "start": {
+              "line": 175,
+              "character": 19
+            },
+            "end": {
+              "line": 175,
+              "character": 30
+            }
+          }
+        },
+        {
+          "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/WebDAVService.ets",
+          "range": {
+            "start": {
+              "line": 194,
+              "character": 24
+            },
+            "end": {
+              "line": 194,
+              "character": 35
+            }
+          }
+        },
+        {
+          "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/WebDAVService.ets",
+          "range": {
+            "start": {
+              "line": 219,
+              "character": 19
+            },
+            "end": {
+              "line": 219,
+              "character": 30
+            }
+          }
+        },
+        {
+          "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/WebDAVService.ets",
+          "range": {
+            "start": {
+              "line": 265,
+              "character": 24
+            },
+            "end": {
+              "line": 265,
+              "character": 35
+            }
+          }
+        },
+        {
+          "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/WebDAVService.ets",
+          "range": {
+            "start": {
+              "line": 300,
+              "character": 24
+            },
+            "end": {
+              "line": 300,
+              "character": 35
+            }
+          }
+        },
+        {
+          "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/WebDAVService.ets",
+          "range": {
+            "start": {
+              "line": 333,
+              "character": 24
+            },
+            "end": {
+              "line": 333,
+              "character": 35
+            }
+          }
+        },
+        {
+          "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/WebDAVService.ets",
+          "range": {
+            "start": {
+              "line": 348,
+              "character": 19
+            },
+            "end": {
+              "line": 348,
+              "character": 30
+            }
+          }
+        },
+        {
+          "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/WebSearchService.ets",
+          "range": {
+            "start": {
+              "line": 2,
+              "character": 2
+            },
+            "end": {
+              "line": 2,
+              "character": 13
+            }
+          }
+        },
+        {
+          "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/WebSearchService.ets",
+          "range": {
+            "start": {
+              "line": 188,
+              "character": 23
+            },
+            "end": {
+              "line": 188,
+              "character": 34
+            }
+          }
+        },
+        {
+          "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/state/AppSettingsStore.ets",
+          "range": {
+            "start": {
+              "line": 2,
+              "character": 25
+            },
+            "end": {
+              "line": 2,
+              "character": 36
+            }
+          }
+        },
+        {
+          "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/state/AppSettingsStore.ets",
+          "range": {
+            "start": {
+              "line": 87,
+              "character": 23
+            },
+            "end": {
+              "line": 87,
+              "character": 34
+            }
+          }
+        }
+      ],
+      "comparableLocations": [
+        {
+          "file": "entry/src/main/ets/services/AIApiService.ets",
+          "range": {
+            "start": {
+              "line": 0,
+              "character": 39
+            },
+            "end": {
+              "line": 0,
+              "character": 50
+            }
+          }
+        },
+        {
+          "file": "entry/src/main/ets/services/AIApiService.ets",
+          "range": {
+            "start": {
+              "line": 1463,
+              "character": 23
+            },
+            "end": {
+              "line": 1463,
+              "character": 34
+            }
+          }
+        },
+        {
+          "file": "entry/src/main/ets/services/HttpService.ets",
+          "range": {
+            "start": {
+              "line": 130,
+              "character": 13
+            },
+            "end": {
+              "line": 130,
+              "character": 24
+            }
+          }
+        },
+        {
+          "file": "entry/src/main/ets/services/HttpService.ets",
+          "range": {
+            "start": {
+              "line": 131,
+              "character": 27
+            },
+            "end": {
+              "line": 131,
+              "character": 38
+            }
+          }
+        },
+        {
+          "file": "entry/src/main/ets/services/HttpService.ets",
+          "range": {
+            "start": {
+              "line": 136,
+              "character": 24
+            },
+            "end": {
+              "line": 136,
+              "character": 35
+            }
+          }
+        },
+        {
+          "file": "entry/src/main/ets/services/HttpService.ets",
+          "range": {
+            "start": {
+              "line": 137,
+              "character": 8
+            },
+            "end": {
+              "line": 137,
+              "character": 19
+            }
+          }
+        },
+        {
+          "file": "entry/src/main/ets/services/HttpService.ets",
+          "range": {
+            "start": {
+              "line": 138,
+              "character": 6
+            },
+            "end": {
+              "line": 138,
+              "character": 17
+            }
+          }
+        },
+        {
+          "file": "entry/src/main/ets/services/HttpService.ets",
+          "range": {
+            "start": {
+              "line": 138,
+              "character": 33
+            },
+            "end": {
+              "line": 138,
+              "character": 44
+            }
+          }
+        },
+        {
+          "file": "entry/src/main/ets/services/HttpService.ets",
+          "range": {
+            "start": {
+              "line": 140,
+              "character": 11
+            },
+            "end": {
+              "line": 140,
+              "character": 22
+            }
+          }
+        },
+        {
+          "file": "entry/src/main/ets/services/HttpService.ets",
+          "range": {
+            "start": {
+              "line": 304,
+              "character": 24
+            },
+            "end": {
+              "line": 304,
+              "character": 35
+            }
+          }
+        },
+        {
+          "file": "entry/src/main/ets/services/HttpService.ets",
+          "range": {
+            "start": {
+              "line": 505,
+              "character": 23
+            },
+            "end": {
+              "line": 505,
+              "character": 34
+            }
+          }
+        },
+        {
+          "file": "entry/src/main/ets/services/HttpService.ets",
+          "range": {
+            "start": {
+              "line": 517,
+              "character": 22
+            },
+            "end": {
+              "line": 517,
+              "character": 33
+            }
+          }
+        },
+        {
+          "file": "entry/src/main/ets/services/HttpService.ets",
+          "range": {
+            "start": {
+              "line": 568,
+              "character": 23
+            },
+            "end": {
+              "line": 568,
+              "character": 34
+            }
+          }
+        },
+        {
+          "file": "entry/src/main/ets/services/HttpService.ets",
+          "range": {
+            "start": {
+              "line": 733,
+              "character": 18
+            },
+            "end": {
+              "line": 733,
+              "character": 29
+            }
+          }
+        },
+        {
+          "file": "entry/src/main/ets/services/HttpService.ets",
+          "range": {
+            "start": {
+              "line": 765,
+              "character": 34
+            },
+            "end": {
+              "line": 765,
+              "character": 45
+            }
+          }
+        },
+        {
+          "file": "entry/src/main/ets/services/HttpService.ets",
+          "range": {
+            "start": {
+              "line": 766,
+              "character": 9
+            },
+            "end": {
+              "line": 766,
+              "character": 20
+            }
+          }
+        },
+        {
+          "file": "entry/src/main/ets/services/ImagePromptTemplateService.ets",
+          "range": {
+            "start": {
+              "line": 1,
+              "character": 25
+            },
+            "end": {
+              "line": 1,
+              "character": 36
+            }
+          }
+        },
+        {
+          "file": "entry/src/main/ets/services/ImagePromptTemplateService.ets",
+          "range": {
+            "start": {
+              "line": 37,
+              "character": 23
+            },
+            "end": {
+              "line": 37,
+              "character": 34
+            }
+          }
+        },
+        {
+          "file": "entry/src/main/ets/services/McpService.ets",
+          "range": {
+            "start": {
+              "line": 23,
+              "character": 9
+            },
+            "end": {
+              "line": 23,
+              "character": 20
+            }
+          }
+        },
+        {
+          "file": "entry/src/main/ets/services/McpService.ets",
+          "range": {
+            "start": {
+              "line": 802,
+              "character": 27
+            },
+            "end": {
+              "line": 802,
+              "character": 38
+            }
+          }
+        },
+        {
+          "file": "entry/src/main/ets/services/WebDAVService.ets",
+          "range": {
+            "start": {
+              "line": 10,
+              "character": 2
+            },
+            "end": {
+              "line": 10,
+              "character": 13
+            }
+          }
+        },
+        {
+          "file": "entry/src/main/ets/services/WebDAVService.ets",
+          "range": {
+            "start": {
+              "line": 152,
+              "character": 24
+            },
+            "end": {
+              "line": 152,
+              "character": 35
+            }
+          }
+        },
+        {
+          "file": "entry/src/main/ets/services/WebDAVService.ets",
+          "range": {
+            "start": {
+              "line": 175,
+              "character": 19
+            },
+            "end": {
+              "line": 175,
+              "character": 30
+            }
+          }
+        },
+        {
+          "file": "entry/src/main/ets/services/WebDAVService.ets",
+          "range": {
+            "start": {
+              "line": 194,
+              "character": 24
+            },
+            "end": {
+              "line": 194,
+              "character": 35
+            }
+          }
+        },
+        {
+          "file": "entry/src/main/ets/services/WebDAVService.ets",
+          "range": {
+            "start": {
+              "line": 219,
+              "character": 19
+            },
+            "end": {
+              "line": 219,
+              "character": 30
+            }
+          }
+        },
+        {
+          "file": "entry/src/main/ets/services/WebDAVService.ets",
+          "range": {
+            "start": {
+              "line": 265,
+              "character": 24
+            },
+            "end": {
+              "line": 265,
+              "character": 35
+            }
+          }
+        },
+        {
+          "file": "entry/src/main/ets/services/WebDAVService.ets",
+          "range": {
+            "start": {
+              "line": 300,
+              "character": 24
+            },
+            "end": {
+              "line": 300,
+              "character": 35
+            }
+          }
+        },
+        {
+          "file": "entry/src/main/ets/services/WebDAVService.ets",
+          "range": {
+            "start": {
+              "line": 333,
+              "character": 24
+            },
+            "end": {
+              "line": 333,
+              "character": 35
+            }
+          }
+        },
+        {
+          "file": "entry/src/main/ets/services/WebDAVService.ets",
+          "range": {
+            "start": {
+              "line": 348,
+              "character": 19
+            },
+            "end": {
+              "line": 348,
+              "character": 30
+            }
+          }
+        },
+        {
+          "file": "entry/src/main/ets/services/WebSearchService.ets",
+          "range": {
+            "start": {
+              "line": 2,
+              "character": 2
+            },
+            "end": {
+              "line": 2,
+              "character": 13
+            }
+          }
+        },
+        {
+          "file": "entry/src/main/ets/services/WebSearchService.ets",
+          "range": {
+            "start": {
+              "line": 188,
+              "character": 23
+            },
+            "end": {
+              "line": 188,
+              "character": 34
+            }
+          }
+        },
+        {
+          "file": "entry/src/main/ets/state/AppSettingsStore.ets",
+          "range": {
+            "start": {
+              "line": 2,
+              "character": 25
+            },
+            "end": {
+              "line": 2,
+              "character": 36
+            }
+          }
+        },
+        {
+          "file": "entry/src/main/ets/state/AppSettingsStore.ets",
+          "range": {
+            "start": {
+              "line": 87,
+              "character": 23
+            },
+            "end": {
+              "line": 87,
+              "character": 34
+            }
+          }
+        }
+      ],
+      "validation": {
+        "pass": true,
+        "expectedCount": 33,
+        "observedCount": 33,
+        "errors": []
+      }
+    }
+  ],
+  "repeatedResultsIdentical": null,
+  "normalizedReferences": [
+    {
+      "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/AIApiService.ets",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 39
+        },
+        "end": {
+          "line": 0,
+          "character": 50
+        }
+      }
+    },
+    {
+      "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/AIApiService.ets",
+      "range": {
+        "start": {
+          "line": 1463,
+          "character": 23
+        },
+        "end": {
+          "line": 1463,
+          "character": 34
+        }
+      }
+    },
+    {
+      "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/HttpService.ets",
+      "range": {
+        "start": {
+          "line": 130,
+          "character": 13
+        },
+        "end": {
+          "line": 130,
+          "character": 24
+        }
+      }
+    },
+    {
+      "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/HttpService.ets",
+      "range": {
+        "start": {
+          "line": 131,
+          "character": 27
+        },
+        "end": {
+          "line": 131,
+          "character": 38
+        }
+      }
+    },
+    {
+      "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/HttpService.ets",
+      "range": {
+        "start": {
+          "line": 136,
+          "character": 24
+        },
+        "end": {
+          "line": 136,
+          "character": 35
+        }
+      }
+    },
+    {
+      "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/HttpService.ets",
+      "range": {
+        "start": {
+          "line": 137,
+          "character": 8
+        },
+        "end": {
+          "line": 137,
+          "character": 19
+        }
+      }
+    },
+    {
+      "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/HttpService.ets",
+      "range": {
+        "start": {
+          "line": 138,
+          "character": 6
+        },
+        "end": {
+          "line": 138,
+          "character": 17
+        }
+      }
+    },
+    {
+      "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/HttpService.ets",
+      "range": {
+        "start": {
+          "line": 138,
+          "character": 33
+        },
+        "end": {
+          "line": 138,
+          "character": 44
+        }
+      }
+    },
+    {
+      "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/HttpService.ets",
+      "range": {
+        "start": {
+          "line": 140,
+          "character": 11
+        },
+        "end": {
+          "line": 140,
+          "character": 22
+        }
+      }
+    },
+    {
+      "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/HttpService.ets",
+      "range": {
+        "start": {
+          "line": 304,
+          "character": 24
+        },
+        "end": {
+          "line": 304,
+          "character": 35
+        }
+      }
+    },
+    {
+      "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/HttpService.ets",
+      "range": {
+        "start": {
+          "line": 505,
+          "character": 23
+        },
+        "end": {
+          "line": 505,
+          "character": 34
+        }
+      }
+    },
+    {
+      "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/HttpService.ets",
+      "range": {
+        "start": {
+          "line": 517,
+          "character": 22
+        },
+        "end": {
+          "line": 517,
+          "character": 33
+        }
+      }
+    },
+    {
+      "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/HttpService.ets",
+      "range": {
+        "start": {
+          "line": 568,
+          "character": 23
+        },
+        "end": {
+          "line": 568,
+          "character": 34
+        }
+      }
+    },
+    {
+      "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/HttpService.ets",
+      "range": {
+        "start": {
+          "line": 733,
+          "character": 18
+        },
+        "end": {
+          "line": 733,
+          "character": 29
+        }
+      }
+    },
+    {
+      "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/HttpService.ets",
+      "range": {
+        "start": {
+          "line": 765,
+          "character": 34
+        },
+        "end": {
+          "line": 765,
+          "character": 45
+        }
+      }
+    },
+    {
+      "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/HttpService.ets",
+      "range": {
+        "start": {
+          "line": 766,
+          "character": 9
+        },
+        "end": {
+          "line": 766,
+          "character": 20
+        }
+      }
+    },
+    {
+      "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/ImagePromptTemplateService.ets",
+      "range": {
+        "start": {
+          "line": 1,
+          "character": 25
+        },
+        "end": {
+          "line": 1,
+          "character": 36
+        }
+      }
+    },
+    {
+      "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/ImagePromptTemplateService.ets",
+      "range": {
+        "start": {
+          "line": 37,
+          "character": 23
+        },
+        "end": {
+          "line": 37,
+          "character": 34
+        }
+      }
+    },
+    {
+      "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/McpService.ets",
+      "range": {
+        "start": {
+          "line": 23,
+          "character": 9
+        },
+        "end": {
+          "line": 23,
+          "character": 20
+        }
+      }
+    },
+    {
+      "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/McpService.ets",
+      "range": {
+        "start": {
+          "line": 802,
+          "character": 27
+        },
+        "end": {
+          "line": 802,
+          "character": 38
+        }
+      }
+    },
+    {
+      "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/WebDAVService.ets",
+      "range": {
+        "start": {
+          "line": 10,
+          "character": 2
+        },
+        "end": {
+          "line": 10,
+          "character": 13
+        }
+      }
+    },
+    {
+      "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/WebDAVService.ets",
+      "range": {
+        "start": {
+          "line": 152,
+          "character": 24
+        },
+        "end": {
+          "line": 152,
+          "character": 35
+        }
+      }
+    },
+    {
+      "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/WebDAVService.ets",
+      "range": {
+        "start": {
+          "line": 175,
+          "character": 19
+        },
+        "end": {
+          "line": 175,
+          "character": 30
+        }
+      }
+    },
+    {
+      "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/WebDAVService.ets",
+      "range": {
+        "start": {
+          "line": 194,
+          "character": 24
+        },
+        "end": {
+          "line": 194,
+          "character": 35
+        }
+      }
+    },
+    {
+      "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/WebDAVService.ets",
+      "range": {
+        "start": {
+          "line": 219,
+          "character": 19
+        },
+        "end": {
+          "line": 219,
+          "character": 30
+        }
+      }
+    },
+    {
+      "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/WebDAVService.ets",
+      "range": {
+        "start": {
+          "line": 265,
+          "character": 24
+        },
+        "end": {
+          "line": 265,
+          "character": 35
+        }
+      }
+    },
+    {
+      "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/WebDAVService.ets",
+      "range": {
+        "start": {
+          "line": 300,
+          "character": 24
+        },
+        "end": {
+          "line": 300,
+          "character": 35
+        }
+      }
+    },
+    {
+      "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/WebDAVService.ets",
+      "range": {
+        "start": {
+          "line": 333,
+          "character": 24
+        },
+        "end": {
+          "line": 333,
+          "character": 35
+        }
+      }
+    },
+    {
+      "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/WebDAVService.ets",
+      "range": {
+        "start": {
+          "line": 348,
+          "character": 19
+        },
+        "end": {
+          "line": 348,
+          "character": 30
+        }
+      }
+    },
+    {
+      "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/WebSearchService.ets",
+      "range": {
+        "start": {
+          "line": 2,
+          "character": 2
+        },
+        "end": {
+          "line": 2,
+          "character": 13
+        }
+      }
+    },
+    {
+      "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/services/WebSearchService.ets",
+      "range": {
+        "start": {
+          "line": 188,
+          "character": 23
+        },
+        "end": {
+          "line": 188,
+          "character": 34
+        }
+      }
+    },
+    {
+      "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/state/AppSettingsStore.ets",
+      "range": {
+        "start": {
+          "line": 2,
+          "character": 25
+        },
+        "end": {
+          "line": 2,
+          "character": 36
+        }
+      }
+    },
+    {
+      "uri": "file:///private/tmp/arkts-business-chatcube/entry/src/main/ets/state/AppSettingsStore.ets",
+      "range": {
+        "start": {
+          "line": 87,
+          "character": 23
+        },
+        "end": {
+          "line": 87,
+          "character": 34
+        }
+      }
+    }
+  ],
+  "expectedComparableLocations": [
+    {
+      "file": "entry/src/main/ets/services/AIApiService.ets",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 39
+        },
+        "end": {
+          "line": 0,
+          "character": 50
+        }
+      }
+    },
+    {
+      "file": "entry/src/main/ets/services/AIApiService.ets",
+      "range": {
+        "start": {
+          "line": 1463,
+          "character": 23
+        },
+        "end": {
+          "line": 1463,
+          "character": 34
+        }
+      }
+    },
+    {
+      "file": "entry/src/main/ets/services/HttpService.ets",
+      "range": {
+        "start": {
+          "line": 130,
+          "character": 13
+        },
+        "end": {
+          "line": 130,
+          "character": 24
+        }
+      }
+    },
+    {
+      "file": "entry/src/main/ets/services/HttpService.ets",
+      "range": {
+        "start": {
+          "line": 131,
+          "character": 27
+        },
+        "end": {
+          "line": 131,
+          "character": 38
+        }
+      }
+    },
+    {
+      "file": "entry/src/main/ets/services/HttpService.ets",
+      "range": {
+        "start": {
+          "line": 136,
+          "character": 24
+        },
+        "end": {
+          "line": 136,
+          "character": 35
+        }
+      }
+    },
+    {
+      "file": "entry/src/main/ets/services/HttpService.ets",
+      "range": {
+        "start": {
+          "line": 137,
+          "character": 8
+        },
+        "end": {
+          "line": 137,
+          "character": 19
+        }
+      }
+    },
+    {
+      "file": "entry/src/main/ets/services/HttpService.ets",
+      "range": {
+        "start": {
+          "line": 138,
+          "character": 6
+        },
+        "end": {
+          "line": 138,
+          "character": 17
+        }
+      }
+    },
+    {
+      "file": "entry/src/main/ets/services/HttpService.ets",
+      "range": {
+        "start": {
+          "line": 138,
+          "character": 33
+        },
+        "end": {
+          "line": 138,
+          "character": 44
+        }
+      }
+    },
+    {
+      "file": "entry/src/main/ets/services/HttpService.ets",
+      "range": {
+        "start": {
+          "line": 140,
+          "character": 11
+        },
+        "end": {
+          "line": 140,
+          "character": 22
+        }
+      }
+    },
+    {
+      "file": "entry/src/main/ets/services/HttpService.ets",
+      "range": {
+        "start": {
+          "line": 304,
+          "character": 24
+        },
+        "end": {
+          "line": 304,
+          "character": 35
+        }
+      }
+    },
+    {
+      "file": "entry/src/main/ets/services/HttpService.ets",
+      "range": {
+        "start": {
+          "line": 505,
+          "character": 23
+        },
+        "end": {
+          "line": 505,
+          "character": 34
+        }
+      }
+    },
+    {
+      "file": "entry/src/main/ets/services/HttpService.ets",
+      "range": {
+        "start": {
+          "line": 517,
+          "character": 22
+        },
+        "end": {
+          "line": 517,
+          "character": 33
+        }
+      }
+    },
+    {
+      "file": "entry/src/main/ets/services/HttpService.ets",
+      "range": {
+        "start": {
+          "line": 568,
+          "character": 23
+        },
+        "end": {
+          "line": 568,
+          "character": 34
+        }
+      }
+    },
+    {
+      "file": "entry/src/main/ets/services/HttpService.ets",
+      "range": {
+        "start": {
+          "line": 733,
+          "character": 18
+        },
+        "end": {
+          "line": 733,
+          "character": 29
+        }
+      }
+    },
+    {
+      "file": "entry/src/main/ets/services/HttpService.ets",
+      "range": {
+        "start": {
+          "line": 765,
+          "character": 34
+        },
+        "end": {
+          "line": 765,
+          "character": 45
+        }
+      }
+    },
+    {
+      "file": "entry/src/main/ets/services/HttpService.ets",
+      "range": {
+        "start": {
+          "line": 766,
+          "character": 9
+        },
+        "end": {
+          "line": 766,
+          "character": 20
+        }
+      }
+    },
+    {
+      "file": "entry/src/main/ets/services/ImagePromptTemplateService.ets",
+      "range": {
+        "start": {
+          "line": 1,
+          "character": 25
+        },
+        "end": {
+          "line": 1,
+          "character": 36
+        }
+      }
+    },
+    {
+      "file": "entry/src/main/ets/services/ImagePromptTemplateService.ets",
+      "range": {
+        "start": {
+          "line": 37,
+          "character": 23
+        },
+        "end": {
+          "line": 37,
+          "character": 34
+        }
+      }
+    },
+    {
+      "file": "entry/src/main/ets/services/McpService.ets",
+      "range": {
+        "start": {
+          "line": 23,
+          "character": 9
+        },
+        "end": {
+          "line": 23,
+          "character": 20
+        }
+      }
+    },
+    {
+      "file": "entry/src/main/ets/services/McpService.ets",
+      "range": {
+        "start": {
+          "line": 802,
+          "character": 27
+        },
+        "end": {
+          "line": 802,
+          "character": 38
+        }
+      }
+    },
+    {
+      "file": "entry/src/main/ets/services/WebDAVService.ets",
+      "range": {
+        "start": {
+          "line": 10,
+          "character": 2
+        },
+        "end": {
+          "line": 10,
+          "character": 13
+        }
+      }
+    },
+    {
+      "file": "entry/src/main/ets/services/WebDAVService.ets",
+      "range": {
+        "start": {
+          "line": 152,
+          "character": 24
+        },
+        "end": {
+          "line": 152,
+          "character": 35
+        }
+      }
+    },
+    {
+      "file": "entry/src/main/ets/services/WebDAVService.ets",
+      "range": {
+        "start": {
+          "line": 175,
+          "character": 19
+        },
+        "end": {
+          "line": 175,
+          "character": 30
+        }
+      }
+    },
+    {
+      "file": "entry/src/main/ets/services/WebDAVService.ets",
+      "range": {
+        "start": {
+          "line": 194,
+          "character": 24
+        },
+        "end": {
+          "line": 194,
+          "character": 35
+        }
+      }
+    },
+    {
+      "file": "entry/src/main/ets/services/WebDAVService.ets",
+      "range": {
+        "start": {
+          "line": 219,
+          "character": 19
+        },
+        "end": {
+          "line": 219,
+          "character": 30
+        }
+      }
+    },
+    {
+      "file": "entry/src/main/ets/services/WebDAVService.ets",
+      "range": {
+        "start": {
+          "line": 265,
+          "character": 24
+        },
+        "end": {
+          "line": 265,
+          "character": 35
+        }
+      }
+    },
+    {
+      "file": "entry/src/main/ets/services/WebDAVService.ets",
+      "range": {
+        "start": {
+          "line": 300,
+          "character": 24
+        },
+        "end": {
+          "line": 300,
+          "character": 35
+        }
+      }
+    },
+    {
+      "file": "entry/src/main/ets/services/WebDAVService.ets",
+      "range": {
+        "start": {
+          "line": 333,
+          "character": 24
+        },
+        "end": {
+          "line": 333,
+          "character": 35
+        }
+      }
+    },
+    {
+      "file": "entry/src/main/ets/services/WebDAVService.ets",
+      "range": {
+        "start": {
+          "line": 348,
+          "character": 19
+        },
+        "end": {
+          "line": 348,
+          "character": 30
+        }
+      }
+    },
+    {
+      "file": "entry/src/main/ets/services/WebSearchService.ets",
+      "range": {
+        "start": {
+          "line": 2,
+          "character": 2
+        },
+        "end": {
+          "line": 2,
+          "character": 13
+        }
+      }
+    },
+    {
+      "file": "entry/src/main/ets/services/WebSearchService.ets",
+      "range": {
+        "start": {
+          "line": 188,
+          "character": 23
+        },
+        "end": {
+          "line": 188,
+          "character": 34
+        }
+      }
+    },
+    {
+      "file": "entry/src/main/ets/state/AppSettingsStore.ets",
+      "range": {
+        "start": {
+          "line": 2,
+          "character": 25
+        },
+        "end": {
+          "line": 2,
+          "character": 36
+        }
+      }
+    },
+    {
+      "file": "entry/src/main/ets/state/AppSettingsStore.ets",
+      "range": {
+        "start": {
+          "line": 87,
+          "character": 23
+        },
+        "end": {
+          "line": 87,
+          "character": 34
+        }
+      }
+    }
+  ],
+  "memory": {
+    "measurementKind": "external-process-tree-rss",
+    "sampleIntervalMs": 50,
+    "sampleCount": 75,
+    "peakProductRssBytes": 412577792,
+    "peakSamplerRssBytes": 71438336,
+    "samples": [
+      {
+        "timestamp": 1789289945194,
+        "totalRssBytes": 55390208,
+        "samplerRssBytes": 46977024,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 55390208
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289945303,
+        "totalRssBytes": 59940864,
+        "samplerRssBytes": 48291840,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 56569856
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 3371008
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289945416,
+        "totalRssBytes": 101322752,
+        "samplerRssBytes": 49065984,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 56647680
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 44675072
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289945527,
+        "totalRssBytes": 122265600,
+        "samplerRssBytes": 49586176,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 56713216
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 65552384
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289945628,
+        "totalRssBytes": 122875904,
+        "samplerRssBytes": 49594368,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 56713216
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 66162688
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289945746,
+        "totalRssBytes": 122945536,
+        "samplerRssBytes": 49762304,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 56754176
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 66191360
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289945848,
+        "totalRssBytes": 122957824,
+        "samplerRssBytes": 50442240,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 56754176
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 66203648
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289945951,
+        "totalRssBytes": 123084800,
+        "samplerRssBytes": 50479104,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 56754176
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 66330624
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289946051,
+        "totalRssBytes": 123101184,
+        "samplerRssBytes": 50991104,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 56770560
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 66330624
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289946153,
+        "totalRssBytes": 123117568,
+        "samplerRssBytes": 53493760,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 56770560
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 66347008
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289946261,
+        "totalRssBytes": 123179008,
+        "samplerRssBytes": 55664640,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 56807424
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 66371584
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289946362,
+        "totalRssBytes": 123211776,
+        "samplerRssBytes": 56881152,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 56807424
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 66404352
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289946472,
+        "totalRssBytes": 123228160,
+        "samplerRssBytes": 57786368,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 56807424
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 66420736
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289946574,
+        "totalRssBytes": 123240448,
+        "samplerRssBytes": 58265600,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 56819712
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 66420736
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289946675,
+        "totalRssBytes": 123240448,
+        "samplerRssBytes": 58265600,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 56819712
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 66420736
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289946781,
+        "totalRssBytes": 123285504,
+        "samplerRssBytes": 58351616,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 56832000
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 66453504
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289946882,
+        "totalRssBytes": 123285504,
+        "samplerRssBytes": 58847232,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 56832000
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 66453504
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289946985,
+        "totalRssBytes": 123297792,
+        "samplerRssBytes": 58847232,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 56844288
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 66453504
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289947087,
+        "totalRssBytes": 123297792,
+        "samplerRssBytes": 58855424,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 56844288
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 66453504
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289947189,
+        "totalRssBytes": 125489152,
+        "samplerRssBytes": 59355136,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 56844288
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 68644864
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289947291,
+        "totalRssBytes": 125505536,
+        "samplerRssBytes": 59940864,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 56860672
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 68644864
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289947395,
+        "totalRssBytes": 125505536,
+        "samplerRssBytes": 59949056,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 56860672
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 68644864
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289947498,
+        "totalRssBytes": 125534208,
+        "samplerRssBytes": 60899328,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 56889344
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 68644864
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289947603,
+        "totalRssBytes": 125534208,
+        "samplerRssBytes": 60899328,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 56889344
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 68644864
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289947707,
+        "totalRssBytes": 125534208,
+        "samplerRssBytes": 60899328,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 56889344
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 68644864
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289947811,
+        "totalRssBytes": 125546496,
+        "samplerRssBytes": 61177856,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 56901632
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 68644864
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289947919,
+        "totalRssBytes": 125546496,
+        "samplerRssBytes": 61485056,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 56901632
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 68644864
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289948022,
+        "totalRssBytes": 125558784,
+        "samplerRssBytes": 62287872,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 56913920
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 68644864
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289948124,
+        "totalRssBytes": 124735488,
+        "samplerRssBytes": 63287296,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 56913920
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 67821568
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289948229,
+        "totalRssBytes": 94654464,
+        "samplerRssBytes": 64319488,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 73879552
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 20774912
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289948344,
+        "totalRssBytes": 158494720,
+        "samplerRssBytes": 64335872,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 137629696
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 20865024
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289948485,
+        "totalRssBytes": 169099264,
+        "samplerRssBytes": 64335872,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 148234240
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 20865024
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289948595,
+        "totalRssBytes": 178933760,
+        "samplerRssBytes": 65114112,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 158068736
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 20865024
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289948732,
+        "totalRssBytes": 239558656,
+        "samplerRssBytes": 66015232,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 218693632
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 20865024
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289948838,
+        "totalRssBytes": 233312256,
+        "samplerRssBytes": 66908160,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 212447232
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 20865024
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289948950,
+        "totalRssBytes": 246206464,
+        "samplerRssBytes": 67969024,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 225341440
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 20865024
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289949057,
+        "totalRssBytes": 270655488,
+        "samplerRssBytes": 68022272,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 249790464
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 20865024
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289949171,
+        "totalRssBytes": 288829440,
+        "samplerRssBytes": 68067328,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 267964416
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 20865024
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289949296,
+        "totalRssBytes": 310497280,
+        "samplerRssBytes": 65261568,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 289632256
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 20865024
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289949418,
+        "totalRssBytes": 320516096,
+        "samplerRssBytes": 61566976,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 302440448
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 18075648
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289949529,
+        "totalRssBytes": 314511360,
+        "samplerRssBytes": 59727872,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 303034368
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 11476992
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289949644,
+        "totalRssBytes": 322609152,
+        "samplerRssBytes": 59621376,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 312774656
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 9834496
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289949753,
+        "totalRssBytes": 327839744,
+        "samplerRssBytes": 59953152,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 318005248
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 9834496
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289949863,
+        "totalRssBytes": 342495232,
+        "samplerRssBytes": 60981248,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 332660736
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 9834496
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289949995,
+        "totalRssBytes": 342794240,
+        "samplerRssBytes": 61046784,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 332959744
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 9834496
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289950107,
+        "totalRssBytes": 351551488,
+        "samplerRssBytes": 61014016,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 341716992
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 9834496
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289950220,
+        "totalRssBytes": 345407488,
+        "samplerRssBytes": 61054976,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 335572992
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 9834496
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289950335,
+        "totalRssBytes": 350564352,
+        "samplerRssBytes": 61083648,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 340729856
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 9834496
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289950453,
+        "totalRssBytes": 360161280,
+        "samplerRssBytes": 61124608,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 350326784
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 9834496
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289950563,
+        "totalRssBytes": 374976512,
+        "samplerRssBytes": 62210048,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 365142016
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 9834496
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289950681,
+        "totalRssBytes": 387567616,
+        "samplerRssBytes": 62242816,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 377733120
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 9834496
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289950789,
+        "totalRssBytes": 394612736,
+        "samplerRssBytes": 62242816,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 384778240
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 9834496
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289950902,
+        "totalRssBytes": 400388096,
+        "samplerRssBytes": 62246912,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 390553600
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 9834496
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289951017,
+        "totalRssBytes": 404721664,
+        "samplerRssBytes": 62246912,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 394887168
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 9834496
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289951127,
+        "totalRssBytes": 412577792,
+        "samplerRssBytes": 62242816,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 402743296
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 9834496
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289951243,
+        "totalRssBytes": 365498368,
+        "samplerRssBytes": 63496192,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 355663872
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 9834496
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289951352,
+        "totalRssBytes": 374394880,
+        "samplerRssBytes": 66756608,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 364560384
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 9834496
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289951462,
+        "totalRssBytes": 380534784,
+        "samplerRssBytes": 66756608,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 370700288
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 9834496
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289951573,
+        "totalRssBytes": 383086592,
+        "samplerRssBytes": 66883584,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 373252096
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 9834496
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289951676,
+        "totalRssBytes": 386416640,
+        "samplerRssBytes": 66924544,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 376582144
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 9834496
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289951785,
+        "totalRssBytes": 386469888,
+        "samplerRssBytes": 66932736,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 376635392
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 9834496
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289951890,
+        "totalRssBytes": 387371008,
+        "samplerRssBytes": 66973696,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 377536512
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 9834496
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289951997,
+        "totalRssBytes": 390066176,
+        "samplerRssBytes": 66973696,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 380231680
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 9834496
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289952106,
+        "totalRssBytes": 392577024,
+        "samplerRssBytes": 67084288,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 382742528
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 9834496
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289952217,
+        "totalRssBytes": 393191424,
+        "samplerRssBytes": 67133440,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 383356928
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 9834496
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289952340,
+        "totalRssBytes": 391516160,
+        "samplerRssBytes": 67260416,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 381878272
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 9637888
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289952463,
+        "totalRssBytes": 391372800,
+        "samplerRssBytes": 67543040,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 382255104
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 9117696
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289952575,
+        "totalRssBytes": 392564736,
+        "samplerRssBytes": 68505600,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 383447040
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 9117696
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289952684,
+        "totalRssBytes": 396075008,
+        "samplerRssBytes": 69476352,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 386957312
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 9117696
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289952795,
+        "totalRssBytes": 397381632,
+        "samplerRssBytes": 70434816,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 388263936
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 9117696
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289952910,
+        "totalRssBytes": 399269888,
+        "samplerRssBytes": 71401472,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 390152192
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 9117696
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289953024,
+        "totalRssBytes": 398995456,
+        "samplerRssBytes": 71393280,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 389877760
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 9117696
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289953138,
+        "totalRssBytes": 400961536,
+        "samplerRssBytes": 71397376,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 391843840
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 9117696
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289953251,
+        "totalRssBytes": 372600832,
+        "samplerRssBytes": 71434240,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 363573248
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 9027584
+          }
+        ]
+      },
+      {
+        "timestamp": 1789289953364,
+        "totalRssBytes": 372609024,
+        "samplerRssBytes": 71438336,
+        "processes": [
+          {
+            "role": "server",
+            "pid": 69602,
+            "rssBytes": 363581440
+          },
+          {
+            "role": "sidecar",
+            "pid": 69606,
+            "rssBytes": 9027584
+          }
+        ]
+      }
+    ]
+  },
+  "timeline": [
+    {
+      "phase": "server-process-started",
+      "timestamp": 1789289945259,
+      "harnessRssBytes": 47038464,
+      "targetPid": 69602,
+      "samplerPid": 69603,
+      "nearestSampleTimestamp": 1789289945303,
+      "productRssBytes": 59940864
+    },
+    {
+      "phase": "initialize-request-start",
+      "timestamp": 1789289945260,
+      "harnessRssBytes": 47046656,
+      "nearestSampleTimestamp": 1789289945303,
+      "productRssBytes": 59940864
+    },
+    {
+      "phase": "initialize-response-complete",
+      "timestamp": 1789289945268,
+      "harnessRssBytes": 47382528,
+      "nearestSampleTimestamp": 1789289945303,
+      "productRssBytes": 59940864
+    },
+    {
+      "phase": "catalog-complete",
+      "timestamp": 1789289948189,
+      "harnessRssBytes": 47501312,
+      "catalog": "Indexed 263/263 files; skipped 2 entries",
+      "nearestSampleTimestamp": 1789289948229,
+      "productRssBytes": 94654464
+    },
+    {
+      "phase": "didOpen-sent",
+      "timestamp": 1789289948190,
+      "harnessRssBytes": 47616000,
+      "version": 1,
+      "nearestSampleTimestamp": 1789289948229,
+      "productRssBytes": 94654464
+    },
+    {
+      "phase": "references-request-start",
+      "timestamp": 1789289948215,
+      "harnessRssBytes": 47624192,
+      "iteration": 1,
+      "method": "textDocument/references",
+      "position": {
+        "line": 130,
+        "character": 16
+      },
+      "includeDeclaration": true,
+      "nearestSampleTimestamp": 1789289948229,
+      "productRssBytes": 94654464
+    },
+    {
+      "phase": "references-response-complete",
+      "timestamp": 1789289951175,
+      "harnessRssBytes": 44675072,
+      "iteration": 1,
+      "error": null,
+      "locationCount": 33,
+      "validation": true,
+      "nearestSampleTimestamp": 1789289951127,
+      "productRssBytes": 412577792
+    },
+    {
+      "phase": "idle-complete",
+      "timestamp": 1789289952178,
+      "harnessRssBytes": 44724224,
+      "idleMs": 1000,
+      "nearestSampleTimestamp": 1789289952217,
+      "productRssBytes": 393191424
+    },
+    {
+      "phase": "publishDiagnostics",
+      "timestamp": 1789289953190,
+      "harnessRssBytes": 44789760,
+      "version": 1,
+      "count": 70,
+      "nearestSampleTimestamp": 1789289953138,
+      "productRssBytes": 400961536
+    },
+    {
+      "phase": "server-process-closed",
+      "timestamp": 1789289953421,
+      "harnessRssBytes": 45350912,
+      "closeResult": {
+        "shutdown": {
+          "jsonrpc": "2.0",
+          "id": 3,
+          "result": null
+        },
+        "exit": {
+          "code": 0,
+          "signal": null
+        }
+      },
+      "nearestSampleTimestamp": 1789289953364,
+      "productRssBytes": 372609024
+    }
+  ],
+  "serverEvents": [
+    {
+      "transport": "stdio",
+      "schema": 1,
+      "ts": "2026-09-13T08:59:05.164Z",
+      "level": "info",
+      "event": "server.started",
+      "pid": 69602
+    },
+    {
+      "workspaceCount": 1,
+      "positionEncoding": "utf-16",
+      "schema": 1,
+      "ts": "2026-09-13T08:59:05.266Z",
+      "level": "info",
+      "event": "lsp.initialized",
+      "pid": 69602
+    },
+    {
+      "phase": "ready",
+      "workspaceCount": 1,
+      "discoveredFiles": 263,
+      "indexedFiles": 263,
+      "skippedEntries": 2,
+      "totalFiles": 263,
+      "schema": 1,
+      "ts": "2026-09-13T08:59:08.188Z",
+      "level": "info",
+      "event": "index.catalog.terminal",
+      "pid": 69602
+    },
+    {
+      "semanticWorkerCount": 1,
+      "schema": 1,
+      "ts": "2026-09-13T08:59:08.196Z",
+      "level": "info",
+      "event": "semantic.worker.started",
+      "pid": 69602
+    },
+    {
+      "anchorMode": "indexed-declaration-identity",
+      "candidateFiles": 7,
+      "conservativeCandidateFiles": 7,
+      "servedGeneration": 1,
+      "schema": 1,
+      "ts": "2026-09-13T08:59:08.259Z",
+      "level": "info",
+      "event": "references.index.accepted",
+      "pid": 69602
+    },
+    {
+      "referenceSession": 1,
+      "verifierIsolation": "transient-worker",
+      "batchIndex": 0,
+      "batchCount": 1,
+      "batchRootFiles": 7,
+      "batchCandidateRoots": 6,
+      "batchSemanticUnits": 0,
+      "admittedProjectFiles": 263,
+      "membershipFiles": 263,
+      "candidateFiles": 7,
+      "candidateMode": "indexed",
+      "semanticUnitMode": "conservative",
+      "semanticUnits": 0,
+      "preparedProgramSourceFiles": 471,
+      "preparedProgramProjectFiles": 48,
+      "preparedSdkSourceFiles": 423,
+      "preparedProjectTextCodeUnits": 721961,
+      "preparedSdkTextCodeUnits": 12212608,
+      "preparedOtherSourceFiles": 0,
+      "preparedOtherTextCodeUnits": 0,
+      "preparedRss": 401981440,
+      "preparedHeapUsed": 176620072,
+      "queryRssDelta": -192512,
+      "queryHeapUsedDelta": 7142336,
+      "programSourceFiles": 471,
+      "programProjectFiles": 48,
+      "sdkSourceFiles": 423,
+      "projectTextCodeUnits": 721961,
+      "sdkTextCodeUnits": 12212608,
+      "otherSourceFiles": 0,
+      "otherTextCodeUnits": 0,
+      "locations": 33,
+      "durationMs": 2559.34,
+      "rss": 401788928,
+      "heapUsed": 183762408,
+      "schema": 1,
+      "ts": "2026-09-13T08:59:11.157Z",
+      "level": "info",
+      "event": "references.batch.complete",
+      "pid": 69602
+    },
+    {
+      "method": "textDocument/references",
+      "durationMs": 2942.03,
+      "outcome": "ok",
+      "schema": 1,
+      "ts": "2026-09-13T08:59:11.159Z",
+      "level": "info",
+      "event": "request.completed",
+      "pid": 69602
+    },
+    {
+      "workspaceRoot": "/private/tmp/arkts-business-chatcube",
+      "sdkPath": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony",
+      "source": "configuration",
+      "ready": true,
+      "metadataStatus": "identified",
+      "apiVersion": "24",
+      "componentVersion": "6.1.1.125",
+      "dialectCompatibility": "unverified",
+      "declarationSupport": "typescript-compatible-only",
+      "schema": 1,
+      "ts": "2026-09-13T08:59:11.251Z",
+      "level": "info",
+      "event": "sdk.selected",
+      "pid": 69602
+    },
+    {
+      "programSourceFiles": 304,
+      "programProjectFiles": 1,
+      "sdkSourceFiles": 303,
+      "projectTextCodeUnits": 22752,
+      "sdkTextCodeUnits": 13575159,
+      "otherSourceFiles": 0,
+      "otherTextCodeUnits": 0,
+      "diagnostics": 70,
+      "rss": 392720384,
+      "heapUsed": 213614024,
+      "schema": 1,
+      "ts": "2026-09-13T08:59:13.187Z",
+      "level": "info",
+      "event": "diagnostics.program.complete",
+      "pid": 69602
+    },
+    {
+      "reason": "shutdown",
+      "schema": 1,
+      "ts": "2026-09-13T08:59:13.385Z",
+      "level": "info",
+      "event": "server.stopped",
+      "pid": 69602
+    }
+  ],
+  "closeResult": {
+    "shutdown": {
+      "jsonrpc": "2.0",
+      "id": 3,
+      "result": null
+    },
+    "exit": {
+      "code": 0,
+      "signal": null
+    }
+  },
+  "samplerStderr": "",
+  "failure": null
+}
