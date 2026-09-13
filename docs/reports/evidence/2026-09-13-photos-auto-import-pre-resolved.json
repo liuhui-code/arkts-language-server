@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-09-13",
+  "repositoryRevision": "8100f70eeb03f1f75f8e2654f996cf94ef80c710",
+  "workspace": {
+    "name": "openharmony/applications_photos",
+    "revision": "98ea1d9cd6a363c576e2c6ff17844e51723baec5"
+  },
+  "sdk": {
+    "path": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony",
+    "apiVersion": "24",
+    "version": "6.1.1.125"
+  },
+  "nodeVersion": "v26.3.0",
+  "target": {
+    "file": "imageEditor/product/editor_phone/src/main/ets/component/menu/BottomToolbar.ets",
+    "symbol": "ConflictContent",
+    "position": { "line": 318, "character": 41 },
+    "positionEncoding": "utf-16"
+  },
+  "semanticEquality": {
+    "completion": true,
+    "resolvedCompletion": true,
+    "additionalTextEdit": "insert ConflictContent, at UTF-16 92:9",
+    "diagnosticsCount": 90,
+    "diagnosticsSha256": "99e981f9e8725f7a683cabb1138d21f8df8181c2f376e6f3889e8f35be3efdb1"
+  },
+  "profiles": {
+    "workspace": {
+      "programSourceFiles": 1928,
+      "programProjectRootFiles": 1246,
+      "completionWorkerRssBytes": 743702528,
+      "completionElapsedMs": 15915,
+      "resolveElapsedMs": 1266,
+      "resolveProgramEvents": 1,
+      "workflowPeakProductRssBytes": 814252032
+    },
+    "discovery": {
+      "programSourceFiles": 772,
+      "programProjectRootFiles": 2,
+      "completionWorkerRssBytes": 468336640,
+      "completionElapsedMs": 11527,
+      "resolveElapsedMs": 4,
+      "resolveProgramEvents": 0,
+      "workflowPeakProductRssBytes": 585510912
+    }
+  },
+  "observedReductionsPercent": {
+    "completionWorkerRss": 37.03,
+    "completionElapsed": 27.57,
+    "resolveElapsed": 99.68,
+    "workflowPeakProductRss": 28.09
+  },
+  "measurementBoundary": "one fresh-process A/B after committed Rust catalog; not a statistical release claim"
+}

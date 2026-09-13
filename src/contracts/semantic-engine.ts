@@ -30,7 +30,16 @@ export interface SemanticCompletion {
   isSnippet?: true
   replacementRange?: TextRange
   additionalTextEdits?: SemanticCompletionTextEdit[]
+  /** Server-owned payload; the LSP adapter never exposes this to the client. */
+  preResolved?: SemanticCompletionResolution
   data?: Record<string, unknown>
+}
+
+export interface SemanticCompletionResolution {
+  documentVersion: number
+  detail: string
+  documentation?: string
+  additionalTextEdits?: SemanticCompletionTextEdit[]
 }
 
 export interface SemanticCompletionList {

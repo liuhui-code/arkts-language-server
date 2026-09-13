@@ -341,6 +341,7 @@ export class SemanticTypeEngineRegistry {
             ...current.engine.programFileStats(),
             completions: completion.items.length,
             incomplete: completion.isIncomplete,
+            preResolvedCompletions: completion.items.filter((item) => item.preResolved).length,
             rss: memory.rss,
             heapUsed: memory.heapUsed,
           })
