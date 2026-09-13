@@ -717,6 +717,7 @@ test("a diagnostics core SDK closure retains required ArkUI globals without the 
     "AppStorage.SetOrCreate('resource', 'ready')",
     "export const resource: Resource = 'ready'",
     "export const query: PublicThing = new PublicThing()",
+    "export const member = new PublicThing().sdk.value",
     "",
   ].join("\n")
   await Promise.all([
@@ -735,12 +736,12 @@ test("a diagnostics core SDK closure retains required ArkUI globals without the 
   ])
   const queryUri = pathToFileURL(path.join(workspace, "Query.ets")).href
   const position = positionAt(queryText, queryText.lastIndexOf("PublicThing") + 1)
-  const completionPosition = positionAt(queryText, queryText.lastIndexOf("PublicThing") + "Public".length)
+  const completionPosition = positionAt(queryText, queryText.lastIndexOf(".va") + ".va".length)
   const full = await runSingleReferenceRequest(t, {
     root, workspace, queryUri, queryText, position,
     strategy: "batched", runId: "diagnostics-sdk-full", sdkPath: sdk,
     sdkAmbientProfile: "common", captureDiagnostics: true,
-    captureInteractiveQueries: true, completionPosition,
+    captureInteractiveQueries: true, completionPosition, completionLabel: "value",
   })
   const core = await runSingleReferenceRequest(t, {
     root, workspace, queryUri, queryText, position,
@@ -752,7 +753,19 @@ test("a diagnostics core SDK closure retains required ArkUI globals without the 
     root, workspace, queryUri, queryText, position,
     strategy: "batched", runId: "diagnostics-project-roots-current", sdkPath: sdk,
     sdkAmbientProfile: "common", interactiveProjectRootProfile: "current",
-    captureDiagnostics: true, captureInteractiveQueries: true, completionPosition,
+    captureDiagnostics: true, captureInteractiveQueries: true,
+    completionPosition, completionLabel: "value",
+  })
+  const workspaceCompletionPosition = positionAt(
+    queryText,
+    queryText.lastIndexOf("PublicThing") + "Public".length,
+  )
+  const currentWorkspaceCompletion = await runSingleReferenceRequest(t, {
+    root, workspace, queryUri, queryText, position,
+    strategy: "batched", runId: "diagnostics-project-roots-current-workspace-completion",
+    sdkPath: sdk, sdkAmbientProfile: "common", interactiveProjectRootProfile: "current",
+    captureInteractiveQueries: true, completionPosition: workspaceCompletionPosition,
+    completionLabel: "PublicThing",
   })
 
   assert.deepEqual(core.locations, full.locations)
@@ -765,6 +778,14 @@ test("a diagnostics core SDK closure retains required ArkUI globals without the 
   assert.equal(full.definition[0].uri, pathToFileURL(path.join(workspace, "Target.ets")).href)
   assert.deepEqual(currentRoots.completion, full.completion)
   assert.equal(full.completion.length, 1)
+  assert.equal(full.completionEvents.length, 1)
+  assert.equal(full.completionEvents[0].programProjectRootFiles, 3)
+  assert.equal(currentRoots.completionEvents.length, 1)
+  assert.equal(currentRoots.completionEvents[0].programProjectFiles, 2)
+  assert.equal(currentRoots.completionEvents[0].programProjectRootFiles, 1)
+  assert.equal(currentWorkspaceCompletion.completion.length, 1)
+  assert.equal(currentWorkspaceCompletion.completionEvents.length, 1)
+  assert.equal(currentWorkspaceCompletion.completionEvents[0].programProjectRootFiles, 3)
   assert.equal(full.diagnosticEvents.length, 1)
   assert.equal(core.diagnosticEvents.length, 1)
   assert.equal(full.diagnosticEvents[0].sdkSourceFiles, 5)
@@ -998,6 +1019,7 @@ async function runSingleReferenceRequest(t, {
   captureDiagnostics = false,
   captureInteractiveQueries = false,
   completionPosition,
+  completionLabel,
 }) {
   const logDirectory = path.join(root, `logs-${runId}`)
   const indexAuditPath = path.join(root, `index-audit-${runId}.ndjson`)
@@ -1111,11 +1133,12 @@ async function runSingleReferenceRequest(t, {
     definition: captureInteractiveQueries ? sortedLocations(definitionResponse.result) : undefined,
     completion: captureInteractiveQueries
       ? completionItems(completionResponse.result)
-          .filter(({ label }) => label === "PublicThing")
+          .filter(({ label }) => label === completionLabel)
           .map(({ label, detail, kind, insertText, sortText, textEdit }) => ({
             label, detail, kind, insertText, sortText, textEdit,
           }))
       : undefined,
+    completionEvents: logs.filter(entry => entry.event === "completion.program.complete"),
     diagnosticEvents: logs.filter(entry => entry.event === "diagnostics.program.complete"),
   }
 }

@@ -646,3 +646,25 @@ RemoteDesk 的 diagnostic Program 原本就只有一个 project root，三者 ex
 global module-export discovery：Rust index 只召回候选，compiler 继续最终验证；partial/stale/ambiguous
 必须 fail closed。不得缩短 completion 结果、关闭自动诊断或在公开 exact contract 通过前切默认。
 详见 [interactive project-root cardinality 报告](../reports/2026-09-13-interactive-project-root-cardinality.md)。
+
+2026-09-13 member completion working-set 切片：公开 child-process LSP 合同现在用同一套 UTF-16
+identifier 规则区分 member access 与普通 completion。只有 default-off
+`ARKTS_INTERACTIVE_PROJECT_ROOT_PROFILE=current` 下的 member completion 使用当前文档和 open
+overlays 作为 roots，由 compiler 跟随真实 imports；默认 `closure` 与 ordinary/module-export
+completion 继续使用完整 membership。fixture 中 member completion 的稳定结果 exact，project roots
+从 3 降到 1、实际 project Program 为 2 files；同一 current profile 下的普通 `PublicThing`
+completion 仍使用 3 roots，防止误裁 workspace discovery。
+
+固定 Photos 6.1 `onOperationEnd`（UTF-16 `70:24`）的 closure/current 各三次独立新进程均返回
+3 个 completion items、同一 12 个验证后的 reference Locations 和 27 条 diagnostics。Program 从
+1,928 files（1,246 project roots）缩到 380 files（29 project、1 project root）；completion response
+product RSS 中位从 751,624,192 降至 473,157,632 bytes（-37.05%），completion latency 中位从
+8.037 降至 2.991 秒（-62.78%），两项 prototype gate GREEN。
+
+但后续 legacy references 按正确性要求重新扩展完整 Program，整条
+completion→definition→references workflow 的 peak 中位只下降 8.09%，且 current 单次峰值存在反向
+波动。因此本切片只证明 member completion working set 可安全缩小，不改变 production default，也不
+宣称整条工作流过门。下一步先跨其他真实工程/member kind 做 exact 复核，再把 member-only 策略与广义
+current profile 解耦；ordinary/global completion 必须等待 Rust module-export candidate recall + compiler
+proof 的独立合同，partial/stale/ambiguous 时 fail closed。详见
+[member completion working-set 报告](../reports/2026-09-13-member-completion-working-set.md)。

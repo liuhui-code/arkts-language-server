@@ -334,7 +334,18 @@ export class SemanticTypeEngineRegistry {
           ? current.arkui.complete(position, sourceContent)
           : { items: [], isIncomplete: scope.status === "unavailable" }
         const typescript = current.engine.complete(position)
-        return arbitrateCompletionLists(arkui, typescript)
+        const completion = arbitrateCompletionLists(arkui, typescript)
+        if (this.options.references?.trace) {
+          const memory = process.memoryUsage()
+          this.options.onReferenceTrace?.("completion.program.complete", {
+            ...current.engine.programFileStats(),
+            completions: completion.items.length,
+            incomplete: completion.isIncomplete,
+            rss: memory.rss,
+            heapUsed: memory.heapUsed,
+          })
+        }
+        return completion
       }),
       resolveCompletion: (position, item) => item.data?.provider === "arkui-resource"
         ? item
