@@ -178,6 +178,87 @@ fn type_assertions_do_not_widen_cross_file_reference_names() {
 }
 
 #[test]
+fn direct_named_import_usage_resolves_the_reference_declaration() {
+    let mut index = WorkspaceIndex::in_memory();
+    index
+        .refresh(
+            1,
+            [
+                Document::new(
+                    "file:///workspace/Target.ets",
+                    "export type Thing = object\n",
+                ),
+                Document::new(
+                    "file:///workspace/Consumer.ets",
+                    "import { Thing } from './Target'\nconst value: Thing = {}\n",
+                ),
+            ],
+            &[],
+        )
+        .expect("reference generation should commit");
+
+    let result = index
+        .search_reference_candidates(ReferenceCandidateQuery {
+            declaration_uri: "file:///workspace/Consumer.ets".to_owned(),
+            declaration_position: Position::new(1, 14),
+            limit: 20,
+        })
+        .expect("a direct named import usage should resolve through the index");
+
+    assert!(result.supported);
+    assert!(result.complete);
+    assert_eq!(result.names, ["Thing"]);
+    assert_eq!(
+        result.declaration_identity.as_deref(),
+        Some("file:///workspace/Target.ets#0:12:Thing")
+    );
+    assert_eq!(
+        result.identity_uris,
+        [
+            "file:///workspace/Consumer.ets",
+            "file:///workspace/Target.ets",
+        ]
+    );
+}
+
+#[test]
+fn ambiguous_named_import_usage_keeps_reference_candidates_unsupported() {
+    let mut index = WorkspaceIndex::in_memory();
+    index
+        .refresh(
+            1,
+            [
+                Document::new(
+                    "file:///workspace/Target.ets",
+                    "export type Thing = object\n",
+                ),
+                Document::new(
+                    "file:///workspace/Target/index.ets",
+                    "export type Thing = string\n",
+                ),
+                Document::new(
+                    "file:///workspace/Consumer.ets",
+                    "import { Thing } from './Target'\nconst value: Thing = {}\n",
+                ),
+            ],
+            &[],
+        )
+        .expect("reference generation should commit");
+
+    let result = index
+        .search_reference_candidates(ReferenceCandidateQuery {
+            declaration_uri: "file:///workspace/Consumer.ets".to_owned(),
+            declaration_position: Position::new(1, 14),
+            limit: 20,
+        })
+        .expect("ambiguous direct imports should fail conservative");
+
+    assert!(!result.supported);
+    assert!(!result.complete);
+    assert!(result.identity_uris.is_empty());
+}
+
+#[test]
 fn independent_declaration_does_not_hide_a_qualified_target_reference() {
     let mut index = WorkspaceIndex::in_memory();
     index

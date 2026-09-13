@@ -517,3 +517,13 @@ source specifier 的 named import/re-export `ReferenceBinding` 扩展跨文件�
 延迟约 1.76x，通过既定 `<=2x` gate；默认仍保持 `legacy`，下一步需在其他真实工程和 symbol kind
 复核后才讨论切换。详细证据见
 [binding-name narrowing 报告](../reports/2026-09-13-reference-binding-name-narrowing.md)。
+
+2026-09-13 direct-import anchor 切片：index 现在只在查询位置是未限定具名 import、source 唯一解析、
+目标文件恰有一个可搜索导出时，直接返回该 declaration identity；多 binding、歧义路径、仅 re-export
+目标、default、namespace 和未知形态仍走 compiler anchor。公开 LSP 差分证明只发出一次 candidate
+请求、不再出现 `references.anchor.complete`，最终 Location set 不变。固定 Photos `PhotoAsset`
+三次新进程均精确返回 legacy 的九个 Location，保留 3 个 verifier batches 和 288/110/61 个 project
+SourceFiles；请求为 11.784/11.760/11.553 秒，中位较上一版降低 16.5%，为 legacy 的 1.47x；peak
+中位 724,774,912 bytes。将 124 candidates 合为一批虽降到 9.297 秒，却使 peak 升至
+775,344,128 bytes，故不采用增大 batch 换延迟。默认仍为 `legacy`；绝对延迟和最终 50% memory gate
+继续 OPEN。详见 [direct import anchor 报告](../reports/2026-09-13-reference-direct-import-anchor.md)。

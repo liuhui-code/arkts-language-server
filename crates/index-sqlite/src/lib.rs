@@ -579,9 +579,33 @@ impl SymbolStore for SqliteStore {
             .collect::<Result<Vec<_>, _>>()
             .map_err(map_sqlite_error)?;
         drop(declaration_statement);
-        let [(exported_name, declaration_identity, true)] = declaration_rows.as_slice() else {
-            return Ok(unsupported_reference_candidates(generation));
+        let document_uris = read_document_uris(&transaction)?;
+        let imported_declaration = if declaration_rows.is_empty() {
+            read_direct_import_declaration(
+                &transaction,
+                query,
+                source_resolutions,
+                admitted_uri_roots,
+                &document_uris,
+            )?
+        } else {
+            None
         };
+        let (declaration_uri, exported_name, declaration_identity) =
+            match declaration_rows.as_slice() {
+                [(exported_name, declaration_identity, true)] => (
+                    query.declaration_uri.clone(),
+                    exported_name.clone(),
+                    declaration_identity.clone(),
+                ),
+                [] => {
+                    let Some(declaration) = imported_declaration else {
+                        return Ok(unsupported_reference_candidates(generation));
+                    };
+                    declaration
+                }
+                _ => return Ok(unsupported_reference_candidates(generation)),
+            };
         trace_reference_query_stage(
             trace,
             "declaration",
@@ -591,12 +615,12 @@ impl SymbolStore for SqliteStore {
         );
 
         let names = if admitted_uri_roots.is_empty() {
-            read_reference_names(&transaction, exported_name)?
+            read_reference_names(&transaction, &exported_name)?
         } else {
             read_scoped_reference_names(
                 &transaction,
-                exported_name,
-                &query.declaration_uri,
+                &exported_name,
+                &declaration_uri,
                 admitted_uri_roots,
             )?
         };
@@ -614,10 +638,10 @@ impl SymbolStore for SqliteStore {
         let mut bindings = if scoped {
             read_scoped_reference_bindings(&transaction, &names)?
         } else {
-            read_reference_bindings(&transaction, exported_name)?
+            read_reference_bindings(&transaction, &exported_name)?
         };
         bindings.retain(|binding| {
-            reference_uri_admitted(&binding.uri, &query.declaration_uri, admitted_uri_roots)
+            reference_uri_admitted(&binding.uri, &declaration_uri, admitted_uri_roots)
                 && (names.binary_search(&binding.imported_name).is_ok()
                     || names.binary_search(&binding.local_name).is_ok())
         });
@@ -628,7 +652,6 @@ impl SymbolStore for SqliteStore {
             &mut trace_previous,
             bindings.len(),
         );
-        let document_uris = read_document_uris(&transaction)?;
         resolve_reference_binding_sources(&mut bindings, &document_uris);
         apply_reference_source_resolutions(&mut bindings, source_resolutions, &document_uris);
         trace_reference_query_stage(
@@ -641,11 +664,11 @@ impl SymbolStore for SqliteStore {
         let occurrences: Vec<_> = if scoped {
             read_scoped_reference_occurrences(&transaction, &names)?
         } else {
-            read_reference_occurrences(&transaction, exported_name)?
+            read_reference_occurrences(&transaction, &exported_name)?
         }
         .into_iter()
         .filter(|occurrence| {
-            reference_uri_admitted(&occurrence.uri, &query.declaration_uri, admitted_uri_roots)
+            reference_uri_admitted(&occurrence.uri, &declaration_uri, admitted_uri_roots)
                 && names.binary_search(&occurrence.name).is_ok()
         })
         .collect();
@@ -665,13 +688,13 @@ impl SymbolStore for SqliteStore {
         } else {
             read_independent_reference_declarations(
                 &transaction,
-                exported_name,
+                &exported_name,
                 declaration_identity.as_deref(),
             )?
         }
         .into_iter()
         .filter(|(uri, name)| {
-            reference_uri_admitted(uri, &query.declaration_uri, admitted_uri_roots)
+            reference_uri_admitted(uri, &declaration_uri, admitted_uri_roots)
                 && names.binary_search(name).is_ok()
         })
         .collect();
@@ -683,7 +706,7 @@ impl SymbolStore for SqliteStore {
             independent_declarations.len(),
         );
         let mut uris = if admitted_uri_roots.is_empty() {
-            read_reference_uris(&transaction, exported_name, query.limit.saturating_add(1))?
+            read_reference_uris(&transaction, &exported_name, query.limit.saturating_add(1))?
         } else {
             occurrences
                 .iter()
@@ -697,8 +720,8 @@ impl SymbolStore for SqliteStore {
             &bindings,
             &occurrences,
             &independent_declarations,
-            &query.declaration_uri,
-            exported_name,
+            &declaration_uri,
+            &exported_name,
             query.limit,
         );
         trace_reference_query_stage(
@@ -1303,6 +1326,99 @@ fn read_document_uris(connection: &Connection) -> Result<BTreeSet<String>, Store
         .map_err(map_sqlite_error)?;
     rows.collect::<Result<BTreeSet<_>, _>>()
         .map_err(map_sqlite_error)
+}
+
+fn read_direct_import_declaration(
+    connection: &Connection,
+    query: &ReferenceCandidateQuery,
+    source_resolutions: &[ReferenceSourceResolution],
+    admitted_uri_roots: &[String],
+    document_uris: &BTreeSet<String>,
+) -> Result<Option<(String, String, Option<String>)>, StoreError> {
+    let mut occurrence_statement = connection
+        .prepare(
+            "SELECT name FROM reference_occurrences \
+             WHERE document_uri = ?1 AND start_line = ?2 AND end_line = ?2 \
+               AND start_character <= ?3 AND ?3 < end_character AND qualified = 0 \
+             ORDER BY ordinal LIMIT 2",
+        )
+        .map_err(map_sqlite_error)?;
+    let occurrence_rows = occurrence_statement
+        .query_map(
+            params![
+                query.declaration_uri,
+                i64::from(query.declaration_position.line),
+                i64::from(query.declaration_position.character),
+            ],
+            |row| row.get::<_, String>(0),
+        )
+        .map_err(map_sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(map_sqlite_error)?;
+    let [local_name] = occurrence_rows.as_slice() else {
+        return Ok(None);
+    };
+
+    let mut binding_statement = connection
+        .prepare(
+            "SELECT imported_name, source_specifier FROM reference_bindings \
+             WHERE document_uri = ?1 AND local_name = ?2 AND kind = 1 \
+             ORDER BY ordinal LIMIT 2",
+        )
+        .map_err(map_sqlite_error)?;
+    let mut bindings = binding_statement
+        .query_map(params![query.declaration_uri, local_name], |row| {
+            Ok(ReferenceBinding {
+                uri: query.declaration_uri.clone(),
+                imported_name: row.get(0)?,
+                local_name: local_name.clone(),
+                source_specifier: row.get(1)?,
+                kind: ReferenceBindingKind::Import,
+                source_resolution: ReferenceBindingResolution::Unresolved,
+                resolved_source_uri: None,
+                external_terminal_identity: None,
+            })
+        })
+        .map_err(map_sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(map_sqlite_error)?;
+    resolve_reference_binding_sources(&mut bindings, document_uris);
+    apply_reference_source_resolutions(&mut bindings, source_resolutions, document_uris);
+    let [binding] = bindings.as_slice() else {
+        return Ok(None);
+    };
+    if binding.source_resolution != ReferenceBindingResolution::Unique {
+        return Ok(None);
+    }
+    let Some(source_uri) = binding.resolved_source_uri.as_deref() else {
+        return Ok(None);
+    };
+    if !reference_uri_admitted(source_uri, &query.declaration_uri, admitted_uri_roots) {
+        return Ok(None);
+    }
+
+    let mut export_statement = connection
+        .prepare(
+            "SELECT exported_name, declaration_identity FROM exports \
+             WHERE document_uri = ?1 AND exported_name = ?2 AND reference_searchable = 1 \
+             ORDER BY ordinal LIMIT 2",
+        )
+        .map_err(map_sqlite_error)?;
+    let export_rows = export_statement
+        .query_map(params![source_uri, binding.imported_name], |row| {
+            Ok((
+                source_uri.to_owned(),
+                row.get::<_, String>(0)?,
+                row.get::<_, Option<String>>(1)?,
+            ))
+        })
+        .map_err(map_sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(map_sqlite_error)?;
+    let [declaration] = export_rows.as_slice() else {
+        return Ok(None);
+    };
+    Ok(Some(declaration.clone()))
 }
 
 fn read_reference_occurrences(

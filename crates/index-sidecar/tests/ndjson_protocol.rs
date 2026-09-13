@@ -518,6 +518,32 @@ fn sidecar_returns_conservative_reference_candidates_across_alias_reexports() {
         "type"
     );
 
+    let type_alias_usage = process.request(json!({
+        "protocol": 1,
+        "id": 101,
+        "method": "references/candidates",
+        "params": {
+            "declarationUri": "file:///workspace/TypeAliasConsumer.ets",
+            "declarationPosition": {"line": 1, "character": 15},
+            "limit": 100
+        }
+    }));
+    assert_eq!(type_alias_usage["ok"], true);
+    assert_eq!(type_alias_usage["result"]["supported"], true);
+    assert_eq!(type_alias_usage["result"]["complete"], true);
+    assert_eq!(
+        type_alias_usage["result"]["declarationIdentity"],
+        "file:///workspace/TypeAlias.ets#0:12:PhotoAsset"
+    );
+    assert_eq!(type_alias_usage["result"]["names"], json!(["PhotoAsset"]));
+    assert_eq!(
+        type_alias_usage["result"]["identityUris"],
+        json!([
+            "file:///workspace/TypeAlias.ets",
+            "file:///workspace/TypeAliasConsumer.ets"
+        ])
+    );
+
     let member = process.request(json!({
         "protocol": 1,
         "id": 11,

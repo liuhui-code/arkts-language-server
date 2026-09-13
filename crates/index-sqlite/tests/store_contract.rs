@@ -175,6 +175,77 @@ fn memory_and_sqlite_ignore_type_assertions_when_expanding_reference_names() {
     assert_type_assertions_do_not_widen_reference_names(WorkspaceIndex::with_store(store));
 }
 
+fn assert_direct_named_import_usage_resolves_the_reference_declaration(mut index: WorkspaceIndex) {
+    index
+        .refresh(
+            1,
+            [
+                Document::new(
+                    "file:///workspace/Target.ets",
+                    "export type Thing = object\n",
+                ),
+                Document::new(
+                    "file:///workspace/Consumer.ets",
+                    "import { Thing } from './Target'\nconst value: Thing = {}\n",
+                ),
+            ],
+            &[],
+        )
+        .expect("reference generation should commit");
+
+    let result = index
+        .search_reference_candidates(ReferenceCandidateQuery {
+            declaration_uri: "file:///workspace/Consumer.ets".to_owned(),
+            declaration_position: Position::new(1, 14),
+            limit: 20,
+        })
+        .expect("a direct named import usage should resolve through the index");
+
+    assert!(result.supported);
+    assert!(result.complete);
+    assert_eq!(result.names, ["Thing"]);
+    assert_eq!(
+        result.declaration_identity.as_deref(),
+        Some("file:///workspace/Target.ets#0:12:Thing")
+    );
+    assert_eq!(
+        result.identity_uris,
+        [
+            "file:///workspace/Consumer.ets",
+            "file:///workspace/Target.ets",
+        ]
+    );
+
+    let excluded_target = index
+        .search_reference_candidates_with_scope(
+            ReferenceCandidateQuery {
+                declaration_uri: "file:///workspace/Consumer.ets".to_owned(),
+                declaration_position: Position::new(1, 14),
+                limit: 20,
+            },
+            &[],
+            &["file:///workspace/consumer-only".to_owned()],
+        )
+        .expect("an out-of-scope import target should fail conservative");
+    assert!(!excluded_target.supported);
+    assert!(!excluded_target.complete);
+}
+
+#[test]
+fn memory_and_sqlite_resolve_direct_named_import_usages() {
+    assert_direct_named_import_usage_resolves_the_reference_declaration(
+        WorkspaceIndex::with_store(MemoryStore::default()),
+    );
+
+    let temp = TestDir::new("reference-direct-import-anchor");
+    let database = temp.path().join("symbols.sqlite3");
+    let store =
+        SqliteStore::open(&database, "file:///workspace").expect("SQLite store should open");
+    assert_direct_named_import_usage_resolves_the_reference_declaration(
+        WorkspaceIndex::with_store(store),
+    );
+}
+
 fn assert_reference_admission_scope(mut index: WorkspaceIndex) {
     index
         .refresh(
