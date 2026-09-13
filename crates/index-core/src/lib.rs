@@ -1,5 +1,6 @@
 //! Headless ArkTS workspace-symbol indexing.
 
+use std::fmt::Write as _;
 use std::{
     collections::{BTreeSet, HashMap},
     error::Error,
@@ -87,6 +88,7 @@ pub struct ReferenceOccurrence {
     pub uri: String,
     pub range: TextRange,
     pub qualified: Option<bool>,
+    pub qualifier: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -94,6 +96,7 @@ pub struct ReferenceOccurrenceIdentity {
     pub name: String,
     pub uri: String,
     pub qualified: Option<bool>,
+    pub qualifier: Option<String>,
 }
 
 impl From<&ReferenceOccurrence> for ReferenceOccurrenceIdentity {
@@ -102,6 +105,7 @@ impl From<&ReferenceOccurrence> for ReferenceOccurrenceIdentity {
             name: occurrence.name.clone(),
             uri: occurrence.uri.clone(),
             qualified: occurrence.qualified,
+            qualifier: occurrence.qualifier.clone(),
         }
     }
 }
@@ -261,6 +265,7 @@ pub struct ReferenceCandidateSearchResult {
     pub complete: bool,
     pub identity_complete: bool,
     pub identity_uris: Vec<String>,
+    pub narrowed_uris: Vec<String>,
     pub declaration_identity: Option<String>,
     pub names: Vec<String>,
     pub uris: Vec<String>,
@@ -564,20 +569,6 @@ impl SymbolStore for MemoryStore {
             .collect();
         let complete = uris.len() <= query.limit;
         let uris = uris.iter().take(query.limit).cloned().collect();
-        let mut bindings: Vec<_> = self
-            .documents
-            .values()
-            .filter(|document| {
-                reference_uri_admitted(&document.uri, &declaration.uri, admitted_uri_roots)
-            })
-            .flat_map(|document| document.bindings.iter())
-            .filter(|binding| {
-                names.contains(&binding.imported_name) || names.contains(&binding.local_name)
-            })
-            .cloned()
-            .collect();
-        resolve_reference_binding_sources(&mut bindings, &document_uris);
-        apply_reference_source_resolutions(&mut bindings, source_resolutions, &document_uris);
         let occurrences: Vec<_> = self
             .documents
             .values()
@@ -588,6 +579,30 @@ impl SymbolStore for MemoryStore {
             .filter(|occurrence| names.contains(&occurrence.name))
             .cloned()
             .collect();
+        let mut qualifier_names: BTreeSet<_> = occurrences
+            .iter()
+            .filter_map(|occurrence| occurrence.qualifier.as_ref())
+            .cloned()
+            .collect();
+        if qualifier_names.len() > MAX_REFERENCE_ALIAS_NAMES {
+            qualifier_names.clear();
+        }
+        let mut bindings: Vec<_> = self
+            .documents
+            .values()
+            .filter(|document| {
+                reference_uri_admitted(&document.uri, &declaration.uri, admitted_uri_roots)
+            })
+            .flat_map(|document| document.bindings.iter())
+            .filter(|binding| {
+                names.contains(&binding.imported_name)
+                    || names.contains(&binding.local_name)
+                    || qualifier_names.contains(&binding.local_name)
+            })
+            .cloned()
+            .collect();
+        resolve_reference_binding_sources(&mut bindings, &document_uris);
+        apply_reference_source_resolutions(&mut bindings, source_resolutions, &document_uris);
         let independent_declarations: BTreeSet<_> = self
             .documents
             .values()
@@ -608,7 +623,7 @@ impl SymbolStore for MemoryStore {
             .map(ReferenceOccurrenceIdentity::from)
             .collect();
         let occurrence_identities: Vec<_> = occurrence_identities.into_iter().collect();
-        let (identity_complete, identity_uris) = prove_reference_binding_chain(
+        let (identity_complete, identity_uris, narrowed_uris) = prove_reference_binding_chain(
             &bindings,
             &occurrence_identities,
             &independent_declarations,
@@ -622,6 +637,7 @@ impl SymbolStore for MemoryStore {
             complete,
             identity_complete,
             identity_uris,
+            narrowed_uris,
             declaration_identity: declaration.declaration_identity.clone(),
             names: names.into_iter().collect(),
             uris,
@@ -637,6 +653,7 @@ fn unsupported_reference_candidates(generation: u64) -> ReferenceCandidateSearch
         complete: false,
         identity_complete: false,
         identity_uris: Vec::new(),
+        narrowed_uris: Vec::new(),
         declaration_identity: None,
         names: Vec::new(),
         uris: Vec::new(),
@@ -789,12 +806,19 @@ pub fn prove_reference_binding_chain(
     declaration_uri: &str,
     declaration_name: &str,
     limit: usize,
-) -> (bool, Vec<String>) {
+) -> (bool, Vec<String>, Vec<String>) {
     let mut proven = HashMap::<String, BTreeSet<String>>::from([(
         declaration_uri.to_owned(),
         BTreeSet::from([declaration_name.to_owned()]),
     )]);
     let mut disjoint = HashMap::<String, BTreeSet<String>>::new();
+    for (uri, name) in independent_declarations {
+        disjoint
+            .entry(uri.clone())
+            .or_default()
+            .insert(name.clone());
+    }
+    let mut external_qualifiers = HashMap::<String, BTreeSet<String>>::new();
     let mut reached_bindings = BTreeSet::new();
     loop {
         let before = reached_bindings.len();
@@ -803,6 +827,10 @@ pub fn prove_reference_binding_chain(
                 && binding.external_terminal_identity.is_some()
             {
                 reached_bindings.insert(index);
+                external_qualifiers
+                    .entry(binding.uri.clone())
+                    .or_default()
+                    .insert(binding.local_name.clone());
                 let names = disjoint.entry(binding.uri.clone()).or_default();
                 names.insert(binding.imported_name.clone());
                 names.insert(binding.local_name.clone());
@@ -836,17 +864,26 @@ pub fn prove_reference_binding_chain(
             break;
         }
     }
+    let occurrence_is_disjoint = |occurrence: &ReferenceOccurrenceIdentity| {
+        occurrence.qualified == Some(false)
+            && disjoint
+                .get(&occurrence.uri)
+                .is_some_and(|names| names.contains(&occurrence.name))
+            || independent_declarations.contains(&(occurrence.uri.clone(), occurrence.name.clone()))
+                && occurrence.qualified == Some(false)
+            || occurrence.qualified == Some(true)
+                && occurrence.qualifier.as_ref().is_some_and(|qualifier| {
+                    external_qualifiers
+                        .get(&occurrence.uri)
+                        .is_some_and(|names| names.contains(qualifier))
+                })
+    };
     let classified = reached_bindings.len() == bindings.len()
         && occurrences.iter().all(|occurrence| {
             proven
                 .get(&occurrence.uri)
                 .is_some_and(|names| names.contains(&occurrence.name))
-                || disjoint
-                    .get(&occurrence.uri)
-                    .is_some_and(|names| names.contains(&occurrence.name))
-                || independent_declarations
-                    .contains(&(occurrence.uri.clone(), occurrence.name.clone()))
-                    && occurrence.qualified == Some(false)
+                || occurrence_is_disjoint(occurrence)
         });
     let identity_uris: BTreeSet<_> = occurrences
         .iter()
@@ -857,10 +894,26 @@ pub fn prove_reference_binding_chain(
         })
         .map(|occurrence| occurrence.uri.clone())
         .collect();
+    let mut all_uris: BTreeSet<_> = occurrences
+        .iter()
+        .map(|occurrence| occurrence.uri.clone())
+        .collect();
+    all_uris.insert(declaration_uri.to_owned());
+    let mut narrowed_uris: BTreeSet<_> = occurrences
+        .iter()
+        .filter(|occurrence| !occurrence_is_disjoint(occurrence))
+        .map(|occurrence| occurrence.uri.clone())
+        .collect();
+    narrowed_uris.insert(declaration_uri.to_owned());
+    let narrowed_uris = if narrowed_uris.len() < all_uris.len() && narrowed_uris.len() <= limit {
+        narrowed_uris.into_iter().collect()
+    } else {
+        Vec::new()
+    };
     if !classified || identity_uris.len() > limit {
-        return (false, Vec::new());
+        return (false, Vec::new(), narrowed_uris);
     }
-    (true, identity_uris.into_iter().collect())
+    (true, identity_uris.into_iter().collect(), narrowed_uris)
 }
 
 fn relative_source_uri_candidates(owner_uri: &str, source: &str) -> Option<Vec<String>> {
@@ -872,7 +925,11 @@ fn relative_source_uri_candidates(owner_uri: &str, source: &str) -> Option<Vec<S
     }
     let owner_path = owner_uri.strip_prefix("file://")?;
     let parent_end = owner_path.rfind('/')?;
-    let combined = format!("{}/{}", &owner_path[..parent_end], source);
+    let combined = format!(
+        "{}/{}",
+        &owner_path[..parent_end],
+        percent_encode_uri_path(source.as_bytes())
+    );
     let mut segments = Vec::new();
     for segment in combined.split('/') {
         match segment {
@@ -900,6 +957,18 @@ fn relative_source_uri_candidates(owner_uri: &str, source: &str) -> Option<Vec<S
         format!("{base}/index.d.ets"),
         format!("{base}/index.d.ts"),
     ])
+}
+
+fn percent_encode_uri_path(bytes: &[u8]) -> String {
+    let mut encoded = String::with_capacity(bytes.len());
+    for byte in bytes {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~' | b'/' | b':') {
+            encoded.push(char::from(*byte));
+        } else {
+            write!(&mut encoded, "%{byte:02X}").expect("writing to String cannot fail");
+        }
+    }
+    encoded
 }
 
 pub fn fold_for_search(value: &str) -> String {
@@ -1210,14 +1279,21 @@ fn parse_symbols(document: &Document) -> Result<ParsedSymbols, DocumentParseErro
         .iter()
         .enumerate()
         .filter(|(_, token)| token.kind == TokenKind::Identifier)
-        .map(|(index, token)| ReferenceOccurrence {
-            name: token.text.to_owned(),
-            uri: document.uri.clone(),
-            range: TextRange::new(
-                line_index.position(token.start),
-                line_index.position(token.end),
-            ),
-            qualified: Some(index > 0 && tokens[index - 1].text == "."),
+        .map(|(index, token)| {
+            let qualifier = (index > 1
+                && tokens[index - 1].text == "."
+                && tokens[index - 2].kind == TokenKind::Identifier)
+                .then(|| tokens[index - 2].text.to_owned());
+            ReferenceOccurrence {
+                name: token.text.to_owned(),
+                uri: document.uri.clone(),
+                range: TextRange::new(
+                    line_index.position(token.start),
+                    line_index.position(token.end),
+                ),
+                qualified: Some(index > 0 && tokens[index - 1].text == "."),
+                qualifier,
+            }
         })
         .collect();
     let aliases = tokens
@@ -1423,12 +1499,9 @@ fn reference_bindings(document: &Document, tokens: &[Token<'_>]) -> Vec<Referenc
         match token.text {
             "{" => brace_depth += 1,
             "}" => brace_depth = brace_depth.saturating_sub(1),
-            "import" if brace_depth == 0 => bindings.extend(named_source_bindings(
-                document,
-                tokens,
-                index,
-                ReferenceBindingKind::Import,
-            )),
+            "import" if brace_depth == 0 => {
+                bindings.extend(import_source_bindings(document, tokens, index))
+            }
             "export" if brace_depth == 0 => bindings.extend(named_source_bindings(
                 document,
                 tokens,
@@ -1440,6 +1513,52 @@ fn reference_bindings(document: &Document, tokens: &[Token<'_>]) -> Vec<Referenc
     }
 
     bindings
+}
+
+fn import_source_bindings(
+    document: &Document,
+    tokens: &[Token<'_>],
+    statement_index: usize,
+) -> Vec<ReferenceBinding> {
+    let named = named_source_bindings(
+        document,
+        tokens,
+        statement_index,
+        ReferenceBindingKind::Import,
+    );
+    if !named.is_empty() {
+        return named;
+    }
+    let mut cursor = statement_index + 1;
+    while tokens
+        .get(cursor)
+        .is_some_and(|token| matches!(token.text, "type" | "lazy"))
+    {
+        cursor += 1;
+    }
+    let Some(local) = tokens
+        .get(cursor)
+        .filter(|token| token.kind == TokenKind::Identifier)
+    else {
+        return Vec::new();
+    };
+    let Some(source) = tokens.get(cursor + 2).filter(|source| {
+        tokens.get(cursor + 1).map(|token| token.text) == Some("from")
+            && source.kind == TokenKind::StringLiteral
+            && !source.text.contains('\\')
+    }) else {
+        return Vec::new();
+    };
+    vec![ReferenceBinding {
+        imported_name: "default".to_owned(),
+        local_name: local.text.to_owned(),
+        source_specifier: source.text.to_owned(),
+        kind: ReferenceBindingKind::Import,
+        uri: document.uri.clone(),
+        source_resolution: ReferenceBindingResolution::Unresolved,
+        resolved_source_uri: None,
+        external_terminal_identity: None,
+    }]
 }
 
 fn named_source_bindings(

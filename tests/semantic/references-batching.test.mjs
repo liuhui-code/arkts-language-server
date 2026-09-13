@@ -520,8 +520,9 @@ test("indexed batching proves a declared local package binding before narrowing"
   const classifiedAccepted = classified.indexEvents.find(event => (
     event.event === "references.index.accepted"
   ))
-  assert.equal(classifiedAccepted?.anchorMode, "compiler-definition")
-  assert.equal(classifiedAccepted?.candidateFiles, 5)
+  assert.equal(classifiedAccepted?.anchorMode, "compiler-definition-conservative")
+  assert.equal(classifiedAccepted?.candidateFiles, 4)
+  assert.equal(classifiedAccepted?.conservativeCandidateFiles, 5)
   const classifiedResolution = classified.referenceEvents.find(event => (
     event.event === "references.index.source-resolutions"
   ))
@@ -641,6 +642,11 @@ test("indexed batching classifies a locked SDK module as an external terminal", 
       "export const sdkUse = new SdkThing()",
       "",
     ].join("\n")),
+    fs.promises.writeFile(path.join(workspace, "SdkQualifiedUse.ets"), [
+      'import lazy sdk from "@ohos.example"',
+      "export type QualifiedAlias = sdk.Thing",
+      "",
+    ].join("\n")),
   ])
   const queryUri = pathToFileURL(path.join(workspace, "Query.ets")).href
   const position = positionAt(queryText, queryText.lastIndexOf("PublicThing") + 1)
@@ -659,17 +665,20 @@ test("indexed batching classifies a locked SDK module as an external terminal", 
   assert.equal(accepted?.anchorMode, "compiler-definition-identity",
     JSON.stringify(indexed.referenceEvents))
   assert.equal(accepted?.candidateFiles, 4)
-  assert.equal(accepted?.conservativeCandidateFiles, 5)
+  assert.equal(accepted?.conservativeCandidateFiles, 6)
   const resolution = indexed.referenceEvents.find(event => (
     event.event === "references.index.source-resolutions"
   ))
-  assert.equal(resolution?.resolvedBindings, 1)
+  assert.equal(resolution?.resolvedBindings, 2)
   assert.equal(resolution?.unresolvedSdkBindings, 0)
   const external = indexed.indexRequests.flatMap(request => (
     request.params.sourceResolutions ?? []
-  )).find(item => item.sourceSpecifier === "@ohos.example")
-  assert.match(external?.externalTerminalIdentity ?? "", /^sdk:[0-9a-f]{64}$/)
-  assert.equal(external?.resolvedSourceUri, undefined)
+  )).filter(item => item.sourceSpecifier === "@ohos.example")
+  assert.equal(external.length, 2)
+  assert.ok(external.every(item => /^sdk:[0-9a-f]{64}$/.test(
+    item.externalTerminalIdentity ?? "",
+  )))
+  assert.ok(external.every(item => item.resolvedSourceUri === undefined))
 })
 
 async function runReferences(t, {

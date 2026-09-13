@@ -377,7 +377,11 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
       if (await this.#eligibleReferenceCandidates(query.document.workspaceId, direct)) {
         const candidateUris = identityReferenceUris(direct)
         this.#logger?.info("references.index.accepted", {
-          anchorMode: direct.identityComplete ? "indexed-declaration-identity" : "indexed-declaration",
+          anchorMode: direct.identityComplete
+            ? "indexed-declaration-identity"
+            : direct.narrowedUris?.length
+              ? "indexed-declaration-conservative"
+              : "indexed-declaration",
           candidateFiles: candidateUris.length,
           conservativeCandidateFiles: direct.uris.length,
           servedGeneration: direct.servedGeneration,
@@ -447,7 +451,11 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
       }
       const candidateUris = identityReferenceUris(result)
       this.#logger?.info("references.index.accepted", {
-        anchorMode: result.identityComplete ? "compiler-definition-identity" : "compiler-definition",
+        anchorMode: result.identityComplete
+          ? "compiler-definition-identity"
+          : result.narrowedUris?.length
+            ? "compiler-definition-conservative"
+            : "compiler-definition",
         candidateFiles: candidateUris.length,
         conservativeCandidateFiles: result.uris.length,
         servedGeneration: result.servedGeneration,
@@ -797,9 +805,8 @@ function sdkExternalTerminalIdentity(
 function identityReferenceUris(
   result: WorkspaceReferenceCandidateResult,
 ): readonly string[] {
-  return result.identityComplete && result.identityUris.length > 0
-    ? result.identityUris
-    : result.uris
+  if (result.identityComplete && result.identityUris.length > 0) return result.identityUris
+  return result.narrowedUris?.length ? result.narrowedUris : result.uris
 }
 
 function completionPrefixContext(

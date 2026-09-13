@@ -30,7 +30,8 @@ use sha2::{Digest, Sha256};
 use std::sync::{Arc, Barrier, Mutex};
 
 const APPLICATION_ID: i64 = 0x4152_4B49;
-const SCHEMA_VERSION: i64 = 7;
+const SCHEMA_VERSION: i64 = 8;
+const OCCURRENCE_IDENTITY_SCHEMA_VERSION: i64 = 7;
 const OCCURRENCE_PROOF_SCHEMA_VERSION: i64 = 6;
 const BINDING_SCHEMA_VERSION: i64 = 5;
 const REFERENCE_SCHEMA_VERSION: i64 = 4;
@@ -158,20 +159,27 @@ impl SqliteStore {
             (APPLICATION_ID, SCHEMA_VERSION) => {
                 verify_workspace_identity(&connection, workspace_identity)?
             }
+            (APPLICATION_ID, OCCURRENCE_IDENTITY_SCHEMA_VERSION) => {
+                verify_workspace_identity(&connection, workspace_identity)?;
+                migrate_schema_v7_to_v8(&mut connection)?;
+            }
             (APPLICATION_ID, OCCURRENCE_PROOF_SCHEMA_VERSION) => {
                 verify_workspace_identity(&connection, workspace_identity)?;
                 migrate_schema_v6_to_v7(&mut connection)?;
+                migrate_schema_v7_to_v8(&mut connection)?;
             }
             (APPLICATION_ID, BINDING_SCHEMA_VERSION) => {
                 verify_workspace_identity(&connection, workspace_identity)?;
                 migrate_schema_v5_to_v6(&mut connection)?;
                 migrate_schema_v6_to_v7(&mut connection)?;
+                migrate_schema_v7_to_v8(&mut connection)?;
             }
             (APPLICATION_ID, REFERENCE_SCHEMA_VERSION) => {
                 verify_workspace_identity(&connection, workspace_identity)?;
                 migrate_schema_v4_to_v5(&mut connection)?;
                 migrate_schema_v5_to_v6(&mut connection)?;
                 migrate_schema_v6_to_v7(&mut connection)?;
+                migrate_schema_v7_to_v8(&mut connection)?;
             }
             (APPLICATION_ID, EXPORT_SCHEMA_VERSION) => {
                 verify_workspace_identity(&connection, workspace_identity)?;
@@ -179,6 +187,7 @@ impl SqliteStore {
                 migrate_schema_v4_to_v5(&mut connection)?;
                 migrate_schema_v5_to_v6(&mut connection)?;
                 migrate_schema_v6_to_v7(&mut connection)?;
+                migrate_schema_v7_to_v8(&mut connection)?;
             }
             (APPLICATION_ID, PREVIOUS_SCHEMA_VERSION) => {
                 verify_workspace_identity(&connection, workspace_identity)?;
@@ -187,6 +196,7 @@ impl SqliteStore {
                 migrate_schema_v4_to_v5(&mut connection)?;
                 migrate_schema_v5_to_v6(&mut connection)?;
                 migrate_schema_v6_to_v7(&mut connection)?;
+                migrate_schema_v7_to_v8(&mut connection)?;
             }
             _ => {
                 return Err(StoreError::new(
@@ -635,32 +645,6 @@ impl SymbolStore for SqliteStore {
             names.len(),
         );
         let scoped = !admitted_uri_roots.is_empty();
-        let mut bindings = if scoped {
-            read_scoped_reference_bindings(&transaction, &names)?
-        } else {
-            read_reference_bindings(&transaction, &exported_name)?
-        };
-        bindings.retain(|binding| {
-            reference_uri_admitted(&binding.uri, &declaration_uri, admitted_uri_roots)
-                && (names.binary_search(&binding.imported_name).is_ok()
-                    || names.binary_search(&binding.local_name).is_ok())
-        });
-        trace_reference_query_stage(
-            trace,
-            "bindings",
-            trace_started,
-            &mut trace_previous,
-            bindings.len(),
-        );
-        resolve_reference_binding_sources(&mut bindings, &document_uris);
-        apply_reference_source_resolutions(&mut bindings, source_resolutions, &document_uris);
-        trace_reference_query_stage(
-            trace,
-            "binding-resolution",
-            trace_started,
-            &mut trace_previous,
-            bindings.len(),
-        );
         let occurrences: Vec<_> = if scoped {
             read_scoped_reference_occurrences(&transaction, &names)?
         } else {
@@ -678,6 +662,46 @@ impl SymbolStore for SqliteStore {
             trace_started,
             &mut trace_previous,
             occurrences.len(),
+        );
+        let mut qualifier_names: Vec<_> = occurrences
+            .iter()
+            .filter_map(|occurrence| occurrence.qualifier.clone())
+            .collect();
+        qualifier_names.sort();
+        qualifier_names.dedup();
+        if qualifier_names.len() > MAX_REFERENCE_ALIAS_NAMES {
+            qualifier_names.clear();
+        }
+        let mut binding_names = names.clone();
+        binding_names.extend(qualifier_names.iter().cloned());
+        binding_names.sort();
+        binding_names.dedup();
+        let mut bindings = if scoped || !qualifier_names.is_empty() {
+            read_scoped_reference_bindings(&transaction, &binding_names)?
+        } else {
+            read_reference_bindings(&transaction, &exported_name)?
+        };
+        bindings.retain(|binding| {
+            reference_uri_admitted(&binding.uri, &declaration_uri, admitted_uri_roots)
+                && (names.binary_search(&binding.imported_name).is_ok()
+                    || names.binary_search(&binding.local_name).is_ok()
+                    || qualifier_names.binary_search(&binding.local_name).is_ok())
+        });
+        trace_reference_query_stage(
+            trace,
+            "bindings",
+            trace_started,
+            &mut trace_previous,
+            bindings.len(),
+        );
+        resolve_reference_binding_sources(&mut bindings, &document_uris);
+        apply_reference_source_resolutions(&mut bindings, source_resolutions, &document_uris);
+        trace_reference_query_stage(
+            trace,
+            "binding-resolution",
+            trace_started,
+            &mut trace_previous,
+            bindings.len(),
         );
         let independent_declarations: BTreeSet<_> = if scoped {
             read_scoped_independent_reference_declarations(
@@ -716,7 +740,7 @@ impl SymbolStore for SqliteStore {
                 .take(query.limit.saturating_add(1))
                 .collect()
         };
-        let (identity_complete, identity_uris) = prove_reference_binding_chain(
+        let (identity_complete, identity_uris, narrowed_uris) = prove_reference_binding_chain(
             &bindings,
             &occurrences,
             &independent_declarations,
@@ -739,6 +763,7 @@ impl SymbolStore for SqliteStore {
             complete,
             identity_complete,
             identity_uris,
+            narrowed_uris,
             declaration_identity: declaration_identity.clone(),
             names,
             uris,
@@ -915,7 +940,7 @@ fn insert_reference_documents(
     documents: &[DocumentSymbols],
 ) -> Result<(), StoreError> {
     const OCCURRENCE_IDENTITIES_PER_INSERT: usize = 256;
-    const VALUES_PER_OCCURRENCE_IDENTITY: usize = 3;
+    const VALUES_PER_OCCURRENCE_IDENTITY: usize = 4;
     let mut occurrence_statement = transaction
         .prepare_cached(
             "INSERT INTO reference_occurrences(\
@@ -961,15 +986,17 @@ fn insert_reference_documents(
                     Some(false) => 0_i64,
                     Some(true) => 1_i64,
                 },
+                occurrence.qualifier.as_deref().unwrap_or(""),
             ));
         }
         occurrence_identities.sort_unstable();
         occurrence_identities.dedup();
-        for (name, qualification) in occurrence_identities {
+        for (name, qualification, qualifier) in occurrence_identities {
             occurrence_identity_values.extend([
                 SqlValue::Text(document.uri.clone()),
                 SqlValue::Text(name.to_owned()),
                 SqlValue::Integer(qualification),
+                SqlValue::Text(qualifier.to_owned()),
             ]);
             occurrence_identity_count += 1;
             if occurrence_identity_count == OCCURRENCE_IDENTITIES_PER_INSERT {
@@ -1020,9 +1047,11 @@ fn insert_occurrence_identity_values(
     row_count: usize,
     values: &[SqlValue],
 ) -> Result<(), StoreError> {
-    const VALUES_PER_OCCURRENCE_IDENTITY: usize = 3;
+    const VALUES_PER_OCCURRENCE_IDENTITY: usize = 4;
     let mut sql = String::from(
-        "INSERT INTO reference_occurrence_identities(document_uri, name, qualification) VALUES ",
+        "INSERT INTO reference_occurrence_identities(\
+            document_uri, name, qualification, qualifier\
+         ) VALUES ",
     );
     let value_group = format!("({})", ["?"; VALUES_PER_OCCURRENCE_IDENTITY].join(","));
     sql.push_str(&vec![value_group; row_count].join(","));
@@ -1094,7 +1123,7 @@ const REFERENCE_OCCURRENCES_SQL: &str = "WITH RECURSIVE \
     ) \
     SELECT reference_occurrence_identities.name, \
            reference_occurrence_identities.document_uri, \
-           qualification \
+           qualification, qualifier \
     FROM reference_occurrence_identities \
          INDEXED BY reference_occurrence_identities_name JOIN names USING(name)";
 
@@ -1141,7 +1170,7 @@ fn scoped_reference_occurrences_sql(name_count: usize) -> Result<String, StoreEr
     scoped_reference_sql(
         name_count,
         "SELECT reference_occurrence_identities.name, \
-                reference_occurrence_identities.document_uri, qualification \
+                reference_occurrence_identities.document_uri, qualification, qualifier \
          FROM reference_occurrence_identities \
               INDEXED BY reference_occurrence_identities_name \
          JOIN names USING(name)",
@@ -1440,6 +1469,7 @@ fn read_reference_occurrences(
                         Box::new(error),
                     )
                 })?,
+                qualifier: non_empty_string(row.get(3)?),
             })
         })
         .map_err(map_sqlite_error)?;
@@ -1465,6 +1495,7 @@ fn read_scoped_reference_occurrences(
                         Box::new(error),
                     )
                 })?,
+                qualifier: non_empty_string(row.get(3)?),
             })
         })
         .map_err(map_sqlite_error)?;
@@ -1519,6 +1550,7 @@ fn unsupported_reference_candidates(generation: u64) -> ReferenceCandidateSearch
         complete: false,
         identity_complete: false,
         identity_uris: Vec::new(),
+        narrowed_uris: Vec::new(),
         declaration_identity: None,
         names: Vec::new(),
         uris: Vec::new(),
@@ -1784,10 +1816,13 @@ fn initialize_schema(
                 document_uri TEXT NOT NULL REFERENCES documents(uri) ON DELETE CASCADE,\
                 name TEXT NOT NULL,\
                 qualification INTEGER NOT NULL CHECK(qualification IN (-1, 0, 1)),\
-                PRIMARY KEY(document_uri, name, qualification)\
+                qualifier TEXT NOT NULL,\
+                PRIMARY KEY(document_uri, name, qualification, qualifier)\
              );\
              CREATE INDEX reference_occurrence_identities_name \
-                ON reference_occurrence_identities(name, document_uri, qualification);\
+                ON reference_occurrence_identities(\
+                    name, document_uri, qualification, qualifier\
+                );\
              CREATE TABLE reference_aliases(\
                 document_uri TEXT NOT NULL REFERENCES documents(uri) ON DELETE CASCADE,\
                 ordinal INTEGER NOT NULL CHECK(ordinal >= 0),\
@@ -1877,6 +1912,40 @@ fn migrate_schema_v6_to_v7(connection: &mut Connection) -> Result<(), StoreError
              FROM reference_occurrences \
              GROUP BY document_uri, name, qualified;\
              DROP INDEX reference_occurrences_name;",
+        )
+        .map_err(map_sqlite_error)?;
+    transaction
+        .pragma_update(None, "user_version", OCCURRENCE_IDENTITY_SCHEMA_VERSION)
+        .map_err(map_sqlite_error)?;
+    transaction.commit().map_err(map_sqlite_error)
+}
+
+fn migrate_schema_v7_to_v8(connection: &mut Connection) -> Result<(), StoreError> {
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(map_sqlite_error)?;
+    transaction
+        .execute_batch(
+            "ALTER TABLE reference_occurrence_identities \
+                RENAME TO reference_occurrence_identities_v7;\
+             DROP INDEX reference_occurrence_identities_name;\
+             CREATE TABLE reference_occurrence_identities(\
+                document_uri TEXT NOT NULL REFERENCES documents(uri) ON DELETE CASCADE,\
+                name TEXT NOT NULL,\
+                qualification INTEGER NOT NULL CHECK(qualification IN (-1, 0, 1)),\
+                qualifier TEXT NOT NULL,\
+                PRIMARY KEY(document_uri, name, qualification, qualifier)\
+             );\
+             CREATE INDEX reference_occurrence_identities_name \
+                ON reference_occurrence_identities(\
+                    name, document_uri, qualification, qualifier\
+                );\
+             INSERT INTO reference_occurrence_identities(\
+                document_uri, name, qualification, qualifier\
+             ) \
+             SELECT document_uri, name, qualification, '' \
+             FROM reference_occurrence_identities_v7;\
+             DROP TABLE reference_occurrence_identities_v7;",
         )
         .map_err(map_sqlite_error)?;
     transaction
@@ -2118,6 +2187,10 @@ fn reference_qualification_from_i64(value: i64) -> Result<Option<bool>, StoreErr
     }
 }
 
+fn non_empty_string(value: String) -> Option<String> {
+    (!value.is_empty()).then_some(value)
+}
+
 fn to_u32(value: i64, field: &str) -> Result<u32, StoreError> {
     u32::try_from(value).map_err(|_| {
         StoreError::new(
@@ -2165,10 +2238,13 @@ mod tests {
                  CREATE TABLE reference_occurrence_identities(\
                     document_uri TEXT NOT NULL,\
                     name TEXT NOT NULL,\
-                    qualification INTEGER NOT NULL\
+                    qualification INTEGER NOT NULL,\
+                    qualifier TEXT NOT NULL\
                  );\
                  CREATE INDEX reference_occurrence_identities_name \
-                    ON reference_occurrence_identities(name, document_uri, qualification);",
+                    ON reference_occurrence_identities(\
+                        name, document_uri, qualification, qualifier\
+                    );",
             )
             .expect("reference query schema should exist");
 
@@ -2208,10 +2284,13 @@ mod tests {
                  CREATE TABLE reference_occurrence_identities(\
                     document_uri TEXT NOT NULL,\
                     name TEXT NOT NULL,\
-                    qualification INTEGER NOT NULL\
+                    qualification INTEGER NOT NULL,\
+                    qualifier TEXT NOT NULL\
                  );\
                  CREATE INDEX reference_occurrence_identities_name \
-                    ON reference_occurrence_identities(name, document_uri, qualification);",
+                    ON reference_occurrence_identities(\
+                        name, document_uri, qualification, qualifier\
+                    );",
             )
             .expect("scoped reference query schema should exist");
 

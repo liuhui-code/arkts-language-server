@@ -358,6 +358,11 @@ fn assert_external_sdk_terminal_contract(mut index: WorkspaceIndex) {
                     "import { Thing as SdkThing } from '@ohos.example'\n\
                      const sdk = new SdkThing()\n",
                 ),
+                Document::new(
+                    "file:///workspace/SdkQualifiedUse.ets",
+                    "import lazy sdk from '@ohos.example'\n\
+                     type QualifiedAlias = sdk.Thing\n",
+                ),
             ],
             &[],
         )
@@ -369,15 +374,26 @@ fn assert_external_sdk_terminal_contract(mut index: WorkspaceIndex) {
                 declaration_position: Position::new(0, 14),
                 limit: 20,
             },
-            &[ReferenceSourceResolution {
-                binding_uri: "file:///workspace/SdkUse.ets".to_owned(),
-                source_specifier: "@ohos.example".to_owned(),
-                resolved_source_uri: None,
-                external_terminal_identity: Some(
-                    "sdk:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-                        .to_owned(),
-                ),
-            }],
+            &[
+                ReferenceSourceResolution {
+                    binding_uri: "file:///workspace/SdkUse.ets".to_owned(),
+                    source_specifier: "@ohos.example".to_owned(),
+                    resolved_source_uri: None,
+                    external_terminal_identity: Some(
+                        "sdk:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                            .to_owned(),
+                    ),
+                },
+                ReferenceSourceResolution {
+                    binding_uri: "file:///workspace/SdkQualifiedUse.ets".to_owned(),
+                    source_specifier: "@ohos.example".to_owned(),
+                    resolved_source_uri: None,
+                    external_terminal_identity: Some(
+                        "sdk:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                            .to_owned(),
+                    ),
+                },
+            ],
         )
         .expect("external SDK terminal should be classifiable");
     assert!(result.identity_complete);
@@ -1182,7 +1198,10 @@ fn version_six_database_migrates_to_the_covering_occurrence_identity_index() {
         .expect("covering index metadata should query")
         .collect::<Result<_, _>>()
         .expect("covering index metadata should decode");
-    assert_eq!(columns, ["name", "document_uri", "qualification"]);
+    assert_eq!(
+        columns,
+        ["name", "document_uri", "qualification", "qualifier"]
+    );
 }
 
 #[test]
@@ -1357,7 +1376,7 @@ fn version_two_database_migrates_in_place_without_losing_committed_symbols() {
     let version: i64 = migrated
         .pragma_query_value(None, "user_version", |row| row.get(0))
         .expect("schema version should be readable");
-    assert_eq!(version, 7);
+    assert_eq!(version, 8);
 }
 
 #[test]

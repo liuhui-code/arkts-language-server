@@ -172,7 +172,7 @@ input.on("line", (line) => {
             path.join("entry", "src", "main", "ets", "SameName.ets"),
           ]
         : sdkTerminal
-        ? ["Target.ets", "Barrel.ets", "Query.ets", "Use.ets", "SdkUse.ets"]
+        ? ["Target.ets", "Barrel.ets", "Query.ets", "Use.ets", "SdkUse.ets", "SdkQualifiedUse.ets"]
         : semanticUnits
         ? [
             path.join("shared", "src", "main", "ets", "Target.ets"),
@@ -188,12 +188,14 @@ input.on("line", (line) => {
           : "shared")
         && resolution.resolvedSourceUri.endsWith(`/shared/src/main/ets/${packageTarget}`)
       )) ?? false
-      const sdkTerminalResolved = request.params.sourceResolutions?.some((resolution) => (
-        resolution.bindingUri.endsWith("/SdkUse.ets")
-        && resolution.sourceSpecifier === "@ohos.example"
-        && /^sdk:[0-9a-f]{64}$/.test(resolution.externalTerminalIdentity ?? "")
-        && resolution.resolvedSourceUri === undefined
-      )) ?? false
+      const sdkTerminalResolved = ["SdkUse.ets", "SdkQualifiedUse.ets"].every(file => (
+        request.params.sourceResolutions?.some((resolution) => (
+          resolution.bindingUri.endsWith(`/${file}`)
+          && resolution.sourceSpecifier === "@ohos.example"
+          && /^sdk:[0-9a-f]{64}$/.test(resolution.externalTerminalIdentity ?? "")
+          && resolution.resolvedSourceUri === undefined
+        )) ?? false
+      ))
       const identityFiles = directImportAnchor
         ? candidateFiles
         : semanticUnits
@@ -218,25 +220,33 @@ input.on("line", (line) => {
           && (!sdkTerminal || sdkTerminalResolved)
           ? identityFiles.map(file => pathToFileURL(path.join(workspaceRoot, file)).href)
           : [],
+        narrowedUris: supported && sourceClassification
+          ? identityFiles.map(file => pathToFileURL(path.join(workspaceRoot, file)).href)
+          : [],
         declarationIdentity: supported ? "scripted-reference-candidate" : null,
         names: supported ? directImportAnchor ? ["Thing"] : ["Alias", "PublicThing", "Thing"] : [],
         uris: supported
           ? candidateFiles.map(file => pathToFileURL(path.join(workspaceRoot, file)).href)
           : [],
-        bindings: supported && sdkTerminal ? [{
-          kind: "import",
-          uri: pathToFileURL(path.join(workspaceRoot, "SdkUse.ets")).href,
-          importedName: "Thing",
-          localName: "SdkThing",
-          sourceSpecifier: "@ohos.example",
-          sourceResolution: sdkTerminalResolved ? "external" : "unsupported",
-          externalTerminalIdentity: sdkTerminalResolved
-            ? request.params.sourceResolutions.find(resolution => (
-                resolution.sourceSpecifier === "@ohos.example"
-              )).externalTerminalIdentity
-            : null,
-          resolvedSourceUri: null,
-        }] : supported && packageResolutions ? [{
+        bindings: supported && sdkTerminal ? [
+          ["SdkUse.ets", "Thing", "SdkThing"],
+          ["SdkQualifiedUse.ets", "default", "sdk"],
+        ].map(([file, importedName, localName]) => {
+          const resolution = request.params.sourceResolutions?.find(item => (
+            item.bindingUri.endsWith(`/${file}`)
+            && item.sourceSpecifier === "@ohos.example"
+          ))
+          return {
+            kind: "import",
+            uri: pathToFileURL(path.join(workspaceRoot, file)).href,
+            importedName,
+            localName,
+            sourceSpecifier: "@ohos.example",
+            sourceResolution: resolution ? "external" : "unsupported",
+            externalTerminalIdentity: resolution?.externalTerminalIdentity ?? null,
+            resolvedSourceUri: null,
+          }
+        }) : supported && packageResolutions ? [{
           kind: "reexport",
           uri: pathToFileURL(path.join(workspaceRoot, "entry", "src", "main", "ets", "Barrel.ets")).href,
           importedName: "Thing",
