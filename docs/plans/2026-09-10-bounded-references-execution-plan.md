@@ -527,3 +527,16 @@ SourceFiles；请求为 11.784/11.760/11.553 秒，中位较上一版降低 16.5
 中位 724,774,912 bytes。将 124 candidates 合为一批虽降到 9.297 秒，却使 peak 升至
 775,344,128 bytes，故不采用增大 batch 换延迟。默认仍为 `legacy`；绝对延迟和最终 50% memory gate
 继续 OPEN。详见 [direct import anchor 报告](../reports/2026-09-13-reference-direct-import-anchor.md)。
+
+2026-09-13 跨工程复核与 process-isolation 停止判定：FilePicker 6.1 的真实导出 class
+`StartModeOptions` 从直接 import 使用点发起三次独立请求，均走 indexed declaration identity、单个
+56-project/576-SDK SourceFile verifier，精确返回 legacy 的 49 个 Location 并发布 4 条诊断；请求
+中位 4.738 秒，为 legacy 的 1.68x，peak 中位 493,121,536 bytes，仍比 legacy 高 10.9%。因此
+direct-import anchor 的跨项目/class correctness GREEN，但小工程禁止无条件切默认。
+
+同一轮把 Photos 的每个 transient verifier 改为独立 child process 并等待退出，三次仍精确返回九个
+Location，但 peak 中位 767,680,512 bytes，比当前 worker 中位高 5.9%、几乎等于 legacy；请求中位
+11.683 秒也无实质改善。该实现按 30% prototype 停止条件撤销，不进入生产。下一实验必须直接减少
+最大正确 batch 的 project closure 或其 675 个 SDK SourceFiles；不得继续用 worker/process 容器
+变化替代 working-set reduction。详见
+[跨工程与 process isolation 报告](../reports/2026-09-13-reference-cross-project-and-process-isolation.md)。
