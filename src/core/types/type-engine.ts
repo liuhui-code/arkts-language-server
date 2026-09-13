@@ -349,7 +349,18 @@ export class SemanticTypeEngineRegistry {
       }),
       resolveCompletion: (position, item) => item.data?.provider === "arkui-resource"
         ? item
-        : withLease(current => current.engine.resolveCompletion(position, item)),
+        : withLease((current) => {
+            const completion = current.engine.resolveCompletion(position, item)
+            if (this.options.references?.trace) {
+              const memory = process.memoryUsage()
+              this.options.onReferenceTrace?.("completion.resolve.program.complete", {
+                ...current.engine.programFileStats(),
+                rss: memory.rss,
+                heapUsed: memory.heapUsed,
+              })
+            }
+            return completion
+          }),
       define: (position) => withLease(current => mergeDefinitions(
         sourceContent && scope.status !== "unavailable"
           ? current.arkui.define(position, sourceContent)

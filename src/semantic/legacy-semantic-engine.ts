@@ -230,7 +230,12 @@ export class LegacySemanticEngine implements SemanticEnginePort {
   ): Promise<VersionedSemanticResult<SemanticCompletion>> {
     assertActive(query.signal)
     this.sync(query.document)
-    const prepared = this.prepare(query.document, query.position, true)
+    const autoImportRoots = this.autoImportProjectRootProfile === "discovery"
+      ? completionItemDiscoveryProjectRoots(query.completion, query.document.workspaceId)
+      : undefined
+    const prepared = autoImportRoots === undefined
+      ? this.prepare(query.document, query.position, true)
+      : this.prepare(query.document, query.position, false, "current", autoImportRoots)
     const item = prepared.engine.resolveCompletion(
       { ...prepared.position, allowSnippets: query.completionOptions?.snippets === true },
       toLegacyCompletion(query.completion),
@@ -724,6 +729,24 @@ function completionDiscoveryProjectRoots(
   const roots = new Set<string>()
   for (const candidate of discovery.candidates) {
     const candidatePath = toFilePath(candidate.uri)
+    if (!candidatePath || !isWithinPath(workspaceRoot, candidatePath)) return undefined
+    roots.add(path.resolve(candidatePath))
+  }
+  return roots.size > 0 ? [...roots].sort() : undefined
+}
+
+function completionItemDiscoveryProjectRoots(
+  completion: SemanticCompletion,
+  workspaceId: string,
+): readonly string[] | undefined {
+  const candidateUris = completion.data?.discoveryCandidateUris
+  if (!Array.isArray(candidateUris) || candidateUris.length === 0) return undefined
+  const workspaceRoot = toFilePath(workspaceId)
+  if (!workspaceRoot) return undefined
+  const roots = new Set<string>()
+  for (const candidateUri of candidateUris) {
+    if (typeof candidateUri !== "string") return undefined
+    const candidatePath = toFilePath(candidateUri)
     if (!candidatePath || !isWithinPath(workspaceRoot, candidatePath)) return undefined
     roots.add(path.resolve(candidatePath))
   }
