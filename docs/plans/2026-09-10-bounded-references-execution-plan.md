@@ -594,3 +594,17 @@ units，产品峰值降至 498,991,104 bytes（8.4%），但 diagnostics 从 27 
 全局 ArkUI/runtime ambient declarations；证据 missing/ambiguous/stale 时退回 full SDK。不得以静态
 `common` profile、隐藏诊断或关闭自动 diagnostics 换内存。详见
 [diagnostics SDK working-set 报告](../reports/2026-09-13-diagnostics-sdk-working-set.md)。
+
+2026-09-13 current-artifact 跨工程 gate：重新构建当前 Rust sidecar 后，Gramony、ChatCube、
+RemoteDesk 的 `indexed-batched` 均分别与 8/33/71-location legacy oracle exact；此前混用当前 Node
+bundle 与旧 sidecar 的运行已明确作废。同提交单进程 A/B 中，`indexed/full` 相对 legacy 的峰值变化
+为 +19.7%/-12.2%/-2.5%，延迟为 1.02x/1.05x/1.52x，故仍不能切默认。verifier-only `common`
+把三者 SDK SourceFiles 分别降至 495/423/595，并在随后正式回放中于 2.982/2.960/5.670 秒返回
+exact 结果；但小工程 Gramony 的固定双 context 成本仍高于 legacy，且运行间 wall-time 方差很大。
+
+仓库现已提供 `scripts/bench/replay-references.mjs`：复用真实 LSP session、记录明确协议方法和 UTF-16
+位置、保留自动诊断、由目标进程之外采样 Node+sidecar process-tree RSS、校验可跨 checkout 路径的
+normalized Location oracle，并锁定 repo/workspace revision、server/sidecar SHA-256。三份 raw curve
+已提交。该工具完成不改变产品策略；`indexed-batched` 与 `common` 均继续 opt-in，>3 GB release gate
+仍 OPEN。详见
+[current-artifact 跨工程报告](../reports/2026-09-13-reference-cross-project-current-gate.md)。
