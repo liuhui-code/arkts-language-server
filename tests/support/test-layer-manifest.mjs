@@ -28,6 +28,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/product-gate.test.mjs",
       "tests/project-file-set-cache.test.mjs",
       "tests/project-resolver.test.mjs",
+      "tests/references-replay-cli.test.mjs",
       "tests/release-artifact-topology.test.mjs",
       "tests/resource-sampler.test.mjs",
       "tests/sdk-discovery.test.mjs",
