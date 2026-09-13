@@ -721,3 +721,19 @@ resolve Program 从 1,928 files/1,246 project roots 降至 772/2，resolve worke
 resolve 的重建成本并做跨真实工程与重复运行复核，ambient/global contribution completeness 仍是默认
 启用前置门。详见
 [resolve-root 报告](../reports/2026-09-13-auto-import-resolve-roots.md)。
+
+2026-09-13 pre-resolved completion details 切片：上一轮 Photos discovery resolve 4.10x 回归已定位为
+重复工作，而非 two-root Program 固有成本。completion 的 indexed candidate 验证已经调用官方
+`getCompletionEntryDetails()`，但曾丢弃其结果；正常 diagnostics 还可能在 completion/resolve 之间
+改变 active Program，随后 resolve 再次准备 compiler state。现在只有 default-off discovery profile
+下、ready candidate 的纯数据 detail/documentation/current-document edits 会保存在 server-owned
+resolution record；不保留 `Program`、AST 或 `ts.Symbol`。客户端仍只收到 opaque UUID。
+
+公开 5,000-export transcript 中 ready resolve 保持 exact edit 且 compiler event 从 1 降至 0；stale
+case 不记录 pre-resolved value，仍走 25-root full fallback。固定 Photos exact A/B 中 discovery resolve
+从 1.266 s 降至 4.09 ms 且没有第二个 Program，completion RSS -37.03%，整个产品进程树 peak
+-28.09%。原 4.10x latency blocker 在该 reproducer 上关闭，但 30% memory threshold 仍差 1.91 个百分点，
+且只有单次运行；默认继续为 `workspace`。下一 gate 是 Gramony/ChatCube/RemoteDesk 的真实 auto-import
+exact 复核与 Photos 独立重复运行，之后才处理 diagnostics peak 和 ambient/global contributor
+completeness。详见
+[pre-resolved details 报告](../reports/2026-09-13-auto-import-pre-resolved-details.md)。
