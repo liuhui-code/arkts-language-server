@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-09-13",
+  "repositoryRevision": "aa0d201b08b983844f3727e10c8933c979d3941d",
+  "workspace": {
+    "name": "openharmony/applications_photos",
+    "revision": "98ea1d9cd6a363c576e2c6ff17844e51723baec5"
+  },
+  "sdk": {
+    "apiVersion": "24",
+    "version": "6.1.1.125"
+  },
+  "nodeVersion": "v26.3.0",
+  "target": {
+    "file": "imageEditor/product/editor_phone/src/main/ets/component/menu/BottomToolbar.ets",
+    "symbol": "ConflictContent",
+    "position": { "line": 318, "character": 41 },
+    "positionEncoding": "utf-16",
+    "overlay": "removed ConflictContent from the existing ./Consts import and completed ConflictCont"
+  },
+  "workflow": [
+    "wait for one committed Rust catalog generation",
+    "textDocument/didOpen",
+    "textDocument/completion",
+    "completionItem/resolve",
+    "textDocument/publishDiagnostics"
+  ],
+  "semanticEquality": {
+    "completion": true,
+    "resolvedCompletion": true,
+    "additionalTextEdit": "insert ConflictContent, at UTF-16 92:9",
+    "diagnosticsCount": 90,
+    "diagnosticsSha256": "b9195615f213289aa4b67bb0df6454e63828a4f6d7d52339be5e97fed65443f5"
+  },
+  "profiles": {
+    "workspace": {
+      "programSourceFiles": 1928,
+      "programProjectFiles": 1246,
+      "programProjectRootFiles": 1246,
+      "sdkSourceFiles": 682,
+      "projectTextCodeUnits": 14143017,
+      "sdkTextCodeUnits": 20747545,
+      "completionWorkerRssBytes": 767074304,
+      "completionElapsedMs": 8766,
+      "workflowPeakProductRssBytes": 823156736
+    },
+    "discovery": {
+      "programSourceFiles": 772,
+      "programProjectFiles": 107,
+      "programProjectRootFiles": 2,
+      "sdkSourceFiles": 665,
+      "projectTextCodeUnits": 1343167,
+      "sdkTextCodeUnits": 20260770,
+      "completionWorkerRssBytes": 481456128,
+      "completionElapsedMs": 4184,
+      "workflowPeakProductRssBytes": 769040384
+    }
+  },
+  "observedReductionsPercent": {
+    "programSourceFiles": 59.96,
+    "programProjectFiles": 91.41,
+    "completionWorkerRss": 37.23,
+    "completionElapsed": 52.27,
+    "workflowPeakProductRss": 6.57
+  },
+  "measurementBoundary": "one fresh-process A/B; not a statistical release claim"
+}

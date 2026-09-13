@@ -113,7 +113,11 @@ input.on("line", (line) => {
       break
     }
     case "exports/search": {
-      const semanticFixture = process.env.ARKTS_INDEX_TEST_SCENARIO === "semantic-over-4096"
+      const semanticFixture = process.env.ARKTS_INDEX_TEST_SCENARIO?.startsWith(
+        "semantic-over-4096",
+      ) === true
+      const staleSemanticFixture = process.env.ARKTS_INDEX_TEST_SCENARIO
+        === "semantic-over-4096-stale"
       respond(request.id, {
         items: semanticFixture ? [{
           exportedName: "ExactNeedleExport",
@@ -138,7 +142,7 @@ input.on("line", (line) => {
           targetScope: "default",
         }] : [],
         servedGeneration: committedGeneration,
-        completeness: committedGeneration > 0 ? "ready" : "stale",
+        completeness: committedGeneration > 0 && !staleSemanticFixture ? "ready" : "stale",
       })
       break
     }

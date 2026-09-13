@@ -4,6 +4,7 @@ export interface InteractiveSemanticRuntimeConfig {
   readonly sdkAmbientProfile: Extract<TypeScriptSdkAmbientProfile, "full" | "core">
   readonly projectRootProfile: "closure" | "current"
   readonly memberCompletionProjectRootProfile: "workspace" | "current"
+  readonly autoImportProjectRootProfile: "workspace" | "discovery"
 }
 
 export function interactiveSemanticRuntimeConfig(
@@ -27,5 +28,20 @@ export function interactiveSemanticRuntimeConfig(
       "ARKTS_MEMBER_COMPLETION_PROJECT_ROOT_PROFILE must be workspace or current",
     )
   }
-  return { sdkAmbientProfile, projectRootProfile, memberCompletionProjectRootProfile }
+  const autoImportProjectRootProfile = environment.ARKTS_AUTO_IMPORT_PROJECT_ROOT_PROFILE
+    ?? "workspace"
+  if (
+    autoImportProjectRootProfile !== "workspace"
+    && autoImportProjectRootProfile !== "discovery"
+  ) {
+    throw new Error(
+      "ARKTS_AUTO_IMPORT_PROJECT_ROOT_PROFILE must be workspace or discovery",
+    )
+  }
+  return {
+    sdkAmbientProfile,
+    projectRootProfile,
+    memberCompletionProjectRootProfile,
+    autoImportProjectRootProfile,
+  }
 }

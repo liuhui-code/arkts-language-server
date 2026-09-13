@@ -19,6 +19,7 @@ import type {
   SemanticCodeActionQuery,
   SemanticCodeActionResolveQuery,
   SemanticCompletion,
+  SemanticCompletionDiscovery,
   SemanticCompletionList,
   SemanticCompletionKind,
   SemanticCompletionResolveQuery,
@@ -74,6 +75,7 @@ export interface LegacySemanticEngineRuntimeOptions {
   readonly interactiveSdkAmbientProfile?: import("../core/types/typescript-language-service.js").TypeScriptSdkAmbientProfile
   readonly interactiveProjectRootProfile?: "closure" | "current"
   readonly memberCompletionProjectRootProfile?: "workspace" | "current"
+  readonly autoImportProjectRootProfile?: "workspace" | "discovery"
 }
 
 export class LegacySemanticEngine implements SemanticEnginePort {
@@ -83,6 +85,7 @@ export class LegacySemanticEngine implements SemanticEnginePort {
   private readonly foldingRangeProvider = new FoldingRangeProvider()
   private readonly interactiveProjectRootProfile: "closure" | "current"
   private readonly memberCompletionProjectRootProfile: "workspace" | "current"
+  private readonly autoImportProjectRootProfile: "workspace" | "discovery"
 
   constructor(
     private readonly projects: ProjectResolverPort,
@@ -91,6 +94,7 @@ export class LegacySemanticEngine implements SemanticEnginePort {
   ) {
     this.interactiveProjectRootProfile = runtime.interactiveProjectRootProfile ?? "closure"
     this.memberCompletionProjectRootProfile = runtime.memberCompletionProjectRootProfile ?? "workspace"
+    this.autoImportProjectRootProfile = runtime.autoImportProjectRootProfile ?? "workspace"
     this.engines = new SemanticTypeEngineRegistry(
       this.packageResolver,
       logger ? (workspaceRoot, sdk) => {
@@ -193,15 +197,20 @@ export class LegacySemanticEngine implements SemanticEnginePort {
       query.position.line + 1,
       query.position.character + 1,
     )
-    const currentProjectRoots = memberAccess && (
+    const memberProjectRoots = memberAccess && (
       this.interactiveProjectRootProfile === "current"
       || this.memberCompletionProjectRootProfile === "current"
     )
+    const autoImportRoots = !memberAccess && this.autoImportProjectRootProfile === "discovery"
+      ? completionDiscoveryProjectRoots(query.completionDiscovery, query.document.workspaceId)
+      : undefined
+    const scopedProjectRoots = memberProjectRoots || autoImportRoots !== undefined
     const prepared = this.prepare(
       query.document,
       query.position,
-      !currentProjectRoots,
-      currentProjectRoots ? "current" : this.interactiveProjectRootProfile,
+      !scopedProjectRoots,
+      scopedProjectRoots ? "current" : this.interactiveProjectRootProfile,
+      autoImportRoots,
     )
     const completion = prepared.engine.complete({
       ...prepared.position,
@@ -634,6 +643,7 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     position: TextPosition,
     includeWorkspaceFiles = false,
     projectRootProfile = this.interactiveProjectRootProfile,
+    additionalSemanticRoots: readonly string[] = [],
   ) {
     const workspace = this.projects.projectFor(document.uri)
     const legacyPosition = toLegacyPosition(document, position, workspace)
@@ -643,6 +653,7 @@ export class LegacySemanticEngine implements SemanticEnginePort {
       legacyPosition.path,
       includeWorkspaceFiles,
       projectRootProfile,
+      additionalSemanticRoots,
     ))
     return { engine, position: legacyPosition }
   }
@@ -691,14 +702,37 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     currentPath: string,
     includeWorkspaceFiles: boolean,
     projectRootProfile = this.interactiveProjectRootProfile,
+    additionalSemanticRoots: readonly string[] = [],
   ): SemanticWorkspaceView {
     if (includeWorkspaceFiles || projectRootProfile !== "current") return workspace
     const roots = new Set([path.resolve(currentPath)])
     for (const document of workspace.documents) {
       if (document.overlay) roots.add(path.resolve(document.path))
     }
+    for (const root of additionalSemanticRoots) roots.add(path.resolve(root))
     return { ...workspace, semanticRootPaths: [...roots].sort() }
   }
+}
+
+function completionDiscoveryProjectRoots(
+  discovery: SemanticCompletionDiscovery | undefined,
+  workspaceId: string,
+): readonly string[] | undefined {
+  if (!discovery || discovery.incomplete || discovery.candidates.length === 0) return undefined
+  const workspaceRoot = toFilePath(workspaceId)
+  if (!workspaceRoot) return undefined
+  const roots = new Set<string>()
+  for (const candidate of discovery.candidates) {
+    const candidatePath = toFilePath(candidate.uri)
+    if (!candidatePath || !isWithinPath(workspaceRoot, candidatePath)) return undefined
+    roots.add(path.resolve(candidatePath))
+  }
+  return roots.size > 0 ? [...roots].sort() : undefined
+}
+
+function isWithinPath(root: string, candidate: string): boolean {
+  const relative = path.relative(path.resolve(root), path.resolve(candidate))
+  return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative))
 }
 
 function resourceEventPath(candidate: string): string {
