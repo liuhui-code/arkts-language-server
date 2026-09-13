@@ -561,3 +561,18 @@ declarations 组成，SDK 文本约 15.4M UTF-16 units、project 文本约 1.86M
 declaration closure/不可约运行时底座，不再调 candidate root cap；任何 SDK 缩减必须同时保持
 references 与 diagnostics exact。详细证据见
 [conservative narrowing 报告](../reports/2026-09-13-reference-conservative-narrowing.md)。
+
+2026-09-13 SDK working-set 复核：新增仅作用于 transient reference verifier 的默认关闭
+`common.d.ts` ambient profile；常驻交互 engine 继续使用完整 `index-full.d.ts`。公开真实 LSP 合同中，
+`full/common` 的 Location set 与自动 diagnostics 完全一致，且测试 verifier 的 SDK root 确实减少。
+固定 Photos `PhotoAsset` 三次独立 `common` 新进程仍精确返回九个 Location、发布 27 条 diagnostics；
+verifier 从 351 SDK SourceFiles / 15,397,526 code units 降为 218 / 9,915,017，请求中位 3.288 秒。
+
+阶段对齐的外部 RSS A/B 显示 references 区间从 `full` 560,152,576 bytes 降为 `common`
+487,247,872 bytes，降幅 13.0%；但请求返回后正常 diagnostics 重建完整 interactive Program，峰值又从
+487,247,872 升至 568,356,864 bytes，与 `full` 的 571,219,968 bytes 基本相同。三次 `common`
+全工作流峰值中位 563,097,600 bytes，只比同提交单次 `full` 低 1.5%，并高于上一轮 `full` 三次中位
+1.3%，不能宣称产品内存改善。profile 因此只保留为 default-off 差分实验，不允许切换默认；下一 RED
+转向 diagnostics interactive Program 的 working-set/cardinality，必须保持 diagnostic code/category/
+range exact，不重试 process isolation、root-cap、强制 GC 或已停止的 declaration façade。详见
+[SDK working-set 报告](../reports/2026-09-13-reference-sdk-working-set.md)。

@@ -188,6 +188,7 @@ export class SemanticTypeEngineRegistry {
     }, position, {
       projectConfiguration: this.projectConfiguration,
       sdkConfiguration: this.sdkConfiguration,
+      sdkAmbientProfile: this.options.references?.sdkAmbientProfile,
       isCancellationRequested: this.options.hostCancellationToken
         ? () => this.options.hostCancellationToken?.isCancellationRequested() === true
         : undefined,
@@ -240,6 +241,7 @@ export class SemanticTypeEngineRegistry {
           verifyReferenceBatchInWorker(workspace, position, includeDeclaration, {
             projectConfiguration: this.projectConfiguration,
             sdkConfiguration: this.sdkConfiguration,
+            sdkAmbientProfile: options.references?.sdkAmbientProfile,
             isCancellationRequested: options.hostCancellationToken
               ? () => options.hostCancellationToken?.isCancellationRequested() === true
               : undefined,

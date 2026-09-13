@@ -142,6 +142,8 @@ type RenameConflictPreflight =
   | "conflict"
   | "indeterminate"
 
+export type TypeScriptSdkAmbientProfile = "full" | "common"
+
 export interface TypeScriptLanguageServiceEngineOptions {
   onSdkSelected?: (workspaceRoot: string, selection: ProjectSdkSelection) => void
   packageResolver?: LocalPackageResolver
@@ -154,6 +156,7 @@ export interface TypeScriptLanguageServiceEngineOptions {
     maxBytes?: number
   }
   sdkConfiguration?: unknown
+  sdkAmbientProfile?: TypeScriptSdkAmbientProfile
 }
 
 export class TypeScriptLanguageServiceEngine {
@@ -209,6 +212,7 @@ export class TypeScriptLanguageServiceEngine {
       projectFileAccess,
       lazySnapshotLimits = {},
       sdkConfiguration,
+      sdkAmbientProfile = "full",
     }: TypeScriptLanguageServiceEngineOptions = {},
   ) {
     this.packageResolver = packageResolver
@@ -247,7 +251,7 @@ export class TypeScriptLanguageServiceEngine {
     this.sdkRoot = sdk.path
     this.sdkPhysicalRoot = this.sdkRoot ? canonicalExistingPath(this.sdkRoot) : undefined
     onSdkSelected?.(rootPath, sdk)
-    this.sdkDeclarationPaths = discoverSdkAmbientDeclarations(this.sdkRoot)
+    this.sdkDeclarationPaths = discoverSdkAmbientDeclarations(this.sdkRoot, sdkAmbientProfile)
     this.membershipFileNames = [...this.sdkDeclarationPaths]
     this.service = ts.createLanguageService(
       this.createHost(hostCancellationToken),
@@ -2475,8 +2479,18 @@ function inlayHintDisplayText(
   return mapped.join("")
 }
 
-function discoverSdkAmbientDeclarations(sdkRoot: string | null): string[] {
+function discoverSdkAmbientDeclarations(
+  sdkRoot: string | null,
+  profile: TypeScriptSdkAmbientProfile,
+): string[] {
   if (!sdkRoot) return []
+  if (profile === "common") {
+    const common = path.join(sdkRoot, "ets", "component", "common.d.ts")
+    if (!fs.existsSync(common)) {
+      throw new Error(`SDK common ambient declaration is unavailable: ${common}`)
+    }
+    return [common]
+  }
   const prelude = [
     path.join(sdkRoot, "ets", "component", "index-full.d.ts"),
     path.join(sdkRoot, "ets", "component", "common.d.ts"),

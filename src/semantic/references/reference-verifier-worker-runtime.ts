@@ -10,6 +10,7 @@ import {
   type ProjectFileAccessPort,
   type SemanticWorkspaceView,
 } from "../../core/workspace/document-store.js"
+import type { ReferenceSdkAmbientProfile } from "./reference-runtime.js"
 
 interface ReferenceVerifierWorkerData {
   readonly operation: "references" | "definition"
@@ -18,6 +19,7 @@ interface ReferenceVerifierWorkerData {
   readonly includeDeclaration?: boolean
   readonly projectConfiguration?: unknown
   readonly sdkConfiguration?: unknown
+  readonly sdkAmbientProfile?: ReferenceSdkAmbientProfile
 }
 
 const port = parentPort
@@ -32,6 +34,7 @@ const engine = new TypeScriptLanguageServiceEngine(data.workspace.rootPath, {
   packageResolver,
   projectFileAccess,
   sdkConfiguration: data.sdkConfiguration,
+  sdkAmbientProfile: data.sdkAmbientProfile,
 })
 
 try {
