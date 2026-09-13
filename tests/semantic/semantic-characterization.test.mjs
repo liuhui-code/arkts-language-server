@@ -833,6 +833,7 @@ test("recalls and semantically validates an auto-import beyond 4096 module expor
   await fs.promises.writeFile(consumerPath, source, "utf8")
   const uri = pathToFileURL(consumerPath).href
   const sidecarAuditPath = path.join(materialized.root, "semantic-over-4096.ndjson")
+  const logDirectory = path.join(materialized.root, "semantic-over-4096-logs")
   const session = new LspSession({
     command: process.execPath,
     args: [path.join(projectRoot, "dist", "server.cjs"), "--stdio"],
@@ -850,6 +851,9 @@ test("recalls and semantically validates an auto-import beyond 4096 module expor
       ),
       ARKTS_INDEX_TEST_SCENARIO: "semantic-over-4096",
       ARKTS_INDEX_TEST_AUDIT: sidecarAuditPath,
+      ARKTS_LSP_LOG_DIR: logDirectory,
+      ARKTS_REFERENCES_TRACE: "1",
+      ARKTS_AUTO_IMPORT_PROJECT_ROOT_PROFILE: "discovery",
     },
     rootUri: pathToFileURL(materialized.workspaceRoot).href,
   })
@@ -897,9 +901,59 @@ test("recalls and semantically validates an auto-import beyond 4096 module expor
     range: replacement,
     newText: "ExactNeedleExport",
   })
+  const completionEvents = fs.readFileSync(path.join(logDirectory, "server.log"), "utf8")
+    .trim()
+    .split("\n")
+    .map(JSON.parse)
+    .filter((entry) => entry.event === "completion.program.complete")
+  assert.equal(completionEvents.length, 1)
+  assert.equal(completionEvents[0].programProjectRootFiles, 2)
   const resolved = await session.request("completionItem/resolve", matches[0])
   assert.equal(resolved.error, undefined, JSON.stringify(resolved.error))
   assert.match(resolved.result.additionalTextEdits?.[0]?.newText ?? "", /ManyExports/)
+
+  const staleLogDirectory = path.join(materialized.root, "semantic-over-4096-stale-logs")
+  const staleSession = new LspSession({
+    command: process.execPath,
+    args: [path.join(projectRoot, "dist", "server.cjs"), "--stdio"],
+    cwd: projectRoot,
+    env: {
+      HOME: path.join(materialized.root, "missing-home"),
+      DEVECO_SDK_HOME: path.join(materialized.root, "missing-deveco"),
+      ARKLINE_HARMONY_SDK_PATH: path.join(materialized.corpusRoot, "sdk", "openharmony"),
+      ARKTS_INDEX_SIDECAR_PATH: path.join(
+        projectRoot,
+        "tests",
+        "fixtures",
+        "index",
+        "scripted-catalog-sidecar.mjs",
+      ),
+      ARKTS_INDEX_TEST_SCENARIO: "semantic-over-4096-stale",
+      ARKTS_LSP_LOG_DIR: staleLogDirectory,
+      ARKTS_REFERENCES_TRACE: "1",
+      ARKTS_AUTO_IMPORT_PROJECT_ROOT_PROFILE: "discovery",
+    },
+    rootUri: pathToFileURL(materialized.workspaceRoot).href,
+  })
+  t.after(() => staleSession.close().catch(() => {}))
+  await staleSession.initialize()
+  staleSession.openDocument({ uri, languageId: "arkts", version: 1, text: source })
+  const staleResponse = await staleSession.request("textDocument/completion", {
+    textDocument: { uri },
+    position: replacement.end,
+  })
+  assert.equal(staleResponse.error, undefined, JSON.stringify(staleResponse.error))
+  const staleItems = Array.isArray(staleResponse.result)
+    ? staleResponse.result
+    : staleResponse.result?.items ?? []
+  assert.equal(staleItems.filter((item) => item.label === "ExactNeedleExport").length, 1)
+  const staleCompletionEvents = fs.readFileSync(
+    path.join(staleLogDirectory, "server.log"),
+    "utf8",
+  ).trim().split("\n").map(JSON.parse)
+    .filter((entry) => entry.event === "completion.program.complete")
+  assert.equal(staleCompletionEvents.length, 1)
+  assert.equal(staleCompletionEvents[0].programProjectRootFiles, 25)
 })
 
 test("restores an unopened auto-import after call-hierarchy traversal and overlay close", async (t) => {

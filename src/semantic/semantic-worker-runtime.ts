@@ -70,6 +70,7 @@ const engine = new OhosTypeScriptSemanticEngine(projects, logger, {
   interactiveSdkAmbientProfile: data.interactive?.sdkAmbientProfile,
   interactiveProjectRootProfile: data.interactive?.projectRootProfile,
   memberCompletionProjectRootProfile: data.interactive?.memberCompletionProjectRootProfile,
+  autoImportProjectRootProfile: data.interactive?.autoImportProjectRootProfile,
 })
 const memoryPolicy = new SemanticMemoryPolicy(data.runtimeConfig)
 
