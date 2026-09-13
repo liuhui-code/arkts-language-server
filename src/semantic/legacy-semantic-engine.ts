@@ -57,7 +57,10 @@ import { isArkUIStringResourcePath } from "../core/arkui/resource-path.js"
 import { formatArktsDocument } from "../core/formatting/arkts-document-formatter.js"
 import { FoldingRangeProvider } from "../core/syntax/folding-range-provider.js"
 import { SemanticTypeEngineRegistry } from "../core/types/type-engine.js"
-import { SemanticDocumentStore } from "../core/workspace/document-store.js"
+import {
+  SemanticDocumentStore,
+  type SemanticWorkspaceView,
+} from "../core/workspace/document-store.js"
 import { LocalPackageResolver } from "../core/sdk/local-package-resolver.js"
 import type { StructuredLogger } from "../observability/logger.js"
 import type { SemanticMemoryLevel } from "./coordinator/semantic-coordinator.js"
@@ -68,6 +71,7 @@ export interface LegacySemanticEngineRuntimeOptions {
   readonly hostCancellationToken?: import("typescript").HostCancellationToken
   readonly references?: ReferenceSearchRuntimeConfig
   readonly interactiveSdkAmbientProfile?: import("../core/types/typescript-language-service.js").TypeScriptSdkAmbientProfile
+  readonly interactiveProjectRootProfile?: "closure" | "current"
 }
 
 export class LegacySemanticEngine implements SemanticEnginePort {
@@ -75,12 +79,14 @@ export class LegacySemanticEngine implements SemanticEnginePort {
   private readonly documents = new SemanticDocumentStore({ packageResolver: this.packageResolver })
   private readonly engines: SemanticTypeEngineRegistry
   private readonly foldingRangeProvider = new FoldingRangeProvider()
+  private readonly interactiveProjectRootProfile: "closure" | "current"
 
   constructor(
     private readonly projects: ProjectResolverPort,
     logger?: StructuredLogger,
     runtime: LegacySemanticEngineRuntimeOptions = {},
   ) {
+    this.interactiveProjectRootProfile = runtime.interactiveProjectRootProfile ?? "closure"
     this.engines = new SemanticTypeEngineRegistry(
       this.packageResolver,
       logger ? (workspaceRoot, sdk) => {
@@ -612,9 +618,12 @@ export class LegacySemanticEngine implements SemanticEnginePort {
   ) {
     const workspace = this.projects.projectFor(document.uri)
     const legacyPosition = toLegacyPosition(document, position, workspace)
-    const engine = this.engines.prepare(
-      this.documents.prepare(legacyPosition, includeWorkspaceFiles),
-    )
+    const preparedWorkspace = this.documents.prepare(legacyPosition, includeWorkspaceFiles)
+    const engine = this.engines.prepare(this.interactiveWorkspace(
+      preparedWorkspace,
+      legacyPosition.path,
+      includeWorkspaceFiles,
+    ))
     return { engine, position: legacyPosition }
   }
 
@@ -647,7 +656,27 @@ export class LegacySemanticEngine implements SemanticEnginePort {
           source.text,
           includeWorkspaceFiles,
         )
-    return { engine: this.engines.prepare(workspace), position: legacyPosition }
+    return {
+      engine: this.engines.prepare(this.interactiveWorkspace(
+        workspace,
+        legacyPosition.path,
+        includeWorkspaceFiles,
+      )),
+      position: legacyPosition,
+    }
+  }
+
+  private interactiveWorkspace(
+    workspace: SemanticWorkspaceView,
+    currentPath: string,
+    includeWorkspaceFiles: boolean,
+  ): SemanticWorkspaceView {
+    if (includeWorkspaceFiles || this.interactiveProjectRootProfile !== "current") return workspace
+    const roots = new Set([path.resolve(currentPath)])
+    for (const document of workspace.documents) {
+      if (document.overlay) roots.add(path.resolve(document.path))
+    }
+    return { ...workspace, semanticRootPaths: [...roots].sort() }
   }
 }
 

@@ -313,14 +313,23 @@ export class TypeScriptLanguageServiceEngine {
     programSourceFiles: number
     programProjectFiles: number
     sdkSourceFiles: number
+    programRootFiles: number
+    programProjectRootFiles: number
+    sdkRootFiles: number
+    otherRootFiles: number
     projectTextCodeUnits: number
     sdkTextCodeUnits: number
     otherSourceFiles: number
     otherTextCodeUnits: number
   } {
-    const sourceFiles = this.service.getProgram()?.getSourceFiles() ?? []
+    const program = this.service.getProgram()
+    const sourceFiles = program?.getSourceFiles() ?? []
+    const rootFileNames = program?.getRootFileNames() ?? []
     let programProjectFiles = 0
     let sdkSourceFiles = 0
+    let programProjectRootFiles = 0
+    let sdkRootFiles = 0
+    let otherRootFiles = 0
     let projectTextCodeUnits = 0
     let sdkTextCodeUnits = 0
     let otherSourceFiles = 0
@@ -338,10 +347,24 @@ export class TypeScriptLanguageServiceEngine {
         otherTextCodeUnits += sourceFile.text.length
       }
     }
+    for (const rootFileName of rootFileNames) {
+      const filePath = path.resolve(rootFileName)
+      if (this.sdkRoot && isWithinRoot(this.sdkRoot, filePath)) {
+        sdkRootFiles += 1
+      } else if (isWithinRoot(this.rootPath, filePath)) {
+        programProjectRootFiles += 1
+      } else {
+        otherRootFiles += 1
+      }
+    }
     return {
       programSourceFiles: sourceFiles.length,
       programProjectFiles,
       sdkSourceFiles,
+      programRootFiles: rootFileNames.length,
+      programProjectRootFiles,
+      sdkRootFiles,
+      otherRootFiles,
       projectTextCodeUnits,
       sdkTextCodeUnits,
       otherSourceFiles,
@@ -351,6 +374,7 @@ export class TypeScriptLanguageServiceEngine {
 
   scriptFileNames(): string[] {
     if (this.combinedFileNames) return this.combinedFileNames
+    if (this.semanticRootPaths) return this.membershipFileNames
     const extras = [...this.scripts.keys()].filter((filePath) => (
       !this.projectMembershipPaths.has(filePath)
       && !this.sdkDeclarationPaths.includes(filePath)
@@ -1951,9 +1975,8 @@ export class TypeScriptLanguageServiceEngine {
   }
 
   private rebuildMembershipFileNames(): void {
-    const roots = this.projectMembershipStatus === "complete"
-      ? this.semanticRootPaths ?? this.projectMembershipPaths
-      : new Set<string>()
+    const roots = this.semanticRootPaths
+      ?? (this.projectMembershipStatus === "complete" ? this.projectMembershipPaths : new Set<string>())
     this.membershipFileNames = [
       ...roots,
       ...this.sdkDeclarationPaths.filter(filePath => !roots.has(filePath)),

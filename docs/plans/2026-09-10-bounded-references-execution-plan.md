@@ -623,3 +623,26 @@ diagnostics。core 将 Program SDK files 从 607 降到 478、SDK text 从 18,62
 default-off 差分工具。下一实验不得继续堆静态 SDK seed，而应测 checker/Program 生命周期与最大正确
 interactive project closure；仍须保持自动 diagnostics 和 exact semantic output。详见
 [interactive SDK core-closure 报告](../reports/2026-09-13-interactive-sdk-core-spike.md)。
+
+2026-09-13 interactive project-root cardinality 切片：新增默认关闭的
+`ARKTS_INTERACTIVE_PROJECT_ROOT_PROFILE=current` 因果实验。它只作用于
+`includeWorkspaceFiles=false` 的交互语义查询，以当前文档和全部 open overlays 为 compiler roots，
+由 compiler 跟随真实 imports；references、rename 和当前 workspace-global completion 路径继续保留完整
+membership。公开 child-process LSP 合同证明 current/closure 的稳定 completion 字段、definition、
+references 与 diagnostics exact，并确认 open overlay 被固定为 root。
+
+固定 Photos diagnostics-only 各三个独立新进程中，27 条 diagnostics 按 code/severity/source/message/
+UTF-16 range 完全一致。Program 从 813 files（206 project + 607 SDK）、207 roots 缩到 380 files
+（29 project + 351 SDK）、2 roots；峰值中位从 546,734,080 降到 463,196,160 bytes（-15.3%），
+耗时中位从 14.472 降到 13.469 秒（-6.9%）。同产物 `PhotoAsset` mode-A references 仍 exact 返回
+九个 Location，peak 从 567,291,904 降到 504,631,296 bytes（-11.0%）。Gramony、ChatCube、
+RemoteDesk 的 diagnostic Program 原本就只有一个 project root，三者 exact references 复核没有稳定
+收益。
+
+更重要的是，Photos 的 completion→definition→references mode-B 因 completion 仍调用
+`prepare(..., true)`，在两种 profile 下 completion response 时产品 RSS 均约 800 MiB；最终 peak 只从
+1,106,702,336 降到 1,055,588,352 bytes（-4.6%）。因此 30% memory gate 明确失败，默认继续使用
+`closure`，current 只保留为 default-off 差分工具。下一 RED 转向区分 local/member completion 与
+global module-export discovery：Rust index 只召回候选，compiler 继续最终验证；partial/stale/ambiguous
+必须 fail closed。不得缩短 completion 结果、关闭自动诊断或在公开 exact contract 通过前切默认。
+详见 [interactive project-root cardinality 报告](../reports/2026-09-13-interactive-project-root-cardinality.md)。
