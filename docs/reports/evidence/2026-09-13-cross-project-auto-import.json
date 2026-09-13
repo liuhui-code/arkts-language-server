@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-09-13",
+  "repositoryRevision": "fb5a01b5765f849953f3a998eec7254bb90facec",
+  "sdk": {
+    "path": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony",
+    "apiVersion": "24",
+    "version": "6.1.1.125"
+  },
+  "nodeVersion": "v26.3.0",
+  "measurementBoundary": "one fresh-process workspace/discovery A/B per real project after committed Rust catalog",
+  "projects": [
+    {
+      "name": "Gramony",
+      "revision": "0a1ee4b026b6736671f0030ba9859aceaa962298",
+      "target": "features/home/src/main/ets/dao/ChatDao.ets",
+      "symbol": "Chat",
+      "position": { "line": 43, "character": 41 },
+      "diagnosticsCount": 31,
+      "diagnosticsSha256": "96ac3039af05961adc6778ea9ba90747a66dff55f1513da529420ff4b54b166a",
+      "workspace": {
+        "programSourceFiles": 701,
+        "projectRoots": 77,
+        "completionRssBytes": 418521088,
+        "completionElapsedMs": 13519,
+        "resolveElapsedMs": 489,
+        "resolveProgramEvents": 1,
+        "peakProductRssBytes": 434298880
+      },
+      "discovery": {
+        "programSourceFiles": 690,
+        "projectRoots": 13,
+        "preResolvedCompletions": 12,
+        "completionRssBytes": 386351104,
+        "completionElapsedMs": 16956,
+        "resolveElapsedMs": 253,
+        "resolveProgramEvents": 0,
+        "peakProductRssBytes": 434761728
+      }
+    },
+    {
+      "name": "ChatCube",
+      "revision": "fd729d0f5c607763adc8ce054ad29171c66c78dc",
+      "target": "entry/src/main/ets/state/migrations/MigrationContext.ets",
+      "symbol": "PreferencesService",
+      "position": { "line": 5, "character": 32 },
+      "diagnosticsCount": 2,
+      "diagnosticsSha256": "8e77c8bbf82ed17c49fd794dcff5dd765318ca83c435594f0bc25fb038520951",
+      "workspace": {
+        "programSourceFiles": 940,
+        "projectRoots": 263,
+        "completionRssBytes": 525385728,
+        "completionElapsedMs": 21363,
+        "resolveElapsedMs": 657,
+        "resolveProgramEvents": 1,
+        "peakProductRssBytes": 544669696
+      },
+      "discovery": {
+        "programSourceFiles": 514,
+        "projectRoots": 2,
+        "preResolvedCompletions": 1,
+        "completionRssBytes": 386461696,
+        "completionElapsedMs": 9752,
+        "resolveElapsedMs": 114,
+        "resolveProgramEvents": 0,
+        "peakProductRssBytes": 432099328
+      }
+    },
+    {
+      "name": "RemoteDesk",
+      "revision": "8edc187868e94ed41634e8a6c4c4c072e3a48679",
+      "target": "entry/src/main/ets/services/TerminalCoreRegistry.ets",
+      "symbol": "TerminalCoreBridge",
+      "position": { "line": 22, "character": 76 },
+      "diagnosticsCount": 9,
+      "diagnosticsSha256": "7b18108500a5d1137953306381053e16c92c17ac1fa5c39666f47fb31debf3ba",
+      "workspace": {
+        "programSourceFiles": 1557,
+        "projectRoots": 829,
+        "completionRssBytes": 796422144,
+        "completionElapsedMs": 21592,
+        "resolveElapsedMs": 400,
+        "resolveProgramEvents": 1,
+        "peakProductRssBytes": 843304960
+      },
+      "discovery": {
+        "programSourceFiles": 259,
+        "projectRoots": 2,
+        "preResolvedCompletions": 1,
+        "completionRssBytes": 339283968,
+        "completionElapsedMs": 5005,
+        "resolveElapsedMs": 3,
+        "resolveProgramEvents": 0,
+        "peakProductRssBytes": 391634944
+      }
+    }
+  ]
+}
