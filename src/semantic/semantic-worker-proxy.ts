@@ -175,9 +175,30 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
   }
 
   resolveCompletion(query: Contract.SemanticCompletionResolveQuery) {
+    this.sync(query.document)
+    const { preResolved, ...completion } = query.completion
+    if (
+      interactiveSemanticRuntimeConfig(this.#environment).autoImportProjectRootProfile
+        === "discovery"
+      && preResolved?.documentVersion === query.document.version
+      && (preResolved.additionalTextEdits ?? []).every((edit) => (
+        edit.uri === query.document.uri && edit.expectedVersion === query.document.version
+      ))
+    ) {
+      return Promise.resolve({
+        documentVersion: query.document.version,
+        value: {
+          ...completion,
+          detail: preResolved.detail,
+          documentation: preResolved.documentation,
+          additionalTextEdits: preResolved.additionalTextEdits,
+          data: { ...completion.data, resolved: true },
+        },
+      })
+    }
     return this.#documentRequest<Contract.SemanticCompletion>("resolveCompletion", query, {
       position: query.position,
-      completion: query.completion as unknown as SemanticWorkerJsonObject,
+      completion: completion as unknown as SemanticWorkerJsonObject,
       snippets: query.completionOptions?.snippets === true,
     })
   }

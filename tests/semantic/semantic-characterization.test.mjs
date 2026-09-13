@@ -908,16 +908,20 @@ test("recalls and semantically validates an auto-import beyond 4096 module expor
     .filter((entry) => entry.event === "completion.program.complete")
   assert.equal(completionEvents.length, 1)
   assert.equal(completionEvents[0].programProjectRootFiles, 2)
+  assert.equal(completionEvents[0].preResolvedCompletions, 1, JSON.stringify(completionEvents[0]))
   const resolved = await session.request("completionItem/resolve", matches[0])
-  assert.equal(resolved.error, undefined, JSON.stringify(resolved.error))
+  assert.equal(
+    resolved.error,
+    undefined,
+    `${JSON.stringify(resolved.error)}\n${session.transport.stderr}`,
+  )
   assert.match(resolved.result.additionalTextEdits?.[0]?.newText ?? "", /ManyExports/)
   const resolveEvents = fs.readFileSync(path.join(logDirectory, "server.log"), "utf8")
     .trim()
     .split("\n")
     .map(JSON.parse)
     .filter((entry) => entry.event === "completion.resolve.program.complete")
-  assert.equal(resolveEvents.length, 1)
-  assert.equal(resolveEvents[0].programProjectRootFiles, 2, JSON.stringify(resolveEvents[0]))
+  assert.equal(resolveEvents.length, 0)
 
   const staleLogDirectory = path.join(materialized.root, "semantic-over-4096-stale-logs")
   const staleSession = new LspSession({
@@ -962,6 +966,8 @@ test("recalls and semantically validates an auto-import beyond 4096 module expor
     .filter((entry) => entry.event === "completion.program.complete")
   assert.equal(staleCompletionEvents.length, 1)
   assert.equal(staleCompletionEvents[0].programProjectRootFiles, 25)
+  assert.equal(staleCompletionEvents[0].preResolvedCompletions, 0)
+  assert.equal(staleCompletionEvents[0].preResolvedCompletions, 0)
   const staleResolved = await staleSession.request("completionItem/resolve", staleMatches[0])
   assert.equal(staleResolved.error, undefined, JSON.stringify(staleResolved.error))
   assert.match(staleResolved.result.additionalTextEdits?.[0]?.newText ?? "", /ManyExports/)

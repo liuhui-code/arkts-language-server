@@ -548,13 +548,45 @@ export class TypeScriptLanguageServiceEngine {
       quality,
     }) => {
       const discoveryCandidateUris = position.completionDiscovery?.incomplete === false
+        && position.completionDiscovery.preResolve === true
         ? position.completionDiscovery.candidates
             .filter((candidate) => candidate.exportedName === entry.name)
             .map((candidate) => candidate.uri)
         : undefined
+      const detail = typescriptTypeDetail(entry, filePath)
+      const resolvedDetails = discoveryCandidateUris?.length
+        && typeof entry.source === "string"
+        ? this.service.getCompletionEntryDetails(
+            filePath,
+            offset,
+            entry.name,
+            {},
+            entry.source,
+            { includeCompletionsForModuleExports: true },
+            entry.data as ts.CompletionEntryData | undefined,
+          )
+        : undefined
+      if (discoveryCandidateUris?.length) work.item()
+      const preResolved = resolvedDetails && typeof position.documentVersion === "number"
+        ? {
+            documentVersion: position.documentVersion,
+            detail: completionDisplayPartsText(resolvedDetails.displayParts ?? [], work) || detail,
+            documentation: completionOptionalDisplayParts(
+              resolvedDetails.documentation ?? [],
+              work,
+            ),
+            additionalTextEdits: this.mapCompletionEdits(
+              filePath,
+              position.documentVersion,
+              typeof entry.source === "string" ? entry.source : undefined,
+              resolvedDetails,
+              work,
+            ),
+          }
+        : undefined
       const completion: SemanticCompletionItem = {
         label: entry.name,
-        detail: typescriptTypeDetail(entry, filePath),
+        detail,
         kind: completionKind(entry.kind, objectLiteralPropertyCompletion),
         insertText: entry.insertText,
         filterText,
@@ -572,6 +604,7 @@ export class TypeScriptLanguageServiceEngine {
               entry.replacementSpan.length,
             )
           : defaultReplacementRange,
+        preResolved,
         data: {
           provider: "typescript",
           engineVersion: ENGINE_VERSION,

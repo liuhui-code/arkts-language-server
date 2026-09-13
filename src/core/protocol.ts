@@ -24,6 +24,7 @@ export interface SemanticCompletionDiscoveryCandidate {
 export interface SemanticCompletionDiscovery {
   candidates: readonly SemanticCompletionDiscoveryCandidate[]
   incomplete: boolean
+  preResolve?: boolean
 }
 
 export interface SemanticReplayDocument {
@@ -118,7 +119,15 @@ export interface SemanticCompletionItem {
   isSnippet?: true
   definitionTarget?: SemanticDefinitionTarget
   additionalTextEdits?: SemanticCompletionTextEdit[]
+  preResolved?: SemanticCompletionResolution
   data?: Record<string, unknown>
+}
+
+export interface SemanticCompletionResolution {
+  documentVersion: number
+  detail: string
+  documentation?: string
+  additionalTextEdits?: SemanticCompletionTextEdit[]
 }
 
 export interface SemanticCompletionItemList {

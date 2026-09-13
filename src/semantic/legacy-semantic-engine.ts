@@ -215,7 +215,12 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     const completion = prepared.engine.complete({
       ...prepared.position,
       allowSnippets: query.completionOptions?.snippets === true,
-      completionDiscovery: query.completionDiscovery,
+      completionDiscovery: query.completionDiscovery
+        ? {
+            ...query.completionDiscovery,
+            preResolve: this.autoImportProjectRootProfile === "discovery",
+          }
+        : undefined,
     })
     const items = completion.items
       .map((item) => toPublicCompletion(item, query.document.version))
@@ -233,6 +238,21 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     const autoImportRoots = this.autoImportProjectRootProfile === "discovery"
       ? completionItemDiscoveryProjectRoots(query.completion, query.document.workspaceId)
       : undefined
+    if (
+      autoImportRoots !== undefined
+      && query.completion.preResolved?.documentVersion === query.document.version
+    ) {
+      return {
+        documentVersion: query.document.version,
+        value: {
+          ...query.completion,
+          detail: query.completion.preResolved.detail,
+          documentation: query.completion.preResolved.documentation,
+          additionalTextEdits: query.completion.preResolved.additionalTextEdits,
+          data: { ...query.completion.data, resolved: true },
+        },
+      }
+    }
     const prepared = autoImportRoots === undefined
       ? this.prepare(query.document, query.position, true)
       : this.prepare(query.document, query.position, false, "current", autoImportRoots)
@@ -821,6 +841,19 @@ function toPublicCompletion(
       newText: edit.newText,
       expectedVersion: edit.expectedVersion ?? documentVersion,
     })),
+    preResolved: item.preResolved
+      ? {
+          documentVersion: item.preResolved.documentVersion,
+          detail: item.preResolved.detail,
+          documentation: item.preResolved.documentation,
+          additionalTextEdits: item.preResolved.additionalTextEdits?.map((edit) => ({
+            uri: pathToFileURL(edit.path).href,
+            range: toPublicRange(edit.range),
+            newText: edit.newText,
+            expectedVersion: edit.expectedVersion ?? documentVersion,
+          })),
+        }
+      : undefined,
     data: item.data,
   }
 }
