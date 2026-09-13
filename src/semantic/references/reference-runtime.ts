@@ -1,8 +1,12 @@
+import type { TypeScriptSdkAmbientProfile } from "../../core/types/typescript-language-service.js"
+
 export type ReferenceSearchStrategy = "legacy" | "batched" | "indexed-batched"
+export type ReferenceSdkAmbientProfile = TypeScriptSdkAmbientProfile
 
 export interface ReferenceSearchRuntimeConfig {
   readonly strategy: ReferenceSearchStrategy
   readonly batchRootLimit: number
+  readonly sdkAmbientProfile: ReferenceSdkAmbientProfile
   readonly trace: boolean
 }
 
@@ -18,6 +22,10 @@ export function referenceSearchRuntimeConfig(
     && configuredStrategy !== "indexed-batched") {
     throw new Error("ARKTS_REFERENCES_STRATEGY must be legacy, batched, or indexed-batched")
   }
+  const sdkAmbientProfile = environment.ARKTS_REFERENCES_SDK_AMBIENT_PROFILE ?? "full"
+  if (sdkAmbientProfile !== "full" && sdkAmbientProfile !== "common") {
+    throw new Error("ARKTS_REFERENCES_SDK_AMBIENT_PROFILE must be full or common")
+  }
   return {
     strategy: configuredStrategy,
     batchRootLimit: positiveInteger(
@@ -25,6 +33,7 @@ export function referenceSearchRuntimeConfig(
       DEFAULT_BATCH_ROOT_LIMIT,
       MAX_BATCH_ROOT_LIMIT,
     ),
+    sdkAmbientProfile,
     trace: environment.ARKTS_REFERENCES_TRACE === "1",
   }
 }

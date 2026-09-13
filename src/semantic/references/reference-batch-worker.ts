@@ -4,6 +4,7 @@ import { Worker } from "node:worker_threads"
 import type { SemanticDefinitionCandidate, SemanticDocumentPosition } from "../../core/protocol.js"
 import type { SemanticWorkspaceView } from "../../core/workspace/document-store.js"
 import type { ReferenceBatchVerification } from "./reference-search-executor.js"
+import type { ReferenceSdkAmbientProfile } from "./reference-runtime.js"
 
 interface ReferenceBatchWorkerResponse extends ReferenceBatchVerification {
   readonly ok: true
@@ -26,6 +27,7 @@ export interface ReferenceBatchWorkerOptions {
   readonly isCancellationRequested?: () => boolean
   readonly projectConfiguration?: unknown
   readonly sdkConfiguration?: unknown
+  readonly sdkAmbientProfile?: ReferenceSdkAmbientProfile
 }
 
 export async function verifyReferenceBatchInWorker(
@@ -44,6 +46,7 @@ export async function verifyReferenceBatchInWorker(
       includeDeclaration,
       projectConfiguration: options.projectConfiguration,
       sdkConfiguration: options.sdkConfiguration,
+      sdkAmbientProfile: options.sdkAmbientProfile,
     },
   })
   let settled = false
@@ -99,6 +102,7 @@ export function resolveReferenceAnchorInWorker(
     position,
     projectConfiguration: options.projectConfiguration,
     sdkConfiguration: options.sdkConfiguration,
+    sdkAmbientProfile: options.sdkAmbientProfile,
   }, options)
 }
 
@@ -108,6 +112,7 @@ interface ReferenceWorkerInput {
   readonly position: SemanticDocumentPosition
   readonly projectConfiguration?: unknown
   readonly sdkConfiguration?: unknown
+  readonly sdkAmbientProfile?: ReferenceSdkAmbientProfile
 }
 
 async function runReferenceWorker(

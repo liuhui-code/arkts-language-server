@@ -605,6 +605,73 @@ test("indexed batching proves a declared local package subpath before narrowing"
   )))
 })
 
+test("a verifier-only common SDK ambient profile preserves public semantics with fewer SDK files", async (t) => {
+  const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), "arkts-references-sdk-ambient-"))
+  t.after(() => fs.promises.rm(root, { recursive: true, force: true }))
+  const workspace = path.join(root, "workspace")
+  const sdk = path.join(root, "sdk", "openharmony")
+  const component = path.join(sdk, "ets", "component")
+  await Promise.all([
+    fs.promises.mkdir(workspace, { recursive: true }),
+    fs.promises.mkdir(component, { recursive: true }),
+    fs.promises.mkdir(path.join(sdk, "toolchains"), { recursive: true }),
+  ])
+  await fs.promises.writeFile(path.join(sdk, "ets", "oh-uni-package.json"), JSON.stringify({
+    path: "ets",
+    apiVersion: "24",
+    version: "6.1.1.125",
+  }))
+  await fs.promises.writeFile(path.join(component, "index-full.d.ts"), [
+    '/// <reference path="./common.d.ts" />',
+    '/// <reference path="./full-only.d.ts" />',
+    "",
+  ].join("\n"))
+  await fs.promises.writeFile(path.join(component, "common.d.ts"),
+    "declare class SharedSdkType { value: number }\n")
+  await fs.promises.writeFile(path.join(component, "full-only.d.ts"),
+    "declare interface FullOnlySdkMarker { marker: string }\n")
+
+  const queryText = [
+    'import { PublicThing } from "./Target"',
+    "export const query: PublicThing = new PublicThing()",
+    "",
+  ].join("\n")
+  await Promise.all([
+    fs.promises.writeFile(path.join(workspace, "Target.ets"), [
+      "export class PublicThing {",
+      "  sdk: SharedSdkType",
+      "}",
+      "",
+    ].join("\n")),
+    fs.promises.writeFile(path.join(workspace, "Query.ets"), queryText),
+    fs.promises.writeFile(path.join(workspace, "Use.ets"), [
+      'import { PublicThing } from "./Target"',
+      "export const use = new PublicThing()",
+      "",
+    ].join("\n")),
+  ])
+  const queryUri = pathToFileURL(path.join(workspace, "Query.ets")).href
+  const position = positionAt(queryText, queryText.lastIndexOf("PublicThing") + 1)
+  const full = await runSingleReferenceRequest(t, {
+    root, workspace, queryUri, queryText, position,
+    strategy: "batched", runId: "sdk-ambient-full", sdkPath: sdk,
+    sdkAmbientProfile: "full", captureDiagnostics: true,
+  })
+  const common = await runSingleReferenceRequest(t, {
+    root, workspace, queryUri, queryText, position,
+    strategy: "batched", runId: "sdk-ambient-common", sdkPath: sdk,
+    sdkAmbientProfile: "common", captureDiagnostics: true,
+  })
+
+  assert.deepEqual(common.locations, full.locations)
+  assert.deepEqual(common.diagnostics, full.diagnostics)
+  assert.deepEqual(common.diagnostics, [])
+  assert.ok(full.batchEvents.length > 0)
+  assert.ok(common.batchEvents.length > 0)
+  assert.ok(Math.max(...common.batchEvents.map(event => event.sdkSourceFiles))
+    < Math.max(...full.batchEvents.map(event => event.sdkSourceFiles)))
+})
+
 test("indexed batching classifies a locked SDK module as an external terminal", async (t) => {
   const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), "arkts-references-sdk-terminal-"))
   t.after(() => fs.promises.rm(root, { recursive: true, force: true }))
@@ -747,6 +814,8 @@ async function runSingleReferenceRequest(t, {
   runId = strategy,
   afterFirstRequest,
   sdkPath,
+  sdkAmbientProfile,
+  captureDiagnostics = false,
 }) {
   const logDirectory = path.join(root, `logs-${runId}`)
   const indexAuditPath = path.join(root, `index-audit-${runId}.ndjson`)
@@ -775,6 +844,9 @@ async function runSingleReferenceRequest(t, {
       ARKTS_REFERENCES_STRATEGY: strategy,
       ARKTS_REFERENCES_BATCH_ROOTS: batchRoots,
       ARKTS_REFERENCES_TRACE: "1",
+      ...(sdkAmbientProfile ? {
+        ARKTS_REFERENCES_SDK_AMBIENT_PROFILE: sdkAmbientProfile,
+      } : {}),
     },
     capabilities: awaitIndexReady ? { window: { workDoneProgress: true } } : {},
   })
@@ -799,11 +871,17 @@ async function runSingleReferenceRequest(t, {
   if (overlayPath && overlayText) {
     session.openDocument({ uri: pathToFileURL(overlayPath).href, version: 1, text: overlayText })
   }
+  const diagnostics = captureDiagnostics
+    ? session.transport.notification("textDocument/publishDiagnostics", message => (
+        message.params.uri === queryUri
+      ), 30_000)
+    : undefined
   session.openDocument({ uri: queryUri, version: 1, text: queryText })
   const response = await session.request("textDocument/references", {
     textDocument: { uri: queryUri }, position, context: { includeDeclaration: true },
   }, { timeoutMs: 30_000 })
   assert.equal(response.error, undefined, JSON.stringify(response.error))
+  const publishedDiagnostics = diagnostics ? (await diagnostics).params.diagnostics : undefined
   if (afterFirstRequest) {
     await afterFirstRequest(session)
     const repeated = await session.request("textDocument/references", {
@@ -828,6 +906,7 @@ async function runSingleReferenceRequest(t, {
     indexRequests: fs.existsSync(indexAuditPath)
       ? fs.readFileSync(indexAuditPath, "utf8").split("\n").filter(Boolean).map(JSON.parse)
       : [],
+    diagnostics: publishedDiagnostics,
   }
 }
 
