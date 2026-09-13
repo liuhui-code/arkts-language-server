@@ -737,3 +737,17 @@ case 不记录 pre-resolved value，仍走 25-root full fallback。固定 Photos
 exact 复核与 Photos 独立重复运行，之后才处理 diagnostics peak 和 ambient/global contributor
 completeness。详见
 [pre-resolved details 报告](../reports/2026-09-13-auto-import-pre-resolved-details.md)。
+
+2026-09-13 cross-project auto-import gate：Gramony `Chat`、ChatCube `PreferencesService`、
+RemoteDesk `TerminalCoreBridge` 均从真实现存 import/use 关系构造仅内存 overlay；每个
+workspace/discovery profile 都使用 fresh server/cache，并严格等待 Rust catalog ready。三组 completion
+label/kind/range、resolved class detail、import edit 与正常 diagnostics 指纹逐项一致，ready discovery
+resolve 均为 0 compiler events，证明 pre-resolved 机制跨工程成立。
+
+工作集收益取决于候选宽度。ChatCube 从 940 files/263 roots 降至 514/2，product peak -20.67%；
+RemoteDesk 从 1,557/829 降至 259/2，peak -53.56%。Gramony 的短前缀 `Cha` 召回 12 个匹配 export、
+13 roots，Program 仅从 701 降至 690，peak +0.11%，completion latency +25.43%，明确失败。不得通过
+截断 completion items 修复；下一 RED 必须保留全部同前缀 completion identity/import source，同时把
+多个 declaration roots 按 semantic unit 或 bounded sequential groups 验证，避免所有候选同时进入一个
+Program。默认继续为 `workspace`。详见
+[cross-project auto-import 报告](../reports/2026-09-13-cross-project-auto-import-gate.md)。
