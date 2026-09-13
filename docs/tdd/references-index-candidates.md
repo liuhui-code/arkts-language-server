@@ -54,3 +54,21 @@ The public test covers import alias, re-export, same-name false-positive removal
 reference absent from the persisted index, fewer compiler batches, and exact normalized Location
 equality with conservative batching. The Rust protocol also proves unsupported fallback for
 members and default exports, plus stale-on-restart completeness.
+
+## Direct named-import usage anchor (2026-09-13)
+
+Parent revision: `0bd3ef0b814c3c2cdeeb341d135b738e89b5b32b`.
+
+The next RED queried the public index at an imported usage rather than at its
+export declaration. Memory and SQLite returned `supported=false`, forcing the
+LSP through an isolated compiler-definition Program before candidate lookup.
+
+The minimal GREEN only accepts an unqualified named-import occurrence when one
+binding source resolves uniquely to one reference-searchable export. The public
+child-process LSP differential now observes one candidate request and no
+`references.anchor.complete`; ambiguous source resolution remains unsupported.
+The compiler still proves final Locations at the original query position.
+
+Final review added a shared Memory/SQLite RED for an import whose resolved
+target lies outside the explicit admitted roots. The in-memory store initially
+accepted it while SQLite failed conservative; both now return unsupported.

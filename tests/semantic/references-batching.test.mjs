@@ -250,6 +250,54 @@ test("indexed batching narrows compiler batches but keeps the exact references r
   assert.ok(indexed.batchEvents.every(event => typeof event.queryHeapUsedDelta === "number"))
 })
 
+test("indexed batching resolves a direct named import usage without a compiler anchor", async (t) => {
+  const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), "arkts-references-direct-import-"))
+  t.after(() => fs.promises.rm(root, { recursive: true, force: true }))
+  const workspace = path.join(root, "workspace")
+  await fs.promises.mkdir(workspace)
+  const queryText = [
+    'import { Thing } from "./Target"',
+    "export const query: Thing = {}",
+    "",
+  ].join("\n")
+  await Promise.all([
+    fs.promises.writeFile(path.join(workspace, "Target.ets"), "export type Thing = object\n"),
+    fs.promises.writeFile(path.join(workspace, "Query.ets"), queryText),
+    fs.promises.writeFile(path.join(workspace, "Use.ets"), [
+      'import { Thing } from "./Target"',
+      "export const use: Thing = {}",
+      "",
+    ].join("\n")),
+    fs.promises.writeFile(path.join(workspace, "Unrelated.ets"), "export class Other {}\n"),
+  ])
+  const queryUri = pathToFileURL(path.join(workspace, "Query.ets")).href
+  const position = positionAt(queryText, queryText.lastIndexOf("Thing") + 1)
+  const conservative = await runSingleReferenceRequest(t, {
+    root, workspace, queryUri, queryText, position,
+    strategy: "batched",
+    batchRoots: "1",
+    runId: "direct-import-conservative",
+  })
+  const indexed = await runSingleReferenceRequest(t, {
+    root, workspace, queryUri, queryText, position,
+    strategy: "indexed-batched",
+    awaitIndexReady: true,
+    indexScenario: "reference-direct-import-anchor",
+    batchRoots: "1",
+    runId: "direct-import-indexed",
+  })
+
+  assert.deepEqual(indexed.locations, conservative.locations)
+  const accepted = indexed.indexEvents.find(event => event.event === "references.index.accepted")
+  assert.equal(accepted?.anchorMode, "indexed-declaration-identity",
+    JSON.stringify(indexed.referenceEvents))
+  assert.equal(accepted?.candidateFiles, 3)
+  assert.equal(indexed.indexEvents.some(event => event.event === "references.anchor.complete"), false)
+  assert.equal(indexed.indexRequests.filter(request => (
+    request.method === "references/candidates"
+  )).length, 1)
+})
+
 test("indexed batching keeps declared project semantic units intact", async (t) => {
   const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), "arkts-references-units-"))
   t.after(() => fs.promises.rm(root, { recursive: true, force: true }))

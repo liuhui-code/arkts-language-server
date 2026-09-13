@@ -147,10 +147,13 @@ input.on("line", (line) => {
       const packageSubpathResolutions = packageResolutionScenario === "reference-package-subpath-resolutions"
       const sourceClassification = packageResolutionScenario === "reference-source-classification"
       const sdkTerminal = packageResolutionScenario === "reference-sdk-terminal"
+      const directImportAnchor = packageResolutionScenario === "reference-direct-import-anchor"
       const packageResolutions = packageResolutionScenario === "reference-package-resolutions"
         || packageSubpathResolutions || sourceClassification
       const packageTarget = packageSubpathResolutions ? "Target.ets" : "Index.ets"
-      const supported = packageResolutions
+      const supported = directImportAnchor
+        ? request.params.declarationUri.endsWith("/Query.ets")
+        : packageResolutions
         ? request.params.declarationUri.endsWith(`/shared/src/main/ets/${packageTarget}`)
         : request.params.declarationUri.endsWith("/Target.ets")
       const semanticUnits = process.env.ARKTS_INDEX_TEST_SCENARIO === "semantic-units"
@@ -158,7 +161,9 @@ input.on("line", (line) => {
         && request.params.admittedRootUris?.some(uri => uri.endsWith("/entry/src/main"))
         && request.params.admittedRootUris?.some(uri => uri.endsWith("/shared/src/main"))
         && request.params.admittedRootUris?.some(uri => uri.endsWith("/unrelated/src/main"))
-      const candidateFiles = packageResolutions
+      const candidateFiles = directImportAnchor
+        ? ["Target.ets", "Query.ets", "Use.ets"]
+        : packageResolutions
         ? [
             path.join("shared", "src", "main", "ets", packageTarget),
             path.join("entry", "src", "main", "ets", "Barrel.ets"),
@@ -189,7 +194,9 @@ input.on("line", (line) => {
         && /^sdk:[0-9a-f]{64}$/.test(resolution.externalTerminalIdentity ?? "")
         && resolution.resolvedSourceUri === undefined
       )) ?? false
-      const identityFiles = semanticUnits
+      const identityFiles = directImportAnchor
+        ? candidateFiles
+        : semanticUnits
         ? admittedSemanticUnits ? candidateFiles : []
         : sdkTerminal
           ? ["Target.ets", "Barrel.ets", "Query.ets", "Use.ets"]
@@ -212,7 +219,7 @@ input.on("line", (line) => {
           ? identityFiles.map(file => pathToFileURL(path.join(workspaceRoot, file)).href)
           : [],
         declarationIdentity: supported ? "scripted-reference-candidate" : null,
-        names: supported ? ["Alias", "PublicThing", "Thing"] : [],
+        names: supported ? directImportAnchor ? ["Thing"] : ["Alias", "PublicThing", "Thing"] : [],
         uris: supported
           ? candidateFiles.map(file => pathToFileURL(path.join(workspaceRoot, file)).href)
           : [],

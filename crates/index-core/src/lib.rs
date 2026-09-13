@@ -456,7 +456,7 @@ impl SymbolStore for MemoryStore {
         source_resolutions: &[ReferenceSourceResolution],
         admitted_uri_roots: &[String],
     ) -> Result<ReferenceCandidateSearchResult, StoreError> {
-        let declaration = self
+        let direct_declaration = self
             .documents
             .get(&query.declaration_uri)
             .and_then(|document| {
@@ -468,6 +468,59 @@ impl SymbolStore for MemoryStore {
                         && query.declaration_position.character < item.range.end.character
                 })
             });
+        let document_uris: BTreeSet<_> = self.documents.keys().cloned().collect();
+        let imported_declaration = direct_declaration
+            .is_none()
+            .then(|| {
+                let document = self.documents.get(&query.declaration_uri)?;
+                let occurrence = document.occurrences.iter().find(|occurrence| {
+                    occurrence.qualified == Some(false)
+                        && occurrence.range.start.line == query.declaration_position.line
+                        && occurrence.range.end.line == query.declaration_position.line
+                        && occurrence.range.start.character <= query.declaration_position.character
+                        && query.declaration_position.character < occurrence.range.end.character
+                })?;
+                let mut imports: Vec<_> = document
+                    .bindings
+                    .iter()
+                    .filter(|binding| {
+                        binding.kind == ReferenceBindingKind::Import
+                            && binding.local_name == occurrence.name
+                    })
+                    .cloned()
+                    .collect();
+                resolve_reference_binding_sources(&mut imports, &document_uris);
+                apply_reference_source_resolutions(
+                    &mut imports,
+                    source_resolutions,
+                    &document_uris,
+                );
+                let [binding] = imports.as_slice() else {
+                    return None;
+                };
+                if binding.source_resolution != ReferenceBindingResolution::Unique {
+                    return None;
+                }
+                let source_uri = binding.resolved_source_uri.as_deref()?;
+                if !reference_uri_admitted(source_uri, &query.declaration_uri, admitted_uri_roots) {
+                    return None;
+                }
+                let exports: Vec<_> = self
+                    .documents
+                    .get(source_uri)?
+                    .exports
+                    .iter()
+                    .filter(|item| {
+                        item.reference_searchable && item.exported_name == binding.imported_name
+                    })
+                    .collect();
+                let [declaration] = exports.as_slice() else {
+                    return None;
+                };
+                Some(*declaration)
+            })
+            .flatten();
+        let declaration = direct_declaration.or(imported_declaration);
         let Some(declaration) = declaration else {
             return Ok(unsupported_reference_candidates(self.committed_generation));
         };
@@ -478,11 +531,7 @@ impl SymbolStore for MemoryStore {
                 .documents
                 .values()
                 .filter(|document| {
-                    reference_uri_admitted(
-                        &document.uri,
-                        &query.declaration_uri,
-                        admitted_uri_roots,
-                    )
+                    reference_uri_admitted(&document.uri, &declaration.uri, admitted_uri_roots)
                 })
                 .flat_map(|document| document.bindings.iter())
             {
@@ -507,7 +556,7 @@ impl SymbolStore for MemoryStore {
             .documents
             .values()
             .filter(|document| {
-                reference_uri_admitted(&document.uri, &query.declaration_uri, admitted_uri_roots)
+                reference_uri_admitted(&document.uri, &declaration.uri, admitted_uri_roots)
             })
             .flat_map(|document| document.occurrences.iter())
             .filter(|occurrence| names.contains(&occurrence.name))
@@ -519,7 +568,7 @@ impl SymbolStore for MemoryStore {
             .documents
             .values()
             .filter(|document| {
-                reference_uri_admitted(&document.uri, &query.declaration_uri, admitted_uri_roots)
+                reference_uri_admitted(&document.uri, &declaration.uri, admitted_uri_roots)
             })
             .flat_map(|document| document.bindings.iter())
             .filter(|binding| {
@@ -527,14 +576,13 @@ impl SymbolStore for MemoryStore {
             })
             .cloned()
             .collect();
-        let document_uris: BTreeSet<_> = self.documents.keys().cloned().collect();
         resolve_reference_binding_sources(&mut bindings, &document_uris);
         apply_reference_source_resolutions(&mut bindings, source_resolutions, &document_uris);
         let occurrences: Vec<_> = self
             .documents
             .values()
             .filter(|document| {
-                reference_uri_admitted(&document.uri, &query.declaration_uri, admitted_uri_roots)
+                reference_uri_admitted(&document.uri, &declaration.uri, admitted_uri_roots)
             })
             .flat_map(|document| document.occurrences.iter())
             .filter(|occurrence| names.contains(&occurrence.name))
@@ -544,7 +592,7 @@ impl SymbolStore for MemoryStore {
             .documents
             .values()
             .filter(|document| {
-                reference_uri_admitted(&document.uri, &query.declaration_uri, admitted_uri_roots)
+                reference_uri_admitted(&document.uri, &declaration.uri, admitted_uri_roots)
             })
             .flat_map(|document| document.exports.iter())
             .filter(|item| {
