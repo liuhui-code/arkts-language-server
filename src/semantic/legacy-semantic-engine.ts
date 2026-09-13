@@ -57,6 +57,7 @@ import { isArkUIStringResourcePath } from "../core/arkui/resource-path.js"
 import { formatArktsDocument } from "../core/formatting/arkts-document-formatter.js"
 import { FoldingRangeProvider } from "../core/syntax/folding-range-provider.js"
 import { SemanticTypeEngineRegistry } from "../core/types/type-engine.js"
+import { isMemberAccessCompletion } from "../core/types/typescript-language-service.js"
 import {
   SemanticDocumentStore,
   type SemanticWorkspaceView,
@@ -184,7 +185,14 @@ export class LegacySemanticEngine implements SemanticEnginePort {
   ): Promise<VersionedSemanticResult<SemanticCompletionList>> {
     assertActive(query.signal)
     this.sync(query.document)
-    const prepared = this.prepare(query.document, query.position, true)
+    const memberAccess = isMemberAccessCompletion(
+      query.document.text,
+      query.position.line + 1,
+      query.position.character + 1,
+    )
+    const includeWorkspaceFiles = this.interactiveProjectRootProfile !== "current"
+      || !memberAccess
+    const prepared = this.prepare(query.document, query.position, includeWorkspaceFiles)
     const completion = prepared.engine.complete({
       ...prepared.position,
       allowSnippets: query.completionOptions?.snippets === true,

@@ -396,7 +396,7 @@ export class TypeScriptLanguageServiceEngine {
     const sourceOffset = lineColumnToOffset(script.sourceContent, position.line, position.column)
     const offset = script.virtualDocument.toGeneratedOffset(sourceOffset)
     const prefix = completionPrefix(script.sourceContent, sourceOffset)
-    const memberAccess = script.sourceContent.slice(0, sourceOffset - prefix.length).endsWith(".")
+    const memberAccess = isMemberAccessCompletionAtOffset(script.sourceContent, sourceOffset)
     const includeModuleExports = !memberAccess
       && hasMinimumCodePointLength(prefix, MIN_MODULE_EXPORT_PREFIX_LENGTH)
     work.boundary()
@@ -2161,6 +2161,19 @@ function moduleExtension(filePath: string): ts.Extension {
   if (filePath.endsWith(".ets")) return ts.Extension.Ets
   if (filePath.endsWith(".d.ts")) return ts.Extension.Dts
   return ts.Extension.Ts
+}
+
+export function isMemberAccessCompletion(
+  content: string,
+  line: number,
+  column: number,
+): boolean {
+  return isMemberAccessCompletionAtOffset(content, lineColumnToOffset(content, line, column))
+}
+
+function isMemberAccessCompletionAtOffset(content: string, offset: number): boolean {
+  const prefix = completionPrefix(content, offset)
+  return content.slice(0, offset - prefix.length).endsWith(".")
 }
 
 function completionPrefix(content: string, offset: number): string {

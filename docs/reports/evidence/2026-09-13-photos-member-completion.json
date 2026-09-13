@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-09-13",
+  "repositoryRevision": "c002745dd0b39fc28c463ade0db20979afb37a46",
+  "workspace": {
+    "name": "openharmony/applications_photos",
+    "revision": "98ea1d9cd6a363c576e2c6ff17844e51723baec5"
+  },
+  "sdk": {
+    "apiVersion": "24",
+    "version": "6.1.1.125"
+  },
+  "nodeVersion": "v26.3.0",
+  "target": {
+    "file": "common/src/main/ets/default/view/browserOperation/RecoverMenuOperation.ets",
+    "symbol": "onOperationEnd",
+    "position": { "line": 70, "character": 24 },
+    "positionEncoding": "utf-16"
+  },
+  "workflow": [
+    "textDocument/didOpen",
+    "textDocument/completion",
+    "textDocument/definition",
+    "textDocument/references"
+  ],
+  "profiles": {
+    "closure": [
+      {
+        "programSourceFiles": 1928,
+        "programProjectFiles": 1246,
+        "programProjectRootFiles": 1246,
+        "completionItems": 3,
+        "completionProductRssBytes": 651833344,
+        "completionElapsedMs": 7941,
+        "workflowPeakRssBytes": 806842368,
+        "references": 12,
+        "diagnostics": 27
+      },
+      {
+        "programSourceFiles": 1928,
+        "programProjectFiles": 1246,
+        "programProjectRootFiles": 1246,
+        "completionItems": 3,
+        "completionProductRssBytes": 751624192,
+        "completionElapsedMs": 8361,
+        "workflowPeakRssBytes": 773001216,
+        "references": 12,
+        "diagnostics": 27
+      },
+      {
+        "programSourceFiles": 1928,
+        "programProjectFiles": 1246,
+        "programProjectRootFiles": 1246,
+        "completionItems": 3,
+        "completionProductRssBytes": 806137856,
+        "completionElapsedMs": 8037,
+        "workflowPeakRssBytes": 821882880,
+        "references": 12,
+        "diagnostics": 27
+      }
+    ],
+    "current": [
+      {
+        "programSourceFiles": 380,
+        "programProjectFiles": 29,
+        "programProjectRootFiles": 1,
+        "completionItems": 3,
+        "completionProductRssBytes": 473157632,
+        "completionElapsedMs": 2850,
+        "workflowPeakRssBytes": 737226752,
+        "references": 12,
+        "diagnostics": 27
+      },
+      {
+        "programSourceFiles": 380,
+        "programProjectFiles": 29,
+        "programProjectRootFiles": 1,
+        "completionItems": 3,
+        "completionProductRssBytes": 462057472,
+        "completionElapsedMs": 3005,
+        "workflowPeakRssBytes": 897589248,
+        "references": 12,
+        "diagnostics": 27
+      },
+      {
+        "programSourceFiles": 380,
+        "programProjectFiles": 29,
+        "programProjectRootFiles": 1,
+        "completionItems": 3,
+        "completionProductRssBytes": 474415104,
+        "completionElapsedMs": 2991,
+        "workflowPeakRssBytes": 741531648,
+        "references": 12,
+        "diagnostics": 27
+      }
+    ]
+  },
+  "medians": {
+    "closureCompletionProductRssBytes": 751624192,
+    "currentCompletionProductRssBytes": 473157632,
+    "completionProductRssReductionPercent": 37.05,
+    "closureCompletionElapsedMs": 8037,
+    "currentCompletionElapsedMs": 2991,
+    "completionElapsedReductionPercent": 62.78,
+    "closureWorkflowPeakRssBytes": 806842368,
+    "currentWorkflowPeakRssBytes": 741531648,
+    "workflowPeakRssReductionPercent": 8.09
+  }
+}
