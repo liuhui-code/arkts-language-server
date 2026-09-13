@@ -735,10 +735,12 @@ test("a diagnostics core SDK closure retains required ArkUI globals without the 
   ])
   const queryUri = pathToFileURL(path.join(workspace, "Query.ets")).href
   const position = positionAt(queryText, queryText.lastIndexOf("PublicThing") + 1)
+  const completionPosition = positionAt(queryText, queryText.lastIndexOf("PublicThing") + "Public".length)
   const full = await runSingleReferenceRequest(t, {
     root, workspace, queryUri, queryText, position,
     strategy: "batched", runId: "diagnostics-sdk-full", sdkPath: sdk,
     sdkAmbientProfile: "common", captureDiagnostics: true,
+    captureInteractiveQueries: true, completionPosition,
   })
   const core = await runSingleReferenceRequest(t, {
     root, workspace, queryUri, queryText, position,
@@ -746,14 +748,38 @@ test("a diagnostics core SDK closure retains required ArkUI globals without the 
     sdkAmbientProfile: "common", interactiveSdkAmbientProfile: "core",
     captureDiagnostics: true,
   })
+  const currentRoots = await runSingleReferenceRequest(t, {
+    root, workspace, queryUri, queryText, position,
+    strategy: "batched", runId: "diagnostics-project-roots-current", sdkPath: sdk,
+    sdkAmbientProfile: "common", interactiveProjectRootProfile: "current",
+    captureDiagnostics: true, captureInteractiveQueries: true, completionPosition,
+  })
 
   assert.deepEqual(core.locations, full.locations)
   assert.deepEqual(core.diagnostics, full.diagnostics)
   assert.deepEqual(core.diagnostics, [])
+  assert.deepEqual(currentRoots.locations, full.locations)
+  assert.deepEqual(currentRoots.diagnostics, full.diagnostics)
+  assert.deepEqual(currentRoots.definition, full.definition)
+  assert.equal(full.definition.length, 1)
+  assert.equal(full.definition[0].uri, pathToFileURL(path.join(workspace, "Target.ets")).href)
+  assert.deepEqual(currentRoots.completion, full.completion)
+  assert.equal(full.completion.length, 1)
   assert.equal(full.diagnosticEvents.length, 1)
   assert.equal(core.diagnosticEvents.length, 1)
   assert.equal(full.diagnosticEvents[0].sdkSourceFiles, 5)
   assert.equal(core.diagnosticEvents[0].sdkSourceFiles, 3)
+  assert.equal(full.diagnosticEvents[0].programRootFiles, 3)
+  assert.equal(full.diagnosticEvents[0].programProjectRootFiles, 2)
+  assert.equal(full.diagnosticEvents[0].sdkRootFiles, 1)
+  assert.equal(core.diagnosticEvents[0].programRootFiles, 5)
+  assert.equal(core.diagnosticEvents[0].programProjectRootFiles, 2)
+  assert.equal(core.diagnosticEvents[0].sdkRootFiles, 3)
+  assert.equal(currentRoots.diagnosticEvents.length, 1)
+  assert.equal(currentRoots.diagnosticEvents[0].programProjectFiles, 2)
+  assert.equal(currentRoots.diagnosticEvents[0].programProjectRootFiles, 1)
+  assert.equal(currentRoots.diagnosticEvents[0].sdkSourceFiles, 5)
+  assert.equal(currentRoots.diagnosticEvents[0].sdkRootFiles, 1)
 })
 
 test("an incomplete diagnostics core SDK closure fails closed to the full ambient root", async (t) => {
@@ -968,7 +994,10 @@ async function runSingleReferenceRequest(t, {
   sdkPath,
   sdkAmbientProfile,
   interactiveSdkAmbientProfile,
+  interactiveProjectRootProfile,
   captureDiagnostics = false,
+  captureInteractiveQueries = false,
+  completionPosition,
 }) {
   const logDirectory = path.join(root, `logs-${runId}`)
   const indexAuditPath = path.join(root, `index-audit-${runId}.ndjson`)
@@ -1003,6 +1032,9 @@ async function runSingleReferenceRequest(t, {
       ...(interactiveSdkAmbientProfile ? {
         ARKTS_INTERACTIVE_SDK_AMBIENT_PROFILE: interactiveSdkAmbientProfile,
       } : {}),
+      ...(interactiveProjectRootProfile ? {
+        ARKTS_INTERACTIVE_PROJECT_ROOT_PROFILE: interactiveProjectRootProfile,
+      } : {}),
     },
     capabilities: awaitIndexReady ? { window: { workDoneProgress: true } } : {},
   })
@@ -1033,6 +1065,19 @@ async function runSingleReferenceRequest(t, {
       ), 30_000)
     : undefined
   session.openDocument({ uri: queryUri, version: 1, text: queryText })
+  const definitionResponse = captureInteractiveQueries
+    ? await session.request("textDocument/definition", {
+        textDocument: { uri: queryUri }, position,
+      }, { timeoutMs: 30_000 })
+    : undefined
+  assert.equal(definitionResponse?.error, undefined, JSON.stringify(definitionResponse?.error))
+  const completionResponse = captureInteractiveQueries
+    ? await session.request("textDocument/completion", {
+        textDocument: { uri: queryUri }, position: completionPosition,
+        context: { triggerKind: 1 },
+      }, { timeoutMs: 30_000 })
+    : undefined
+  assert.equal(completionResponse?.error, undefined, JSON.stringify(completionResponse?.error))
   const response = await session.request("textDocument/references", {
     textDocument: { uri: queryUri }, position, context: { includeDeclaration: true },
   }, { timeoutMs: 30_000 })
@@ -1063,8 +1108,20 @@ async function runSingleReferenceRequest(t, {
       ? fs.readFileSync(indexAuditPath, "utf8").split("\n").filter(Boolean).map(JSON.parse)
       : [],
     diagnostics: publishedDiagnostics,
+    definition: captureInteractiveQueries ? sortedLocations(definitionResponse.result) : undefined,
+    completion: captureInteractiveQueries
+      ? completionItems(completionResponse.result)
+          .filter(({ label }) => label === "PublicThing")
+          .map(({ label, detail, kind, insertText, sortText, textEdit }) => ({
+            label, detail, kind, insertText, sortText, textEdit,
+          }))
+      : undefined,
     diagnosticEvents: logs.filter(entry => entry.event === "diagnostics.program.complete"),
   }
+}
+
+function completionItems(result) {
+  return Array.isArray(result) ? result : result?.items ?? []
 }
 
 function positionAt(source, offset) {

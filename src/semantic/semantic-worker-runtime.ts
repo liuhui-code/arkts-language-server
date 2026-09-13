@@ -68,6 +68,7 @@ const engine = new OhosTypeScriptSemanticEngine(projects, logger, {
   hostCancellationToken: cancellation.hostToken,
   references: data.references,
   interactiveSdkAmbientProfile: data.interactive?.sdkAmbientProfile,
+  interactiveProjectRootProfile: data.interactive?.projectRootProfile,
 })
 const memoryPolicy = new SemanticMemoryPolicy(data.runtimeConfig)
 
