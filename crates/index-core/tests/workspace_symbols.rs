@@ -290,6 +290,51 @@ fn independent_declaration_does_not_hide_a_qualified_target_reference() {
 }
 
 #[test]
+fn conservative_identity_narrowing_retains_unknown_files_and_excludes_disjoint_chains() {
+    let mut index = WorkspaceIndex::in_memory();
+    index
+        .refresh(
+            1,
+            [
+                Document::new("file:///workspace/Target.ets", "export class Thing {}\n"),
+                Document::new(
+                    "file:///workspace/Consumer.ets",
+                    "import { Thing } from './Target'\nconst target = new Thing()\n",
+                ),
+                Document::new("file:///workspace/Other.ets", "export class Thing {}\n"),
+                Document::new(
+                    "file:///workspace/OtherUse.ets",
+                    "import { Thing } from './Other'\nconst other = new Thing()\n",
+                ),
+                Document::new(
+                    "file:///workspace/Unknown.ets",
+                    "declare const unknown: object\nconst value = unknown.Thing\n",
+                ),
+            ],
+            &[],
+        )
+        .expect("conservative narrowing generation should commit");
+
+    let result = index
+        .search_reference_candidates(ReferenceCandidateQuery {
+            declaration_uri: "file:///workspace/Target.ets".to_owned(),
+            declaration_position: Position::new(0, 14),
+            limit: 20,
+        })
+        .expect("conservative candidates should be searchable");
+
+    assert!(!result.identity_complete);
+    assert_eq!(
+        result.narrowed_uris,
+        [
+            "file:///workspace/Consumer.ets",
+            "file:///workspace/Target.ets",
+            "file:///workspace/Unknown.ets",
+        ]
+    );
+}
+
+#[test]
 fn relative_binding_resolution_fails_conservative_for_ambiguous_and_package_sources() {
     let mut index = WorkspaceIndex::in_memory();
     index
@@ -345,6 +390,41 @@ fn relative_binding_resolution_fails_conservative_for_ambiguous_and_package_sour
         ReferenceBindingResolution::Unsupported
     );
     assert_eq!(package.resolved_source_uri, None);
+}
+
+#[test]
+fn relative_binding_resolution_matches_percent_encoded_file_uris() {
+    let mut index = WorkspaceIndex::in_memory();
+    index
+        .refresh(
+            1,
+            [
+                Document::new("file:///workspace/%40Target.ets", "export class Thing {}\n"),
+                Document::new(
+                    "file:///workspace/%40Consumer.ets",
+                    "import { Thing } from './@Target'\nconst value = new Thing()\n",
+                ),
+            ],
+            &[],
+        )
+        .expect("encoded URI generation should commit");
+
+    let result = index
+        .search_reference_candidates(ReferenceCandidateQuery {
+            declaration_uri: "file:///workspace/%40Target.ets".to_owned(),
+            declaration_position: Position::new(0, 14),
+            limit: 20,
+        })
+        .expect("encoded URI candidates should be searchable");
+
+    assert!(result.identity_complete);
+    assert_eq!(
+        result.identity_uris,
+        [
+            "file:///workspace/%40Consumer.ets",
+            "file:///workspace/%40Target.ets",
+        ]
+    );
 }
 
 #[test]

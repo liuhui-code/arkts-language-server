@@ -906,10 +906,16 @@ function mapReferenceCandidateResult(
     || !Array.isArray(result.identityUris)
     || result.identityUris.some(uri => typeof uri !== "string")
     || (!result.identityComplete && result.identityUris.length !== 0)
-    || !Array.isArray(result.names)
-    || result.names.some(name => typeof name !== "string")
     || !Array.isArray(result.uris)
     || result.uris.some(uri => typeof uri !== "string")
+    || (result.narrowedUris !== undefined
+      && (!Array.isArray(result.narrowedUris)
+        || result.narrowedUris.some(uri => typeof uri !== "string")
+        || result.narrowedUris.some(uri => !(result.uris as unknown[]).includes(uri))
+        || (result.narrowedUris.length > 0
+          && result.narrowedUris.length >= (result.uris as unknown[]).length)))
+    || !Array.isArray(result.names)
+    || result.names.some(name => typeof name !== "string")
     || (result.bindings !== undefined
       && (!Array.isArray(result.bindings)
         || result.bindings.some(binding => !isReferenceBinding(binding))))
@@ -925,6 +931,9 @@ function mapReferenceCandidateResult(
     complete: result.complete,
     identityComplete: result.identityComplete,
     identityUris: (result.identityUris as string[]).map(mapUri),
+    ...(Array.isArray(result.narrowedUris)
+      ? { narrowedUris: (result.narrowedUris as string[]).map(mapUri) }
+      : {}),
     ...(typeof result.declarationIdentity === "string"
       ? { declarationIdentity: result.declarationIdentity }
       : {}),

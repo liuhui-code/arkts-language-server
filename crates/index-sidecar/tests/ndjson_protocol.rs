@@ -336,6 +336,10 @@ fn sidecar_returns_conservative_reference_candidates_across_alias_reexports() {
             "file:///workspace/Target.ets"
         ])
     );
+    assert_eq!(
+        candidates["result"]["narrowedUris"],
+        candidates["result"]["identityUris"]
+    );
     assert_eq!(candidates["result"]["servedGeneration"], 1);
     assert_eq!(
         candidates["result"]["declarationIdentity"],

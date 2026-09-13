@@ -540,3 +540,24 @@ Location，但 peak 中位 767,680,512 bytes，比当前 worker 中位高 5.9%�
 最大正确 batch 的 project closure 或其 675 个 SDK SourceFiles；不得继续用 worker/process 容器
 变化替代 working-set reduction。详见
 [跨工程与 process isolation 报告](../reports/2026-09-13-reference-cross-project-and-process-isolation.md)。
+
+2026-09-13 conservative identity narrowing 切片：固定 Photos `PhotoAsset` 的剩余 proof 缺口来自
+qualified occurrence 未保留 qualifier，以及相对 source URI 未按 catalog 规则编码 `@`。索引投影
+现在持久化 qualifier、识别 default/lazy import，并将 URI 统一编码；SQLite schema v8 对 v7 旧行
+保留 unknown 语义，正常 refresh 前不得据此排除。proof 新增独立的 `narrowedUris`：只删除已经证明
+属于独立 declaration chain 或锁定 SDK qualifier 的 occurrence，所有 unknown/ambiguous/stale 仍送入
+compiler，最终语义 owner 不变。
+
+三次独立 Photos 新进程均与 legacy 的九个 Location exact equality，candidate 从 124 降至 8，
+3 batches 降至 1 batch，Program project files 降至 36；请求为 4.281/3.953/3.981 秒，峰值为
+560,824,320/554,364,928/555,728,896 bytes。中位 3.981 秒是 legacy 7.996 秒的 0.50x；中位峰值
+555,728,896 bytes 比 legacy 降低 27.7%、比上一 indexed 中位降低 23.3%。另一个保留 124 candidates
+而仅把 root cap 改为 32 的实验需要 4 batches、15.399 秒、703,180,800 bytes，只换来约 3% 峰值
+下降且延迟增加 31%，按停止条件不采用。
+
+这证明 compiler project working set 缩小会同时改善此真实 workload 的延迟和峰值，但最终 50%
+memory gate 仍未通过，默认继续保持 `legacy`。剩余 Program 由 36 个 project files 和 351 个 SDK
+declarations 组成，SDK 文本约 15.4M UTF-16 units、project 文本约 1.86M。下一实验边界因此是 SDK
+declaration closure/不可约运行时底座，不再调 candidate root cap；任何 SDK 缩减必须同时保持
+references 与 diagnostics exact。详细证据见
+[conservative narrowing 报告](../reports/2026-09-13-reference-conservative-narrowing.md)。
