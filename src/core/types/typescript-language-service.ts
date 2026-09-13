@@ -547,6 +547,11 @@ export class TypeScriptLanguageServiceEngine {
       providerIndex,
       quality,
     }) => {
+      const discoveryCandidateUris = position.completionDiscovery?.incomplete === false
+        ? position.completionDiscovery.candidates
+            .filter((candidate) => candidate.exportedName === entry.name)
+            .map((candidate) => candidate.uri)
+        : undefined
       const completion: SemanticCompletionItem = {
         label: entry.name,
         detail: typescriptTypeDetail(entry, filePath),
@@ -574,6 +579,9 @@ export class TypeScriptLanguageServiceEngine {
           entryName: entry.name,
           entrySource: entry.source,
           entryData: entry.data,
+          ...(discoveryCandidateUris?.length
+            ? { discoveryCandidateUris: [...new Set(discoveryCandidateUris)].sort() }
+            : {}),
         },
       }
       work.item()

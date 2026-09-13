@@ -911,6 +911,13 @@ test("recalls and semantically validates an auto-import beyond 4096 module expor
   const resolved = await session.request("completionItem/resolve", matches[0])
   assert.equal(resolved.error, undefined, JSON.stringify(resolved.error))
   assert.match(resolved.result.additionalTextEdits?.[0]?.newText ?? "", /ManyExports/)
+  const resolveEvents = fs.readFileSync(path.join(logDirectory, "server.log"), "utf8")
+    .trim()
+    .split("\n")
+    .map(JSON.parse)
+    .filter((entry) => entry.event === "completion.resolve.program.complete")
+  assert.equal(resolveEvents.length, 1)
+  assert.equal(resolveEvents[0].programProjectRootFiles, 2, JSON.stringify(resolveEvents[0]))
 
   const staleLogDirectory = path.join(materialized.root, "semantic-over-4096-stale-logs")
   const staleSession = new LspSession({
@@ -946,7 +953,8 @@ test("recalls and semantically validates an auto-import beyond 4096 module expor
   const staleItems = Array.isArray(staleResponse.result)
     ? staleResponse.result
     : staleResponse.result?.items ?? []
-  assert.equal(staleItems.filter((item) => item.label === "ExactNeedleExport").length, 1)
+  const staleMatches = staleItems.filter((item) => item.label === "ExactNeedleExport")
+  assert.equal(staleMatches.length, 1)
   const staleCompletionEvents = fs.readFileSync(
     path.join(staleLogDirectory, "server.log"),
     "utf8",
@@ -954,6 +962,16 @@ test("recalls and semantically validates an auto-import beyond 4096 module expor
     .filter((entry) => entry.event === "completion.program.complete")
   assert.equal(staleCompletionEvents.length, 1)
   assert.equal(staleCompletionEvents[0].programProjectRootFiles, 25)
+  const staleResolved = await staleSession.request("completionItem/resolve", staleMatches[0])
+  assert.equal(staleResolved.error, undefined, JSON.stringify(staleResolved.error))
+  assert.match(staleResolved.result.additionalTextEdits?.[0]?.newText ?? "", /ManyExports/)
+  const staleResolveEvents = fs.readFileSync(
+    path.join(staleLogDirectory, "server.log"),
+    "utf8",
+  ).trim().split("\n").map(JSON.parse)
+    .filter((entry) => entry.event === "completion.resolve.program.complete")
+  assert.equal(staleResolveEvents.length, 1)
+  assert.equal(staleResolveEvents[0].programProjectRootFiles, 25)
 })
 
 test("restores an unopened auto-import after call-hierarchy traversal and overlay close", async (t) => {
