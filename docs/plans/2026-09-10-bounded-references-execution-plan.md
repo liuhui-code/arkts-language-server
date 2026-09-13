@@ -576,3 +576,21 @@ verifier 从 351 SDK SourceFiles / 15,397,526 code units 降为 218 / 9,915,017�
 转向 diagnostics interactive Program 的 working-set/cardinality，必须保持 diagnostic code/category/
 range exact，不重试 process isolation、root-cap、强制 GC 或已停止的 declaration façade。详见
 [SDK working-set 报告](../reports/2026-09-13-reference-sdk-working-set.md)。
+
+2026-09-13 diagnostics SDK cardinality 切片：新增复用既有 default-off trace 的
+`diagnostics.program.complete` 事件，只记录 Program project/SDK/other 文件数、UTF-16 code units、诊断数、
+RSS 与 heapUsed，不记录源码或完整路径。公开真实 LSP 合同证明 verifier-only `common` profile 不会改变
+interactive diagnostics 的完整 SDK Program。
+
+固定 Photos 文件的独立 diagnostics-only 新进程在 14.494 秒发布预期 27 条诊断，产品峰值
+544,686,080 bytes。Program 共 813 个 SourceFiles，其中 project 206 / 2,335,577 code units，SDK
+607 / 18,622,997；SDK 占 Program 文本 88.9%。这证明 references 返回后的约 545--558 MB floor 可由
+正常 diagnostics 单独建立，不是 transient verifier retention 或 sidecar 重复计数。
+
+一次临时、默认关闭的 interactive `common.d.ts` 因果实验把 SDK 降为 476 files / 13,276,760 code
+units，产品峰值降至 498,991,104 bytes（8.4%），但 diagnostics 从 27 增至 32：新增五个 `TS2304`，
+分别把三个 `AppStorage` 和两个 `Resource` 使用点误报为未定义。正确性 gate 首次即失败，因此不做三次
+性能复核，实验环境开关已从产品代码撤除。下一 RED 必须保守发现 SDK declaration closure 并显式保留
+全局 ArkUI/runtime ambient declarations；证据 missing/ambiguous/stale 时退回 full SDK。不得以静态
+`common` profile、隐藏诊断或关闭自动 diagnostics 换内存。详见
+[diagnostics SDK working-set 报告](../reports/2026-09-13-diagnostics-sdk-working-set.md)。

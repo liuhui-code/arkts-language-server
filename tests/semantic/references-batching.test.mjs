@@ -670,6 +670,10 @@ test("a verifier-only common SDK ambient profile preserves public semantics with
   assert.ok(common.batchEvents.length > 0)
   assert.ok(Math.max(...common.batchEvents.map(event => event.sdkSourceFiles))
     < Math.max(...full.batchEvents.map(event => event.sdkSourceFiles)))
+  assert.equal(full.diagnosticEvents.length, 1)
+  assert.equal(common.diagnosticEvents.length, 1)
+  assert.equal(full.diagnosticEvents[0].sdkSourceFiles, 3)
+  assert.equal(common.diagnosticEvents[0].sdkSourceFiles, 3)
 })
 
 test("indexed batching classifies a locked SDK module as an external terminal", async (t) => {
@@ -907,6 +911,7 @@ async function runSingleReferenceRequest(t, {
       ? fs.readFileSync(indexAuditPath, "utf8").split("\n").filter(Boolean).map(JSON.parse)
       : [],
     diagnostics: publishedDiagnostics,
+    diagnosticEvents: logs.filter(entry => entry.event === "diagnostics.program.complete"),
   }
 }
 

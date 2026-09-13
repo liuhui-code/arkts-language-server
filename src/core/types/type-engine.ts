@@ -347,17 +347,29 @@ export class SemanticTypeEngineRegistry {
       ),
       prepareRename: (position) => withLease(current => current.engine.prepareRename(position)),
       usages: (position) => withLease(current => current.engine.usages(position)),
-      diagnostics: (position) => withLease(current => mergeDiagnostics(
-        current.engine.diagnostics(position),
-        scope.status === "unavailable"
-          ? [{
-              source: "language", severity: "error", code: "arkts.project.configuration",
-              path: position.path,
-              range: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 },
-              message: `Project configuration is unavailable: ${scope.reason ?? "unknown"}. Check build-profile.json5 and the product/target selection.`,
-            }]
-          : sourceContent ? current.arkui.diagnostics(position, sourceContent) : [],
-      )),
+      diagnostics: (position) => withLease((current) => {
+        const diagnostics = mergeDiagnostics(
+          current.engine.diagnostics(position),
+          scope.status === "unavailable"
+            ? [{
+                source: "language", severity: "error", code: "arkts.project.configuration",
+                path: position.path,
+                range: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 },
+                message: `Project configuration is unavailable: ${scope.reason ?? "unknown"}. Check build-profile.json5 and the product/target selection.`,
+              }]
+            : sourceContent ? current.arkui.diagnostics(position, sourceContent) : [],
+        )
+        if (this.options.references?.trace) {
+          const memory = process.memoryUsage()
+          this.options.onReferenceTrace?.("diagnostics.program.complete", {
+            ...current.engine.programFileStats(),
+            diagnostics: diagnostics.length,
+            rss: memory.rss,
+            heapUsed: memory.heapUsed,
+          })
+        }
+        return diagnostics
+      }),
       codeActions: (position, range) => withLease(current => current.engine.codeActions(position, range)),
       resolveCodeAction: (position, range, fingerprint) => (
         withLease(current => current.engine.resolveCodeAction(position, range, fingerprint))
