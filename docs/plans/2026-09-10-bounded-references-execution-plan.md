@@ -608,3 +608,18 @@ normalized Location oracle，并锁定 repo/workspace revision、server/sidecar 
 已提交。该工具完成不改变产品策略；`indexed-batched` 与 `common` 均继续 opt-in，>3 GB release gate
 仍 OPEN。详见
 [current-artifact 跨工程报告](../reports/2026-09-13-reference-cross-project-current-gate.md)。
+
+2026-09-13 interactive SDK core-closure 切片：在上一轮 `common.d.ts` 的五个 false TS2304 反例上，
+新增默认关闭的 `ARKTS_INTERACTIVE_SDK_AMBIENT_PROFILE=core` 因果实验。它以
+`common.d.ts`、`units.d.ts`、`common_ts_ets_api.d.ts` 为保守 seed，由 compiler 继续跟随声明依赖；
+任一 seed 缺失即退回既有 full prelude。公开真实 LSP 合同证明完整 seed 时 references/diagnostics
+exact 且测试 SDK Program 5->3，缺失 seed 时 fail closed 到与 full 相同的 3 个 SDK files。
+
+固定 Photos commit/文件的 full/core 各三个独立 diagnostics-only 新进程全部发布 exact 的 27 条
+diagnostics。core 将 Program SDK files 从 607 降到 478、SDK text 从 18,622,997 降到 13,428,629，
+但产品进程树 peak 中位仅从 531,693,568 降到 497,037,312 bytes（6.5%），时间中位从 14.395 降到
+13.522 秒（6.1%）。第二对运行的 peak 方向反转；Gramony/ChatCube/RemoteDesk 的单次跨工程复核也
+分别为 -5.1%/-1.2%/+11.0%。因此 30% memory gate 明确失败，默认继续使用 full，core 只保留为
+default-off 差分工具。下一实验不得继续堆静态 SDK seed，而应测 checker/Program 生命周期与最大正确
+interactive project closure；仍须保持自动 diagnostics 和 exact semantic output。详见
+[interactive SDK core-closure 报告](../reports/2026-09-13-interactive-sdk-core-spike.md)。

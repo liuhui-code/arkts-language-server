@@ -25,6 +25,7 @@ import { OHOS_TYPESCRIPT_BACKEND_IDENTITY } from "./backends/ohos-typescript/ide
 import type { SemanticBackend } from "./backends/semantic-backend.js"
 import { semanticRuntimeConfig } from "./coordinator/runtime-config.js"
 import { referenceSearchRuntimeConfig } from "./references/reference-runtime.js"
+import { interactiveSemanticRuntimeConfig } from "./interactive-runtime.js"
 import {
   RootSemanticWorkerSupervisor,
   SemanticWorkerCancelState,
@@ -720,6 +721,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
     if (this.#worker) return this.#worker
     const config = semanticRuntimeConfig(this.#environment)
     const references = referenceSearchRuntimeConfig(this.#environment)
+    const interactive = interactiveSemanticRuntimeConfig(this.#environment)
     const worker = new Worker(this.#workerPath, {
       workerData: {
         rootUri,
@@ -727,6 +729,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
         sdkConfiguration: this.#sdkConfiguration,
         runtimeConfig: config,
         references,
+        interactive,
         metricsPath: this.#environment.ARKTS_MEMORY_METRICS_FILE,
       },
     })

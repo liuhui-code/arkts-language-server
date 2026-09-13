@@ -10,6 +10,7 @@ import { semanticRuntimeMetrics } from "./coordinator/metrics.js"
 import { SemanticMemoryPolicy } from "./coordinator/memory-policy.js"
 import type { SemanticRuntimeConfig } from "./coordinator/runtime-config.js"
 import type { ReferenceSearchRuntimeConfig } from "./references/reference-runtime.js"
+import type { InteractiveSemanticRuntimeConfig } from "./interactive-runtime.js"
 import { SemanticCancellationScope } from "./semantic-cancellation-scope.js"
 import {
   SEMANTIC_WORKER_PROTOCOL_VERSION,
@@ -29,6 +30,7 @@ interface RuntimeWorkerData {
   readonly sdkConfiguration?: unknown
   readonly runtimeConfig: SemanticRuntimeConfig & { readonly memoryBudgetBytes: number }
   readonly references?: ReferenceSearchRuntimeConfig
+  readonly interactive?: InteractiveSemanticRuntimeConfig
   readonly metricsPath?: string
 }
 
@@ -65,6 +67,7 @@ const engine = new OhosTypeScriptSemanticEngine(projects, logger, {
   maxResidentContexts: data.runtimeConfig.maxResidentContexts,
   hostCancellationToken: cancellation.hostToken,
   references: data.references,
+  interactiveSdkAmbientProfile: data.interactive?.sdkAmbientProfile,
 })
 const memoryPolicy = new SemanticMemoryPolicy(data.runtimeConfig)
 
