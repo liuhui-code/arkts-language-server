@@ -1820,16 +1820,7 @@ fn named_source_bindings(
 }
 
 fn is_exported_declaration(tokens: &[Token<'_>], index: usize, brace_depth: usize) -> bool {
-    if brace_depth != 0 {
-        return false;
-    }
-    match tokens.get(index.wrapping_sub(1)).map(|token| token.text) {
-        Some("export") => true,
-        Some("default") => {
-            tokens.get(index.wrapping_sub(2)).map(|token| token.text) == Some("export")
-        }
-        _ => false,
-    }
+    exported_declaration_default(tokens, index, brace_depth).is_some()
 }
 
 fn exported_const_name<'a>(
@@ -1936,9 +1927,37 @@ fn workspace_export(
 }
 
 fn is_default_exported_declaration(tokens: &[Token<'_>], keyword_index: usize) -> bool {
-    keyword_index >= 2
-        && tokens[keyword_index - 2].text == "export"
-        && tokens[keyword_index - 1].text == "default"
+    exported_declaration_default(tokens, keyword_index, 0) == Some(true)
+}
+
+fn exported_declaration_default(
+    tokens: &[Token<'_>],
+    keyword_index: usize,
+    brace_depth: usize,
+) -> Option<bool> {
+    if brace_depth != 0 {
+        return None;
+    }
+    let keyword = tokens.get(keyword_index)?.text;
+    let mut cursor = keyword_index;
+    while cursor > 0 && is_export_modifier(keyword, tokens[cursor - 1].text) {
+        cursor -= 1;
+    }
+    let is_default = cursor > 0 && tokens[cursor - 1].text == "default";
+    if is_default {
+        cursor -= 1;
+    }
+    (cursor > 0 && tokens[cursor - 1].text == "export").then_some(is_default)
+}
+
+fn is_export_modifier(keyword: &str, candidate: &str) -> bool {
+    match keyword {
+        "class" => matches!(candidate, "abstract" | "declare"),
+        "struct" | "enum" | "interface" | "type" => candidate == "declare",
+        "function" => matches!(candidate, "async" | "declare"),
+        "const" => candidate == "declare",
+        _ => false,
+    }
 }
 
 fn is_non_method_keyword(identifier: &str) -> bool {

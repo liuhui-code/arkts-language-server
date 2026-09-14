@@ -682,6 +682,115 @@ fn sidecar_returns_conservative_reference_candidates_across_alias_reexports() {
 }
 
 #[test]
+fn sidecar_indexes_top_level_export_modifiers_for_reference_candidates() {
+    let temp = TestDir::new("reference-export-modifiers");
+    let workspace = temp.path().join("workspace");
+    let cache = temp.path().join("cache");
+    fs::create_dir_all(&workspace).expect("workspace should exist");
+
+    let mut process = SidecarProcess::spawn();
+    assert_eq!(initialize(&mut process, &workspace, &cache, 1)["ok"], true);
+    assert_eq!(
+        process.request(json!({
+            "protocol": 1,
+            "id": 2,
+            "method": "refresh",
+            "params": {
+                "generation": 1,
+                "changed": [{
+                    "uri": "file:///workspace/LogExtender.ets",
+                    "text": "export abstract class LogExtender {}\n"
+                }, {
+                    "uri": "file:///workspace/LogConsumer.ets",
+                    "text": "import { LogExtender } from './LogExtender'\nclass BrowserData extends LogExtender {}\n"
+                }, {
+                    "uri": "file:///workspace/PhotoAsync.ets",
+                    "text": "export async function updatePhotoNoteAsync(): Promise<void> {}\n"
+                }, {
+                    "uri": "file:///workspace/PhotoAsyncConsumer.ets",
+                    "text": "import { updatePhotoNoteAsync } from './PhotoAsync'\nupdatePhotoNoteAsync()\n"
+                }, {
+                    "uri": "file:///workspace/Menu.d.ets",
+                    "text": "export declare interface TextCustomMenu {}\n"
+                }, {
+                    "uri": "file:///workspace/MenuConsumer.ets",
+                    "text": "import { TextCustomMenu } from './Menu'\nlet menu: TextCustomMenu\n"
+                }, {
+                    "uri": "file:///workspace/DefaultBase.ets",
+                    "text": "export default abstract class DefaultBase {}\n"
+                }, {
+                    "uri": "file:///workspace/DefaultConsumer.ets",
+                    "text": "import LocalBase from './DefaultBase'\nclass Child extends LocalBase {}\n"
+                }],
+                "removedUris": []
+            }
+        }))["ok"],
+        true
+    );
+
+    for (id, uri, character, identity, expected_uris) in [
+        (
+            3,
+            "file:///workspace/LogExtender.ets",
+            24,
+            "file:///workspace/LogExtender.ets#0:22:LogExtender",
+            json!([
+                "file:///workspace/LogConsumer.ets",
+                "file:///workspace/LogExtender.ets"
+            ]),
+        ),
+        (
+            4,
+            "file:///workspace/PhotoAsync.ets",
+            24,
+            "file:///workspace/PhotoAsync.ets#0:22:updatePhotoNoteAsync",
+            json!([
+                "file:///workspace/PhotoAsync.ets",
+                "file:///workspace/PhotoAsyncConsumer.ets"
+            ]),
+        ),
+        (
+            5,
+            "file:///workspace/Menu.d.ets",
+            27,
+            "file:///workspace/Menu.d.ets#0:25:TextCustomMenu",
+            json!([
+                "file:///workspace/Menu.d.ets",
+                "file:///workspace/MenuConsumer.ets"
+            ]),
+        ),
+        (
+            6,
+            "file:///workspace/DefaultBase.ets",
+            32,
+            "file:///workspace/DefaultBase.ets#0:30:DefaultBase",
+            json!([
+                "file:///workspace/DefaultBase.ets",
+                "file:///workspace/DefaultConsumer.ets"
+            ]),
+        ),
+    ] {
+        let candidates = process.request(json!({
+            "protocol": 1,
+            "id": id,
+            "method": "references/candidates",
+            "params": {
+                "declarationUri": uri,
+                "declarationPosition": {"line": 0, "character": character},
+                "limit": 100
+            }
+        }));
+        assert_eq!(candidates["ok"], true);
+        assert_eq!(candidates["result"]["supported"], true);
+        assert_eq!(candidates["result"]["complete"], true);
+        assert_eq!(candidates["result"]["identityComplete"], true);
+        assert_eq!(candidates["result"]["declarationIdentity"], identity);
+        assert_eq!(candidates["result"]["identityUris"], expected_uris);
+    }
+    process.shutdown(7);
+}
+
+#[test]
 fn sidecar_proves_package_bindings_only_with_authoritative_source_resolutions() {
     let temp = TestDir::new("reference-package-resolutions");
     let workspace = temp.path().join("workspace");

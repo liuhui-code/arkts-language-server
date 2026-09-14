@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "status": "PASS",
+  "releaseDefaultGate": "NOT_PASSED",
+  "parentRevision": "957fab81dad61e281b53f0daca00403c1421ef60",
+  "environment": {
+    "workspace": "OpenHarmony applications_photos",
+    "workspaceRevision": "98ea1d9cd6a363c576e2c6ff17844e51723baec5",
+    "sdkApiLevel": 24,
+    "sdkVersion": "6.1.1.125",
+    "nodeVersion": "v26.3.0",
+    "serverSha256": "985bd147f7cd69661eb47a2be46606966689f13e3152ef1c6577de7414ddd435",
+    "sidecarSha256": "ca516b50834063877562143636b4202082581096640dfaec7bc92a2a3f680e6a",
+    "memoryMeasurement": "external-process-tree-rss"
+  },
+  "target": {
+    "file": "tools/src/main/utils/LogExtender.ets",
+    "symbol": "LogExtender",
+    "position": { "line": 21, "character": 24, "encoding": "UTF-16" },
+    "request": "textDocument/references",
+    "includeDeclaration": true,
+    "referenceHash": "d00f2b3770f1ff697b3df076a86e2484584075ca4df769d16cba23424c950330",
+    "locations": 3,
+    "diagnostics": 0
+  },
+  "legacy": {
+    "runs": [
+      { "requestMs": 9065.27, "peakProductRssBytes": 804696064 },
+      { "requestMs": 9737.46, "peakProductRssBytes": 798138368 },
+      { "requestMs": 12162.4, "peakProductRssBytes": 771129344 }
+    ],
+    "medianRequestMs": 9737.46,
+    "medianPeakProductRssBytes": 798138368,
+    "locations": 3
+  },
+  "indexedBatched": {
+    "strategy": "indexed-batched",
+    "sdkProfile": "common",
+    "batchRootLimit": 2,
+    "candidateFiles": 2,
+    "completedBatches": 1,
+    "semanticUnitExpansionAttempts": 1,
+    "projectMembershipFiles": 1246,
+    "admittedProjectFiles": 841,
+    "maxProgramSourceFiles": 565,
+    "maxProgramProjectFiles": 206,
+    "sdkSourceFiles": 359,
+    "locations": 3,
+    "runs": [
+      { "requestMs": 7365.37, "peakProductRssBytes": 578387968 },
+      { "requestMs": 7331.23, "peakProductRssBytes": 576307200 },
+      { "requestMs": 7066.1, "peakProductRssBytes": 565047296 }
+    ],
+    "medianRequestMs": 7331.23,
+    "medianPeakProductRssBytes": 576307200
+  },
+  "comparison": {
+    "requestRatio": 0.753,
+    "peakRssRatio": 0.722,
+    "peakRssReduction": 0.278,
+    "exactLocationEquality": true
+  }
+}
