@@ -616,6 +616,21 @@ fn sidecar_returns_conservative_reference_candidates_across_alias_reexports() {
             "changed": [{
                 "uri": "file:///workspace/Default.ets",
                 "text": "export default class DefaultThing {}\n"
+            }, {
+                "uri": "file:///workspace/DefaultConsumer.ets",
+                "text": "import LocalThing from './Default'\nconst value = new LocalThing()\n"
+            }, {
+                "uri": "file:///workspace/OtherDefault.ets",
+                "text": "export default class OtherThing {}\n"
+            }, {
+                "uri": "file:///workspace/OtherConsumer.ets",
+                "text": "import LocalThing from './OtherDefault'\nconst other = new LocalThing()\n"
+            }, {
+                "uri": "file:///workspace/Base.ets",
+                "text": "import DefaultThing from './Default'\nexport default class Base { value = new DefaultThing() }\n"
+            }, {
+                "uri": "file:///workspace/BaseConsumer.ets",
+                "text": "import LocalBase from './Base'\nconst base = new LocalBase()\n"
             }],
             "removedUris": []
         }
@@ -632,9 +647,17 @@ fn sidecar_returns_conservative_reference_candidates_across_alias_reexports() {
         }
     }));
     assert_eq!(unsupported["ok"], true);
-    assert_eq!(unsupported["result"]["supported"], false);
-    assert_eq!(unsupported["result"]["complete"], false);
-    assert_eq!(unsupported["result"]["uris"], json!([]));
+    assert_eq!(unsupported["result"]["supported"], true);
+    assert_eq!(unsupported["result"]["complete"], true);
+    assert_eq!(unsupported["result"]["identityComplete"], true);
+    assert_eq!(
+        unsupported["result"]["identityUris"],
+        json!([
+            "file:///workspace/Base.ets",
+            "file:///workspace/Default.ets",
+            "file:///workspace/DefaultConsumer.ets"
+        ])
+    );
     process.shutdown(14);
 
     let mut restarted = SidecarProcess::spawn();

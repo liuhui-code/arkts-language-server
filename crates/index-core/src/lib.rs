@@ -72,6 +72,7 @@ pub struct WorkspaceSymbol {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WorkspaceExport {
     pub exported_name: String,
+    pub reference_export_name: Option<String>,
     pub kind: SymbolKind,
     pub uri: String,
     pub range: TextRange,
@@ -517,7 +518,9 @@ impl SymbolStore for MemoryStore {
                     .exports
                     .iter()
                     .filter(|item| {
-                        item.reference_searchable && item.exported_name == binding.imported_name
+                        item.reference_searchable
+                            && item.reference_export_name.as_deref()
+                                == Some(binding.imported_name.as_str())
                     })
                     .collect();
                 let [declaration] = exports.as_slice() else {
@@ -530,7 +533,13 @@ impl SymbolStore for MemoryStore {
         let Some(declaration) = declaration else {
             return Ok(unsupported_reference_candidates(self.committed_generation));
         };
-        let mut names = BTreeSet::from([declaration.exported_name.clone()]);
+        let Some(reference_export_name) = declaration.reference_export_name.as_ref() else {
+            return Ok(unsupported_reference_candidates(self.committed_generation));
+        };
+        let mut names = BTreeSet::from([
+            declaration.exported_name.clone(),
+            reference_export_name.clone(),
+        ]);
         loop {
             let before = names.len();
             for binding in self
@@ -554,9 +563,6 @@ impl SymbolStore for MemoryStore {
             if names.len() == before {
                 break;
             }
-        }
-        if names.contains("default") {
-            return Ok(unsupported_reference_candidates(self.committed_generation));
         }
         let uris: BTreeSet<_> = self
             .documents
@@ -613,11 +619,19 @@ impl SymbolStore for MemoryStore {
             .flat_map(|document| document.exports.iter())
             .filter(|item| {
                 item.reference_searchable
-                    && names.contains(&item.exported_name)
+                    && item
+                        .reference_export_name
+                        .as_ref()
+                        .is_some_and(|name| names.contains(name))
                     && item.declaration_identity.is_some()
                     && item.declaration_identity != declaration.declaration_identity
             })
-            .map(|item| (item.uri.clone(), item.exported_name.clone()))
+            .filter_map(|item| {
+                Some((
+                    item.uri.clone(),
+                    item.reference_export_name.as_ref()?.clone(),
+                ))
+            })
             .collect();
         let occurrence_identities: BTreeSet<_> = occurrences
             .iter()
@@ -630,6 +644,7 @@ impl SymbolStore for MemoryStore {
             &independent_declarations,
             &declaration.uri,
             &declaration.exported_name,
+            reference_export_name,
             query.limit,
         );
         sort_reference_bindings(&mut bindings);
@@ -739,7 +754,9 @@ pub fn apply_reference_source_resolutions(
             resolution.resolved_source_uri.as_deref(),
             resolution.external_terminal_identity.as_deref(),
         ) {
-            (Some(uri), None) if document_uris.contains(uri) => Target::Workspace(uri),
+            (Some(uri), None) if document_uris.contains(uri) || uri.starts_with("file:///") => {
+                Target::Workspace(uri)
+            }
             (None, Some(identity))
                 if valid_external_terminal_identity(identity)
                     && valid_sdk_module_specifier(&resolution.source_specifier) =>
@@ -806,21 +823,121 @@ pub fn prove_reference_binding_chain(
     independent_declarations: &BTreeSet<(String, String)>,
     declaration_uri: &str,
     declaration_name: &str,
+    reference_export_name: &str,
     limit: usize,
 ) -> (bool, Vec<String>, Vec<String>) {
-    let mut proven = HashMap::<String, BTreeSet<String>>::from([(
+    let known_uris: BTreeSet<_> = occurrences
+        .iter()
+        .map(|occurrence| occurrence.uri.as_str())
+        .chain(bindings.iter().map(|binding| binding.uri.as_str()))
+        .chain(independent_declarations.iter().map(|(uri, _)| uri.as_str()))
+        .chain(std::iter::once(declaration_uri))
+        .collect();
+    let mut possible_exports = HashMap::<String, BTreeSet<String>>::from([(
         declaration_uri.to_owned(),
-        BTreeSet::from([declaration_name.to_owned()]),
+        BTreeSet::from([reference_export_name.to_owned()]),
     )]);
-    let mut disjoint = HashMap::<String, BTreeSet<String>>::new();
+    let mut possible_bindings: BTreeSet<_> = bindings
+        .iter()
+        .enumerate()
+        .filter(|(_, binding)| {
+            matches!(
+                binding.source_resolution,
+                ReferenceBindingResolution::Unsupported | ReferenceBindingResolution::Unresolved
+            ) && !valid_sdk_module_specifier(&binding.source_specifier)
+                && relative_source_uri_candidates(&binding.uri, &binding.source_specifier).is_none()
+                && (reference_export_name != "default"
+                    || binding.imported_name == reference_export_name
+                    || binding.local_name == declaration_name)
+        })
+        .map(|(index, _)| index)
+        .collect();
+    for index in possible_bindings.clone() {
+        let binding = &bindings[index];
+        if binding.kind == ReferenceBindingKind::ReExport {
+            possible_exports
+                .entry(binding.uri.clone())
+                .or_default()
+                .insert(binding.local_name.clone());
+        }
+    }
+    loop {
+        let before = possible_bindings.len();
+        for (index, binding) in bindings.iter().enumerate() {
+            let source_is_possible = match binding.source_resolution {
+                ReferenceBindingResolution::Unique => {
+                    binding.resolved_source_uri.as_ref().is_some_and(|uri| {
+                        possible_exports
+                            .get(uri)
+                            .is_some_and(|names| names.contains(&binding.imported_name))
+                    })
+                }
+                ReferenceBindingResolution::Ambiguous => {
+                    relative_source_uri_candidates(&binding.uri, &binding.source_specifier)
+                        .is_some_and(|candidates| {
+                            candidates.iter().any(|uri| {
+                                possible_exports
+                                    .get(uri)
+                                    .is_some_and(|names| names.contains(&binding.imported_name))
+                            })
+                        })
+                }
+                _ => false,
+            };
+            if source_is_possible {
+                possible_bindings.insert(index);
+                if binding.kind == ReferenceBindingKind::ReExport {
+                    possible_exports
+                        .entry(binding.uri.clone())
+                        .or_default()
+                        .insert(binding.local_name.clone());
+                }
+            }
+        }
+        if possible_bindings.len() == before {
+            break;
+        }
+    }
+    let mut proven_occurrences = HashMap::<String, BTreeSet<String>>::from([(
+        declaration_uri.to_owned(),
+        BTreeSet::from([
+            declaration_name.to_owned(),
+            reference_export_name.to_owned(),
+        ]),
+    )]);
+    let mut proven_exports = HashMap::<String, BTreeSet<String>>::from([(
+        declaration_uri.to_owned(),
+        BTreeSet::from([reference_export_name.to_owned()]),
+    )]);
+    let mut disjoint_occurrences = HashMap::<String, BTreeSet<String>>::new();
+    let mut disjoint_exports = HashMap::<String, BTreeSet<String>>::new();
     for (uri, name) in independent_declarations {
-        disjoint
+        disjoint_occurrences
+            .entry(uri.clone())
+            .or_default()
+            .insert(name.clone());
+        disjoint_exports
             .entry(uri.clone())
             .or_default()
             .insert(name.clone());
     }
     let mut external_qualifiers = HashMap::<String, BTreeSet<String>>::new();
     let mut reached_bindings = BTreeSet::new();
+    let mut proven_binding_uris = BTreeSet::new();
+    let record_binding_names =
+        |binding: &ReferenceBinding,
+         occurrences: &mut HashMap<String, BTreeSet<String>>,
+         exports: &mut HashMap<String, BTreeSet<String>>| {
+            let names = occurrences.entry(binding.uri.clone()).or_default();
+            names.insert(binding.imported_name.clone());
+            names.insert(binding.local_name.clone());
+            if binding.kind == ReferenceBindingKind::ReExport {
+                exports
+                    .entry(binding.uri.clone())
+                    .or_default()
+                    .insert(binding.local_name.clone());
+            }
+        };
     loop {
         let before = reached_bindings.len();
         for (index, binding) in bindings.iter().enumerate() {
@@ -832,9 +949,22 @@ pub fn prove_reference_binding_chain(
                     .entry(binding.uri.clone())
                     .or_default()
                     .insert(binding.local_name.clone());
-                let names = disjoint.entry(binding.uri.clone()).or_default();
-                names.insert(binding.imported_name.clone());
-                names.insert(binding.local_name.clone());
+                record_binding_names(binding, &mut disjoint_occurrences, &mut disjoint_exports);
+                continue;
+            }
+            if binding.kind == ReferenceBindingKind::Import
+                && binding.source_resolution == ReferenceBindingResolution::Unresolved
+                && relative_source_uri_candidates(&binding.uri, &binding.source_specifier).is_some()
+            {
+                reached_bindings.insert(index);
+                record_binding_names(binding, &mut disjoint_occurrences, &mut disjoint_exports);
+                continue;
+            }
+            if binding.source_resolution == ReferenceBindingResolution::Ambiguous
+                && !possible_bindings.contains(&index)
+            {
+                reached_bindings.insert(index);
+                record_binding_names(binding, &mut disjoint_occurrences, &mut disjoint_exports);
                 continue;
             }
             let Some(source_uri) = binding.resolved_source_uri.as_deref() else {
@@ -843,31 +973,53 @@ pub fn prove_reference_binding_chain(
             if binding.source_resolution != ReferenceBindingResolution::Unique {
                 continue;
             }
-            let source_is_proven = proven
+            if !known_uris.contains(source_uri) {
+                reached_bindings.insert(index);
+                record_binding_names(binding, &mut disjoint_occurrences, &mut disjoint_exports);
+                continue;
+            }
+            let source_is_proven = proven_exports
                 .get(source_uri)
                 .is_some_and(|names| names.contains(&binding.imported_name));
-            let source_is_disjoint = disjoint
+            let source_is_disjoint = disjoint_exports
                 .get(source_uri)
                 .is_some_and(|names| names.contains(&binding.imported_name));
             if source_is_proven == source_is_disjoint {
                 continue;
             }
             reached_bindings.insert(index);
-            let names = if source_is_proven {
-                proven.entry(binding.uri.clone()).or_default()
+            if source_is_proven {
+                proven_binding_uris.insert(binding.uri.clone());
+                record_binding_names(binding, &mut proven_occurrences, &mut proven_exports);
             } else {
-                disjoint.entry(binding.uri.clone()).or_default()
-            };
-            names.insert(binding.imported_name.clone());
-            names.insert(binding.local_name.clone());
+                record_binding_names(binding, &mut disjoint_occurrences, &mut disjoint_exports);
+            }
         }
         if reached_bindings.len() == before {
             break;
         }
     }
+    if reference_export_name == "default" {
+        let mut identity_uris = proven_binding_uris;
+        identity_uris.insert(declaration_uri.to_owned());
+        let mut narrowed_uris = identity_uris.clone();
+        for index in possible_bindings.difference(&reached_bindings) {
+            narrowed_uris.insert(bindings[*index].uri.clone());
+        }
+        let identity_complete = possible_bindings.is_subset(&reached_bindings);
+        let narrowed_uris = if narrowed_uris.len() <= limit {
+            narrowed_uris.into_iter().collect()
+        } else {
+            Vec::new()
+        };
+        if !identity_complete || identity_uris.len() > limit {
+            return (false, Vec::new(), narrowed_uris);
+        }
+        return (true, identity_uris.into_iter().collect(), narrowed_uris);
+    }
     let occurrence_is_disjoint = |occurrence: &ReferenceOccurrenceIdentity| {
         occurrence.qualified == Some(false)
-            && disjoint
+            && disjoint_occurrences
                 .get(&occurrence.uri)
                 .is_some_and(|names| names.contains(&occurrence.name))
             || independent_declarations.contains(&(occurrence.uri.clone(), occurrence.name.clone()))
@@ -881,7 +1033,7 @@ pub fn prove_reference_binding_chain(
     };
     let classified = reached_bindings.len() == bindings.len()
         && occurrences.iter().all(|occurrence| {
-            proven
+            proven_occurrences
                 .get(&occurrence.uri)
                 .is_some_and(|names| names.contains(&occurrence.name))
                 || occurrence_is_disjoint(occurrence)
@@ -889,7 +1041,7 @@ pub fn prove_reference_binding_chain(
     let identity_uris: BTreeSet<_> = occurrences
         .iter()
         .filter(|occurrence| {
-            proven
+            proven_occurrences
                 .get(&occurrence.uri)
                 .is_some_and(|names| names.contains(&occurrence.name))
         })
@@ -900,11 +1052,25 @@ pub fn prove_reference_binding_chain(
         .map(|occurrence| occurrence.uri.clone())
         .collect();
     all_uris.insert(declaration_uri.to_owned());
-    let mut narrowed_uris: BTreeSet<_> = occurrences
-        .iter()
-        .filter(|occurrence| !occurrence_is_disjoint(occurrence))
-        .map(|occurrence| occurrence.uri.clone())
-        .collect();
+    let mut narrowed_uris: BTreeSet<_> = if reference_export_name == "default" {
+        identity_uris
+            .iter()
+            .cloned()
+            .chain(
+                bindings
+                    .iter()
+                    .enumerate()
+                    .filter(|(index, _)| !reached_bindings.contains(index))
+                    .map(|(_, binding)| binding.uri.clone()),
+            )
+            .collect()
+    } else {
+        occurrences
+            .iter()
+            .filter(|occurrence| !occurrence_is_disjoint(occurrence))
+            .map(|occurrence| occurrence.uri.clone())
+            .collect()
+    };
     narrowed_uris.insert(declaration_uri.to_owned());
     let narrowed_uris = if narrowed_uris.len() < all_uris.len() && narrowed_uris.len() <= limit {
         narrowed_uris.into_iter().collect()
@@ -1344,7 +1510,11 @@ fn parse_symbols(document: &Document) -> Result<ParsedSymbols, DocumentParseErro
                         name,
                         kind,
                         exports.len(),
-                        !is_default_exported_declaration(&tokens, index),
+                        Some(if is_default_exported_declaration(&tokens, index) {
+                            "default"
+                        } else {
+                            name.text
+                        }),
                     )?);
                 }
                 if kind != SymbolKind::Enum {
@@ -1370,7 +1540,11 @@ fn parse_symbols(document: &Document) -> Result<ParsedSymbols, DocumentParseErro
                             name,
                             SymbolKind::Function,
                             exports.len(),
-                            !is_default_exported_declaration(&tokens, index),
+                            Some(if is_default_exported_declaration(&tokens, index) {
+                                "default"
+                            } else {
+                                name.text
+                            }),
                         )?);
                     }
                 }
@@ -1398,7 +1572,11 @@ fn parse_symbols(document: &Document) -> Result<ParsedSymbols, DocumentParseErro
                     name,
                     SymbolKind::TypeAlias,
                     exports.len(),
-                    !is_default_exported_declaration(&tokens, index),
+                    Some(if is_default_exported_declaration(&tokens, index) {
+                        "default"
+                    } else {
+                        name.text
+                    }),
                 )?);
             }
             "const" => {
@@ -1417,7 +1595,7 @@ fn parse_symbols(document: &Document) -> Result<ParsedSymbols, DocumentParseErro
                     name,
                     kind,
                     exports.len(),
-                    true,
+                    Some(name.text),
                 )?);
             }
             "{" => {
@@ -1732,7 +1910,7 @@ fn workspace_export(
     name: &Token<'_>,
     kind: SymbolKind,
     ordinal: usize,
-    reference_searchable: bool,
+    reference_export_name: Option<&str>,
 ) -> Result<WorkspaceExport, DocumentParseError> {
     let ordinal = u32::try_from(ordinal).map_err(|_| DocumentParseError)?;
     let range = TextRange::new(
@@ -1741,6 +1919,7 @@ fn workspace_export(
     );
     Ok(WorkspaceExport {
         exported_name: name.text.to_owned(),
+        reference_export_name: reference_export_name.map(str::to_owned),
         kind,
         uri: document.uri.clone(),
         range,
@@ -1752,7 +1931,7 @@ fn workspace_export(
         import_specifier: None,
         module_id: None,
         target_scope: None,
-        reference_searchable,
+        reference_searchable: reference_export_name.is_some(),
     })
 }
 

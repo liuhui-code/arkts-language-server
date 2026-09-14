@@ -874,3 +874,22 @@ Location hash 和 6 条正常 diagnostics。indexed 路径以 `indexed-declarati
 当前 unsupported 的 symbol kind 做 exact differential；同时要降低多批 setup 成本，而不是增加并发或
 放宽 Location 完整性。详见
 [exported-value candidate 报告](../reports/2026-09-14-references-exported-value-candidates.md)。
+
+2026-09-14 默认导出 candidate coverage：索引现在把声明本地名称与 module export slot 分开，具名
+`export default class/function/struct/interface` 使用稳定 declaration identity，并沿来源已证明的
+default import / 显式 re-export 链传播。普通 import 只证明当前文件 occurrence，不能把目标透传为该
+文件自己的 default export；未解析 default package import 继续进入保守集合。SQLite schema v9 在同一
+数据库新增 `reference_export_name`，v8 原地迁移并回填既有具名导出，不建立第二数据库。
+
+固定 Photos 6.1 `ExifUtil` 的四个独立 indexed 新进程均返回 legacy oracle 的 30/30 Location、同一
+Location hash 与 70 条正常 diagnostics。候选从早期通用 `default` 名称闭包的 113 个收缩为声明文件、
+`MediaSaveManager.ets`、`BaseEditor.ets` 三个真实文件，只运行一个 658-SourceFile / 287-project-file
+verifier batch。四次 request 中位 10.754 秒，为已验证 legacy 9.012 秒的 1.19x，通过 `<=2x` 原型
+延迟门禁。
+
+内存发布门仍未通过：两次有效 legacy 外部采样在 367,546,368--799,596,544 bytes 间波动，indexed
+四次为 577,175,552--643,448,832 bytes，无法从这组数据得出方向性内存收益。默认继续为 `legacy`，
+用户报告的 >3 GB 真实复现与最终 50% peak reduction gate 仍保持未验收。下一项应继续选择真实高频且
+当前 unsupported 的 declaration/member 形态做 exact differential，或取得原始 >3 GB 工程；不得用
+`default` 全局词法同名、未确认 SDK edge 或缩减 Location 集换性能。详见
+[default-export candidate 报告](../reports/2026-09-14-references-default-export-candidates.md)。

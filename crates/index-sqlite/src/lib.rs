@@ -30,13 +30,16 @@ use sha2::{Digest, Sha256};
 use std::sync::{Arc, Barrier, Mutex};
 
 const APPLICATION_ID: i64 = 0x4152_4B49;
-const SCHEMA_VERSION: i64 = 8;
+const SCHEMA_VERSION: i64 = 9;
+const QUALIFIED_OCCURRENCE_SCHEMA_VERSION: i64 = 8;
 const OCCURRENCE_IDENTITY_SCHEMA_VERSION: i64 = 7;
 const OCCURRENCE_PROOF_SCHEMA_VERSION: i64 = 6;
 const BINDING_SCHEMA_VERSION: i64 = 5;
 const REFERENCE_SCHEMA_VERSION: i64 = 4;
 const EXPORT_SCHEMA_VERSION: i64 = 3;
 const PREVIOUS_SCHEMA_VERSION: i64 = 2;
+
+type DirectImportDeclaration = (String, String, String, Option<String>);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WorkspaceCacheLocation {
@@ -159,20 +162,27 @@ impl SqliteStore {
             (APPLICATION_ID, SCHEMA_VERSION) => {
                 verify_workspace_identity(&connection, workspace_identity)?
             }
+            (APPLICATION_ID, QUALIFIED_OCCURRENCE_SCHEMA_VERSION) => {
+                verify_workspace_identity(&connection, workspace_identity)?;
+                migrate_schema_v8_to_v9(&mut connection)?;
+            }
             (APPLICATION_ID, OCCURRENCE_IDENTITY_SCHEMA_VERSION) => {
                 verify_workspace_identity(&connection, workspace_identity)?;
                 migrate_schema_v7_to_v8(&mut connection)?;
+                migrate_schema_v8_to_v9(&mut connection)?;
             }
             (APPLICATION_ID, OCCURRENCE_PROOF_SCHEMA_VERSION) => {
                 verify_workspace_identity(&connection, workspace_identity)?;
                 migrate_schema_v6_to_v7(&mut connection)?;
                 migrate_schema_v7_to_v8(&mut connection)?;
+                migrate_schema_v8_to_v9(&mut connection)?;
             }
             (APPLICATION_ID, BINDING_SCHEMA_VERSION) => {
                 verify_workspace_identity(&connection, workspace_identity)?;
                 migrate_schema_v5_to_v6(&mut connection)?;
                 migrate_schema_v6_to_v7(&mut connection)?;
                 migrate_schema_v7_to_v8(&mut connection)?;
+                migrate_schema_v8_to_v9(&mut connection)?;
             }
             (APPLICATION_ID, REFERENCE_SCHEMA_VERSION) => {
                 verify_workspace_identity(&connection, workspace_identity)?;
@@ -180,6 +190,7 @@ impl SqliteStore {
                 migrate_schema_v5_to_v6(&mut connection)?;
                 migrate_schema_v6_to_v7(&mut connection)?;
                 migrate_schema_v7_to_v8(&mut connection)?;
+                migrate_schema_v8_to_v9(&mut connection)?;
             }
             (APPLICATION_ID, EXPORT_SCHEMA_VERSION) => {
                 verify_workspace_identity(&connection, workspace_identity)?;
@@ -188,6 +199,7 @@ impl SqliteStore {
                 migrate_schema_v5_to_v6(&mut connection)?;
                 migrate_schema_v6_to_v7(&mut connection)?;
                 migrate_schema_v7_to_v8(&mut connection)?;
+                migrate_schema_v8_to_v9(&mut connection)?;
             }
             (APPLICATION_ID, PREVIOUS_SCHEMA_VERSION) => {
                 verify_workspace_identity(&connection, workspace_identity)?;
@@ -197,6 +209,7 @@ impl SqliteStore {
                 migrate_schema_v5_to_v6(&mut connection)?;
                 migrate_schema_v6_to_v7(&mut connection)?;
                 migrate_schema_v7_to_v8(&mut connection)?;
+                migrate_schema_v8_to_v9(&mut connection)?;
             }
             _ => {
                 return Err(StoreError::new(
@@ -563,7 +576,8 @@ impl SymbolStore for SqliteStore {
         let generation = read_committed_generation(&transaction)?;
         let mut declaration_statement = transaction
             .prepare(
-                "SELECT exported_name, declaration_identity, reference_searchable \
+                "SELECT exported_name, reference_export_name, declaration_identity, \
+                        reference_searchable \
                  FROM exports \
                  WHERE document_uri = ?1 AND start_line = ?2 AND end_line = ?2 \
                    AND start_character <= ?3 AND ?3 < end_character \
@@ -581,7 +595,8 @@ impl SymbolStore for SqliteStore {
                     Ok((
                         row.get::<_, String>(0)?,
                         row.get::<_, Option<String>>(1)?,
-                        row.get::<_, bool>(2)?,
+                        row.get::<_, Option<String>>(2)?,
+                        row.get::<_, bool>(3)?,
                     ))
                 },
             )
@@ -601,11 +616,12 @@ impl SymbolStore for SqliteStore {
         } else {
             None
         };
-        let (declaration_uri, exported_name, declaration_identity) =
+        let (declaration_uri, exported_name, reference_export_name, declaration_identity) =
             match declaration_rows.as_slice() {
-                [(exported_name, declaration_identity, true)] => (
+                [(exported_name, Some(reference_export_name), declaration_identity, true)] => (
                     query.declaration_uri.clone(),
                     exported_name.clone(),
+                    reference_export_name.clone(),
                     declaration_identity.clone(),
                 ),
                 [] => {
@@ -625,16 +641,16 @@ impl SymbolStore for SqliteStore {
         );
 
         let names = if admitted_uri_roots.is_empty() {
-            read_reference_names(&transaction, &exported_name)?
+            read_reference_names(&transaction, &reference_export_name, &exported_name)?
         } else {
             read_scoped_reference_names(
                 &transaction,
-                &exported_name,
+                &[reference_export_name.clone(), exported_name.clone()],
                 &declaration_uri,
                 admitted_uri_roots,
             )?
         };
-        if names.len() > MAX_REFERENCE_ALIAS_NAMES || names.iter().any(|name| name == "default") {
+        if names.len() > MAX_REFERENCE_ALIAS_NAMES {
             return Ok(unsupported_reference_candidates(generation));
         }
         trace_reference_query_stage(
@@ -648,7 +664,7 @@ impl SymbolStore for SqliteStore {
         let occurrences: Vec<_> = if scoped {
             read_scoped_reference_occurrences(&transaction, &names)?
         } else {
-            read_reference_occurrences(&transaction, &exported_name)?
+            read_reference_occurrences(&transaction, &reference_export_name, &exported_name)?
         }
         .into_iter()
         .filter(|occurrence| {
@@ -679,7 +695,7 @@ impl SymbolStore for SqliteStore {
         let mut bindings = if scoped || !qualifier_names.is_empty() {
             read_scoped_reference_bindings(&transaction, &binding_names)?
         } else {
-            read_reference_bindings(&transaction, &exported_name)?
+            read_reference_bindings(&transaction, &reference_export_name, &exported_name)?
         };
         bindings.retain(|binding| {
             reference_uri_admitted(&binding.uri, &declaration_uri, admitted_uri_roots)
@@ -712,6 +728,7 @@ impl SymbolStore for SqliteStore {
         } else {
             read_independent_reference_declarations(
                 &transaction,
+                &reference_export_name,
                 &exported_name,
                 declaration_identity.as_deref(),
             )?
@@ -730,7 +747,12 @@ impl SymbolStore for SqliteStore {
             independent_declarations.len(),
         );
         let mut uris = if admitted_uri_roots.is_empty() {
-            read_reference_uris(&transaction, &exported_name, query.limit.saturating_add(1))?
+            read_reference_uris(
+                &transaction,
+                &reference_export_name,
+                &exported_name,
+                query.limit.saturating_add(1),
+            )?
         } else {
             occurrences
                 .iter()
@@ -746,6 +768,7 @@ impl SymbolStore for SqliteStore {
             &independent_declarations,
             &declaration_uri,
             &exported_name,
+            &reference_export_name,
             query.limit,
         );
         trace_reference_query_stage(
@@ -903,10 +926,11 @@ fn insert_export_documents(
     let mut statement = transaction
         .prepare_cached(
             "INSERT INTO exports(\
-                document_uri, generation, ordinal, exported_name, name_folded, symbol_kind, \
+                document_uri, generation, ordinal, exported_name, reference_export_name, \
+                name_folded, symbol_kind, \
                 declaration_identity, import_specifier, module_id, target_scope, \
                 start_line, start_character, end_line, end_character, reference_searchable\
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
         )
         .map_err(map_sqlite_error)?;
     for document in documents {
@@ -917,6 +941,7 @@ fn insert_export_documents(
                     generation,
                     i64::from(item.ordinal),
                     item.exported_name,
+                    item.reference_export_name,
                     fold_for_search(&item.exported_name),
                     kind_to_i64(item.kind),
                     item.declaration_identity,
@@ -1078,10 +1103,10 @@ const REFERENCE_NAMES_SQL: &str = "WITH RECURSIVE \
         UNION SELECT local_name, imported_name FROM reference_bindings\
     ), \
     names(name) AS (\
-        VALUES (?1) \
+        VALUES (?1), (?2) \
         UNION SELECT edges.target FROM edges JOIN names ON edges.source = names.name\
     ) \
-    SELECT name FROM names ORDER BY name LIMIT ?2";
+    SELECT name FROM names ORDER BY name LIMIT ?3";
 
 const REFERENCE_URIS_SQL: &str = "WITH RECURSIVE \
     edges(source, target) AS (\
@@ -1089,13 +1114,13 @@ const REFERENCE_URIS_SQL: &str = "WITH RECURSIVE \
         UNION SELECT local_name, imported_name FROM reference_bindings\
     ), \
     names(name) AS (\
-        VALUES (?1) \
+        VALUES (?1), (?2) \
         UNION SELECT edges.target FROM edges JOIN names ON edges.source = names.name\
     ) \
     SELECT DISTINCT reference_occurrence_identities.document_uri \
     FROM reference_occurrence_identities \
          INDEXED BY reference_occurrence_identities_name JOIN names USING(name) \
-    ORDER BY reference_occurrence_identities.document_uri LIMIT ?2";
+    ORDER BY reference_occurrence_identities.document_uri LIMIT ?3";
 
 const REFERENCE_BINDINGS_SQL: &str = "WITH RECURSIVE \
     edges(source, target) AS (\
@@ -1103,7 +1128,7 @@ const REFERENCE_BINDINGS_SQL: &str = "WITH RECURSIVE \
         UNION SELECT local_name, imported_name FROM reference_bindings\
     ), \
     names(name) AS (\
-        VALUES (?1) \
+        VALUES (?1), (?2) \
         UNION SELECT edges.target FROM edges JOIN names ON edges.source = names.name\
     ) \
     SELECT document_uri, imported_name, local_name, source_specifier, kind \
@@ -1118,7 +1143,7 @@ const REFERENCE_OCCURRENCES_SQL: &str = "WITH RECURSIVE \
         UNION SELECT local_name, imported_name FROM reference_bindings\
     ), \
     names(name) AS (\
-        VALUES (?1) \
+        VALUES (?1), (?2) \
         UNION SELECT edges.target FROM edges JOIN names ON edges.source = names.name\
     ) \
     SELECT reference_occurrence_identities.name, \
@@ -1133,14 +1158,14 @@ const INDEPENDENT_REFERENCE_DECLARATIONS_SQL: &str = "WITH RECURSIVE \
         UNION SELECT local_name, imported_name FROM reference_bindings\
     ), \
     names(name) AS (\
-        VALUES (?1) \
+        VALUES (?1), (?2) \
         UNION SELECT edges.target FROM edges JOIN names ON edges.source = names.name\
     ) \
-    SELECT exports.document_uri, exports.exported_name \
-    FROM exports JOIN names ON exports.exported_name = names.name \
+    SELECT exports.document_uri, exports.reference_export_name \
+    FROM exports JOIN names ON exports.reference_export_name = names.name \
     WHERE exports.reference_searchable = 1 \
       AND exports.declaration_identity IS NOT NULL \
-      AND exports.declaration_identity <> ?2";
+      AND exports.declaration_identity <> ?3";
 
 fn scoped_reference_sql(name_count: usize, query: &str) -> Result<String, StoreError> {
     if name_count == 0 {
@@ -1180,8 +1205,8 @@ fn scoped_reference_occurrences_sql(name_count: usize) -> Result<String, StoreEr
 fn scoped_independent_reference_declarations_sql(name_count: usize) -> Result<String, StoreError> {
     scoped_reference_sql(
         name_count,
-        "SELECT exports.document_uri, exports.exported_name \
-         FROM exports JOIN names ON exports.exported_name = names.name \
+        "SELECT exports.document_uri, exports.reference_export_name \
+         FROM exports JOIN names ON exports.reference_export_name = names.name \
          WHERE exports.reference_searchable = 1 \
            AND exports.declaration_identity IS NOT NULL \
            AND exports.declaration_identity <> ?",
@@ -1190,14 +1215,19 @@ fn scoped_independent_reference_declarations_sql(name_count: usize) -> Result<St
 
 fn read_reference_names(
     connection: &Connection,
-    exported_name: &str,
+    reference_export_name: &str,
+    declaration_name: &str,
 ) -> Result<Vec<String>, StoreError> {
     let mut statement = connection
         .prepare(REFERENCE_NAMES_SQL)
         .map_err(map_sqlite_error)?;
     let rows = statement
         .query_map(
-            params![exported_name, (MAX_REFERENCE_ALIAS_NAMES + 1) as i64],
+            params![
+                reference_export_name,
+                declaration_name,
+                (MAX_REFERENCE_ALIAS_NAMES + 1) as i64
+            ],
             |row| row.get::<_, String>(0),
         )
         .map_err(map_sqlite_error)?;
@@ -1207,7 +1237,7 @@ fn read_reference_names(
 
 fn read_scoped_reference_names(
     connection: &Connection,
-    exported_name: &str,
+    seed_names: &[String],
     declaration_uri: &str,
     admitted_uri_roots: &[String],
 ) -> Result<Vec<String>, StoreError> {
@@ -1225,8 +1255,8 @@ fn read_scoped_reference_names(
              ORDER BY document_uri, imported_name",
         )
         .map_err(map_sqlite_error)?;
-    let mut names = BTreeSet::from([exported_name.to_owned()]);
-    let mut pending = vec![exported_name.to_owned()];
+    let mut names: BTreeSet<_> = seed_names.iter().cloned().collect();
+    let mut pending = seed_names.to_vec();
     while let Some(name) = pending.pop() {
         let mut neighbors = from_statement
             .query_map([&name], |row| {
@@ -1260,7 +1290,8 @@ fn read_scoped_reference_names(
 
 fn read_reference_uris(
     connection: &Connection,
-    exported_name: &str,
+    reference_export_name: &str,
+    declaration_name: &str,
     limit: usize,
 ) -> Result<Vec<String>, StoreError> {
     let limit = i64::try_from(limit).map_err(|_| {
@@ -1273,7 +1304,10 @@ fn read_reference_uris(
         .prepare(REFERENCE_URIS_SQL)
         .map_err(map_sqlite_error)?;
     let rows = statement
-        .query_map(params![exported_name, limit], |row| row.get::<_, String>(0))
+        .query_map(
+            params![reference_export_name, declaration_name, limit],
+            |row| row.get::<_, String>(0),
+        )
         .map_err(map_sqlite_error)?;
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(map_sqlite_error)
@@ -1281,13 +1315,14 @@ fn read_reference_uris(
 
 fn read_reference_bindings(
     connection: &Connection,
-    exported_name: &str,
+    reference_export_name: &str,
+    declaration_name: &str,
 ) -> Result<Vec<ReferenceBinding>, StoreError> {
     let mut statement = connection
         .prepare(REFERENCE_BINDINGS_SQL)
         .map_err(map_sqlite_error)?;
     let rows = statement
-        .query_map([exported_name], |row| {
+        .query_map(params![reference_export_name, declaration_name], |row| {
             Ok(ReferenceBinding {
                 uri: row.get(0)?,
                 imported_name: row.get(1)?,
@@ -1363,7 +1398,7 @@ fn read_direct_import_declaration(
     source_resolutions: &[ReferenceSourceResolution],
     admitted_uri_roots: &[String],
     document_uris: &BTreeSet<String>,
-) -> Result<Option<(String, String, Option<String>)>, StoreError> {
+) -> Result<Option<DirectImportDeclaration>, StoreError> {
     let mut occurrence_statement = connection
         .prepare(
             "SELECT name FROM reference_occurrences \
@@ -1428,8 +1463,9 @@ fn read_direct_import_declaration(
 
     let mut export_statement = connection
         .prepare(
-            "SELECT exported_name, declaration_identity FROM exports \
-             WHERE document_uri = ?1 AND exported_name = ?2 AND reference_searchable = 1 \
+            "SELECT exported_name, reference_export_name, declaration_identity FROM exports \
+             WHERE document_uri = ?1 AND reference_export_name = ?2 \
+               AND reference_searchable = 1 \
              ORDER BY ordinal LIMIT 2",
         )
         .map_err(map_sqlite_error)?;
@@ -1438,7 +1474,8 @@ fn read_direct_import_declaration(
             Ok((
                 source_uri.to_owned(),
                 row.get::<_, String>(0)?,
-                row.get::<_, Option<String>>(1)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
             ))
         })
         .map_err(map_sqlite_error)?
@@ -1452,13 +1489,14 @@ fn read_direct_import_declaration(
 
 fn read_reference_occurrences(
     connection: &Connection,
-    exported_name: &str,
+    reference_export_name: &str,
+    declaration_name: &str,
 ) -> Result<Vec<ReferenceOccurrenceIdentity>, StoreError> {
     let mut statement = connection
         .prepare(REFERENCE_OCCURRENCES_SQL)
         .map_err(map_sqlite_error)?;
     let rows = statement
-        .query_map([exported_name], |row| {
+        .query_map(params![reference_export_name, declaration_name], |row| {
             Ok(ReferenceOccurrenceIdentity {
                 name: row.get(0)?,
                 uri: row.get(1)?,
@@ -1505,7 +1543,8 @@ fn read_scoped_reference_occurrences(
 
 fn read_independent_reference_declarations(
     connection: &Connection,
-    exported_name: &str,
+    reference_export_name: &str,
+    declaration_name: &str,
     declaration_identity: Option<&str>,
 ) -> Result<BTreeSet<(String, String)>, StoreError> {
     let Some(declaration_identity) = declaration_identity else {
@@ -1515,9 +1554,14 @@ fn read_independent_reference_declarations(
         .prepare(INDEPENDENT_REFERENCE_DECLARATIONS_SQL)
         .map_err(map_sqlite_error)?;
     let rows = statement
-        .query_map(params![exported_name, declaration_identity], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-        })
+        .query_map(
+            params![
+                reference_export_name,
+                declaration_name,
+                declaration_identity
+            ],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+        )
         .map_err(map_sqlite_error)?;
     rows.collect::<Result<BTreeSet<_>, _>>()
         .map_err(map_sqlite_error)
@@ -1578,7 +1622,8 @@ const LONG_SUBSTRING_SQL: &str = "SELECT symbols.name, symbols.kind, symbols.doc
 
 const EXPORT_PREFIX_SQL: &str = "SELECT exported_name, symbol_kind, document_uri, ordinal, \
             declaration_identity, import_specifier, module_id, target_scope, \
-            start_line, start_character, end_line, end_character, reference_searchable \
+            start_line, start_character, end_line, end_character, reference_searchable, \
+            reference_export_name \
      FROM exports INDEXED BY exports_name_prefix \
      WHERE name_folded >= ?1 AND name_folded < ?2";
 
@@ -1609,6 +1654,7 @@ fn read_export_rows(
                 row.get::<_, i64>(10)?,
                 row.get::<_, i64>(11)?,
                 row.get::<_, bool>(12)?,
+                row.get::<_, Option<String>>(13)?,
             ))
         })
         .map_err(map_sqlite_error)?;
@@ -1628,9 +1674,11 @@ fn read_export_rows(
             end_line,
             end_character,
             reference_searchable,
+            reference_export_name,
         ) = row.map_err(map_sqlite_error)?;
         exports.push(WorkspaceExport {
             exported_name,
+            reference_export_name,
             kind: kind_from_i64(kind)?,
             uri,
             range: TextRange::new(
@@ -1787,6 +1835,7 @@ fn initialize_schema(
                 generation INTEGER NOT NULL CHECK(generation >= 0),\
                 ordinal INTEGER NOT NULL CHECK(ordinal >= 0),\
                 exported_name TEXT NOT NULL,\
+                reference_export_name TEXT,\
                 name_folded TEXT NOT NULL,\
                 symbol_kind INTEGER NOT NULL,\
                 declaration_identity TEXT,\
@@ -1801,6 +1850,8 @@ fn initialize_schema(
                 PRIMARY KEY(document_uri, ordinal)\
              );\
              CREATE INDEX exports_name_prefix ON exports(name_folded);\
+             CREATE INDEX exports_reference_export_name \
+                ON exports(reference_export_name, document_uri);\
              CREATE TABLE reference_occurrences(\
                 document_uri TEXT NOT NULL REFERENCES documents(uri) ON DELETE CASCADE,\
                 ordinal INTEGER NOT NULL CHECK(ordinal >= 0),\
@@ -1870,6 +1921,42 @@ fn initialize_schema(
         .map_err(map_sqlite_error)?;
     transaction
         .pragma_update(None, "application_id", APPLICATION_ID)
+        .map_err(map_sqlite_error)?;
+    transaction
+        .pragma_update(None, "user_version", SCHEMA_VERSION)
+        .map_err(map_sqlite_error)?;
+    transaction.commit().map_err(map_sqlite_error)
+}
+
+fn migrate_schema_v8_to_v9(connection: &mut Connection) -> Result<(), StoreError> {
+    let has_reference_export_name = {
+        let mut statement = connection
+            .prepare("PRAGMA table_info(exports)")
+            .map_err(map_sqlite_error)?;
+        let columns = statement
+            .query_map([], |row| row.get::<_, String>(1))
+            .map_err(map_sqlite_error)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(map_sqlite_error)?;
+        columns
+            .iter()
+            .any(|column| column == "reference_export_name")
+    };
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(map_sqlite_error)?;
+    if !has_reference_export_name {
+        transaction
+            .execute_batch("ALTER TABLE exports ADD COLUMN reference_export_name TEXT;")
+            .map_err(map_sqlite_error)?;
+    }
+    transaction
+        .execute_batch(
+            "UPDATE exports SET reference_export_name = exported_name \
+             WHERE reference_searchable = 1 AND reference_export_name IS NULL;\
+             CREATE INDEX IF NOT EXISTS exports_reference_export_name \
+                ON exports(reference_export_name, document_uri);",
+        )
         .map_err(map_sqlite_error)?;
     transaction
         .pragma_update(None, "user_version", SCHEMA_VERSION)
@@ -1949,7 +2036,7 @@ fn migrate_schema_v7_to_v8(connection: &mut Connection) -> Result<(), StoreError
         )
         .map_err(map_sqlite_error)?;
     transaction
-        .pragma_update(None, "user_version", SCHEMA_VERSION)
+        .pragma_update(None, "user_version", QUALIFIED_OCCURRENCE_SCHEMA_VERSION)
         .map_err(map_sqlite_error)?;
     transaction.commit().map_err(map_sqlite_error)
 }
@@ -2254,7 +2341,7 @@ mod tests {
             .prepare(&format!("EXPLAIN QUERY PLAN {REFERENCE_URIS_SQL}"))
             .expect("reference query plan should prepare");
         let details: Vec<String> = statement
-            .query_map(params!["Needle", 20], |row| row.get(3))
+            .query_map(params!["Needle", "Needle", 20], |row| row.get(3))
             .expect("reference query plan should execute")
             .collect::<Result<_, _>>()
             .expect("reference query plan should decode");
