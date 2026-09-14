@@ -893,3 +893,21 @@ verifier batch。四次 request 中位 10.754 秒，为已验证 legacy 9.012 �
 当前 unsupported 的 declaration/member 形态做 exact differential，或取得原始 >3 GB 工程；不得用
 `default` 全局词法同名、未确认 SDK edge 或缩减 Location 集换性能。详见
 [default-export candidate 报告](../reports/2026-09-14-references-default-export-candidates.md)。
+
+2026-09-14 顶层 export modifier coverage：Rust index 现在只按 declaration-kind allowlist 识别
+`export` 与声明关键字之间的 `abstract`、`async`、`declare`，同时覆盖
+`export default abstract class`；nested declaration/namespace member 不因此成为全局 declaration。
+公开 sidecar RED 在 parent `957fab8` 首先证明 `export abstract class` 为 unsupported，GREEN 后同时
+固定 abstract class、async function、declare interface 与 default abstract class 的 identity 和来源隔离。
+
+真实 Photos 6.1 `LogExtender` 使用 3 个 legacy 与 3 个 indexed 独立新进程。六次均返回声明、import、
+`extends` 三个 exact Location，同一 hash，0 diagnostic。indexed 只召回声明与真实 consumer 两个文件，
+运行一个 batch；一次 source-unavailable closure expansion 后实际 Program 为 565 SourceFiles，其中 206
+project + 359 SDK，对比完整 project membership 1,246。中位耗时 9.737 秒降至 7.331 秒（0.75x），
+产品进程树 RSS 中位 798,138,368 降至 576,307,200 bytes（0.72x，下降 27.8%）。
+
+该结果通过 correctness/latency slice gate，但低于最终 50% peak reduction，且仍不是用户报告的 >3 GB
+工程，所以默认保持 `legacy`。本样本的下一工作集边界已经从 candidate name recall 转为 semantic-unit
+source-unavailable expansion 与剩余 359-file SDK profile；下一 RED 应优先处理真实 namespace/member
+identity 或证明 expansion 所需依赖边，而不是继续扩充词法同名集合。详见
+[top-level export modifier 报告](../reports/2026-09-14-references-export-modifiers.md)。
