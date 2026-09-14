@@ -791,6 +791,78 @@ fn sidecar_indexes_top_level_export_modifiers_for_reference_candidates() {
 }
 
 #[test]
+fn sidecar_indexes_an_exported_namespace_without_merging_a_same_name_module() {
+    let temp = TestDir::new("reference-export-namespace");
+    let workspace = temp.path().join("workspace");
+    let cache = temp.path().join("cache");
+    fs::create_dir_all(&workspace).expect("workspace should exist");
+
+    let mut process = SidecarProcess::spawn();
+    assert_eq!(initialize(&mut process, &workspace, &cache, 1)["ok"], true);
+    assert_eq!(
+        process.request(json!({
+            "protocol": 1,
+            "id": 2,
+            "method": "refresh",
+            "params": {
+                "generation": 1,
+                "changed": [{
+                    "uri": "file:///workspace/Routers.ets",
+                    "text": "export namespace Routers { export function back() {} }\n"
+                }, {
+                    "uri": "file:///workspace/Consumer.ets",
+                    "text": "import { Routers } from './Routers'\nRouters.back()\n"
+                }, {
+                    "uri": "file:///workspace/OtherRouters.ets",
+                    "text": "export namespace Routers { export function push() {} }\n"
+                }, {
+                    "uri": "file:///workspace/OtherConsumer.ets",
+                    "text": "import { Routers } from './OtherRouters'\nRouters.push()\n"
+                }],
+                "removedUris": []
+            }
+        }))["ok"],
+        true
+    );
+
+    let candidates = process.request(json!({
+        "protocol": 1,
+        "id": 3,
+        "method": "references/candidates",
+        "params": {
+            "declarationUri": "file:///workspace/Routers.ets",
+            "declarationPosition": {"line": 0, "character": 19},
+            "limit": 100
+        }
+    }));
+    assert_eq!(candidates["ok"], true);
+    assert_eq!(candidates["result"]["supported"], true);
+    assert_eq!(candidates["result"]["complete"], true);
+    assert_eq!(candidates["result"]["identityComplete"], true);
+    assert_eq!(
+        candidates["result"]["declarationIdentity"],
+        "file:///workspace/Routers.ets#0:17:Routers"
+    );
+    assert_eq!(
+        candidates["result"]["identityUris"],
+        json!([
+            "file:///workspace/Consumer.ets",
+            "file:///workspace/Routers.ets"
+        ])
+    );
+
+    let symbol = process.request(json!({
+        "protocol": 1,
+        "id": 4,
+        "method": "search",
+        "params": {"query": "Routers", "limit": 20}
+    }));
+    assert_eq!(symbol["ok"], true);
+    assert_eq!(symbol["result"]["items"][0]["kind"], "module");
+    process.shutdown(5);
+}
+
+#[test]
 fn sidecar_proves_package_bindings_only_with_authoritative_source_resolutions() {
     let temp = TestDir::new("reference-package-resolutions");
     let workspace = temp.path().join("workspace");

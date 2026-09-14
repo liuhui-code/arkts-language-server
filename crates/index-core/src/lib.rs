@@ -58,6 +58,7 @@ pub enum SymbolKind {
     Function,
     Method,
     Variable,
+    Namespace,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1488,7 +1489,7 @@ fn parse_symbols(document: &Document) -> Result<ParsedSymbols, DocumentParseErro
             continue;
         }
         match token.text {
-            "class" | "struct" | "enum" | "interface" => {
+            "class" | "struct" | "enum" | "interface" | "namespace" => {
                 let Some(name) = tokens
                     .get(index + 1)
                     .filter(|next| next.kind == TokenKind::Identifier)
@@ -1500,6 +1501,7 @@ fn parse_symbols(document: &Document) -> Result<ParsedSymbols, DocumentParseErro
                     "struct" => SymbolKind::Struct,
                     "enum" => SymbolKind::Enum,
                     "interface" => SymbolKind::Interface,
+                    "namespace" => SymbolKind::Namespace,
                     _ => unreachable!(),
                 };
                 symbols.push(symbol(document, &line_index, name, kind, None));
