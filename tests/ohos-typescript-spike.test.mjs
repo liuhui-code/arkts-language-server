@@ -1,5 +1,6 @@
 import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
+import { createHash } from "node:crypto"
 import { createRequire } from "node:module"
 import fs from "node:fs"
 import os from "node:os"
@@ -87,6 +88,74 @@ test("official ETS options come from the selected SDK loader configuration", (t)
   assert.equal(options.etsLoaderPath, path.join(sdkRoot, "ets", "build-tools", "ets-loader"))
 })
 
+test("official ETS options enable annotation declarations for an API 24 SDK", (t) => {
+  const { officialEtsCompilerOptions } = buildOfficialBackendSupportDriver(t)
+  const compiler = createRequire(import.meta.url)("typescript")
+  const fixtureDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-api24-sdk-"))
+  t.after(() => fs.rmSync(fixtureDirectory, { recursive: true, force: true }))
+  const etsRoot = path.join(fixtureDirectory, "ets")
+  const loaderRoot = path.join(etsRoot, "build-tools", "ets-loader")
+  fs.mkdirSync(loaderRoot, { recursive: true })
+  fs.writeFileSync(path.join(loaderRoot, "tsconfig.json"), JSON.stringify({
+    compilerOptions: { ets: { components: [] } },
+  }))
+  fs.writeFileSync(path.join(etsRoot, "oh-uni-package.json"), JSON.stringify({
+    apiVersion: "24",
+    version: "6.1.1.125",
+  }))
+
+  const options = officialEtsCompilerOptions(fixtureDirectory)
+  const sourceFile = compiler.createSourceFile(
+    path.join(etsRoot, "api", "@future.annotation.d.ets"),
+    "export @interface FutureAnnotation {}\n",
+    compiler.ScriptTarget.Latest,
+    true,
+    compiler.ScriptKind.ETS,
+    options,
+  )
+
+  assert.equal(options.etsAnnotationsEnable, true)
+  assert.deepEqual(sourceFile.parseDiagnostics, [])
+  assert.equal(
+    compiler.SyntaxKind[sourceFile.statements[0].kind],
+    "AnnotationDeclaration",
+  )
+})
+
+test("official ETS options do not enable annotation declarations before API 24", (t) => {
+  const { officialEtsCompilerOptions } = buildOfficialBackendSupportDriver(t)
+  const fixtureDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-api23-sdk-"))
+  t.after(() => fs.rmSync(fixtureDirectory, { recursive: true, force: true }))
+  const etsRoot = path.join(fixtureDirectory, "ets")
+  fs.mkdirSync(etsRoot, { recursive: true })
+  fs.writeFileSync(path.join(etsRoot, "oh-uni-package.json"), JSON.stringify({
+    apiVersion: "23",
+  }))
+
+  assert.equal(officialEtsCompilerOptions(fixtureDirectory).etsAnnotationsEnable, undefined)
+})
+
+test("production pins the API 24-capable official compiler artifact", () => {
+  const compiler = createRequire(import.meta.url)("typescript")
+  const packageJson = JSON.parse(readProjectFile("package.json"))
+  const lockfile = readProjectFile("pnpm-lock.yaml")
+  const compilerSha256 = createHash("sha256")
+    .update(fs.readFileSync(createRequire(import.meta.url).resolve("typescript")))
+    .digest("hex")
+
+  assert.equal(packageJson.dependencies.typescript, "npm:ohos-typescript@4.9.5-r10")
+  assert.match(
+    lockfile,
+    /ohos-typescript@4\.9\.5-r10:[\s\S]*sha512-UyLXhBnUe5H4HGugf1ocYPawod0Q4ituiUATYoHIR5y4uxnH4\+8ddD39aeLgcQah1YMv2DRKRaL9W1jgtnbEtQ==/u,
+  )
+  assert.equal(compiler.version, "4.9.5")
+  assert.equal(typeof compiler.isAnnotationDeclaration, "function")
+  assert.equal(
+    compilerSha256,
+    "af9e3c4689e3250de1d869b219abb76081c6ea1d3df81bd6b8f6a74c3174b6bc",
+  )
+})
+
 test("declaration-facade spike emits an in-memory .d.ets for an exported ArkTS class", (t) => {
   const fixtureDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-facade-spike-"))
   t.after(() => fs.rmSync(fixtureDirectory, { recursive: true, force: true }))
@@ -164,6 +233,10 @@ test("declaration-facade spike preserves SDK-configured ArkTS component decorato
   fs.mkdirSync(loaderRoot, { recursive: true })
   fs.mkdirSync(componentRoot, { recursive: true })
   fs.mkdirSync(apiRoot, { recursive: true })
+  fs.writeFileSync(path.join(sdkRoot, "ets", "oh-uni-package.json"), JSON.stringify({
+    apiVersion: "24",
+    version: "6.1.1.125",
+  }))
   fs.writeFileSync(path.join(loaderRoot, "tsconfig.json"), JSON.stringify({
     compilerOptions: {
       ets: {
@@ -192,8 +265,8 @@ test("declaration-facade spike preserves SDK-configured ArkTS component decorato
     "declare const Text: TextInterface",
     "",
   ].join("\n"))
-  fs.writeFileSync(path.join(apiRoot, "@future.annotation.d.ets"), [
-    "export @interface FutureAnnotation {",
+  fs.writeFileSync(path.join(apiRoot, "@ohos.annotation.d.ets"), [
+    "export @interface Available {",
     "}",
     "",
   ].join("\n"))
@@ -220,7 +293,7 @@ test("declaration-facade spike preserves SDK-configured ArkTS component decorato
   assert.equal(result.status, 0, `${result.stderr}\n${result.stdout}`)
   const report = JSON.parse(result.stdout)
   assert.equal(report.status, "PASS")
-  assert.equal(report.sdkDeclarationFiles, 1)
+  assert.equal(report.sdkDeclarationFiles, 2)
   assert.ok(report.programSourceFiles >= 3)
   assert.match(report.declarationText, /@Component\s+export declare struct Card/u)
   assert.match(report.declarationText, /@State\s+title: string/u)
@@ -284,6 +357,9 @@ test("declaration-facade spike resolves an SDK module used by a public type", (t
   fs.mkdirSync(loaderRoot, { recursive: true })
   fs.mkdirSync(componentRoot, { recursive: true })
   fs.mkdirSync(apiRoot, { recursive: true })
+  fs.writeFileSync(path.join(sdkRoot, "ets", "oh-uni-package.json"), JSON.stringify({
+    apiVersion: "23",
+  }))
   fs.writeFileSync(path.join(loaderRoot, "tsconfig.json"), JSON.stringify({
     compilerOptions: {
       ets: {
@@ -573,6 +649,44 @@ test("the committed spike report passes only after every contract executes", () 
   assert.equal(report.summary.totals.passed, 34)
   assert.equal(report.summary.totals.failed, 0)
   assert.equal(report.summary.totals.deferred, 0)
+  assert.equal(report.sdkSmoke.status, "PASS")
+  assert.equal(report.sdkSmoke.apiLevel, 24)
+  assert.equal(report.sdkSmoke.etsAnnotationsEnable, true)
+  assert.deepEqual(report.sdkSmoke.failureReasons, [])
+  assert.deepEqual(
+    report.sdkSmoke.files.map(({ relativePath, syntacticDiagnostics, annotationDeclarations }) => ({
+      relativePath,
+      syntacticDiagnostics,
+      annotationDeclarations,
+    })),
+    [
+      {
+        relativePath: "ets/api/@ohos.hilog.d.ts",
+        syntacticDiagnostics: [],
+        annotationDeclarations: 0,
+      },
+      {
+        relativePath: "ets/api/@ohos.annotation.d.ets",
+        syntacticDiagnostics: [],
+        annotationDeclarations: 2,
+      },
+      {
+        relativePath: "ets/arkts/@arkts.lang.d.ets",
+        syntacticDiagnostics: [],
+        annotationDeclarations: 1,
+      },
+    ],
+  )
+  assert.equal(
+    report.productionCompiler.packageSpecifier,
+    "npm:ohos-typescript@4.9.5-r10",
+  )
+  assert.equal(report.productionCompiler.compilerVersion, "4.9.5")
+  assert.equal(
+    report.productionCompiler.artifactSha256,
+    "af9e3c4689e3250de1d869b219abb76081c6ea1d3df81bd6b8f6a74c3174b6bc",
+  )
+  assert.equal(report.productionCompiler.sdkSmoke.status, "PASS")
   assert.equal(report.backendRevision, "9cc62fe98f47c0bf113676e3fb33fe932b493052")
   assert.equal(
     report.sdkDeclarationDigest,
@@ -680,7 +794,7 @@ test("the committed lifecycle report closes the backend memory spike gate", () =
 
 test("production composition has one locked official semantic backend and no virtual rewrite", () => {
   const packageJson = JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf8"))
-  assert.equal(packageJson.dependencies.typescript, "npm:ohos-typescript@4.9.5-r4")
+  assert.equal(packageJson.dependencies.typescript, "npm:ohos-typescript@4.9.5-r10")
 
   const contract = readProjectFile("src/semantic/backends/semantic-backend.ts")
   assert.doesNotMatch(contract, /typescript|sqlite|vscode-languageserver/iu)

@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "status": "PASS",
+  "productionCompiler": {
+    "packageSpecifier": "npm:ohos-typescript@4.9.5-r10",
+    "npmIntegrity": "sha512-UyLXhBnUe5H4HGugf1ocYPawod0Q4ituiUATYoHIR5y4uxnH4+8ddD39aeLgcQah1YMv2DRKRaL9W1jgtnbEtQ==",
+    "artifactSha256": "af9e3c4689e3250de1d869b219abb76081c6ea1d3df81bd6b8f6a74c3174b6bc",
+    "sourceReferenceRevision": "9cc62fe98f47c0bf113676e3fb33fe932b493052"
+  },
+  "sdk": {
+    "apiLevel": 24,
+    "version": "6.1.1.125",
+    "declarationDigest": "8098b8abbc6b06fce0e7322d6f8f82a5bbce41e847dbd39e9a98811a33d4c6e4",
+    "etsAnnotationsEnable": true,
+    "declarations": [
+      {
+        "path": "ets/api/@ohos.annotation.d.ets",
+        "syntacticDiagnostics": 0,
+        "annotationDeclarations": 2
+      },
+      {
+        "path": "ets/arkts/@arkts.lang.d.ets",
+        "syntacticDiagnostics": 0,
+        "annotationDeclarations": 1
+      }
+    ]
+  },
+  "semanticContracts": {
+    "passed": 34,
+    "failed": 0,
+    "deferred": 0
+  },
+  "realProject": {
+    "name": "Gramony",
+    "revision": "0a1ee4b026b6736671f0030ba9859aceaa962298",
+    "file": "common/base/src/main/ets/utils/DateHelper/DateHelper.ets",
+    "symbol": "DateHelper",
+    "position": {
+      "line": 0,
+      "character": 16,
+      "encoding": "UTF-16"
+    },
+    "request": "textDocument/references",
+    "strategy": "indexed-batched",
+    "referenceHash": "b7fad8c785035260d797eab2eca9b792311403d83f7075d10d697d84386859e5",
+    "diagnosticHash": "880593f6d009fa6e0153a31d2c62f056fa4f3a34acf4dc581e1153c6faa7f8aa",
+    "runs": [
+      {
+        "sdkProfile": "common",
+        "elapsedMs": 2552,
+        "peakProductRssBytes": 389828608,
+        "sampleCount": 117,
+        "projectProgramFiles": 32,
+        "sdkProgramFiles": 226,
+        "expectedLocations": 8,
+        "observedLocations": 8,
+        "diagnostics": 10
+      },
+      {
+        "sdkProfile": "full",
+        "elapsedMs": 3125,
+        "peakProductRssBytes": 433258496,
+        "sampleCount": 121,
+        "projectProgramFiles": 32,
+        "sdkProgramFiles": 355,
+        "expectedLocations": 8,
+        "observedLocations": 8,
+        "diagnostics": 10
+      }
+    ]
+  }
+}

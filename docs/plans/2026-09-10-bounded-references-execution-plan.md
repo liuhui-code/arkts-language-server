@@ -802,13 +802,12 @@ declaration façade consumer，或在需要生命周期隔离时使用真正 chi
 [batch semantic-cleanup 报告](../reports/2026-09-14-auto-import-batch-semantic-cleanup.md)。
 
 2026-09-14 Gramony `ChatList` declaration-façade gate：使用真实 consumer `pages/Index.ets` 的
-`ChatList` import 运行现有 source/façade 独立进程 A/B。锁定的 `ohos-typescript@4.9.5-r4` 在 API 24 /
-OpenHarmony 6.1.1.125 上把该真实源码扩展为 807-SourceFile Program，并生成 45 个 `.d.ets`，但同时
-报告 145 个 error diagnostics；首批错误来自 SDK 中 `export @interface` 等当前 compiler 无法解析的
-annotation declaration，另有工程 native/三方声明缺失。按 zero-error fidelity gate，A/B 在 façade query
-前停止，状态为 `ENVIRONMENT_BLOCKED`，不能把带错误 emit 当作成功，也不能接入 production。下一实验
-保留完整 `ChatList` 合法闭包，使用真正 child process 验证批间生命周期硬隔离；总产品 RSS 必须包含
-child process，且若 exact completion/diagnostics 或 30% peak gate 失败则撤销。详见
+`ChatList` import 运行 source/façade 独立进程 A/B。初次 `r4` 运行暴露 API 24 annotation parser
+覆盖缺口；生产升级到精确锁定的 `ohos-typescript@4.9.5-r10` 并按 SDK metadata 启用官方
+`etsAnnotationsEnable` 后，两个真实 annotation declaration 文件均为 0 syntax diagnostics。
+同一真实 façade emit 从 807 files/145 errors 变为 545 files/71 errors，仍生成 45 个 `.d.ets`；
+剩余错误来自未闭合的 native/三方 declarations 与依赖类型，因此 zero-error fidelity gate 仍停止
+A/B，状态保持 `ENVIRONMENT_BLOCKED`。不能把 parser gate 通过误写成 façade 可用。详见
 [Gramony ChatList façade gate](../reports/2026-09-14-gramony-chatlist-declaration-facade-gate.md)。
 
 2026-09-14 auto-import true child-process spike：公开 LSP RED 要求三个 batches 分别由三个顺序 child
@@ -820,7 +819,11 @@ process 退出也确实让批间进程树 RSS 回落。
 但总产品门禁明确失败：process 中位 completion 为 19.990 秒，是 resident 5.857 秒的 3.41x；中位
 peak 为 602,046,464 bytes，比 resident 530,018,304 bytes 高 13.59%。因此所有 child-process 产品
 代码、开关与 process-only 测试已撤销，不合入，也不通过隐藏 child RSS 重试。façade 与硬生命周期
-隔离两条候选均关闭后，下一 RED 回到 backend compatibility gate：把 API 24 `export @interface`
-annotation declaration 加入 backend-independent semantic contract；若锁定 `ohos-typescript` 失败，
-按官方后端计划进入 `ets2panda` fallback spike，禁止 regex workaround。详见
+隔离两条候选均关闭后，backend compatibility gate 已补齐并通过：生产 `r10` artifact 和锁定 source
+revision 都必须解析真实 API 24 annotations，任一失败都会使 spike FAIL；因此不触发 `ets2panda`
+fallback，也未增加 regex workaround。升级后同一 Gramony `DateHelper` 真实 references 在 common/full
+SDK profile 下均精确返回 8/8，耗时 2.552/3.125 秒，产品进程树峰值
+389,828,608/433,258,496 bytes，批处理 Program 保持 32 个工程文件。下一 working-set 工作不再继续
+调 worker/cleanup/root 常数：只有取得依赖完整、zero-error 的 façade closure 后才重开 façade A/B；
+否则优先扩展 Rust reference candidate coverage 与多 module sequential batch 的真实门禁。详见
 [auto-import child-process spike](../reports/2026-09-14-auto-import-child-process-spike.md)。

@@ -1,0 +1,7 @@
+{
+  "apiVersion": "24",
+  "displayName": "Ets Test Fixture",
+  "path": "ets",
+  "releaseType": "Test",
+  "version": "6.1.1-test"
+}
