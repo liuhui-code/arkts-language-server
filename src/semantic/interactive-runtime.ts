@@ -5,7 +5,11 @@ export interface InteractiveSemanticRuntimeConfig {
   readonly projectRootProfile: "closure" | "current"
   readonly memberCompletionProjectRootProfile: "workspace" | "current"
   readonly autoImportProjectRootProfile: "workspace" | "discovery"
+  readonly autoImportBatchRootLimit: number
 }
+
+const DEFAULT_AUTO_IMPORT_BATCH_ROOT_LIMIT = 128
+const MAX_AUTO_IMPORT_BATCH_ROOT_LIMIT = 128
 
 export function interactiveSemanticRuntimeConfig(
   environment: NodeJS.ProcessEnv = process.env,
@@ -43,5 +47,19 @@ export function interactiveSemanticRuntimeConfig(
     projectRootProfile,
     memberCompletionProjectRootProfile,
     autoImportProjectRootProfile,
+    autoImportBatchRootLimit: positiveInteger(
+      environment.ARKTS_AUTO_IMPORT_BATCH_ROOTS,
+      DEFAULT_AUTO_IMPORT_BATCH_ROOT_LIMIT,
+      MAX_AUTO_IMPORT_BATCH_ROOT_LIMIT,
+    ),
   }
+}
+
+function positiveInteger(value: string | undefined, fallback: number, maximum: number): number {
+  if (value === undefined) return fallback
+  const parsed = Number(value)
+  if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > maximum) {
+    throw new Error(`ARKTS_AUTO_IMPORT_BATCH_ROOTS must be an integer from 1 to ${maximum}`)
+  }
+  return parsed
 }

@@ -113,13 +113,43 @@ input.on("line", (line) => {
       break
     }
     case "exports/search": {
+      const batchedCompletionFixture = process.env.ARKTS_INDEX_TEST_SCENARIO
+        === "semantic-auto-import-batches"
       const semanticFixture = process.env.ARKTS_INDEX_TEST_SCENARIO?.startsWith(
         "semantic-over-4096",
       ) === true
       const staleSemanticFixture = process.env.ARKTS_INDEX_TEST_SCENARIO
         === "semantic-over-4096-stale"
+      const batchedItems = [
+        "ChatAlpha",
+        "ChatChoice",
+        "ChatGamma",
+        "ChatChoice",
+        "ChatEpsilon",
+      ].map((exportedName, ordinal) => ({
+        exportedName,
+        kind: "class",
+        uri: pathToFileURL(path.join(
+          workspaceRoot,
+          "entry",
+          "src",
+          "main",
+          "ets",
+          "pages",
+          `BatchExport${ordinal + 1}.ets`,
+        )).href,
+        range: {
+          start: { line: 0, character: 13 },
+          end: { line: 0, character: 13 + exportedName.length },
+        },
+        ordinal,
+        declarationIdentity: `semantic-auto-import-batch-${ordinal + 1}`,
+        importSpecifier: `./BatchExport${ordinal + 1}`,
+        moduleId: "entry",
+        targetScope: "default",
+      }))
       respond(request.id, {
-        items: semanticFixture ? [{
+        items: batchedCompletionFixture ? batchedItems : semanticFixture ? [{
           exportedName: "ExactNeedleExport",
           kind: "class",
           uri: pathToFileURL(path.join(

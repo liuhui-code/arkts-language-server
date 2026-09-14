@@ -751,3 +751,19 @@ RemoteDesk 从 1,557/829 降至 259/2，peak -53.56%。Gramony 的短前缀 `Cha
 多个 declaration roots 按 semantic unit 或 bounded sequential groups 验证，避免所有候选同时进入一个
 Program。默认继续为 `workspace`。详见
 [cross-project auto-import 报告](../reports/2026-09-13-cross-project-auto-import-gate.md)。
+
+2026-09-14 auto-import discovery-root batching 切片：公开 child-process LSP RED 先证明五个 ready
+候选仍同时进入一个 6-project-root Program；实现按稳定声明路径顺序分批后得到三个 `3/3/2` root
+Program，并保留全部候选、同名不同 module source、精确 import edit 和零 discovery-backed resolve
+Program。第二个 RED 证明前批 import closure 可能提前暴露后批候选；merge 现在以
+`name + entrySource` 为 identity，并让后续官方 `getCompletionEntryDetails()` 已证明的版本替换较弱
+版本。partial/stale/outside-workspace 仍 fail closed 到完整 workspace。
+
+固定 Gramony `Cha` 回放在 root limit 128/8/2 下均返回相同 16 个可见 completion identity/edit，
+其中 12 个 discovery-backed item 全部 pre-resolved，31 条 diagnostics 指纹一致。但峰值分别为
+487,632,896 / 518,311,936 / 572,743,680 bytes，耗时 3.829 / 3.900 / 5.740 秒；两种分批都未
+改善内存。最后一个 two-root batch 仍通过 imports 到达 65/77 个 project files，且长期 worker 中
+顺序 Program 的 compiler state 有保留。故新 root-limit 默认保持 128，较小值只作显式实验；此切片
+correctness GREEN、memory gate FAILED。下一 RED 必须按实际 dependency closure/cardinality 和
+operation lifetime 建模，禁止继续调 root 常数、截断候选或弱化 diagnostics。详见
+[auto-import root batching 报告](../reports/2026-09-14-auto-import-root-batching.md)。
