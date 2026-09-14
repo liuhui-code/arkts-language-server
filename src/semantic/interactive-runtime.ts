@@ -6,6 +6,7 @@ export interface InteractiveSemanticRuntimeConfig {
   readonly memberCompletionProjectRootProfile: "workspace" | "current"
   readonly autoImportProjectRootProfile: "workspace" | "discovery"
   readonly autoImportBatchRootLimit: number
+  readonly autoImportTrimBetweenBatches: boolean
 }
 
 const DEFAULT_AUTO_IMPORT_BATCH_ROOT_LIMIT = 128
@@ -52,6 +53,8 @@ export function interactiveSemanticRuntimeConfig(
       DEFAULT_AUTO_IMPORT_BATCH_ROOT_LIMIT,
       MAX_AUTO_IMPORT_BATCH_ROOT_LIMIT,
     ),
+    autoImportTrimBetweenBatches:
+      environment.ARKTS_AUTO_IMPORT_TRIM_BETWEEN_BATCHES === "1",
   }
 }
 

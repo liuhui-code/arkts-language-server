@@ -786,3 +786,17 @@ count 和 workspace-relative path 的短 SHA-256 指纹关联每个 completion P
 缩小 root-count 作为 working-set 解法。下一 RED 应在批次之间调用 backend 已有的 semantic cleanup，
 验证 checker/Program 派生状态是否可回收，且必须保留这个合法 65-file closure。详见
 [closure correlation 报告](../reports/2026-09-14-auto-import-closure-correlation.md)。
+
+2026-09-14 batch semantic cleanup：新增 default-off
+`ARKTS_AUTO_IMPORT_TRIM_BETWEEN_BATCHES=1`，只在 discovery-root 多批 completion 的非末批纯数据结果
+完成后调用 backend 官方 `cleanupSemanticCache()`；末批继续常驻，cleanup 后不调用 `getProgram()`，避免
+观测动作触发重建。公开 LSP 合同要求三批之间正好两次 cleanup，同时保持五个候选、同名不同 source、
+精确 import edits 和零 discovery-backed resolve Programs。
+
+固定 Gramony limit=2 的三次独立新进程 A/B 中，cleanup off/on completion 中位为 5.830/5.325 秒，
+product peak 中位为 563,261,440/518,946,816 bytes；分别改善 8.67%/7.87%，六次候选与 diagnostics
+identity 全部一致。这证明 compiler semantic state 存在可清理的批间累积，但总体收益低于 30% prototype
+gate，且没有缩小 `ChatList.ets` 合法的 65-file closure；默认不得开启。下一阶段应对该大闭包验证
+declaration façade consumer，或在需要生命周期隔离时使用真正 child process，而不是继续调 cleanup/root
+常数。详见
+[batch semantic-cleanup 报告](../reports/2026-09-14-auto-import-batch-semantic-cleanup.md)。

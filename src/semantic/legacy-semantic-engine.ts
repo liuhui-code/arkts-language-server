@@ -78,6 +78,7 @@ export interface LegacySemanticEngineRuntimeOptions {
   readonly memberCompletionProjectRootProfile?: "workspace" | "current"
   readonly autoImportProjectRootProfile?: "workspace" | "discovery"
   readonly autoImportBatchRootLimit?: number
+  readonly autoImportTrimBetweenBatches?: boolean
 }
 
 export class LegacySemanticEngine implements SemanticEnginePort {
@@ -89,6 +90,7 @@ export class LegacySemanticEngine implements SemanticEnginePort {
   private readonly memberCompletionProjectRootProfile: "workspace" | "current"
   private readonly autoImportProjectRootProfile: "workspace" | "discovery"
   private readonly autoImportBatchRootLimit: number
+  private readonly autoImportTrimBetweenBatches: boolean
 
   constructor(
     private readonly projects: ProjectResolverPort,
@@ -99,6 +101,7 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     this.memberCompletionProjectRootProfile = runtime.memberCompletionProjectRootProfile ?? "workspace"
     this.autoImportProjectRootProfile = runtime.autoImportProjectRootProfile ?? "workspace"
     this.autoImportBatchRootLimit = runtime.autoImportBatchRootLimit ?? 128
+    this.autoImportTrimBetweenBatches = runtime.autoImportTrimBetweenBatches ?? false
     this.engines = new SemanticTypeEngineRegistry(
       this.packageResolver,
       logger ? (workspaceRoot, sdk) => {
@@ -230,6 +233,18 @@ export class LegacySemanticEngine implements SemanticEnginePort {
         scopedProjectRoots ? "current" : this.interactiveProjectRootProfile,
         batch.roots,
       )
+      const traceContext = autoImportBatches
+        ? {
+            completionBatchIndex: batchIndex,
+            completionBatchCount: batches.length,
+            discoveryRootCount: batch.roots.length,
+            discoveryCandidateCount: batch.candidates.length,
+            discoveryRootFingerprints: semanticRootFingerprints(
+              query.document.workspaceId,
+              batch.roots,
+            ),
+          }
+        : undefined
       const completion = prepared.engine.complete(
         {
           ...prepared.position,
@@ -242,18 +257,7 @@ export class LegacySemanticEngine implements SemanticEnginePort {
               }
             : undefined,
         },
-        autoImportBatches
-          ? {
-              completionBatchIndex: batchIndex,
-              completionBatchCount: batches.length,
-              discoveryRootCount: batch.roots.length,
-              discoveryCandidateCount: batch.candidates.length,
-              discoveryRootFingerprints: semanticRootFingerprints(
-                query.document.workspaceId,
-                batch.roots,
-              ),
-            }
-          : undefined,
+        traceContext,
       )
       isIncomplete ||= completion.isIncomplete
       for (const item of completion.items) {
@@ -267,6 +271,13 @@ export class LegacySemanticEngine implements SemanticEnginePort {
         }
         itemIndexes.set(identity, mergedItems.length)
         mergedItems.push(item)
+      }
+      if (
+        this.autoImportTrimBetweenBatches
+        && traceContext
+        && batchIndex < batches.length - 1
+      ) {
+        prepared.engine.trimCompletion(traceContext)
       }
     }
     const items = mergedItems

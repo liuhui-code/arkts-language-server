@@ -78,3 +78,23 @@ trace switch is enabled and contains batch counts plus deterministic SHA-256 pre
 workspace-relative root paths. The test independently derives the exact fingerprints. A fixed
 one-root Gramony replay then proved `ChatList.ets` alone reaches 65 project files, while
 `ChatItem.ets` alone reaches 29.
+
+## RED 4 — sequential batches had no operation-scoped semantic cleanup
+
+Parent revision: `a7d5b0625fcc2e50a5baf7b8c0df9a67e4b4c09c`.
+
+The public batching contract enabled `ARKTS_AUTO_IMPORT_TRIM_BETWEEN_BATCHES=1` and required cleanup
+after the first two of three compiler Programs. Before implementation the completion result remained
+correct, but no lifecycle event existed:
+
+```text
+node --test --test-name-pattern="validates every ready auto-import candidate in bounded sequential root batches" \
+  tests/semantic/semantic-characterization.test.mjs
+
+AssertionError: [] != [ 0, 1 ]
+```
+
+The minimal GREEN exposes semantic cleanup on the backend-neutral query context and calls it only for
+non-final batches under the explicit default-off switch. A three-process-per-mode Gramony A/B preserved
+every completion and diagnostic identity. Median peak RSS fell 7.87% and median latency fell 8.67%,
+which proves a batch-retention effect but remains below the overall 30% prototype memory gate.
