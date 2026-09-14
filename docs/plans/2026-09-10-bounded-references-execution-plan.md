@@ -911,3 +911,16 @@ project + 359 SDK，对比完整 project membership 1,246。中位耗时 9.737 �
 source-unavailable expansion 与剩余 359-file SDK profile；下一 RED 应优先处理真实 namespace/member
 identity 或证明 expansion 所需依赖边，而不是继续扩充词法同名集合。详见
 [top-level export modifier 报告](../reports/2026-09-14-references-export-modifiers.md)。
+
+2026-09-14 namespace candidate coverage：Rust index 新增独立 `Namespace` kind，SQLite 使用向后兼容
+kind 9，sidecar 复用现有 wire kind `module`；只给顶层 `export namespace` 建 declaration identity，
+namespace member 仍由 compiler 证明。公开 sidecar RED/GREEN 同时证明两个同名 namespace 通过来源绑定
+保持隔离。
+
+真实 Photos `Routers` 使用 3 个 legacy 与 3 个 indexed 新进程，六次均返回 19 个 exact Location、
+同一 hash 与 1 条正常 diagnostic。indexed 召回 3 个真实文件、一个 batch，实际 Program 577 files
+（218 project + 359 SDK），对比 project membership 1,246。耗时中位 12.393 秒降至 9.914 秒（0.80x），
+RSS 中位 777,011,200 降至 562,438,144 bytes（0.72x，下降 27.6%）。正确性/延迟通过，但仍低于
+50% peak release gate，默认保持 `legacy`。下一步不再扩展简单顶层声明关键词；应转向真实 member
+identity 或修复 source-unavailable semantic-unit expansion。详见
+[namespace candidate 报告](../reports/2026-09-14-references-namespace-candidates.md)。

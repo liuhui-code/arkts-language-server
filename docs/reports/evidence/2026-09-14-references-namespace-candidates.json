@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "status": "PASS",
+  "releaseDefaultGate": "NOT_PASSED",
+  "parentRevision": "8980886aea951c003a98fb4af92c63aa3464deb8",
+  "environment": {
+    "workspace": "OpenHarmony applications_photos",
+    "workspaceRevision": "98ea1d9cd6a363c576e2c6ff17844e51723baec5",
+    "sdkApiLevel": 24,
+    "sdkVersion": "6.1.1.125",
+    "nodeVersion": "v26.3.0",
+    "serverSha256": "985bd147f7cd69661eb47a2be46606966689f13e3152ef1c6577de7414ddd435",
+    "sidecarSha256": "d0229482dd933f0491aff2492b9eae8dc4279769982a69234ffa3da9ba3daf0a",
+    "memoryMeasurement": "external-process-tree-rss"
+  },
+  "target": {
+    "file": "tools/src/main/global/pages/Routers.ets",
+    "symbol": "Routers",
+    "position": { "line": 26, "character": 19, "encoding": "UTF-16" },
+    "request": "textDocument/references",
+    "includeDeclaration": true,
+    "referenceHash": "e8a3d315a06711100b45ad2f3785bc53b2e94e844e0a1d7f269c8c2f2cddcf4c",
+    "locations": 19,
+    "diagnostics": 1
+  },
+  "legacy": {
+    "runs": [
+      { "requestMs": 14166.97, "peakProductRssBytes": 793190400 },
+      { "requestMs": 11941.72, "peakProductRssBytes": 765419520 },
+      { "requestMs": 12392.5, "peakProductRssBytes": 777011200 }
+    ],
+    "medianRequestMs": 12392.5,
+    "medianPeakProductRssBytes": 777011200
+  },
+  "indexedBatched": {
+    "candidateFiles": 3,
+    "completedBatches": 1,
+    "semanticUnitExpansionAttempts": 1,
+    "projectMembershipFiles": 1246,
+    "admittedProjectFiles": 841,
+    "maxProgramSourceFiles": 577,
+    "maxProgramProjectFiles": 218,
+    "sdkSourceFiles": 359,
+    "runs": [
+      { "requestMs": 12516.55, "peakProductRssBytes": 505868288 },
+      { "requestMs": 9299.26, "peakProductRssBytes": 562438144 },
+      { "requestMs": 9913.79, "peakProductRssBytes": 581771264 }
+    ],
+    "medianRequestMs": 9913.79,
+    "medianPeakProductRssBytes": 562438144
+  },
+  "comparison": {
+    "requestRatio": 0.800,
+    "peakRssRatio": 0.724,
+    "peakRssReduction": 0.276,
+    "exactLocationEquality": true
+  }
+}
