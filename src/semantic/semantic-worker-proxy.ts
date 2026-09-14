@@ -407,6 +407,11 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
           candidateFiles: candidateUris.length,
           conservativeCandidateFiles: direct.uris.length,
           servedGeneration: direct.servedGeneration,
+          ...(this.#environment.ARKTS_REFERENCES_TRACE === "1"
+            ? {
+                bindingResolutions: referenceBindingResolutionSummary(direct),
+              }
+            : {}),
         })
         return candidateUris
       }
@@ -481,6 +486,11 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
         candidateFiles: candidateUris.length,
         conservativeCandidateFiles: result.uris.length,
         servedGeneration: result.servedGeneration,
+        ...(this.#environment.ARKTS_REFERENCES_TRACE === "1"
+          ? {
+              bindingResolutions: referenceBindingResolutionSummary(result),
+            }
+          : {}),
       })
       return candidateUris
     } catch (error) {
@@ -831,6 +841,20 @@ function identityReferenceUris(
 ): readonly string[] {
   if (result.identityComplete && result.identityUris.length > 0) return result.identityUris
   return result.narrowedUris?.length ? result.narrowedUris : result.uris
+}
+
+function referenceBindingResolutionSummary(
+  result: WorkspaceReferenceCandidateResult,
+): string {
+  const counts: Record<string, number> = {}
+  for (const binding of result.bindings ?? []) {
+    const key = `${binding.sourceResolution}:${referenceSourceKind(binding.sourceSpecifier)}`
+    counts[key] = (counts[key] ?? 0) + 1
+  }
+  return Object.entries(counts)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, count]) => `${key}=${count}`)
+    .join(",")
 }
 
 function completionPrefixContext(

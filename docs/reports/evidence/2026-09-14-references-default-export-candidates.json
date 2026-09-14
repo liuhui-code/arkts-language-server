@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "status": "PASS",
+  "releaseDefaultGate": "NOT_PASSED",
+  "parentRevision": "273fb9ff87a3ceaad7fd3cc81f0298a8e3a813d3",
+  "environment": {
+    "workspace": "OpenHarmony applications_photos",
+    "workspaceRevision": "98ea1d9cd6a363c576e2c6ff17844e51723baec5",
+    "sdkApiLevel": 24,
+    "sdkVersion": "6.1.1.125",
+    "nodeVersion": "v26.3.0",
+    "serverSha256": "5c59752580a9a5aa804917710405b7252d5de7044fbfca1ec3e1091344765e62",
+    "sidecarSha256": "d6e16eaabd440b2a4eebcdbb79b8219a99712d533743e3b80714b67f6038cc57",
+    "memoryMeasurement": "external-process-tree-rss"
+  },
+  "target": {
+    "file": "imageEditor/common/src/main/ets/common/util/ExifUtil.ets",
+    "symbol": "ExifUtil",
+    "position": { "line": 34, "character": 22, "encoding": "UTF-16" },
+    "request": "textDocument/references",
+    "includeDeclaration": true,
+    "referenceHash": "15fe1bfe6fecc16b5c76e7e1e0f2fe137f8a2be3a386468f3efea383f1779cf6",
+    "locations": 30,
+    "diagnostics": 70
+  },
+  "legacy": {
+    "validatedRequestMs": 9012.1,
+    "observedPeakProductRssBytes": [367546368, 799596544],
+    "locations": 30
+  },
+  "indexedBatched": {
+    "strategy": "indexed-batched",
+    "sdkProfile": "common",
+    "batchRootLimit": 2,
+    "candidateFiles": 3,
+    "completedBatches": 1,
+    "conservativeFallbacks": 0,
+    "projectMembershipFiles": 1246,
+    "maxProgramSourceFiles": 658,
+    "maxProgramProjectFiles": 287,
+    "locations": 30,
+    "runs": [
+      { "requestMs": 10894.53, "peakProductRssBytes": 629567488 },
+      { "requestMs": 10612.95, "peakProductRssBytes": 577175552 },
+      { "requestMs": 11077.84, "peakProductRssBytes": 578961408 },
+      { "requestMs": 8618.87, "peakProductRssBytes": 643448832, "finalArtifact": true }
+    ],
+    "medianRequestMs": 10753.74,
+    "medianPeakProductRssBytes": 604264448
+  },
+  "comparison": {
+    "requestRatioToValidatedLegacy": 1.193,
+    "exactLocationEquality": true,
+    "memoryDirection": "INDETERMINATE_DUE_TO_LEGACY_VARIANCE"
+  },
+  "excludedRuns": [
+    { "reason": "external RSS sampler denied by sandbox" },
+    { "reason": "ENOSPC during SQLite activation" },
+    { "reason": "505 candidates / 18 batches timed out" },
+    { "reason": "103 candidates / 16 batches timed out" },
+    { "reason": "37 candidates / 10 batches completed correctly but took about 120 seconds" },
+    { "reason": "113-candidate diagnostic probe timed out" }
+  ]
+}

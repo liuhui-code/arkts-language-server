@@ -185,6 +185,124 @@ fn memory_and_sqlite_preserve_exported_value_reference_candidates() {
     assert_eq!(export.kind, SymbolKind::Variable);
 }
 
+#[test]
+fn sqlite_default_export_identity_follows_the_resolved_source() {
+    let temp = TestDir::new("default-export-reference");
+    let database = temp.path().join("symbols.sqlite3");
+    let store =
+        SqliteStore::open(&database, "file:///workspace").expect("SQLite store should open");
+    let mut index = WorkspaceIndex::with_store(store);
+    index
+        .refresh(
+            1,
+            [
+                Document::new(
+                    "file:///workspace/Default.ets",
+                    "export default class DefaultThing {}\n",
+                ),
+                Document::new(
+                    "file:///workspace/DefaultConsumer.ets",
+                    "import LocalThing from './Default'\nconst value = new LocalThing()\n",
+                ),
+                Document::new(
+                    "file:///workspace/OtherDefault.ets",
+                    "export default class OtherThing {}\n",
+                ),
+                Document::new(
+                    "file:///workspace/OtherConsumer.ets",
+                    "import LocalThing from './OtherDefault'\nconst value = new LocalThing()\n",
+                ),
+            ],
+            &[],
+        )
+        .expect("reference generation should commit");
+
+    let result = index
+        .search_reference_candidates(ReferenceCandidateQuery {
+            declaration_uri: "file:///workspace/Default.ets".to_owned(),
+            declaration_position: Position::new(0, 21),
+            limit: 20,
+        })
+        .expect("default export candidates should be searchable");
+
+    assert!(result.supported);
+    assert!(result.identity_complete, "{result:#?}");
+    assert_eq!(
+        result.identity_uris,
+        [
+            "file:///workspace/Default.ets",
+            "file:///workspace/DefaultConsumer.ets",
+        ]
+    );
+
+    let imported = index
+        .search_reference_candidates(ReferenceCandidateQuery {
+            declaration_uri: "file:///workspace/DefaultConsumer.ets".to_owned(),
+            declaration_position: Position::new(0, 8),
+            limit: 20,
+        })
+        .expect("default import should resolve its declaration");
+    assert!(imported.identity_complete, "{imported:#?}");
+    assert_eq!(imported.declaration_identity, result.declaration_identity);
+    assert_eq!(imported.identity_uris, result.identity_uris);
+}
+
+#[test]
+fn version_eight_database_migrates_reference_export_names_in_place() {
+    let temp = TestDir::new("v8-reference-export-name-migration");
+    let database = temp.path().join("symbols-v8.sqlite3");
+    let mut index = WorkspaceIndex::with_store(
+        SqliteStore::open(&database, "file:///workspace").expect("SQLite store should open"),
+    );
+    index
+        .refresh(
+            1,
+            [Document::new(
+                "file:///workspace/Target.ets",
+                "export class Thing {}\n",
+            )],
+            &[],
+        )
+        .expect("generation one should commit");
+    drop(index);
+
+    let legacy = Connection::open(&database).expect("database should open directly");
+    legacy
+        .execute_batch(
+            "DROP INDEX exports_reference_export_name; \
+             ALTER TABLE exports DROP COLUMN reference_export_name; \
+             PRAGMA user_version = 8;",
+        )
+        .expect("test fixture should emulate schema version eight");
+    drop(legacy);
+
+    let reopened =
+        SqliteStore::open(&database, "file:///workspace").expect("version eight should migrate");
+    let result = WorkspaceIndex::with_store(reopened)
+        .search_reference_candidates(ReferenceCandidateQuery {
+            declaration_uri: "file:///workspace/Target.ets".to_owned(),
+            declaration_position: Position::new(0, 14),
+            limit: 20,
+        })
+        .expect("migrated named export should remain searchable");
+    assert!(result.supported);
+    assert_eq!(result.identity_uris, ["file:///workspace/Target.ets"]);
+
+    let migrated = Connection::open(&database).expect("migrated database should reopen");
+    let version: i64 = migrated
+        .pragma_query_value(None, "user_version", |row| row.get(0))
+        .expect("schema version should be readable");
+    let reference_export_name: String = migrated
+        .query_row(
+            "SELECT reference_export_name FROM exports WHERE exported_name = 'Thing'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("reference export name should migrate");
+    assert_eq!(version, 9);
+    assert_eq!(reference_export_name, "Thing");
+}
+
 fn assert_type_assertions_do_not_widen_reference_names(mut index: WorkspaceIndex) {
     index
         .refresh(
@@ -1440,7 +1558,7 @@ fn version_two_database_migrates_in_place_without_losing_committed_symbols() {
     let version: i64 = migrated
         .pragma_query_value(None, "user_version", |row| row.get(0))
         .expect("schema version should be readable");
-    assert_eq!(version, 8);
+    assert_eq!(version, 9);
 }
 
 #[test]

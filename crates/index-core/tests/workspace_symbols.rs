@@ -2,7 +2,8 @@ use std::fs;
 
 use arkts_index_core::{
     Document, Position, ReferenceBindingKind, ReferenceBindingResolution, ReferenceCandidateQuery,
-    SymbolKind, TextRange, WorkspaceIndex, WorkspaceSymbol, parse_document_symbols,
+    ReferenceSourceResolution, SymbolKind, TextRange, WorkspaceIndex, WorkspaceSymbol,
+    parse_document_symbols,
 };
 
 fn fixture(name: &str) -> String {
@@ -737,6 +738,231 @@ fn semicolonless_exported_value_is_searchable_without_capturing_a_later_arrow_fu
     assert_eq!(result.names, ["count"]);
     assert_eq!(result.uris, ["file:///workspace/Values.ets"]);
     assert_eq!(first_match(&index, "count").kind, SymbolKind::Variable);
+}
+
+#[test]
+fn default_export_reference_identity_follows_the_resolved_source() {
+    let mut index = WorkspaceIndex::in_memory();
+    index
+        .refresh(
+            1,
+            [
+                Document::new(
+                    "file:///workspace/Default.ets",
+                    "export default class DefaultThing {}\n",
+                ),
+                Document::new(
+                    "file:///workspace/DefaultConsumer.ets",
+                    "import LocalThing from './Default'\nconst value = new LocalThing()\n",
+                ),
+                Document::new(
+                    "file:///workspace/OtherDefault.ets",
+                    "export default class OtherThing {}\n",
+                ),
+                Document::new(
+                    "file:///workspace/OtherConsumer.ets",
+                    "import LocalThing from './OtherDefault'\nconst value = new LocalThing()\n",
+                ),
+            ],
+            &[],
+        )
+        .expect("reference generation should commit");
+
+    let result = index
+        .search_reference_candidates(ReferenceCandidateQuery {
+            declaration_uri: "file:///workspace/Default.ets".to_owned(),
+            declaration_position: Position::new(0, 21),
+            limit: 20,
+        })
+        .expect("default export candidates should be searchable");
+
+    assert!(result.supported);
+    assert!(result.identity_complete, "{result:#?}");
+    assert_eq!(
+        result.identity_uris,
+        [
+            "file:///workspace/Default.ets",
+            "file:///workspace/DefaultConsumer.ets",
+        ]
+    );
+
+    let imported = index
+        .search_reference_candidates(ReferenceCandidateQuery {
+            declaration_uri: "file:///workspace/DefaultConsumer.ets".to_owned(),
+            declaration_position: Position::new(0, 8),
+            limit: 20,
+        })
+        .expect("default import should resolve its declaration");
+    assert!(imported.identity_complete, "{imported:#?}");
+    assert_eq!(imported.declaration_identity, result.declaration_identity);
+    assert_eq!(imported.identity_uris, result.identity_uris);
+}
+
+#[test]
+fn importing_a_default_export_does_not_reexport_it_through_an_unrelated_default() {
+    let mut index = WorkspaceIndex::in_memory();
+    index
+        .refresh(
+            1,
+            [
+                Document::new(
+                    "file:///workspace/Target.ets",
+                    "export default class TargetThing {}\n",
+                ),
+                Document::new(
+                    "file:///workspace/Base.ets",
+                    "import TargetThing from './Target'\n\
+                     export default class Base { value = new TargetThing() }\n",
+                ),
+                Document::new(
+                    "file:///workspace/BaseConsumer.ets",
+                    "import LocalBase from './Base'\nconst value = new LocalBase()\n",
+                ),
+            ],
+            &[],
+        )
+        .expect("reference generation should commit");
+
+    let result = index
+        .search_reference_candidates(ReferenceCandidateQuery {
+            declaration_uri: "file:///workspace/Target.ets".to_owned(),
+            declaration_position: Position::new(0, 21),
+            limit: 20,
+        })
+        .expect("target default export should remain searchable");
+
+    assert!(result.supported);
+    assert!(result.identity_complete, "{result:#?}");
+    assert_eq!(
+        result.identity_uris,
+        ["file:///workspace/Base.ets", "file:///workspace/Target.ets",]
+    );
+    assert!(
+        !result
+            .identity_uris
+            .contains(&"file:///workspace/BaseConsumer.ets".to_owned()),
+        "a normal import must not make the importing module re-export the target"
+    );
+}
+
+#[test]
+fn default_export_identity_follows_an_explicit_reexport_alias_chain() {
+    let mut index = WorkspaceIndex::in_memory();
+    index
+        .refresh(
+            1,
+            [
+                Document::new(
+                    "file:///workspace/Target.ets",
+                    "export default class TargetThing {}\n",
+                ),
+                Document::new(
+                    "file:///workspace/Barrel.ets",
+                    "export { default as PublicThing } from './Target'\n",
+                ),
+                Document::new(
+                    "file:///workspace/Consumer.ets",
+                    "import { PublicThing as LocalThing } from './Barrel'\n\
+                     const value = new LocalThing()\n",
+                ),
+            ],
+            &[],
+        )
+        .expect("reference generation should commit");
+
+    let result = index
+        .search_reference_candidates(ReferenceCandidateQuery {
+            declaration_uri: "file:///workspace/Target.ets".to_owned(),
+            declaration_position: Position::new(0, 21),
+            limit: 20,
+        })
+        .expect("default export re-export chain should be searchable");
+
+    assert!(result.identity_complete, "{result:#?}");
+    assert_eq!(
+        result.identity_uris,
+        [
+            "file:///workspace/Barrel.ets",
+            "file:///workspace/Consumer.ets",
+            "file:///workspace/Target.ets",
+        ]
+    );
+}
+
+#[test]
+fn unresolved_default_package_import_keeps_only_its_binding_file_conservative() {
+    let mut index = WorkspaceIndex::in_memory();
+    index
+        .refresh(
+            1,
+            [
+                Document::new(
+                    "file:///workspace/Default.ets",
+                    "export default class DefaultThing {}\n",
+                ),
+                Document::new(
+                    "file:///workspace/Consumer.ets",
+                    "import LocalThing from './Default'\nconst value = new LocalThing()\n",
+                ),
+                Document::new(
+                    "file:///workspace/Unknown.ets",
+                    "import Maybe from '@scope/target'\nconst value = new Maybe()\n",
+                ),
+                Document::new(
+                    "file:///workspace/Collision.ets",
+                    "class Maybe {}\nconst unrelated = new Maybe()\n",
+                ),
+                Document::new(
+                    "file:///workspace/UnrelatedUnknown.ets",
+                    "import { OtherThing } from '@scope/other'\n\
+                     const unrelated = new OtherThing()\n",
+                ),
+            ],
+            &[],
+        )
+        .expect("reference generation should commit");
+
+    let result = index
+        .search_reference_candidates(ReferenceCandidateQuery {
+            declaration_uri: "file:///workspace/Default.ets".to_owned(),
+            declaration_position: Position::new(0, 21),
+            limit: 20,
+        })
+        .expect("default export candidates should remain conservative");
+
+    assert!(result.supported);
+    assert!(!result.identity_complete);
+    assert_eq!(
+        result.narrowed_uris,
+        [
+            "file:///workspace/Consumer.ets",
+            "file:///workspace/Default.ets",
+            "file:///workspace/Unknown.ets",
+        ]
+    );
+
+    let resolved_elsewhere = index
+        .search_reference_candidates_with_source_resolutions(
+            ReferenceCandidateQuery {
+                declaration_uri: "file:///workspace/Default.ets".to_owned(),
+                declaration_position: Position::new(0, 21),
+                limit: 20,
+            },
+            &[ReferenceSourceResolution {
+                binding_uri: "file:///workspace/Unknown.ets".to_owned(),
+                source_specifier: "@scope/target".to_owned(),
+                resolved_source_uri: Some("file:///workspace/oh-package.json5".to_owned()),
+                external_terminal_identity: None,
+            }],
+        )
+        .expect("authoritative non-index source should remain disjoint");
+    assert_eq!(
+        resolved_elsewhere.narrowed_uris,
+        [
+            "file:///workspace/Consumer.ets",
+            "file:///workspace/Default.ets",
+        ]
+    );
 }
 
 #[test]
