@@ -2,11 +2,13 @@ import type { TypeScriptSdkAmbientProfile } from "../../core/types/typescript-la
 
 export type ReferenceSearchStrategy = "legacy" | "batched" | "indexed-batched"
 export type ReferenceSdkAmbientProfile = Extract<TypeScriptSdkAmbientProfile, "full" | "common">
+export type ReferenceDependencyProfile = "closure" | "identity"
 
 export interface ReferenceSearchRuntimeConfig {
   readonly strategy: ReferenceSearchStrategy
   readonly batchRootLimit: number
   readonly sdkAmbientProfile: ReferenceSdkAmbientProfile
+  readonly dependencyProfile: ReferenceDependencyProfile
   readonly trace: boolean
 }
 
@@ -26,6 +28,10 @@ export function referenceSearchRuntimeConfig(
   if (sdkAmbientProfile !== "full" && sdkAmbientProfile !== "common") {
     throw new Error("ARKTS_REFERENCES_SDK_AMBIENT_PROFILE must be full or common")
   }
+  const dependencyProfile = environment.ARKTS_REFERENCES_DEPENDENCY_PROFILE ?? "closure"
+  if (dependencyProfile !== "closure" && dependencyProfile !== "identity") {
+    throw new Error("ARKTS_REFERENCES_DEPENDENCY_PROFILE must be closure or identity")
+  }
   return {
     strategy: configuredStrategy,
     batchRootLimit: positiveInteger(
@@ -34,6 +40,7 @@ export function referenceSearchRuntimeConfig(
       MAX_BATCH_ROOT_LIMIT,
     ),
     sdkAmbientProfile,
+    dependencyProfile,
     trace: environment.ARKTS_REFERENCES_TRACE === "1",
   }
 }

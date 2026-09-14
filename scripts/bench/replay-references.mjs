@@ -274,6 +274,9 @@ function serverEnvironment(options, cacheDir, logDir) {
     ...(options.sdkProfile
       ? { ARKTS_REFERENCES_SDK_AMBIENT_PROFILE: options.sdkProfile }
       : {}),
+    ...(options.dependencyProfile
+      ? { ARKTS_REFERENCES_DEPENDENCY_PROFILE: options.dependencyProfile }
+      : {}),
   }
 }
 
@@ -297,6 +300,7 @@ function environmentEvidence(options) {
     launch: { command: process.execPath, args: [options.server, "--stdio"] },
     strategy: options.strategy ?? "server-default",
     sdkProfile: options.sdkProfile ?? "server-default",
+    dependencyProfile: options.dependencyProfile ?? "server-default",
   }
 }
 
@@ -452,6 +456,10 @@ function parseArguments(args) {
   if (sdkProfile && !new Set(["full", "common"]).has(sdkProfile)) {
     throw new Error("--sdk-profile must be full or common")
   }
+  const dependencyProfile = values.get("--dependency-profile")
+  if (dependencyProfile && !new Set(["closure", "identity"]).has(dependencyProfile)) {
+    throw new Error("--dependency-profile must be closure or identity")
+  }
   return {
     help: false,
     workspace: path.resolve(values.get("--workspace")),
@@ -469,6 +477,7 @@ function parseArguments(args) {
     mode,
     strategy,
     sdkProfile,
+    dependencyProfile,
     batchRoots: optionalPositiveInteger(values.get("--batch-roots"), "--batch-roots"),
     sampleIntervalMs: positiveInteger(values.get("--sample-interval-ms") ?? "50", "--sample-interval-ms"),
     timeoutMs: positiveInteger(values.get("--timeout-ms") ?? "180000", "--timeout-ms"),
@@ -624,6 +633,8 @@ Options:
                                  definition; C: ten references plus unsaved edit
   --strategy <name>              legacy, batched, or indexed-batched
   --sdk-profile <full|common>    verifier-only SDK ambient profile
+  --dependency-profile <closure|identity>
+                                 identity-proven candidate dependency profile
   --batch-roots <count>          candidate root limit for batching
   --server <path>                defaults to dist/server.cjs
   --sidecar <path>               defaults to target/release/arkts-index-sidecar

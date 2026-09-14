@@ -254,11 +254,13 @@ export class SemanticTypeEngineRegistry {
       || options.references?.strategy === "indexed-batched") {
       this.referenceSearch = new ReferenceSearchExecutor({
         batchRootLimit: options.references.batchRootLimit,
-        verifyBatch: (workspace, position, includeDeclaration) => (
+        dependencyProfile: options.references.dependencyProfile,
+        verifyBatch: (workspace, position, includeDeclaration, dependencyProfile) => (
           verifyReferenceBatchInWorker(workspace, position, includeDeclaration, {
             projectConfiguration: this.projectConfiguration,
             sdkConfiguration: this.sdkConfiguration,
             sdkAmbientProfile: options.references?.sdkAmbientProfile,
+            tolerateUnadmittedProjectDependencies: dependencyProfile === "identity",
             isCancellationRequested: options.hostCancellationToken
               ? () => options.hostCancellationToken?.isCancellationRequested() === true
               : undefined,
@@ -445,6 +447,7 @@ export class SemanticTypeEngineRegistry {
     position: SemanticDocumentPosition,
     includeDeclaration: boolean,
     candidatePaths?: readonly string[],
+    candidateIdentityComplete = false,
   ): Promise<SemanticReferenceQueryResult> {
     if (this.referenceSearch) {
       const isolatedWorkspace = this.withProjectFileIdentities(workspace)
@@ -456,6 +459,7 @@ export class SemanticTypeEngineRegistry {
         position,
         includeDeclaration,
         candidatePaths,
+        candidateIdentityComplete,
         candidatePaths
           ? this.packageResolver.projectFor(workspace.rootPath).semanticGraph()
           : undefined,

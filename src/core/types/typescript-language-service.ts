@@ -157,6 +157,7 @@ export interface TypeScriptLanguageServiceEngineOptions {
   }
   sdkConfiguration?: unknown
   sdkAmbientProfile?: TypeScriptSdkAmbientProfile
+  tolerateUnadmittedProjectDependencies?: boolean
 }
 
 export class TypeScriptLanguageServiceEngine {
@@ -177,6 +178,7 @@ export class TypeScriptLanguageServiceEngine {
   private readonly checkpoint: (() => void) | undefined
   private readonly readSourceFile: (filePath: string) => string | null
   private readonly projectFileAccess: ProjectFileAccessPort | undefined
+  private readonly tolerateUnadmittedProjectDependencies: boolean
   private readonly maxLazySnapshots: number
   private readonly maxLazySnapshotBytes: number
   private accessClock = 0
@@ -213,12 +215,14 @@ export class TypeScriptLanguageServiceEngine {
       lazySnapshotLimits = {},
       sdkConfiguration,
       sdkAmbientProfile = "full",
+      tolerateUnadmittedProjectDependencies = false,
     }: TypeScriptLanguageServiceEngineOptions = {},
   ) {
     this.packageResolver = packageResolver
     this.checkpoint = checkpoint
     this.readSourceFile = readSourceFile
     this.projectFileAccess = projectFileAccess
+    this.tolerateUnadmittedProjectDependencies = tolerateUnadmittedProjectDependencies
     this.projectMembershipRootId = path.resolve(rootPath)
     this.workspacePhysicalRoot = canonicalExistingPath(rootPath)
     this.maxLazySnapshots = cacheLimit(
@@ -2048,7 +2052,9 @@ export class TypeScriptLanguageServiceEngine {
     )
     if (this.projectFileAccess && admissionToken === undefined) {
       this.removeLazySnapshot(filePath)
-      this.projectMembershipSourceUnavailable = true
+      if (!this.tolerateUnadmittedProjectDependencies) {
+        this.projectMembershipSourceUnavailable = true
+      }
       return undefined
     }
     const cached = this.lazySnapshots.get(filePath)

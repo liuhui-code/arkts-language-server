@@ -267,6 +267,7 @@ export interface SemanticWorkerReferencesArgs {
   readonly position: SemanticWorkerPosition
   readonly includeDeclaration: boolean
   readonly candidateUris?: readonly string[]
+  readonly candidateIdentityComplete?: boolean
 }
 
 export interface SemanticWorkerRequestArgsByMethod {
@@ -1346,11 +1347,15 @@ function decodeJsonFieldArgs(
 }
 
 function decodeReferencesArgs(value: unknown): SemanticWorkerReferencesArgs {
-  const args = ownDataRecord(value, ["position", "includeDeclaration"], ["candidateUris"])
+  const args = ownDataRecord(
+    value,
+    ["position", "includeDeclaration"],
+    ["candidateUris", "candidateIdentityComplete"],
+  )
   if (!args || !hasRequiredAndOnlyKeys(
     args,
     ["position", "includeDeclaration"],
-    ["candidateUris"],
+    ["candidateUris", "candidateIdentityComplete"],
   )) {
     throw invalidRequest()
   }
@@ -1367,10 +1372,18 @@ function decodeReferencesArgs(value: unknown): SemanticWorkerReferencesArgs {
       return uri
     }))
   }
+  let candidateIdentityComplete: boolean | undefined
+  if (Object.hasOwn(args, "candidateIdentityComplete")) {
+    if (typeof args.candidateIdentityComplete !== "boolean" || !candidateUris) {
+      throw invalidRequest()
+    }
+    candidateIdentityComplete = args.candidateIdentityComplete
+  }
   return Object.freeze({
     position,
     includeDeclaration: args.includeDeclaration,
     ...(candidateUris ? { candidateUris } : {}),
+    ...(candidateIdentityComplete === undefined ? {} : { candidateIdentityComplete }),
   })
 }
 
