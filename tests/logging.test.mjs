@@ -123,7 +123,11 @@ class LoggingLsp {
   constructor(logDirectory) {
     this.child = spawn(path.join(projectRoot, "bin", "arkts-language-server"), ["--stdio"], {
       cwd: os.tmpdir(),
-      env: { ...process.env, ARKTS_LSP_LOG_DIR: logDirectory },
+      env: {
+        ...process.env,
+        ARKTS_LSP_LOG_DIR: logDirectory,
+        ARKLINE_HARMONY_SDK_PATH: path.join(logDirectory, "missing-sdk"),
+      },
       stdio: ["pipe", "pipe", "pipe"],
     })
     this.buffer = Buffer.alloc(0)

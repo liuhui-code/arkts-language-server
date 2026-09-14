@@ -947,6 +947,7 @@ fn symbol_kind_name(kind: SymbolKind) -> &'static str {
         SymbolKind::TypeAlias => "type",
         SymbolKind::Function => "function",
         SymbolKind::Method => "method",
+        SymbolKind::Variable => "variable",
     }
 }
 
