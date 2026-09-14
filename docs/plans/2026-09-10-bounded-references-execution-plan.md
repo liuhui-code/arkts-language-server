@@ -800,3 +800,27 @@ gate，且没有缩小 `ChatList.ets` 合法的 65-file closure；默认不得�
 declaration façade consumer，或在需要生命周期隔离时使用真正 child process，而不是继续调 cleanup/root
 常数。详见
 [batch semantic-cleanup 报告](../reports/2026-09-14-auto-import-batch-semantic-cleanup.md)。
+
+2026-09-14 Gramony `ChatList` declaration-façade gate：使用真实 consumer `pages/Index.ets` 的
+`ChatList` import 运行现有 source/façade 独立进程 A/B。锁定的 `ohos-typescript@4.9.5-r4` 在 API 24 /
+OpenHarmony 6.1.1.125 上把该真实源码扩展为 807-SourceFile Program，并生成 45 个 `.d.ets`，但同时
+报告 145 个 error diagnostics；首批错误来自 SDK 中 `export @interface` 等当前 compiler 无法解析的
+annotation declaration，另有工程 native/三方声明缺失。按 zero-error fidelity gate，A/B 在 façade query
+前停止，状态为 `ENVIRONMENT_BLOCKED`，不能把带错误 emit 当作成功，也不能接入 production。下一实验
+保留完整 `ChatList` 合法闭包，使用真正 child process 验证批间生命周期硬隔离；总产品 RSS 必须包含
+child process，且若 exact completion/diagnostics 或 30% peak gate 失败则撤销。详见
+[Gramony ChatList façade gate](../reports/2026-09-14-gramony-chatlist-declaration-facade-gate.md)。
+
+2026-09-14 auto-import true child-process spike：公开 LSP RED 要求三个 batches 分别由三个顺序 child
+process 验证，并保留五个 candidate、同名不同 source、精确 import edit 和完整 diagnostics。原型修复
+了大 IPC response 在 send callback 前 disconnect 会丢响应的竞态后通过合同。Gramony `Cha` 的
+resident/process 各三次新进程均返回相同 16 个 completion identity/edit 和相同 31 条 diagnostics；
+process 退出也确实让批间进程树 RSS 回落。
+
+但总产品门禁明确失败：process 中位 completion 为 19.990 秒，是 resident 5.857 秒的 3.41x；中位
+peak 为 602,046,464 bytes，比 resident 530,018,304 bytes 高 13.59%。因此所有 child-process 产品
+代码、开关与 process-only 测试已撤销，不合入，也不通过隐藏 child RSS 重试。façade 与硬生命周期
+隔离两条候选均关闭后，下一 RED 回到 backend compatibility gate：把 API 24 `export @interface`
+annotation declaration 加入 backend-independent semantic contract；若锁定 `ohos-typescript` 失败，
+按官方后端计划进入 `ets2panda` fallback spike，禁止 regex workaround。详见
+[auto-import child-process spike](../reports/2026-09-14-auto-import-child-process-spike.md)。

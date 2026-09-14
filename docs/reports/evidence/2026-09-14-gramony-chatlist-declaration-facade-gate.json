@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "status": "ENVIRONMENT_BLOCKED",
+  "project": {
+    "name": "Gramony",
+    "revision": "0a1ee4b026b6736671f0030ba9859aceaa962298",
+    "declaration": "features/home/src/main/ets/views/Chat/ChatList.ets",
+    "consumer": "features/home/src/main/ets/pages/Index.ets",
+    "consumerPosition": {
+      "line": 41,
+      "character": 9,
+      "encoding": "UTF-16"
+    }
+  },
+  "toolchain": {
+    "semanticBackend": "openharmony/third_party_typescript",
+    "semanticBackendRevision": "9cc62fe98f47c0bf113676e3fb33fe932b493052",
+    "packageVersion": "4.9.5-r4",
+    "sdkApiLevel": 24,
+    "sdkVersion": "6.1.1.125",
+    "sdkDeclarationDigest": "8098b8abbc6b06fce0e7322d6f8f82a5bbce41e847dbd39e9a98811a33d4c6e4"
+  },
+  "emit": {
+    "exitCode": 42,
+    "status": "FAIL",
+    "programSourceFiles": 807,
+    "emittedDeclarationFiles": 45,
+    "errorDiagnostics": 145,
+    "representativeDiagnostics": [
+      {
+        "code": 1128,
+        "fileName": "@ohos.annotation.d.ets",
+        "line": 31,
+        "message": "Declaration or statement expected."
+      },
+      {
+        "code": 1146,
+        "fileName": "@ohos.annotation.d.ets",
+        "line": 31,
+        "message": "Declaration expected."
+      },
+      {
+        "code": 1434,
+        "fileName": "@arkts.lang.d.ets",
+        "line": 89,
+        "message": "Unexpected keyword or identifier."
+      },
+      {
+        "code": 2307,
+        "fileName": "Chat.ets",
+        "message": "Cannot find module '@liushengyi/smartdb' or its corresponding type declarations."
+      }
+    ]
+  },
+  "correctnessGate": {
+    "requiredErrorDiagnostics": 0,
+    "passed": false,
+    "sourceFacadeComparisonExecuted": false
+  }
+}
