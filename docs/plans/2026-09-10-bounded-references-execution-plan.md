@@ -843,3 +843,19 @@ Location 与各自 r10 legacy oracle exact equality，正常 diagnostics 保留�
 不改 root limit。下一 RED 是补齐导致 semantic-unit fallback 的权威 dependency edge，或继续扩展其他
 真实 symbol kind 的 identity coverage；不得把 forced small batches 产品化。详见
 [r10 跨工程 references 报告](../reports/2026-09-14-r10-cross-project-references-gate.md)。
+
+2026-09-14 adaptive semantic closure：Photos 的 `source-unavailable` 已定位为工程内真实、但未出现在
+`oh-package.json5` dependency edge 中的跨 module 相对 import。新公开 LSP RED 先要求 underdeclared
+import 不得丢弃已完成批次并全量重启；实现只在 verifier 实际请求到“完整 membership 内、当前 admission
+外”的路径时，按该路径所属 semantic unit 及其声明依赖扩展当前批次并重试。每轮 admission 必须严格
+增长，重试数受 graph unit 数约束；不能映射、graph 不完整、文件快照变化等情况仍保留 conservative
+fallback。路径只在 worker/executor 内传递，trace 仅输出 unit/file 数量。
+
+固定 Photos `PhotoAsset`、`batch-roots=2` 的三个独立新进程均返回 r10 legacy 的 15/15 Locations；每次
+都是两个最终 semantic-unit batches、一次扩展（3 units / 229 files）、零 conservative restart，最大
+Program 为 393 project SourceFiles，对比 membership 1,246。请求中位 15.446 秒、产品进程树峰值中位
+576,552,960 bytes；相对上一条单次 21.622 秒 / 626,348,032 bytes 的强制多批记录方向性改善
+28.56% / 7.95%，但不是配对统计，`indexed-batched`、common SDK profile 与小 root limit 仍默认关闭。
+这关闭了 compiler-followed undeclared import 的批次恢复 correctness/performance gate；下一阶段应继续
+提高 index ready 稳定性和候选 coverage，而不是放宽 fallback 或把路径写入日志。详见
+[adaptive semantic-closure 报告](../reports/2026-09-14-references-adaptive-semantic-closure.md)。

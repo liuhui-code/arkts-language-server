@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "status": "PASS",
+  "releaseDefaultGate": "OPEN",
+  "parentRevision": "3a7f1e89238d715c97bf09d013fa3e8c45a019b5",
+  "environment": {
+    "workspace": "OpenHarmony applications_photos",
+    "workspaceRevision": "98ea1d9cd6a363c576e2c6ff17844e51723baec5",
+    "sdkApiLevel": 24,
+    "sdkVersion": "6.1.1.125",
+    "nodeVersion": "v26.3.0",
+    "serverSha256": "fd7f973789e16147cf09515cdf58c2a6cea36c2488d471eabd999c6a87a4a64d",
+    "referenceVerifierWorkerSha256": "07aeaff17934b37ac82901c5bec9f6dd36d27d78cc491db88e01b178a33a13c2",
+    "sidecarSha256": "f498ead6998a052bb790d3a51914c12475f65aff13e440708823cf73a35c5591",
+    "memoryMeasurement": "external-process-tree-rss"
+  },
+  "target": {
+    "file": "common/src/main/ets/default/view/browserOperation/RecoverMenuOperation.ets",
+    "symbol": "PhotoAsset",
+    "position": { "line": 82, "character": 26, "encoding": "UTF-16" },
+    "request": "textDocument/references",
+    "includeDeclaration": true,
+    "referenceHash": "f4e28b25847c45f43ee0a7ae7b651b2f42e18237f51da801df81079122c886ab",
+    "locations": 15
+  },
+  "configuration": {
+    "strategy": "indexed-batched",
+    "sdkProfile": "common",
+    "batchRootLimit": 2,
+    "projectMembershipFiles": 1246
+  },
+  "runs": [
+    {
+      "requestMs": 12967,
+      "peakProductRssBytes": 570724352,
+      "completedBatches": 2,
+      "adaptiveExpansions": 1,
+      "conservativeFallbacks": 0,
+      "addedSemanticUnits": 3,
+      "addedProjectFiles": 229,
+      "maxProgramProjectFiles": 393,
+      "locations": 15
+    },
+    {
+      "requestMs": 15446,
+      "peakProductRssBytes": 623849472,
+      "completedBatches": 2,
+      "adaptiveExpansions": 1,
+      "conservativeFallbacks": 0,
+      "addedSemanticUnits": 3,
+      "addedProjectFiles": 229,
+      "maxProgramProjectFiles": 393,
+      "locations": 15
+    },
+    {
+      "requestMs": 20310,
+      "peakProductRssBytes": 576552960,
+      "completedBatches": 2,
+      "adaptiveExpansions": 1,
+      "conservativeFallbacks": 0,
+      "addedSemanticUnits": 3,
+      "addedProjectFiles": 229,
+      "maxProgramProjectFiles": 393,
+      "locations": 15
+    }
+  ],
+  "median": {
+    "requestMs": 15446,
+    "peakProductRssBytes": 576552960
+  },
+  "historicalForcedSequentialRun": {
+    "requestMs": 21622,
+    "peakProductRssBytes": 626348032,
+    "completedSemanticUnitBatchesBeforeFallback": 1,
+    "failedSemanticUnitBatches": 1,
+    "conservativeRestartBatches": 4
+  }
+}

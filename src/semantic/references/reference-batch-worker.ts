@@ -65,6 +65,7 @@ export async function verifyReferenceBatchInWorker(
         settled = true
         if (message.ok) resolve({
           result: message.result,
+          unavailableProjectPaths: message.unavailableProjectPaths,
           prepared: message.prepared,
           stats: message.stats,
           memory: message.memory,

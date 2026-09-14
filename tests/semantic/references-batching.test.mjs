@@ -433,12 +433,19 @@ test("indexed batching keeps declared project semantic units intact", async (t) 
   })
   assert.deepEqual(underdeclared.locations, conservative.locations)
   assert.ok(underdeclared.batchEvents.every(event => (
-    event.semanticUnitMode === "conservative"
-  )))
-  assert.ok(underdeclared.referenceEvents.some(event => (
+    event.semanticUnitMode === "project-graph"
+  )), JSON.stringify(underdeclared.referenceEvents))
+  assert.equal(underdeclared.referenceEvents.some(event => (
     event.event === "references.semantic-unit.fallback"
-    && event.reason === "source-unavailable"
-  )))
+  )), false, JSON.stringify(underdeclared.referenceEvents))
+  const expanded = underdeclared.referenceEvents.filter(event => (
+    event.event === "references.semantic-unit.expanded"
+  ))
+  assert.equal(expanded.length, 1, JSON.stringify(underdeclared.referenceEvents))
+  assert.equal(expanded[0].reason, "source-unavailable")
+  assert.equal(expanded[0].addedSemanticUnits, 1)
+  assert.ok(expanded[0].addedProjectFiles > 0)
+  assert.equal(Object.hasOwn(expanded[0], "paths"), false)
 })
 
 test("indexed batching proves a declared local package binding before narrowing", async (t) => {

@@ -27,9 +27,10 @@ if (!port) throw new Error("Reference verifier requires a parent port")
 const data = workerData as ReferenceVerifierWorkerData
 const packageResolver = new LocalPackageResolver()
 packageResolver.configureProject(data.projectConfiguration)
-const projectFileAccess = data.workspace.projectFileIdentities
+const projectAccess = data.workspace.projectFileIdentities
   ? snapshotProjectFileAccess(data.workspace)
   : undefined
+const projectFileAccess = projectAccess?.port
 const engine = new TypeScriptLanguageServiceEngine(data.workspace.rootPath, {
   packageResolver,
   projectFileAccess,
@@ -56,6 +57,7 @@ try {
     port.postMessage({
       ok: true,
       result,
+      unavailableProjectPaths: projectAccess?.unavailablePaths,
       prepared,
       stats: engine.programFileStats(),
       memory: process.memoryUsage(),
@@ -71,7 +73,10 @@ try {
   port.close()
 }
 
-function snapshotProjectFileAccess(workspace: SemanticWorkspaceView): ProjectFileAccessPort {
+function snapshotProjectFileAccess(workspace: SemanticWorkspaceView): {
+  readonly port: ProjectFileAccessPort
+  readonly unavailablePaths: readonly string[]
+} {
   const membership = workspace.projectMembership
   if (!membership || membership.status !== "complete") {
     throw new Error("Reference verifier requires complete project membership")
@@ -79,21 +84,33 @@ function snapshotProjectFileAccess(workspace: SemanticWorkspaceView): ProjectFil
   const rootId = workspace.canonicalRootId
   const revision = membership.revision
   const identities = new Map(workspace.projectFileIdentities)
-  return {
+  const membershipPaths = new Set(membership.paths.map(filePath => path.resolve(filePath)))
+  const unavailablePaths: string[] = []
+  const unavailable = new Set<string>()
+  const recordUnavailable = (filePath: string) => {
+    const resolvedPath = path.resolve(filePath)
+    if (identities.has(resolvedPath) || !membershipPaths.has(resolvedPath)
+      || unavailable.has(resolvedPath) || unavailablePaths.length >= 16) return
+    unavailable.add(resolvedPath)
+    unavailablePaths.push(resolvedPath)
+  }
+  const access: ProjectFileAccessPort = {
     tokenFor(canonicalRootId, catalogRevision, filePath) {
       if (canonicalRootId !== rootId || catalogRevision !== revision) return undefined
+      recordUnavailable(filePath)
       return identities.get(path.resolve(filePath))
     },
     read(canonicalRootId, catalogRevision, filePath, token) {
       const resolvedPath = path.resolve(filePath)
-      if (
-        canonicalRootId !== rootId
-        || catalogRevision !== revision
-        || identities.get(resolvedPath) !== token
-      ) return null
+      if (canonicalRootId !== rootId || catalogRevision !== revision) return null
+      if (identities.get(resolvedPath) !== token) {
+        recordUnavailable(resolvedPath)
+        return null
+      }
       return readAdmittedSource(rootId, resolvedPath, token)
     },
   }
+  return { port: access, unavailablePaths }
 }
 
 function readAdmittedSource(rootId: string, filePath: string, token: string): string | null {
