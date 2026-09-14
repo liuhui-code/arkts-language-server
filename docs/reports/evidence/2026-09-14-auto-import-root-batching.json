@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "repositoryParentRevision": "6ac95099e0e14af232cd4a771e1a9521008bb7fe",
+  "workspace": {
+    "name": "Gramony",
+    "revision": "0a1ee4b026b6736671f0030ba9859aceaa962298",
+    "target": "features/home/src/main/ets/dao/ChatDao.ets",
+    "prefix": "Cha",
+    "position": { "line": 43, "character": 41 }
+  },
+  "environment": {
+    "node": "v26.3.0",
+    "sdkApiLevel": 24,
+    "sdkComponentVersion": "6.1.1.125"
+  },
+  "exactCandidateIdentityAcrossRuns": true,
+  "candidateCount": 16,
+  "discoveryBackedCandidateCount": 12,
+  "diagnosticsCount": 31,
+  "diagnosticsSha256": "96ac3039af05961adc6778ea9ba90747a66dff55f1513da529420ff4b54b166a",
+  "runs": [
+    {
+      "batchRootLimit": 128,
+      "completionMs": 3828.939037,
+      "peakProductRssBytes": 487632896,
+      "programProjectRootFiles": [13],
+      "programProjectFiles": [66],
+      "preResolvedCompletions": [12],
+      "programRssBytes": [443826176]
+    },
+    {
+      "batchRootLimit": 8,
+      "completionMs": 3900.391615,
+      "peakProductRssBytes": 518311936,
+      "programProjectRootFiles": [9, 5],
+      "programProjectFiles": [39, 66],
+      "preResolvedCompletions": [8, 4],
+      "programRssBytes": [458379264, 472616960]
+    },
+    {
+      "batchRootLimit": 2,
+      "completionMs": 5740.344416,
+      "peakProductRssBytes": 572743680,
+      "programProjectRootFiles": [3, 3, 3, 3, 3, 3],
+      "programProjectFiles": [38, 28, 30, 33, 25, 65],
+      "preResolvedCompletions": [2, 2, 2, 2, 2, 2],
+      "programRssBytes": [448303104, 472248320, 481275904, 489443328, 495247360, 524640256]
+    }
+  ],
+  "decision": {
+    "semanticCorrectness": "pass",
+    "memoryGate": "fail",
+    "defaultBatchRootLimit": 128
+  }
+}

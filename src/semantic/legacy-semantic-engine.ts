@@ -76,6 +76,7 @@ export interface LegacySemanticEngineRuntimeOptions {
   readonly interactiveProjectRootProfile?: "closure" | "current"
   readonly memberCompletionProjectRootProfile?: "workspace" | "current"
   readonly autoImportProjectRootProfile?: "workspace" | "discovery"
+  readonly autoImportBatchRootLimit?: number
 }
 
 export class LegacySemanticEngine implements SemanticEnginePort {
@@ -86,6 +87,7 @@ export class LegacySemanticEngine implements SemanticEnginePort {
   private readonly interactiveProjectRootProfile: "closure" | "current"
   private readonly memberCompletionProjectRootProfile: "workspace" | "current"
   private readonly autoImportProjectRootProfile: "workspace" | "discovery"
+  private readonly autoImportBatchRootLimit: number
 
   constructor(
     private readonly projects: ProjectResolverPort,
@@ -95,6 +97,7 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     this.interactiveProjectRootProfile = runtime.interactiveProjectRootProfile ?? "closure"
     this.memberCompletionProjectRootProfile = runtime.memberCompletionProjectRootProfile ?? "workspace"
     this.autoImportProjectRootProfile = runtime.autoImportProjectRootProfile ?? "workspace"
+    this.autoImportBatchRootLimit = runtime.autoImportBatchRootLimit ?? 128
     this.engines = new SemanticTypeEngineRegistry(
       this.packageResolver,
       logger ? (workspaceRoot, sdk) => {
@@ -201,32 +204,60 @@ export class LegacySemanticEngine implements SemanticEnginePort {
       this.interactiveProjectRootProfile === "current"
       || this.memberCompletionProjectRootProfile === "current"
     )
-    const autoImportRoots = !memberAccess && this.autoImportProjectRootProfile === "discovery"
-      ? completionDiscoveryProjectRoots(query.completionDiscovery, query.document.workspaceId)
+    const autoImportBatches = !memberAccess && this.autoImportProjectRootProfile === "discovery"
+      ? completionDiscoveryBatches(
+          query.completionDiscovery,
+          query.document.workspaceId,
+          this.autoImportBatchRootLimit,
+        )
       : undefined
-    const scopedProjectRoots = memberProjectRoots || autoImportRoots !== undefined
-    const prepared = this.prepare(
-      query.document,
-      query.position,
-      !scopedProjectRoots,
-      scopedProjectRoots ? "current" : this.interactiveProjectRootProfile,
-      autoImportRoots,
-    )
-    const completion = prepared.engine.complete({
-      ...prepared.position,
-      allowSnippets: query.completionOptions?.snippets === true,
-      completionDiscovery: query.completionDiscovery
-        ? {
-            ...query.completionDiscovery,
-            preResolve: this.autoImportProjectRootProfile === "discovery",
+    const scopedProjectRoots = memberProjectRoots || autoImportBatches !== undefined
+    const batches = autoImportBatches ?? [{
+      roots: [] as readonly string[],
+      candidates: query.completionDiscovery?.candidates ?? [],
+    }]
+    const mergedItems: SemanticCompletionItem[] = []
+    const itemIndexes = new Map<string, number>()
+    let isIncomplete = false
+    for (const batch of batches) {
+      assertActive(query.signal)
+      const prepared = this.prepare(
+        query.document,
+        query.position,
+        !scopedProjectRoots,
+        scopedProjectRoots ? "current" : this.interactiveProjectRootProfile,
+        batch.roots,
+      )
+      const completion = prepared.engine.complete({
+        ...prepared.position,
+        allowSnippets: query.completionOptions?.snippets === true,
+        completionDiscovery: query.completionDiscovery
+          ? {
+              ...query.completionDiscovery,
+              candidates: batch.candidates,
+              preResolve: this.autoImportProjectRootProfile === "discovery",
+            }
+          : undefined,
+      })
+      isIncomplete ||= completion.isIncomplete
+      for (const item of completion.items) {
+        const identity = completionItemIdentity(item)
+        const existingIndex = itemIndexes.get(identity)
+        if (existingIndex !== undefined) {
+          if (!mergedItems[existingIndex].preResolved && item.preResolved) {
+            mergedItems[existingIndex] = item
           }
-        : undefined,
-    })
-    const items = completion.items
+          continue
+        }
+        itemIndexes.set(identity, mergedItems.length)
+        mergedItems.push(item)
+      }
+    }
+    const items = mergedItems
       .map((item) => toPublicCompletion(item, query.document.version))
     return {
       documentVersion: query.document.version,
-      value: { items, isIncomplete: completion.isIncomplete },
+      value: { items, isIncomplete },
     }
   }
 
@@ -739,20 +770,49 @@ export class LegacySemanticEngine implements SemanticEnginePort {
   }
 }
 
-function completionDiscoveryProjectRoots(
+interface CompletionDiscoveryBatch {
+  readonly roots: readonly string[]
+  readonly candidates: readonly SemanticCompletionDiscovery["candidates"][number][]
+}
+
+function completionDiscoveryBatches(
   discovery: SemanticCompletionDiscovery | undefined,
   workspaceId: string,
-): readonly string[] | undefined {
+  rootLimit: number,
+): readonly CompletionDiscoveryBatch[] | undefined {
   if (!discovery || discovery.incomplete || discovery.candidates.length === 0) return undefined
   const workspaceRoot = toFilePath(workspaceId)
   if (!workspaceRoot) return undefined
-  const roots = new Set<string>()
+  const candidatesByRoot = new Map<string, SemanticCompletionDiscovery["candidates"][number][]>()
   for (const candidate of discovery.candidates) {
     const candidatePath = toFilePath(candidate.uri)
     if (!candidatePath || !isWithinPath(workspaceRoot, candidatePath)) return undefined
-    roots.add(path.resolve(candidatePath))
+    const root = path.resolve(candidatePath)
+    const candidates = candidatesByRoot.get(root)
+    if (candidates) candidates.push(candidate)
+    else candidatesByRoot.set(root, [candidate])
   }
-  return roots.size > 0 ? [...roots].sort() : undefined
+  const entries = [...candidatesByRoot].sort(([left], [right]) => left.localeCompare(right))
+  const batches: CompletionDiscoveryBatch[] = []
+  for (let start = 0; start < entries.length; start += rootLimit) {
+    const batch = entries.slice(start, start + rootLimit)
+    batches.push({
+      roots: batch.map(([root]) => root),
+      candidates: batch.flatMap(([, candidates]) => candidates),
+    })
+  }
+  return batches.length > 0 ? batches : undefined
+}
+
+function completionItemIdentity(item: SemanticCompletionItem): string {
+  return JSON.stringify([
+    item.data?.provider ?? null,
+    item.data?.entryName ?? null,
+    item.data?.entrySource ?? null,
+    item.label,
+    item.kind,
+    item.insertText ?? null,
+  ])
 }
 
 function completionItemDiscoveryProjectRoots(
