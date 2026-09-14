@@ -1036,6 +1036,7 @@ test("validates every ready auto-import candidate in bounded sequential root bat
       ARKTS_REFERENCES_TRACE: "1",
       ARKTS_AUTO_IMPORT_PROJECT_ROOT_PROFILE: "discovery",
       ARKTS_AUTO_IMPORT_BATCH_ROOTS: "2",
+      ARKTS_AUTO_IMPORT_TRIM_BETWEEN_BATCHES: "1",
     },
     rootUri: pathToFileURL(materialized.workspaceRoot).href,
   })
@@ -1102,6 +1103,17 @@ test("validates every ready auto-import candidate in bounded sequential root bat
   assert.equal(
     completionEvents.reduce((total, entry) => total + entry.preResolvedCompletions, 0),
     exportedNames.length,
+  )
+  const trimEvents = fs.readFileSync(path.join(logDirectory, "server.log"), "utf8")
+    .trim()
+    .split("\n")
+    .map(JSON.parse)
+    .filter((entry) => entry.event === "completion.batch.trim")
+  assert.deepEqual(trimEvents.map((entry) => entry.completionBatchIndex), [0, 1])
+  assert.deepEqual(trimEvents.map((entry) => entry.completionBatchCount), [3, 3])
+  assert.deepEqual(
+    trimEvents.map((entry) => entry.discoveryRootFingerprints),
+    completionEvents.slice(0, -1).map((entry) => entry.discoveryRootFingerprints),
   )
   assert.deepEqual(
     matches

@@ -115,6 +115,7 @@ export interface SemanticTypeQueryContext {
     position: SemanticDocumentPosition,
     traceContext?: SemanticCompletionTraceContext,
   ): SemanticCompletionItemList
+  trimCompletion(traceContext: SemanticCompletionTraceContext): void
   resolveCompletion(position: SemanticDocumentPosition, item: SemanticCompletionItem): SemanticCompletionItem
   define(position: SemanticDocumentPosition): SemanticDefinitionCandidate[]
   typeDefinitions(position: SemanticDocumentPosition): SemanticDefinitionCandidate[]
@@ -359,6 +360,17 @@ export class SemanticTypeEngineRegistry {
           })
         }
         return completion
+      }),
+      trimCompletion: (traceContext) => withLease((current) => {
+        current.engine.trim()
+        if (this.options.references?.trace) {
+          const memory = process.memoryUsage()
+          this.options.onReferenceTrace?.("completion.batch.trim", {
+            ...traceContext,
+            rss: memory.rss,
+            heapUsed: memory.heapUsed,
+          })
+        }
       }),
       resolveCompletion: (position, item) => item.data?.provider === "arkui-resource"
         ? item
