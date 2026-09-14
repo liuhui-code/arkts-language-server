@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "parentRevision": "49a7a5f4ee5c112be160b32720bcb53410a32342",
+  "workspaceRevision": "0a1ee4b026b6736671f0030ba9859aceaa962298",
+  "target": "features/home/src/main/ets/dao/ChatDao.ets",
+  "symbolPrefix": "Cha",
+  "utf16Position": { "line": 43, "character": 41 },
+  "batchRootLimit": 2,
+  "batchCount": 6,
+  "completionItemCount": 16,
+  "exactCompletionIdentityAcrossRuns": true,
+  "diagnosticsCount": 31,
+  "diagnosticsSha256": "96ac3039af05961adc6778ea9ba90747a66dff55f1513da529420ff4b54b166a",
+  "runs": [
+    { "isolation": "resident", "run": 1, "completionElapsedMs": 6181.378476, "peakProductRssBytes": 530018304 },
+    { "isolation": "resident", "run": 2, "completionElapsedMs": 5857.167055, "peakProductRssBytes": 500699136 },
+    { "isolation": "resident", "run": 3, "completionElapsedMs": 5199.63596, "peakProductRssBytes": 571965440 },
+    { "isolation": "process", "run": 1, "completionElapsedMs": 21115.716376, "peakProductRssBytes": 592642048 },
+    { "isolation": "process", "run": 2, "completionElapsedMs": 19834.479347, "peakProductRssBytes": 603099136 },
+    { "isolation": "process", "run": 3, "completionElapsedMs": 19990.37236, "peakProductRssBytes": 602046464 }
+  ],
+  "medians": {
+    "residentCompletionElapsedMs": 5857.167055,
+    "processCompletionElapsedMs": 19990.37236,
+    "processOverResidentLatencyRatio": 3.4129763028,
+    "residentPeakProductRssBytes": 530018304,
+    "processPeakProductRssBytes": 602046464,
+    "processOverResidentPeakRatio": 1.1358974953
+  },
+  "decision": {
+    "correctness": "pass",
+    "latencyGate": "fail",
+    "memoryGate": "fail",
+    "implementationRetained": false,
+    "defaultEnabled": false
+  }
+}
