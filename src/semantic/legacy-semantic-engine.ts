@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
@@ -219,8 +220,9 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     const mergedItems: SemanticCompletionItem[] = []
     const itemIndexes = new Map<string, number>()
     let isIncomplete = false
-    for (const batch of batches) {
+    for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
       assertActive(query.signal)
+      const batch = batches[batchIndex]
       const prepared = this.prepare(
         query.document,
         query.position,
@@ -228,17 +230,31 @@ export class LegacySemanticEngine implements SemanticEnginePort {
         scopedProjectRoots ? "current" : this.interactiveProjectRootProfile,
         batch.roots,
       )
-      const completion = prepared.engine.complete({
-        ...prepared.position,
-        allowSnippets: query.completionOptions?.snippets === true,
-        completionDiscovery: query.completionDiscovery
+      const completion = prepared.engine.complete(
+        {
+          ...prepared.position,
+          allowSnippets: query.completionOptions?.snippets === true,
+          completionDiscovery: query.completionDiscovery
+            ? {
+                ...query.completionDiscovery,
+                candidates: batch.candidates,
+                preResolve: this.autoImportProjectRootProfile === "discovery",
+              }
+            : undefined,
+        },
+        autoImportBatches
           ? {
-              ...query.completionDiscovery,
-              candidates: batch.candidates,
-              preResolve: this.autoImportProjectRootProfile === "discovery",
+              completionBatchIndex: batchIndex,
+              completionBatchCount: batches.length,
+              discoveryRootCount: batch.roots.length,
+              discoveryCandidateCount: batch.candidates.length,
+              discoveryRootFingerprints: semanticRootFingerprints(
+                query.document.workspaceId,
+                batch.roots,
+              ),
             }
           : undefined,
-      })
+      )
       isIncomplete ||= completion.isIncomplete
       for (const item of completion.items) {
         const identity = completionItemIdentity(item)
@@ -802,6 +818,18 @@ function completionDiscoveryBatches(
     })
   }
   return batches.length > 0 ? batches : undefined
+}
+
+function semanticRootFingerprints(
+  workspaceId: string,
+  roots: readonly string[],
+): string {
+  const workspaceRoot = toFilePath(workspaceId)
+  if (!workspaceRoot) return ""
+  return roots.map((root) => {
+    const relative = path.relative(workspaceRoot, path.resolve(root)).split(path.sep).join("/")
+    return createHash("sha256").update(relative).digest("hex").slice(0, 16)
+  }).join(",")
 }
 
 function completionItemIdentity(item: SemanticCompletionItem): string {

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict"
+import { createHash } from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 import test from "node:test"
@@ -1084,6 +1085,20 @@ test("validates every ready auto-import candidate in bounded sequential root bat
     [3, 3, 2],
     "each Program must contain the current document plus at most two discovered roots",
   )
+  assert.deepEqual(completionEvents.map((entry) => entry.completionBatchIndex), [0, 1, 2])
+  assert.deepEqual(completionEvents.map((entry) => entry.completionBatchCount), [3, 3, 3])
+  assert.deepEqual(completionEvents.map((entry) => entry.discoveryRootCount), [2, 2, 1])
+  assert.deepEqual(completionEvents.map((entry) => entry.discoveryCandidateCount), [2, 2, 1])
+  assert.deepEqual(
+    completionEvents.map((entry) => entry.discoveryRootFingerprints),
+    [[1, 2], [3, 4], [5]].map((indexes) => indexes
+      .map((index) => semanticRootFingerprint(
+        materialized.workspaceRoot,
+        path.join(sourceDirectory, `BatchExport${index}.ets`),
+      ))
+      .join(",")),
+    "trace must correlate every Program with stable privacy-safe input root identities",
+  )
   assert.equal(
     completionEvents.reduce((total, entry) => total + entry.preResolvedCompletions, 0),
     exportedNames.length,
@@ -1114,6 +1129,11 @@ test("validates every ready auto-import candidate in bounded sequential root bat
     .filter((entry) => entry.event === "completion.resolve.program.complete")
   assert.equal(resolveEvents.length, 0)
 })
+
+function semanticRootFingerprint(workspaceRoot, rootPath) {
+  const relative = path.relative(workspaceRoot, path.resolve(rootPath)).split(path.sep).join("/")
+  return createHash("sha256").update(relative).digest("hex").slice(0, 16)
+}
 
 test("restores an unopened auto-import after call-hierarchy traversal and overlay close", async (t) => {
   const materialized = await materializeConformanceWorkspace()

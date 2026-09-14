@@ -58,3 +58,23 @@ The memory gate failed: the product process-tree peak increased from 487,632,896
 to 518,311,936 at limit 8 and 572,743,680 at limit 2. The last two-root batch still followed imports
 to 65 of 77 project files. Therefore the default batch limit remains 128 and smaller limits are an
 explicit experiment only. No production memory improvement is claimed.
+
+## RED 3 — compiler batches could not be correlated with their input roots
+
+Parent revision: `d51ffa1d07142c53130284b68d743d0426edac36`.
+
+The public child-process LSP contract first required each completion Program event to identify its
+batch and privacy-safe discovery roots. Before implementation, all three events lacked those fields:
+
+```text
+node --test --test-name-pattern="validates every ready auto-import candidate in bounded sequential root batches" \
+  tests/semantic/semantic-characterization.test.mjs
+
+AssertionError: [ undefined, undefined, undefined ] != [ 0, 1, 2 ]
+```
+
+The minimal GREEN passes an internal trace context to completion. It is emitted only when the existing
+trace switch is enabled and contains batch counts plus deterministic SHA-256 prefixes of
+workspace-relative root paths. The test independently derives the exact fingerprints. A fixed
+one-root Gramony replay then proved `ChatList.ets` alone reaches 65 project files, while
+`ChatItem.ets` alone reaches 29.
