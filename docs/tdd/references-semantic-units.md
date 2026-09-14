@@ -603,3 +603,41 @@ correctly fell back to 1,246 conservative candidates; the 180-second harness exp
 precondition/time-limit blocker for this machine run, not an SDK-terminal correctness or memory
 result. Details are recorded in
 `docs/reports/2026-09-12-references-sdk-external-terminal.md`; default strategy remains `legacy`.
+
+## Identity-bounded dependency profile (2026-09-14)
+
+Parent revision: `8803b4cac50c8c4069c2c1a7b317a202a9d79c10`.
+
+The first public LSP RED added an irrelevant six-file import chain to a direct
+named-import reference fixture. Closure verification returned the correct
+Locations but loaded the whole chain. The requested identity profile was not
+implemented, so its maximum project Program size was unchanged:
+
+```bash
+pnpm build
+node --test --test-name-pattern="resolves a direct named import usage" \
+  tests/semantic/references-batching.test.mjs
+```
+
+The first implementation tried one identity candidate per batch. That produced
+a second RED: after the declaration and consumer were separated into different
+Programs, the consumer Location disappeared. The minimal safe GREEN therefore
+activates identity bounding only when a complete identity candidate set fits
+in one batch. All candidates and the query/open document are present together;
+unrelated project imports are unavailable to that verifier. An incomplete
+identity proof and any multi-batch candidate set remain on conservative
+closure verification.
+
+The same public LSP test now proves exact Location equality and reduces the
+identity verifier from nine project SourceFiles to three. A separate source
+classification case explicitly requests the identity profile while the index
+proof is incomplete and asserts that every trace remains `closure`. Worker
+protocol tests freeze and validate the proof bit, and the replay CLI exposes
+the profile explicitly.
+
+Three fresh-process Photos runs for each of `LogExtender` and `Routers` then
+preserved exact Locations and diagnostics. Maximum project SourceFiles fell
+from 206 to 2 and from 218 to 3; median peak RSS fell 34.61% and 29.70%, while
+median request time increased 99.53% and 38.51%. The experiment is default-off
+and does not pass the final 50% memory release gate. Detailed evidence is in
+[the identity-bounded dependency report](../reports/2026-09-14-references-identity-bounded-dependencies.md).

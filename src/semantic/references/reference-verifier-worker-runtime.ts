@@ -20,6 +20,7 @@ interface ReferenceVerifierWorkerData {
   readonly projectConfiguration?: unknown
   readonly sdkConfiguration?: unknown
   readonly sdkAmbientProfile?: ReferenceSdkAmbientProfile
+  readonly tolerateUnadmittedProjectDependencies?: boolean
 }
 
 const port = parentPort
@@ -36,6 +37,7 @@ const engine = new TypeScriptLanguageServiceEngine(data.workspace.rootPath, {
   projectFileAccess,
   sdkConfiguration: data.sdkConfiguration,
   sdkAmbientProfile: data.sdkAmbientProfile,
+  tolerateUnadmittedProjectDependencies: data.tolerateUnadmittedProjectDependencies,
 })
 
 try {

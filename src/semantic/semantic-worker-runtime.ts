@@ -231,7 +231,7 @@ function invoke(
       position: request.args.position,
       includeDeclaration: request.args.includeDeclaration,
       signal,
-    }, request.args.candidateUris))
+    }, request.args.candidateUris, request.args.candidateIdentityComplete === true))
     case "prepareRename": return valueOf(engine.prepareRename({ document, position: request.args.position, signal }))
     case "rename": return valueOf(engine.rename({
       document,

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict"
+import { createHash } from "node:crypto"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -265,10 +266,20 @@ test("indexed batching resolves a direct named import usage without a compiler a
     fs.promises.writeFile(path.join(workspace, "Query.ets"), queryText),
     fs.promises.writeFile(path.join(workspace, "Use.ets"), [
       'import { Thing } from "./Target"',
+      'import { Heavy0 } from "./Heavy0"',
       "export const use: Thing = {}",
+      "export const heavy = new Heavy0()",
       "",
     ].join("\n")),
     fs.promises.writeFile(path.join(workspace, "Unrelated.ets"), "export class Other {}\n"),
+    ...Array.from({ length: 6 }, (_, index) => (
+      fs.promises.writeFile(path.join(workspace, `Heavy${index}.ets`), [
+        ...(index < 5 ? [`import { Heavy${index + 1} } from "./Heavy${index + 1}"`] : []),
+        `export class Heavy${index} {}`,
+        ...(index < 5 ? [`export const next${index} = new Heavy${index + 1}()`] : []),
+        "",
+      ].join("\n"))
+    )),
   ])
   const queryUri = pathToFileURL(path.join(workspace, "Query.ets")).href
   const position = positionAt(queryText, queryText.lastIndexOf("Thing") + 1)
@@ -286,8 +297,24 @@ test("indexed batching resolves a direct named import usage without a compiler a
     batchRoots: "1",
     runId: "direct-import-indexed",
   })
+  const identityBounded = await runSingleReferenceRequest(t, {
+    root, workspace, queryUri, queryText, position,
+    strategy: "indexed-batched",
+    awaitIndexReady: true,
+    indexScenario: "reference-direct-import-anchor",
+    batchRoots: "64",
+    dependencyProfile: "identity",
+    runId: "direct-import-identity-bounded",
+  })
 
   assert.deepEqual(indexed.locations, conservative.locations)
+  assert.deepEqual(identityBounded.locations, conservative.locations)
+  assert.ok(
+    Math.max(...identityBounded.batchEvents.map(event => event.programProjectFiles))
+      < Math.max(...indexed.batchEvents.map(event => event.programProjectFiles)),
+    JSON.stringify({ closure: indexed.batchEvents, identity: identityBounded.batchEvents }),
+  )
+  assert.ok(identityBounded.batchEvents.every(event => event.dependencyProfile === "identity"))
   const accepted = indexed.indexEvents.find(event => event.event === "references.index.accepted")
   assert.equal(accepted?.anchorMode, "indexed-declaration-identity",
     JSON.stringify(indexed.referenceEvents))
@@ -445,6 +472,11 @@ test("indexed batching keeps declared project semantic units intact", async (t) 
   assert.equal(expanded[0].reason, "source-unavailable")
   assert.equal(expanded[0].addedSemanticUnits, 1)
   assert.ok(expanded[0].addedProjectFiles > 0)
+  assert.ok(expanded[0].unavailableProjectFiles > 0)
+  assert.match(expanded[0].unavailableProjectPathFingerprints, /^(?:[0-9a-f]{16})(?:,[0-9a-f]{16})*$/u)
+  assert.ok(expanded[0].unavailableProjectPathFingerprints.split(",").includes(
+    pathFingerprint(workspace, path.join(sharedSource, "Barrel.ets")),
+  ))
   assert.equal(Object.hasOwn(expanded[0], "paths"), false)
 })
 
@@ -521,6 +553,7 @@ test("indexed batching proves a declared local package binding before narrowing"
     root, workspace, queryUri, queryText, position, strategy: "indexed-batched",
     awaitIndexReady: true,
     indexScenario: "reference-source-classification",
+    dependencyProfile: "identity",
     runId: "package-source-classification",
   })
   assert.deepEqual(classified.locations, conservative.locations)
@@ -530,6 +563,7 @@ test("indexed batching proves a declared local package binding before narrowing"
   assert.equal(classifiedAccepted?.anchorMode, "compiler-definition-conservative")
   assert.equal(classifiedAccepted?.candidateFiles, 4)
   assert.equal(classifiedAccepted?.conservativeCandidateFiles, 5)
+  assert.ok(classified.batchEvents.every(event => event.dependencyProfile === "closure"))
   const classifiedResolution = classified.referenceEvents.find(event => (
     event.event === "references.index.source-resolutions"
   ))
@@ -1034,6 +1068,7 @@ async function runSingleReferenceRequest(t, {
   afterFirstRequest,
   sdkPath,
   sdkAmbientProfile,
+  dependencyProfile,
   interactiveSdkAmbientProfile,
   interactiveProjectRootProfile,
   memberCompletionProjectRootProfile,
@@ -1071,6 +1106,9 @@ async function runSingleReferenceRequest(t, {
       ARKTS_REFERENCES_TRACE: "1",
       ...(sdkAmbientProfile ? {
         ARKTS_REFERENCES_SDK_AMBIENT_PROFILE: sdkAmbientProfile,
+      } : {}),
+      ...(dependencyProfile ? {
+        ARKTS_REFERENCES_DEPENDENCY_PROFILE: dependencyProfile,
       } : {}),
       ...(interactiveSdkAmbientProfile ? {
         ARKTS_INTERACTIVE_SDK_AMBIENT_PROFILE: interactiveSdkAmbientProfile,
@@ -1191,6 +1229,11 @@ function sortedLocations(locations) {
       || left.range.end.line - right.range.end.line
       || left.range.end.character - right.range.end.character
   ))
+}
+
+function pathFingerprint(workspace, filePath) {
+  const relative = path.relative(workspace, filePath).split(path.sep).join("/")
+  return createHash("sha256").update(relative).digest("hex").slice(0, 16)
 }
 
 async function waitForBatchEvent(logPath, timeoutMs) {

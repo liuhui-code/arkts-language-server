@@ -924,3 +924,22 @@ RSS 中位 777,011,200 降至 562,438,144 bytes（0.72x，下降 27.6%）。正�
 50% peak release gate，默认保持 `legacy`。下一步不再扩展简单顶层声明关键词；应转向真实 member
 identity 或修复 source-unavailable semantic-unit expansion。详见
 [namespace candidate 报告](../reports/2026-09-14-references-namespace-candidates.md)。
+
+2026-09-14 identity-bounded dependency profile：默认关闭的新实验只在 Rust index 已完成 declaration
+identity proof、且全部 identity candidate 能放入同一个 batch 时启用。该 verifier 同时装入 query/open
+documents 与全部 identity candidate，但不再沿 candidate consumer 的无关工程 import 扩张；最终 Location
+仍由 `ohos-typescript` 证明。identity 不完整或候选跨多个 batch 时继续使用现有 conservative closure。
+
+公开 LSP RED 证明单纯把 identity candidates 拆成一文件一批会丢失 consumer reference，因此这一版明确
+禁止 multi-batch identity profile。加入无关六文件依赖链的 GREEN case 返回与 closure 完全相同的 Location，
+同时把 project Program 从 9 个文件降到 3 个；另一个 incomplete-proof case 明确证明请求 identity 仍会
+fail closed 到 closure。
+
+固定 Photos `LogExtender` 与 `Routers` 各三次新进程均保留 3/3、19/19 exact Locations 和正常 diagnostics。
+Program 分别从 206/218 个 project SourceFiles 降到 2/3，产品进程树 RSS 中位下降 34.61%/29.70%；请求
+中位耗时则上升 99.53%/38.51%，其中 `LogExtender` 14.628 秒仅擦线满足原型 2x 上限。该结果证明无关
+import closure 是 working-set 的主要放大器，但仍未达到最终 50% peak gate，也不是用户报告的 >3 GB
+工程，生产默认保持 `legacy`，dependency profile 默认保持 `closure`。下一 Phase R2 RED 必须在每个
+Program 内稳定重建 anchor，才允许 multi-batch identity verification；在此之前不得减小 root limit、
+并发多个 verifier 或容忍 incomplete identity。详见
+[identity-bounded dependency 报告](../reports/2026-09-14-references-identity-bounded-dependencies.md)。

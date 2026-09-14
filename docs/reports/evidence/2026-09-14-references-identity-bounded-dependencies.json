@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "status": "PASS",
+  "releaseDefaultGate": "NOT_PASSED",
+  "parentRevision": "8803b4cac50c8c4069c2c1a7b317a202a9d79c10",
+  "environment": {
+    "workspace": "OpenHarmony applications_photos",
+    "workspaceRevision": "98ea1d9cd6a363c576e2c6ff17844e51723baec5",
+    "sdkApiLevel": 24,
+    "sdkVersion": "6.1.1.125",
+    "nodeVersion": "v26.3.0",
+    "serverSha256": "4a2ecd5ed6f0c2e2d35ccd20a0015588e841cd529b3041fd632ea500879accbd",
+    "sidecarSha256": "d0229482dd933f0491aff2492b9eae8dc4279769982a69234ffa3da9ba3daf0a",
+    "memoryMeasurement": "external-process-tree-rss"
+  },
+  "logExtender": {
+    "target": {
+      "file": "tools/src/main/utils/LogExtender.ets",
+      "symbol": "LogExtender",
+      "position": { "line": 21, "character": 24, "encoding": "UTF-16" },
+      "locations": 3,
+      "diagnostics": 0,
+      "referenceHash": "d00f2b3770f1ff697b3df076a86e2484584075ca4df769d16cba23424c950330"
+    },
+    "closure": {
+      "requestMs": [7365.37, 7331.23, 7066.10],
+      "peakProductRssBytes": [578387968, 576307200, 565047296],
+      "medianRequestMs": 7331.23,
+      "medianPeakProductRssBytes": 576307200,
+      "maxProgramSourceFiles": 565,
+      "maxProgramProjectFiles": 206,
+      "sdkSourceFiles": 359,
+      "expansionAttempts": 1
+    },
+    "identity": {
+      "requestMs": [15938.37, 14222.91, 14627.78],
+      "peakProductRssBytes": [376823808, 393699328, 374833152],
+      "medianRequestMs": 14627.78,
+      "medianPeakProductRssBytes": 376823808,
+      "maxProgramSourceFiles": 126,
+      "maxProgramProjectFiles": 2,
+      "sdkSourceFiles": 124,
+      "expansionAttempts": 0
+    },
+    "comparison": {
+      "requestRatio": 1.995,
+      "peakRssRatio": 0.654,
+      "peakRssReduction": 0.3461,
+      "exactLocationEquality": true
+    }
+  },
+  "routers": {
+    "target": {
+      "file": "tools/src/main/global/pages/Routers.ets",
+      "symbol": "Routers",
+      "position": { "line": 26, "character": 19, "encoding": "UTF-16" },
+      "locations": 19,
+      "diagnostics": 1,
+      "referenceHash": "e8a3d315a06711100b45ad2f3785bc53b2e94e844e0a1d7f269c8c2f2cddcf4c"
+    },
+    "closure": {
+      "requestMs": [12516.55, 9299.26, 9913.79],
+      "peakProductRssBytes": [505868288, 562438144, 581771264],
+      "medianRequestMs": 9913.79,
+      "medianPeakProductRssBytes": 562438144,
+      "maxProgramSourceFiles": 577,
+      "maxProgramProjectFiles": 218,
+      "sdkSourceFiles": 359,
+      "expansionAttempts": 1
+    },
+    "identity": {
+      "requestMs": [13576.26, 14615.23, 13731.86],
+      "peakProductRssBytes": [395386880, 381087744, 395489280],
+      "medianRequestMs": 13731.86,
+      "medianPeakProductRssBytes": 395386880,
+      "maxProgramSourceFiles": 127,
+      "maxProgramProjectFiles": 3,
+      "sdkSourceFiles": 124,
+      "expansionAttempts": 0
+    },
+    "comparison": {
+      "requestRatio": 1.385,
+      "peakRssRatio": 0.703,
+      "peakRssReduction": 0.2970,
+      "exactLocationEquality": true
+    }
+  }
+}

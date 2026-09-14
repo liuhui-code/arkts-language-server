@@ -222,11 +222,14 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
   }
 
   async references(query: Contract.SemanticReferencesQuery) {
-    const candidateUris = await this.#referenceCandidates(query)
+    const candidates = await this.#referenceCandidates(query)
     return this.#documentRequest<Contract.SemanticReferencesOutcome>("references", query, {
       position: query.position,
       includeDeclaration: query.includeDeclaration,
-      ...(candidateUris ? { candidateUris } : {}),
+      ...(candidates ? {
+        candidateUris: candidates.uris,
+        candidateIdentityComplete: candidates.identityComplete,
+      } : {}),
     })
   }
 
@@ -374,7 +377,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
 
   async #referenceCandidates(
     query: Contract.SemanticReferencesQuery,
-  ): Promise<readonly string[] | undefined> {
+  ): Promise<ReferenceCandidateSelection | undefined> {
     if (referenceSearchRuntimeConfig(this.#environment).strategy !== "indexed-batched"
       || !this.#referenceIndex) return undefined
     try {
@@ -413,7 +416,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
               }
             : {}),
         })
-        return candidateUris
+        return { uris: candidateUris, identityComplete: direct.identityComplete }
       }
       if (direct.completeness !== "ready" || direct.supported) {
         this.#logger?.info("references.index.fallback", {
@@ -492,7 +495,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
             }
           : {}),
       })
-      return candidateUris
+      return { uris: candidateUris, identityComplete: result.identityComplete }
     } catch (error) {
       this.#logger?.info("references.index.fallback", {
         reason: "index-error",
@@ -834,6 +837,11 @@ function sdkExternalTerminalIdentity(
   } catch {
     return undefined
   }
+}
+
+interface ReferenceCandidateSelection {
+  readonly uris: readonly string[]
+  readonly identityComplete: boolean
 }
 
 function identityReferenceUris(

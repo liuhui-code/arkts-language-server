@@ -1,9 +1,11 @@
+import { createHash } from "node:crypto"
 import path from "node:path"
 
 import type { SemanticDefinitionCandidate, SemanticDocumentPosition } from "../../core/protocol.js"
 import type { SemanticReferenceQueryResult } from "../../core/types/type-engine.js"
 import type { SemanticWorkspaceView } from "../../core/workspace/document-store.js"
 import type { HarmonySemanticGraph } from "../../project/harmony-project-model.js"
+import type { ReferenceDependencyProfile } from "./reference-runtime.js"
 import {
   expandReferenceBatchAdmission,
   planConservativeReferenceBatches,
@@ -40,10 +42,12 @@ type TraceField = string | number | boolean | null | undefined
 
 export interface ReferenceSearchExecutorOptions {
   readonly batchRootLimit: number
+  readonly dependencyProfile: ReferenceDependencyProfile
   readonly verifyBatch: (
     workspace: SemanticWorkspaceView,
     position: SemanticDocumentPosition,
     includeDeclaration: boolean,
+    dependencyProfile: ReferenceDependencyProfile,
   ) => Promise<ReferenceBatchVerification>
   readonly disposeResidentContext: (rootPath: string) => void
   readonly checkpoint?: () => void
@@ -60,6 +64,7 @@ export class ReferenceSearchExecutor {
     position: SemanticDocumentPosition,
     includeDeclaration: boolean,
     candidatePaths?: readonly string[],
+    candidateIdentityComplete = false,
     semanticGraph?: HarmonySemanticGraph,
   ): Promise<SemanticReferenceQueryResult> {
     const plan = planConservativeReferenceBatches(
@@ -71,12 +76,19 @@ export class ReferenceSearchExecutor {
     if (!plan) return { status: "incomplete", reason: "project-membership-incomplete" }
 
     const rootPath = path.resolve(workspace.rootPath)
+    const dependencyProfile = candidateIdentityComplete
+      && candidatePaths !== undefined
+      && candidatePaths.length <= this.options.batchRootLimit
+      ? this.options.dependencyProfile
+      : "closure"
     const referenceSession = this.nextSession++
     this.options.disposeResidentContext(rootPath)
     const collected: SemanticDefinitionCandidate[] = []
     for (const batch of plan.batches) {
       const started = performance.now()
-      let admittedProjectPaths = batch.admittedProjectPaths
+      let admittedProjectPaths = dependencyProfile === "identity"
+        ? batch.rootPaths
+        : batch.admittedProjectPaths
       let verification: ReferenceBatchVerification
       let expansionAttempts = 0
       for (;;) {
@@ -90,9 +102,11 @@ export class ReferenceSearchExecutor {
           ),
           position,
           includeDeclaration,
+          dependencyProfile,
         )
         if (verification.result.status === "complete") break
-        const expansion = plan.semanticUnitMode === "project-graph"
+        const expansion = dependencyProfile === "closure"
+          && plan.semanticUnitMode === "project-graph"
           && verification.result.reason === "source-unavailable"
           && admittedProjectPaths
           && semanticGraph
@@ -105,6 +119,7 @@ export class ReferenceSearchExecutor {
             )
           : undefined
         if (expansion) {
+          const unavailableProjectPaths = verification.unavailableProjectPaths ?? []
           expansionAttempts += 1
           admittedProjectPaths = expansion.admittedProjectPaths
           this.options.trace?.("references.semantic-unit.expanded", {
@@ -115,6 +130,11 @@ export class ReferenceSearchExecutor {
             addedSemanticUnits: expansion.addedSemanticUnits,
             addedProjectFiles: expansion.addedProjectFiles,
             admittedProjectFiles: admittedProjectPaths.length,
+            unavailableProjectFiles: unavailableProjectPaths.length,
+            unavailableProjectPathFingerprints: pathFingerprints(
+              workspace.rootPath,
+              unavailableProjectPaths,
+            ),
           })
           continue
         }
@@ -145,6 +165,7 @@ export class ReferenceSearchExecutor {
         candidateMode: plan.candidateMode,
         semanticUnitMode: plan.semanticUnitMode,
         semanticUnits: plan.semanticUnits,
+        dependencyProfile,
         preparedProgramSourceFiles: verification.prepared.stats.programSourceFiles,
         preparedProgramProjectFiles: verification.prepared.stats.programProjectFiles,
         preparedSdkSourceFiles: verification.prepared.stats.sdkSourceFiles,
@@ -218,4 +239,14 @@ function uniqueSortedReferences(
 
 function ordinalCompare(left: string, right: string): number {
   return left.localeCompare(right)
+}
+
+function pathFingerprints(rootPath: string, filePaths: readonly string[]): string {
+  return [...new Set(filePaths.map(filePath => path.resolve(filePath)))]
+    .sort(ordinalCompare)
+    .map((filePath) => {
+      const relative = path.relative(rootPath, filePath).split(path.sep).join("/")
+      return createHash("sha256").update(relative).digest("hex").slice(0, 16)
+    })
+    .join(",")
 }

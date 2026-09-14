@@ -28,6 +28,7 @@ export interface ReferenceBatchWorkerOptions {
   readonly projectConfiguration?: unknown
   readonly sdkConfiguration?: unknown
   readonly sdkAmbientProfile?: ReferenceSdkAmbientProfile
+  readonly tolerateUnadmittedProjectDependencies?: boolean
 }
 
 export async function verifyReferenceBatchInWorker(
@@ -47,6 +48,7 @@ export async function verifyReferenceBatchInWorker(
       projectConfiguration: options.projectConfiguration,
       sdkConfiguration: options.sdkConfiguration,
       sdkAmbientProfile: options.sdkAmbientProfile,
+      tolerateUnadmittedProjectDependencies: options.tolerateUnadmittedProjectDependencies,
     },
   })
   let settled = false
@@ -114,6 +116,7 @@ interface ReferenceWorkerInput {
   readonly projectConfiguration?: unknown
   readonly sdkConfiguration?: unknown
   readonly sdkAmbientProfile?: ReferenceSdkAmbientProfile
+  readonly tolerateUnadmittedProjectDependencies?: boolean
 }
 
 async function runReferenceWorker(
