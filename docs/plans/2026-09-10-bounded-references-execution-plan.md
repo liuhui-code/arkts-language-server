@@ -767,3 +767,22 @@ Program。第二个 RED 证明前批 import closure 可能提前暴露后批候�
 correctness GREEN、memory gate FAILED。下一 RED 必须按实际 dependency closure/cardinality 和
 operation lifetime 建模，禁止继续调 root 常数、截断候选或弱化 diagnostics。详见
 [auto-import root batching 报告](../reports/2026-09-14-auto-import-root-batching.md)。
+
+2026-09-14 transient worker spike：为验证上一切片的 compiler-state retention，曾将多批 completion
+分别放入一次性 Node worker thread；实现未提交，测量后已撤回。固定 Gramony `Cha` 的候选、精确
+import edits 与 31 条 diagnostics 保持一致，但 root limit 8 的 latency/peak 相对 resident baseline
+增加 76.97%/8.44%，root limit 2 增加 365.16%/10.66%。worker thread 退出没有在下一批前令产品进程
+RSS 回落，且每批重复支付 compiler/worker 启动成本。因此该方向 correctness GREEN、memory/latency
+FAILED，禁止合入或继续增加 worker 数。下一 RED 是用稳定、隐私安全的 candidate/root identity 将每批
+输入与实际 dependency closure、Program project-file cardinality 关联，先解释最后一批为何仍达到
+65 files，再决定可证明的 semantic boundary。详见
+[transient worker spike 报告](../reports/2026-09-14-auto-import-transient-worker-spike.md)。
+
+2026-09-14 dependency-closure correlation：default-off trace 现在以 batch index/count、root/candidate
+count 和 workspace-relative path 的短 SHA-256 指纹关联每个 completion Program；不记录源码或绝对
+候选路径。公开 child-process LSP 测试独立计算并验证精确指纹。固定 Gramony 逐 root 回放证明
+`ChatList.ets` 单独达到 65 project files，而 `ChatItem.ets` 只有 29；前一轮末批膨胀不是两个 roots
+叠加，而是 `ChatList` 通过 `Index/Home` 等真实 imports 形成的合法 dependency closure。由此排除继续
+缩小 root-count 作为 working-set 解法。下一 RED 应在批次之间调用 backend 已有的 semantic cleanup，
+验证 checker/Program 派生状态是否可回收，且必须保留这个合法 65-file closure。详见
+[closure correlation 报告](../reports/2026-09-14-auto-import-closure-correlation.md)。

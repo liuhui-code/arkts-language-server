@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "parentRevision": "d51ffa1d07142c53130284b68d743d0426edac36",
+  "workspaceRevision": "0a1ee4b026b6736671f0030ba9859aceaa962298",
+  "target": "features/home/src/main/ets/dao/ChatDao.ets",
+  "symbolPrefix": "Cha",
+  "utf16Position": { "line": 43, "character": 41 },
+  "rootLimit": 1,
+  "completionElapsedMs": 8299.873425,
+  "peakProductRssBytes": 576696320,
+  "completionItemCount": 16,
+  "discoveryBackedPreResolvedItemCount": 12,
+  "diagnosticsCount": 31,
+  "diagnosticsSha256": "96ac3039af05961adc6778ea9ba90747a66dff55f1513da529420ff4b54b166a",
+  "roots": [
+    { "fingerprint": "2231bada862b2406", "path": "features/home/src/main/ets/entities/Chat.ets", "programProjectFiles": 23 },
+    { "fingerprint": "b10fe5c91fca4909", "path": "features/home/src/main/ets/pages/Chat/ChatDetail.ets", "programProjectFiles": 38 },
+    { "fingerprint": "319bf49d95021a6b", "path": "features/home/src/main/ets/viewmodel/Chat/ChatDataSource.ets", "programProjectFiles": 24 },
+    { "fingerprint": "3d5b6f34178e6229", "path": "features/home/src/main/ets/viewmodel/Chat/ChatPhotoNodeController.ets", "programProjectFiles": 26 },
+    { "fingerprint": "58fade6a7cc43915", "path": "features/home/src/main/ets/views/Chat/ChatDetailBottom.ets", "programProjectFiles": 30 },
+    { "fingerprint": "f16ba70130eff3d6", "path": "features/home/src/main/ets/views/Chat/ChatDetailBottomMediaSheet.ets", "programProjectFiles": 29 },
+    { "fingerprint": "329d1b249fff3237", "path": "features/home/src/main/ets/views/Chat/ChatDetailBottomPhotoPicker.ets", "programProjectFiles": 23 },
+    { "fingerprint": "556f647a040b88a2", "path": "features/home/src/main/ets/views/Chat/ChatDetailItem.ets", "programProjectFiles": 32 },
+    { "fingerprint": "f50d828305b69112", "path": "features/home/src/main/ets/views/Chat/ChatDetailNone.ets", "programProjectFiles": 23 },
+    { "fingerprint": "51ed7b000db68d86", "path": "features/home/src/main/ets/views/Chat/ChatDetailTopSearch.ets", "programProjectFiles": 24 },
+    { "fingerprint": "85212319af6ae3c7", "path": "features/home/src/main/ets/views/Chat/ChatItem.ets", "programProjectFiles": 29 },
+    { "fingerprint": "5f6c6fe935e198fb", "path": "features/home/src/main/ets/views/Chat/ChatList.ets", "programProjectFiles": 65 }
+  ],
+  "conclusion": "ChatList.ets alone establishes the 65-project-file dependency closure"
+}

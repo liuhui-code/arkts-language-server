@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "parentRevision": "d51ffa1d07142c53130284b68d743d0426edac36",
+  "workspace": {
+    "name": "Gramony",
+    "revision": "0a1ee4b026b6736671f0030ba9859aceaa962298",
+    "target": "features/home/src/main/ets/dao/ChatDao.ets",
+    "symbolPrefix": "Cha",
+    "utf16Position": {
+      "line": 43,
+      "character": 41
+    }
+  },
+  "sdk": {
+    "path": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony",
+    "apiLevel": 24,
+    "etsVersion": "6.1.1.125"
+  },
+  "nodeVersion": "v26.3.0",
+  "exactCompletionIdentityAcrossRuns": true,
+  "completionItemCount": 16,
+  "discoveryBackedPreResolvedItemCount": 12,
+  "diagnosticsCount": 31,
+  "diagnosticsSha256": "96ac3039af05961adc6778ea9ba90747a66dff55f1513da529420ff4b54b166a",
+  "runs": [
+    {
+      "rootLimit": 128,
+      "execution": "resident",
+      "programProjectFiles": [66],
+      "completionElapsedMs": 4030.819895,
+      "peakProductRssBytes": 497475584
+    },
+    {
+      "rootLimit": 8,
+      "execution": "transient-worker",
+      "programProjectFiles": [39, 66],
+      "completionElapsedMs": 7133.515423,
+      "peakProductRssBytes": 539459584,
+      "completionBoundaryRssBytes": [515067904, 527933440]
+    },
+    {
+      "rootLimit": 2,
+      "execution": "transient-worker",
+      "programProjectFiles": [38, 28, 30, 33, 25, 65],
+      "completionElapsedMs": 18749.826142,
+      "peakProductRssBytes": 550486016,
+      "completionBoundaryRssBytes": [
+        506757120,
+        523153408,
+        529842176,
+        523505664,
+        528838656,
+        537829376
+      ]
+    }
+  ],
+  "decision": {
+    "correctness": "pass",
+    "memory": "fail",
+    "latency": "fail",
+    "prototypeMerged": false,
+    "next": "correlate each discovery root with its admitted dependency closure and Program cardinality"
+  }
+}

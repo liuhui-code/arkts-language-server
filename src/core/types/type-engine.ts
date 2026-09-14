@@ -101,9 +101,20 @@ export type SemanticSignatureHelpTriggerReason =
   | { kind: "characterTyped"; triggerCharacter: "(" | "," | "<" }
   | { kind: "retrigger"; triggerCharacter?: "(" | "," | "<" | ")" }
 
+export interface SemanticCompletionTraceContext {
+  readonly completionBatchIndex: number
+  readonly completionBatchCount: number
+  readonly discoveryRootCount: number
+  readonly discoveryCandidateCount: number
+  readonly discoveryRootFingerprints: string
+}
+
 export interface SemanticTypeQueryContext {
   state: SemanticTypeEngineState
-  complete(position: SemanticDocumentPosition): SemanticCompletionItemList
+  complete(
+    position: SemanticDocumentPosition,
+    traceContext?: SemanticCompletionTraceContext,
+  ): SemanticCompletionItemList
   resolveCompletion(position: SemanticDocumentPosition, item: SemanticCompletionItem): SemanticCompletionItem
   define(position: SemanticDocumentPosition): SemanticDefinitionCandidate[]
   typeDefinitions(position: SemanticDocumentPosition): SemanticDefinitionCandidate[]
@@ -329,7 +340,7 @@ export class SemanticTypeEngineRegistry {
     }
     return {
       state,
-      complete: (position) => withLease((current) => {
+      complete: (position, traceContext) => withLease((current) => {
         const arkui = sourceContent && scope.status !== "unavailable"
           ? current.arkui.complete(position, sourceContent)
           : { items: [], isIncomplete: scope.status === "unavailable" }
@@ -338,6 +349,7 @@ export class SemanticTypeEngineRegistry {
         if (this.options.references?.trace) {
           const memory = process.memoryUsage()
           this.options.onReferenceTrace?.("completion.program.complete", {
+            ...traceContext,
             ...current.engine.programFileStats(),
             completions: completion.items.length,
             incomplete: completion.isIncomplete,
