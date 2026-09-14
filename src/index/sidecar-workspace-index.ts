@@ -921,9 +921,16 @@ function mapReferenceCandidateResult(
         || result.bindings.some(binding => !isReferenceBinding(binding))))
     || !isNonNegativeInteger(result.servedGeneration)
     || !isCompleteness(result.completeness)
+    || (result.declarationUri !== null
+      && result.declarationUri !== undefined
+      && typeof result.declarationUri !== "string")
     || (result.declarationIdentity !== null
       && result.declarationIdentity !== undefined
-      && typeof result.declarationIdentity !== "string")) {
+      && typeof result.declarationIdentity !== "string")
+    || (result.identityComplete
+      && (typeof result.declarationUri !== "string"
+        || typeof result.declarationIdentity !== "string"
+        || !(result.identityUris as unknown[]).includes(result.declarationUri)))) {
     throw new SidecarProtocolError("index sidecar returned invalid reference candidates")
   }
   return {
@@ -933,6 +940,9 @@ function mapReferenceCandidateResult(
     identityUris: (result.identityUris as string[]).map(mapUri),
     ...(Array.isArray(result.narrowedUris)
       ? { narrowedUris: (result.narrowedUris as string[]).map(mapUri) }
+      : {}),
+    ...(typeof result.declarationUri === "string"
+      ? { declarationUri: mapUri(result.declarationUri) }
       : {}),
     ...(typeof result.declarationIdentity === "string"
       ? { declarationIdentity: result.declarationIdentity }

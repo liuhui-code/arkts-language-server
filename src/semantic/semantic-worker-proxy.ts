@@ -229,6 +229,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
       ...(candidates ? {
         candidateUris: candidates.uris,
         candidateIdentityComplete: candidates.identityComplete,
+        ...(candidates.anchorUri ? { candidateAnchorUri: candidates.anchorUri } : {}),
       } : {}),
     })
   }
@@ -416,7 +417,13 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
               }
             : {}),
         })
-        return { uris: candidateUris, identityComplete: direct.identityComplete }
+        return {
+          uris: candidateUris,
+          identityComplete: direct.identityComplete,
+          ...(direct.identityComplete && direct.declarationUri
+            ? { anchorUri: direct.declarationUri }
+            : {}),
+        }
       }
       if (direct.completeness !== "ready" || direct.supported) {
         this.#logger?.info("references.index.fallback", {
@@ -495,7 +502,13 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
             }
           : {}),
       })
-      return { uris: candidateUris, identityComplete: result.identityComplete }
+      return {
+        uris: candidateUris,
+        identityComplete: result.identityComplete,
+        ...(result.identityComplete && result.declarationUri
+          ? { anchorUri: result.declarationUri }
+          : {}),
+      }
     } catch (error) {
       this.#logger?.info("references.index.fallback", {
         reason: "index-error",
@@ -842,6 +855,7 @@ function sdkExternalTerminalIdentity(
 interface ReferenceCandidateSelection {
   readonly uris: readonly string[]
   readonly identityComplete: boolean
+  readonly anchorUri?: string
 }
 
 function identityReferenceUris(

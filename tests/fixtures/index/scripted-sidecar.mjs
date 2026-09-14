@@ -168,6 +168,7 @@ input.on("line", (line) => {
           pathToFileURL(path.join(workspaceRoot, "Consumer.ets")).href,
           pathToFileURL(path.join(workspaceRoot, "Target.ets")).href,
         ],
+        declarationUri: pathToFileURL(path.join(workspaceRoot, "Target.ets")).href,
         declarationIdentity: "fixture-reference-identity",
         names: ["Alias", "PublicThing", "Thing"],
         uris: [

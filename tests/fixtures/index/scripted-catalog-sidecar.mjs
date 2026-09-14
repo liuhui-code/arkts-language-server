@@ -257,6 +257,9 @@ input.on("line", (line) => {
         narrowedUris: supported && sourceClassification
           ? identityFiles.map(file => pathToFileURL(path.join(workspaceRoot, file)).href)
           : [],
+        declarationUri: supported
+          ? pathToFileURL(path.join(workspaceRoot, candidateFiles[0])).href
+          : null,
         declarationIdentity: supported ? "scripted-reference-candidate" : null,
         names: supported ? directImportAnchor ? ["Thing"] : ["Alias", "PublicThing", "Thing"] : [],
         uris: supported

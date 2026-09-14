@@ -65,6 +65,7 @@ export class ReferenceSearchExecutor {
     includeDeclaration: boolean,
     candidatePaths?: readonly string[],
     candidateIdentityComplete = false,
+    candidateAnchorPath?: string,
     semanticGraph?: HarmonySemanticGraph,
   ): Promise<SemanticReferenceQueryResult> {
     const plan = planConservativeReferenceBatches(
@@ -76,9 +77,16 @@ export class ReferenceSearchExecutor {
     if (!plan) return { status: "incomplete", reason: "project-membership-incomplete" }
 
     const rootPath = path.resolve(workspace.rootPath)
-    const dependencyProfile = candidateIdentityComplete
-      && candidatePaths !== undefined
-      && candidatePaths.length <= this.options.batchRootLimit
+    const resolvedCandidatePaths = candidatePaths
+      ? new Set(candidatePaths.map(filePath => path.resolve(filePath)))
+      : undefined
+    const identityAnchorPath = candidateIdentityComplete
+      && resolvedCandidatePaths
+      && candidateAnchorPath !== undefined
+      && resolvedCandidatePaths.has(path.resolve(candidateAnchorPath))
+      ? path.resolve(candidateAnchorPath)
+      : undefined
+    const dependencyProfile = identityAnchorPath
       ? this.options.dependencyProfile
       : "closure"
     const referenceSession = this.nextSession++
@@ -86,8 +94,11 @@ export class ReferenceSearchExecutor {
     const collected: SemanticDefinitionCandidate[] = []
     for (const batch of plan.batches) {
       const started = performance.now()
+      const rootPaths = dependencyProfile === "identity" && identityAnchorPath
+        ? uniquePaths([...batch.rootPaths, identityAnchorPath])
+        : batch.rootPaths
       let admittedProjectPaths = dependencyProfile === "identity"
-        ? batch.rootPaths
+        ? rootPaths
         : batch.admittedProjectPaths
       let verification: ReferenceBatchVerification
       let expansionAttempts = 0
@@ -96,7 +107,7 @@ export class ReferenceSearchExecutor {
         verification = await this.options.verifyBatch(
           scopedWorkspace(
             workspace,
-            batch.rootPaths,
+            rootPaths,
             batch.index === 0,
             admittedProjectPaths,
           ),
@@ -155,7 +166,7 @@ export class ReferenceSearchExecutor {
         verifierIsolation: "transient-worker",
         batchIndex: batch.index,
         batchCount: plan.batches.length,
-        batchRootFiles: batch.rootPaths.length,
+        batchRootFiles: rootPaths.length,
         batchCandidateRoots: batch.candidateRoots,
         batchSemanticUnits: batch.semanticUnits,
         admittedProjectFiles: admittedProjectPaths?.length ?? plan.membershipFiles,
@@ -239,6 +250,10 @@ function uniqueSortedReferences(
 
 function ordinalCompare(left: string, right: string): number {
   return left.localeCompare(right)
+}
+
+function uniquePaths(filePaths: readonly string[]): string[] {
+  return [...new Set(filePaths.map(filePath => path.resolve(filePath)))]
 }
 
 function pathFingerprints(rootPath: string, filePaths: readonly string[]): string {

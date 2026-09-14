@@ -251,7 +251,7 @@ test("indexed batching narrows compiler batches but keeps the exact references r
   assert.ok(indexed.batchEvents.every(event => typeof event.queryHeapUsedDelta === "number"))
 })
 
-test("indexed batching resolves a direct named import usage without a compiler anchor", async (t) => {
+test("indexed batching pins the declaration anchor across direct-import batches", async (t) => {
   const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), "arkts-references-direct-import-"))
   t.after(() => fs.promises.rm(root, { recursive: true, force: true }))
   const workspace = path.join(root, "workspace")
@@ -302,7 +302,7 @@ test("indexed batching resolves a direct named import usage without a compiler a
     strategy: "indexed-batched",
     awaitIndexReady: true,
     indexScenario: "reference-direct-import-anchor",
-    batchRoots: "64",
+    batchRoots: "1",
     dependencyProfile: "identity",
     runId: "direct-import-identity-bounded",
   })
@@ -315,6 +315,7 @@ test("indexed batching resolves a direct named import usage without a compiler a
     JSON.stringify({ closure: indexed.batchEvents, identity: identityBounded.batchEvents }),
   )
   assert.ok(identityBounded.batchEvents.every(event => event.dependencyProfile === "identity"))
+  assert.equal(identityBounded.batchEvents.length, 2)
   const accepted = indexed.indexEvents.find(event => event.event === "references.index.accepted")
   assert.equal(accepted?.anchorMode, "indexed-declaration-identity",
     JSON.stringify(indexed.referenceEvents))
