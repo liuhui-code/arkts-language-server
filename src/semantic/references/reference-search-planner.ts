@@ -23,6 +23,12 @@ export interface ReferenceSearchPlan {
   readonly batches: readonly ReferenceBatch[]
 }
 
+export interface ReferenceBatchAdmissionExpansion {
+  readonly admittedProjectPaths: readonly string[]
+  readonly addedProjectFiles: number
+  readonly addedSemanticUnits: number
+}
+
 export function planConservativeReferenceBatches(
   workspace: SemanticWorkspaceView,
   batchRootLimit: number,
@@ -73,6 +79,56 @@ export function planConservativeReferenceBatches(
     semanticUnitMode: semanticGroups ? "project-graph" : "conservative",
     semanticUnits: semanticGroups ? semanticGraph!.units.length : 0,
     batches,
+  }
+}
+
+export function expandReferenceBatchAdmission(
+  admittedProjectPaths: readonly string[],
+  unavailableProjectPaths: readonly string[],
+  membershipPaths: readonly string[],
+  graph: HarmonySemanticGraph,
+): ReferenceBatchAdmissionExpansion | undefined {
+  if (graph.status !== "ready" || !graph.complete || unavailableProjectPaths.length === 0) {
+    return undefined
+  }
+  const membership = new Set(membershipPaths.map(filePath => path.resolve(filePath)))
+  const admitted = new Set(admittedProjectPaths.map(filePath => path.resolve(filePath)))
+  const seedUnits = new Set<string>()
+  for (const unavailablePath of unavailableProjectPaths) {
+    const resolved = path.resolve(unavailablePath)
+    if (!membership.has(resolved)) return undefined
+    const unit = semanticUnitForPath(graph, resolved)
+    if (!unit) return undefined
+    seedUnits.add(unit.identity.module)
+  }
+  const byName = new Map(graph.units.map(unit => [unit.identity.module, unit]))
+  const addedUnits = new Set<string>()
+  const pending = [...seedUnits]
+  while (pending.length > 0) {
+    const name = pending.pop()!
+    if (addedUnits.has(name)) continue
+    const unit = byName.get(name)
+    if (!unit) return undefined
+    addedUnits.add(name)
+    for (const dependency of unit.dependencies) pending.push(dependency.module)
+  }
+  const roots = [...addedUnits].map(name => byName.get(name)!.moduleRoot)
+  for (const memberPath of membership) {
+    if (roots.some(root => inside(root, memberPath))) admitted.add(memberPath)
+  }
+  const expanded = membershipPaths
+    .map(filePath => path.resolve(filePath))
+    .filter(filePath => admitted.has(filePath))
+  const addedProjectFiles = expanded.length - admittedProjectPaths.length
+  if (addedProjectFiles <= 0) return undefined
+  const previouslyAdmittedUnits = new Set(admittedProjectPaths.flatMap(filePath => {
+    const unit = semanticUnitForPath(graph, filePath)
+    return unit ? [unit.identity.module] : []
+  }))
+  return {
+    admittedProjectPaths: expanded,
+    addedProjectFiles,
+    addedSemanticUnits: [...addedUnits].filter(name => !previouslyAdmittedUnits.has(name)).length,
   }
 }
 

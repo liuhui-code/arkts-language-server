@@ -4,7 +4,10 @@ import type { SemanticDefinitionCandidate, SemanticDocumentPosition } from "../.
 import type { SemanticReferenceQueryResult } from "../../core/types/type-engine.js"
 import type { SemanticWorkspaceView } from "../../core/workspace/document-store.js"
 import type { HarmonySemanticGraph } from "../../project/harmony-project-model.js"
-import { planConservativeReferenceBatches } from "./reference-search-planner.js"
+import {
+  expandReferenceBatchAdmission,
+  planConservativeReferenceBatches,
+} from "./reference-search-planner.js"
 
 export interface ReferenceProgramStats {
   readonly programSourceFiles: number
@@ -18,6 +21,7 @@ export interface ReferenceProgramStats {
 
 export interface ReferenceBatchVerification {
   readonly result: SemanticReferenceQueryResult
+  readonly unavailableProjectPaths?: readonly string[]
   readonly prepared: {
     readonly stats: ReferenceProgramStats
     readonly memory: {
@@ -71,35 +75,60 @@ export class ReferenceSearchExecutor {
     this.options.disposeResidentContext(rootPath)
     const collected: SemanticDefinitionCandidate[] = []
     for (const batch of plan.batches) {
-      this.options.checkpoint?.()
       const started = performance.now()
-      const verification = await this.options.verifyBatch(
-        scopedWorkspace(
-          workspace,
-          batch.rootPaths,
-          batch.index === 0,
-          batch.admittedProjectPaths,
-        ),
-        position,
-        includeDeclaration,
-      )
-      const { result } = verification
-      if (result.status !== "complete") {
+      let admittedProjectPaths = batch.admittedProjectPaths
+      let verification: ReferenceBatchVerification
+      let expansionAttempts = 0
+      for (;;) {
+        this.options.checkpoint?.()
+        verification = await this.options.verifyBatch(
+          scopedWorkspace(
+            workspace,
+            batch.rootPaths,
+            batch.index === 0,
+            admittedProjectPaths,
+          ),
+          position,
+          includeDeclaration,
+        )
+        if (verification.result.status === "complete") break
+        const expansion = plan.semanticUnitMode === "project-graph"
+          && verification.result.reason === "source-unavailable"
+          && admittedProjectPaths
+          && semanticGraph
+          && expansionAttempts < semanticGraph.units.length
+          ? expandReferenceBatchAdmission(
+              admittedProjectPaths,
+              verification.unavailableProjectPaths ?? [],
+              workspace.projectMembership!.paths,
+              semanticGraph,
+            )
+          : undefined
+        if (expansion) {
+          expansionAttempts += 1
+          admittedProjectPaths = expansion.admittedProjectPaths
+          this.options.trace?.("references.semantic-unit.expanded", {
+            referenceSession,
+            reason: verification.result.reason,
+            batchIndex: batch.index,
+            expansionAttempt: expansionAttempts,
+            addedSemanticUnits: expansion.addedSemanticUnits,
+            addedProjectFiles: expansion.addedProjectFiles,
+            admittedProjectFiles: admittedProjectPaths.length,
+          })
+          continue
+        }
         if (plan.semanticUnitMode === "project-graph") {
           this.options.trace?.("references.semantic-unit.fallback", {
             referenceSession,
-            reason: result.reason,
+            reason: verification.result.reason,
             failedBatchIndex: batch.index,
           })
-          return this.execute(
-            workspace,
-            position,
-            includeDeclaration,
-            candidatePaths,
-          )
+          return this.execute(workspace, position, includeDeclaration, candidatePaths)
         }
-        return result
+        return verification.result
       }
+      const { result } = verification
       collected.push(...result.references)
       this.options.trace?.("references.batch.complete", {
         referenceSession,
@@ -109,7 +138,8 @@ export class ReferenceSearchExecutor {
         batchRootFiles: batch.rootPaths.length,
         batchCandidateRoots: batch.candidateRoots,
         batchSemanticUnits: batch.semanticUnits,
-        admittedProjectFiles: batch.admittedProjectPaths?.length ?? plan.membershipFiles,
+        admittedProjectFiles: admittedProjectPaths?.length ?? plan.membershipFiles,
+        expansionAttempts,
         membershipFiles: plan.membershipFiles,
         candidateFiles: plan.candidateFiles,
         candidateMode: plan.candidateMode,
