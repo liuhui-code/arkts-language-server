@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 1,
+  "status": "PASS",
+  "releaseDefaultGate": "OPEN",
+  "environment": {
+    "head": "743f4e6d26868a6d8be22d8e684c476172e132ab",
+    "serverSha256": "fd7f973789e16147cf09515cdf58c2a6cea36c2488d471eabd999c6a87a4a64d",
+    "sidecarSha256": "f498ead6998a052bb790d3a51914c12475f65aff13e440708823cf73a35c5591",
+    "nodeVersion": "v26.3.0",
+    "sdkApiLevel": 24,
+    "sdkVersion": "6.1.1.125",
+    "request": "textDocument/references",
+    "normalDiagnosticsEnabled": true,
+    "memoryMeasurement": "external-process-tree-rss"
+  },
+  "projects": [
+    {
+      "name": "Gramony",
+      "revision": "0a1ee4b026b6736671f0030ba9859aceaa962298",
+      "symbol": "DateHelper",
+      "position": { "line": 0, "character": 16, "encoding": "UTF-16" },
+      "locations": 8,
+      "referenceHash": "2012ee87b5985a89d44df2edc312b488549f6eed1f2f32bb8ccc51f19cd55e8a",
+      "diagnostics": 10,
+      "legacy": { "requestMs": 3094, "peakProductRssBytes": 407252992 },
+      "indexedCommon": {
+        "requestMs": 2405,
+        "peakProductRssBytes": 407281664,
+        "candidateFiles": 3,
+        "batchCount": 1,
+        "programProjectFiles": 32,
+        "programSdkFiles": 226
+      }
+    },
+    {
+      "name": "ChatCube",
+      "revision": "fd729d0f5c607763adc8ce054ad29171c66c78dc",
+      "symbol": "HttpService",
+      "position": { "line": 130, "character": 16, "encoding": "UTF-16" },
+      "locations": 33,
+      "referenceHash": "2f633b7b1fb8e6c18d66725ea07fbdc4a37dd28d5612f502c086c4db9d0f9f27",
+      "diagnostics": 70,
+      "legacy": { "requestMs": 4572, "peakProductRssBytes": 521555968 },
+      "indexedCommon": {
+        "requestMs": 2496,
+        "peakProductRssBytes": 380964864,
+        "candidateFiles": 7,
+        "batchCount": 1,
+        "programProjectFiles": 48,
+        "programSdkFiles": 138
+      }
+    },
+    {
+      "name": "RemoteDesk",
+      "revision": "8edc187868e94ed41634e8a6c4c4c072e3a48679",
+      "symbol": "RdpCredential",
+      "position": { "line": 17, "character": 16, "encoding": "UTF-16" },
+      "locations": 71,
+      "referenceHash": "ff3a692af7e96c39338a120fa99b9eb66727f7aab9eda3ad723a3a275ce935b2",
+      "diagnostics": 10,
+      "legacy": { "requestMs": 9822, "peakProductRssBytes": 787152896 },
+      "indexedCommon": {
+        "requestMs": 5640,
+        "peakProductRssBytes": 660140032,
+        "candidateFiles": 8,
+        "batchCount": 1,
+        "programProjectFiles": 387,
+        "programSdkFiles": 494
+      }
+    },
+    {
+      "name": "OpenHarmony applications_photos",
+      "revision": "98ea1d9cd6a363c576e2c6ff17844e51723baec5",
+      "symbol": "PhotoAsset",
+      "position": { "line": 82, "character": 26, "encoding": "UTF-16" },
+      "locations": 15,
+      "referenceHash": "f4e28b25847c45f43ee0a7ae7b651b2f42e18237f51da801df81079122c886ab",
+      "diagnostics": 2,
+      "legacy": { "requestMs": 9882, "peakProductRssBytes": 785317888 },
+      "indexedCommon": {
+        "requestMs": 5631,
+        "peakProductRssBytes": 614957056,
+        "candidateFiles": 8,
+        "conservativeCandidateFiles": 124,
+        "batchCount": 1,
+        "programProjectFiles": 400,
+        "programSdkFiles": 390
+      },
+      "forcedSequentialBatches": {
+        "batchRootLimit": 2,
+        "requestMs": 21622,
+        "peakProductRssBytes": 626348032,
+        "locations": 15,
+        "semanticUnitFallback": "source-unavailable",
+        "completedSemanticUnitBatchesBeforeFallback": 1,
+        "conservativeBatchCount": 4,
+        "maxProgramProjectFiles": 394,
+        "remainingProgramProjectFiles": [208, 209, 209]
+      },
+      "previousR4OracleLocations": 9,
+      "r10AddedLocations": 6,
+      "r10MissingLocations": 0
+    }
+  ]
+}

@@ -827,3 +827,19 @@ SDK profile 下均精确返回 8/8，耗时 2.552/3.125 秒，产品进程树峰
 调 worker/cleanup/root 常数：只有取得依赖完整、zero-error 的 façade closure 后才重开 façade A/B；
 否则优先扩展 Rust reference candidate coverage 与多 module sequential batch 的真实门禁。详见
 [auto-import child-process spike](../reports/2026-09-14-auto-import-child-process-spike.md)。
+
+2026-09-14 r10 跨工程与真实多批门禁：Gramony、ChatCube、RemoteDesk 与 Photos 四个固定真实工程
+均用合并后的 `ohos-typescript@4.9.5-r10` 产物执行独立 legacy/indexed 新进程回放，8/33/71/15 个
+Location 与各自 r10 legacy oracle exact equality，正常 diagnostics 保留。Photos 原 r4 九位置 oracle
+已被因果复核为旧 backend 漏结果：r10 legacy 与 indexed 都包含同样新增的六个真实 usage，不能继续
+把九位置结果当正确性基准。
+
+同产物单次 indexed common 相对 legacy 的峰值变化依次为 +0.01%/-26.96%/-16.14%/-21.69%，四组
+延迟均下降；但这不是重复统计，且未达到最终 50% memory gate，所以默认仍为 `legacy`。Photos 使用
+`batch-roots=2` 时，ProjectGraph 第二 semantic-unit batch因 `source-unavailable` 按合同丢弃部分结果，
+随后四个 conservative batches 顺序完成，仍返回 15/15；最大 batch 为 394 project SourceFiles，
+后续为 208/209/209，低于 1,246-file membership。该强制多批请求耗时 21.622 秒（legacy 2.19x），
+峰值 626,348,032 bytes，没有优于默认 root limit 的单 batch，因此只关闭真实多批 correctness gate，
+不改 root limit。下一 RED 是补齐导致 semantic-unit fallback 的权威 dependency edge，或继续扩展其他
+真实 symbol kind 的 identity coverage；不得把 forced small batches 产品化。详见
+[r10 跨工程 references 报告](../reports/2026-09-14-r10-cross-project-references-gate.md)。
