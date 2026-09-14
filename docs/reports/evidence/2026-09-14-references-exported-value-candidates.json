@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "status": "PASS",
+  "releaseDefaultGate": "OPEN",
+  "parentRevision": "50c8b1fa47e08885cf4dc7f830875351e71a1ee6",
+  "environment": {
+    "workspace": "OpenHarmony applications_photos",
+    "workspaceRevision": "98ea1d9cd6a363c576e2c6ff17844e51723baec5",
+    "sdkApiLevel": 24,
+    "sdkVersion": "6.1.1.125",
+    "nodeVersion": "v26.3.0",
+    "serverSha256": "fd7f973789e16147cf09515cdf58c2a6cea36c2488d471eabd999c6a87a4a64d",
+    "sidecarSha256": "b0fc8fb17162c861a3e68644a3a4fb1b7bd6754e1fc331a640c93fe783e565a0",
+    "memoryMeasurement": "external-process-tree-rss"
+  },
+  "target": {
+    "file": "tools/src/main/utils/Bundle.ets",
+    "symbol": "BUNDLE_NAMES",
+    "position": { "line": 22, "character": 14, "encoding": "UTF-16" },
+    "request": "textDocument/references",
+    "includeDeclaration": true,
+    "referenceHash": "d76386ec6482e136932f761e6156c4474eff64f53893dcd788b7ae38b4193dfd",
+    "locations": 14,
+    "diagnostics": 6
+  },
+  "legacy": {
+    "requestMs": 10624,
+    "peakProductRssBytes": 798949376,
+    "locations": 14
+  },
+  "indexedBatched": {
+    "strategy": "indexed-batched",
+    "sdkProfile": "common",
+    "batchRootLimit": 2,
+    "requestMs": 21121,
+    "peakProductRssBytes": 584744960,
+    "candidateFiles": 7,
+    "completedBatches": 3,
+    "conservativeFallbacks": 0,
+    "projectMembershipFiles": 1246,
+    "maxProgramProjectFiles": 346,
+    "locations": 14
+  },
+  "comparison": {
+    "requestRatio": 1.988,
+    "peakRssReductionRatio": 0.2681,
+    "exactLocationEquality": true
+  },
+  "excludedRuns": [
+    { "reason": "ENOSPC while writing report" },
+    { "reason": "ENOSPC while writing report" }
+  ]
+}

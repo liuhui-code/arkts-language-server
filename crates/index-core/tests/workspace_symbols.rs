@@ -572,6 +572,10 @@ fn exported_const_function_is_searchable_for_reference_candidates() {
             "file:///workspace/Consumer.ets",
         ]
     );
+    assert_eq!(
+        first_match(&index, "getMutuallyExclusiveDesc").kind,
+        SymbolKind::Function
+    );
 }
 
 #[test]
@@ -707,7 +711,7 @@ fn exported_type_alias_is_searchable_for_reference_candidates() {
 }
 
 #[test]
-fn semicolonless_exported_value_does_not_capture_a_later_arrow_function() {
+fn semicolonless_exported_value_is_searchable_without_capturing_a_later_arrow_function() {
     let mut index = WorkspaceIndex::in_memory();
     index
         .refresh(
@@ -726,11 +730,13 @@ fn semicolonless_exported_value_does_not_capture_a_later_arrow_function() {
             declaration_position: Position::new(0, 14),
             limit: 20,
         })
-        .expect("unsupported exported values should fail conservative");
+        .expect("exported value reference candidates should be searchable");
 
-    assert!(!result.supported);
-    assert!(!result.complete);
-    assert!(result.uris.is_empty());
+    assert!(result.supported);
+    assert!(result.complete);
+    assert_eq!(result.names, ["count"]);
+    assert_eq!(result.uris, ["file:///workspace/Values.ets"]);
+    assert_eq!(first_match(&index, "count").kind, SymbolKind::Variable);
 }
 
 #[test]

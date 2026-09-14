@@ -10,7 +10,7 @@ use std::{
 
 use arkts_index_core::{
     Document, IndexState, MemoryStore, Position, ReferenceBindingKind, ReferenceBindingResolution,
-    ReferenceCandidateQuery, ReferenceSourceResolution, WorkspaceIndex,
+    ReferenceCandidateQuery, ReferenceSourceResolution, SymbolKind, WorkspaceIndex,
 };
 use arkts_index_sqlite::{SqliteStore, workspace_cache_location};
 use rusqlite::Connection;
@@ -119,6 +119,70 @@ fn memory_and_sqlite_implement_the_same_store_contract_and_sqlite_reopens() {
         .expect("persisted reference candidates should be searchable after reopen");
     assert!(references.supported);
     assert_eq!(references.served_generation, 1);
+}
+
+fn assert_exported_value_reference_candidates(mut index: WorkspaceIndex) {
+    index
+        .refresh(
+            1,
+            [
+                Document::new(
+                    "file:///workspace/Values.ets",
+                    "export const selectionModeSize: number = 48\n",
+                ),
+                Document::new(
+                    "file:///workspace/Consumer.ets",
+                    "import { selectionModeSize } from './Values'\n\
+                     const width = selectionModeSize\n",
+                ),
+            ],
+            &[],
+        )
+        .expect("exported value generation should commit");
+
+    let export = index
+        .search_exports("selectionModeSize", 20)
+        .expect("exported value should be discoverable")
+        .items
+        .remove(0);
+    assert_eq!(export.kind, SymbolKind::Variable);
+
+    let references = index
+        .search_reference_candidates(ReferenceCandidateQuery {
+            declaration_uri: "file:///workspace/Values.ets".to_owned(),
+            declaration_position: Position::new(0, 15),
+            limit: 20,
+        })
+        .expect("exported value reference candidates should be searchable");
+    assert!(references.supported);
+    assert!(references.complete);
+    assert_eq!(
+        references.uris,
+        [
+            "file:///workspace/Consumer.ets",
+            "file:///workspace/Values.ets",
+        ]
+    );
+}
+
+#[test]
+fn memory_and_sqlite_preserve_exported_value_reference_candidates() {
+    assert_exported_value_reference_candidates(WorkspaceIndex::with_store(MemoryStore::default()));
+
+    let temp = TestDir::new("exported-value-reference");
+    let database = temp.path().join("symbols.sqlite3");
+    let store =
+        SqliteStore::open(&database, "file:///workspace").expect("SQLite store should open");
+    assert_exported_value_reference_candidates(WorkspaceIndex::with_store(store));
+
+    let reopened =
+        SqliteStore::open(&database, "file:///workspace").expect("SQLite store should reopen");
+    let export = WorkspaceIndex::with_store(reopened)
+        .search_exports("selectionModeSize", 20)
+        .expect("persisted exported value should remain discoverable")
+        .items
+        .remove(0);
+    assert_eq!(export.kind, SymbolKind::Variable);
 }
 
 fn assert_type_assertions_do_not_widen_reference_names(mut index: WorkspaceIndex) {

@@ -859,3 +859,18 @@ Program 为 393 project SourceFiles，对比 membership 1,246。请求中位 15.
 这关闭了 compiler-followed undeclared import 的批次恢复 correctness/performance gate；下一阶段应继续
 提高 index ready 稳定性和候选 coverage，而不是放宽 fallback 或把路径写入日志。详见
 [adaptive semantic-closure 报告](../reports/2026-09-14-references-adaptive-semantic-closure.md)。
+
+2026-09-14 普通导出值 candidate coverage：此前只有顶层具名 `export const` 箭头函数会获得
+reference declaration identity，普通 `export const value = ...` 必须退回保守路径。新 RED 先要求无分号
+导出值可搜索，同时不能把下一条本地箭头函数误认成该导出；实现将普通值持久化为独立 `variable`
+symbol kind，箭头函数继续保持 `function`。Memory/SQLite（含 reopen）和 sidecar NDJSON 公共协议均覆盖
+该合同。
+
+固定 Photos 6.1 `BUNDLE_NAMES` 的 legacy/indexed 两个独立新进程均返回相同 14 个 Location、相同
+Location hash 和 6 条正常 diagnostics。indexed 路径以 `indexed-declaration` 接受 7 个 candidate files，
+零 fallback，顺序运行三个 batches；最大 Program 只有 346 个 project SourceFiles，对比完整 membership
+1,246。单次峰值从 legacy 798,949,376 降到 584,744,960 bytes（-26.81%），但耗时从 10.624 秒升到
+21.121 秒（1.99x），仅擦线通过原型 `<=2x` 门禁，不能据此切换默认策略。下一项继续选择真实高频、
+当前 unsupported 的 symbol kind 做 exact differential；同时要降低多批 setup 成本，而不是增加并发或
+放宽 Location 完整性。详见
+[exported-value candidate 报告](../reports/2026-09-14-references-exported-value-candidates.md)。

@@ -284,6 +284,14 @@ fn sidecar_returns_conservative_reference_candidates_across_alias_reexports() {
                         "text": "import { describe } from './ConstFunction'\nconst value = describe('key')\n"
                     },
                     {
+                        "uri": "file:///workspace/Value.ets",
+                        "text": "export const selectionModeSize: number = 48\n"
+                    },
+                    {
+                        "uri": "file:///workspace/ValueConsumer.ets",
+                        "text": "import { selectionModeSize } from './Value'\nconst width = selectionModeSize\n"
+                    },
+                    {
                         "uri": "file:///workspace/Enum.ets",
                         "text": "export enum ConflictFunc { AI, EDIT }\n"
                     },
@@ -406,6 +414,43 @@ fn sidecar_returns_conservative_reference_candidates_across_alias_reexports() {
             "file:///workspace/ConstConsumer.ets",
             "file:///workspace/ConstFunction.ets"
         ])
+    );
+
+    let exported_value = process.request(json!({
+        "protocol": 1,
+        "id": 401,
+        "method": "references/candidates",
+        "params": {
+            "declarationUri": "file:///workspace/Value.ets",
+            "declarationPosition": {"line": 0, "character": 15},
+            "limit": 100
+        }
+    }));
+    assert_eq!(exported_value["ok"], true);
+    assert_eq!(exported_value["result"]["supported"], true);
+    assert_eq!(exported_value["result"]["complete"], true);
+    assert_eq!(
+        exported_value["result"]["declarationIdentity"],
+        "file:///workspace/Value.ets#0:13:selectionModeSize"
+    );
+    assert_eq!(
+        exported_value["result"]["uris"],
+        json!([
+            "file:///workspace/Value.ets",
+            "file:///workspace/ValueConsumer.ets"
+        ])
+    );
+
+    let exported_value_workspace_symbol = process.request(json!({
+        "protocol": 1,
+        "id": 402,
+        "method": "search",
+        "params": { "query": "selectionModeSize", "limit": 20 }
+    }));
+    assert_eq!(exported_value_workspace_symbol["ok"], true);
+    assert_eq!(
+        exported_value_workspace_symbol["result"]["items"][0]["kind"],
+        "variable"
     );
 
     let enum_symbol = process.request(json!({
