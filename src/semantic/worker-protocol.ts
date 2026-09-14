@@ -268,6 +268,7 @@ export interface SemanticWorkerReferencesArgs {
   readonly includeDeclaration: boolean
   readonly candidateUris?: readonly string[]
   readonly candidateIdentityComplete?: boolean
+  readonly candidateAnchorUri?: string
 }
 
 export interface SemanticWorkerRequestArgsByMethod {
@@ -1350,12 +1351,12 @@ function decodeReferencesArgs(value: unknown): SemanticWorkerReferencesArgs {
   const args = ownDataRecord(
     value,
     ["position", "includeDeclaration"],
-    ["candidateUris", "candidateIdentityComplete"],
+    ["candidateUris", "candidateIdentityComplete", "candidateAnchorUri"],
   )
   if (!args || !hasRequiredAndOnlyKeys(
     args,
     ["position", "includeDeclaration"],
-    ["candidateUris", "candidateIdentityComplete"],
+    ["candidateUris", "candidateIdentityComplete", "candidateAnchorUri"],
   )) {
     throw invalidRequest()
   }
@@ -1379,11 +1380,19 @@ function decodeReferencesArgs(value: unknown): SemanticWorkerReferencesArgs {
     }
     candidateIdentityComplete = args.candidateIdentityComplete
   }
+  let candidateAnchorUri: string | undefined
+  if (Object.hasOwn(args, "candidateAnchorUri")) {
+    if (!isCanonicalSemanticWorkerFileUri(args.candidateAnchorUri)
+      || candidateIdentityComplete !== true
+      || !candidateUris?.includes(args.candidateAnchorUri)) throw invalidRequest()
+    candidateAnchorUri = args.candidateAnchorUri
+  }
   return Object.freeze({
     position,
     includeDeclaration: args.includeDeclaration,
     ...(candidateUris ? { candidateUris } : {}),
     ...(candidateIdentityComplete === undefined ? {} : { candidateIdentityComplete }),
+    ...(candidateAnchorUri ? { candidateAnchorUri } : {}),
   })
 }
 

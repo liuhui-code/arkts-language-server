@@ -456,6 +456,7 @@ impl Runtime {
                             && self.completeness == "ready",
                         "identityUris": result.identity_uris,
                         "narrowedUris": result.narrowed_uris,
+                        "declarationUri": result.declaration_uri,
                         "declarationIdentity": result.declaration_identity,
                         "names": result.names,
                         "uris": result.uris,

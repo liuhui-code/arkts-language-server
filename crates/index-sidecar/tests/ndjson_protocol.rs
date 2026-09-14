@@ -354,6 +354,10 @@ fn sidecar_returns_conservative_reference_candidates_across_alias_reexports() {
         "file:///workspace/Target.ets#0:13:Thing"
     );
     assert_eq!(
+        candidates["result"]["declarationUri"],
+        "file:///workspace/Target.ets"
+    );
+    assert_eq!(
         candidates["result"]["names"],
         json!(["Alias", "PublicThing", "Thing"])
     );

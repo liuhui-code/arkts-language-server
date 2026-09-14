@@ -346,6 +346,7 @@ test("maps conservative reference candidates and preserves their generation and 
       pathToFileURL(path.join(workspace, "Consumer.ets")).href,
       declarationUri,
     ],
+    declarationUri,
     declarationIdentity: "fixture-reference-identity",
     names: ["Alias", "PublicThing", "Thing"],
     uris: [

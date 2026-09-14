@@ -246,6 +246,7 @@ test("decodes a query-by-reference request as a deeply immutable transport snaps
       includeDeclaration: true,
       candidateUris: ["file:///workspace/Main.ets", "file:///workspace/Use.ets"],
       candidateIdentityComplete: true,
+      candidateAnchorUri: "file:///workspace/Main.ets",
     },
     cancelCell,
   }
@@ -436,6 +437,16 @@ test("rejects malformed requests, executable values, document text, and invalid 
         position: { line: 0, character: 0 },
         includeDeclaration: true,
         candidateIdentityComplete: true,
+      },
+    }),
+    requestEnvelope(protocol, {
+      method: "references",
+      args: {
+        position: { line: 0, character: 0 },
+        includeDeclaration: true,
+        candidateUris: ["file:///workspace/Main.ets"],
+        candidateIdentityComplete: true,
+        candidateAnchorUri: "file:///workspace/Other.ets",
       },
     }),
   ]

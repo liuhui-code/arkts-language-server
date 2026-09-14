@@ -448,6 +448,7 @@ export class SemanticTypeEngineRegistry {
     includeDeclaration: boolean,
     candidatePaths?: readonly string[],
     candidateIdentityComplete = false,
+    candidateAnchorPath?: string,
   ): Promise<SemanticReferenceQueryResult> {
     if (this.referenceSearch) {
       const isolatedWorkspace = this.withProjectFileIdentities(workspace)
@@ -460,6 +461,7 @@ export class SemanticTypeEngineRegistry {
         includeDeclaration,
         candidatePaths,
         candidateIdentityComplete,
+        candidateAnchorPath,
         candidatePaths
           ? this.packageResolver.projectFor(workspace.rootPath).semanticGraph()
           : undefined,

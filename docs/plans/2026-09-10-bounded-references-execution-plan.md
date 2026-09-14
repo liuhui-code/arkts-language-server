@@ -943,3 +943,18 @@ import closure 是 working-set 的主要放大器，但仍未达到最终 50% pe
 Program 内稳定重建 anchor，才允许 multi-batch identity verification；在此之前不得减小 root limit、
 并发多个 verifier 或容忍 incomplete identity。详见
 [identity-bounded dependency 报告](../reports/2026-09-14-references-identity-bounded-dependencies.md)。
+
+2026-09-15 multi-batch identity anchor：上一 slice 已证明把 declaration 与 consumer 分到不同 Program
+会漏引用，因此新公共 LSP RED 把 direct-import identity root limit 从 64 降到 1，并固定复现两批退回
+closure、consumer batch 加载 9 个 project files。实现没有解析 opaque declaration identity，而是在 Rust
+memory/SQLite result 与 sidecar wire 中显式增加 `declarationUri`；该 URI 必须属于完整 identity candidate
+set，并固定进入每个 batch。每个新 Program 因此能重新解析 query symbol，再由 compiler 精确验证该批。
+
+真实 Photos 门禁从 declaration 改到 `AgreementConfig.ets` 的 `Routers` import 使用点。3×legacy 与
+3×identity 均返回 19/19 exact Locations 和相同 8 条 diagnostics。identity 强制 root limit 1 后顺序完成
+两个 batch、零 expansion，最大 Program 127 files（3 project + 124 SDK）；中位请求从 8.953 秒降到
+6.542 秒，中位产品 RSS 从 807,149,568 降到 425,357,312 bytes（-47.30%）。这关闭真实 usage-site
+multi-batch correctness gate，但 0.527 ratio 仍高于最终 0.50，且不是用户报告的 >3 GB 工程，所以生产
+继续 `legacy`、dependency profile 继续默认 `closure`。下一步不再缩 project roots；应 profile 剩余
+124 SDK roots / verifier setup，或取得原始 >3 GB reproducer。详见
+[multi-batch identity anchor 报告](../reports/2026-09-15-references-multibatch-identity-anchor.md)。

@@ -615,7 +615,7 @@ implemented, so its maximum project Program size was unchanged:
 
 ```bash
 pnpm build
-node --test --test-name-pattern="resolves a direct named import usage" \
+node --test --test-name-pattern="pins the declaration anchor across direct-import batches" \
   tests/semantic/references-batching.test.mjs
 ```
 
@@ -641,3 +641,29 @@ from 206 to 2 and from 218 to 3; median peak RSS fell 34.61% and 29.70%, while
 median request time increased 99.53% and 38.51%. The experiment is default-off
 and does not pass the final 50% memory release gate. Detailed evidence is in
 [the identity-bounded dependency report](../reports/2026-09-14-references-identity-bounded-dependencies.md).
+
+## Multi-batch identity anchor (2026-09-15)
+
+Parent revision: `5c0b4ebdea42573c233ffd0bf482575371630561`.
+
+The direct-import public LSP test reduced the identity root limit from 64 to
+one. RED showed two closure batches; the consumer batch loaded nine project
+files because it could not resolve the query declaration without the target
+file. A second NDJSON RED required `declarationUri` beside the opaque
+declaration identity and observed `null` from the old sidecar contract.
+
+The minimal GREEN carries the explicit declaration URI through Rust memory and
+SQLite results, sidecar mapping, the semantic worker, and the executor. The URI
+must belong to the complete identity candidate set. It is pinned into every
+identity batch, allowing each fresh Program to reconstruct the same symbol.
+The public LSP fixture now completes two identity batches, preserves exact
+Location equality, and bounds the largest Program to three project files.
+
+The real Photos `Routers` query moved from the declaration to an import usage
+in `AgreementConfig.ets`. Three legacy and three identity runs all returned
+19/19 exact Locations and eight identical diagnostics. Identity verification
+used two batches with a maximum of three project plus 124 SDK SourceFiles.
+Median peak RSS fell 47.30%, from 807,149,568 to 425,357,312 bytes, while the
+request median improved from 8.953 to 6.542 seconds. The 0.527 RSS ratio remains
+above the final 0.50 release gate; defaults remain unchanged. See the
+[multi-batch identity anchor report](../reports/2026-09-15-references-multibatch-identity-anchor.md).

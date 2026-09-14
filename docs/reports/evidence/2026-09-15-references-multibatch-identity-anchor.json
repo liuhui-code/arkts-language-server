@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "status": "PASS",
+  "releaseDefaultGate": "NOT_PASSED",
+  "parentRevision": "5c0b4ebdea42573c233ffd0bf482575371630561",
+  "environment": {
+    "workspace": "OpenHarmony applications_photos",
+    "workspaceRevision": "98ea1d9cd6a363c576e2c6ff17844e51723baec5",
+    "sdkApiLevel": 24,
+    "sdkVersion": "6.1.1.125",
+    "nodeVersion": "v26.3.0",
+    "serverSha256": "045cc655f994c6894e95bed799dc85b4d09cd1eb11a9b905dd214d5712bdbb58",
+    "sidecarSha256": "4f105c49d786fae7c7da80f7547c45399c3ed4e9d42cb7bf348882cc4b55b4af",
+    "memoryMeasurement": "external-process-tree-rss"
+  },
+  "target": {
+    "file": "feature/privacy/src/main/ets/about/AgreementConfig.ets",
+    "symbol": "Routers",
+    "position": { "line": 20, "character": 16, "encoding": "UTF-16" },
+    "request": "textDocument/references",
+    "includeDeclaration": true,
+    "locations": 19,
+    "diagnostics": 8,
+    "referenceHash": "e8a3d315a06711100b45ad2f3785bc53b2e94e844e0a1d7f269c8c2f2cddcf4c"
+  },
+  "legacy": {
+    "runs": [
+      { "requestMs": 8953.20, "peakProductRssBytes": 807149568 },
+      { "requestMs": 8871.71, "peakProductRssBytes": 811466752 },
+      { "requestMs": 9026.00, "peakProductRssBytes": 803962880 }
+    ],
+    "medianRequestMs": 8953.20,
+    "medianPeakProductRssBytes": 807149568
+  },
+  "identityBatched": {
+    "batchRootLimit": 1,
+    "completedBatches": 2,
+    "semanticUnitExpansionAttempts": 0,
+    "maxProgramSourceFiles": 127,
+    "maxProgramProjectFiles": 3,
+    "sdkSourceFiles": 124,
+    "runs": [
+      { "requestMs": 5710.16, "peakProductRssBytes": 425357312 },
+      { "requestMs": 6541.55, "peakProductRssBytes": 417001472 },
+      { "requestMs": 8126.69, "peakProductRssBytes": 451002368 }
+    ],
+    "medianRequestMs": 6541.55,
+    "medianPeakProductRssBytes": 425357312
+  },
+  "comparison": {
+    "requestRatio": 0.731,
+    "peakRssRatio": 0.527,
+    "peakRssReduction": 0.4730,
+    "exactLocationEquality": true,
+    "exactDiagnosticEquality": true
+  }
+}

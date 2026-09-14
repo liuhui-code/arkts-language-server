@@ -373,6 +373,7 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     query: SemanticReferencesQuery,
     candidateUris?: readonly string[],
     candidateIdentityComplete = false,
+    candidateAnchorUri?: string,
   ): Promise<VersionedSemanticResult<SemanticReferencesOutcome>> {
     assertActive(query.signal)
     this.sync(query.document)
@@ -387,6 +388,7 @@ export class LegacySemanticEngine implements SemanticEnginePort {
         return filePath ? [filePath] : []
       }),
       candidateIdentityComplete,
+      candidateAnchorUri ? toFilePath(candidateAnchorUri) ?? undefined : undefined,
     )
     return {
       documentVersion: query.document.version,

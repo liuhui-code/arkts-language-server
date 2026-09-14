@@ -63,6 +63,7 @@ export interface WorkspaceReferenceCandidateResult {
   identityComplete: boolean
   identityUris: DocumentUri[]
   narrowedUris?: DocumentUri[]
+  declarationUri?: DocumentUri
   declarationIdentity?: string
   names: string[]
   uris: DocumentUri[]
