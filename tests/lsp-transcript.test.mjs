@@ -9,8 +9,16 @@ import { LspProcess, projectRoot, withTimeout } from "./support/lsp-process.mjs"
 
 const basicFixtureRoot = path.join(projectRoot, "fixtures", "basic")
 
+function openBasicServer() {
+  return new LspProcess({
+    env: {
+      ARKLINE_HARMONY_SDK_PATH: path.join(basicFixtureRoot, "missing-sdk"),
+    },
+  })
+}
+
 test("initializes as a standalone ArkTS language server over stdio", async (t) => {
-  const server = new LspProcess()
+  const server = openBasicServer()
   t.after(() => server.close())
 
   server.send({
@@ -33,7 +41,7 @@ test("initializes as a standalone ArkTS language server over stdio", async (t) =
 })
 
 test("completes both a field and a method from the opened ArkTS snapshot", async (t) => {
-  const server = new LspProcess()
+  const server = openBasicServer()
   t.after(() => server.close())
 
   server.send({
@@ -84,7 +92,7 @@ test("completes both a field and a method from the opened ArkTS snapshot", async
 })
 
 test("returns an exact cross-file definition from an ArkTS dependency", async (t) => {
-  const server = new LspProcess()
+  const server = openBasicServer()
   t.after(() => server.close())
   const mainPath = path.join(basicFixtureRoot, "Main.ets")
   const modelPath = path.join(basicFixtureRoot, "Model.ets")
@@ -133,7 +141,7 @@ test("returns an exact cross-file definition from an ArkTS dependency", async (t
 })
 
 test("returns the exact unopened type definition for an ArkTS variable", async (t) => {
-  const server = new LspProcess()
+  const server = openBasicServer()
   t.after(() => server.close())
   const mainPath = path.join(basicFixtureRoot, "Main.ets")
   const modelPath = path.join(basicFixtureRoot, "Model.ets")
@@ -187,7 +195,7 @@ test("returns the exact unopened type definition for an ArkTS variable", async (
 })
 
 test("returns exact unopened implementations of an ArkTS interface and abstract class", async (t) => {
-  const server = new LspProcess()
+  const server = openBasicServer()
   t.after(() => server.close())
   const contractsPath = path.join(basicFixtureRoot, "NavigationContracts.ets")
   const implementationsPath = path.join(basicFixtureRoot, "NavigationImplementations.ets")
@@ -264,7 +272,7 @@ test("returns exact unopened implementations of an ArkTS interface and abstract 
 })
 
 test("returns complete parameter-name inlay hints for an ArkTS call", async (t) => {
-  const server = new LspProcess()
+  const server = openBasicServer()
   t.after(() => server.close())
   const documentPath = path.join(basicFixtureRoot, "InlayHints.ets")
   const documentUri = pathToFileURL(documentPath).href
@@ -321,7 +329,7 @@ test("returns complete parameter-name inlay hints for an ArkTS call", async (t) 
 })
 
 test("returns an inferred type inlay hint within the requested UTF-16 range", async (t) => {
-  const server = new LspProcess()
+  const server = openBasicServer()
   t.after(() => server.close())
   const documentPath = path.join(basicFixtureRoot, "InlayHints.ets")
   const documentUri = pathToFileURL(documentPath).href
@@ -387,7 +395,7 @@ test("returns an inferred type inlay hint within the requested UTF-16 range", as
 })
 
 test("returns inlay hints from the latest changed ArkTS overlay", async (t) => {
-  const server = new LspProcess()
+  const server = openBasicServer()
   t.after(() => server.close())
   const documentPath = path.join(basicFixtureRoot, "InlayHints.ets")
   const documentUri = pathToFileURL(documentPath).href
@@ -448,7 +456,7 @@ test("returns inlay hints from the latest changed ArkTS overlay", async (t) => {
 })
 
 test("acknowledges shutdown and exits cleanly", async (t) => {
-  const server = new LspProcess()
+  const server = openBasicServer()
   t.after(() => server.close())
   server.send({
     jsonrpc: "2.0",
