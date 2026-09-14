@@ -8,6 +8,8 @@ import ts from "typescript"
 
 const MAX_SOURCE_BYTES = 1024 * 1024
 const MAX_ETS_CONFIG_BYTES = 256 * 1024
+const MAX_SDK_METADATA_BYTES = 64 * 1024
+const ETS_ANNOTATIONS_API_LEVEL = 24
 
 try {
   const { sourcePath, sdkRoot } = parseInputs(process.argv.slice(2))
@@ -142,11 +144,35 @@ function loadSdk(sdkRoot) {
     path.join(sdkRoot, "ets", "component", "common.d.ts"),
     path.join(sdkRoot, "ets", "component", "arkui.d.ts"),
   ].find((candidate) => fs.existsSync(candidate))
-  const declarationPaths = ambientDeclaration ? [ambientDeclaration] : []
+  const annotationDeclarations = [
+    path.join(sdkRoot, "ets", "api", "@ohos.annotation.d.ets"),
+    path.join(sdkRoot, "ets", "arkts", "@arkts.lang.d.ets"),
+  ].filter((candidate) => fs.existsSync(candidate))
+  const declarationPaths = [
+    ...(ambientDeclaration ? [ambientDeclaration] : []),
+    ...annotationDeclarations,
+  ]
   return {
-    compilerOptions: { ets, etsLoaderPath: loaderRoot },
+    compilerOptions: {
+      ...sdkFeatureOptions(sdkRoot),
+      ets,
+      etsLoaderPath: loaderRoot,
+    },
     declarationPaths,
   }
+}
+
+function sdkFeatureOptions(sdkRoot) {
+  const metadataPath = path.join(sdkRoot, "ets", "oh-uni-package.json")
+  const stat = fs.statSync(metadataPath)
+  if (!stat.isFile() || stat.size > MAX_SDK_METADATA_BYTES) {
+    throw new Error("SDK ETS metadata is missing or too large")
+  }
+  const metadata = JSON5.parse(fs.readFileSync(metadataPath, "utf8"))
+  const apiLevel = Number(metadata?.apiVersion)
+  return Number.isInteger(apiLevel) && apiLevel >= ETS_ANNOTATIONS_API_LEVEL
+    ? { etsAnnotationsEnable: true }
+    : {}
 }
 
 function usage() {

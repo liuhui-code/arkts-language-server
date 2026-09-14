@@ -531,6 +531,28 @@ S2d ownership-boundary batch 完成证据（2026-09-09）：
 RED/GREEN 与可复现命令见
 [Backend Spike S2d boundary contracts TDD 记录](../tdd/backend-spike-boundary-contracts.md)。
 
+S2e API 24 annotation revalidation（2026-09-14）：真实 Gramony declaration-façade
+实验暴露出原 S2 smoke 只解析 `.d.ts`、未实际解析 API 24 `export @interface` 的覆盖缺口。
+机械复核确认生产 npm `ohos-typescript@4.9.5-r4` 与锁定 source revision 产物并不等价；
+`r4` 缺少 annotation declaration parser API。现已：
+
+- [x] 生产依赖升级并由 `pnpm-lock.yaml` 精确锁定为 `ohos-typescript@4.9.5-r10`；
+- [x] artifact SHA-256 固定为
+  `af9e3c4689e3250de1d869b219abb76081c6ea1d3df81bd6b8f6a74c3174b6bc`；
+- [x] SDK API level 从 `ets/oh-uni-package.json` 读取，API 24+ 传入官方
+  `etsAnnotationsEnable`，不做源码 rewrite；
+- [x] `ets/api/@ohos.annotation.d.ets` 与 `ets/arkts/@arkts.lang.d.ets` 分别得到
+  2/1 个 `AnnotationDeclaration`，syntactic diagnostics 均为 0；
+- [x] source revision 与生产 artifact 各自执行同一 target-SDK smoke，任一失败都会令
+  spike 总状态 FAIL；
+- [x] 原 34 个 semantic contracts 仍为 34 passed、0 failed、0 deferred；
+- [x] Gramony `DateHelper` 的真实 full-SDK indexed-batched references 返回 8/8 精确位置，
+  3.125 秒，产品进程树峰值 433,258,496 bytes，正常 diagnostics 保留。
+
+`ets2panda` fallback 不触发：官方 TypeScript backend 已通过新增的 target-SDK syntax gate。
+但 declaration façade 仍因真实工程 native/third-party declarations 不完整而 fail closed，不能因此
+宣称 façade 路径可用。
+
 ### S3：lifecycle 与 memory spike
 
 S2d 只关闭 semantic correctness gate。进入 Backend Cutover 前必须继续满足：
@@ -582,7 +604,8 @@ GREEN 后才能继续 advertise。
   `src/core/virtual/arkts-virtual-document.ts` 不再承担生产语义改写并从该路径删除；
 - `pnpm check:fast` 与 `pnpm check:release` 全绿。
 
-当前证据（2026-09-09）：production package 已锁为 `ohos-typescript@4.9.5-r4`；默认 composition
+当前证据（2026-09-09，2026-09-14 API 24 复核）：production package 已锁为
+`ohos-typescript@4.9.5-r10`；默认 composition
 只有一个 official backend factory；shared registry pool 已接入；virtual rewrite 文件已删除；
 SDK runtime configuration、module resolution、definition/references/rename、struct call hierarchy、
 ArkUI 与 formatting 回归均已关闭。macOS lexical/physical workspace alias 下的 overlay close

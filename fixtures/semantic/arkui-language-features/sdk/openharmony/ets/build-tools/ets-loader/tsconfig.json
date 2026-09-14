@@ -1,0 +1,43 @@
+{
+  "compilerOptions": {
+    "ets": {
+      "render": {
+        "method": ["build"],
+        "decorator": []
+      },
+      "components": ["Column", "Text"],
+      "libs": [],
+      "extend": {
+        "decorator": [],
+        "components": []
+      },
+      "styles": {
+        "decorator": "Styles",
+        "component": {
+          "name": "",
+          "type": "",
+          "instance": ""
+        },
+        "property": ""
+      },
+      "concurrent": {
+        "decorator": "Concurrent"
+      },
+      "propertyDecorators": [],
+      "emitDecorators": [
+        {
+          "name": "Entry",
+          "emitParameters": true
+        },
+        {
+          "name": "Component",
+          "emitParameters": false
+        },
+        {
+          "name": "State",
+          "emitParameters": false
+        }
+      ]
+    }
+  }
+}

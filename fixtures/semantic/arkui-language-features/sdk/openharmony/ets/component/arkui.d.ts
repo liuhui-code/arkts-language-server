@@ -14,6 +14,8 @@ interface ArkUICommonAttribute {
 
 interface ArkUIColumnAttribute extends ArkUICommonAttribute {}
 interface ArkUITextAttribute extends ArkUICommonAttribute {}
+interface ColumnAttribute extends ArkUIColumnAttribute {}
+interface TextAttribute extends ArkUITextAttribute {}
 
 declare function $r(name: string): ArkUIResourceValue
 declare function Column(): ArkUIColumnAttribute

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "node:child_process"
+import { createHash } from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 import { createRequire } from "node:module"
@@ -40,6 +41,9 @@ function run() {
   }
 
   requireSdkLayout(options.sdk)
+  const productionPackage = readJson(path.join(projectRoot, "package.json"))
+  const productionCompilerPath = require.resolve("typescript")
+  const productionCompiler = require(productionCompilerPath)
   const manifest = readJson(path.join(options.contracts, "manifest.json"))
   const cases = manifest.caseFiles.flatMap(({ category, path: casePath }) => (
     readJson(path.join(options.contracts, ...casePath.split("/")))
@@ -58,9 +62,14 @@ function run() {
         }
   ))
   const summary = summarizeSpikeResults(results, manifest.minimumCases)
+  const sdkSmoke = runSdkSmoke(compiler, options.sdk)
+  const productionSdkSmoke = runSdkSmoke(productionCompiler, options.sdk)
+  const status = sdkSmoke.status === "FAIL" || productionSdkSmoke.status === "FAIL"
+    ? "FAIL"
+    : summary.status
   const report = {
     schemaVersion: 1,
-    status: summary.status,
+    status,
     backendRevision: lock.semanticBackendRevision,
     backendPackage: packageJson.name,
     backendPackageVersion: packageJson.version,
@@ -69,17 +78,25 @@ function run() {
     sdkApiLevel: lock.sdkApiLevel,
     sdkDeclarationDigest: lock.sdkDeclarationDigest,
     productionWiring: false,
-    sdkSmoke: runSdkSmoke(compiler, options.sdk),
+    sdkSmoke,
+    productionCompiler: {
+      packageSpecifier: productionPackage.dependencies?.typescript ?? null,
+      compilerVersion: productionCompiler.version,
+      artifactSha256: createHash("sha256")
+        .update(fs.readFileSync(productionCompilerPath))
+        .digest("hex"),
+      sdkSmoke: productionSdkSmoke,
+    },
     summary,
     results,
   }
   writeJsonAtomically(options.out, report)
-  process.stdout.write("OHOS_TYPESCRIPT_SPIKE=" + summary.status + "\n")
+  process.stdout.write("OHOS_TYPESCRIPT_SPIKE=" + status + "\n")
   process.stdout.write(
     "EXECUTED=" + summary.totals.passed + " DEFERRED=" + summary.totals.deferred
       + " FAILED=" + summary.totals.failed + "\n",
   )
-  if (summary.status !== "PASS" && !options.allowIncomplete) process.exitCode = 42
+  if (status !== "PASS" && !options.allowIncomplete) process.exitCode = 42
 }
 
 function runScenarioCase(compiler, contractsRoot, record) {
@@ -169,26 +186,68 @@ function runRawCase(compiler, contractsRoot, record) {
 }
 
 function runSdkSmoke(compiler, sdkRoot) {
-  const relativePath = "ets/api/@ohos.hilog.d.ts"
-  const fileName = path.join(sdkRoot, ...relativePath.split("/"))
-  const text = fs.readFileSync(fileName, "utf8")
-  const sourceFile = compiler.createSourceFile(
-    fileName,
-    text,
-    compiler.ScriptTarget.Latest,
-    true,
-    compiler.ScriptKind.TS,
-  )
+  const metadata = readJson(path.join(sdkRoot, "ets", "oh-uni-package.json"))
+  const apiLevel = Number(metadata.apiVersion)
+  const compilerOptions = Number.isInteger(apiLevel) && apiLevel >= 24
+    ? { etsAnnotationsEnable: true }
+    : {}
+  const files = [
+    { relativePath: "ets/api/@ohos.hilog.d.ts", scriptKind: compiler.ScriptKind.TS },
+    { relativePath: "ets/api/@ohos.annotation.d.ets", scriptKind: compiler.ScriptKind.ETS },
+    { relativePath: "ets/arkts/@arkts.lang.d.ets", scriptKind: compiler.ScriptKind.ETS },
+  ].map(({ relativePath, scriptKind }) => {
+    const fileName = path.join(sdkRoot, ...relativePath.split("/"))
+    const text = fs.readFileSync(fileName, "utf8")
+    const sourceFile = compiler.createSourceFile(
+      fileName,
+      text,
+      compiler.ScriptTarget.Latest,
+      true,
+      scriptKind,
+      compilerOptions,
+    )
+    return {
+      relativePath,
+      scriptKind,
+      bytes: Buffer.byteLength(text),
+      syntacticDiagnostics: sourceFile.parseDiagnostics
+        .map((diagnostic) => diagnosticIdentity(compiler, diagnostic)),
+      annotationDeclarations: sourceFile.statements
+        .filter((statement) => compiler.isAnnotationDeclaration?.(statement))
+        .length,
+    }
+  })
+  const failureReasons = files.flatMap((file) => {
+    const reasons = file.syntacticDiagnostics.length > 0
+      ? [`${file.relativePath} has syntax diagnostics`]
+      : []
+    if (
+      apiLevel >= 24
+      && file.relativePath.endsWith(".d.ets")
+      && file.annotationDeclarations === 0
+    ) {
+      reasons.push(`${file.relativePath} has no annotation declarations`)
+    }
+    return reasons
+  })
   return {
-    relativePath,
-    bytes: Buffer.byteLength(text),
-    syntacticDiagnostics: sourceFile.parseDiagnostics
-      .map((diagnostic) => diagnosticIdentity(compiler, diagnostic)),
+    status: failureReasons.length === 0 ? "PASS" : "FAIL",
+    apiLevel,
+    etsAnnotationsEnable: compilerOptions.etsAnnotationsEnable === true,
+    failureReasons,
+    files,
   }
 }
 
 function requireSdkLayout(sdkRoot) {
-  for (const relativePath of ["ets", "toolchains", "ets/api/@ohos.hilog.d.ts"]) {
+  for (const relativePath of [
+    "ets",
+    "toolchains",
+    "ets/oh-uni-package.json",
+    "ets/api/@ohos.hilog.d.ts",
+    "ets/api/@ohos.annotation.d.ets",
+    "ets/arkts/@arkts.lang.d.ets",
+  ]) {
     const candidate = path.join(sdkRoot, ...relativePath.split("/"))
     if (!fs.existsSync(candidate)) throw new Error("SDK input is missing: " + relativePath)
   }

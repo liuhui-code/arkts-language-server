@@ -15,7 +15,9 @@
   "toolchain": {
     "semanticBackend": "openharmony/third_party_typescript",
     "semanticBackendRevision": "9cc62fe98f47c0bf113676e3fb33fe932b493052",
-    "packageVersion": "4.9.5-r4",
+    "sourcePackageVersion": "4.9.5-r4",
+    "productionPackageVersion": "4.9.5-r10",
+    "productionCompilerSha256": "af9e3c4689e3250de1d869b219abb76081c6ea1d3df81bd6b8f6a74c3174b6bc",
     "sdkApiLevel": 24,
     "sdkVersion": "6.1.1.125",
     "sdkDeclarationDigest": "8098b8abbc6b06fce0e7322d6f8f82a5bbce41e847dbd39e9a98811a33d4c6e4"
@@ -23,34 +25,35 @@
   "emit": {
     "exitCode": 42,
     "status": "FAIL",
-    "programSourceFiles": 807,
+    "programSourceFiles": 545,
     "emittedDeclarationFiles": 45,
-    "errorDiagnostics": 145,
+    "errorDiagnostics": 71,
     "representativeDiagnostics": [
-      {
-        "code": 1128,
-        "fileName": "@ohos.annotation.d.ets",
-        "line": 31,
-        "message": "Declaration or statement expected."
-      },
-      {
-        "code": 1146,
-        "fileName": "@ohos.annotation.d.ets",
-        "line": 31,
-        "message": "Declaration expected."
-      },
-      {
-        "code": 1434,
-        "fileName": "@arkts.lang.d.ets",
-        "line": 89,
-        "message": "Unexpected keyword or identifier."
-      },
       {
         "code": 2307,
         "fileName": "Chat.ets",
         "message": "Cannot find module '@liushengyi/smartdb' or its corresponding type declarations."
+      },
+      {
+        "code": 2307,
+        "fileName": "DatabaseConstants.ets",
+        "message": "Cannot find module '@ohos/base' or its corresponding type declarations."
       }
     ]
+  },
+  "api24AnnotationParserGate": {
+    "passed": true,
+    "compilerOption": "etsAnnotationsEnable",
+    "sdkFiles": {
+      "ets/api/@ohos.annotation.d.ets": {
+        "syntacticDiagnostics": 0,
+        "annotationDeclarations": 2
+      },
+      "ets/arkts/@arkts.lang.d.ets": {
+        "syntacticDiagnostics": 0,
+        "annotationDeclarations": 1
+      }
+    }
   },
   "correctnessGate": {
     "requiredErrorDiagnostics": 0,

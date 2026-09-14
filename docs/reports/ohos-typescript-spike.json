@@ -10,9 +10,67 @@
   "sdkDeclarationDigest": "8098b8abbc6b06fce0e7322d6f8f82a5bbce41e847dbd39e9a98811a33d4c6e4",
   "productionWiring": false,
   "sdkSmoke": {
-    "relativePath": "ets/api/@ohos.hilog.d.ts",
-    "bytes": 16744,
-    "syntacticDiagnostics": []
+    "status": "PASS",
+    "apiLevel": 24,
+    "etsAnnotationsEnable": true,
+    "failureReasons": [],
+    "files": [
+      {
+        "relativePath": "ets/api/@ohos.hilog.d.ts",
+        "scriptKind": 3,
+        "bytes": 16744,
+        "syntacticDiagnostics": [],
+        "annotationDeclarations": 0
+      },
+      {
+        "relativePath": "ets/api/@ohos.annotation.d.ets",
+        "scriptKind": 8,
+        "bytes": 3157,
+        "syntacticDiagnostics": [],
+        "annotationDeclarations": 2
+      },
+      {
+        "relativePath": "ets/arkts/@arkts.lang.d.ets",
+        "scriptKind": 8,
+        "bytes": 2324,
+        "syntacticDiagnostics": [],
+        "annotationDeclarations": 1
+      }
+    ]
+  },
+  "productionCompiler": {
+    "packageSpecifier": "npm:ohos-typescript@4.9.5-r10",
+    "compilerVersion": "4.9.5",
+    "artifactSha256": "af9e3c4689e3250de1d869b219abb76081c6ea1d3df81bd6b8f6a74c3174b6bc",
+    "sdkSmoke": {
+      "status": "PASS",
+      "apiLevel": 24,
+      "etsAnnotationsEnable": true,
+      "failureReasons": [],
+      "files": [
+        {
+          "relativePath": "ets/api/@ohos.hilog.d.ts",
+          "scriptKind": 3,
+          "bytes": 16744,
+          "syntacticDiagnostics": [],
+          "annotationDeclarations": 0
+        },
+        {
+          "relativePath": "ets/api/@ohos.annotation.d.ets",
+          "scriptKind": 8,
+          "bytes": 3157,
+          "syntacticDiagnostics": [],
+          "annotationDeclarations": 2
+        },
+        {
+          "relativePath": "ets/arkts/@arkts.lang.d.ets",
+          "scriptKind": 8,
+          "bytes": 2324,
+          "syntacticDiagnostics": [],
+          "annotationDeclarations": 1
+        }
+      ]
+    }
   },
   "summary": {
     "status": "PASS",
@@ -92,6 +150,9 @@
         "projectFileCount": 1,
         "snapshotReadCount": 51,
         "uniqueSnapshotReadCount": 51,
+        "snapshotMaterializationCount": 51,
+        "snapshotMaterializedBytes": 1258831,
+        "trimCount": 0,
         "disposed": true
       }
     },
@@ -113,6 +174,9 @@
         "projectFileCount": 1,
         "snapshotReadCount": 51,
         "uniqueSnapshotReadCount": 51,
+        "snapshotMaterializationCount": 51,
+        "snapshotMaterializedBytes": 1258894,
+        "trimCount": 0,
         "disposed": true
       }
     },
@@ -134,6 +198,9 @@
         "projectFileCount": 1,
         "snapshotReadCount": 51,
         "uniqueSnapshotReadCount": 51,
+        "snapshotMaterializationCount": 51,
+        "snapshotMaterializedBytes": 1258850,
+        "trimCount": 0,
         "disposed": true
       }
     },
@@ -166,6 +233,9 @@
         "projectFileCount": 1,
         "snapshotReadCount": 51,
         "uniqueSnapshotReadCount": 51,
+        "snapshotMaterializationCount": 51,
+        "snapshotMaterializedBytes": 1258919,
+        "trimCount": 0,
         "disposed": true
       }
     },
@@ -198,6 +268,9 @@
         "projectFileCount": 2,
         "snapshotReadCount": 52,
         "uniqueSnapshotReadCount": 52,
+        "snapshotMaterializationCount": 52,
+        "snapshotMaterializedBytes": 1258961,
+        "trimCount": 0,
         "disposed": true
       }
     },
@@ -223,6 +296,9 @@
         "projectFileCount": 2,
         "snapshotReadCount": 52,
         "uniqueSnapshotReadCount": 52,
+        "snapshotMaterializationCount": 52,
+        "snapshotMaterializedBytes": 1258841,
+        "trimCount": 0,
         "disposed": true
       }
     },
@@ -264,6 +340,9 @@
         "projectFileCount": 2,
         "snapshotReadCount": 52,
         "uniqueSnapshotReadCount": 52,
+        "snapshotMaterializationCount": 52,
+        "snapshotMaterializedBytes": 1258895,
+        "trimCount": 0,
         "disposed": true
       }
     },
@@ -284,6 +363,9 @@
         "projectFileCount": 1,
         "snapshotReadCount": 51,
         "uniqueSnapshotReadCount": 51,
+        "snapshotMaterializationCount": 51,
+        "snapshotMaterializedBytes": 1258879,
+        "trimCount": 0,
         "disposed": true
       }
     },
@@ -304,6 +386,9 @@
         "projectFileCount": 3,
         "snapshotReadCount": 53,
         "uniqueSnapshotReadCount": 53,
+        "snapshotMaterializationCount": 53,
+        "snapshotMaterializedBytes": 1258935,
+        "trimCount": 0,
         "disposed": true
       }
     },
@@ -324,6 +409,9 @@
         "projectFileCount": 2,
         "snapshotReadCount": 52,
         "uniqueSnapshotReadCount": 52,
+        "snapshotMaterializationCount": 52,
+        "snapshotMaterializedBytes": 1258905,
+        "trimCount": 0,
         "disposed": true
       }
     },
@@ -367,6 +455,9 @@
         "projectFileCount": 3,
         "snapshotReadCount": 53,
         "uniqueSnapshotReadCount": 53,
+        "snapshotMaterializationCount": 53,
+        "snapshotMaterializedBytes": 1258900,
+        "trimCount": 0,
         "disposed": true
       }
     },
@@ -397,6 +488,9 @@
         "projectFileCount": 1,
         "snapshotReadCount": 102,
         "uniqueSnapshotReadCount": 51,
+        "snapshotMaterializationCount": 52,
+        "snapshotMaterializedBytes": 1258890,
+        "trimCount": 0,
         "disposed": true
       }
     },
@@ -418,6 +512,9 @@
         "projectFileCount": 81,
         "snapshotReadCount": 131,
         "uniqueSnapshotReadCount": 131,
+        "snapshotMaterializationCount": 131,
+        "snapshotMaterializedBytes": 1260892,
+        "trimCount": 0,
         "disposed": true
       }
     },
@@ -433,6 +530,9 @@
         "projectFileCount": 2,
         "snapshotReadCount": 103,
         "uniqueSnapshotReadCount": 52,
+        "snapshotMaterializationCount": 52,
+        "snapshotMaterializedBytes": 1258847,
+        "trimCount": 0,
         "disposed": true
       }
     },
@@ -483,6 +583,9 @@
         "projectFileCount": 4,
         "snapshotReadCount": 54,
         "uniqueSnapshotReadCount": 54,
+        "snapshotMaterializationCount": 54,
+        "snapshotMaterializedBytes": 1258972,
+        "trimCount": 0,
         "disposed": true
       }
     },
@@ -519,6 +622,9 @@
         "projectFileCount": 3,
         "snapshotReadCount": 53,
         "uniqueSnapshotReadCount": 53,
+        "snapshotMaterializationCount": 53,
+        "snapshotMaterializedBytes": 1258933,
+        "trimCount": 0,
         "disposed": true
       }
     },
@@ -538,6 +644,9 @@
         "projectFileCount": 2,
         "snapshotReadCount": 52,
         "uniqueSnapshotReadCount": 52,
+        "snapshotMaterializationCount": 52,
+        "snapshotMaterializedBytes": 1258907,
+        "trimCount": 0,
         "disposed": true
       }
     },
@@ -556,6 +665,9 @@
         "projectFileCount": 1,
         "snapshotReadCount": 51,
         "uniqueSnapshotReadCount": 51,
+        "snapshotMaterializationCount": 51,
+        "snapshotMaterializedBytes": 1258844,
+        "trimCount": 0,
         "disposed": true
       }
     },
@@ -575,6 +687,9 @@
         "projectFileCount": 1,
         "snapshotReadCount": 51,
         "uniqueSnapshotReadCount": 51,
+        "snapshotMaterializationCount": 51,
+        "snapshotMaterializedBytes": 1258872,
+        "trimCount": 0,
         "disposed": true
       }
     },
@@ -592,6 +707,9 @@
         "projectFileCount": 1,
         "snapshotReadCount": 102,
         "uniqueSnapshotReadCount": 51,
+        "snapshotMaterializationCount": 52,
+        "snapshotMaterializedBytes": 1258881,
+        "trimCount": 0,
         "disposed": true
       }
     },
@@ -610,6 +728,9 @@
         "projectFileCount": 1,
         "snapshotReadCount": 51,
         "uniqueSnapshotReadCount": 51,
+        "snapshotMaterializationCount": 51,
+        "snapshotMaterializedBytes": 1258872,
+        "trimCount": 0,
         "disposed": true
       }
     },
@@ -637,6 +758,9 @@
         "projectFileCount": 1,
         "snapshotReadCount": 51,
         "uniqueSnapshotReadCount": 51,
+        "snapshotMaterializationCount": 51,
+        "snapshotMaterializedBytes": 1258885,
+        "trimCount": 0,
         "disposed": true
       }
     },
@@ -654,6 +778,9 @@
         "projectFileCount": 1,
         "snapshotReadCount": 51,
         "uniqueSnapshotReadCount": 51,
+        "snapshotMaterializationCount": 51,
+        "snapshotMaterializedBytes": 1262073,
+        "trimCount": 0,
         "disposed": true
       }
     },
@@ -692,6 +819,9 @@
         "projectFileCount": 1,
         "snapshotReadCount": 51,
         "uniqueSnapshotReadCount": 51,
+        "snapshotMaterializationCount": 51,
+        "snapshotMaterializedBytes": 1258844,
+        "trimCount": 0,
         "disposed": true
       }
     },
@@ -717,6 +847,9 @@
         "projectFileCount": 1,
         "snapshotReadCount": 51,
         "uniqueSnapshotReadCount": 51,
+        "snapshotMaterializationCount": 51,
+        "snapshotMaterializedBytes": 1258823,
+        "trimCount": 0,
         "disposed": true
       }
     },
@@ -737,6 +870,9 @@
         "projectFileCount": 2,
         "snapshotReadCount": 52,
         "uniqueSnapshotReadCount": 52,
+        "snapshotMaterializationCount": 52,
+        "snapshotMaterializedBytes": 1258935,
+        "trimCount": 0,
         "disposed": true
       }
     },
@@ -753,6 +889,9 @@
         "projectFileCount": 2,
         "snapshotReadCount": 52,
         "uniqueSnapshotReadCount": 52,
+        "snapshotMaterializationCount": 52,
+        "snapshotMaterializedBytes": 1258835,
+        "trimCount": 0,
         "disposed": true
       }
     },
@@ -773,6 +912,9 @@
         "projectFileCount": 2,
         "snapshotReadCount": 52,
         "uniqueSnapshotReadCount": 52,
+        "snapshotMaterializationCount": 52,
+        "snapshotMaterializedBytes": 1258843,
+        "trimCount": 0,
         "disposed": true
       }
     },
@@ -793,6 +935,9 @@
         "projectFileCount": 2,
         "snapshotReadCount": 104,
         "uniqueSnapshotReadCount": 53,
+        "snapshotMaterializationCount": 53,
+        "snapshotMaterializedBytes": 1258867,
+        "trimCount": 0,
         "disposed": true
       }
     },
@@ -808,6 +953,9 @@
         "projectFileCount": 2,
         "snapshotReadCount": 104,
         "uniqueSnapshotReadCount": 52,
+        "snapshotMaterializationCount": 54,
+        "snapshotMaterializedBytes": 1258953,
+        "trimCount": 0,
         "disposed": true
       }
     },
@@ -828,6 +976,9 @@
         "projectFileCount": 1,
         "snapshotReadCount": 155,
         "uniqueSnapshotReadCount": 52,
+        "snapshotMaterializationCount": 54,
+        "snapshotMaterializedBytes": 1259017,
+        "trimCount": 0,
         "disposed": true
       }
     },
@@ -844,6 +995,9 @@
         "projectFileCount": 2,
         "snapshotReadCount": 104,
         "uniqueSnapshotReadCount": 52,
+        "snapshotMaterializationCount": 53,
+        "snapshotMaterializedBytes": 1258891,
+        "trimCount": 0,
         "disposed": true
       }
     }

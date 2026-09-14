@@ -8,8 +8,8 @@ dependencies:
     specifier: 5.0.7
     version: 5.0.7
   typescript:
-    specifier: npm:ohos-typescript@4.9.5-r4
-    version: /ohos-typescript@4.9.5-r4
+    specifier: npm:ohos-typescript@4.9.5-r10
+    version: /ohos-typescript@4.9.5-r10
   vscode-languageserver:
     specifier: 9.0.1
     version: 9.0.1
@@ -307,12 +307,10 @@ packages:
     hasBin: true
     dev: false
 
-  /ohos-typescript@4.9.5-r4:
-    resolution: {integrity: sha512-BhpdE1f3qt6JaDClTqDjE+Okw1GGSG/YhB0rxpSALT9BIoTPJWbC2e2kNLp9rORDn0V19TgcKtSmwfwB6jaDiQ==}
+  /ohos-typescript@4.9.5-r10:
+    resolution: {integrity: sha512-UyLXhBnUe5H4HGugf1ocYPawod0Q4ituiUATYoHIR5y4uxnH4+8ddD39aeLgcQah1YMv2DRKRaL9W1jgtnbEtQ==}
     engines: {node: '>=4.2.0'}
     hasBin: true
-    dependencies:
-      json5: 2.2.3
     dev: false
 
   /properties-file@5.0.7:
