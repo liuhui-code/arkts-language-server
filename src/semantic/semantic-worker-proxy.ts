@@ -230,6 +230,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
         candidateUris: candidates.uris,
         candidateIdentityComplete: candidates.identityComplete,
         ...(candidates.anchorUri ? { candidateAnchorUri: candidates.anchorUri } : {}),
+        ...(candidates.supportUris ? { candidateSupportUris: candidates.supportUris } : {}),
       } : {}),
     })
   }
@@ -402,8 +403,10 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
       )
       if (await this.#eligibleReferenceCandidates(query.document.workspaceId, direct)) {
         const candidateUris = identityReferenceUris(direct)
+        const supportUris = identityReferenceSupportUris(direct, candidateUris)
+        const identityComplete = direct.identityComplete && supportUris !== undefined
         this.#logger?.info("references.index.accepted", {
-          anchorMode: direct.identityComplete
+          anchorMode: identityComplete
             ? "indexed-declaration-identity"
             : direct.narrowedUris?.length
               ? "indexed-declaration-conservative"
@@ -419,10 +422,11 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
         })
         return {
           uris: candidateUris,
-          identityComplete: direct.identityComplete,
-          ...(direct.identityComplete && direct.declarationUri
+          identityComplete,
+          ...(identityComplete && direct.declarationUri
             ? { anchorUri: direct.declarationUri }
             : {}),
+          ...(identityComplete && supportUris ? { supportUris } : {}),
         }
       }
       if (direct.completeness !== "ready" || direct.supported) {
@@ -487,8 +491,10 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
         return undefined
       }
       const candidateUris = identityReferenceUris(result)
+      const supportUris = identityReferenceSupportUris(result, candidateUris)
+      const identityComplete = result.identityComplete && supportUris !== undefined
       this.#logger?.info("references.index.accepted", {
-        anchorMode: result.identityComplete
+        anchorMode: identityComplete
           ? "compiler-definition-identity"
           : result.narrowedUris?.length
             ? "compiler-definition-conservative"
@@ -504,10 +510,11 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
       })
       return {
         uris: candidateUris,
-        identityComplete: result.identityComplete,
-        ...(result.identityComplete && result.declarationUri
+        identityComplete,
+        ...(identityComplete && result.declarationUri
           ? { anchorUri: result.declarationUri }
           : {}),
+        ...(identityComplete && supportUris ? { supportUris } : {}),
       }
     } catch (error) {
       this.#logger?.info("references.index.fallback", {
@@ -856,13 +863,36 @@ interface ReferenceCandidateSelection {
   readonly uris: readonly string[]
   readonly identityComplete: boolean
   readonly anchorUri?: string
+  readonly supportUris?: readonly string[]
 }
+
+const MAX_REFERENCE_IDENTITY_SUPPORT_URIS = 64
 
 function identityReferenceUris(
   result: WorkspaceReferenceCandidateResult,
 ): readonly string[] {
   if (result.identityComplete && result.identityUris.length > 0) return result.identityUris
   return result.narrowedUris?.length ? result.narrowedUris : result.uris
+}
+
+function identityReferenceSupportUris(
+  result: WorkspaceReferenceCandidateResult,
+  candidateUris: readonly string[],
+): readonly string[] | undefined {
+  if (!result.identityComplete || !result.declarationUri) return undefined
+  const candidates = new Set(candidateUris)
+  const support = new Set([result.declarationUri])
+  for (const binding of result.bindings ?? []) {
+    if (binding.kind !== "reexport") continue
+    if (binding.sourceResolution !== "unique" || !binding.resolvedSourceUri
+      || !candidates.has(binding.uri) || !candidates.has(binding.resolvedSourceUri)) {
+      return undefined
+    }
+    support.add(binding.uri)
+    support.add(binding.resolvedSourceUri)
+    if (support.size > MAX_REFERENCE_IDENTITY_SUPPORT_URIS) return undefined
+  }
+  return [...support].sort((left, right) => left.localeCompare(right))
 }
 
 function referenceBindingResolutionSummary(

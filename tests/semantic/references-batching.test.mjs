@@ -219,8 +219,14 @@ test("indexed batching narrows compiler batches but keeps the exact references r
     root, workspace, queryUri, queryText, position, strategy: "indexed-batched",
     awaitIndexReady: true, overlayPath, overlayText,
   })
+  const identityBounded = await runSingleReferenceRequest(t, {
+    root, workspace, queryUri, queryText, position, strategy: "indexed-batched",
+    awaitIndexReady: true, overlayPath, overlayText,
+    batchRoots: "1", dependencyProfile: "identity", runId: "indexed-identity-chain",
+  })
 
   assert.deepEqual(indexed.locations, conservative.locations)
+  assert.deepEqual(identityBounded.locations, conservative.locations)
   assert.ok(
     indexed.batchEvents.length < conservative.batchEvents.length,
     JSON.stringify({ indexed: indexed.batchEvents, indexEvents: indexed.indexEvents,
@@ -249,6 +255,13 @@ test("indexed batching narrows compiler batches but keeps the exact references r
     typeof event.preparedSdkTextCodeUnits === "number"
   )))
   assert.ok(indexed.batchEvents.every(event => typeof event.queryHeapUsedDelta === "number"))
+  assert.ok(identityBounded.batchEvents.length > 1)
+  assert.ok(identityBounded.batchEvents.every(event => event.dependencyProfile === "identity"))
+  assert.ok(identityBounded.batchEvents.every(event => event.identitySupportFiles === 2))
+  assert.ok(identityBounded.batchEvents.every(event => event.batchRootFiles <= 5))
+  assert.ok(identityBounded.batchEvents.every(event => (
+    event.programProjectFiles < event.membershipFiles
+  )))
 })
 
 test("indexed batching pins the declaration anchor across direct-import batches", async (t) => {

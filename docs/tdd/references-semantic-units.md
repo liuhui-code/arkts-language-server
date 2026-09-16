@@ -667,3 +667,27 @@ Median peak RSS fell 47.30%, from 807,149,568 to 425,357,312 bytes, while the
 request median improved from 8.953 to 6.542 seconds. The 0.527 RSS ratio remains
 above the final 0.50 release gate; defaults remain unchanged. See the
 [multi-batch identity anchor report](../reports/2026-09-15-references-multibatch-identity-anchor.md).
+
+## Multi-batch identity binding chain (2026-09-16)
+
+Parent revision: `6cbe3be7bfebc33e875f567b18c94ea67ddb1571`.
+
+The next RED extended the scripted catalog with a real alias/re-export chain:
+`Target.ets` declares `Thing`, `Barrel.ets` re-exports it as `PublicThing`,
+and `Query.ets`/`Use.ets` import the public name. With `batchRoots=1`, the
+identity verifier preserved the declaration anchor but omitted the three
+`Use.ets` references. This demonstrated that pinning only the declaration URI
+is insufficient when a batch must reconstruct a re-exported symbol.
+
+The GREEN carries a bounded `candidateSupportUris` allowlist through the worker
+protocol and verifier. Unique re-export bindings pin both the barrel URI and
+its resolved source URI into every identity batch. If any binding is unresolved,
+outside the candidate set, or the support chain exceeds 64 files, the request
+fails closed to conservative closure verification. The public LSP test now
+returns exact Location equality for the complete chain, with two identity
+batches and two pinned support files. Defaults remain unchanged.
+
+Focused protocol and public LSP tests pass (`4/4`), and the complete references
+batching suite passes (`11/11`). A follow-up Photos replay could not start
+because `/private/tmp/applications_photos-6.1-lts` was no longer present; no
+real-project result is claimed for this slice.
