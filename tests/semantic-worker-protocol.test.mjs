@@ -247,6 +247,7 @@ test("decodes a query-by-reference request as a deeply immutable transport snaps
       candidateUris: ["file:///workspace/Main.ets", "file:///workspace/Use.ets"],
       candidateIdentityComplete: true,
       candidateAnchorUri: "file:///workspace/Main.ets",
+      candidateSupportUris: ["file:///workspace/Main.ets"],
     },
     cancelCell,
   }
@@ -258,11 +259,13 @@ test("decodes a query-by-reference request as a deeply immutable transport snaps
   assert.notEqual(request.args, input.args)
   assert.notEqual(request.args.position, input.args.position)
   assert.notEqual(request.args.candidateUris, input.args.candidateUris)
+  assert.notEqual(request.args.candidateSupportUris, input.args.candidateSupportUris)
   assert.equal(request.cancelCell, cancelCell)
   assert.equal(Object.isFrozen(request), true)
   assert.equal(Object.isFrozen(request.args), true)
   assert.equal(Object.isFrozen(request.args.position), true)
   assert.equal(Object.isFrozen(request.args.candidateUris), true)
+  assert.equal(Object.isFrozen(request.args.candidateSupportUris), true)
   input.args.position.line = 99
   assert.equal(request.args.position.line, 7)
 })
@@ -447,6 +450,17 @@ test("rejects malformed requests, executable values, document text, and invalid 
         candidateUris: ["file:///workspace/Main.ets"],
         candidateIdentityComplete: true,
         candidateAnchorUri: "file:///workspace/Other.ets",
+      },
+    }),
+    requestEnvelope(protocol, {
+      method: "references",
+      args: {
+        position: { line: 0, character: 0 },
+        includeDeclaration: true,
+        candidateUris: ["file:///workspace/Main.ets"],
+        candidateIdentityComplete: true,
+        candidateAnchorUri: "file:///workspace/Main.ets",
+        candidateSupportUris: ["file:///workspace/Other.ets"],
       },
     }),
   ]

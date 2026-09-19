@@ -269,6 +269,7 @@ export interface SemanticWorkerReferencesArgs {
   readonly candidateUris?: readonly string[]
   readonly candidateIdentityComplete?: boolean
   readonly candidateAnchorUri?: string
+  readonly candidateSupportUris?: readonly string[]
 }
 
 export interface SemanticWorkerRequestArgsByMethod {
@@ -1351,12 +1352,12 @@ function decodeReferencesArgs(value: unknown): SemanticWorkerReferencesArgs {
   const args = ownDataRecord(
     value,
     ["position", "includeDeclaration"],
-    ["candidateUris", "candidateIdentityComplete", "candidateAnchorUri"],
+    ["candidateUris", "candidateIdentityComplete", "candidateAnchorUri", "candidateSupportUris"],
   )
   if (!args || !hasRequiredAndOnlyKeys(
     args,
     ["position", "includeDeclaration"],
-    ["candidateUris", "candidateIdentityComplete", "candidateAnchorUri"],
+    ["candidateUris", "candidateIdentityComplete", "candidateAnchorUri", "candidateSupportUris"],
   )) {
     throw invalidRequest()
   }
@@ -1387,12 +1388,28 @@ function decodeReferencesArgs(value: unknown): SemanticWorkerReferencesArgs {
       || !candidateUris?.includes(args.candidateAnchorUri)) throw invalidRequest()
     candidateAnchorUri = args.candidateAnchorUri
   }
+  let candidateSupportUris: readonly string[] | undefined
+  if (Object.hasOwn(args, "candidateSupportUris")) {
+    candidateSupportUris = Object.freeze(readBoundedDenseArray(
+      args.candidateSupportUris,
+      MAX_SEMANTIC_WORKER_REFERENCE_CANDIDATES,
+      invalidRequest,
+    ).map((uri) => {
+      if (!isCanonicalSemanticWorkerFileUri(uri) || !candidateUris?.includes(uri)) {
+        throw invalidRequest()
+      }
+      return uri
+    }))
+    if (candidateIdentityComplete !== true || !candidateAnchorUri
+      || !candidateSupportUris.includes(candidateAnchorUri)) throw invalidRequest()
+  }
   return Object.freeze({
     position,
     includeDeclaration: args.includeDeclaration,
     ...(candidateUris ? { candidateUris } : {}),
     ...(candidateIdentityComplete === undefined ? {} : { candidateIdentityComplete }),
     ...(candidateAnchorUri ? { candidateAnchorUri } : {}),
+    ...(candidateSupportUris ? { candidateSupportUris } : {}),
   })
 }
 

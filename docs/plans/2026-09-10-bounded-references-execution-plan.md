@@ -958,3 +958,27 @@ multi-batch correctness gate，但 0.527 ratio 仍高于最终 0.50，且不是�
 继续 `legacy`、dependency profile 继续默认 `closure`。下一步不再缩 project roots；应 profile 剩余
 124 SDK roots / verifier setup，或取得原始 >3 GB reproducer。详见
 [multi-batch identity anchor 报告](../reports/2026-09-15-references-multibatch-identity-anchor.md)。
+
+### R2b — alias/re-export support chain (completed 2026-09-16)
+
+The identity-bounded verifier now carries an explicit, bounded support URI set
+for unique re-export bindings. Every identity batch includes the declaration
+anchor plus the barrel/source files required to reconstruct the binding chain.
+Malformed, unresolved, out-of-candidate, or over-64-file support chains fall
+back to conservative closure; no result is narrowed on incomplete proof.
+
+Evidence:
+
+- RED: `batchRoots=1` omitted three `Use.ets` references in the scripted
+  `Target → Barrel → Query/Use` chain.
+- GREEN: exact public LSP Location equality, two identity batches, and two
+  pinned support files; focused tests `4/4`, full references-batching suite
+  `11/11`.
+- Real Photos replay: environment-blocked because the previously used
+  `/private/tmp/applications_photos-6.1-lts` directory no longer exists. This
+  slice therefore has no promoted real-project memory or latency claim.
+
+Production defaults remain `legacy` strategy and `closure` dependency profile.
+The next slice may profile SDK support roots or restore a fixed real-project
+fixture; it must not weaken the support-chain fallback or reduce Location
+completeness.

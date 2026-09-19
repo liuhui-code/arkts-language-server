@@ -66,6 +66,7 @@ export class ReferenceSearchExecutor {
     candidatePaths?: readonly string[],
     candidateIdentityComplete = false,
     candidateAnchorPath?: string,
+    candidateSupportPaths?: readonly string[],
     semanticGraph?: HarmonySemanticGraph,
   ): Promise<SemanticReferenceQueryResult> {
     const plan = planConservativeReferenceBatches(
@@ -86,7 +87,13 @@ export class ReferenceSearchExecutor {
       && resolvedCandidatePaths.has(path.resolve(candidateAnchorPath))
       ? path.resolve(candidateAnchorPath)
       : undefined
-    const dependencyProfile = identityAnchorPath
+    const identitySupportPaths = identityAnchorPath && candidateSupportPaths
+      ? uniquePaths(candidateSupportPaths)
+      : identityAnchorPath ? [identityAnchorPath] : undefined
+    const validIdentitySupport = identitySupportPaths?.every(filePath => (
+      resolvedCandidatePaths?.has(filePath)
+    )) === true && identitySupportPaths?.includes(identityAnchorPath ?? "") === true
+    const dependencyProfile = identityAnchorPath && validIdentitySupport
       ? this.options.dependencyProfile
       : "closure"
     const referenceSession = this.nextSession++
@@ -94,8 +101,8 @@ export class ReferenceSearchExecutor {
     const collected: SemanticDefinitionCandidate[] = []
     for (const batch of plan.batches) {
       const started = performance.now()
-      const rootPaths = dependencyProfile === "identity" && identityAnchorPath
-        ? uniquePaths([...batch.rootPaths, identityAnchorPath])
+      const rootPaths = dependencyProfile === "identity" && identitySupportPaths
+        ? uniquePaths([...batch.rootPaths, ...identitySupportPaths])
         : batch.rootPaths
       let admittedProjectPaths = dependencyProfile === "identity"
         ? rootPaths
@@ -177,6 +184,9 @@ export class ReferenceSearchExecutor {
         semanticUnitMode: plan.semanticUnitMode,
         semanticUnits: plan.semanticUnits,
         dependencyProfile,
+        identitySupportFiles: dependencyProfile === "identity"
+          ? identitySupportPaths?.length ?? 0
+          : 0,
         preparedProgramSourceFiles: verification.prepared.stats.programSourceFiles,
         preparedProgramProjectFiles: verification.prepared.stats.programProjectFiles,
         preparedSdkSourceFiles: verification.prepared.stats.sdkSourceFiles,
