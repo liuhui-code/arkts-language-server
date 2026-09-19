@@ -72,6 +72,27 @@ export class LocalPackageResolver {
     return model
   }
 
+  moduleEntryPath(rootPath: string, moduleRoot: string): string | undefined {
+    const root = path.resolve(rootPath)
+    const directory = path.resolve(moduleRoot)
+    if (!inside(root, directory)) return undefined
+    const manifest = this.readManifest(path.join(directory, "oh-package.json5"))
+    if (!manifest?.entry || path.isAbsolute(manifest.entry)) return undefined
+    const entry = path.resolve(directory, manifest.entry)
+    if (!/\.(?:ets|ts)$/.test(entry) || !inside(directory, entry)) return undefined
+    try {
+      const physicalRoot = this.canonicalRoot(root)
+      const physicalModule = fs.realpathSync.native(directory)
+      const physicalEntry = fs.realpathSync.native(entry)
+      if (!physicalRoot || !inside(physicalRoot, physicalModule)
+        || !inside(physicalModule, physicalEntry)) return undefined
+      const stat = fs.statSync(physicalEntry)
+      return stat.isFile() && stat.size <= 4 * 1024 * 1024 ? entry : undefined
+    } catch {
+      return undefined
+    }
+  }
+
   resolve(
     rootPath: string,
     containingFile: string,

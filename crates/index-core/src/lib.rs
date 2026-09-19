@@ -612,6 +612,14 @@ impl SymbolStore for MemoryStore {
             .collect();
         resolve_reference_binding_sources(&mut bindings, &document_uris);
         apply_reference_source_resolutions(&mut bindings, source_resolutions, &document_uris);
+        if reference_binding_source_outside_admission(
+            &bindings,
+            &document_uris,
+            &declaration.uri,
+            admitted_uri_roots,
+        ) {
+            return Ok(unsupported_reference_candidates(self.committed_generation));
+        }
         let independent_declarations: BTreeSet<_> = self
             .documents
             .values()
@@ -690,6 +698,29 @@ pub fn reference_uri_admitted(uri: &str, declaration_uri: &str, roots: &[String]
                 || uri
                     .strip_prefix(root)
                     .is_some_and(|suffix| root.ends_with('/') || suffix.starts_with('/'))
+        })
+}
+
+pub fn reference_binding_source_outside_admission(
+    bindings: &[ReferenceBinding],
+    document_uris: &BTreeSet<String>,
+    declaration_uri: &str,
+    admitted_uri_roots: &[String],
+) -> bool {
+    !admitted_uri_roots.is_empty()
+        && bindings.iter().any(|binding| {
+            binding.source_resolution == ReferenceBindingResolution::Unique
+                && binding
+                    .resolved_source_uri
+                    .as_deref()
+                    .is_some_and(|source_uri| {
+                        document_uris.contains(source_uri)
+                            && !reference_uri_admitted(
+                                source_uri,
+                                declaration_uri,
+                                admitted_uri_roots,
+                            )
+                    })
         })
 }
 

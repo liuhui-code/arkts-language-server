@@ -339,6 +339,67 @@ test("indexed batching pins the declaration anchor across direct-import batches"
   )).length, 1)
 })
 
+test("identity batches admit a declared package entry outside module source roots", async (t) => {
+  const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), "arkts-reference-package-entry-"))
+  t.after(() => fs.promises.rm(root, { recursive: true, force: true }))
+  const workspace = path.join(root, "workspace")
+  const entryRoot = path.join(workspace, "entry")
+  const sharedRoot = path.join(workspace, "shared")
+  const entrySource = path.join(entryRoot, "src", "main", "ets")
+  const sharedSource = path.join(sharedRoot, "src", "main", "ets")
+  await Promise.all([entrySource, sharedSource].map(directory => (
+    fs.promises.mkdir(directory, { recursive: true })
+  )))
+  await fs.promises.writeFile(path.join(workspace, "build-profile.json5"), JSON.stringify({
+    app: { products: [{ name: "default" }] },
+    modules: [
+      { name: "entry", srcPath: "./entry", targets: [{ name: "default", applyToProducts: ["default"] }] },
+      { name: "shared", srcPath: "./shared", targets: [{ name: "default", applyToProducts: ["default"] }] },
+    ],
+  }))
+  await Promise.all([entryRoot, sharedRoot].map(moduleRoot => (
+    fs.promises.writeFile(path.join(moduleRoot, "build-profile.json5"),
+      "{ targets: [{ name: 'default' }] }")
+  )))
+  await fs.promises.writeFile(path.join(entryRoot, "oh-package.json5"),
+    "{ name: 'entry', dependencies: { shared: 'file:../shared' } }")
+  await fs.promises.writeFile(path.join(sharedRoot, "oh-package.json5"),
+    "{ name: 'shared', main: 'index.ets', dependencies: {} }")
+  const target = "export class Thing {}\n"
+  await Promise.all([
+    fs.promises.writeFile(path.join(sharedSource, "Target.ets"), target),
+    fs.promises.writeFile(path.join(sharedRoot, "index.ets"),
+      "export { Thing } from './src/main/ets/Target'\n"),
+    fs.promises.writeFile(path.join(entrySource, "Query.ets"),
+      "import { Thing } from 'shared'\nexport const query = new Thing()\n"),
+    fs.promises.writeFile(path.join(entrySource, "Direct.ets"),
+      "import { Thing } from 'shared/src/main/ets/Target'\nexport const direct = new Thing()\n"),
+  ])
+  const queryUri = pathToFileURL(path.join(sharedSource, "Target.ets")).href
+  const position = positionAt(target, target.indexOf("Thing") + 1)
+  const conservative = await runSingleReferenceRequest(t, {
+    root, workspace, queryUri, queryText: target, position,
+    strategy: "batched", batchRoots: "1", runId: "package-entry-conservative",
+  })
+  const identity = await runSingleReferenceRequest(t, {
+    root, workspace, queryUri, queryText: target, position,
+    strategy: "indexed-batched", awaitIndexReady: true,
+    indexScenario: "reference-package-entry-barrel",
+    dependencyProfile: "identity", batchRoots: "1", runId: "package-entry-identity",
+  })
+
+  assert.deepEqual(identity.locations, conservative.locations)
+  assert.ok(identity.locations.some(location => location.uri.endsWith("/shared/index.ets")))
+  assert.ok(identity.locations.some(location => location.uri.endsWith("/entry/src/main/ets/Query.ets")))
+  const scoped = identity.indexRequests.find(request => (
+    request.method === "references/candidates"
+    && request.params.declarationUri.endsWith("/shared/src/main/ets/Target.ets")
+  ))
+  assert.ok(scoped?.params.admittedRootUris?.some(uri => uri.endsWith("/shared/index.ets")))
+  assert.ok(identity.batchEvents.every(event => event.dependencyProfile === "identity"))
+  assert.ok(identity.batchEvents.every(event => event.identitySupportFiles === 2))
+})
+
 test("indexed batching keeps declared project semantic units intact", async (t) => {
   const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), "arkts-references-units-"))
   t.after(() => fs.promises.rm(root, { recursive: true, force: true }))

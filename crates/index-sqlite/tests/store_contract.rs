@@ -525,6 +525,70 @@ fn reference_identity_proof_only_excludes_files_outside_an_explicit_admission_sc
     assert_reference_admission_scope(WorkspaceIndex::with_store(store));
 }
 
+fn assert_package_entry_outside_admission_cannot_prove_identity(mut index: WorkspaceIndex) {
+    index
+        .refresh(
+            1,
+            [
+                Document::new(
+                    "file:///workspace/shared/src/main/ets/Target.ets",
+                    "export class Thing {}\n",
+                ),
+                Document::new(
+                    "file:///workspace/shared/index.ets",
+                    "export { Thing } from './src/main/ets/Target'\n",
+                ),
+                Document::new(
+                    "file:///workspace/entry/src/main/ets/Use.ets",
+                    "import { Thing } from 'shared'\nconst value = new Thing()\n",
+                ),
+            ],
+            &[],
+        )
+        .expect("package entry fixture should commit");
+    let query = ReferenceCandidateQuery {
+        declaration_uri: "file:///workspace/shared/src/main/ets/Target.ets".to_owned(),
+        declaration_position: Position::new(0, 14),
+        limit: 20,
+    };
+    let resolution = ReferenceSourceResolution {
+        binding_uri: "file:///workspace/entry/src/main/ets/Use.ets".to_owned(),
+        source_specifier: "shared".to_owned(),
+        resolved_source_uri: Some("file:///workspace/shared/index.ets".to_owned()),
+        external_terminal_identity: None,
+    };
+    let source_roots = [
+        "file:///workspace/entry/src/main/ets".to_owned(),
+        "file:///workspace/shared/src/main/ets".to_owned(),
+    ];
+    let excluded = index
+        .search_reference_candidates_with_scope(query.clone(), &[resolution.clone()], &source_roots)
+        .expect("source roots should be searchable");
+    assert!(
+        !excluded.identity_complete,
+        "a catalog-owned package entry outside admission must not make its import disjoint: {excluded:#?}",
+    );
+    let mut with_entry = source_roots.to_vec();
+    with_entry.push("file:///workspace/shared/index.ets".to_owned());
+    let admitted = index
+        .search_reference_candidates_with_scope(query, &[resolution], &with_entry)
+        .expect("entry admission should be searchable");
+    assert!(admitted.identity_complete, "{admitted:#?}");
+    assert_eq!(admitted.identity_uris.len(), 3);
+}
+
+#[test]
+fn memory_and_sqlite_reject_identity_proof_when_a_package_entry_is_outside_admission() {
+    assert_package_entry_outside_admission_cannot_prove_identity(WorkspaceIndex::with_store(
+        MemoryStore::default(),
+    ));
+    let temp = TestDir::new("reference-package-entry-admission");
+    let database = temp.path().join("symbols.sqlite3");
+    let store =
+        SqliteStore::open(&database, "file:///workspace").expect("SQLite store should open");
+    assert_package_entry_outside_admission_cannot_prove_identity(WorkspaceIndex::with_store(store));
+}
+
 fn assert_external_sdk_terminal_contract(mut index: WorkspaceIndex) {
     index
         .refresh(
