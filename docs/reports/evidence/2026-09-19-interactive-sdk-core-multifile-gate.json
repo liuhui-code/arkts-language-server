@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "serverRevision": "fc3c849027e97e70a9be73f5777316719ed8abf1",
+  "workspaceRevision": "98ea1d9cd6a363c576e2c6ff17844e51723baec5",
+  "sdkApiLevel": 24,
+  "sdkVersion": "6.1.1.125",
+  "nodeVersion": "v26.3.0",
+  "serverSha256": "9e3ba503ef6961cd6f98799938219557dddf3c0c0b240ab11e3485f68a666f28",
+  "sidecarSha256": "8d4e95b5c603b8f43e0da9a7e62d74b127a94fe16f8b6d0afbc9fd0d6ebe40ae",
+  "method": "textDocument/references",
+  "includeDeclaration": true,
+  "strategy": "legacy",
+  "cases": [
+    {
+      "file": "feature/privacy/src/main/ets/about/AgreementConfig.ets",
+      "symbol": "Routers",
+      "positionUtf16": { "line": 20, "character": 16 },
+      "referenceCount": 19,
+      "referenceSha256": "59f084f4ebade3997a727ef438b356428a88f147717e155f30fe97d45fdb75ce",
+      "full": { "diagnosticCount": 8, "diagnosticSha256": "d85b7448ee03074ccdc8537b8eb5d5834f2758506b0e2dc9953bb0cc09398a6e", "sdkSourceFiles": 573, "peakProductRssBytes": 899768320, "requestMs": 7625 },
+      "core": { "diagnosticCount": 8, "diagnosticSha256": "d85b7448ee03074ccdc8537b8eb5d5834f2758506b0e2dc9953bb0cc09398a6e", "sdkSourceFiles": 448, "peakProductRssBytes": 828932096, "requestMs": 7259 },
+      "referencesExact": true,
+      "diagnosticsExact": true
+    },
+    {
+      "file": "imageEditor/product/editor_phone/src/main/ets/component/menu/BottomToolbar.ets",
+      "symbol": "getMutuallyExclusiveDesc",
+      "positionUtf16": { "line": 351, "character": 19 },
+      "referenceCount": 3,
+      "referenceSha256": "10656b3adc4d0a343af01466491e6c4957dbcd4e31394ec5abd8dd34ae2265a7",
+      "full": { "diagnosticCount": 62, "diagnosticSha256": "0152d83ed6c094bd442596bd2bad529b2d8ef107f993bd804303dc1c8598d768", "sdkSourceFiles": 573, "peakProductRssBytes": 894357504, "requestMs": 7428 },
+      "core": { "diagnosticCount": 132, "diagnosticSha256": "05cba8c001978f113f8b0f2582be617eb7bfaae5a6587f1aa5161e3673c67e71", "sdkSourceFiles": 448, "peakProductRssBytes": 849473536, "requestMs": 6913 },
+      "referencesExact": true,
+      "diagnosticsExact": false,
+      "extraCoreDiagnosticCount": 70,
+      "missingCoreDiagnosticCount": 0
+    }
+  ],
+  "defaultProfile": "full",
+  "coreDefaultGate": "FAIL",
+  "userReportedOverThreeGbGate": "UNVERIFIED",
+  "finalFiftyPercentMemoryGate": "UNMET"
+}

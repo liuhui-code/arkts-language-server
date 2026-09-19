@@ -1042,3 +1042,18 @@ unverified. Before considering any default change, validate full-vs-core
 diagnostics and navigation across multiple real files/SDKs; any difference
 requires full-profile fallback, not silent omission. See the
 [diagnostic SDK probe](../reports/2026-09-19-references-diagnostics-core-enums.md).
+
+### R2f — multi-file diagnostic correctness gate (2026-09-19)
+
+The opt-in `core` SDK profile passed exact references and diagnostics in a
+second real Photos file (`Routers`: 19 Locations, 8 diagnostics), but failed in
+ArkUI-heavy `BottomToolbar`: references remained exact (3 Locations) while
+diagnostics grew from 62 to 132, with 70 false unresolved-global errors. The
+full profile was independently replayed twice with the same result. The 125
+SDK SourceFiles removed by `core` are therefore not safely removable across
+these real documents. Production stays `full`; the prior EditorController
+35% result is a single-workload observation, not a release gate. Do not expand
+`core` by adding only the missing names from this file. The next admissible
+implementation needs a conservative SDK-global closure or exact fail-closed
+fallback and a wider public LSP differential. See the
+[multi-file gate](../reports/2026-09-19-interactive-sdk-core-multifile-gate.md).
