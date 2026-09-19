@@ -2,6 +2,22 @@
 
 Parent revision: `b70367964bf7b32e66524b08b4aeb1acde6bd8ff`
 
+## Disjoint re-export support guard (2026-09-19)
+
+Parent revision: `10ee8f2629f63ad6982d7f000297ef65f5dbda80`.
+The public LSP case `identity support ignores a proven-disjoint same-name
+re-export` used two independent `Thing` declarations and two re-export
+barrels. The scripted index returned a complete target identity set excluding
+the unrelated barrel, while still reporting both bindings. Before the fix,
+the request returned exact Locations but logged `compiler-definition` rather
+than `compiler-definition-identity` (RED). Skipping only re-export bindings
+outside the complete identity set made the same case enter identity mode
+without changing Locations (GREEN). A second response with the *target*
+barrel's source unresolved still logs `compiler-definition` and returns the
+exact conservative Location set. The fixed Photos checkout then reproduced
+the identity transition and exact 17/17 real references in three fresh runs;
+see the [real-project report](../reports/2026-09-19-references-disjoint-reexport-support.md).
+
 ## RED
 
 The first model-level tracer bullet required a declared `entry` module with a local

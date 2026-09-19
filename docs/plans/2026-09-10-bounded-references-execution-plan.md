@@ -1001,3 +1001,22 @@ slice must prove the package-root barrel/alias identity chain or safely retain
 the conservative result; no release default change is authorized by this
 correctness fix. See the
 [package-entry scope report](../reports/2026-09-19-references-package-entry-scope.md).
+
+### R2d — disjoint re-export support (completed 2026-09-19)
+
+The package-entry Photos replay showed that Rust had already proved a seven-file
+`EditorController` identity set, but Node's support-chain guard rejected it
+because the unrelated `browserCommonPC/index.ets` re-export was outside that
+set. The guard now skips re-exports whose binding file is outside the *complete*
+identity set; a re-export inside the set still requires a unique source within
+the set. A public child-process RED/GREEN case covers both the independent
+same-name barrel and a broken target-chain fail-conservative control.
+
+On the fixed Photos checkout, three fresh legacy and three fresh identity runs
+each returned the same 17 Locations and 59 diagnostics. Identity ran three
+sequential batches with at most 211 SourceFiles. Median latency was 5.246 s
+versus legacy 7.711 s; median product peak RSS was 650,092,544 versus
+890,122,240 bytes, a 27.0% reduction. Latency passes the `<=2×` prototype
+gate, but memory fails both the 30% prototype and 50% final gate. Production
+defaults remain `legacy`/`closure`; the user-reported >3 GB case remains
+unverified. See the [disjoint re-export report](../reports/2026-09-19-references-disjoint-reexport-support.md).

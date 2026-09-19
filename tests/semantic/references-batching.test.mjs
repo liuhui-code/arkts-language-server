@@ -264,6 +264,56 @@ test("indexed batching narrows compiler batches but keeps the exact references r
   )))
 })
 
+test("identity support ignores a proven-disjoint same-name re-export", async (t) => {
+  const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), "arkts-references-disjoint-reexport-"))
+  t.after(() => fs.promises.rm(root, { recursive: true, force: true }))
+  const workspace = path.join(root, "workspace")
+  await fs.promises.mkdir(workspace)
+  const queryText = 'import { PublicThing } from "./Barrel"\nexport const query = new PublicThing()\n'
+  const sources = new Map([
+    ["Target.ets", "export class Thing {}\n"],
+    ["Barrel.ets", 'export { Thing as PublicThing } from "./Target"\n'],
+    ["Query.ets", queryText],
+    ["Use.ets", 'import { PublicThing } from "./Barrel"\nexport const use = new PublicThing()\n'],
+    ["SameName.ets", "export class Thing {}\n"],
+    ["UnrelatedBarrel.ets", 'export { Thing as PublicThing } from "./SameName"\n'],
+  ])
+  await Promise.all([...sources].map(([name, source]) => (
+    fs.promises.writeFile(path.join(workspace, name), source, "utf8")
+  )))
+  const queryUri = pathToFileURL(path.join(workspace, "Query.ets")).href
+  const position = positionAt(queryText, queryText.lastIndexOf("PublicThing") + 1)
+  const conservative = await runSingleReferenceRequest(t, {
+    root, workspace, queryUri, queryText, position, strategy: "batched",
+    runId: "disjoint-reexport-conservative",
+  })
+  const identity = await runSingleReferenceRequest(t, {
+    root, workspace, queryUri, queryText, position, strategy: "indexed-batched",
+    awaitIndexReady: true, indexScenario: "reference-disjoint-reexport",
+    batchRoots: "1", dependencyProfile: "identity", runId: "disjoint-reexport-identity",
+  })
+  const brokenChain = await runSingleReferenceRequest(t, {
+    root, workspace, queryUri, queryText, position, strategy: "indexed-batched",
+    awaitIndexReady: true, indexScenario: "reference-disjoint-reexport-broken-chain",
+    batchRoots: "1", dependencyProfile: "identity", runId: "disjoint-reexport-broken-chain",
+  })
+
+  assert.deepEqual(identity.locations, conservative.locations)
+  assert.deepEqual(brokenChain.locations, conservative.locations)
+  assert.equal(identity.indexEvents.find(event => (
+    event.event === "references.index.accepted"
+  ))?.anchorMode, "compiler-definition-identity")
+  assert.ok(identity.batchEvents.every(event => event.dependencyProfile === "identity"))
+  assert.ok(identity.batchEvents.every(event => event.identitySupportFiles === 2))
+  assert.equal(identity.locations.some(location => (
+    location.uri.endsWith("/UnrelatedBarrel.ets")
+  )), false)
+  assert.equal(brokenChain.indexEvents.find(event => (
+    event.event === "references.index.accepted"
+  ))?.anchorMode, "compiler-definition")
+  assert.ok(brokenChain.batchEvents.every(event => event.dependencyProfile !== "identity"))
+})
+
 test("indexed batching pins the declaration anchor across direct-import batches", async (t) => {
   const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), "arkts-references-direct-import-"))
   t.after(() => fs.promises.rm(root, { recursive: true, force: true }))

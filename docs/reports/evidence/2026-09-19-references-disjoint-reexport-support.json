@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "repoParentRevision": "10ee8f2629f63ad6982d7f000297ef65f5dbda80",
+  "workspace": "openharmony/applications_photos",
+  "workspaceRevision": "98ea1d9cd6a363c576e2c6ff17844e51723baec5",
+  "sdkApiLevel": 24,
+  "sdkVersion": "6.1.1.125",
+  "nodeVersion": "v26.3.0",
+  "file": "browserCommonPhone/src/main/ets/controller/EditorController.ets",
+  "symbol": "EditorController",
+  "positionUtf16": { "line": 133, "character": 14 },
+  "method": "textDocument/references",
+  "includeDeclaration": true,
+  "normalizedLocationSha256": "2f0aa076d8d417a349cbfbfaf05dafa8d69c93f36fb42178a344adbdd83730f4",
+  "legacy": {
+    "locationCounts": [17, 17, 17],
+    "diagnosticCounts": [59, 59, 59],
+    "requestMs": [7375, 7918, 7711],
+    "peakProductRssBytes": [890122240, 885297152, 891904000]
+  },
+  "identityBatched": {
+    "locationCounts": [17, 17, 17],
+    "diagnosticCounts": [59, 59, 59],
+    "requestMs": [5246, 5238, 5285],
+    "peakProductRssBytes": [638324736, 650092544, 652480512],
+    "candidateFiles": 7,
+    "batchCount": 3,
+    "maxProgramSourceFiles": 211,
+    "maxProgramProjectFiles": 5
+  },
+  "medianLatencyRatio": 0.6803,
+  "medianPeakRssRatio": 0.7303,
+  "prototypeThirtyPercentMemoryGate": "FAIL",
+  "finalFiftyPercentMemoryGate": "FAIL",
+  "userReportedOverThreeGbGate": "UNVERIFIED",
+  "productionDefault": "legacy"
+}
