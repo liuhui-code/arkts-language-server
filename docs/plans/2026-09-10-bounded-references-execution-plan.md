@@ -1070,3 +1070,21 @@ the fixed BottomToolbar pair passes references but fails diagnostics (62 vs
 132). This is a test gate, not a reduced SDK closure or a production default
 change. Before any interactive SDK root reduction is promoted, it must pass
 this gate across the required real-file/SDK matrix and the final memory gate.
+
+### R2h — static SDK `core` no-go on current main (2026-09-20)
+
+Fresh-process full/core Photos `BottomToolbar` replays on current `main`
+`3938181` reproduced the exact 3-reference result but 62 versus 132 normal
+diagnostics; the strict gate passed Locations and failed diagnostics. The
+125-file diagnostic SDK reduction lowered product peak only from 887,308,288
+to 841,830,400 bytes (about 5.1%). All 70 false TS2304 diagnostics name 27
+globals provided by 13 omitted component declaration files. A direct SDK AST
+inventory found at least 1,353 top-level names present in the installed full
+component entry but absent from the four `core` roots. That inventory is a
+negative safety check, not a complete dependency analysis or a proposed list
+of files to add. The fixed static `core` profile therefore remains **NO-GO**
+for production. Next RED must establish a complete, SDK-versioned provider and
+semantic-closure boundary with fail-closed `full` fallback; exact public LSP
+multi-capability/overlay differentials and the product memory/latency gates
+remain mandatory. The original >3 GB reproducer and final 50% gate are still
+open. See the [current-main no-go report](../reports/2026-09-20-interactive-sdk-static-core-no-go.md).
