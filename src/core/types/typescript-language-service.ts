@@ -2572,6 +2572,7 @@ function discoverSdkAmbientDeclarations(
       path.join(sdkRoot, "ets", "component", "common.d.ts"),
       path.join(sdkRoot, "ets", "component", "units.d.ts"),
       path.join(sdkRoot, "ets", "component", "common_ts_ets_api.d.ts"),
+      path.join(sdkRoot, "ets", "component", "enums.d.ts"),
     ]
     if (core.every((candidate) => fs.existsSync(candidate))) return core
   }

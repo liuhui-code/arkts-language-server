@@ -862,6 +862,7 @@ test("a diagnostics core SDK closure retains required ArkUI globals without the 
     '/// <reference path="./common.d.ts" />',
     '/// <reference path="./units.d.ts" />',
     '/// <reference path="./common_ts_ets_api.d.ts" />',
+    '/// <reference path="./enums.d.ts" />',
     '/// <reference path="./full-only.d.ts" />',
     "",
   ].join("\n"))
@@ -875,12 +876,15 @@ test("a diagnostics core SDK closure retains required ArkUI globals without the 
     "}",
     "",
   ].join("\n"))
+  await fs.promises.writeFile(path.join(component, "enums.d.ts"),
+    "declare enum Curve { Linear }\n")
   await fs.promises.writeFile(path.join(component, "full-only.d.ts"),
     "declare interface UnusedFullSdkMarker { marker: string }\n")
 
   const queryText = [
     'import { PublicThing } from "./Target"',
     "AppStorage.SetOrCreate('resource', 'ready')",
+    "export const curve = Curve.Linear",
     "export const resource: Resource = 'ready'",
     "export const query: PublicThing = new PublicThing()",
     "export const member = new PublicThing().sdk.value",
@@ -967,18 +971,18 @@ test("a diagnostics core SDK closure retains required ArkUI globals without the 
   assert.equal(currentWorkspaceCompletion.completionEvents[0].programProjectRootFiles, 3)
   assert.equal(full.diagnosticEvents.length, 1)
   assert.equal(core.diagnosticEvents.length, 1)
-  assert.equal(full.diagnosticEvents[0].sdkSourceFiles, 5)
-  assert.equal(core.diagnosticEvents[0].sdkSourceFiles, 3)
+  assert.equal(full.diagnosticEvents[0].sdkSourceFiles, 6)
+  assert.equal(core.diagnosticEvents[0].sdkSourceFiles, 4)
   assert.equal(full.diagnosticEvents[0].programRootFiles, 3)
   assert.equal(full.diagnosticEvents[0].programProjectRootFiles, 2)
   assert.equal(full.diagnosticEvents[0].sdkRootFiles, 1)
-  assert.equal(core.diagnosticEvents[0].programRootFiles, 5)
+  assert.equal(core.diagnosticEvents[0].programRootFiles, 6)
   assert.equal(core.diagnosticEvents[0].programProjectRootFiles, 2)
-  assert.equal(core.diagnosticEvents[0].sdkRootFiles, 3)
+  assert.equal(core.diagnosticEvents[0].sdkRootFiles, 4)
   assert.equal(currentRoots.diagnosticEvents.length, 1)
   assert.equal(currentRoots.diagnosticEvents[0].programProjectFiles, 2)
   assert.equal(currentRoots.diagnosticEvents[0].programProjectRootFiles, 1)
-  assert.equal(currentRoots.diagnosticEvents[0].sdkSourceFiles, 5)
+  assert.equal(currentRoots.diagnosticEvents[0].sdkSourceFiles, 6)
   assert.equal(currentRoots.diagnosticEvents[0].sdkRootFiles, 1)
 })
 

@@ -2,6 +2,19 @@
 
 Parent revision: `b70367964bf7b32e66524b08b4aeb1acde6bd8ff`
 
+## Diagnostic core SDK enum closure (2026-09-19)
+
+Parent revision: `129a83cbb8925ea31fd4554c940ab02ca81cd6e5`.
+The public child-process diagnostic/profile test added an `enums.d.ts`
+declaration of `Curve` and a `Curve.Linear` use. RED: full SDK diagnostics were
+empty while the opt-in core profile published `Cannot find name 'Curve'`.
+Adding `enums.d.ts` to the core roots made references, diagnostics, completion
+and definition exact in that LSP test. Three fixed Photos replays then returned
+the same 17 references and 59 diagnostic records as full-profile legacy while
+the diagnostic Program used 394 rather than 521 SDK SourceFiles. The profile
+remains default-off; exactness on one real document does not certify all SDK
+globals. See the [real-project report](../reports/2026-09-19-references-diagnostics-core-enums.md).
+
 ## Disjoint re-export support guard (2026-09-19)
 
 Parent revision: `10ee8f2629f63ad6982d7f000297ef65f5dbda80`.
