@@ -562,7 +562,11 @@ fn assert_package_entry_outside_admission_cannot_prove_identity(mut index: Works
         "file:///workspace/shared/src/main/ets".to_owned(),
     ];
     let excluded = index
-        .search_reference_candidates_with_scope(query.clone(), &[resolution.clone()], &source_roots)
+        .search_reference_candidates_with_scope(
+            query.clone(),
+            std::slice::from_ref(&resolution),
+            &source_roots,
+        )
         .expect("source roots should be searchable");
     assert!(
         !excluded.identity_complete,
