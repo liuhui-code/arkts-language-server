@@ -178,6 +178,55 @@ input.on("line", (line) => {
     }
     case "references/candidates": {
       const packageResolutionScenario = process.env.ARKTS_INDEX_TEST_SCENARIO
+      if (packageResolutionScenario === "reference-package-entry-barrel") {
+        const target = path.join("shared", "src", "main", "ets", "Target.ets")
+        const barrel = path.join("shared", "index.ets")
+        const query = path.join("entry", "src", "main", "ets", "Query.ets")
+        const direct = path.join("entry", "src", "main", "ets", "Direct.ets")
+        const uri = file => pathToFileURL(path.join(workspaceRoot, file)).href
+        const supported = request.params.declarationUri === uri(target)
+        const admittedEntry = request.params.admittedRootUris?.includes(uri(barrel)) ?? false
+        const resolvedPackage = request.params.sourceResolutions?.some(resolution => (
+          resolution.bindingUri === uri(query)
+          && resolution.sourceSpecifier === "shared"
+          && resolution.resolvedSourceUri === uri(barrel)
+        )) ?? false
+        const files = admittedEntry ? [target, barrel, query, direct] : [target, direct]
+        respond(request.id, {
+          supported,
+          complete: supported,
+          identityComplete: supported && resolvedPackage,
+          identityUris: supported && resolvedPackage ? files.map(uri) : [],
+          narrowedUris: [],
+          declarationUri: supported ? uri(target) : null,
+          declarationIdentity: supported ? "scripted-package-entry-thing" : null,
+          names: supported ? ["Thing"] : [],
+          uris: supported ? [target, query, direct].map(uri) : [],
+          bindings: supported ? [
+            ...(admittedEntry ? [{
+              kind: "reexport",
+              uri: uri(barrel),
+              importedName: "Thing",
+              localName: "Thing",
+              sourceSpecifier: "./src/main/ets/Target",
+              sourceResolution: "unique",
+              resolvedSourceUri: uri(target),
+            }] : []),
+            {
+              kind: "import",
+              uri: uri(query),
+              importedName: "Thing",
+              localName: "Thing",
+              sourceSpecifier: "shared",
+              sourceResolution: resolvedPackage ? "unique" : "unsupported",
+              resolvedSourceUri: resolvedPackage ? uri(barrel) : null,
+            },
+          ] : [],
+          servedGeneration: committedGeneration,
+          completeness: "ready",
+        })
+        break
+      }
       const packageSubpathResolutions = packageResolutionScenario === "reference-package-subpath-resolutions"
       const sourceClassification = packageResolutionScenario === "reference-source-classification"
       const sdkTerminal = packageResolutionScenario === "reference-sdk-terminal"

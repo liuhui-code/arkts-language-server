@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "workspace": {
+    "name": "openharmony/applications_photos",
+    "revision": "98ea1d9cd6a363c576e2c6ff17844e51723baec5"
+  },
+  "sdk": {
+    "apiVersion": 24,
+    "version": "6.1.1.125"
+  },
+  "target": {
+    "file": "browserCommonPhone/src/main/ets/controller/EditorController.ets",
+    "symbol": "EditorController",
+    "line": 133,
+    "character": 14
+  },
+  "normalizedLocationSha256": "2f0aa076d8d417a349cbfbfaf05dafa8d69c93f36fb42178a344adbdd83730f4",
+  "legacy": {
+    "runCount": 1,
+    "locations": 17,
+    "diagnostics": 59,
+    "requestMs": 9928,
+    "peakProductRssBytes": 887271424
+  },
+  "correctedIndexed": {
+    "runCount": 3,
+    "locationsPerRun": [17, 17, 17],
+    "diagnosticsPerRun": [59, 59, 59],
+    "requestMs": [22042, 22516, 22552],
+    "peakProductRssBytes": [764968960, 750727168, 742670336],
+    "candidateFilesPerRun": [7, 7, 7],
+    "batchCountPerRun": [3, 3, 3],
+    "dependencyProfilePerRun": ["closure", "closure", "closure"],
+    "maxProgramSourceFilesPerRun": [1014, 1014, 1014],
+    "maxProgramProjectFilesPerRun": [602, 602, 602]
+  },
+  "correctnessGate": "PASS",
+  "prototypeLatencyGate": "FAIL",
+  "releaseDefaultChanged": false
+}

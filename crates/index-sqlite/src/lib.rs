@@ -16,8 +16,8 @@ use arkts_index_core::{
     StoreErrorKind, StoreMetadata, SymbolKind, SymbolQuery, SymbolSearchResult, SymbolStore,
     TextRange, WorkspaceExport, WorkspaceSymbol, acronym_for_search,
     apply_reference_source_resolutions, fold_for_search, prove_reference_binding_chain,
-    rank_symbols, reference_uri_admitted, resolve_reference_binding_sources,
-    sort_reference_bindings,
+    rank_symbols, reference_binding_source_outside_admission, reference_uri_admitted,
+    resolve_reference_binding_sources, sort_reference_bindings,
 };
 use rusqlite::types::Value as SqlValue;
 use rusqlite::{
@@ -712,6 +712,14 @@ impl SymbolStore for SqliteStore {
         );
         resolve_reference_binding_sources(&mut bindings, &document_uris);
         apply_reference_source_resolutions(&mut bindings, source_resolutions, &document_uris);
+        if reference_binding_source_outside_admission(
+            &bindings,
+            &document_uris,
+            &declaration_uri,
+            admitted_uri_roots,
+        ) {
+            return Ok(unsupported_reference_candidates(generation));
+        }
         trace_reference_query_stage(
             trace,
             "binding-resolution",

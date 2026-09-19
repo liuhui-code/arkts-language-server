@@ -982,3 +982,22 @@ Production defaults remain `legacy` strategy and `closure` dependency profile.
 The next slice may profile SDK support roots or restore a fixed real-project
 fixture; it must not weaken the support-chain fallback or reduce Location
 completeness.
+
+### R2c — package entry scope correctness (completed 2026-09-19)
+
+The restored Photos project exposed a correctness blocker in the default-off
+identity profile: `EditorController` returned 9/17 legacy Locations because
+`browserCommonPhone/index.ets` is the declared package entry outside the
+module's `src/main` source roots. Rust memory and SQLite now reject identity
+proof when a scoped binding resolves to a catalog-owned source outside the
+admitted scope. The worker admits each selected module's validated, exact
+package entry file in addition to its ProjectGraph source roots.
+
+The public LSP RED/GREEN and Rust store contract cover this boundary. Three
+fresh Photos runs now return 17/17 exact Locations and identical diagnostics,
+but all use conservative closure and take 22.516 s median versus one 9.928 s
+legacy validation (2.27×). The final performance gate remains open. The next
+slice must prove the package-root barrel/alias identity chain or safely retain
+the conservative result; no release default change is authorized by this
+correctness fix. See the
+[package-entry scope report](../reports/2026-09-19-references-package-entry-scope.md).

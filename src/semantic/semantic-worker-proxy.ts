@@ -642,7 +642,13 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
     if (!rootPath) return undefined
     const graph = this.#packageResolver.projectFor(rootPath).semanticGraph()
     if (graph.status !== "ready" || !graph.complete || graph.units.length === 0) return undefined
-    return [...new Set(graph.units.flatMap(unit => unit.sourceRoots).map(sourceRoot => (
+    const admittedPaths = graph.units.flatMap(unit => {
+      const entry = this.#packageResolver.moduleEntryPath(rootPath, unit.moduleRoot)
+      return entry && !unit.sourceRoots.some(sourceRoot => (
+        entry === sourceRoot || entry.startsWith(`${sourceRoot}${path.sep}`)
+      )) ? [...unit.sourceRoots, entry] : unit.sourceRoots
+    })
+    return [...new Set(admittedPaths.map(sourceRoot => (
       pathToFileURL(sourceRoot).href
     )))].sort()
   }

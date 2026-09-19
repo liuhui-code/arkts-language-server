@@ -691,3 +691,38 @@ Focused protocol and public LSP tests pass (`4/4`), and the complete references
 batching suite passes (`11/11`). A follow-up Photos replay could not start
 because `/private/tmp/applications_photos-6.1-lts` was no longer present; no
 real-project result is claimed for this slice.
+
+## Declared package entry admission (2026-09-19)
+
+Parent revision: `dfef56322fab04bd1c6e3120330bf533cced0277`.
+
+After restoring the fixed Photos checkout, the `EditorController` query at
+`browserCommonPhone/src/main/ets/controller/EditorController.ets:133:14`
+returned 17 Locations in legacy mode but only nine in identity mode. The
+missing Locations included `browserCommonPhone/index.ets` and files importing
+from the `browsercommonphone` package root. The scoped index included module
+source roots but excluded the package's declared root-level `index.ets`; a
+resolved import to that catalog-owned entry was incorrectly classified as
+disjoint, so the index claimed a complete identity proof.
+
+The Rust memory/SQLite store contract RED asserted that a uniquely resolved
+package entry outside the admitted scope cannot prove identity. The old stores
+returned `identity_complete=true` with only the declaration URI. The public
+LSP RED used a declared two-module project with `shared/index.ets` outside
+`shared/src/main` and a package-root consumer; identity mode omitted its import
+and the barrel reference.
+
+GREEN makes both stores fail closed when an in-scope binding resolves to a
+catalog-owned source outside admission. The semantic worker adds only the
+valid, declared `oh-package.json5` entry file to ProjectGraph source roots; it
+does not admit an entire module root or inactive target directory. The public
+LSP regression now matches conservative Locations, and all 12 references
+batching tests plus the Rust index crate suites pass.
+
+Three independent fixed Photos identity-profile replays returned the exact
+17/17 legacy Locations and the same 59 diagnostics. The index could no longer
+claim complete identity and ran three conservative closure batches. Median
+peak product RSS was 750,727,168 bytes, but median request time was 22.516 s
+against one 9.928 s legacy validation run (2.27×). This passes the correctness
+gate and fails the proposed 2× latency gate. The experimental path remains
+default-off. See the [package-entry scope report](../reports/2026-09-19-references-package-entry-scope.md).
