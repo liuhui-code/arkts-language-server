@@ -1020,3 +1020,25 @@ versus legacy 7.711 s; median product peak RSS was 650,092,544 versus
 gate, but memory fails both the 30% prototype and 50% final gate. Production
 defaults remain `legacy`/`closure`; the user-reported >3 GB case remains
 unverified. See the [disjoint re-export report](../reports/2026-09-19-references-disjoint-reexport-support.md).
+
+### R2e — diagnostic SDK root probe (2026-09-19; opt-in only)
+
+The `EditorController` product RSS peak occurred after the references response
+while normal diagnostics built an 889-SourceFile Program (368 project, 521 SDK),
+not inside the at-most-211-SourceFile identity verifier. Reducing diagnostic
+project roots from 256 to one left the same 368 project SourceFiles reachable
+through imports. The existing default-off `core` SDK profile reduced SDK files
+but generated a false `Curve` diagnostic because it omitted `enums.d.ts`.
+
+A public LSP RED/GREEN case now fixes that specific profile omission. On the
+fixed Photos checkout, three independent core+enums identity runs returned the
+same 17 Locations and exact 59 diagnostics as full-profile legacy. Diagnostic
+SDK SourceFiles fell from 521 to 394. Median product peak was 578,654,208
+versus 890,122,240 bytes (35.0% lower), and median request latency was
+5.345 versus 7.711 seconds. This one workload passes the 30% prototype gate,
+but still fails the final 50% gate. `core` remains opt-in: the test does not
+prove all SDK globals and files correct, and the user's >3 GB reproducer remains
+unverified. Before considering any default change, validate full-vs-core
+diagnostics and navigation across multiple real files/SDKs; any difference
+requires full-profile fallback, not silent omission. See the
+[diagnostic SDK probe](../reports/2026-09-19-references-diagnostics-core-enums.md).

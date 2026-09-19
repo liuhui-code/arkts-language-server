@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "repoParentRevision": "129a83cbb8925ea31fd4554c940ab02ca81cd6e5",
+  "workspace": "openharmony/applications_photos",
+  "workspaceRevision": "98ea1d9cd6a363c576e2c6ff17844e51723baec5",
+  "sdkApiLevel": 24,
+  "sdkVersion": "6.1.1.125",
+  "nodeVersion": "v26.3.0",
+  "file": "browserCommonPhone/src/main/ets/controller/EditorController.ets",
+  "symbol": "EditorController",
+  "positionUtf16": { "line": 133, "character": 14 },
+  "method": "textDocument/references",
+  "includeDeclaration": true,
+  "baseline": {
+    "strategy": "legacy",
+    "interactiveSdkProfile": "full",
+    "locationCounts": [17, 17, 17],
+    "diagnosticCounts": [59, 59, 59],
+    "requestMs": [7375, 7918, 7711],
+    "peakProductRssBytes": [890122240, 885297152, 891904000],
+    "diagnosticProgramSourceFiles": 889,
+    "diagnosticSdkSourceFiles": 521
+  },
+  "experiment": {
+    "strategy": "indexed-batched",
+    "referenceSdkProfile": "common",
+    "dependencyProfile": "identity",
+    "interactiveSdkProfile": "core",
+    "locationCounts": [17, 17, 17],
+    "diagnosticCounts": [59, 59, 59],
+    "diagnosticsExact": [true, true, true],
+    "requestMs": [5370, 5257, 5345],
+    "peakProductRssBytes": [578654208, 587800576, 577789952],
+    "diagnosticProgramSourceFiles": 762,
+    "diagnosticSdkSourceFiles": 394
+  },
+  "medianLatencyRatio": 0.6932,
+  "medianPeakRssRatio": 0.6501,
+  "prototypeThirtyPercentMemoryGate": "PASS_FOR_THIS_WORKLOAD",
+  "finalFiftyPercentMemoryGate": "FAIL",
+  "userReportedOverThreeGbGate": "UNVERIFIED",
+  "productionDefaultsUnchanged": true
+}
