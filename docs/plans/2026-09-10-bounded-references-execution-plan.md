@@ -1057,3 +1057,16 @@ these real documents. Production stays `full`; the prior EditorController
 implementation needs a conservative SDK-global closure or exact fail-closed
 fallback and a wider public LSP differential. See the
 [multi-file gate](../reports/2026-09-19-interactive-sdk-core-multifile-gate.md).
+
+### R2g — strict replay differential gate (2026-09-20)
+
+The replay tool's existing `PASS` meant exact references only, so the
+`BottomToolbar` 70-error diagnostic regression could appear beside a passing
+request. A separate report-level CLI now requires two successful, comparable
+real LSP replays and checks both normalized Location arrays and versioned
+automatic diagnostics. Missing diagnostics or mismatched workspace/SDK/target
+identity fail closed. The fixed real EditorController pair passes both gates;
+the fixed BottomToolbar pair passes references but fails diagnostics (62 vs
+132). This is a test gate, not a reduced SDK closure or a production default
+change. Before any interactive SDK root reduction is promoted, it must pass
+this gate across the required real-file/SDK matrix and the final memory gate.

@@ -35,7 +35,21 @@ The replay's `PASS` verifies the reference oracle only. Compare the report's
 `diagnostic.diagnostics` array against the full-profile report to apply the
 diagnostic correctness gate.
 
-Validation of this documentation-only follow-up: `git diff --check` and the
+The follow-up strict differential command now makes both gates machine-readable:
+
+```bash
+node scripts/bench/assert-replay-differential.mjs \
+  --baseline /private/tmp/photos-bottomtoolbar-full-verified-20260919.json \
+  --candidate /private/tmp/photos-bottomtoolbar-core-enums-20260919.json
+```
+
+It exits 1 with `REFERENCES_LOCATION_GATE=PASS` and
+`DIAGNOSTIC_CORRECTNESS_GATE=FAIL` (62 versus 132). The existing EditorController
+full/core pair exits 0 with both gates passing (59 versus 59). Missing automatic
+diagnostics, an unsuccessful replay, or mismatched workspace/SDK/target identity
+exit 2 rather than being treated as a successful comparison.
+
+Validation of the 2026-09-19 documentation-only follow-up: `git diff --check` and the
 machine-evidence JSON assertion passed; the focused public LSP suites passed
 17/17; `pnpm check:fast` passed 925/925 when run with the macOS process-sampling
 permission required by its external-RSS test. Restricted sandbox runs produced

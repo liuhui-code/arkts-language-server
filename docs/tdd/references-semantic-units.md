@@ -2,6 +2,24 @@
 
 Parent revision: `b70367964bf7b32e66524b08b4aeb1acde6bd8ff`
 
+## Strict replay differential gate (2026-09-20)
+
+Parent revision: `3d1c6c3bfc069acbfc54313e73baecce1a1465bf`.
+The public report-checker CLI test began RED: a replay pair with identical
+Locations but a false `Cannot find name 'Column'` diagnostic produced no
+gate output. GREEN: the checker exits 1 with a passing references gate and a
+failing diagnostic gate; exact reports exit 0, and missing automatic
+diagnostics exit 2. Focused command:
+
+```bash
+node --test tests/references-replay-cli.test.mjs
+```
+
+The existing real Photos EditorController reports pass both gates (17
+Locations, 59 diagnostics). The BottomToolbar reports expose the intended
+failure: exact 3 Locations but 132 core versus 62 full diagnostics. No
+semantic code or production default changed.
+
 ## Diagnostic core SDK enum closure (2026-09-19)
 
 Parent revision: `129a83cbb8925ea31fd4554c940ab02ca81cd6e5`.
