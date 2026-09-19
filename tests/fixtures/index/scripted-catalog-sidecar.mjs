@@ -178,6 +178,47 @@ input.on("line", (line) => {
     }
     case "references/candidates": {
       const packageResolutionScenario = process.env.ARKTS_INDEX_TEST_SCENARIO
+      if (packageResolutionScenario === "reference-disjoint-reexport"
+        || packageResolutionScenario === "reference-disjoint-reexport-broken-chain") {
+        const uri = file => pathToFileURL(path.join(workspaceRoot, file)).href
+        const supported = request.params.declarationUri === uri("Target.ets")
+        const brokenChain = packageResolutionScenario === "reference-disjoint-reexport-broken-chain"
+        const identityFiles = ["Target.ets", "Barrel.ets", "Query.ets", "Use.ets"]
+        respond(request.id, {
+          supported,
+          complete: supported,
+          identityComplete: supported,
+          identityUris: supported ? identityFiles.map(uri) : [],
+          narrowedUris: [],
+          declarationUri: supported ? uri("Target.ets") : null,
+          declarationIdentity: supported ? "target-thing" : null,
+          names: supported ? ["Thing", "PublicThing"] : [],
+          uris: supported ? [...identityFiles, "SameName.ets", "UnrelatedBarrel.ets"].map(uri) : [],
+          bindings: supported ? [
+            {
+              kind: "reexport",
+              uri: uri("Barrel.ets"),
+              importedName: "Thing",
+              localName: "PublicThing",
+              sourceSpecifier: "./Target",
+              sourceResolution: brokenChain ? "unresolved" : "unique",
+              resolvedSourceUri: brokenChain ? null : uri("Target.ets"),
+            },
+            {
+              kind: "reexport",
+              uri: uri("UnrelatedBarrel.ets"),
+              importedName: "Thing",
+              localName: "PublicThing",
+              sourceSpecifier: "./SameName",
+              sourceResolution: "unique",
+              resolvedSourceUri: uri("SameName.ets"),
+            },
+          ] : [],
+          servedGeneration: committedGeneration,
+          completeness: "ready",
+        })
+        break
+      }
       if (packageResolutionScenario === "reference-package-entry-barrel") {
         const target = path.join("shared", "src", "main", "ets", "Target.ets")
         const barrel = path.join("shared", "index.ets")

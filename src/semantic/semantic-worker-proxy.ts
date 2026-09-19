@@ -889,9 +889,9 @@ function identityReferenceSupportUris(
   const candidates = new Set(candidateUris)
   const support = new Set([result.declarationUri])
   for (const binding of result.bindings ?? []) {
-    if (binding.kind !== "reexport") continue
+    if (binding.kind !== "reexport" || !candidates.has(binding.uri)) continue
     if (binding.sourceResolution !== "unique" || !binding.resolvedSourceUri
-      || !candidates.has(binding.uri) || !candidates.has(binding.resolvedSourceUri)) {
+      || !candidates.has(binding.resolvedSourceUri)) {
       return undefined
     }
     support.add(binding.uri)
