@@ -1088,3 +1088,20 @@ semantic-closure boundary with fail-closed `full` fallback; exact public LSP
 multi-capability/overlay differentials and the product memory/latency gates
 remain mandatory. The original >3 GB reproducer and final 50% gate are still
 open. See the [current-main no-go report](../reports/2026-09-20-interactive-sdk-static-core-no-go.md).
+
+### R2i — fail-closed static SDK wrapper equivalence (2026-09-20)
+
+A public LSP RED with all four `core` files present and an extra full-index
+global provider reproduced a false TS2304; previously, existence of the four
+files alone enabled the reduced profile. The interactive engine now selects
+those four files only when `index-full.d.ts` is a declaration-free wrapper
+whose complete path-reference set is exactly those four files. All other
+shapes fall back to `full`. Public LSP tests cover the extra provider,
+equivalent wrapper, unsupported pragma, and missing core file. Fixed Photos
+`BottomToolbar` now passes the strict 3-Location/62-diagnostic differential;
+its diagnostic SDK Program returns to 573 SourceFiles and product peak to
+888,885,248 bytes. This is a correctness guard, **not** the promised memory
+optimization. The next working-set RED remains a versioned, semantically
+complete *per-project or per-document* SDK provider closure with fail-closed
+fallback; the real >3 GB reproducer and final 50% peak gate remain open. See
+the [equivalence-guard report](../reports/2026-09-20-interactive-sdk-core-equivalence-guard.md).

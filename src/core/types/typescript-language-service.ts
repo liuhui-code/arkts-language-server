@@ -2574,7 +2574,8 @@ function discoverSdkAmbientDeclarations(
       path.join(sdkRoot, "ets", "component", "common_ts_ets_api.d.ts"),
       path.join(sdkRoot, "ets", "component", "enums.d.ts"),
     ]
-    if (core.every((candidate) => fs.existsSync(candidate))) return core
+    if (core.every((candidate) => fs.existsSync(candidate))
+      && fullSdkIndexOnlyReferences(sdkRoot, core)) return core
   }
   if (profile === "common") {
     const common = path.join(sdkRoot, "ets", "component", "common.d.ts")
@@ -2589,6 +2590,37 @@ function discoverSdkAmbientDeclarations(
     path.join(sdkRoot, "ets", "component", "arkui.d.ts"),
   ].find((candidate) => fs.existsSync(candidate))
   return prelude ? [prelude] : []
+}
+
+function fullSdkIndexOnlyReferences(sdkRoot: string, expectedPaths: readonly string[]): boolean {
+  const indexPath = path.join(sdkRoot, "ets", "component", "index-full.d.ts")
+  try {
+    const contents = fs.readFileSync(indexPath, "utf8")
+    if (contents.split(/\r?\n/).some((line) => (
+      /^\s*\/\/\//.test(line)
+      && !/^\s*\/\/\/\s*<reference path="[^"]+"\s*\/>\s*$/.test(line)
+    ))) return false
+    const source = ts.createSourceFile(
+      indexPath,
+      contents,
+      ts.ScriptTarget.Latest,
+      false,
+      ts.ScriptKind.TS,
+    )
+    if (
+      source.statements.length > 0
+      || source.hasNoDefaultLib
+      || source.typeReferenceDirectives.length > 0
+      || source.libReferenceDirectives.length > 0
+      || source.referencedFiles.length !== expectedPaths.length
+    ) return false
+    const expected = new Set(expectedPaths.map((filePath) => path.resolve(filePath)))
+    return source.referencedFiles.every((reference) => (
+      expected.delete(path.resolve(path.dirname(indexPath), reference.fileName))
+    )) && expected.size === 0
+  } catch {
+    return false
+  }
 }
 
 function quickInfoDocumentation(info: ts.QuickInfo): string | undefined {
