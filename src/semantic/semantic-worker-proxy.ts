@@ -227,7 +227,16 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
   }
 
   async references(query: Contract.SemanticReferencesQuery) {
+    const selectionStarted = performance.now()
     const candidates = await this.#referenceCandidates(query)
+    if (this.#environment.ARKTS_REFERENCES_TRACE === "1"
+      && referenceSearchRuntimeConfig(this.#environment).strategy === "indexed-batched") {
+      this.#logger?.info("references.candidate-selection.complete", {
+        durationMs: Math.round((performance.now() - selectionStarted) * 100) / 100,
+        outcome: candidates ? "accepted" : "fallback",
+        candidateFiles: candidates?.uris.length ?? 0,
+      })
+    }
     return this.#documentRequest<Contract.SemanticReferencesOutcome>("references", query, {
       position: query.position,
       includeDeclaration: query.includeDeclaration,
