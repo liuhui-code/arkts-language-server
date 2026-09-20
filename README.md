@@ -193,7 +193,15 @@ On macOS the defaults are:
 
 `ARKTS_LSP_LOG_DIR` and `ARKTS_INDEX_CACHE_DIR` override those directories.
 Logs are NDJSON, rotate at 5 MiB, never use stdout, and include lifecycle,
-request timing, and aggregate catalog terminal counters.
+request timing, and aggregate catalog terminal counters. Each
+`request.completed` event includes `rssBytes` (whole Node process, including
+workers) and `heapUsedBytes` (main-thread V8 heap) at completion; neither is a
+peak-memory measurement.
+
+References default to `indexed-batched` with conservative `closure` dependencies
+and the full SDK. Set `ARKTS_REFERENCES_STRATEGY=legacy` to use the original
+full-Program path; `ARKTS_REFERENCES_DEPENDENCY_PROFILE=identity` remains an
+experimental opt-in.
 
 ## Verify
 

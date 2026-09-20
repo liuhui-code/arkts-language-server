@@ -224,9 +224,22 @@ test("indexed batching narrows compiler batches but keeps the exact references r
     awaitIndexReady: true, overlayPath, overlayText,
     batchRoots: "1", dependencyProfile: "identity", runId: "indexed-identity-chain",
   })
+  const productionDefault = await runSingleReferenceRequest(t, {
+    root, workspace, queryUri, queryText, position,
+    awaitIndexReady: true, overlayPath, overlayText,
+    batchRoots: "1", runId: "production-default",
+  })
 
   assert.deepEqual(indexed.locations, conservative.locations)
   assert.deepEqual(identityBounded.locations, conservative.locations)
+  assert.deepEqual(productionDefault.locations, conservative.locations)
+  assert.ok(productionDefault.indexEvents.some(event => event.event === "references.index.accepted"))
+  assert.ok(productionDefault.batchEvents.every(event => event.dependencyProfile === "closure"))
+  const completed = productionDefault.requestEvents.find(event => (
+    event.method === "textDocument/references" && event.outcome === "ok"
+  ))
+  assert.ok(Number.isSafeInteger(completed?.rssBytes) && completed.rssBytes > 0)
+  assert.ok(Number.isSafeInteger(completed?.heapUsedBytes) && completed.heapUsedBytes > 0)
   assert.ok(
     indexed.batchEvents.length < conservative.batchEvents.length,
     JSON.stringify({ indexed: indexed.batchEvents, indexEvents: indexed.indexEvents,
@@ -557,16 +570,15 @@ test("indexed batching keeps declared project semantic units intact", async (t) 
   assert.equal(accepted?.anchorMode, "compiler-definition-identity",
     JSON.stringify(result.referenceEvents))
   assert.equal(accepted?.candidateFiles, 4)
-  const lastScopedRequest = result.indexRequests.filter(request => (
+  const scopedRequests = result.indexRequests.filter(request => (
     request.method === "references/candidates"
     && request.params.declarationUri.endsWith("/shared/src/main/ets/Target.ets")
-  )).at(-1)
-  assert.deepEqual(lastScopedRequest?.params.admittedRootUris?.map(uri => (
-    new URL(uri).pathname.slice(new URL(uri).pathname.indexOf("/workspace/"))
-  )), [
-    "/workspace/entry/src/main",
-    "/workspace/shared/src/main",
-  ])
+  ))
+  assert.equal(scopedRequests.length, 1,
+    "a watched project change must not reuse the previous index generation")
+  assert.ok(result.referenceEvents.some(event => (
+    event.event === "references.index.fallback" && event.reason === "workspace-changed"
+  )))
   assert.deepEqual([...new Set(result.locations.map(location => (
     path.basename(new URL(location.uri).pathname)
   )))].sort(), [
@@ -1234,7 +1246,7 @@ async function runReferences(t, {
       DEVECO_SDK_HOME: path.join(root, "missing-deveco"),
       ARKLINE_HARMONY_SDK_PATH: path.join(root, "missing-sdk"),
       ARKTS_LSP_LOG_DIR: logDirectory,
-      ARKTS_REFERENCES_STRATEGY: strategy,
+      ...(strategy ? { ARKTS_REFERENCES_STRATEGY: strategy } : {}),
       ARKTS_REFERENCES_BATCH_ROOTS: "2",
       ARKTS_REFERENCES_TRACE: "1",
     },
@@ -1313,7 +1325,7 @@ async function runSingleReferenceRequest(t, {
         ...(indexScenario ? { ARKTS_INDEX_TEST_SCENARIO: indexScenario } : {}),
       } : {}),
       ARKTS_LSP_LOG_DIR: logDirectory,
-      ARKTS_REFERENCES_STRATEGY: strategy,
+      ...(strategy ? { ARKTS_REFERENCES_STRATEGY: strategy } : {}),
       ARKTS_REFERENCES_BATCH_ROOTS: batchRoots,
       ARKTS_REFERENCES_TRACE: "1",
       ...(sdkAmbientProfile ? {
@@ -1414,6 +1426,7 @@ async function runSingleReferenceRequest(t, {
       : undefined,
     completionEvents: logs.filter(entry => entry.event === "completion.program.complete"),
     diagnosticEvents: logs.filter(entry => entry.event === "diagnostics.program.complete"),
+    requestEvents: logs.filter(entry => entry.event === "request.completed"),
   }
 }
 

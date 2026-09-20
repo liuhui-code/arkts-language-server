@@ -375,6 +375,7 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     candidateIdentityComplete = false,
     candidateAnchorUri?: string,
     candidateSupportUris?: readonly string[],
+    forceLegacy = false,
   ): Promise<VersionedSemanticResult<SemanticReferencesOutcome>> {
     assertActive(query.signal)
     this.sync(query.document)
@@ -394,6 +395,7 @@ export class LegacySemanticEngine implements SemanticEnginePort {
         const filePath = toFilePath(uri)
         return filePath ? [filePath] : []
       }),
+      forceLegacy,
     )
     return {
       documentVersion: query.document.version,

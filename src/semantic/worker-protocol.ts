@@ -266,6 +266,7 @@ export interface SemanticWorkerCompletionDiscovery {
 export interface SemanticWorkerReferencesArgs {
   readonly position: SemanticWorkerPosition
   readonly includeDeclaration: boolean
+  readonly forceLegacy?: boolean
   readonly candidateUris?: readonly string[]
   readonly candidateIdentityComplete?: boolean
   readonly candidateAnchorUri?: string
@@ -1352,17 +1353,20 @@ function decodeReferencesArgs(value: unknown): SemanticWorkerReferencesArgs {
   const args = ownDataRecord(
     value,
     ["position", "includeDeclaration"],
-    ["candidateUris", "candidateIdentityComplete", "candidateAnchorUri", "candidateSupportUris"],
+    ["candidateUris", "candidateIdentityComplete", "candidateAnchorUri", "candidateSupportUris", "forceLegacy"],
   )
   if (!args || !hasRequiredAndOnlyKeys(
     args,
     ["position", "includeDeclaration"],
-    ["candidateUris", "candidateIdentityComplete", "candidateAnchorUri", "candidateSupportUris"],
+    ["candidateUris", "candidateIdentityComplete", "candidateAnchorUri", "candidateSupportUris", "forceLegacy"],
   )) {
     throw invalidRequest()
   }
   const position = decodePosition(args.position)
   if (typeof args.includeDeclaration !== "boolean") throw invalidRequest()
+  if (Object.hasOwn(args, "forceLegacy") && typeof args.forceLegacy !== "boolean") {
+    throw invalidRequest()
+  }
   let candidateUris: readonly string[] | undefined
   if (Object.hasOwn(args, "candidateUris")) {
     candidateUris = Object.freeze(readBoundedDenseArray(
@@ -1406,6 +1410,7 @@ function decodeReferencesArgs(value: unknown): SemanticWorkerReferencesArgs {
   return Object.freeze({
     position,
     includeDeclaration: args.includeDeclaration,
+    ...(Object.hasOwn(args, "forceLegacy") ? { forceLegacy: args.forceLegacy as boolean } : {}),
     ...(candidateUris ? { candidateUris } : {}),
     ...(candidateIdentityComplete === undefined ? {} : { candidateIdentityComplete }),
     ...(candidateAnchorUri ? { candidateAnchorUri } : {}),
