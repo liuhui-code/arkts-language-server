@@ -28,6 +28,9 @@ export interface ReferenceBatchVerification {
     readonly prepareHostMs: number
     readonly programReadyMs: number
     readonly queryMs: number
+    readonly getProgramMs?: number
+    readonly createProgramMs?: number
+    readonly getTypeCheckerMs?: number
   }
   readonly prepared: {
     readonly stats: ReferenceProgramStats
@@ -225,6 +228,9 @@ export class ReferenceSearchExecutor {
         queryHeapUsedDelta: verification.memory.heapUsed - verification.prepared.memory.heapUsed,
         workerPrepareHostMs: verification.timings.prepareHostMs,
         workerProgramReadyMs: verification.timings.programReadyMs,
+        workerGetProgramMs: verification.timings.getProgramMs,
+        workerCreateProgramMs: verification.timings.createProgramMs,
+        workerGetTypeCheckerMs: verification.timings.getTypeCheckerMs,
         workerQueryMs: verification.timings.queryMs,
         ...verification.stats,
         locations: result.references.length,

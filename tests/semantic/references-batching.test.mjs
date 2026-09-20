@@ -102,6 +102,12 @@ test("batched references preserve the legacy Location set while bounding compile
     assert.ok(events.every((entry) => entry.programProjectFiles < entry.membershipFiles))
     assert.ok(events.every(entry => ["workerPrepareHostMs", "workerProgramReadyMs",
       "workerQueryMs"].every(field => Number.isFinite(entry[field]) && entry[field] >= 0)))
+    assert.ok(events.every(entry => ["workerGetProgramMs", "workerGetTypeCheckerMs"]
+      .every(field => Number.isFinite(entry[field]) && entry[field] >= 0)))
+    assert.ok(events.every(entry => Number.isFinite(entry.workerCreateProgramMs)
+      && entry.workerCreateProgramMs > 0))
+    assert.ok(events.every(entry => entry.workerGetProgramMs + entry.workerGetTypeCheckerMs
+      <= entry.workerProgramReadyMs))
     const timeline = batched.referenceEvents.filter(entry => entry.referenceSession === session
       && ["references.plan.complete", "references.batch.start", "references.batch.complete",
         "references.merge.complete"].includes(entry.event))
