@@ -266,6 +266,7 @@ export interface SemanticWorkerCompletionDiscovery {
 export interface SemanticWorkerReferencesArgs {
   readonly position: SemanticWorkerPosition
   readonly includeDeclaration: boolean
+  readonly traceId?: string
   readonly forceLegacy?: boolean
   readonly candidateUris?: readonly string[]
   readonly candidateIdentityComplete?: boolean
@@ -282,7 +283,10 @@ export interface SemanticWorkerRequestArgsByMethod {
     readonly completion: SemanticWorkerJsonObject
     readonly snippets?: boolean
   }
-  readonly define: SemanticWorkerPositionArgs & { readonly isolate?: boolean }
+  readonly define: SemanticWorkerPositionArgs & {
+    readonly isolate?: boolean
+    readonly traceId?: string
+  }
   readonly typeDefinitions: SemanticWorkerPositionArgs
   readonly implementations: SemanticWorkerPositionArgs
   readonly references: SemanticWorkerReferencesArgs
@@ -1353,17 +1357,21 @@ function decodeReferencesArgs(value: unknown): SemanticWorkerReferencesArgs {
   const args = ownDataRecord(
     value,
     ["position", "includeDeclaration"],
-    ["candidateUris", "candidateIdentityComplete", "candidateAnchorUri", "candidateSupportUris", "forceLegacy"],
+    ["candidateUris", "candidateIdentityComplete", "candidateAnchorUri", "candidateSupportUris", "forceLegacy", "traceId"],
   )
   if (!args || !hasRequiredAndOnlyKeys(
     args,
     ["position", "includeDeclaration"],
-    ["candidateUris", "candidateIdentityComplete", "candidateAnchorUri", "candidateSupportUris", "forceLegacy"],
+    ["candidateUris", "candidateIdentityComplete", "candidateAnchorUri", "candidateSupportUris", "forceLegacy", "traceId"],
   )) {
     throw invalidRequest()
   }
   const position = decodePosition(args.position)
   if (typeof args.includeDeclaration !== "boolean") throw invalidRequest()
+  if (Object.hasOwn(args, "traceId")
+    && (typeof args.traceId !== "string" || !/^[0-9a-f-]{36}$/.test(args.traceId))) {
+    throw invalidRequest()
+  }
   if (Object.hasOwn(args, "forceLegacy") && typeof args.forceLegacy !== "boolean") {
     throw invalidRequest()
   }
@@ -1410,6 +1418,7 @@ function decodeReferencesArgs(value: unknown): SemanticWorkerReferencesArgs {
   return Object.freeze({
     position,
     includeDeclaration: args.includeDeclaration,
+    ...(Object.hasOwn(args, "traceId") ? { traceId: args.traceId as string } : {}),
     ...(Object.hasOwn(args, "forceLegacy") ? { forceLegacy: args.forceLegacy as boolean } : {}),
     ...(candidateUris ? { candidateUris } : {}),
     ...(candidateIdentityComplete === undefined ? {} : { candidateIdentityComplete }),
@@ -1421,14 +1430,18 @@ function decodeReferencesArgs(value: unknown): SemanticWorkerReferencesArgs {
 function decodeDefinitionArgs(
   value: unknown,
 ): SemanticWorkerRequestArgsByMethod["define"] {
-  const args = ownDataRecord(value, ["position"], ["isolate"])
-  if (!args || !hasRequiredAndOnlyKeys(args, ["position"], ["isolate"])
-    || (Object.hasOwn(args, "isolate") && typeof args.isolate !== "boolean")) {
+  const args = ownDataRecord(value, ["position"], ["isolate", "traceId"])
+  if (!args || !hasRequiredAndOnlyKeys(args, ["position"], ["isolate", "traceId"])
+    || (Object.hasOwn(args, "isolate") && typeof args.isolate !== "boolean")
+    || (Object.hasOwn(args, "traceId")
+      && (args.isolate !== true || typeof args.traceId !== "string"
+        || !/^[0-9a-f-]{36}$/.test(args.traceId)))) {
     throw invalidRequest()
   }
   return Object.freeze({
     position: decodePosition(args.position),
     ...(Object.hasOwn(args, "isolate") ? { isolate: args.isolate as boolean } : {}),
+    ...(Object.hasOwn(args, "traceId") ? { traceId: args.traceId as string } : {}),
   })
 }
 

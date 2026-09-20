@@ -1,5 +1,5 @@
 import fs from "node:fs"
-import { createHash } from "node:crypto"
+import { createHash, randomUUID } from "node:crypto"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { Worker } from "node:worker_threads"
@@ -227,11 +227,13 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
   }
 
   async references(query: Contract.SemanticReferencesQuery) {
+    const traceId = this.#environment.ARKTS_REFERENCES_TRACE === "1" ? randomUUID() : undefined
     const selectionStarted = performance.now()
-    const candidates = await this.#referenceCandidates(query)
+    const candidates = await this.#referenceCandidates(query, traceId)
     if (this.#environment.ARKTS_REFERENCES_TRACE === "1"
       && referenceSearchRuntimeConfig(this.#environment).strategy === "indexed-batched") {
       this.#logger?.info("references.candidate-selection.complete", {
+        traceId,
         durationMs: Math.round((performance.now() - selectionStarted) * 100) / 100,
         outcome: candidates ? "accepted" : "fallback",
         candidateFiles: candidates?.uris.length ?? 0,
@@ -240,6 +242,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
     return this.#documentRequest<Contract.SemanticReferencesOutcome>("references", query, {
       position: query.position,
       includeDeclaration: query.includeDeclaration,
+      ...(traceId ? { traceId } : {}),
       ...(this.#changedWorkspaceRoots.has(query.document.workspaceId)
         ? { forceLegacy: true } : {}),
       ...(candidates ? {
@@ -395,6 +398,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
 
   async #referenceCandidates(
     query: Contract.SemanticReferencesQuery,
+    traceId?: string,
   ): Promise<ReferenceCandidateSelection | undefined> {
     if (referenceSearchRuntimeConfig(this.#environment).strategy !== "indexed-batched"
       || !this.#referenceIndex) return undefined
@@ -463,7 +467,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
       const definition = await this.#documentRequest<Contract.SemanticDefinition[]>(
         "define",
         query,
-        { position: query.position, isolate: true },
+        { position: query.position, isolate: true, ...(traceId ? { traceId } : {}) },
       )
       if (definition.value.length !== 1) {
         this.#logger?.info("references.index.fallback", {

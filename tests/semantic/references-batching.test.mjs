@@ -88,6 +88,9 @@ test("batched references preserve the legacy Location set while bounding compile
   assert.equal(queueEvents.length, 2)
   assert.ok(queueEvents.every(entry => Number.isFinite(entry.queueWaitMs)
     && entry.queueWaitMs >= 0))
+  const traceIds = queueEvents.map(entry => entry.traceId)
+  assert.ok(traceIds.every(id => typeof id === "string" && id.length > 0))
+  assert.equal(new Set(traceIds).size, 2)
   const requestIds = new Set(batched.batchEvents.map((entry) => entry.referenceSession))
   assert.equal(requestIds.size, 2)
   for (const session of requestIds) {
@@ -104,6 +107,8 @@ test("batched references preserve the legacy Location set while bounding compile
         "references.merge.complete"].includes(entry.event))
     assert.equal(timeline[0]?.event, "references.plan.complete")
     assert.equal(timeline.at(-1)?.event, "references.merge.complete")
+    assert.ok(timeline.every(entry => traceIds.includes(entry.traceId)))
+    assert.equal(new Set(timeline.map(entry => entry.traceId)).size, 1)
     assert.equal(timeline.filter(entry => entry.event === "references.batch.start").length,
       events.length)
     assert.ok(timeline.every((entry, index) => Number.isFinite(entry.elapsedMs)
@@ -269,6 +274,9 @@ test("indexed batching narrows compiler batches but keeps the exact references r
   ))
   assert.equal(selection?.outcome, "accepted")
   assert.ok(Number.isFinite(selection?.durationMs) && selection.durationMs >= 0)
+  const plan = indexed.referenceEvents.find(event => event.event === "references.plan.complete")
+  assert.equal(selection?.traceId, plan?.traceId)
+  assert.ok(typeof selection?.traceId === "string" && selection.traceId.length > 0)
   assert.equal(accepted?.candidateFiles, 4)
   assert.equal(accepted?.conservativeCandidateFiles, 5)
   assert.ok(indexed.locations.some(location => (
@@ -280,6 +288,7 @@ test("indexed batching narrows compiler batches but keeps the exact references r
     && event.verifierIsolation === "transient-worker"
   ))
   assert.ok(anchor)
+  assert.equal(anchor.traceId, selection.traceId)
   assert.ok(anchor.preparedProgramSourceFiles > 0)
   assert.ok(anchor.preparedProjectTextCodeUnits > 0)
   assert.equal(typeof anchor.queryHeapUsedDelta, "number")
