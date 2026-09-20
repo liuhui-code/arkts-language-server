@@ -48,6 +48,14 @@ async function replay(options) {
   const sourceUri = pathToFileURL(sourcePath).href
   const expected = loadOracle(options.oracle, options.workspace)
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-references-replay-"))
+  try {
+    return await replayWithTemporaryState(options, { sourceText, sourceUri, expected, tempRoot })
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true })
+  }
+}
+
+async function replayWithTemporaryState(options, { sourceText, sourceUri, expected, tempRoot }) {
   const cacheDir = path.join(tempRoot, "index-cache")
   const logDir = path.join(tempRoot, "logs")
   const samplesPath = path.join(tempRoot, "process-tree-rss.jsonl")

@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "workspaceRevision": "98ea1d9cd6a363c576e2c6ff17844e51723baec5",
+  "sdkApiVersion": 24,
+  "sdkVersion": "6.1.1.125",
+  "nodeVersion": "v26.3.0",
+  "serverSha256": "9e3ba503ef6961cd6f98799938219557dddf3c0c0b240ab11e3485f68a666f28",
+  "sidecarSha256": "8d4e95b5c603b8f43e0da9a7e62d74b127a94fe16f8b6d0afbc9fd0d6ebe40ae",
+  "target": {
+    "file": "imageEditor/product/editor_phone/src/main/ets/component/menu/BottomToolbar.ets",
+    "symbol": "getMutuallyExclusiveDesc",
+    "line": 351,
+    "character": 19,
+    "includeDeclaration": true
+  },
+  "referenceCount": 3,
+  "diagnosticCount": 62,
+  "strictPairDifferentialsPassed": 3,
+  "fullVerifier": {
+    "projectFiles": 2,
+    "sdkFiles": 302,
+    "referenceIntervalPeakRssBytes": [497143808, 491417600, 481120256],
+    "productPeakRssBytes": [587431936, 578912256, 584921088],
+    "requestMs": [3388, 3130, 3073]
+  },
+  "commonVerifier": {
+    "projectFiles": 2,
+    "sdkFiles": 170,
+    "referenceIntervalPeakRssBytes": [434876416, 437514240, 433131520],
+    "productPeakRssBytes": [589512704, 588972032, 587943936],
+    "requestMs": [2728, 2668, 2388]
+  },
+  "normalDiagnosticProgram": {
+    "projectFiles": 323,
+    "sdkFiles": 503
+  },
+  "matchedLegacyMedianPeakRssBytes": 885018624,
+  "finalFiftyPercentThresholdBytes": 442509312,
+  "decision": "single-symbol-verifier-stage-improved-product-release-open"
+}

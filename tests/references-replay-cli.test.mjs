@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url"
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const runner = path.join(projectRoot, "scripts", "bench", "replay-references.mjs")
 const differential = path.join(projectRoot, "scripts", "bench", "assert-replay-differential.mjs")
+const silentServer = path.join(projectRoot, "tests", "fixtures", "lsp", "silent-replay-server.mjs")
 
 test("references replay exposes one self-contained real-project command", () => {
   const result = spawnSync(process.execPath, [runner, "--help"], {
@@ -36,6 +37,49 @@ test("references replay fails before launch when required evidence is absent", (
 
   assert.equal(result.status, 2, `${result.stderr}\n${result.stdout}`)
   assert.match(result.stderr, /--workspace is required/u)
+})
+
+test("references replay removes its private index cache after a failed child request", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-replay-cleanup-test-"))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const temporary = path.join(root, "temporary")
+  const workspace = path.join(root, "workspace")
+  const sdk = path.join(root, "sdk")
+  for (const directory of [temporary, workspace, sdk]) fs.mkdirSync(directory)
+  fs.writeFileSync(path.join(workspace, "Query.ets"), "Thing\n")
+  const oracle = path.join(root, "oracle.json")
+  const output = path.join(root, "result.json")
+  fs.writeFileSync(oracle, "[]\n")
+
+  const result = spawnSync(process.execPath, [
+    runner,
+    "--workspace", workspace,
+    "--sdk", sdk,
+    "--file", "Query.ets",
+    "--symbol", "Thing",
+    "--line", "0",
+    "--character", "1",
+    "--oracle", oracle,
+    "--out", output,
+    "--server", silentServer,
+    "--sidecar", silentServer,
+    "--timeout-ms", "1000",
+    "--diagnostic-timeout-ms", "1000",
+    "--idle-ms", "0",
+  ], {
+    cwd: projectRoot,
+    env: { ...process.env, TMPDIR: temporary },
+    encoding: "utf8",
+    timeout: 25_000,
+  })
+
+  assert.equal(result.status, 1, `${result.stderr}\n${result.stdout}`)
+  assert.equal(JSON.parse(fs.readFileSync(output, "utf8")).status, "FAIL")
+  assert.deepEqual(
+    fs.readdirSync(temporary).filter((entry) => entry.startsWith("arkts-references-replay-")),
+    [],
+    "the replay retained its private SQLite catalog and RSS samples",
+  )
 })
 
 test("replay differential rejects false diagnostics despite exact reference Locations", (t) => {
