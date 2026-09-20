@@ -59,9 +59,10 @@ const documents = new Map<string, DocumentSnapshot>()
 const appliedRevisions = new Map<number, number>()
 const projects = new SingleRootProjectResolver(data.rootUri)
 const cancellation = new SemanticCancellationScope()
+let activeReferenceTraceId: string | undefined
 const logger: StructuredLogger = {
-  info: (event, fields) => postLog("info", event, fields),
-  error: (event, fields) => postLog("error", event, fields),
+  info: (event, fields) => postLog("info", event, referenceFields(event, fields)),
+  error: (event, fields) => postLog("error", event, referenceFields(event, fields)),
 }
 const engine = new OhosTypeScriptSemanticEngine(projects, logger, {
   maxResidentContexts: data.runtimeConfig.maxResidentContexts,
@@ -106,6 +107,8 @@ async function dispatch(message: unknown, receivedAt: number): Promise<void> {
     return
   }
   const request = decodeSemanticWorkerRequest(message)
+  activeReferenceTraceId = request.method === "references" || request.method === "define"
+    ? request.args.traceId : undefined
   if (request.method === "references" && data.references?.trace) {
     logger.info("references.queue.start", {
       requestId: request.id,
@@ -113,8 +116,18 @@ async function dispatch(message: unknown, receivedAt: number): Promise<void> {
       queueWaitMs: Math.round((performance.now() - receivedAt) * 100) / 100,
     })
   }
-  await answerRequest(request)
+  try { await answerRequest(request) }
+  finally { activeReferenceTraceId = undefined }
   sampleMemory()
+}
+
+function referenceFields(
+  event: string,
+  fields: Parameters<StructuredLogger["info"]>[1],
+): Parameters<StructuredLogger["info"]>[1] {
+  return activeReferenceTraceId && event.startsWith("references.")
+    ? { ...fields, traceId: activeReferenceTraceId }
+    : fields
 }
 
 function applyControl(control: WorkerControl): void {

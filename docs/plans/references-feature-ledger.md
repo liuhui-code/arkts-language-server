@@ -6,7 +6,7 @@ completion. An item is complete only after its linked gate passes; see the
 
 | ID | Priority | Feature | State | Dependency and observable exit |
 | --- | --- | --- | --- | --- |
-| R-01 | Must | Phase-level semantic tracing | In progress: batch timeline, Worker timings, queue wait and candidate-selection duration GREEN | Next: request-wide correlation and compiler-internal split; default-off real-LSP timeline, no semantic change |
+| R-01 | Must | Phase-level semantic tracing | In progress: batch timeline, Worker timings, queue wait, candidate-selection duration and request correlation GREEN | Next: separately measure compiler `createProgram` / `getTypeChecker`; default-off real-LSP timeline, no semantic change |
 | R-02 | Must | Fixed manifests and exact oracle | Planned | Matching SDK + verified real symbol; URI/range diff and external RSS |
 | R-03 | Must | Budget-aware hot context retention | Proposed | R-01/R-02; exact A/B, no peak or post-eviction regression |
 | R-04 | Must | Complete-result cache v1 | Proposed | R-02; root-wide invalidation, bounded bytes, zero verifier on valid hit |

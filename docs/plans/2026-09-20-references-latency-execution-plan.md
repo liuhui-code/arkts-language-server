@@ -55,8 +55,11 @@ It does not yet isolate compiler `createProgram` from SourceFile statistics or
 `getTypeChecker` from the query; those remain open F1 measurements.
 The second [queue/candidate-selection slice](../tdd/references-queue-index-trace.md)
 records serial queue wait and the inclusive index/optional-anchor selection
-duration. Request-wide correlation and compiler-internal attribution remain
-open before declaring F1 complete.
+duration. The [request-correlation slice](../tdd/references-trace-correlation.md)
+adds a default-off ID across candidate selection, isolated anchor, queue,
+plan, batch and merge events. Separately verified compiler-internal
+`createProgram` / `getTypeChecker` attribution remains open before declaring
+F1 complete.
 
 ## Benchmark contract
 
