@@ -33,6 +33,32 @@ impl zed::Extension for ArkTsExtension {
             });
         }
 
+        let windows_launch = std::env::current_dir()
+            .ok()
+            .map(|directory| directory.join("bin").join("arkts-language-server.windows"))
+            .filter(|launch| launch.is_file());
+        if let Some(launch) = windows_launch {
+            let contents = std::fs::read_to_string(&launch)
+                .map_err(|error| format!("Cannot read ArkTS Windows launch file: {error}"))?;
+            let lines: Vec<_> = contents.lines().collect();
+            if lines.len() != 3
+                || lines[0] != "arkts-language-server-zed-node-v1"
+                || lines[1].is_empty()
+                || !lines[2].ends_with("server.cjs")
+            {
+                return Err(
+                    "Invalid ArkTS Windows launch file; run `pnpm zed:install` again.".into(),
+                );
+            }
+            let mut node_arguments = vec![lines[2].to_string()];
+            node_arguments.extend(arguments);
+            return Ok(zed::Command {
+                command: lines[1].to_string(),
+                args: node_arguments,
+                env: environment,
+            });
+        }
+
         let managed_command = std::env::current_dir()
             .ok()
             .map(|directory| directory.join("bin").join("arkts-language-server"))

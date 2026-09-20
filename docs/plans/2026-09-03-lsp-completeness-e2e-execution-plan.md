@@ -891,7 +891,8 @@ acceptance 又调用 installer 两次，而每次都会重建 JS、sidecar、WAS
 - [ ] P4 独立干净 job 下载同一 digest，运行 L3 artifact E2E。
 - [ ] P5 GitHub Release 只能 promote 已通过的 digest，不允许重新 build。
 - [ ] P6 `if: always()` 上传 transcript、logs、manifest、process/resource evidence。
-- [ ] P7 Linux/macOS blocking matrix；若承诺 Windows，再提供原生 launcher/package job。
+- [ ] P7 Linux/macOS blocking matrix；Windows 源码检出安装路径和原生 CI 安装/LSP smoke 已增加，
+  但 Windows portable release package 与完整 blocking matrix 尚未完成，不能据此宣称跨平台发布就绪。
 - [ ] P8 对最终 Zed WASM 至少 validate/instantiate；nightly/RC 增加真实 Zed host smoke。
 
 实施依赖：P1a release-topology RED（禁止 seal 后任何直接或间接构建）→ P1b deterministic

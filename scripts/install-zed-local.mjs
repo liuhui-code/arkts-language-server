@@ -11,6 +11,7 @@ const EXTENSION_ID = "arkts"
 const REPOSITORY = "https://github.com/liuhui-code/arkts-language-server"
 const WASM_MAGIC = Buffer.from([0x00, 0x61, 0x73, 0x6d])
 const LAUNCHER_MARKER = "# arkts-language-server-zed-launcher-v1:"
+const WINDOWS_LAUNCH_MARKER = "arkts-language-server-zed-node-v1"
 const scriptRoot = path.dirname(fileURLToPath(import.meta.url))
 const projectRoot = path.resolve(scriptRoot, "..")
 const extensionSource = path.join(projectRoot, "editors", "zed")
@@ -304,6 +305,139 @@ function sameLauncherState(target, expected) {
   }
 }
 
+function windowsLaunchContents(node, server) {
+  return `${WINDOWS_LAUNCH_MARKER}\n${node}\n${server}\n`
+}
+
+function managedWindowsLaunchState(target) {
+  let metadata
+  try {
+    metadata = fs.lstatSync(target)
+  } catch (error) {
+    if (error?.code === "ENOENT") return { kind: "absent" }
+    throw error
+  }
+  if (!metadata.isFile()) throw new Error(`Refusing to replace unmanaged Zed language-server launch file: ${target}`)
+  const contents = fs.readFileSync(target, "utf8")
+  const lines = contents.split("\n")
+  const [marker, node, server] = lines
+  if (marker !== WINDOWS_LAUNCH_MARKER
+    || lines.length !== 4 || lines[3] !== ""
+    || !path.isAbsolute(node) || !path.isAbsolute(server)
+    || !isRecognizedWindowsRelease(server)
+    || contents !== windowsLaunchContents(node, server)) {
+    throw new Error(`Refusing to replace unmanaged Zed language-server launch file: ${target}`)
+  }
+  if (!fs.statSync(node).isFile() || !fs.statSync(server).isFile()) {
+    throw new Error(`Refusing to replace invalid Zed language-server launch file: ${target}`)
+  }
+  return { kind: "file", contents }
+}
+
+function isRecognizedWindowsRelease(server) {
+  const dist = path.dirname(server)
+  const release = path.dirname(dist)
+  const serverRoot = path.dirname(release)
+  return path.isAbsolute(server)
+    && path.basename(server) === "server.cjs"
+    && path.basename(dist) === "dist"
+    && /^[A-Za-z0-9._-]+-[0-9a-f]{64}$/.test(path.basename(release))
+    && path.basename(serverRoot) === "arkts-language-server"
+    && path.basename(path.dirname(serverRoot)) === "libexec"
+}
+
+function runBuild(command, args, environment = process.env) {
+  const result = spawnSync(command, args, {
+    cwd: projectRoot,
+    stdio: "inherit",
+    env: environment,
+    shell: process.platform === "win32" && path.sep === "\\",
+  })
+  if (result.error) throw result.error
+  if (result.status !== 0) throw new Error(`${command} ${args.join(" ")} failed with status ${result.status}`)
+}
+
+function buildWindowsRuntime(libexecRoot) {
+  runBuild("pnpm", ["install", "--frozen-lockfile"])
+  runBuild("pnpm", ["build"])
+  runBuild("cargo", ["build", "--locked", "--package", "arkts-index-sidecar", "--release"], {
+    ...process.env,
+    CARGO_TARGET_DIR: path.join(projectRoot, "target"),
+  })
+  runBuild("cargo", ["build", "--locked", "--manifest-path", "editors/zed/Cargo.toml",
+    "--target", "wasm32-wasip2", "--release"], {
+    ...process.env,
+    CARGO_TARGET_DIR: path.join(extensionSource, "target"),
+  })
+
+  const extensionBuild = path.join(extensionSource, "target", "wasm32-wasip2", "release", "zed_arkts_local.wasm")
+  const extensionWasm = path.join(extensionSource, "extension.wasm")
+  const extensionTemporary = `${extensionWasm}.tmp-${process.pid}`
+  try {
+    fs.copyFileSync(extensionBuild, extensionTemporary)
+    assertWasm(extensionTemporary, "Zed extension")
+    fs.renameSync(extensionTemporary, extensionWasm)
+  } finally {
+    fs.rmSync(extensionTemporary, { force: true })
+  }
+
+  const files = [
+    ["config/semantic-runtime.json", "config/semantic-runtime.json"],
+    ["dist/server.cjs", "dist/server.cjs"],
+    ["dist/semantic-worker.cjs", "dist/semantic-worker.cjs"],
+    ["dist/reference-verifier-worker.cjs", "dist/reference-verifier-worker.cjs"],
+    ["target/release/arkts-index-sidecar.exe", "target/release/arkts-index-sidecar.exe"],
+  ]
+  const digest = createHash("sha256")
+  for (const [source] of files) {
+    digest.update(fs.readFileSync(path.join(projectRoot, source)))
+    digest.update("\0")
+  }
+  const version = JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf8")).version
+  if (!/^[A-Za-z0-9._-]+$/.test(version)) throw new Error("Invalid package version")
+  const release = path.join(libexecRoot, `${version}-${digest.digest("hex")}`)
+  if (!fs.existsSync(release)) {
+    const staging = path.join(libexecRoot, `.staging-${process.pid}-${randomBytes(6).toString("hex")}`)
+    try {
+      for (const [source, destination] of files) {
+        const target = path.join(staging, destination)
+        fs.mkdirSync(path.dirname(target), { recursive: true })
+        fs.copyFileSync(path.join(projectRoot, source), target)
+      }
+      fs.renameSync(staging, release)
+    } finally {
+      fs.rmSync(staging, { recursive: true, force: true })
+    }
+  } else {
+    for (const [source, destination] of files) {
+      if (sha256(path.join(projectRoot, source)) !== sha256(path.join(release, destination))) {
+        throw new Error(`Existing language-server release is corrupt: ${release}`)
+      }
+    }
+  }
+  return path.join(release, "dist", "server.cjs")
+}
+
+function replaceWindowsManaged(target, createTemporary) {
+  const temporary = path.join(path.dirname(target), `.${path.basename(target)}.tmp-${process.pid}-${randomBytes(6).toString("hex")}`)
+  const backup = path.join(path.dirname(target), `.${path.basename(target)}.bak-${process.pid}-${randomBytes(6).toString("hex")}`)
+  let movedOld = false
+  let installed = false
+  try {
+    createTemporary(temporary)
+    if (fs.existsSync(target)) {
+      fs.renameSync(target, backup)
+      movedOld = true
+    }
+    fs.renameSync(temporary, target)
+    installed = true
+  } finally {
+    if (!installed && movedOld) fs.renameSync(backup, target)
+    if (installed && movedOld) fs.unlinkSync(backup)
+    if (fs.existsSync(temporary)) fs.unlinkSync(temporary)
+  }
+}
+
 function atomicExecutable(contents, target) {
   const temporary = path.join(
     path.dirname(target),
@@ -331,20 +465,48 @@ function atomicSymlink(source, target) {
 }
 
 function run() {
-  if (process.platform === "win32") {
-    throw new Error("The source-checkout installer currently supports macOS and Linux")
-  }
   const options = parseArguments(process.argv.slice(2))
   const zedUserDataDir = options.zedUserDataDir ?? defaultZedUserDataDir()
-  const binDir = options.binDir ?? path.join(os.homedir(), ".local", "bin")
+  const binDir = options.binDir ?? (process.platform === "win32"
+    ? path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local"), "arkts-language-server", "bin")
+    : path.join(os.homedir(), ".local", "bin"))
   const extensionsRoot = path.join(zedUserDataDir, "extensions")
   const installedExtension = path.join(extensionsRoot, "installed", EXTENSION_ID)
-  const launcher = path.join(extensionsRoot, "work", EXTENSION_ID, "bin", "arkts-language-server")
+  const launcher = path.join(extensionsRoot, "work", EXTENSION_ID, "bin",
+    process.platform === "win32" ? "arkts-language-server.windows" : "arkts-language-server")
   const installedCommand = path.join(binDir, "arkts-language-server")
   const libexecRoot = path.join(path.dirname(binDir), "libexec", "arkts-language-server")
 
   const initialExtensionState = existingLinkState(installedExtension)
-  const initialLauncherState = managedLauncherState(launcher)
+  const initialLauncherState = process.platform === "win32"
+    ? managedWindowsLaunchState(launcher)
+    : managedLauncherState(launcher)
+
+  if (process.platform === "win32") {
+    fs.mkdirSync(libexecRoot, { recursive: true })
+    const server = buildWindowsRuntime(libexecRoot)
+    const validated = validateBuild()
+    const node = fs.realpathSync(process.execPath)
+    const releasesRoot = path.join(zedUserDataDir, "arkts-language-server", "zed-extension-releases")
+    fs.mkdirSync(releasesRoot, { recursive: true })
+    const release = stageRelease(releasesRoot, validated)
+
+    if (!sameLinkState(installedExtension, initialExtensionState)
+      || !sameLauncherState(launcher, initialLauncherState)) {
+      throw new Error("Zed installation changed during build; refusing to overwrite it")
+    }
+    fs.mkdirSync(path.dirname(installedExtension), { recursive: true })
+    fs.mkdirSync(path.dirname(launcher), { recursive: true })
+    replaceWindowsManaged(launcher, (temporary) => {
+      fs.writeFileSync(temporary, windowsLaunchContents(node, server), { flag: "wx" })
+    })
+    replaceWindowsManaged(installedExtension, (temporary) => {
+      fs.symlinkSync(release, temporary, "junction")
+    })
+    process.stdout.write(`Installed ArkTS dev extension at ${installedExtension}\n`)
+    process.stdout.write("Zed will reload the extension through its installed-directory watcher; if Zed is closed, it loads on next start.\n")
+    return
+  }
 
   const installation = spawnSync(path.join(scriptRoot, "install-local.sh"), [binDir], {
     cwd: projectRoot,

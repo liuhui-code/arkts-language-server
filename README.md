@@ -49,7 +49,9 @@ and [P2.1b TDD record](docs/tdd/p2-reference-freshness.md).
 
 Prerequisites: a Node version manager/Corepack, Rust/rustup, and Zed. The
 checked-in `.node-version`, `packageManager`, and `rust-toolchain.toml` pin the
-release toolchains, including the `wasm32-wasip2` target.
+release toolchains, including the `wasm32-wasip2` target. On Windows, run this
+from PowerShell after installing Node/Corepack and Rust with their native
+Windows toolchains; the default Zed profile is `%LOCALAPPDATA%\Zed`.
 
 ```sh
 pnpm zed:install
@@ -60,7 +62,11 @@ reviewed grammar artifact; publishes an immutable extension snapshot; installs
 the server launcher into Zed's extension work directory; and atomically
 registers or refreshes the `arkts` dev extension. A running Zed observes the
 installed-directory change and reloads it. A closed Zed loads it on next start.
-No Extensions-page action or inherited `~/.local/bin` PATH is required.
+No Extensions-page action or inherited PATH is required. On Windows, Zed starts
+the Node executable selected at install time and installed `server.cjs`
+directly; macOS/Linux retain the profile-local shell launcher. The `--bin-dir`
+option selects the install
+prefix for the immutable server release on all platforms.
 
 Use an isolated/custom profile or install prefix when needed:
 
