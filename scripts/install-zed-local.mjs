@@ -309,7 +309,7 @@ function windowsLaunchContents(node, server) {
   return `${WINDOWS_LAUNCH_MARKER}\n${node}\n${server}\n`
 }
 
-function managedWindowsLaunchState(target, libexecRoot) {
+function managedWindowsLaunchState(target) {
   let metadata
   try {
     metadata = fs.lstatSync(target)
@@ -324,7 +324,7 @@ function managedWindowsLaunchState(target, libexecRoot) {
   if (marker !== WINDOWS_LAUNCH_MARKER
     || lines.length !== 4 || lines[3] !== ""
     || !path.isAbsolute(node) || !path.isAbsolute(server)
-    || !isWindowsReleaseWithinRoot(server, libexecRoot)
+    || !isRecognizedWindowsRelease(server)
     || contents !== windowsLaunchContents(node, server)) {
     throw new Error(`Refusing to replace unmanaged Zed language-server launch file: ${target}`)
   }
@@ -334,14 +334,16 @@ function managedWindowsLaunchState(target, libexecRoot) {
   return { kind: "file", contents }
 }
 
-function isWindowsReleaseWithinRoot(server, libexecRoot) {
-  const relative = path.relative(libexecRoot, server)
-  const components = relative.split(path.sep)
-  return !path.isAbsolute(relative)
-    && components.length === 3
-    && /^[A-Za-z0-9._-]+-[0-9a-f]{64}$/.test(components[0])
-    && components[1] === "dist"
-    && components[2] === "server.cjs"
+function isRecognizedWindowsRelease(server) {
+  const dist = path.dirname(server)
+  const release = path.dirname(dist)
+  const serverRoot = path.dirname(release)
+  return path.isAbsolute(server)
+    && path.basename(server) === "server.cjs"
+    && path.basename(dist) === "dist"
+    && /^[A-Za-z0-9._-]+-[0-9a-f]{64}$/.test(path.basename(release))
+    && path.basename(serverRoot) === "arkts-language-server"
+    && path.basename(path.dirname(serverRoot)) === "libexec"
 }
 
 function runBuild(command, args, environment = process.env) {
@@ -477,7 +479,7 @@ function run() {
 
   const initialExtensionState = existingLinkState(installedExtension)
   const initialLauncherState = process.platform === "win32"
-    ? managedWindowsLaunchState(launcher, libexecRoot)
+    ? managedWindowsLaunchState(launcher)
     : managedLauncherState(launcher)
 
   if (process.platform === "win32") {

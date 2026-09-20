@@ -87,9 +87,9 @@ esac
 `)
     for (const executable of ["pnpm", "cargo"]) fs.chmodSync(path.join(fakeBin, executable), 0o755)
 
-    const install = () => spawnSync(process.execPath, ["--require", bootstrap,
+    const install = (bin = installBin) => spawnSync(process.execPath, ["--require", bootstrap,
       path.join(scripts, "install-zed-local.mjs"), "--zed-user-data-dir", profile,
-      "--bin-dir", installBin], {
+      "--bin-dir", bin], {
       cwd: fixture,
       encoding: "utf8",
       env: { ...process.env, PATH: `${fakeBin}:${process.env.PATH}` },
@@ -109,12 +109,18 @@ esac
     assert.equal(repeat.status, 0, repeat.stderr || repeat.error?.message)
     assert.equal(fs.realpathSync(installed), previousLink)
     assert.equal(fs.readFileSync(launch, "utf8"), previousLaunch)
+    const alternateBin = path.join(fixture, "another install prefix", "bin")
+    const migrated = install(alternateBin)
+    assert.equal(migrated.status, 0, migrated.stderr || migrated.error?.message)
+    const migratedLaunch = fs.readFileSync(launch, "utf8")
+    assert.notEqual(migratedLaunch, previousLaunch)
+    assert.ok(migratedLaunch.includes(path.join("another install prefix", "libexec")))
     fs.writeFileSync(path.join(extension, "grammars", "arkts.wasm"), "invalid grammar")
-    const failed = install()
+    const failed = install(alternateBin)
     assert.notEqual(failed.status, 0)
     assert.match(failed.stderr, /WebAssembly|checksum/)
     assert.equal(fs.realpathSync(installed), previousLink)
-    assert.equal(fs.readFileSync(launch, "utf8"), previousLaunch)
+    assert.equal(fs.readFileSync(launch, "utf8"), migratedLaunch)
   } finally {
     fs.rmSync(fixture, { recursive: true, force: true })
   }
