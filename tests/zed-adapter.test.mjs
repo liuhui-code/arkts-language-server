@@ -82,7 +82,7 @@ test("the Zed adapter honors the configured language-server binary", () => {
   assert.ok(argumentSetup >= 0 && argumentSetup < configuredPath)
   assert.ok(configuredPath < managedLauncher)
   assert.equal(adapter.match(/args:\s*arguments/g)?.length, 2)
-  assert.equal(adapter.match(/env:\s*environment/g)?.length, 2)
+  assert.equal(adapter.match(/env:\s*environment/g)?.length, 3)
 })
 
 test("the Zed adapter prefers the installer-managed launcher before PATH", () => {
@@ -96,6 +96,18 @@ test("the Zed adapter prefers the installer-managed launcher before PATH", () =>
   assert.ok(pathFallback > managedLauncher, "PATH must remain the last lookup")
   assert.match(adapter, /join\("bin"\).*join\("arkts-language-server"\)/s)
   assert.match(adapter, /\.is_file\(\)/)
+})
+
+test("the Zed adapter starts the Windows managed Node entry without a shell launcher", () => {
+  const adapter = fs.readFileSync(path.join(extensionRoot, "src", "lib.rs"), "utf8")
+
+  assert.match(adapter, /arkts-language-server\.windows/)
+  assert.match(adapter, /std::fs::read_to_string/)
+  assert.match(adapter, /server\.cjs/)
+  assert.ok(
+    adapter.indexOf("arkts-language-server.windows")
+      < adapter.indexOf('worktree.which("arkts-language-server")'),
+  )
 })
 
 test("the Zed adapter reports both supported recovery paths", () => {

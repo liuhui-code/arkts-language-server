@@ -10,6 +10,7 @@ on:
       - "scripts/check-release.sh"
       - "scripts/install-local.sh"
       - "scripts/install-zed-local.mjs"
+      - "scripts/bench/windows-zed-smoke.mjs"
       - "src/**"
       - "tests/**"
       - "Cargo.toml"
@@ -30,6 +31,7 @@ on:
       - "scripts/check-release.sh"
       - "scripts/install-local.sh"
       - "scripts/install-zed-local.mjs"
+      - "scripts/bench/windows-zed-smoke.mjs"
       - "src/**"
       - "tests/**"
       - "Cargo.toml"
@@ -79,3 +81,34 @@ jobs:
 
       - name: Run the canonical release gate
         run: pnpm check:release
+
+  windows-install:
+    runs-on: windows-2022
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: .node-version
+
+      - name: Enable the pinned pnpm version
+        shell: pwsh
+        run: |
+          corepack enable
+          corepack prepare pnpm@8.15.9 --activate
+
+      - name: Install the Zed WebAssembly target
+        run: rustup target add wasm32-wasip2
+
+      - name: Install into an isolated Zed profile
+        shell: pwsh
+        run: pnpm zed:install -- --zed-user-data-dir "$env:RUNNER_TEMP\Zed" --bin-dir "$env:RUNNER_TEMP\arkts\bin"
+
+      - name: Reinstall into the same Zed profile
+        shell: pwsh
+        run: pnpm zed:install -- --zed-user-data-dir "$env:RUNNER_TEMP\Zed" --bin-dir "$env:RUNNER_TEMP\arkts\bin"
+
+      - name: Validate installed extension and LSP process
+        shell: pwsh
+        run: node scripts/bench/windows-zed-smoke.mjs "$env:RUNNER_TEMP\Zed"
