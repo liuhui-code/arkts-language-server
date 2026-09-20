@@ -392,6 +392,9 @@ test("indexed batching pins the declaration anchor across direct-import batches"
   )
   assert.ok(identityBounded.batchEvents.every(event => event.dependencyProfile === "identity"))
   assert.equal(identityBounded.batchEvents.length, 2)
+  assert.equal(identityBounded.referenceEvents.some(event => (
+    event.event === "references.identity.expanded"
+  )), false)
   const accepted = indexed.indexEvents.find(event => event.event === "references.index.accepted")
   assert.equal(accepted?.anchorMode, "indexed-declaration-identity",
     JSON.stringify(indexed.referenceEvents))
@@ -1203,8 +1206,29 @@ test("indexed batching classifies a locked SDK module as an external terminal", 
     strategy: "indexed-batched", awaitIndexReady: true,
     indexScenario: "reference-sdk-terminal", runId: "sdk-terminal-indexed", sdkPath: sdk,
   })
+  const identity = await runSingleReferenceRequest(t, {
+    root, workspace, queryUri, queryText, position,
+    strategy: "indexed-batched", awaitIndexReady: true,
+    indexScenario: "reference-sdk-terminal", runId: "sdk-terminal-identity", sdkPath: sdk,
+    dependencyProfile: "identity", batchRoots: "1",
+  })
 
+  assert.equal(conservative.locations.length, 7)
+  assert.equal(conservative.locations.filter(location => (
+    location.uri.endsWith("/Use.ets")
+  )).length, 2)
   assert.deepEqual(indexed.locations, conservative.locations)
+  assert.deepEqual(identity.locations, conservative.locations,
+    JSON.stringify(identity.batchEvents))
+  assert.ok(identity.indexEvents.some(event => event.event === "references.index.accepted"))
+  const expansions = identity.referenceEvents.filter(event => (
+    event.event === "references.identity.expanded"
+  ))
+  assert.ok(expansions.length >= 1, JSON.stringify(identity.referenceEvents))
+  assert.ok(expansions.every(event => event.addedProjectFiles === 1))
+  assert.ok(identity.batchEvents.some(event => (
+    event.expansionAttempts === 1 && event.locations === conservative.locations.length
+  )))
   const accepted = indexed.indexEvents.find(event => event.event === "references.index.accepted")
   assert.equal(accepted?.anchorMode, "compiler-definition-identity",
     JSON.stringify(indexed.referenceEvents))

@@ -14,8 +14,8 @@ correctness gate 通过，memory/latency product gate 未通过。2026-09-20 应
 不可再与 worker RSS 相加）及 `heapUsedBytes`（记录事件的主线程 V8 heap）。两者是请求
 完成时的瞬时值，不等于请求峰值；峰值仍以独立进程外部采样为准。
 
-`identity` 尚不可默认：现有 SDK-import 测试证明，当索引未给出必要的中转文件时，
-identity 批次会漏引用。收到 workspace 文件变更后，本进程不再使用可能落后的引用索引，
+`identity` 仍不默认：此前 SDK-import 测试发现的中转文件漏引用已在 R2m 修复，
+但更广泛的跨工程正确性和最终内存发布门槛尚未通过。收到 workspace 文件变更后，本进程不再使用可能落后的引用索引，
 改走完整 legacy 语义查询；后续若能证明索引与工程快照重新同步，再单独设计恢复 indexed 路径。
 
 ## 1. 已确认问题与证据边界
@@ -1174,3 +1174,15 @@ cross-capability real-project gates before any default change. The original
 per-run SQLite cache leak caused `ENOSPC` during this experiment; a public CLI
 RED/GREEN test now protects cleanup on failed requests, and a successful real
 replay confirmed cleanup as well. See the [stage-gate report](../reports/2026-09-20-photos-verifier-sdk-stage-gate.md).
+
+### R2m — identity 批次候选依赖补入（2026-09-20）
+
+先前 SDK-terminal 公开 LSP 用例的 `full + identity` 从 7 个正确引用漏到 5 个：
+Rust identity candidates 已含 `Barrel.ets`，但 `Use.ets` 所在 verifier batch 未准入该
+中转文件。现仅当 compiler 访问被拒的工程文件**同时属于完整 identity 候选集**时，
+为当前批次补入并重试；未知或无进展的候选准入 fail closed。初版补入所有依赖导致
+`Heavy*` 无关链进入 Program，现有工作集测试检出后已收紧。14 个 references-batching
+公开 LSP 测试全绿。Photos 的 `BottomToolbar` 和 `EditorController` 两个真实符号分别与
+legacy 的 3/17 个引用和 62/59 条诊断 exact equality；这两例不触发补入，故只是
+无回归控制，新增分支由 SDK-terminal LSP 用例直接覆盖。`identity` 暂不默认，仍需
+跨工程正确性和最终内存门槛。详见 [候选补入修复报告](../reports/2026-09-20-identity-candidate-admission-fix.md)。

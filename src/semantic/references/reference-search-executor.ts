@@ -96,6 +96,9 @@ export class ReferenceSearchExecutor {
     const dependencyProfile = identityAnchorPath && validIdentitySupport
       ? this.options.dependencyProfile
       : "closure"
+    const membershipPaths = dependencyProfile === "identity"
+      ? new Set(workspace.projectMembership!.paths.map(filePath => path.resolve(filePath)))
+      : undefined
     const referenceSession = this.nextSession++
     this.options.disposeResidentContext(rootPath)
     const collected: SemanticDefinitionCandidate[] = []
@@ -122,6 +125,33 @@ export class ReferenceSearchExecutor {
           includeDeclaration,
           dependencyProfile,
         )
+        // A candidate omitted from this batch can hide a reference; unrelated imports stay excluded.
+        const missingCandidates = dependencyProfile === "identity"
+          ? uniquePaths(verification.unavailableProjectPaths ?? []).filter(filePath => (
+              resolvedCandidatePaths?.has(filePath)
+            ))
+          : []
+        if (missingCandidates.length > 0) {
+          const currentAdmission = admittedProjectPaths ?? rootPaths
+          const admitted = new Set(currentAdmission.map(filePath => path.resolve(filePath)))
+          const newlyAdmitted = missingCandidates.filter(filePath => (
+            membershipPaths?.has(filePath) && !admitted.has(filePath)
+          ))
+          if (newlyAdmitted.length !== missingCandidates.length
+            || expansionAttempts >= membershipPaths!.size) {
+            return { status: "incomplete", reason: "source-unavailable" }
+          }
+          expansionAttempts += 1
+          admittedProjectPaths = [...currentAdmission, ...newlyAdmitted]
+          this.options.trace?.("references.identity.expanded", {
+            referenceSession,
+            batchIndex: batch.index,
+            expansionAttempt: expansionAttempts,
+            addedProjectFiles: newlyAdmitted.length,
+            admittedProjectFiles: admittedProjectPaths.length,
+          })
+          continue
+        }
         if (verification.result.status === "complete") break
         const expansion = dependencyProfile === "closure"
           && plan.semanticUnitMode === "project-graph"
