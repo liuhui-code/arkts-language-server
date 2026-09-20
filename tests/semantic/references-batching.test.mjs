@@ -84,6 +84,10 @@ test("batched references preserve the legacy Location set while bounding compile
 
   assert.equal(legacy.batchEvents.length, 0)
   assert.ok(batched.batchEvents.length >= 8, "both requests must cross multiple batches")
+  const queueEvents = batched.referenceEvents.filter(entry => entry.event === "references.queue.start")
+  assert.equal(queueEvents.length, 2)
+  assert.ok(queueEvents.every(entry => Number.isFinite(entry.queueWaitMs)
+    && entry.queueWaitMs >= 0))
   const requestIds = new Set(batched.batchEvents.map((entry) => entry.referenceSession))
   assert.equal(requestIds.size, 2)
   for (const session of requestIds) {
@@ -260,6 +264,11 @@ test("indexed batching narrows compiler batches but keeps the exact references r
   assert.ok(indexed.batchEvents.every(event => event.candidateFiles === 5))
   const accepted = indexed.indexEvents.find(event => event.event === "references.index.accepted")
   assert.equal(accepted?.anchorMode, "compiler-definition-identity")
+  const selection = indexed.referenceEvents.find(event => (
+    event.event === "references.candidate-selection.complete"
+  ))
+  assert.equal(selection?.outcome, "accepted")
+  assert.ok(Number.isFinite(selection?.durationMs) && selection.durationMs >= 0)
   assert.equal(accepted?.candidateFiles, 4)
   assert.equal(accepted?.conservativeCandidateFiles, 5)
   assert.ok(indexed.locations.some(location => (

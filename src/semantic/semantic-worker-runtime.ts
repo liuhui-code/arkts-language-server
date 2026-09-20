@@ -85,7 +85,8 @@ const sampleTimer = setInterval(sampleMemory, data.runtimeConfig.sampleIntervalM
 sampleTimer.unref()
 
 port.on("message", (message: unknown) => {
-  queue = queue.then(() => dispatch(message)).catch((error) => {
+  const receivedAt = performance.now()
+  queue = queue.then(() => dispatch(message, receivedAt)).catch((error) => {
     process.stderr.write(`semantic worker fatal: ${error instanceof Error ? error.message : String(error)}\n`)
     process.exitCode = 1
     dispose()
@@ -94,7 +95,7 @@ port.on("message", (message: unknown) => {
 
 port.on("close", dispose)
 
-async function dispatch(message: unknown): Promise<void> {
+async function dispatch(message: unknown, receivedAt: number): Promise<void> {
   if (isWorkerControl(message)) {
     applyControl(message)
     return
@@ -105,6 +106,13 @@ async function dispatch(message: unknown): Promise<void> {
     return
   }
   const request = decodeSemanticWorkerRequest(message)
+  if (request.method === "references" && data.references?.trace) {
+    logger.info("references.queue.start", {
+      requestId: request.id,
+      requiredRevision: request.requiredRevision,
+      queueWaitMs: Math.round((performance.now() - receivedAt) * 100) / 100,
+    })
+  }
   await answerRequest(request)
   sampleMemory()
 }

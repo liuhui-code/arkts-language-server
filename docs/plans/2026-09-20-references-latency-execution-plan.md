@@ -53,6 +53,10 @@ F1 first vertical slice: [real-LSP RED/GREEN](../tdd/references-phase-trace.md)
 now records plan/batch/merge and Worker host-prepare/Program-ready/query time.
 It does not yet isolate compiler `createProgram` from SourceFile statistics or
 `getTypeChecker` from the query; those remain open F1 measurements.
+The second [queue/candidate-selection slice](../tdd/references-queue-index-trace.md)
+records serial queue wait and the inclusive index/optional-anchor selection
+duration. Request-wide correlation and compiler-internal attribution remain
+open before declaring F1 complete.
 
 ## Benchmark contract
 
