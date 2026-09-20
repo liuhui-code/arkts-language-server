@@ -24,6 +24,11 @@ export interface ReferenceProgramStats {
 export interface ReferenceBatchVerification {
   readonly result: SemanticReferenceQueryResult
   readonly unavailableProjectPaths?: readonly string[]
+  readonly timings: {
+    readonly prepareHostMs: number
+    readonly programReadyMs: number
+    readonly queryMs: number
+  }
   readonly prepared: {
     readonly stats: ReferenceProgramStats
     readonly memory: {
@@ -69,6 +74,7 @@ export class ReferenceSearchExecutor {
     candidateSupportPaths?: readonly string[],
     semanticGraph?: HarmonySemanticGraph,
   ): Promise<SemanticReferenceQueryResult> {
+    const sessionStarted = performance.now()
     const plan = planConservativeReferenceBatches(
       workspace,
       this.options.batchRootLimit,
@@ -97,6 +103,16 @@ export class ReferenceSearchExecutor {
       ? this.options.dependencyProfile
       : "closure"
     const referenceSession = this.nextSession++
+    const elapsedMs = () => Math.round((performance.now() - sessionStarted) * 100) / 100
+    this.options.trace?.("references.plan.complete", {
+      referenceSession,
+      elapsedMs: elapsedMs(),
+      batchCount: plan.batches.length,
+      membershipFiles: plan.membershipFiles,
+      candidateFiles: plan.candidateFiles,
+      candidateMode: plan.candidateMode,
+      semanticUnitMode: plan.semanticUnitMode,
+    })
     this.options.disposeResidentContext(rootPath)
     const collected: SemanticDefinitionCandidate[] = []
     for (const batch of plan.batches) {
@@ -107,6 +123,14 @@ export class ReferenceSearchExecutor {
       let admittedProjectPaths = dependencyProfile === "identity"
         ? rootPaths
         : batch.admittedProjectPaths
+      this.options.trace?.("references.batch.start", {
+        referenceSession,
+        elapsedMs: elapsedMs(),
+        batchIndex: batch.index,
+        batchCount: plan.batches.length,
+        batchRootFiles: rootPaths.length,
+        admittedProjectFiles: admittedProjectPaths?.length ?? plan.membershipFiles,
+      })
       let verification: ReferenceBatchVerification
       let expansionAttempts = 0
       for (;;) {
@@ -170,6 +194,7 @@ export class ReferenceSearchExecutor {
       collected.push(...result.references)
       this.options.trace?.("references.batch.complete", {
         referenceSession,
+        elapsedMs: elapsedMs(),
         verifierIsolation: "transient-worker",
         batchIndex: batch.index,
         batchCount: plan.batches.length,
@@ -198,6 +223,9 @@ export class ReferenceSearchExecutor {
         preparedHeapUsed: verification.prepared.memory.heapUsed,
         queryRssDelta: verification.memory.rss - verification.prepared.memory.rss,
         queryHeapUsedDelta: verification.memory.heapUsed - verification.prepared.memory.heapUsed,
+        workerPrepareHostMs: verification.timings.prepareHostMs,
+        workerProgramReadyMs: verification.timings.programReadyMs,
+        workerQueryMs: verification.timings.queryMs,
         ...verification.stats,
         locations: result.references.length,
         durationMs: Math.round((performance.now() - started) * 100) / 100,
@@ -205,7 +233,16 @@ export class ReferenceSearchExecutor {
         heapUsed: verification.memory.heapUsed,
       })
     }
-    return { status: "complete", references: uniqueSortedReferences(collected) }
+    const mergeStarted = performance.now()
+    const references = uniqueSortedReferences(collected)
+    this.options.trace?.("references.merge.complete", {
+      referenceSession,
+      elapsedMs: elapsedMs(),
+      durationMs: Math.round((performance.now() - mergeStarted) * 100) / 100,
+      rawLocations: collected.length,
+      locations: references.length,
+    })
+    return { status: "complete", references }
   }
 }
 

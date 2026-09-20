@@ -41,11 +41,15 @@ const engine = new TypeScriptLanguageServiceEngine(data.workspace.rootPath, {
 })
 
 try {
+  const prepareStarted = performance.now()
   engine.prepare(data.workspace)
+  const prepareHostMs = performance.now() - prepareStarted
+  const programStarted = performance.now()
   const prepared = {
     stats: engine.programFileStats(),
     memory: process.memoryUsage(),
   }
+  const programReadyMs = performance.now() - programStarted
   if (data.operation === "definition") {
     port.postMessage({
       ok: true,
@@ -55,10 +59,13 @@ try {
       memory: process.memoryUsage(),
     })
   } else {
+    const queryStarted = performance.now()
     const result = engine.references(data.position, data.includeDeclaration === true)
+    const queryMs = performance.now() - queryStarted
     port.postMessage({
       ok: true,
       result,
+      timings: { prepareHostMs, programReadyMs, queryMs },
       unavailableProjectPaths: projectAccess?.unavailablePaths,
       prepared,
       stats: engine.programFileStats(),
