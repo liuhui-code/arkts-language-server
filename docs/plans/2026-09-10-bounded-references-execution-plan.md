@@ -1144,3 +1144,22 @@ transitive project/SDK closure; merely reducing `getScriptFileNames()` roots
 or adding file-specific SDK globals is not an admissible production fix.
 Production defaults remain unchanged; the original >3 GB reproducer and final
 release gate remain open. See the [root-profile no-go report](../reports/2026-09-20-photos-interactive-roots-with-identity-no-go.md).
+
+### R2l — verifier SDK request-stage gate and replay-cache cleanup (2026-09-20)
+
+Three paired fixed-Photos identity replays changed only the default-off
+verifier SDK profile from `full` to `common`, keeping the interactive SDK full.
+All three pairs retained three exact Locations and 62 exact versioned normal
+diagnostics. Verifier SourceFiles fell from 2 project + 302 SDK to 2 + 170;
+external request-interval RSS median fell from 491,417,600 to 434,876,416
+bytes, below half of this case's matched legacy 885,018,624-byte peak. But the
+later diagnostic Program stayed at 323 project + 503 SDK files, and complete
+product peak medians were 584,921,088 versus 588,972,032 bytes: no product
+memory improvement. `common` is only a single-symbol experiment, not proven
+safe across ArkTS/SDK semantics; production remains full SDK and legacy
+references. Both verifier and diagnostic closure need complete proof and
+cross-capability real-project gates before any default change. The original
+>3 GB reproducer and final 50% release gate remain open. The replay harness's
+per-run SQLite cache leak caused `ENOSPC` during this experiment; a public CLI
+RED/GREEN test now protects cleanup on failed requests, and a successful real
+replay confirmed cleanup as well. See the [stage-gate report](../reports/2026-09-20-photos-verifier-sdk-stage-gate.md).
