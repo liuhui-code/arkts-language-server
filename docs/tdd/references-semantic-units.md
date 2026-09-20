@@ -2,6 +2,23 @@
 
 Parent revision: `b70367964bf7b32e66524b08b4aeb1acde6bd8ff`
 
+## Interactive SDK core wrapper equivalence (2026-09-20)
+
+Parent revision: `fcb9ef991c3cf9157e0c21a1c159f17996b34904`.
+The public child-process LSP test changed a complete four-file core fixture to
+add one full-index-only global provider and an open-document use. RED: the
+opt-in core profile returned the exact reference set but published TS2304
+`Cannot find name 'UnusedFullSdkMarker'`. GREEN: the engine accepts core only
+when the full index contains no declarations or other directives and its
+complete direct reference set equals the four core files; otherwise it uses
+full. The same test retains exact completion, definition, references, and
+diagnostics. A separate equivalent-wrapper case proves the guarded reduction,
+while unsupported pragma and missing-core cases prove conservative fallback.
+Focused LSP command: `pnpm build && node --test --test-name-pattern="diagnostics core SDK" tests/semantic/references-batching.test.mjs`
+(3/3 passed). The fixed Photos `BottomToolbar` replay returns 3 exact
+Locations and 62 exact diagnostics under guarded core, with the full SDK
+Program restored; this is a safety fix, not a product memory win.
+
 ## Strict replay differential gate (2026-09-20)
 
 Parent revision: `3d1c6c3bfc069acbfc54313e73baecce1a1465bf`.
