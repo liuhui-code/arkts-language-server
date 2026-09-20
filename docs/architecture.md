@@ -1,5 +1,9 @@
 # Architecture and ownership
 
+References and semantic latency decisions are indexed in
+[the ADR collection](adr/README.md); the active implementation sequence is in
+[the references latency plan](plans/2026-09-20-references-latency-execution-plan.md).
+
 The public process contract is `arkts-language-server --stdio`. Zed knows only
 that contract; it does not depend on server internals.
 

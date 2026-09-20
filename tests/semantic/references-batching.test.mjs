@@ -93,6 +93,17 @@ test("batched references preserve the legacy Location set while bounding compile
     assert.ok(events.every((entry) => entry.verifierIsolation === "transient-worker"))
     assert.ok(events.every((entry) => entry.batchRootFiles <= 4))
     assert.ok(events.every((entry) => entry.programProjectFiles < entry.membershipFiles))
+    assert.ok(events.every(entry => ["workerPrepareHostMs", "workerProgramReadyMs",
+      "workerQueryMs"].every(field => Number.isFinite(entry[field]) && entry[field] >= 0)))
+    const timeline = batched.referenceEvents.filter(entry => entry.referenceSession === session
+      && ["references.plan.complete", "references.batch.start", "references.batch.complete",
+        "references.merge.complete"].includes(entry.event))
+    assert.equal(timeline[0]?.event, "references.plan.complete")
+    assert.equal(timeline.at(-1)?.event, "references.merge.complete")
+    assert.equal(timeline.filter(entry => entry.event === "references.batch.start").length,
+      events.length)
+    assert.ok(timeline.every((entry, index) => Number.isFinite(entry.elapsedMs)
+      && (index === 0 || entry.elapsedMs >= timeline[index - 1].elapsedMs)))
   }
 })
 
@@ -1273,6 +1284,7 @@ async function runReferences(t, {
     withDeclaration: sortedLocations(withDeclaration.result),
     withoutDeclaration: sortedLocations(withoutDeclaration.result),
     batchEvents: logs.filter((entry) => entry.event === "references.batch.complete"),
+    referenceEvents: logs.filter((entry) => entry.event.startsWith("references.")),
   }
 }
 

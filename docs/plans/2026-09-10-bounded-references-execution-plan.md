@@ -1,6 +1,8 @@
 # 大型 ArkTS references 有界语义验证执行计划
 
-状态：当前 `textDocument/references` 内存专项权威计划。R1 正确性原型已实现；真实工程
+状态：`textDocument/references` 内存专项与 R1/R2 历史证据计划；延迟、热状态、缓存及调度的
+后续执行以 [2026-09-20 References latency plan](2026-09-20-references-latency-execution-plan.md)
+为准，决策见 [ADR 索引](../adr/README.md)。R1 正确性原型已实现；真实工程
 correctness gate 通过，memory/latency product gate 未通过。2026-09-20 应用户要求，生产默认改为
 `indexed-batched` + 保守 `closure` 依赖 profile（SDK 仍为 `full`）；此前各阶段记录中的
 `legacy`/`closure` 默认值均为当时状态。该切换不代表最终 50% 内存发布门槛或原始 >3 GB
