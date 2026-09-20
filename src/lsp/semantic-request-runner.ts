@@ -13,7 +13,7 @@ import type {
   SemanticCallHierarchySource,
   VersionedSemanticResult,
 } from "../contracts/semantic-engine.js"
-import type { StructuredLogger } from "../observability/logger.js"
+import { processMemoryFields, type StructuredLogger } from "../observability/logger.js"
 import type { CallHierarchySourceAuthority } from "./call-hierarchy-source-authority.js"
 import { RequestFreshness, type FreshRequest } from "./request-freshness.js"
 
@@ -115,6 +115,7 @@ export class SemanticRequestRunner {
         method: request.method,
         durationMs: Math.round((performance.now() - startedAt) * 100) / 100,
         outcome,
+        ...processMemoryFields(),
       })
     }
   }
@@ -200,6 +201,7 @@ export class SemanticRequestRunner {
         method: request.method,
         durationMs: Math.round((performance.now() - startedAt) * 100) / 100,
         outcome,
+        ...processMemoryFields(),
       })
     }
   }
@@ -291,6 +293,7 @@ export class SemanticRequestRunner {
         method: request.method,
         durationMs: Math.round((performance.now() - startedAt) * 100) / 100,
         outcome,
+        ...processMemoryFields(),
       })
     }
   }

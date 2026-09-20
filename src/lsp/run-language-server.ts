@@ -36,7 +36,7 @@ import type {
 } from "../contracts/workspace-symbol-service.js"
 import { ARKUI_STRING_RESOURCE_GLOB, ARKUI_CONFIGURED_STRING_RESOURCE_GLOB } from "../core/arkui/resource-path.js"
 import { SingleRootProjectResolver } from "../project/single-root-project-resolver.js"
-import { createStructuredLogger, type StructuredLogger } from "../observability/logger.js"
+import { createStructuredLogger, processMemoryFields, type StructuredLogger } from "../observability/logger.js"
 import { createProductionSemanticEngine } from "../semantic/backends/production-semantic-engine.js"
 import { createDocumentDiagnostics } from "./document-diagnostics.js"
 import {
@@ -638,6 +638,7 @@ export function runLanguageServer(services?: LanguageServerServices): void {
         method: "workspace/symbol",
         durationMs: Math.round((performance.now() - startedAt) * 100) / 100,
         outcome,
+        ...processMemoryFields(),
       })
     }
   })

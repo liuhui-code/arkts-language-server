@@ -17,6 +17,11 @@ export function createStructuredLogger(logPath = resolveLogPath()): StructuredLo
   return new FileStructuredLogger(logPath)
 }
 
+export function processMemoryFields(): { rssBytes: number; heapUsedBytes: number } {
+  const { rss, heapUsed } = process.memoryUsage()
+  return { rssBytes: rss, heapUsedBytes: heapUsed }
+}
+
 class FileStructuredLogger implements StructuredLogger {
   private fileAvailable = false
 

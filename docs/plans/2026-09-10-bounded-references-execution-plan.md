@@ -1,11 +1,22 @@
 # 大型 ArkTS references 有界语义验证执行计划
 
 状态：当前 `textDocument/references` 内存专项权威计划。R1 正确性原型已实现；真实工程
-correctness gate 通过，memory/latency product gate 未通过，默认仍为 `legacy`。它接续
+correctness gate 通过，memory/latency product gate 未通过。2026-09-20 应用户要求，生产默认改为
+`indexed-batched` + 保守 `closure` 依赖 profile（SDK 仍为 `full`）；此前各阶段记录中的
+`legacy`/`closure` 默认值均为当时状态。该切换不代表最终 50% 内存发布门槛或原始 >3 GB
+复现已通过，必要时可显式设置 `ARKTS_REFERENCES_STRATEGY=legacy` 回退。它接续
 [官方语义后端与超大型工程低内存计划](2026-09-09-official-arkts-semantic-backend-execution-plan.md)，
 不改变其中已完成的 backend、single-worker、Coordinator、Rust discovery 与 SDK 配置合同。
 
 计划父版本：`b70367964bf7b32e66524b08b4aeb1acde6bd8ff`。
+
+运行日志的 `request.completed` 事件现包含 `rssBytes`（整个 Node 进程 RSS，包含 worker，
+不可再与 worker RSS 相加）及 `heapUsedBytes`（记录事件的主线程 V8 heap）。两者是请求
+完成时的瞬时值，不等于请求峰值；峰值仍以独立进程外部采样为准。
+
+`identity` 尚不可默认：现有 SDK-import 测试证明，当索引未给出必要的中转文件时，
+identity 批次会漏引用。收到 workspace 文件变更后，本进程不再使用可能落后的引用索引，
+改走完整 legacy 语义查询；后续若能证明索引与工程快照重新同步，再单独设计恢复 indexed 路径。
 
 ## 1. 已确认问题与证据边界
 

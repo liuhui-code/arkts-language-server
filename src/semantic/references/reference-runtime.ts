@@ -18,7 +18,7 @@ const MAX_BATCH_ROOT_LIMIT = 512
 export function referenceSearchRuntimeConfig(
   environment: NodeJS.ProcessEnv = process.env,
 ): ReferenceSearchRuntimeConfig {
-  const configuredStrategy = environment.ARKTS_REFERENCES_STRATEGY ?? "legacy"
+  const configuredStrategy = environment.ARKTS_REFERENCES_STRATEGY ?? "indexed-batched"
   if (configuredStrategy !== "legacy"
     && configuredStrategy !== "batched"
     && configuredStrategy !== "indexed-batched") {

@@ -69,6 +69,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
   readonly #referenceIndex: WorkspaceReferenceIndexPort | undefined
   readonly #packageResolver = new LocalPackageResolver()
   readonly #documents = new Map<string, TrackedDocument>()
+  readonly #changedWorkspaceRoots = new Set<string>()
   readonly #supervisors = new Map<string, RootSemanticWorkerSupervisor>()
   readonly #handlers = new Map<number, RootSemanticWorkerEndpointHandlers>()
   #worker: Worker | undefined
@@ -152,6 +153,10 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
 
   workspaceFilesChanged(batches: readonly Contract.SemanticWorkspaceFileChangeBatch[]): void {
     for (const batch of batches) {
+      if (batch.rootDirty || batch.changes.some(change => {
+        const changedPath = toFilePath(change.uri)
+        return changedPath?.endsWith(".ets") || changedPath?.endsWith(".ts")
+      })) this.#changedWorkspaceRoots.add(batch.rootUri)
       const rootPath = toFilePath(batch.rootUri)
       if (rootPath) this.#packageResolver.invalidate(rootPath)
       this.#mutate(batch.rootUri, {
@@ -226,6 +231,8 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
     return this.#documentRequest<Contract.SemanticReferencesOutcome>("references", query, {
       position: query.position,
       includeDeclaration: query.includeDeclaration,
+      ...(this.#changedWorkspaceRoots.has(query.document.workspaceId)
+        ? { forceLegacy: true } : {}),
       ...(candidates ? {
         candidateUris: candidates.uris,
         candidateIdentityComplete: candidates.identityComplete,
@@ -382,6 +389,10 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
   ): Promise<ReferenceCandidateSelection | undefined> {
     if (referenceSearchRuntimeConfig(this.#environment).strategy !== "indexed-batched"
       || !this.#referenceIndex) return undefined
+    if (this.#changedWorkspaceRoots.has(query.document.workspaceId)) {
+      this.#logger?.info("references.index.fallback", { reason: "workspace-changed" })
+      return undefined
+    }
     try {
       const admittedRootUris = this.#referenceAdmissionRoots(query.document.workspaceId)
       let direct = await this.#referenceIndex.searchReferenceCandidates(

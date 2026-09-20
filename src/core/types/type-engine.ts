@@ -450,8 +450,9 @@ export class SemanticTypeEngineRegistry {
     candidateIdentityComplete = false,
     candidateAnchorPath?: string,
     candidateSupportPaths?: readonly string[],
+    forceLegacy = false,
   ): Promise<SemanticReferenceQueryResult> {
-    if (this.referenceSearch) {
+    if (this.referenceSearch && !forceLegacy) {
       const isolatedWorkspace = this.withProjectFileIdentities(workspace)
       if (!isolatedWorkspace) {
         return Promise.resolve({ status: "incomplete", reason: "source-unavailable" })
