@@ -1125,3 +1125,22 @@ Production remains `legacy`/`closure`/full SDK. Next work should bound the
 remaining 323-project/503-SDK normal diagnostic context with a complete
 semantic closure proof, not just shrink explicit roots. See the
 [matched real-project report](../reports/2026-09-20-photos-bottomtoolbar-identity-working-set.md).
+
+### R2k — interactive roots with identity: transitive-closure no-go (2026-09-20)
+
+Three paired fresh-process Photos `BottomToolbar` identity replays changed only
+the experimental interactive project-root profile. Explicit diagnostic project
+roots fell from 256 to one, but compiler-followed imports rebuilt exactly the
+same 323-project/503-SDK SourceFile Program. Median product peak was
+584,921,088 bytes at default roots versus 581,857,280 bytes at current roots
+(a 0.52% difference, within run variation). All six runs returned three exact
+Locations and 62 exact versioned automatic diagnostics. The reference interval
+itself peaked at a 491,417,600-byte median before the later diagnostic peak;
+this is already above half of the matched legacy median (442,509,312 bytes).
+Consequently, diagnostic-root-only work cannot meet this case's final 50%
+memory gate, even if its later peak were removed. The next RED must quantify
+and bound both verifier SDK/setup cost and the interactive document's complete
+transitive project/SDK closure; merely reducing `getScriptFileNames()` roots
+or adding file-specific SDK globals is not an admissible production fix.
+Production defaults remain unchanged; the original >3 GB reproducer and final
+release gate remain open. See the [root-profile no-go report](../reports/2026-09-20-photos-interactive-roots-with-identity-no-go.md).

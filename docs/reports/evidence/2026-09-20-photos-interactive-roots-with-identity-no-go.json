@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "serverRevision": "80e1fca8929e12393adeab05bb27061d1c3dd5e1",
+  "workspaceRevision": "98ea1d9cd6a363c576e2c6ff17844e51723baec5",
+  "sdkApiVersion": 24,
+  "sdkVersion": "6.1.1.125",
+  "nodeVersion": "v26.3.0",
+  "serverSha256": "9e3ba503ef6961cd6f98799938219557dddf3c0c0b240ab11e3485f68a666f28",
+  "sidecarSha256": "8d4e95b5c603b8f43e0da9a7e62d74b127a94fe16f8b6d0afbc9fd0d6ebe40ae",
+  "target": {
+    "file": "imageEditor/product/editor_phone/src/main/ets/component/menu/BottomToolbar.ets",
+    "symbol": "getMutuallyExclusiveDesc",
+    "line": 351,
+    "character": 19,
+    "includeDeclaration": true
+  },
+  "replay": "A-fresh-process-references-first",
+  "referenceCount": 3,
+  "diagnosticCount": 62,
+  "strictPairDifferentialsPassed": 3,
+  "baseline": {
+    "interactiveProjectRootProfile": "closure",
+    "peakProductRssBytes": [587431936, 578912256, 584921088],
+    "referenceIntervalPeakRssBytes": [497143808, 491417600, 481120256],
+    "requestMs": [3388, 3130, 3073],
+    "diagnosticProgramProjectRootFiles": 256,
+    "diagnosticProgramProjectFiles": 323,
+    "diagnosticProgramSdkFiles": 503
+  },
+  "candidate": {
+    "interactiveProjectRootProfile": "current",
+    "peakProductRssBytes": [581857280, 578752512, 592269312],
+    "referenceIntervalPeakRssBytes": [487542784, 484347904, 497823744],
+    "requestMs": [2947, 3035, 3123],
+    "diagnosticProgramProjectRootFiles": 1,
+    "diagnosticProgramProjectFiles": 323,
+    "diagnosticProgramSdkFiles": 503
+  },
+  "matchedLegacyMedianPeakRssBytes": 885018624,
+  "finalFiftyPercentThresholdBytes": 442509312,
+  "decision": "root-only-no-go-release-open"
+}
