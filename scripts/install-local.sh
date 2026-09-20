@@ -95,7 +95,7 @@ if [ -f "$dependency_stamp" ]; then
   installed_signature=$(sed -n '1p' "$dependency_stamp")
 fi
 if [ ! -x "$project_root/node_modules/.bin/esbuild" ] || [ "$installed_signature" != "$dependency_fingerprint" ]; then
-  (cd "$project_root" && pnpm install --frozen-lockfile)
+  (cd "$project_root" && pnpm install --frozen-lockfile --config.lockfile=true)
   mkdir -p "$dependency_stamp_dir"
   dependency_stamp_tmp=$dependency_stamp.tmp.$$
   trap 'rm -f "$dependency_stamp_tmp"' EXIT HUP INT TERM

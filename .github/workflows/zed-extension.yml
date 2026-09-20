@@ -103,6 +103,8 @@ jobs:
 
       - name: Install into an isolated Zed profile
         shell: pwsh
+        env:
+          npm_config_lockfile: 'false'
         run: pnpm zed:install -- --zed-user-data-dir "$env:RUNNER_TEMP\Zed" --bin-dir "$env:RUNNER_TEMP\arkts\bin"
 
       - name: Reinstall into the same Zed profile

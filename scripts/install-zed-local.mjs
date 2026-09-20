@@ -358,7 +358,7 @@ function runBuild(command, args, environment = process.env) {
 }
 
 function buildWindowsRuntime(libexecRoot) {
-  runBuild("pnpm", ["install", "--frozen-lockfile"])
+  runBuild("pnpm", ["install", "--frozen-lockfile", "--config.lockfile=true"])
   runBuild("pnpm", ["build"])
   runBuild("cargo", ["build", "--locked", "--package", "arkts-index-sidecar", "--release"], {
     ...process.env,

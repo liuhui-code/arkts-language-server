@@ -39,6 +39,7 @@ test("Windows Zed installation has a native build path and host acceptance job",
   assert.match(installer, /arkts-language-server\.windows/)
   assert.match(workflow, /windows-install:\s*\n\s*runs-on:\s*windows-/)
   assert.match(workflow, /pnpm zed:install/)
+  assert.match(workflow, /Install into an isolated Zed profile\n[\s\S]*?npm_config_lockfile: 'false'[\s\S]*?pnpm zed:install/)
   assert.match(workflow, /windows-zed-smoke\.mjs/)
 })
 
@@ -56,6 +57,7 @@ test("Windows Zed installer activates a pinned Node server and preserves it on f
       path.join(fixture, "config")]) fs.mkdirSync(directory, { recursive: true })
     fs.copyFileSync(path.join(projectRoot, "scripts", "install-zed-local.mjs"), path.join(scripts, "install-zed-local.mjs"))
     fs.writeFileSync(path.join(fixture, "package.json"), '{"version":"0.0.1"}\n')
+    fs.writeFileSync(path.join(fixture, "pnpm-lock.yaml"), "lockfileVersion: '6.0'\n")
     fs.writeFileSync(path.join(fixture, "LICENSE"), "fixture license\n")
     fs.writeFileSync(path.join(fixture, "config", "semantic-runtime.json"), "{}\n")
     fs.writeFileSync(path.join(extension, "extension.toml"), `id = "arkts"\nrepository = "https://github.com/liuhui-code/arkts-language-server"\n[grammars.arkts]\nrepository = "https://example.invalid/grammar"\nrev = "${"a".repeat(40)}"\n`)
@@ -70,6 +72,10 @@ test("Windows Zed installer activates a pinned Node server and preserves it on f
     const bootstrap = path.join(fixture, "windows-platform.cjs")
     fs.writeFileSync(bootstrap, 'Object.defineProperty(process, "platform", { value: "win32" })\n')
     fs.writeFileSync(path.join(fakeBin, "pnpm"), `#!/bin/sh
+if [ "$1" = "install" ] && [ "$npm_config_lockfile" = "false" ] && [ "$3" != "--config.lockfile=true" ]; then
+  printf '%s\\n' 'Headless installation requires a pnpm-lock.yaml file' >&2
+  exit 17
+fi
 if [ "$1" = "build" ]; then
   mkdir -p dist
   for file in server semantic-worker reference-verifier-worker; do printf 'process.stdin.resume()\\n' > "dist/$file.cjs"; done
@@ -92,7 +98,7 @@ esac
       "--bin-dir", bin], {
       cwd: fixture,
       encoding: "utf8",
-      env: { ...process.env, PATH: `${fakeBin}:${process.env.PATH}` },
+      env: { ...process.env, PATH: `${fakeBin}:${process.env.PATH}`, npm_config_lockfile: "false" },
     })
     const first = install()
     assert.equal(first.status, 0, first.stderr || first.error?.message)
@@ -247,6 +253,10 @@ if [ "$1" = "--version" ]; then
   exit 0
 fi
 printf '%s\\n' "$*" >> "$ARKTS_INSTALL_TEST_LOG"
+if [ "$1" = "install" ] && [ "$npm_config_lockfile" = "false" ] && [ "$3" != "--config.lockfile=true" ]; then
+  printf '%s\\n' 'Headless installation requires a pnpm-lock.yaml file' >&2
+  exit 17
+fi
 if [ "$1" = "build" ]; then
   mkdir -p dist
   printf '%s\\n' 'process.stdin.resume()' > dist/semantic-worker.cjs
@@ -291,6 +301,7 @@ exit 0
         PATH: `${fakeBin}:${path.dirname(process.execPath)}:/usr/bin:/bin`,
         ARKTS_INSTALL_TEST_LOG: log,
         ARKTS_INSTALL_TEST_PNPM_VERSION: pnpmVersion,
+        npm_config_lockfile: "false",
       },
     },
   )
@@ -346,7 +357,7 @@ exit 0
     const installs = fs.readFileSync(log, "utf8")
       .trim()
       .split("\n")
-      .filter((command) => command === "install --frozen-lockfile")
+      .filter((command) => command === "install --frozen-lockfile --config.lockfile=true")
     assert.equal(installs.length, 3)
 
     const fingerprint = JSON.parse(fs.readFileSync(
