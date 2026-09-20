@@ -313,6 +313,29 @@ export class TypeScriptLanguageServiceEngine {
     }
   }
 
+  measureCompilerReadiness(): {
+    getProgramMs: number
+    createProgramMs: number
+    getTypeCheckerMs: number
+  } {
+    ts.PerformanceDotting.setPerformanceSwitch(ts.PerformanceDotting.AnalyzeMode.TRACE)
+    const programStarted = performance.now()
+    let program: ts.Program | undefined
+    let getProgramMs = 0
+    let createProgramMs = 0
+    try {
+      program = this.service.getProgram()
+      getProgramMs = performance.now() - programStarted
+    } finally {
+      createProgramMs = ts.PerformanceDotting.getEventData()
+        .filter(event => event.name === "createProgram")
+        .reduce((total, event) => total + event.duration / 1_000_000, 0)
+    }
+    const checkerStarted = performance.now()
+    program?.getTypeChecker()
+    return { getProgramMs, createProgramMs, getTypeCheckerMs: performance.now() - checkerStarted }
+  }
+
   programFileStats(): {
     programSourceFiles: number
     programProjectFiles: number

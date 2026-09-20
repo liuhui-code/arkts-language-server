@@ -20,6 +20,7 @@ interface ReferenceVerifierWorkerData {
   readonly projectConfiguration?: unknown
   readonly sdkConfiguration?: unknown
   readonly sdkAmbientProfile?: ReferenceSdkAmbientProfile
+  readonly trace?: boolean
   readonly tolerateUnadmittedProjectDependencies?: boolean
 }
 
@@ -45,6 +46,7 @@ try {
   engine.prepare(data.workspace)
   const prepareHostMs = performance.now() - prepareStarted
   const programStarted = performance.now()
+  const compilerTimings = data.trace ? engine.measureCompilerReadiness() : undefined
   const prepared = {
     stats: engine.programFileStats(),
     memory: process.memoryUsage(),
@@ -65,7 +67,7 @@ try {
     port.postMessage({
       ok: true,
       result,
-      timings: { prepareHostMs, programReadyMs, queryMs },
+      timings: { prepareHostMs, programReadyMs, queryMs, ...compilerTimings },
       unavailableProjectPaths: projectAccess?.unavailablePaths,
       prepared,
       stats: engine.programFileStats(),

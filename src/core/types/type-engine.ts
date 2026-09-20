@@ -260,6 +260,7 @@ export class SemanticTypeEngineRegistry {
             projectConfiguration: this.projectConfiguration,
             sdkConfiguration: this.sdkConfiguration,
             sdkAmbientProfile: options.references?.sdkAmbientProfile,
+            trace: options.references?.trace,
             tolerateUnadmittedProjectDependencies: dependencyProfile === "identity",
             isCancellationRequested: options.hostCancellationToken
               ? () => options.hostCancellationToken?.isCancellationRequested() === true

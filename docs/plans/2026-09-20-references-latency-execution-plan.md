@@ -51,15 +51,18 @@ implementations or call hierarchy before references is stable.
 
 F1 first vertical slice: [real-LSP RED/GREEN](../tdd/references-phase-trace.md)
 now records plan/batch/merge and Worker host-prepare/Program-ready/query time.
-It does not yet isolate compiler `createProgram` from SourceFile statistics or
-`getTypeChecker` from the query; those remain open F1 measurements.
+The [compiler phase slice](../tdd/references-compiler-phase-trace.md) now
+separates Language Service `getProgram()`, the pinned OpenHarmony compiler's
+`createProgram` event, and `Program.getTypeChecker()` from SourceFile
+statistics. This is opt-in: upstream trace collection adds overhead and must
+not be used as the trace-off product latency or RSS result.
 The second [queue/candidate-selection slice](../tdd/references-queue-index-trace.md)
 records serial queue wait and the inclusive index/optional-anchor selection
 duration. The [request-correlation slice](../tdd/references-trace-correlation.md)
 adds a default-off ID across candidate selection, isolated anchor, queue,
-plan, batch and merge events. Separately verified compiler-internal
-`createProgram` / `getTypeChecker` attribution remains open before declaring
-F1 complete.
+plan, batch and merge events. F1 instrumentation is complete for batched
+references; F2 must now fix real-project manifests and exact oracles before
+performance claims or later optimization graduation.
 
 ## Benchmark contract
 

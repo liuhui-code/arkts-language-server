@@ -28,6 +28,7 @@ export interface ReferenceBatchWorkerOptions {
   readonly projectConfiguration?: unknown
   readonly sdkConfiguration?: unknown
   readonly sdkAmbientProfile?: ReferenceSdkAmbientProfile
+  readonly trace?: boolean
   readonly tolerateUnadmittedProjectDependencies?: boolean
 }
 
@@ -48,6 +49,7 @@ export async function verifyReferenceBatchInWorker(
       projectConfiguration: options.projectConfiguration,
       sdkConfiguration: options.sdkConfiguration,
       sdkAmbientProfile: options.sdkAmbientProfile,
+      trace: options.trace,
       tolerateUnadmittedProjectDependencies: options.tolerateUnadmittedProjectDependencies,
     },
   })
