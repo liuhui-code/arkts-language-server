@@ -1105,3 +1105,23 @@ optimization. The next working-set RED remains a versioned, semantically
 complete *per-project or per-document* SDK provider closure with fail-closed
 fallback; the real >3 GB reproducer and final 50% peak gate remain open. See
 the [equivalence-guard report](../reports/2026-09-20-interactive-sdk-core-equivalence-guard.md).
+
+### R2j — paired Photos identity working-set result (2026-09-20)
+
+Three fresh-process legacy/identity pairs on the fixed Photos
+`BottomToolbar` exported arrow-function use returned the same three exact
+Locations and 62 normal diagnostics. Keeping the verifier SDK full and batch
+size at default, the opt-in identity dependency profile reduced verifier
+project files from the default closure's 323 to 2 (302 SDK files). Legacy
+versus identity median product peak was 885,018,624 versus 587,530,240 bytes
+(-33.6%), and request time was 7.539 versus 2.966 seconds. A ten-repeat plus
+unsaved-edit control returned identical Locations and version-2 diagnostics
+without observed linear accumulation. A separate current-document diagnostic
+root trial shrank the diagnostic Program from 1,819 to 826 files but left the
+legacy references peak near 889 MB: one enlarged references Program had
+already paid the cost. This real symbol passes the 30% prototype gate but
+fails the final 50% peak gate and is not the user's >3 GB reproducer.
+Production remains `legacy`/`closure`/full SDK. Next work should bound the
+remaining 323-project/503-SDK normal diagnostic context with a complete
+semantic closure proof, not just shrink explicit roots. See the
+[matched real-project report](../reports/2026-09-20-photos-bottomtoolbar-identity-working-set.md).
