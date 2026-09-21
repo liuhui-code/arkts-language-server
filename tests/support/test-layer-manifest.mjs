@@ -93,6 +93,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/semantic/document-symbol-depth.test.mjs",
       "tests/semantic/editor-capabilities.test.mjs",
       "tests/semantic/folding-range.test.mjs",
+      "tests/semantic/index-catalog-phase-trace.test.mjs",
       "tests/semantic/local-package-resolution.test.mjs",
       "tests/semantic/installed-package-workflows.test.mjs",
       "tests/semantic/project-membership-language-service.test.mjs",

@@ -338,9 +338,20 @@ Settings index-cold runs returned exact 9/9 results using one batch at
 exposed the separate pre-open race. This proves startup timing amplification
 in this fixed case, not product readiness. The flag remains default-off:
 latency and postponed diagnostics miss the interaction gate. Same-build
-completed legacy comparison and the original >3 GB case remain open. Next:
-move readiness off the user click/diagnostic suspension path, then run a
-same-build strategy matrix before considering a default.
+legacy controls subsequently returned the same nine Locations in 8.6–9.6
+seconds at 838–964 MB peak; one default indexed-first request took 90.8
+seconds/23 batches. These are small, sequential comparisons, not a default
+policy or release P95. The original >3 GB case remains open. Move readiness
+off the user click/diagnostic suspension path before considering a default.
+
+A separate [native catalog phase profile](../reports/2026-09-22-settings-catalog-phase-profile.md)
+uses default-off sidecar event logging and three fresh Settings caches. Of an
+11–13 second catalog, 0.8–1.0 seconds elapsed before `activating` and
+10.2–11.9 seconds elapsed before `ready`. A macOS stack sample during this
+interval concentrated in SQLite `replace_all`, especially reference-row
+writes. This narrows the next performance slice to a controlled write-path
+experiment with atomic-generation, exact-query and memory gates. It does not
+justify changing the compiler working set or claiming 500 ms navigation.
 
 Freeze exact repository commit, dirty state, server commit, Node/toolchain,
 backend version, project selection, SDK fingerprint, standard-library asset

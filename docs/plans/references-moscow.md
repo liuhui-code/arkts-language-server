@@ -104,8 +104,15 @@ now passes the narrow snapshot/cancellation/exactness transcript and returns
 39.8–50.5 second requests and delayed diagnostics leave this Must gate RED.
 The same-build legacy median is 8.7 seconds/953 MB; one default indexed-first
 run took 90.8 seconds and 23 batches. Neither is a general low-memory fix or
-500 ms navigation. The wait remains default-off. Initial-index readiness must move off the user
-click/diagnostic suspension path before graduation review.
+500 ms navigation. The wait remains default-off. Initial-index readiness must
+move off the user click/diagnostic suspension path before graduation review.
+The [fresh Settings catalog phase profile](../reports/2026-09-22-settings-catalog-phase-profile.md)
+records roughly 0.8–1.0 seconds before activation and 10.2–11.9 seconds
+from activation to ready for 1,846 files. A concurrent macOS stack sample
+points to reference-row writes inside SQLite replacement. The next experiment
+must compare one bounded write-path change with exact generation/query and
+memory checks; neither parser tuning nor a default strategy switch follows
+from this evidence.
 R-07 now also rejects candidates if the sidecar changes from ready to warming
 between candidate search and acceptance, even when the committed generation
 number is unchanged. Direct and definition-anchor real-LSP transcripts both
