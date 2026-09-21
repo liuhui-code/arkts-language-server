@@ -161,6 +161,19 @@ version-2 request 3,855 ms. It observed a version-2 diagnostic publication,
 not a complete per-version diagnostic sequence. Mode C needs repetition and
 edit/freshness coverage before graduation.
 
+The [follow-up Settings `HomeInitData` with-declaration
+matrix](../reports/2026-09-21-settings-with-declaration-matrix.md) expands
+one opposite-policy pair to three fresh processes per strategy on the same
+API-24 compatibility configuration. All nine returned the same ten exact
+Locations and zero target-file diagnostics. Observed request medians were
+9,030 ms `legacy`, 90,894 ms `batched`, and 5,107 ms `indexed-batched`;
+median externally sampled product RSS peaks were 788,803,584, 743,411,712,
+and 554,479,616 bytes respectively. The manifest's semantic Worker pin was
+updated only after its prior `SEMANTIC_WORKER_MISMATCH` preflight failed. This
+adds a second declaration-policy A/B/C smoke matrix, not a stable P95 or an
+API-23/DevEco equivalence claim. `MenuController` without declaration and the
+release/pressure gates remain under-sampled.
+
 F3 cache v1 is implemented through the semantic proxy, before Rust candidate
 selection. A real framed-LSP regression proves one complete miss/store, one
 same-snapshot hit with no second candidate selection or verifier batch, and a

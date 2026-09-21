@@ -50,9 +50,16 @@ therefore remains unsuitable as the default for this case despite a modest
 median peak-RSS reduction. Single fresh legacy/indexed pairs also passed
 `HomeInitData` with declaration 10/10 and `MenuController` without declaration
 247/247; the latter still reported TS 2307. Three cold runs are not a stable
-P95, the opposite-policy pairs have only one run per strategy, and all cold
+P95, those opposite-policy pairs initially had only one run per strategy, and all cold
 requests missed the 500 ms navigation target. F2, matched-API-23/DevEco,
 native Windows, original >3 GB and final memory gates remain open.
+The [follow-up with-declaration matrix](../reports/2026-09-21-settings-with-declaration-matrix.md)
+expanded `HomeInitData`'s opposite policy to three fresh processes per
+strategy. All nine returned the same ten exact Locations and zero target-file
+diagnostics; observed request medians were 9,030 ms legacy, 90,894 ms pure
+batched and 5,107 ms indexed-batched. This strengthens the fixed Settings
+smoke differential but is still not a release sample, API-23 equivalence or
+evidence that cold navigation meets 500 ms.
 Three independent warmed mode-B `HomeInitData` processes also retained 9/9
 exact references. Their observed completion, definition and references medians
 were 8,613, 37 and 4,404 ms; the full-run peak product RSS median was
