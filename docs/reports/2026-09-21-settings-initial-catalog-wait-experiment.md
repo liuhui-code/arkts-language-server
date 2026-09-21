@@ -69,10 +69,41 @@ The old committed manifest pins an older server bundle, so the final runner
 commands intentionally omitted `--manifest` rather than bypassing its binary
 check. Repo SHA, SDK digest, oracle, Node, worker/standard-library/sidecar
 digests and the effective environment were checked and recorded in the raw
-reports. Rebuilds must record a new server SHA; these numbers are not a
-cross-build controlled A/B. The older completed legacy controls (31.6–38.1
-seconds and 875–910 MB) cannot establish a causal memory ratio against this
-different server build.
+reports. Rebuilds must record a new server SHA. The older completed legacy
+controls (31.6–38.1 seconds and 875–910 MB) used a different server build and
+are excluded from the comparison below.
+
+## Same-build first-click comparison
+
+Three further independent index-cold processes ran `legacy` on the **same
+server/sidecar binaries, checkout, SDK, symbol, oracle and external sampler**.
+All returned the same nine exact Locations with ordinary diagnostics. A single
+default indexed-batched process was also run without the wait flag:
+
+| Strategy | Fresh runs | Exact result | Request times | Peak product-tree RSS |
+| --- | ---: | --- | --- | --- |
+| Legacy | 3 | 9/9 each | 9,574 / 8,681 / 8,581 ms | 837,541,888 / 953,434,112 / 964,247,552 B |
+| Indexed-batched, initial wait 60 s | 3 | 9/9 each | 39,829 / 50,548 / 47,469 ms | 536,715,264 / 556,167,168 / 559,980,544 B |
+| Indexed-batched, default no wait | 1 | 9/9 | 90,791 ms, 23 batches | 762,339,328 B |
+
+The legacy median was **8,681 ms / 953,434,112 B**. The waited-indexed
+median was **47,469 ms / 556,167,168 B**: approximately 5.47× the latency
+and 41.7% lower observed peak RSS. These are sequential, non-randomized
+samples, not release-level P95 or a general memory guarantee. The default
+first-click run happened to finish before the 120-second timeout; it still
+paid for 23 frozen batches after the initial index fallback. No strategy
+met the 500 ms navigation goal. The full legacy Program's memory safety on
+the original >3 GB project remains unknown, so these results do **not**
+authorize switching initial warming to legacy globally.
+
+Additional local raw reports:
+
+```text
+/private/tmp/settings-homeinitdata-same-build-legacy-1.json
+/private/tmp/settings-homeinitdata-same-build-legacy-2.json
+/private/tmp/settings-homeinitdata-same-build-legacy-3.json
+/private/tmp/settings-homeinitdata-same-build-default-1.json
+```
 
 The focused protocol check passed 12/12. The restricted macOS `check:fast`
 run passed 954/957; its three failures were sandbox-sensitive fixture Git or
@@ -103,6 +134,6 @@ caused this fixed case to amplify into many compiler batches. It does **not**
 meet the 500 ms navigation target, prove a default policy for larger catalogs,
 or close the original >3 GB / final 50% memory gate. Keep
 `ARKTS_REFERENCES_INITIAL_CATALOG_WAIT_MS` defaulting to zero. Next compare
-completed same-build legacy/indexed runs and move initial-index preparation
-or readiness outside the user click/diagnostic suspension path before any
-default change.
+completed randomized strategy samples and move initial-index preparation or
+readiness outside the user click/diagnostic suspension path before any default
+change.

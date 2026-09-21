@@ -57,5 +57,8 @@ not recorded as GREEN in this sandbox; a clean CI run remains required.
 The [real Settings replay](../reports/2026-09-21-settings-initial-catalog-wait-experiment.md)
 completed 9/9 exact references in three independent index-cold processes,
 but its 39.8–50.5 second request range and postponed diagnostics **do not**
-meet the interaction gate. Keep the flag default-off. The original >3 GB
-reproducer and completed same-build legacy comparison remain open.
+meet the interaction gate. A later same-build, three-run legacy control
+returned the same nine Locations in 8.6–9.6 seconds at 838–964 MB observed
+product-tree RSS; one default indexed run took 90.8 seconds/23 batches.
+Keep the flag default-off. Randomized release-level comparisons and the
+original >3 GB reproducer remain open.

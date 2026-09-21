@@ -102,7 +102,9 @@ The [opt-in wait experiment](../reports/2026-09-21-settings-initial-catalog-wait
 now passes the narrow snapshot/cancellation/exactness transcript and returns
 9/9 in three index-cold Settings runs with 537–560 MB completed peaks, but
 39.8–50.5 second requests and delayed diagnostics leave this Must gate RED.
-The wait remains default-off. Initial-index readiness must move off the user
+The same-build legacy median is 8.7 seconds/953 MB; one default indexed-first
+run took 90.8 seconds and 23 batches. Neither is a general low-memory fix or
+500 ms navigation. The wait remains default-off. Initial-index readiness must move off the user
 click/diagnostic suspension path before graduation review.
 R-07 now also rejects candidates if the sidecar changes from ready to warming
 between candidate search and acceptance, even when the committed generation
