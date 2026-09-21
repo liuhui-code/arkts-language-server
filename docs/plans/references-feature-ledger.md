@@ -7,10 +7,10 @@ completion. An item is complete only after its linked gate passes; see the
 | ID | Priority | Feature | State | Dependency and observable exit |
 | --- | --- | --- | --- | --- |
 | R-01 | Must | Phase-level semantic tracing | Implemented: batch timeline, queue/candidate/anchor correlation and opt-in compiler `getProgram` / `createProgram` / `getTypeChecker` split | Real-LSP exactness GREEN; external trace-off RSS and fixed real-project benchmark belong to R-02 |
-| R-02 | Must | Fixed manifests and exact oracle | In progress: Photos/API-24 is retained as smoke evidence; Settings 6.1-LTS is now the primary target but blocked on matching API-23 SDK and verified symbol oracle | Three legacy Photos mode-C processes returned exact references but no automatic diagnostics; isolate this failure, then obtain valid Settings cold/hot series |
+| R-02 | Must | Fixed manifests and exact oracle | In progress: Photos/API-24 is smoke evidence; Settings 6.1-LTS is primary. An explicitly cross-SDK API-24 Settings probe passed a 248-Location legacy/indexed differential and 11 indexed requests, but the matched API-23 SDK and independent oracle are still missing | Three legacy Photos mode-C processes returned exact references but no automatic diagnostics; isolate this failure, then obtain matched-SDK Settings cold/hot series and multiple symbols |
 | R-03 | Must | Budget-aware hot context retention | Proposed | R-01/R-02; exact A/B, no peak or post-eviction regression |
-| R-04 | Must | Complete-result cache v1 | Proposed | R-02; root-wide invalidation, bounded bytes, zero verifier on valid hit |
-| R-05 | Must | In-flight coalescing | Proposed | R-04; one verification, independent waiter cancellation |
+| R-04 | Must | Complete-result cache v1 | Implemented: pre-index bounded cache, complete results only, conservative overlay/config/workspace invalidation | Real LSP reuse and mutation tests GREEN; Settings API-24 hot median 65 ms with zero candidate/verifier work on hit |
+| R-05 | Must | In-flight coalescing | Blocked on R-06 snapshot/freshness ownership: current public lane supersedes the first identical request before semantic dispatch | R-04/R-06; one verification, independent waiter cancellation without weakening ContentModified |
 | R-06 | Must | Interactive/global lanes | Proposed | Versioned snapshot contract; interactive request finishes during references |
 | R-07 | Must | Index trust/fallback integrity | Existing, extend | Stale/ambiguous/overlay differential remains fail conservative |
 | R-08 | Must | Index resync recovery | Proposed | R-07; mutation → safe fallback → committed generation → indexed |
@@ -27,5 +27,5 @@ completion. An item is complete only after its linked gate passes; see the
 | R-19 | Won't | File-count-only memory model | Rejected | Use measured RSS/PSS and Program closure, not linear extrapolation |
 
 The first implementation checkpoint is R-01. R-02 may expose unavailable
-target SDKs; that is a recorded environment blocker, not permission to swap in
-another SDK or to mark a benchmark complete.
+target SDKs; that is a recorded formal-gate blocker. Cross-SDK probes may be
+useful when explicitly labelled, but cannot mark a matched benchmark complete.

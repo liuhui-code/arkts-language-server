@@ -26,6 +26,8 @@ import type { SemanticBackend } from "./backends/semantic-backend.js"
 import { semanticRuntimeConfig } from "./coordinator/runtime-config.js"
 import { referenceSearchRuntimeConfig } from "./references/reference-runtime.js"
 import { interactiveSemanticRuntimeConfig } from "./interactive-runtime.js"
+import { discoverCompletionCandidates } from "./completion-discovery.js"
+import { ReferenceResultCache } from "./references/reference-result-cache.js"
 import {
   RootSemanticWorkerSupervisor,
   SemanticWorkerCancelState,
@@ -72,6 +74,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
   readonly #changedWorkspaceRoots = new Set<string>()
   readonly #supervisors = new Map<string, RootSemanticWorkerSupervisor>()
   readonly #handlers = new Map<number, RootSemanticWorkerEndpointHandlers>()
+  readonly #referenceResults = new ReferenceResultCache()
   #worker: Worker | undefined
   #nextEpoch = 1
   #projectConfiguration: unknown
@@ -96,17 +99,20 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
   }
 
   configureProject(selection: unknown): void {
+    this.#referenceResults.clear()
     this.#projectConfiguration = selection
     this.#packageResolver.configureProject(selection)
     this.#sendControl({ control: "configureProject", value: selection })
   }
 
   configureSdk(selection: unknown): void {
+    this.#referenceResults.clear()
     this.#sdkConfiguration = selection
     this.#sendControl({ control: "configureSdk", value: selection })
   }
 
   applyMemoryPressure(level: "level3"): void {
+    this.#referenceResults.clear()
     this.#sendControl({ control: "applyMemoryPressure", value: level })
   }
 
@@ -132,6 +138,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
     const previous = this.#documents.get(document.uri)
     this.#documents.set(document.uri, snapshot)
     if (previous?.version === snapshot.version && previous.text === snapshot.text) return
+    this.#referenceResults.invalidateRoot(snapshot.workspaceId)
     this.#mutate(snapshot.workspaceId, {
       kind: previous ? "change" : "open",
       uri: snapshot.uri,
@@ -144,6 +151,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
     const document = this.#documents.get(documentUri)
     if (!document) return
     this.#documents.delete(documentUri)
+    this.#referenceResults.invalidateRoot(document.workspaceId)
     this.#mutate(document.workspaceId, {
       kind: "close",
       uri: documentUri,
@@ -152,6 +160,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
   }
 
   workspaceFilesChanged(batches: readonly Contract.SemanticWorkspaceFileChangeBatch[]): void {
+    if (batches.length > 0) this.#referenceResults.clear()
     for (const batch of batches) {
       if (batch.rootDirty || batch.changes.some(change => {
         const changedPath = toFilePath(change.uri)
@@ -171,7 +180,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
   }
 
   async complete(query: Contract.SemanticQuery) {
-    const discovery = await this.#completionDiscovery(query)
+    const discovery = await discoverCompletionCandidates(this.#exportIndex, query)
     return this.#documentRequest<Contract.SemanticCompletionList>("complete", query, {
       position: query.position,
       snippets: query.completionOptions?.snippets === true,
@@ -228,6 +237,23 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
 
   async references(query: Contract.SemanticReferencesQuery) {
     const traceId = this.#environment.ARKTS_REFERENCES_TRACE === "1" ? randomUUID() : undefined
+    this.sync(query.document)
+    const cached = query.signal?.aborted ? undefined : this.#referenceResults.get(query)
+    if (cached) {
+      const stats = this.#referenceResults.stats()
+      this.#logger?.info("references.cache.hit", {
+        traceId,
+        cacheEntries: stats.entries,
+        cacheBytes: stats.bytes,
+      })
+      return { documentVersion: query.document.version, value: cached }
+    }
+    const before = this.#referenceResults.stats()
+    this.#logger?.info("references.cache.miss", {
+      traceId,
+      cacheEntries: before.entries,
+      cacheBytes: before.bytes,
+    })
     const selectionStarted = performance.now()
     const candidates = await this.#referenceCandidates(query, traceId)
     if (this.#environment.ARKTS_REFERENCES_TRACE === "1"
@@ -239,7 +265,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
         candidateFiles: candidates?.uris.length ?? 0,
       })
     }
-    return this.#documentRequest<Contract.SemanticReferencesOutcome>("references", query, {
+    const response = await this.#documentRequest<Contract.SemanticReferencesOutcome>("references", query, {
       position: query.position,
       includeDeclaration: query.includeDeclaration,
       ...(traceId ? { traceId } : {}),
@@ -252,6 +278,16 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
         ...(candidates.supportUris ? { candidateSupportUris: candidates.supportUris } : {}),
       } : {}),
     })
+    if (!query.signal?.aborted && this.#referenceResults.set(query, response.value)) {
+      const after = this.#referenceResults.stats()
+      this.#logger?.info("references.cache.store", {
+        traceId,
+        cacheEntries: after.entries,
+        cacheBytes: after.bytes,
+        locations: response.value.status === "complete" ? response.value.references.length : 0,
+      })
+    }
+    return response
   }
 
   prepareRename(query: Contract.SemanticQuery) {
@@ -353,47 +389,6 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
       position: query.position,
       triggerReason: query.triggerReason,
     })
-  }
-
-  async #completionDiscovery(
-    query: Contract.SemanticQuery,
-  ): Promise<Contract.SemanticCompletionDiscovery | undefined> {
-    if (!this.#exportIndex) return undefined
-    const context = completionPrefixContext(query.document.text, query.position)
-    if (context.memberAccess || Array.from(context.prefix).length < 2) return undefined
-    try {
-      const result = await this.#exportIndex.searchExports(
-        query.document.workspaceId,
-        context.prefix,
-        128,
-        query.signal,
-      )
-      return {
-        incomplete: result.completeness !== "ready",
-        candidates: result.items
-          .filter(candidate => candidate.uri !== query.document.uri)
-          .flatMap(candidate => {
-            const importSpecifier = candidate.importSpecifier
-              ?? relativeImportSpecifier(query.document.uri, candidate.uri)
-            return importSpecifier
-              ? [{
-                  exportedName: candidate.exportedName,
-                  kind: candidate.kind,
-                  uri: candidate.uri,
-                  ordinal: candidate.ordinal,
-                  ...(candidate.declarationIdentity
-                    ? { declarationIdentity: candidate.declarationIdentity }
-                    : {}),
-                  importSpecifier,
-                  ...(candidate.moduleId ? { moduleId: candidate.moduleId } : {}),
-                  ...(candidate.targetScope ? { targetScope: candidate.targetScope } : {}),
-                }]
-              : []
-          }),
-      }
-    } catch {
-      return undefined
-    }
   }
 
   async #referenceCandidates(
@@ -680,6 +675,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
   async dispose(): Promise<void> {
     if (this.#disposed) return
     this.#disposed = true
+    this.#referenceResults.clear()
     await Promise.all([...this.#supervisors.values()].map(supervisor => supervisor.dispose()))
     this.#supervisors.clear()
     this.#handlers.clear()
@@ -937,45 +933,6 @@ function referenceBindingResolutionSummary(
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([key, count]) => `${key}=${count}`)
     .join(",")
-}
-
-function completionPrefixContext(
-  text: string,
-  position: { line: number; character: number },
-): { prefix: string; memberAccess: boolean } {
-  const lines = text.split(/\r?\n/u)
-  const line = lines[position.line] ?? ""
-  let utf16 = 0
-  let offset = 0
-  while (offset < line.length && utf16 < position.character) {
-    const codePoint = line.codePointAt(offset)
-    if (codePoint === undefined) break
-    const width = codePoint > 0xffff ? 2 : 1
-    if (utf16 + width > position.character) break
-    utf16 += width
-    offset += width
-  }
-  const before = line.slice(0, offset)
-  const prefix = /[\p{ID_Continue}$_]*$/u.exec(before)?.[0] ?? ""
-  return {
-    prefix,
-    memberAccess: before.slice(0, before.length - prefix.length).endsWith("."),
-  }
-}
-
-function relativeImportSpecifier(fromUri: string, candidateUri: string): string | undefined {
-  if (!fromUri.startsWith("file:") || !candidateUri.startsWith("file:")) return undefined
-  try {
-    const fromDirectory = path.dirname(fileURLToPath(fromUri))
-    const candidatePath = fileURLToPath(candidateUri)
-      .replace(/\.(?:d\.)?(?:ets|ts)$/u, "")
-      .replace(/[\\/]index$/u, "")
-    let relative = path.relative(fromDirectory, candidatePath).split(path.sep).join("/")
-    if (!relative.startsWith(".")) relative = `./${relative}`
-    return relative
-  } catch {
-    return undefined
-  }
 }
 
 function abortState(signal: AbortSignal | undefined) {

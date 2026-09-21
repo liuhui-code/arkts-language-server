@@ -82,9 +82,27 @@ evidence. The clean local Settings 6.1-LTS checkout is
 The SDK inventory on this Mac found DevEco ETS API 24 but no API 23, so Settings is
 `SDK_UNAVAILABLE` for a formal gate until a matching SDK and verified symbol
 oracle are available ([preflight](../reports/2026-09-21-references-f2-settings-preflight.md)).
-Do not substitute API 24 or silently use the proposed
-master revision requiring SDK 26.0.1. Launcher/Contacts are secondary
-discovery candidates, not substitutes for the Settings gate.
+An explicitly labelled [API-24 exploratory replay](../reports/2026-09-21-settings-api24-exploratory-navigation.md)
+subsequently returned 248 exact legacy/indexed Locations and a correct
+cross-module definition; it does not satisfy the API-23 gate. Do not silently
+substitute API 24 or use the proposed master revision requiring SDK 26.0.1.
+Launcher/Contacts are secondary discovery candidates, not substitutes for the
+Settings gate.
+
+F3 cache v1 is implemented through the semantic proxy, before Rust candidate
+selection. A real framed-LSP regression proves one complete miss/store, one
+same-snapshot hit with no second candidate selection or verifier batch, and a
+fresh miss after an unsaved comment edit. The Settings/API-24 exploratory
+mode-C replay returned the same 248 Locations on all 11 requests: requests
+2–10 had a 65 ms end-to-end median, while server-side cache work was
+0.60–0.90 ms. The edit-warm request correctly rebuilt in about 4.68 s. One hot
+request waited about 1.94 s before its 0.78 ms cache hit while SDK/diagnostic
+work occupied the serial lane. Therefore R-04 is GREEN, but F3 coalescing
+(R-05) and F6 queue isolation remain open. A real-LSP RED showed that today's
+freshness lane supersedes the first identical concurrent references request
+before either request can share semantic work. R-05 therefore moves with the
+R-06 snapshot/freshness ownership change; a proxy-local Promise map would not
+preserve independent cancellation and `ContentModified` semantics.
 
 ## Benchmark contract
 
@@ -93,9 +111,11 @@ backend version, project selection, SDK fingerprint, index schema/generation,
 query file/symbol/zero-based UTF-16 position and all `ARKTS_*` overrides.
 Settings is the primary target, but its local 6.1-LTS revision and the source
 report's master revision are **discovery candidates**, not verified oracles.
-The former requires compile SDK 23; the latter requires SDK 26.0.1. Neither
-may silently run with this Mac's API 24 SDK. Report `SDK_UNAVAILABLE` until a
-matching SDK exists, then freeze that exact revision and SDK identity.
+The former declares compile SDK 23; the latter requires SDK 26.0.1. Neither
+may silently run with this Mac's API 24 SDK as a **matched benchmark**.
+Explicit API-24 exploratory runs are allowed and separately labelled, as in
+the Settings report above. Report `SDK_UNAVAILABLE` for the formal gate until
+a matching SDK exists, then freeze that exact revision and SDK identity.
 An exported class seed is not a golden until compiler results and known real
 references are verified. The historical Settings `LogUtil` case is not an
 oracle because its legacy response missed known cross-module references.

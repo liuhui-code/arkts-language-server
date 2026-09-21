@@ -12,8 +12,15 @@ R-07 index trust and R-08 generation recovery preserve complete answers after
 edits. All remain subject to exactness, memory and freshness gates; the default
 strategy is not changed merely because one optimization lands.
 R-02 now prioritizes the real Settings checkout; its API-23 SDK requirement is
-an environment block on this Mac, not permission to label API-24 data as a
-matched Settings benchmark.
+an environment block on this Mac for the formal gate. The separate API-24
+Settings exploratory replay demonstrates working navigation and an exact
+same-SDK legacy/indexed differential, but cannot be labelled a matched
+API-23 Settings benchmark.
+R-04 is now implemented before candidate selection. On the exploratory
+Settings/API-24 mode-C replay, requests 2–10 retained all 248 exact Locations
+with a 65 ms end-to-end median and 0.60–0.90 ms server work on cache hits.
+One request still waited about 1.94 s behind SDK/diagnostic queue work, so this
+does not complete R-06 or its P95 interaction gate.
 
 ## Should
 
