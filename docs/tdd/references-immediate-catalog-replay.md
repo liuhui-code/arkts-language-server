@@ -42,3 +42,8 @@ external sampler permitted. The unchanged replay CLI suite passed 10/10 under
 the same permission. The [real Settings result](../reports/2026-09-21-settings-immediate-catalog-replay.md)
 is a newly reproducible performance failure, not a claim that startup latency
 was fixed.
+
+The first full PR release gate exposed one integration RED: the new test was
+not registered in `TEST_LAYER_MANIFEST` (`949/950` passed). It now shares the
+existing replay CLI test's `unit-contract` layer. This changes test
+registration only; it does not relax or skip any gate.
