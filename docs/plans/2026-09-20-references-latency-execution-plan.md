@@ -352,6 +352,19 @@ interval concentrated in SQLite `replace_all`, especially reference-row
 writes. This narrows the next performance slice to a controlled write-path
 experiment with atomic-generation, exact-query and memory gates. It does not
 justify changing the compiler working set or claiming 500 ms navigation.
+That [same-build Settings A/B](../reports/2026-09-22-settings-sqlite-batch-rejected.md)
+rejected 96-row reference-occurrence insertion: activation median rose from
+11,066 to 11,600 ms with no credible RSS benefit and 9/9 exact Locations.
+The candidate was removed; the next slice is default-off per-stage SQLite
+activation timing before another write-path change.
+That [stage profile](../reports/2026-09-22-settings-sqlite-stage-profile.md)
+now has three trace-on and three trace-off complete Settings replays, all
+exact 9/9. Median SQL replacement time was 10,412 ms: reference-related
+insertion 6,118 ms, commit 3,075 ms, index recreation 622 ms. The observer
+did not show measurable activation overhead in this three-run control, but
+the reference stage still aggregates four kinds of rows. Next partition that
+stage and commit/write amplification; no durability or scope change is
+authorized by these timings.
 
 Freeze exact repository commit, dirty state, server commit, Node/toolchain,
 backend version, project selection, SDK fingerprint, standard-library asset

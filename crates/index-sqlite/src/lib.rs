@@ -26,6 +26,8 @@ use rusqlite::{
 };
 use sha2::{Digest, Sha256};
 
+mod catalog_replace;
+
 #[cfg(debug_assertions)]
 use std::sync::{Arc, Barrier, Mutex};
 
@@ -419,65 +421,7 @@ impl SymbolStore for SqliteStore {
     }
 
     fn replace_all(&mut self, batch: FullCatalogBatch) -> Result<CommitReceipt, StoreError> {
-        let current = self.metadata()?.committed_generation;
-        if batch.generation <= current {
-            return Err(invalid_generation(batch.generation, current));
-        }
-        let generation = sqlite_generation(batch.generation)?;
-        for document in &batch.documents {
-            validate_replacement(document)?;
-        }
-
-        let transaction = self
-            .connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .map_err(map_sqlite_error)?;
-        let committed_generation = read_committed_generation(&transaction)?;
-        if batch.generation <= committed_generation {
-            return Err(invalid_generation(batch.generation, committed_generation));
-        }
-
-        transaction
-            .execute("DROP INDEX reference_occurrence_identities_name", [])
-            .map_err(map_sqlite_error)?;
-        transaction
-            .execute("DELETE FROM documents", [])
-            .map_err(map_sqlite_error)?;
-        transaction
-            .execute("DELETE FROM rejected_documents", [])
-            .map_err(map_sqlite_error)?;
-        insert_catalog_documents(&transaction, &batch.documents, generation)?;
-        insert_symbol_documents(&transaction, &batch.documents)?;
-        insert_export_documents(&transaction, &batch.documents, generation)?;
-        insert_reference_documents(&transaction, &batch.documents)?;
-        transaction
-            .execute(
-                "CREATE INDEX reference_occurrence_identities_name \
-                 ON reference_occurrence_identities(name, document_uri, qualification)",
-                [],
-            )
-            .map_err(map_sqlite_error)?;
-        for uri in &batch.rejected_uris {
-            transaction
-                .execute(
-                    "INSERT INTO rejected_documents(uri) VALUES (?1) \
-                     ON CONFLICT(uri) DO NOTHING",
-                    [uri],
-                )
-                .map_err(map_sqlite_error)?;
-        }
-        transaction
-            .execute(
-                "UPDATE metadata SET committed_generation = ?1 WHERE id = 1",
-                [generation],
-            )
-            .map_err(map_sqlite_error)?;
-        let rejected_documents = read_rejected_documents(&transaction)?;
-        transaction.commit().map_err(map_sqlite_error)?;
-        Ok(CommitReceipt {
-            committed_generation: batch.generation,
-            rejected_documents,
-        })
+        catalog_replace::replace_all(self, batch)
     }
 
     fn search(&self, query: &SymbolQuery) -> Result<SymbolSearchResult, StoreError> {

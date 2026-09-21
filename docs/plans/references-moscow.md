@@ -109,10 +109,16 @@ move off the user click/diagnostic suspension path before graduation review.
 The [fresh Settings catalog phase profile](../reports/2026-09-22-settings-catalog-phase-profile.md)
 records roughly 0.8–1.0 seconds before activation and 10.2–11.9 seconds
 from activation to ready for 1,846 files. A concurrent macOS stack sample
-points to reference-row writes inside SQLite replacement. The next experiment
-must compare one bounded write-path change with exact generation/query and
-memory checks; neither parser tuning nor a default strategy switch follows
-from this evidence.
+points to reference-row writes inside SQLite replacement. This justified a
+bounded write-path A/B with exact generation/query and memory checks, not a
+parser change or default strategy switch.
+The [96-row insert A/B](../reports/2026-09-22-settings-sqlite-batch-rejected.md)
+passed exactness but regressed median activation from 11.07 to 11.60 seconds;
+it was removed. The [default-off SQL stage trace](../reports/2026-09-22-settings-sqlite-stage-profile.md)
+then measured median 6.12 seconds in reference-related insertion and 3.08
+seconds in commit, with all three real LSP runs still exact 9/9. Another
+optimization attempt needs finer write-amplification evidence; the wait
+remains default-off and the 500 ms navigation gate remains RED.
 R-07 now also rejects candidates if the sidecar changes from ready to warming
 between candidate search and acceptance, even when the committed generation
 number is unchanged. Direct and definition-anchor real-LSP transcripts both
