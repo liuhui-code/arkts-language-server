@@ -1,6 +1,6 @@
 # ADR 0006: Interactive/global semantic scheduling
 
-Status: **Proposed; freshness contract precedes concurrency**.
+Status: **Accepted and implemented for references; broader global operations remain deferred**.
 
 ## Context and proposed decision
 
@@ -11,18 +11,27 @@ Introduce an interactive lane for current-document navigation/completion and a
 single global lane for references and other proven global operations. Background
 diagnostics/indexing remain lower priority.
 
-A global request must capture an immutable, versioned input snapshot, release
-the persistent mutation queue, and verify in the transient Worker. Before
-publishing, compare required workspace/document revisions with current state.
-Cancellation or mutation must abort or return ContentModified, never stale or
-partial Locations. Do not simply reorder messages while a request already
-holds the queue. Global verifier concurrency remains one; memory admission
-accounts for the interactive context and verifier together.
+References now retain their revision-bound request and cancellation cell while
+their verification runs outside the persistent Worker's serial queue. The
+supervisor permits only classified interactive methods to run beside that one
+detached request; diagnostics and other global operations remain serialized.
+Any mutation advances the revision and marks the detached request
+ContentModified, so its eventual response cannot publish stale or partial
+Locations. Global verifier concurrency remains one.
+
+The cancellation bridge uses request-local async context so overlapping
+interactive and references work observe their own cancellation cells through
+the stable TypeScript host token. Opt-in trace events identify interactive
+methods admitted during references and report their queue wait. This decision
+does not yet generalize the detached lane to implementations, rename or call
+hierarchy.
 
 ## Gate
 
-In a framed LSP interference test, launch long references, then unrelated
-definition/hover and a document edit. Interactive requests must complete
-before references while seeing the correct revision; old references must not
-return success. Preserve the existing cancellation first-cause and diagnostics
-contracts. Revert to the FIFO path on any snapshot race.
+A framed LSP interference test uses a default-off verifier delay, launches
+references, then sends definition, hover and a document edit. Definition and
+hover complete before references with queue waits below 250 ms; the edit makes
+the old references request fail ContentModified, and a new definition sees the
+new document revision. Direct supervisor coverage also proves out-of-order
+response routing and first-cause cancellation. See
+[the TDD evidence](../tdd/references-scheduling.md).

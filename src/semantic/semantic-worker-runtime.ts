@@ -1,4 +1,5 @@
 import fs from "node:fs"
+import { AsyncLocalStorage } from "node:async_hooks"
 import { parentPort, workerData, type MessagePort } from "node:worker_threads"
 
 import type { DocumentSnapshot } from "../contracts/document.js"
@@ -12,6 +13,7 @@ import type { SemanticRuntimeConfig } from "./coordinator/runtime-config.js"
 import type { ReferenceSearchRuntimeConfig } from "./references/reference-runtime.js"
 import type { InteractiveSemanticRuntimeConfig } from "./interactive-runtime.js"
 import { SemanticCancellationScope } from "./semantic-cancellation-scope.js"
+import { isInteractiveSemanticWorkerMethod } from "./semantic-request-lanes.js"
 import {
   SEMANTIC_WORKER_PROTOCOL_VERSION,
   SemanticWorkerCancelState,
@@ -59,7 +61,7 @@ const documents = new Map<string, DocumentSnapshot>()
 const appliedRevisions = new Map<number, number>()
 const projects = new SingleRootProjectResolver(data.rootUri)
 const cancellation = new SemanticCancellationScope()
-let activeReferenceTraceId: string | undefined
+const referenceTraces = new AsyncLocalStorage<string | undefined>()
 const logger: StructuredLogger = {
   info: (event, fields) => postLog("info", event, referenceFields(event, fields)),
   error: (event, fields) => postLog("error", event, referenceFields(event, fields)),
@@ -82,6 +84,7 @@ engine.configureSdk(data.sdkConfiguration)
 
 let queue = Promise.resolve()
 let disposed = false
+let activeGlobalReferenceTraceId: string | undefined
 const sampleTimer = setInterval(sampleMemory, data.runtimeConfig.sampleIntervalMs)
 sampleTimer.unref()
 
@@ -107,17 +110,35 @@ async function dispatch(message: unknown, receivedAt: number): Promise<void> {
     return
   }
   const request = decodeSemanticWorkerRequest(message)
-  activeReferenceTraceId = request.method === "references" || request.method === "define"
+  const traceId = request.method === "references" || request.method === "define"
     ? request.args.traceId : undefined
   if (request.method === "references" && data.references?.trace) {
     logger.info("references.queue.start", {
+      traceId,
       requestId: request.id,
       requiredRevision: request.requiredRevision,
       queueWaitMs: Math.round((performance.now() - receivedAt) * 100) / 100,
     })
+  } else if (
+    activeGlobalReferenceTraceId
+    && data.references?.trace
+    && isInteractiveSemanticWorkerMethod(request.method)
+  ) {
+    logger.info("references.interactive.start", {
+      traceId: activeGlobalReferenceTraceId,
+      method: request.method,
+      queueWaitMs: Math.round((performance.now() - receivedAt) * 100) / 100,
+    })
   }
-  try { await answerRequest(request) }
-  finally { activeReferenceTraceId = undefined }
+  const run = () => referenceTraces.run(traceId, () => answerRequest(request))
+  if (request.method === "references") {
+    activeGlobalReferenceTraceId = traceId
+    void run().then(sampleMemory, failRuntime).finally(() => {
+      if (activeGlobalReferenceTraceId === traceId) activeGlobalReferenceTraceId = undefined
+    })
+    return
+  }
+  await run()
   sampleMemory()
 }
 
@@ -125,9 +146,16 @@ function referenceFields(
   event: string,
   fields: Parameters<StructuredLogger["info"]>[1],
 ): Parameters<StructuredLogger["info"]>[1] {
-  return activeReferenceTraceId && event.startsWith("references.")
-    ? { ...fields, traceId: activeReferenceTraceId }
+  const traceId = referenceTraces.getStore()
+  return traceId && event.startsWith("references.")
+    ? { ...fields, traceId }
     : fields
+}
+
+function failRuntime(error: unknown): void {
+  process.stderr.write(`semantic worker fatal: ${error instanceof Error ? error.message : String(error)}\n`)
+  process.exitCode = 1
+  dispose()
 }
 
 function applyControl(control: WorkerControl): void {

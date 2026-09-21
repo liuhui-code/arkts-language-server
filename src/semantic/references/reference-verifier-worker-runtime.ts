@@ -27,6 +27,7 @@ interface ReferenceVerifierWorkerData {
 const port = parentPort
 if (!port) throw new Error("Reference verifier requires a parent port")
 const data = workerData as ReferenceVerifierWorkerData
+applyTestDelay()
 const packageResolver = new LocalPackageResolver()
 packageResolver.configureProject(data.projectConfiguration)
 const projectAccess = data.workspace.projectFileIdentities
@@ -162,4 +163,13 @@ function readAdmittedSource(rootId: string, filePath: string, token: string): st
 
 function sourceStatIdentity(stat: fs.Stats): string {
   return [stat.dev, stat.ino, stat.size, stat.mtimeMs, stat.ctimeMs].join(":")
+}
+
+function applyTestDelay(): void {
+  const delayMs = Number.parseInt(
+    process.env.ARKTS_TEST_REFERENCE_VERIFIER_DELAY_MS ?? "0",
+    10,
+  )
+  if (!Number.isSafeInteger(delayMs) || delayMs <= 0 || delayMs > 10_000) return
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs)
 }

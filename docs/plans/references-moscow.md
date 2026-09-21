@@ -28,6 +28,12 @@ R-08 is now implemented: watched source/project changes start a new catalog,
 legacy remains authoritative while its generation is stale, and indexed
 batching resumes only after a ready generation advances. The public transcript
 keeps exact Locations across fallback and recovery; it does not weaken R-07.
+R-06 is now implemented for references. Only classified interactive methods
+may bypass one detached references request; diagnostics and other global work
+remain serialized, and any mutation makes the old references snapshot fail
+ContentModified. The real LSP interference test records definition/hover queue
+waits below 250 ms and a fresh post-edit definition. This unblocks R-05 but
+does not mark coalescing or generalization to other global methods complete.
 
 ## Should
 

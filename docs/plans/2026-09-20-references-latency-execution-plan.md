@@ -123,6 +123,18 @@ mutation → legacy fallback → generation 1→2 → indexed recovery, with exa
 Location equality before and after recovery. Unknown/non-advancing generation
 continues to fail conservative ([evidence](../tdd/references-index-resync.md)).
 
+F6 is implemented for references. One revision-bound references request may
+remain detached while classified interactive methods use the persistent
+semantic Worker. Mutations still advance the ordered revision stream and
+cancel the old global snapshot as ContentModified; diagnostics and other
+global operations are not admitted concurrently. A real framed-LSP transcript
+proves definition and hover finish before a deliberately delayed references
+verification, their traced queue waits remain below 250 ms, the edit cancels
+the old result, and the next definition observes the new revision
+([evidence](../tdd/references-scheduling.md)). R-05 coalescing is now unblocked,
+but remains a separate slice because identical public requests currently have
+independent freshness/cancellation ownership.
+
 ## Benchmark contract
 
 Freeze exact repository commit, dirty state, server commit, Node/toolchain,

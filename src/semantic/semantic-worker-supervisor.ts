@@ -8,7 +8,6 @@ import {
   createSemanticWorkerCancellationCell,
   decodeSemanticWorkerMutation,
   decodeSemanticWorkerMutationAck,
-  decodeSemanticWorkerRequest,
   decodeSemanticWorkerResponseForMethod,
   isCanonicalSemanticWorkerFileUri,
   readSemanticWorkerCancellationState,
@@ -20,6 +19,17 @@ import {
   type SemanticWorkerRequestArgsByMethod,
   type SemanticWorkerTerminalCancellationState,
 } from "./worker-protocol.js"
+import {
+  canonicalMutationInput,
+  canonicalRequestInput,
+  hasExactInputKeys,
+  ownPlainInputRecord,
+  readPlainMutationInput,
+  readPlainRequestInput,
+  wireMutation,
+  wireRequest,
+} from "./semantic-worker-command-codec.js"
+import { isInteractiveSemanticWorkerMethod } from "./semantic-request-lanes.js"
 
 export { SEMANTIC_WORKER_PROTOCOL_VERSION, SemanticWorkerCancelState } from "./worker-protocol.js"
 
@@ -132,6 +142,8 @@ export class RootSemanticWorkerSupervisor {
   readonly #pendingRequests: RequestRecord[] = []
   #active: CommandRecord | undefined
   #activeTerminal: Deferred<void> | undefined
+  #detachedReference: RequestRecord | undefined
+  #detachedReferenceTerminal: Deferred<void> | undefined
   #appliedRevision = 0
   #stateGeneration = 0
   #queuedMutationTextBytes = 0
@@ -294,6 +306,12 @@ export class RootSemanticWorkerSupervisor {
         SemanticWorkerCancelState.supervisorDisposing,
       )
     }
+    if (this.#detachedReference) {
+      cancelWithoutThrowing(
+        this.#detachedReference.cancelCell,
+        SemanticWorkerCancelState.supervisorDisposing,
+      )
+    }
     const disposalError = new SemanticWorkerSupervisorError("worker-unavailable")
     for (const record of this.#pendingMutations.splice(0)) {
       record.completion.reject(disposalError)
@@ -314,7 +332,7 @@ export class RootSemanticWorkerSupervisor {
     if (this.#active || this.#disposed) return
     const mutation = this.#pendingMutations.shift()
     if (mutation) this.#queuedMutationTextBytes -= mutation.textBytes
-    const record = mutation ?? this.#pendingRequests.shift()
+    const record = mutation ?? this.#takePendingRequest()
     if (!record) return
     if (
       record.kind === "request"
@@ -325,10 +343,10 @@ export class RootSemanticWorkerSupervisor {
       this.#pump()
       return
     }
-    this.#active = record
-    this.#activeTerminal = deferred<void>()
     try {
       if (record.kind === "mutation") {
+        this.#active = record
+        this.#activeTerminal = deferred<void>()
         const wire = wireMutation(this.#epoch, this.#appliedRevision + 1, record.input)
         record.wire = wire
         this.#endpoint.send(wire)
@@ -341,7 +359,16 @@ export class RootSemanticWorkerSupervisor {
           record.cancelCell,
         )
         record.wire = wire
+        if (record.input.method === "references") {
+          if (this.#detachedReference) throw new Error("Detached reference lane is busy")
+          this.#detachedReference = record
+          this.#detachedReferenceTerminal = deferred<void>()
+        } else {
+          this.#active = record
+          this.#activeTerminal = deferred<void>()
+        }
         this.#endpoint.send(wire)
+        if (record.input.method === "references") this.#pump()
       }
     } catch (error) {
       this.#fail(error)
@@ -350,6 +377,16 @@ export class RootSemanticWorkerSupervisor {
 
   #receive(message: unknown): void {
     if (this.#failure) return
+    const detached = this.#detachedReference
+    if (detached?.wire && requestResponseId(message) === detached.wire.id) {
+      try {
+        this.#settleRequest(detached, message, true)
+        this.#pump()
+      } catch (error) {
+        this.#fail(error)
+      }
+      return
+    }
     const active = this.#active
     if (!active) return this.#fail(new Error("Unexpected semantic worker message"))
     try {
@@ -364,26 +401,7 @@ export class RootSemanticWorkerSupervisor {
         this.#active = undefined
         this.#finishActiveTerminal()
         active.completion.resolve(undefined)
-      } else {
-        if (!active.wire) throw new Error("Missing active semantic worker request")
-        const response = decodeSemanticWorkerResponseForMethod(active.wire.method, message)
-        if (
-          response.epoch !== this.#epoch
-          || response.id !== active.wire.id
-          || response.appliedRevision !== active.wire.requiredRevision
-          || response.documentVersion !== active.wire.expectedDocumentVersion
-        ) throw new Error("Mismatched semantic worker response")
-        const cancellation = readSemanticWorkerCancellationState(active.cancelCell)
-        this.#active = undefined
-        this.#finishActiveTerminal()
-        if (cancellation !== SemanticWorkerCancelState.active) {
-          active.completion.reject(cancellationError(cancellation))
-        } else if (response.ok) {
-          active.completion.resolve(response.value as SemanticWorkerJsonValue)
-        } else {
-          active.completion.reject(new SemanticWorkerSupervisorError(response.error.code))
-        }
-      }
+      } else this.#settleRequest(active, message, false)
       this.#pump()
     } catch (error) {
       this.#fail(error)
@@ -406,6 +424,12 @@ export class RootSemanticWorkerSupervisor {
         SemanticWorkerCancelState.supervisorDisposing,
       )
     }
+    if (this.#detachedReference) {
+      cancelWithoutThrowing(
+        this.#detachedReference.cancelCell,
+        SemanticWorkerCancelState.supervisorDisposing,
+      )
+    }
     for (const record of this.#pendingMutations.splice(0)) {
       record.completion.reject(failure)
     }
@@ -420,11 +444,12 @@ export class RootSemanticWorkerSupervisor {
     const termination = this.#terminateWithinDeadline()
     if (endpointTerminal) {
       this.#settleActiveFailure(failure)
+      this.#settleDetachedFailure(failure)
       void termination.catch(() => {})
     } else {
       void termination.then(
-        () => this.#settleActiveFailure(failure),
-        () => this.#settleActiveFailure(failure),
+        () => { this.#settleActiveFailure(failure); this.#settleDetachedFailure(failure) },
+        () => { this.#settleActiveFailure(failure); this.#settleDetachedFailure(failure) },
       )
     }
   }
@@ -436,6 +461,12 @@ export class RootSemanticWorkerSupervisor {
     if (this.#active?.kind === "request") {
       cancelWithoutThrowing(
         this.#active.cancelCell,
+        SemanticWorkerCancelState.supervisorDisposing,
+      )
+    }
+    if (this.#detachedReference) {
+      cancelWithoutThrowing(
+        this.#detachedReference.cancelCell,
         SemanticWorkerCancelState.supervisorDisposing,
       )
     }
@@ -451,8 +482,8 @@ export class RootSemanticWorkerSupervisor {
     }
     this.#queuedMutationTextBytes = 0
     void this.#terminateWithinDeadline().then(
-      () => this.#settleActiveFailure(failure),
-      () => this.#settleActiveFailure(failure),
+      () => { this.#settleActiveFailure(failure); this.#settleDetachedFailure(failure) },
+      () => { this.#settleActiveFailure(failure); this.#settleDetachedFailure(failure) },
     )
   }
 
@@ -480,6 +511,20 @@ export class RootSemanticWorkerSupervisor {
     this.#finishActiveTerminal()
   }
 
+  #settleDetachedFailure(failure: SemanticWorkerSupervisorError): void {
+    const record = this.#detachedReference
+    if (!record) return
+    const cancellation = readCancellationWithoutThrowing(record.cancelCell)
+    record.completion.reject(
+      cancellation === SemanticWorkerCancelState.clientCancelled
+      || cancellation === SemanticWorkerCancelState.contentModified
+        ? cancellationError(cancellation)
+        : failure,
+    )
+    this.#detachedReference = undefined
+    this.#finishDetachedReferenceTerminal()
+  }
+
   #assertAvailable(): void {
     if (this.#failure) throw this.#failure
     if (this.#disposed) {
@@ -496,6 +541,12 @@ export class RootSemanticWorkerSupervisor {
         SemanticWorkerCancelState.contentModified,
       )
     }
+    if (this.#detachedReference) {
+      cancelWithoutThrowing(
+        this.#detachedReference.cancelCell,
+        SemanticWorkerCancelState.contentModified,
+      )
+    }
     for (const record of this.#pendingRequests.splice(0)) {
       cancelWithoutThrowing(record.cancelCell, SemanticWorkerCancelState.contentModified)
       record.completion.reject(new SemanticWorkerSupervisorError("content-modified"))
@@ -507,7 +558,7 @@ export class RootSemanticWorkerSupervisor {
     reason: SemanticWorkerTerminalCancellationState,
   ): SemanticWorkerTerminalCancellationState {
     const winner = cancelSemanticWorkerRequest(record.cancelCell, reason)
-    if (this.#active === record) return winner
+    if (this.#active === record || this.#detachedReference === record) return winner
     const pendingIndex = this.#pendingRequests.indexOf(record)
     if (pendingIndex >= 0) {
       this.#pendingRequests.splice(pendingIndex, 1)
@@ -585,15 +636,19 @@ export class RootSemanticWorkerSupervisor {
   }
 
   async #disposeActive(disposalError: SemanticWorkerSupervisorError): Promise<void> {
-    if (this.#active) {
-      const terminal = this.#activeTerminal?.promise ?? Promise.resolve()
+    if (this.#active || this.#detachedReference) {
+      const terminal = Promise.all([
+        this.#activeTerminal?.promise ?? Promise.resolve(),
+        this.#detachedReferenceTerminal?.promise ?? Promise.resolve(),
+      ])
       const outcome = await Promise.race([
         terminal.then(() => "terminal" as const),
         this.#disposeDeadline().then(() => "deadline" as const),
       ])
-      if (outcome === "deadline" && this.#active) {
+      if (outcome === "deadline" && (this.#active || this.#detachedReference)) {
         void this.#terminate()
         this.#settleActiveFailure(disposalError)
+        this.#settleDetachedFailure(disposalError)
         await Promise.resolve()
         const terminationFailure = this.#terminationFailure()
         if (terminationFailure) throw terminationFailure
@@ -606,6 +661,43 @@ export class RootSemanticWorkerSupervisor {
   #finishActiveTerminal(): void {
     this.#activeTerminal?.resolve(undefined)
     this.#activeTerminal = undefined
+  }
+
+  #finishDetachedReferenceTerminal(): void {
+    this.#detachedReferenceTerminal?.resolve(undefined)
+    this.#detachedReferenceTerminal = undefined
+  }
+
+  #takePendingRequest(): RequestRecord | undefined {
+    if (!this.#detachedReference) return this.#pendingRequests.shift()
+    const index = this.#pendingRequests.findIndex(record =>
+      isInteractiveSemanticWorkerMethod(record.input.method))
+    return index < 0 ? undefined : this.#pendingRequests.splice(index, 1)[0]
+  }
+
+  #settleRequest(record: RequestRecord, message: unknown, detached: boolean): void {
+    if (!record.wire) throw new Error("Missing active semantic worker request")
+    const response = decodeSemanticWorkerResponseForMethod(record.wire.method, message)
+    if (response.epoch !== this.#epoch || response.id !== record.wire.id
+      || response.appliedRevision !== record.wire.requiredRevision
+      || response.documentVersion !== record.wire.expectedDocumentVersion) {
+      throw new Error("Mismatched semantic worker response")
+    }
+    const cancellation = readSemanticWorkerCancellationState(record.cancelCell)
+    if (detached) {
+      this.#detachedReference = undefined
+      this.#finishDetachedReferenceTerminal()
+    } else {
+      this.#active = undefined
+      this.#finishActiveTerminal()
+    }
+    if (cancellation !== SemanticWorkerCancelState.active) {
+      record.completion.reject(cancellationError(cancellation))
+    } else if (response.ok) {
+      record.completion.resolve(response.value as SemanticWorkerJsonValue)
+    } else {
+      record.completion.reject(new SemanticWorkerSupervisorError(response.error.code))
+    }
   }
 }
 
@@ -628,146 +720,11 @@ function requestHandle(
   return Object.freeze({ result, cancel })
 }
 
-function canonicalMutationInput(
-  epoch: number,
-  input: RootSemanticWorkerMutationInput,
-): RootSemanticWorkerMutationInput {
-  const mutation = wireMutation(epoch, 1, input)
-  if (mutation.kind === "workspaceFilesChanged") {
-    return Object.freeze({
-      kind: mutation.kind,
-      rootUri: mutation.rootUri,
-      rootDirty: mutation.rootDirty,
-      resourceDirty: mutation.resourceDirty,
-      resourceChanged: mutation.resourceChanged,
-      changes: mutation.changes,
-    })
-  }
-  return Object.freeze({
-    kind: mutation.kind,
-    uri: mutation.uri,
-    documentVersion: mutation.documentVersion,
-    ...(mutation.kind === "close" ? {} : { text: mutation.text as string }),
-  }) as RootSemanticWorkerMutationInput
-}
-
-function canonicalRequestInput(
-  epoch: number,
-  id: number,
-  input: RootSemanticWorkerRequestInput,
-  cancelCell: SharedArrayBuffer,
-): RootSemanticWorkerRequestInput {
-  const request = wireRequest(epoch, id, 0, input, cancelCell)
-  return Object.freeze({
-    method: request.method,
-    uri: request.uri,
-    expectedDocumentVersion: request.expectedDocumentVersion,
-    args: request.args,
-  }) as RootSemanticWorkerRequestInput
-}
-
-function wireMutation(
-  epoch: number,
-  revision: number,
-  input: RootSemanticWorkerMutationInput,
-): SemanticWorkerMutation {
-  if (input.kind === "workspaceFilesChanged") {
-    return decodeSemanticWorkerMutation({
-      protocol: SEMANTIC_WORKER_PROTOCOL_VERSION,
-      epoch,
-      revision,
-      kind: input.kind,
-      rootUri: input.rootUri,
-      rootDirty: input.rootDirty,
-      resourceDirty: input.resourceDirty,
-      resourceChanged: input.resourceChanged,
-      changes: input.changes,
-    })
-  }
-  return decodeSemanticWorkerMutation({
-    protocol: SEMANTIC_WORKER_PROTOCOL_VERSION,
-    epoch,
-    revision,
-    kind: input.kind,
-    uri: input.uri,
-    documentVersion: input.documentVersion,
-    ...(input.kind === "close" ? {} : { text: input.text }),
-  })
-}
-
-function wireRequest(
-  epoch: number,
-  id: number,
-  requiredRevision: number,
-  input: RootSemanticWorkerRequestInput,
-  cancelCell: SharedArrayBuffer,
-): SemanticWorkerRequest {
-  return decodeSemanticWorkerRequest({
-    protocol: SEMANTIC_WORKER_PROTOCOL_VERSION,
-    epoch,
-    id,
-    requiredRevision,
-    method: input.method,
-    uri: input.uri,
-    expectedDocumentVersion: input.expectedDocumentVersion,
-    args: input.args,
-    cancelCell,
-  })
-}
-
-function readPlainMutationInput(value: unknown): RootSemanticWorkerMutationInput {
-  const input = ownPlainInputRecord(value)
-  if (!input) throw new Error("Invalid semantic worker mutation input")
-  const expectedKeys = input.kind === "close"
-    ? ["kind", "uri", "documentVersion"]
-    : input.kind === "open" || input.kind === "change"
-      ? ["kind", "uri", "documentVersion", "text"]
-      : input.kind === "workspaceFilesChanged"
-        ? [
-            "kind",
-            "rootUri",
-            "rootDirty",
-            "resourceDirty",
-            "resourceChanged",
-            "changes",
-          ]
-        : []
-  if (expectedKeys.length === 0 || !hasExactInputKeys(input, expectedKeys)) {
-    throw new Error("Invalid semantic worker mutation input")
-  }
-  return input as unknown as RootSemanticWorkerMutationInput
-}
-
-function readPlainRequestInput(value: unknown): RootSemanticWorkerRequestInput {
-  const input = ownPlainInputRecord(value)
-  if (!input || !hasExactInputKeys(input, [
-    "method",
-    "uri",
-    "expectedDocumentVersion",
-    "args",
-  ])) throw new Error("Invalid semantic worker request input")
-  return input as unknown as RootSemanticWorkerRequestInput
-}
-
-function ownPlainInputRecord(value: unknown): Record<string, unknown> | undefined {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined
-  if (Object.getPrototypeOf(value) !== Object.prototype) return undefined
-  const copy: Record<string, unknown> = Object.create(null) as Record<string, unknown>
-  for (const key of Reflect.ownKeys(value)) {
-    if (typeof key !== "string") return undefined
-    const descriptor = Object.getOwnPropertyDescriptor(value, key)
-    if (!descriptor?.enumerable || !("value" in descriptor)) return undefined
-    copy[key] = descriptor.value
-  }
-  return copy
-}
-
-function hasExactInputKeys(
-  value: Record<string, unknown>,
-  expected: readonly string[],
-): boolean {
-  const keys = Object.keys(value)
-  return keys.length === expected.length && expected.every(key => Object.hasOwn(value, key))
+function requestResponseId(message: unknown): number | undefined {
+  if (message === null || typeof message !== "object" || Array.isArray(message)) return undefined
+  const descriptor = Object.getOwnPropertyDescriptor(message, "id")
+  return descriptor?.enumerable && "value" in descriptor
+    && Number.isSafeInteger(descriptor.value) ? descriptor.value as number : undefined
 }
 
 function mutationTextBytes(input: RootSemanticWorkerMutationInput): number {
