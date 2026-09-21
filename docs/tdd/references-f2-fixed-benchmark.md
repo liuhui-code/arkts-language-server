@@ -40,3 +40,18 @@ references result, omit `publishDiagnostics`, and still make the runner print
 `REFERENCES_REPLAY=PASS`. GREEN: the report is FAIL unless a versioned automatic
 diagnostic notification was observed. The fixture changes only benchmark
 validation; production semantic behavior remains untouched.
+
+Follow-up parent revision: `8ee8cde05c0d1911c729e882e5f4cffcbc931539`.
+The repository's 500-line handwritten-file contract prompted a behavior-
+preserving extraction of CLI parsing, input validation and pinned-manifest
+preflight into `scripts/bench/reference-replay-input.mjs`. The existing
+public CLI/real-child characterization suite was GREEN (8/8) before the
+extraction when run with macOS process-sampler permission, and GREEN (8/8)
+afterward. The runner fell from 632 to 450 physical lines; the new module is
+198 lines. A restricted-sandbox attempt was not a behavioral RED: the
+external process sampler could not start there. No production LSP behavior
+was changed by this extraction. A pinned Photos production-stdio replay after
+extraction also passed its three-location oracle, all 62 automatic diagnostics,
+and the strict differential against the existing legacy report; its raw file
+is `/private/tmp/photos-f2-refactor-verify-20260921.json`. This is a runner
+regression check, not a new Settings benchmark.

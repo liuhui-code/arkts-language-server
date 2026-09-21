@@ -75,18 +75,27 @@ the latter whole-run peak also rose to 1,260,650,496 bytes. This is still a
 smoke baseline, not F2 graduation: three independent legacy mode-C processes
 returned exact references but did not observe automatic diagnostics,
 and further verified symbols/projects, hot series and randomized release
-samples are outstanding. Settings/Launcher/Contacts remain discovery
-candidates until their matching SDKs and symbol oracles are available.
+samples are outstanding. Per the updated test priority, Settings is now the
+primary real-project benchmark target; Photos remains historical F2 smoke
+evidence. The clean local Settings 6.1-LTS checkout is
+`ecc550dfaed880e04e38a2477eb7235cd50475b9` and declares compile SDK 23.
+The SDK inventory on this Mac found DevEco ETS API 24 but no API 23, so Settings is
+`SDK_UNAVAILABLE` for a formal gate until a matching SDK and verified symbol
+oracle are available ([preflight](../reports/2026-09-21-references-f2-settings-preflight.md)).
+Do not substitute API 24 or silently use the proposed
+master revision requiring SDK 26.0.1. Launcher/Contacts are secondary
+discovery candidates, not substitutes for the Settings gate.
 
 ## Benchmark contract
 
 Freeze exact repository commit, dirty state, server commit, Node/toolchain,
 backend version, project selection, SDK fingerprint, index schema/generation,
 query file/symbol/zero-based UTF-16 position and all `ARKTS_*` overrides.
-Settings/Launcher/Contacts revisions proposed in the source report are
-**discovery candidates**, not verified oracles. In particular, the proposed
-Settings compile SDK 26.0.1 must not silently run with this Mac's API 24 SDK;
-report `SDK_UNAVAILABLE` or use a separately named historical-revision case.
+Settings is the primary target, but its local 6.1-LTS revision and the source
+report's master revision are **discovery candidates**, not verified oracles.
+The former requires compile SDK 23; the latter requires SDK 26.0.1. Neither
+may silently run with this Mac's API 24 SDK. Report `SDK_UNAVAILABLE` until a
+matching SDK exists, then freeze that exact revision and SDK identity.
 An exported class seed is not a golden until compiler results and known real
 references are verified. The historical Settings `LogUtil` case is not an
 oracle because its legacy response missed known cross-module references.

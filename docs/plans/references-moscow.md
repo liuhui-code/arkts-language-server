@@ -11,6 +11,9 @@ R-06 interactive/global isolation address repeat and head-of-line latency.
 R-07 index trust and R-08 generation recovery preserve complete answers after
 edits. All remain subject to exactness, memory and freshness gates; the default
 strategy is not changed merely because one optimization lands.
+R-02 now prioritizes the real Settings checkout; its API-23 SDK requirement is
+an environment block on this Mac, not permission to label API-24 data as a
+matched Settings benchmark.
 
 ## Should
 
