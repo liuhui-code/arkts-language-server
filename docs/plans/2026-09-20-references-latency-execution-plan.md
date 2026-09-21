@@ -329,6 +329,19 @@ replanning requires a cancellable, snapshot-safe real-LSP RED/GREEN and
 completed-run RSS comparison; do not silently switch to legacy or call this
 one-run observation a release gate.
 
+The [first-catalog wait experiment](../reports/2026-09-21-settings-initial-catalog-wait-experiment.md)
+completed narrow RED/GREEN coverage for initial warming, pre-open, cancellation
+and a held-status deadline. With the opt-in 60-second wait, three independent
+Settings index-cold runs returned exact 9/9 results using one batch at
+39.8/50.5/47.5 seconds and 537–560 MB observed product-tree RSS peaks. A
+30-second cap missed a catalog that committed just after expiry; another run
+exposed the separate pre-open race. This proves startup timing amplification
+in this fixed case, not product readiness. The flag remains default-off:
+latency and postponed diagnostics miss the interaction gate. Same-build
+completed legacy comparison and the original >3 GB case remain open. Next:
+move readiness off the user click/diagnostic suspension path, then run a
+same-build strategy matrix before considering a default.
+
 Freeze exact repository commit, dirty state, server commit, Node/toolchain,
 backend version, project selection, SDK fingerprint, standard-library asset
 digest, index schema/generation, query file/symbol/zero-based UTF-16 position

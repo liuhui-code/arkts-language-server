@@ -24,9 +24,14 @@ Initial catalog warming is not post-mutation recovery. A global request may
 observe generation 0 before the first committed catalog and fall back to
 complete-scope verification. The [real Settings first-click replay](../reports/2026-09-21-settings-immediate-catalog-replay.md)
 shows that this can plan many batches and remain on that plan after catalog
-readiness. This ADR does not yet authorize waiting for the index, replanning
-mid-request, or switching initial warming to legacy: each needs a separate
-snapshot/cancellation and completed-memory gate. Stale candidates still must
+readiness. An [opt-in bounded-wait experiment](../reports/2026-09-21-settings-initial-catalog-wait-experiment.md)
+now covers both initial generation-zero warming and the pre-open window. It
+keeps the request snapshot/cancellation signal, rechecks the existing
+candidate-eligibility proof, and uses complete compiler fallback on timeout.
+This is **not a default policy**: three exact Settings runs still took
+39.8–50.5 seconds and postponed diagnostics. Defaulting the wait,
+mid-request replanning or switching initial warming to legacy still require
+responsiveness, diagnostic and completed-memory gates. Stale candidates must
 never exclude files or become final Locations.
 
 ## Gate

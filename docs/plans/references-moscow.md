@@ -11,6 +11,10 @@ R-06 interactive/global isolation address repeat and head-of-line latency.
 R-07 index trust and R-08 generation recovery preserve complete answers after
 edits. All remain subject to exactness, memory and freshness gates; the default
 strategy is not changed merely because one optimization lands.
+R-20 is the separate initial-index first-click gate: post-mutation generation
+recovery does not solve a request that precedes the first catalog or sidecar
+`open`. Its current bounded wait is an opt-in causal experiment, not a default
+navigation policy.
 R-02 now prioritizes the real Settings checkout. Its declared compile 23 and
 selected API 24 are separately pinned: API 24 is accepted for the same-SDK
 performance/differential track, without claiming matched-23 or diagnostic
@@ -94,6 +98,12 @@ product-tree RSS. Neither path meets the cold navigation target, and the
 timed-out indexed peak cannot establish completed-query memory safety.
 Do not promote an initial-index fallback policy without snapshot/cancellation,
 exactness, diagnostics and RSS gates.
+The [opt-in wait experiment](../reports/2026-09-21-settings-initial-catalog-wait-experiment.md)
+now passes the narrow snapshot/cancellation/exactness transcript and returns
+9/9 in three index-cold Settings runs with 537–560 MB completed peaks, but
+39.8–50.5 second requests and delayed diagnostics leave this Must gate RED.
+The wait remains default-off. Initial-index readiness must move off the user
+click/diagnostic suspension path before graduation review.
 R-07 now also rejects candidates if the sidecar changes from ready to warming
 between candidate search and acceptance, even when the committed generation
 number is unchanged. Direct and definition-anchor real-LSP transcripts both

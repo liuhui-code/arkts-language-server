@@ -25,6 +25,8 @@ import { OHOS_TYPESCRIPT_BACKEND_IDENTITY } from "./backends/ohos-typescript/ide
 import type { SemanticBackend } from "./backends/semantic-backend.js"
 import { semanticRuntimeConfig } from "./coordinator/runtime-config.js"
 import { referenceSearchRuntimeConfig } from "./references/reference-runtime.js"
+import { waitForInitialReferenceCatalog } from "./references/reference-initial-catalog.js"
+import { logReferenceCandidateSelection } from "./references/reference-index-telemetry.js"
 import { interactiveSemanticRuntimeConfig } from "./interactive-runtime.js"
 import { discoverCompletionCandidates } from "./completion-discovery.js"
 import {
@@ -256,15 +258,8 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
     logReferenceCache(this.#logger, this.#referenceResults, "references.cache.miss", traceId)
     const selectionStarted = performance.now()
     const candidates = await this.#referenceCandidates(query, traceId)
-    if (this.#environment.ARKTS_REFERENCES_TRACE === "1"
-      && referenceSearchRuntimeConfig(this.#environment).strategy === "indexed-batched") {
-      this.#logger?.info("references.candidate-selection.complete", {
-        traceId,
-        durationMs: Math.round((performance.now() - selectionStarted) * 100) / 100,
-        outcome: candidates ? "accepted" : "fallback",
-        candidateFiles: candidates?.uris.length ?? 0,
-      })
-    }
+    logReferenceCandidateSelection(this.#logger,
+      referenceSearchRuntimeConfig(this.#environment).strategy, traceId, selectionStarted, candidates)
     const response = await this.#documentRequest<Contract.SemanticReferencesOutcome>("references", query, {
       position: query.position,
       includeDeclaration: query.includeDeclaration,
@@ -392,6 +387,11 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
   ): Promise<ReferenceCandidateSelection | undefined> {
     if (referenceSearchRuntimeConfig(this.#environment).strategy !== "indexed-batched"
       || !this.#referenceIndex) return undefined
+    if (!this.#referenceIndexFreshness.isDirty(query.document.workspaceId)) {
+      await waitForInitialReferenceCatalog(this.#referenceIndex, query.document.workspaceId,
+        this.#environment, query.signal, this.#logger)
+    }
+    if (query.signal?.aborted) throw new Error("References changed during catalog wait")
     if (!await prepareReferenceIndexSearch(
       this.#referenceIndexFreshness, query.document.workspaceId,
       this.#referenceIndex, this.#logger,

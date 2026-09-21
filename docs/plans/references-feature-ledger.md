@@ -25,6 +25,7 @@ completion. An item is complete only after its linked gate passes; see the
 | R-17 | Won't | Identity as production default now | Rejected pending proof | Known SDK-import false negative |
 | R-18 | Won't | Multiple full-Program Workers | Rejected | Duplicates SDK/Program memory; global concurrency stays one |
 | R-19 | Won't | File-count-only memory model | Rejected | Use measured RSS/PSS and Program closure, not linear extrapolation |
+| R-20 | Must | Initial-index first-click readiness | Opt-in bounded-wait RED/GREEN; **not graduated** | Three real Settings index-cold runs are exact and one-batch at 537–560 MB peak but take 39.8–50.5 seconds and delay diagnostics. Default stays off. Exit requires cold navigation/diagnostic gate, completed same-build memory A/B and original >3 GB pressure-case evidence; [experiment](../reports/2026-09-21-settings-initial-catalog-wait-experiment.md) |
 
 R-02/R-07 startup follow-up: the new
 [real Settings immediate-catalog replay](../reports/2026-09-21-settings-immediate-catalog-replay.md)
@@ -38,6 +39,15 @@ safe legacy default, or close the broader R-07 trust matrix. F5/R-08's
 post-mutation catch-up does not cover initial catalog warming. The runner's
 new immediate/ready switch and [public protocol test](../tdd/references-immediate-catalog-replay.md)
 make the first-click state measurable without changing production semantics.
+
+An [opt-in initial-catalog wait slice](../reports/2026-09-21-settings-initial-catalog-wait-experiment.md)
+now has public-LSP RED/GREEN for generation-zero warming, not-yet-open sidecar,
+cancel and held-status deadline. Three independent real Settings/API-24
+index-cold requests returned 9/9 exact references in one batch, with 39.8–50.5
+seconds request latency and 537–560 MB observed product-tree RSS peaks. This
+eliminates the fixed 23-batch timeout only when enabled; it is **not a default
+fix**. Diagnostics were delayed until after references, so R-02 latency,
+R-07 broader trust and the final memory gate stay open.
 
 R-03 follow-up: an [isolated explicit-GC diagnostic](../reports/2026-09-21-settings-disposal-gc-probe.md)
 replayed three fresh Settings processes per arm after the no-forced-GC idle
