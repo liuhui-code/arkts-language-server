@@ -123,7 +123,7 @@ function requiredAbsolutePath(value, name, cwd) {
   return path.resolve(cwd, value)
 }
 
-async function digestSdk(sdkRoot) {
+export async function digestSdk(sdkRoot) {
   await requireDirectory(sdkRoot, "SDK root")
   await requireDirectory(path.join(sdkRoot, "ets"), "SDK ets directory")
   await requireDirectory(path.join(sdkRoot, "toolchains"), "SDK toolchains directory")

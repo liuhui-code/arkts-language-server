@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "benchmarkId": "photos-bottomtoolbar-get-mutually-exclusive-desc-api24",
+  "repo": "openharmony/applications_photos",
+  "repoSha": "98ea1d9cd6a363c576e2c6ff17844e51723baec5",
+  "nodeVersion": "v26.3.0",
+  "sdk": {
+    "apiVersion": "24",
+    "version": "6.1.1.125",
+    "declarationDigest": "8098b8abbc6b06fce0e7322d6f8f82a5bbce41e847dbd39e9a98811a33d4c6e4"
+  },
+  "query": {
+    "file": "imageEditor/product/editor_phone/src/main/ets/component/menu/BottomToolbar.ets",
+    "symbol": "getMutuallyExclusiveDesc",
+    "line": 351,
+    "character": 19,
+    "includeDeclaration": true
+  },
+  "oracle": {
+    "verified": true,
+    "expectedLocationCount": 3,
+    "source": "docs/reports/2026-09-20-default-indexed-references-rollout.md",
+    "sha256": "97a1964ab89dc899f8b65ced555ac3df9de3c01876cb0b634ecffaf8e25bb109"
+  },
+  "serverSha256": "6a42c44b3d72ae0cb38f9bd014b10f946d087400366857c1f9433346f0337d8b",
+  "sidecarSha256": "8d4e95b5c603b8f43e0da9a7e62d74b127a94fe16f8b6d0afbc9fd0d6ebe40ae"
+}

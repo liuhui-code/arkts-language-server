@@ -7,7 +7,7 @@ completion. An item is complete only after its linked gate passes; see the
 | ID | Priority | Feature | State | Dependency and observable exit |
 | --- | --- | --- | --- | --- |
 | R-01 | Must | Phase-level semantic tracing | Implemented: batch timeline, queue/candidate/anchor correlation and opt-in compiler `getProgram` / `createProgram` / `getTypeChecker` split | Real-LSP exactness GREEN; external trace-off RSS and fixed real-project benchmark belong to R-02 |
-| R-02 | Must | Fixed manifests and exact oracle | Planned | Matching SDK + verified real symbol; URI/range diff and external RSS |
+| R-02 | Must | Fixed manifests and exact oracle | In progress: pinned Photos/API-24 case and A/B/C smoke exact oracle | More matching-SDK real cases, ≥3 cold/10 hot runs, declaration variants, external RSS |
 | R-03 | Must | Budget-aware hot context retention | Proposed | R-01/R-02; exact A/B, no peak or post-eviction regression |
 | R-04 | Must | Complete-result cache v1 | Proposed | R-02; root-wide invalidation, bounded bytes, zero verifier on valid hit |
 | R-05 | Must | In-flight coalescing | Proposed | R-04; one verification, independent waiter cancellation |

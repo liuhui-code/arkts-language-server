@@ -64,6 +64,14 @@ plan, batch and merge events. F1 instrumentation is complete for batched
 references; F2 must now fix real-project manifests and exact oracles before
 performance claims or later optimization graduation.
 
+F2 has one pinned Photos/API-24 case with a workspace-relative exact oracle
+and manifest preflight. Its first independent A/B/C replay is recorded in the
+[F2 evidence](../reports/2026-09-21-references-f2-photos-baseline.md). This
+is a smoke baseline, not F2 graduation: three cold runs per strategy, ten hot
+runs, both declaration settings and further verified real-project cases are
+still required. Settings/Launcher/Contacts remain discovery candidates until
+their matching SDKs and symbol oracles are available.
+
 ## Benchmark contract
 
 Freeze exact repository commit, dirty state, server commit, Node/toolchain,

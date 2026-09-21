@@ -8,6 +8,15 @@ import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
 import { LspSession } from "../../tests/support/lsp-session.mjs"
+import { digestSdk } from "../semantic/lock-toolchain.mjs"
+import {
+  comparableLocations,
+  loadOracle,
+  normalizeReferences,
+  ordinalCompare,
+  validPosition,
+  validateLocations,
+} from "./reference-location-oracle.mjs"
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 const samplerPath = path.join(projectRoot, "scripts", "bench", "sample-process-tree-rss.mjs")
@@ -35,6 +44,7 @@ try {
 
 async function replay(options) {
   validateInputs(options)
+  await validateBenchmarkManifest(options)
   const sourcePath = path.resolve(options.workspace, options.file)
   const sourceText = fs.readFileSync(sourcePath, "utf8")
   const positionOffset = positionToOffset(sourceText, options.position)
@@ -47,6 +57,10 @@ async function replay(options) {
 
   const sourceUri = pathToFileURL(sourcePath).href
   const expected = loadOracle(options.oracle, options.workspace)
+  if (options.benchmarkManifest
+    && expected.locations.length !== options.benchmarkManifest.oracle.expectedLocationCount) {
+    throw new Error("BENCHMARK_BLOCKED=ORACLE_COUNT_MISMATCH")
+  }
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-references-replay-"))
   try {
     return await replayWithTemporaryState(options, { sourceText, sourceUri, expected, tempRoot })
@@ -273,6 +287,7 @@ async function replayWithTemporaryState(options, { sourceText, sourceUri, expect
 
 function serverEnvironment(options, cacheDir, logDir) {
   return {
+    ...Object.fromEntries(Object.entries(process.env).filter(([name]) => name.startsWith("ARKTS_"))),
     ARKTS_INDEX_CACHE_DIR: cacheDir,
     ARKTS_INDEX_SIDECAR_PATH: options.sidecar,
     ARKTS_LSP_LOG_DIR: logDir,
@@ -298,6 +313,7 @@ function environmentEvidence(options) {
     workspaceStatus: gitValue(options.workspace, ["status", "--porcelain"]),
     sdk: options.sdk,
     sdkMetadata: readSdkMetadata(options.sdk),
+    sdkDeclarationDigest: options.sdkDeclarationDigest ?? null,
     node: process.execPath,
     nodeVersion: process.version,
     platform: `${os.type()} ${os.release()} ${os.arch()}`,
@@ -306,6 +322,9 @@ function environmentEvidence(options) {
     sidecar: options.sidecar,
     sidecarSha256: sha256File(options.sidecar),
     launch: { command: process.execPath, args: [options.server, "--stdio"] },
+    benchmarkManifest: options.manifest ?? null,
+    benchmarkId: options.benchmarkManifest?.benchmarkId ?? null,
+    serverEnvironment: serverEnvironment(options, "<private-index-cache>", "<private-log-dir>"),
     strategy: options.strategy ?? "server-default",
     sdkProfile: options.sdkProfile ?? "server-default",
     dependencyProfile: options.dependencyProfile ?? "server-default",
@@ -327,86 +346,6 @@ function gitValue(root, args) {
   } catch {
     return null
   }
-}
-
-function loadOracle(fileName, currentWorkspace) {
-  const value = JSON.parse(fs.readFileSync(fileName, "utf8"))
-  const locations = Array.isArray(value) ? value : value.normalizedReferences
-  if (!Array.isArray(locations)) {
-    throw new Error("oracle must be a Location array or a replay report with normalizedReferences")
-  }
-  const oracleWorkspace = Array.isArray(value) ? currentWorkspace : value.environment?.workspace
-  if (!oracleWorkspace) throw new Error("oracle report does not identify its workspace")
-  return { locations: comparableLocations(normalizeReferences(locations), oracleWorkspace) }
-}
-
-function validateLocations(locations, comparable, expected, workspace) {
-  const errors = []
-  for (const location of locations) {
-    try {
-      const fileName = fileURLToPath(location.uri)
-      const relative = path.relative(workspace, fileName)
-      if (relative.startsWith("..") || path.isAbsolute(relative)) {
-        errors.push(`reference outside workspace: ${location.uri}`)
-        continue
-      }
-      validateRange(fs.readFileSync(fileName, "utf8"), location.range)
-    } catch (error) {
-      errors.push(error.message)
-    }
-  }
-  if (!same(comparable, expected.locations)) errors.push("normalized Location set differs from oracle")
-  return {
-    pass: errors.length === 0,
-    expectedCount: expected.locations.length,
-    observedCount: locations.length,
-    errors,
-  }
-}
-
-function validateRange(text, range) {
-  const lines = text.split(/\r?\n/u)
-  const { start, end } = range ?? {}
-  if (!validPosition(start, lines) || !validPosition(end, lines)) {
-    throw new Error("reference has an invalid UTF-16 range")
-  }
-  if (end.line < start.line || (end.line === start.line && end.character < start.character)) {
-    throw new Error("reference range ends before it starts")
-  }
-}
-
-function validPosition(position, lines) {
-  return Number.isSafeInteger(position?.line)
-    && position.line >= 0
-    && position.line < lines.length
-    && Number.isSafeInteger(position.character)
-    && position.character >= 0
-    && position.character <= lines[position.line].length
-}
-
-function comparableLocations(locations, workspace) {
-  return locations.map(({ uri, range }) => {
-    const fileName = fileURLToPath(uri)
-    const relative = path.relative(workspace, fileName).split(path.sep).join("/")
-    return { file: relative, range }
-  }).sort((left, right) => (
-    ordinalCompare(left.file, right.file)
-    || left.range.start.line - right.range.start.line
-    || left.range.start.character - right.range.start.character
-    || left.range.end.line - right.range.end.line
-    || left.range.end.character - right.range.end.character
-  ))
-}
-
-function normalizeReferences(value) {
-  if (!Array.isArray(value)) return []
-  return value.map(({ uri, range }) => ({ uri, range })).sort((left, right) => (
-    ordinalCompare(left.uri, right.uri)
-    || left.range.start.line - right.range.start.line
-    || left.range.start.character - right.range.start.character
-    || left.range.end.line - right.range.end.line
-    || left.range.end.character - right.range.end.character
-  ))
 }
 
 async function waitForCatalog(session, timeoutMs) {
@@ -479,6 +418,7 @@ function parseArguments(args) {
       character: nonNegativeInteger(values.get("--character"), "--character"),
     },
     oracle: path.resolve(values.get("--oracle")),
+    manifest: values.has("--manifest") ? path.resolve(values.get("--manifest")) : null,
     out: path.resolve(values.get("--out")),
     server: path.resolve(values.get("--server") ?? path.join(projectRoot, "dist", "server.cjs")),
     sidecar: path.resolve(values.get("--sidecar") ?? path.join(projectRoot, "target", "release", "arkts-index-sidecar")),
@@ -498,12 +438,49 @@ function parseArguments(args) {
 
 function validateInputs(options) {
   requireDirectory(options.workspace, "workspace")
+  if (options.manifest && !fs.existsSync(options.sdk)) {
+    throw new Error("BENCHMARK_BLOCKED=SDK_UNAVAILABLE")
+  }
   requireDirectory(options.sdk, "SDK")
   requireFile(path.resolve(options.workspace, options.file), "target file")
   requireFile(options.oracle, "oracle")
+  if (options.manifest) requireFile(options.manifest, "benchmark manifest")
   requireFile(options.server, "server")
   requireFile(options.sidecar, "sidecar")
   if (fs.existsSync(options.out)) throw new Error(`output already exists: ${options.out}`)
+}
+
+async function validateBenchmarkManifest(options) {
+  if (!options.manifest) return
+  const manifest = JSON.parse(fs.readFileSync(options.manifest, "utf8"))
+  const block = (reason) => { throw new Error(`BENCHMARK_BLOCKED=${reason}`) }
+  const sha256 = (value) => typeof value === "string" && /^[0-9a-f]{64}$/u.test(value)
+  if (manifest.schemaVersion !== 1 || !manifest.benchmarkId
+    || !/^[0-9a-f]{40}$/u.test(manifest.repoSha ?? "")
+    || !sha256(manifest.sdk?.declarationDigest)
+    || !sha256(manifest.oracle?.sha256)
+    || !sha256(manifest.serverSha256)
+    || !sha256(manifest.sidecarSha256)
+    || !Number.isSafeInteger(manifest.oracle?.expectedLocationCount)
+    || manifest.oracle.expectedLocationCount < 1) block("INVALID_MANIFEST")
+  const sdk = readSdkMetadata(options.sdk)
+  if (!sdk || sdk.apiVersion !== manifest.sdk?.apiVersion || sdk.version !== manifest.sdk?.version) {
+    block("SDK_MISMATCH")
+  }
+  options.sdkDeclarationDigest = await digestSdk(options.sdk)
+  if (options.sdkDeclarationDigest !== manifest.sdk.declarationDigest) block("SDK_MISMATCH")
+  if (manifest.oracle?.verified !== true) block("UNVERIFIED_ORACLE")
+  if (manifest.nodeVersion && manifest.nodeVersion !== process.version) block("NODE_VERSION_MISMATCH")
+  if (manifest.repoSha !== gitValue(options.workspace, ["rev-parse", "HEAD"])) block("REPO_REVISION_MISMATCH")
+  if (gitValue(options.workspace, ["status", "--porcelain"])) block("DIRTY_WORKSPACE")
+  const query = manifest.query
+  if (!query || query.file !== options.file || query.symbol !== options.symbol
+    || query.line !== options.position.line || query.character !== options.position.character
+    || query.includeDeclaration !== options.includeDeclaration) block("QUERY_MISMATCH")
+  if (manifest.serverSha256 !== sha256File(options.server)) block("SERVER_MISMATCH")
+  if (manifest.sidecarSha256 !== sha256File(options.sidecar)) block("SIDECAR_MISMATCH")
+  if (manifest.oracle.sha256 !== sha256File(options.oracle)) block("ORACLE_MISMATCH")
+  options.benchmarkManifest = manifest
 }
 
 function requireFile(fileName, label) {
@@ -612,10 +589,6 @@ function same(left, right) {
   return JSON.stringify(left) === JSON.stringify(right)
 }
 
-function ordinalCompare(left, right) {
-  return left < right ? -1 : left > right ? 1 : 0
-}
-
 function delay(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds))
 }
@@ -637,6 +610,7 @@ framed stdio, exact Location oracle validation, normal diagnostics, and external
 process-tree RSS sampling.
 
 Options:
+  --manifest <file.json>         pin real project, SDK, query, oracle and binaries
   --mode <A|B|C>                 A: references first; B: warm completion and
                                  definition; C: ten references plus unsaved edit
   --strategy <name>              legacy, batched, or indexed-batched

@@ -39,6 +39,78 @@ test("references replay fails before launch when required evidence is absent", (
   assert.match(result.stderr, /--workspace is required/u)
 })
 
+test("references replay blocks a manifest with a mismatched SDK before starting the server", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-replay-manifest-test-"))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const workspace = path.join(root, "workspace")
+  const sdk = path.join(root, "sdk")
+  fs.mkdirSync(workspace)
+  fs.mkdirSync(path.join(sdk, "ets"), { recursive: true })
+  fs.writeFileSync(path.join(workspace, "Query.ets"), "Thing\n")
+  fs.writeFileSync(path.join(sdk, "ets", "oh-uni-package.json"), JSON.stringify({ apiVersion: "24", version: "6.1.1.125" }))
+  const oracle = path.join(root, "oracle.json")
+  const manifest = path.join(root, "manifest.json")
+  const output = path.join(root, "result.json")
+  fs.writeFileSync(oracle, "[]\n")
+  fs.writeFileSync(manifest, JSON.stringify({
+    schemaVersion: 1,
+    benchmarkId: "sdk-mismatch",
+    repoSha: "a".repeat(40),
+    sdk: { apiVersion: "26", version: "26.0.1", declarationDigest: "b".repeat(64) },
+    query: { file: "Query.ets", symbol: "Thing", line: 0, character: 1, includeDeclaration: true },
+    oracle: { verified: true, expectedLocationCount: 1, sha256: "c".repeat(64) },
+    serverSha256: "d".repeat(64),
+    sidecarSha256: "e".repeat(64),
+  }))
+
+  const result = spawnSync(process.execPath, [
+    runner,
+    "--manifest", manifest,
+    "--workspace", workspace,
+    "--sdk", sdk,
+    "--file", "Query.ets",
+    "--symbol", "Thing",
+    "--line", "0",
+    "--character", "1",
+    "--oracle", oracle,
+    "--out", output,
+    "--server", silentServer,
+    "--sidecar", silentServer,
+  ], { cwd: projectRoot, encoding: "utf8", timeout: 10_000 })
+
+  assert.equal(result.status, 2, `${result.stderr}\n${result.stdout}`)
+  assert.match(result.stderr, /BENCHMARK_BLOCKED=SDK_MISMATCH/u)
+  assert.equal(fs.existsSync(output), false)
+})
+
+test("references replay classifies an unavailable pinned SDK as an environment block", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-replay-no-sdk-test-"))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const workspace = path.join(root, "workspace")
+  fs.mkdirSync(workspace)
+  fs.writeFileSync(path.join(workspace, "Query.ets"), "Thing\n")
+  const oracle = path.join(root, "oracle.json")
+  const manifest = path.join(root, "manifest.json")
+  fs.writeFileSync(oracle, "[]\n")
+  fs.writeFileSync(manifest, "{}\n")
+  const result = spawnSync(process.execPath, [
+    runner,
+    "--manifest", manifest,
+    "--workspace", workspace,
+    "--sdk", path.join(root, "missing-sdk"),
+    "--file", "Query.ets",
+    "--symbol", "Thing",
+    "--line", "0",
+    "--character", "1",
+    "--oracle", oracle,
+    "--out", path.join(root, "result.json"),
+    "--server", silentServer,
+    "--sidecar", silentServer,
+  ], { cwd: projectRoot, encoding: "utf8", timeout: 10_000 })
+  assert.equal(result.status, 2)
+  assert.match(result.stderr, /BENCHMARK_BLOCKED=SDK_UNAVAILABLE/u)
+})
+
 test("references replay removes its private index cache after a failed child request", (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-replay-cleanup-test-"))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
@@ -68,18 +140,57 @@ test("references replay removes its private index cache after a failed child req
     "--idle-ms", "0",
   ], {
     cwd: projectRoot,
-    env: { ...process.env, TMPDIR: temporary },
+    env: { ...process.env, TMPDIR: temporary, ARKTS_MEMORY_BUDGET_MB: "768" },
     encoding: "utf8",
     timeout: 25_000,
   })
 
   assert.equal(result.status, 1, `${result.stderr}\n${result.stdout}`)
-  assert.equal(JSON.parse(fs.readFileSync(output, "utf8")).status, "FAIL")
+  const report = JSON.parse(fs.readFileSync(output, "utf8"))
+  assert.equal(report.status, "FAIL")
+  assert.equal(report.environment.serverEnvironment.ARKTS_MEMORY_BUDGET_MB, "768")
   assert.deepEqual(
     fs.readdirSync(temporary).filter((entry) => entry.startsWith("arkts-references-replay-")),
     [],
     "the replay retained its private SQLite catalog and RSS samples",
   )
+})
+
+test("references replay accepts a workspace-relative exact Location oracle", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-relative-oracle-test-"))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const workspace = path.join(root, "workspace")
+  const sdk = path.join(root, "sdk")
+  fs.mkdirSync(workspace)
+  fs.mkdirSync(sdk)
+  fs.writeFileSync(path.join(workspace, "Query.ets"), "Thing\n")
+  const oracle = path.join(root, "oracle.json")
+  const output = path.join(root, "result.json")
+  const location = {
+    file: "Query.ets",
+    range: { start: { line: 0, character: 0 }, end: { line: 0, character: 5 } },
+  }
+  fs.writeFileSync(oracle, JSON.stringify({ schemaVersion: 1, locations: [location] }))
+
+  const result = spawnSync(process.execPath, [
+    runner,
+    "--workspace", workspace,
+    "--sdk", sdk,
+    "--file", "Query.ets",
+    "--symbol", "Thing",
+    "--line", "0",
+    "--character", "1",
+    "--oracle", oracle,
+    "--out", output,
+    "--server", silentServer,
+    "--sidecar", silentServer,
+    "--timeout-ms", "1000",
+    "--diagnostic-timeout-ms", "1000",
+    "--idle-ms", "0",
+  ], { cwd: projectRoot, encoding: "utf8", timeout: 25_000 })
+
+  assert.equal(result.status, 1, `${result.stderr}\n${result.stdout}`)
+  assert.deepEqual(JSON.parse(fs.readFileSync(output, "utf8")).expectedComparableLocations, [location])
 })
 
 test("replay differential rejects false diagnostics despite exact reference Locations", (t) => {
