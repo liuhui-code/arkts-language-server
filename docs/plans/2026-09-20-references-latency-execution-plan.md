@@ -72,8 +72,8 @@ ten-repeat-plus-edit run, and a strict legacy/indexed differential without
 the declaration. A completion/definition-warmed A/B returned exact results
 but showed 228 ms legacy versus 8,908 ms indexed references in single runs;
 the latter whole-run peak also rose to 1,260,650,496 bytes. This is still a
-smoke baseline, not F2 graduation: the
-legacy repeat run did not observe automatic diagnostics before its deadline,
+smoke baseline, not F2 graduation: three independent legacy mode-C processes
+returned exact references but did not observe automatic diagnostics,
 and further verified symbols/projects, hot series and randomized release
 samples are outstanding. Settings/Launcher/Contacts remain discovery
 candidates until their matching SDKs and symbol oracles are available.

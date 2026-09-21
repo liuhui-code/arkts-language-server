@@ -112,6 +112,19 @@ status and is excluded from gates. This observation does not by itself prove
 whether legacy diagnostics were suppressed by the server or delayed by the
 workload; that needs a separate controlled investigation.
 
+Two more independent legacy mode-C processes with the corrected strict runner
+confirmed this split outcome: all 11 responses in each process had the exact
+three Locations, including the version-2 unsaved edit, but no automatic
+diagnostics arrived within a 30-second wait. Both correctly ended in FAIL.
+Their whole-run peaks were 931,041,280 and 934,674,432 bytes. Raw reports:
+`/private/tmp/photos-f2-legacy-hot-strict-20260921.json` and
+`/private/tmp/photos-f2-legacy-hot-strict3-20260921.json`. Counting the earlier
+180-second run, the missing diagnostic was observed in three independent
+legacy mode-C processes. This is a repeatable **diagnostic/timing failure of
+this replay workload**, not a reference Location mismatch; the server-versus-
+harness cause is not yet isolated. No legacy hot result is admitted to the
+strict performance gate.
+
 ## Excluding the declaration
 
 The same real symbol was replayed with `includeDeclaration=false`. A discovery
