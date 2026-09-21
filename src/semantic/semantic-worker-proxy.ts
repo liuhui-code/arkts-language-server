@@ -33,6 +33,7 @@ import {
   ReferenceIndexFreshness,
 } from "./references/reference-index-freshness.js"
 import { ReferenceResultCache } from "./references/reference-result-cache.js"
+import { logReferenceCache } from "./references/reference-cache-telemetry.js"
 import {
   RootSemanticWorkerSupervisor,
   SemanticWorkerCancelState,
@@ -239,25 +240,20 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
     })
   }
 
-  async references(query: Contract.SemanticReferencesQuery) {
-    const traceId = this.#environment.ARKTS_REFERENCES_TRACE === "1" ? randomUUID() : undefined
+  cachedReferences(query: Contract.SemanticReferencesQuery, traceId?: string) {
     this.sync(query.document)
     const cached = query.signal?.aborted ? undefined : this.#referenceResults.get(query)
-    if (cached) {
-      const stats = this.#referenceResults.stats()
-      this.#logger?.info("references.cache.hit", {
-        traceId,
-        cacheEntries: stats.entries,
-        cacheBytes: stats.bytes,
-      })
-      return { documentVersion: query.document.version, value: cached }
-    }
-    const before = this.#referenceResults.stats()
-    this.#logger?.info("references.cache.miss", {
-      traceId,
-      cacheEntries: before.entries,
-      cacheBytes: before.bytes,
-    })
+    if (!cached) return undefined
+    logReferenceCache(this.#logger, this.#referenceResults, "references.cache.hit",
+      traceId ?? (this.#environment.ARKTS_REFERENCES_TRACE === "1" ? randomUUID() : undefined))
+    return { documentVersion: query.document.version, value: cached }
+  }
+
+  async references(query: Contract.SemanticReferencesQuery) {
+    const traceId = this.#environment.ARKTS_REFERENCES_TRACE === "1" ? randomUUID() : undefined
+    const cached = this.cachedReferences(query, traceId)
+    if (cached) return cached
+    logReferenceCache(this.#logger, this.#referenceResults, "references.cache.miss", traceId)
     const selectionStarted = performance.now()
     const candidates = await this.#referenceCandidates(query, traceId)
     if (this.#environment.ARKTS_REFERENCES_TRACE === "1"
@@ -283,13 +279,8 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
       } : {}),
     })
     if (!query.signal?.aborted && this.#referenceResults.set(query, response.value)) {
-      const after = this.#referenceResults.stats()
-      this.#logger?.info("references.cache.store", {
-        traceId,
-        cacheEntries: after.entries,
-        cacheBytes: after.bytes,
-        locations: response.value.status === "complete" ? response.value.references.length : 0,
-      })
+      logReferenceCache(this.#logger, this.#referenceResults, "references.cache.store", traceId,
+        response.value.status === "complete" ? response.value.references.length : 0)
     }
     return response
   }

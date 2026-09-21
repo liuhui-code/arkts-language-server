@@ -17,13 +17,17 @@ performance/differential track, without claiming matched-23 or diagnostic
 equivalence. Three independent cold processes per strategy all returned the
 same 248 Locations. A missing API-23 installation does not block further
 Settings performance work.
-R-04 is implemented before candidate selection. On three Settings/API-24
-mode-C processes, all 33 references responses retained 248 exact Locations.
-The 27 cached repeats had a 61 ms median, but three took 1.96–1.99 s while
-automatic diagnostic quiescence was active. That violates both the proposed
-200 ms cached P95 and the requested 500 ms navigation target; R-06's
-diagnostic-interference slice remains open. The 18 published errors also
-require separate SDK/diagnostic validation.
+R-04 is implemented before candidate selection. The earlier three
+Settings/API-24 mode-C processes had a 61 ms cached median but three
+1.96–1.99 s outliers when automatic diagnostic quiescence was active. F6b
+added a real-LSP RED/GREEN gate: only an already-proven complete cache hit
+bypasses that wait; misses retain it, and normal diagnostics still publish.
+Three new independent same-build processes returned all 33 responses with
+248 exact Locations each. Their 27 cached repeats had 67 ms median, 96 ms
+observed nearest-rank P95 and 100 ms maximum. This clears the 500 ms target
+for this **cached** Settings sample, not for cold/post-edit misses or release
+P95. The 18 published errors still require separate SDK/diagnostic validation
+([F6b evidence](../reports/2026-09-21-settings-api24-diagnostic-cache.md)).
 R-03 now has an opt-in `budget-aware` profile with a real-LSP retention test;
 the safe `dispose` profile remains default until repeated Settings memory A/B
 and post-eviction evidence graduate ADR 0002.

@@ -26,15 +26,21 @@ methods admitted during references and report their queue wait. This decision
 does not yet generalize the detached lane to implementations, rename or call
 hierarchy.
 
-The [Settings/API-24 real-project benchmark](../reports/2026-09-21-settings-api24-benchmark.md)
-exposes a remaining boundary: the LSP references handler waits for an
-already-started automatic diagnostic to quiesce **before** entering the
+The [pre-F6b Settings/API-24 benchmark](../reports/2026-09-21-settings-api24-benchmark.md)
+exposed a second scheduling boundary: the LSP references handler waited for
+an already-started automatic diagnostic to quiesce **before** entering the
 complete-result cache. Three of 27 cached repeats waited 1.96–1.99 seconds
-despite about 1 ms of eventual server-side cache work. This does not negate
-the implemented references/interactive lane separation; it adds a distinct
-diagnostic-interference RED test and safe cache-hit scheduling slice. Normal
-diagnostics must remain enabled, and a cache miss must not create an
-unbudgeted second heavy Program alongside diagnostics.
+despite about 1 ms of eventual server-side cache work. F6b keeps normal
+diagnostics and moves only a proven complete cache hit ahead of that wait.
+Cache misses still quiesce diagnostics before compiler work, preventing an
+unbudgeted second heavy Program; the request runner still checks freshness
+and cancellation before responding. A [framed-LSP RED/GREEN test](../tdd/references-diagnostic-cache.md)
+proves a cached response completes before a held diagnostic settles and that
+versioned diagnostics still publish. In three fresh-process
+[Settings/API-24 runs](../reports/2026-09-21-settings-api24-diagnostic-cache.md),
+27 cached requests had 67 ms median, 96 ms observed nearest-rank P95 and
+100 ms maximum, with exact 248-Location responses. These smoke results do
+not claim cold/miss navigation under 500 ms or graduate the release gate.
 
 ## Gate
 

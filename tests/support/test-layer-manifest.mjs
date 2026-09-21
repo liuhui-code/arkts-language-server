@@ -101,6 +101,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/semantic/references-batching.test.mjs",
       "tests/semantic/references-context-retention.test.mjs",
       "tests/semantic/references-coalescing.test.mjs",
+      "tests/semantic/references-diagnostic-cache.test.mjs",
       "tests/semantic/references-depth.test.mjs",
       "tests/semantic/references-index-resync.test.mjs",
       "tests/semantic/references-index-state-race.test.mjs",

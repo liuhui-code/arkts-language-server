@@ -151,14 +151,18 @@ a document edit makes both old waiters ContentModified, and the next version
 does not join the aborted operation
 ([evidence](../tdd/references-coalescing.md)).
 
-F6b is the next behavior slice. The pinned Settings/API-24 benchmark observed
-three 1.96–1.99 s complete-result cache hits out of 27 repeats. The LSP
-handler currently awaits diagnostic quiescence before consulting that cache;
-all three delays coincide with an SDK selection/automatic diagnostic start.
-First write a deterministic framed-LSP RED transcript that holds diagnostics
-in progress; do not simply suppress diagnostics or remove the quiescence
-barrier from cache misses. Only after GREEN should repeated real Settings
-memory/latency runs decide whether this meets the 500 ms navigation target.
+F6b is implemented for **complete cache hits**. Its framed-LSP RED reproduced
+the diagnostic-quiescence wait; GREEN returns the already-proven result before
+suspending diagnostics, while a cache miss retains the quiescence barrier and
+the request runner retains freshness/cancellation checks. Automatic versioned
+diagnostics still publish ([TDD](../tdd/references-diagnostic-cache.md)). Three
+independent same-build Settings/API-24 mode-C runs then returned 248 exact
+Locations on every request, with 27 unchanged cached requests at 67 ms median,
+96 ms observed nearest-rank P95 and 100 ms maximum. This removes the previously
+observed 1.96–1.99 s hot outliers in this small sample and meets the 500 ms
+**cached-references** target here; it does not make cold or post-edit misses
+sub-500 ms, nor graduate a release P95
+([report](../reports/2026-09-21-settings-api24-diagnostic-cache.md)).
 
 R-12 L3 hysteresis is implemented independently of R-03 graduation. Once the
 process reaches the 92% emergency threshold, subsequent samples remain L3 at
@@ -221,9 +225,12 @@ as a stable tail estimate. Order strategies with a recorded seed.
 2. **Memory:** retain existing DevEco PSS, unrelated-workspace scaling and
    post-eviction release gates. The original >3 GB reproducer and references
    50% target remain open; no claim of resolution before both pass.
-3. **Latency:** measure cold separately from hot. The Settings/API-24 mode-C
-   sample had a 61 ms cached median but a 1,983 ms observed P95 across 27
-   repeats; it does not meet the user's 500 ms navigation target. Proposed
+3. **Latency:** measure cold separately from hot. The pre-F6b Settings/API-24
+   sample had a 61 ms cached median and 1,983 ms observed P95 across 27
+   repeats. The F6b same-build sample had 67 ms median, 96 ms observed P95
+   and 100 ms maximum over 27 cached requests, but cold/post-edit requests
+   still took 5.4–6.1 s. This is a hot-path smoke result, not proof of the
+   user's 500 ms target for every navigation state. Proposed
    product goals are
    hot definition/hover P95 ≤150 ms, cached references P95 ≤200 ms and
    interactive queue wait during references P95 ≤50 ms; these are targets,
