@@ -20,6 +20,15 @@ with `committedGeneration` greater than the mutation baseline. Unknown status,
 catalog failure or a non-advancing generation remains on the complete legacy
 path.
 
+Initial catalog warming is not post-mutation recovery. A global request may
+observe generation 0 before the first committed catalog and fall back to
+complete-scope verification. The [real Settings first-click replay](../reports/2026-09-21-settings-immediate-catalog-replay.md)
+shows that this can plan many batches and remain on that plan after catalog
+readiness. This ADR does not yet authorize waiting for the index, replanning
+mid-request, or switching initial warming to legacy: each needs a separate
+snapshot/cancellation and completed-memory gate. Stale candidates still must
+never exclude files or become final Locations.
+
 ## Gate
 
 Stale, partial, ambiguous, re-export, SDK-import and unsaved-overlay cases

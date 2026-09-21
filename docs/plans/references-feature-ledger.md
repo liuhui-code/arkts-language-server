@@ -26,6 +26,19 @@ completion. An item is complete only after its linked gate passes; see the
 | R-18 | Won't | Multiple full-Program Workers | Rejected | Duplicates SDK/Program memory; global concurrency stays one |
 | R-19 | Won't | File-count-only memory model | Rejected | Use measured RSS/PSS and Program closure, not linear extrapolation |
 
+R-02/R-07 startup follow-up: the new
+[real Settings immediate-catalog replay](../reports/2026-09-21-settings-immediate-catalog-replay.md)
+reproduced a first-request failure under the pinned API-24 compatibility
+configuration. With generation 0 stale, indexed-batched planned 23 complete
+scope batches and timed out after 120 seconds with 11 complete; the catalog
+became ready during that query without causing a replan. Two legacy controls
+returned all nine exact Locations but took 31.6–38.1 seconds and peaked at
+about 875–910 MB product-tree RSS. This does not graduate R-02, prove a
+safe legacy default, or close the broader R-07 trust matrix. F5/R-08's
+post-mutation catch-up does not cover initial catalog warming. The runner's
+new immediate/ready switch and [public protocol test](../tdd/references-immediate-catalog-replay.md)
+make the first-click state measurable without changing production semantics.
+
 R-03 follow-up: an [isolated explicit-GC diagnostic](../reports/2026-09-21-settings-disposal-gc-probe.md)
 replayed three fresh Settings processes per arm after the no-forced-GC idle
 check. All six returned the same nine exact references. A GC call in the

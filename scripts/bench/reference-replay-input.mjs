@@ -31,6 +31,10 @@ export function parseArguments(args) {
   }
   const mode = values.get("--mode") ?? "A"
   if (!new Set(["A", "B", "C"]).has(mode)) throw new Error("--mode must be A, B, or C")
+  const catalogState = values.get("--catalog-state") ?? "ready"
+  if (!new Set(["ready", "immediate"]).has(catalogState)) {
+    throw new Error("--catalog-state must be ready or immediate")
+  }
   const strategy = values.get("--strategy")
   if (strategy && !new Set(["legacy", "batched", "indexed-batched"]).has(strategy)) {
     throw new Error("--strategy must be legacy, batched, or indexed-batched")
@@ -59,6 +63,7 @@ export function parseArguments(args) {
     server: path.resolve(values.get("--server") ?? path.join(projectRoot, "dist", "server.cjs")),
     sidecar: path.resolve(values.get("--sidecar") ?? path.join(projectRoot, "target", "release", "arkts-index-sidecar")),
     mode,
+    catalogState,
     strategy,
     sdkProfile,
     dependencyProfile,
@@ -226,6 +231,9 @@ Options:
   --manifest <file.json>         pin real project, SDK, query, oracle and binaries
   --mode <A|B|C>                 A: references first; B: warm completion and
                                  definition; C: ten references plus unsaved edit
+  --catalog-state <ready|immediate>
+                                 ready: wait for indexing; immediate: request
+                                 after initialize without waiting for indexing
   --strategy <name>              legacy, batched, or indexed-batched
   --sdk-profile <full|common>    verifier-only SDK ambient profile
   --dependency-profile <closure|identity>

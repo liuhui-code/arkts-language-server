@@ -114,6 +114,10 @@ async function replayWithTemporaryState(options, { sourceText, sourceUri, expect
   sampler.stderr.on("data", (chunk) => { samplerStderr += chunk })
 
   let catalog = null
+  let catalogState = "pending"
+  let catalogError = null
+  let catalogPromise = null
+  let closing = false
   let diagnostic = null
   let failure = null
   let closeResult = null
@@ -127,8 +131,21 @@ async function replayWithTemporaryState(options, { sourceText, sourceUri, expect
       timeoutMs: options.timeoutMs,
     })
     mark("initialize-response-complete")
-    catalog = await waitForCatalog(session, options.timeoutMs)
-    mark("catalog-complete", { catalog })
+    catalogPromise = waitForCatalog(session, options.timeoutMs).then((message) => {
+      catalog = message
+      catalogState = "complete"
+      mark("catalog-complete", { catalog })
+    }, (error) => {
+      catalogState = closing ? "not-observed" : "error"
+      catalogError = closing ? null : error.message
+      mark("catalog-not-observed", { message: catalogError, state: catalogState })
+    })
+    if (options.catalogState === "ready") {
+      await catalogPromise
+      if (catalogState === "error") throw new Error(`catalog did not complete: ${catalogError}`)
+    } else {
+      mark("catalog-wait-skipped")
+    }
 
     const diagnosticPromise = session.transport.notification(
       "textDocument/publishDiagnostics",
@@ -217,10 +234,12 @@ async function replayWithTemporaryState(options, { sourceText, sourceUri, expect
     failure = { name: error.name, message: error.message, stack: error.stack }
     mark("failure", failure)
   } finally {
+    closing = true
     closeResult = await session.close({ timeoutMs: 10_000 }).catch(async (error) => {
       await session.transport.close().catch(() => {})
       return { error: error.message }
     })
+    if (catalogPromise) await catalogPromise
     mark("server-process-closed", { closeResult })
     sampler.kill("SIGINT")
     await childExit(sampler)
@@ -262,7 +281,10 @@ async function replayWithTemporaryState(options, { sourceText, sourceUri, expect
     },
     targetPid,
     samplerPid: sampler.pid,
+    catalogRequestState: options.catalogState,
     catalog,
+    catalogState,
+    catalogError,
     requestEvidence: {
       explicitMethod: "textDocument/references",
       requestedMethods,

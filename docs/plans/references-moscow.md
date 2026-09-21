@@ -85,6 +85,15 @@ R-08 is now implemented: watched source/project changes start a new catalog,
 legacy remains authoritative while its generation is stale, and indexed
 batching resumes only after a ready generation advances. The public transcript
 keeps exact Locations across fallback and recovery; it does not weaken R-07.
+Initial catalog warming is a separate open Must gate: a
+[pinned Settings first-click replay](../reports/2026-09-21-settings-immediate-catalog-replay.md)
+timed out after 120 seconds on the indexed-batched path, which kept its
+23-batch conservative plan even after catalog readiness. Completed legacy
+controls were exact but took 31–38 seconds and used about 875–910 MB peak
+product-tree RSS. Neither path meets the cold navigation target, and the
+timed-out indexed peak cannot establish completed-query memory safety.
+Do not promote an initial-index fallback policy without snapshot/cancellation,
+exactness, diagnostics and RSS gates.
 R-07 now also rejects candidates if the sidecar changes from ready to warming
 between candidate search and acceptance, even when the committed generation
 number is unchanged. Direct and definition-anchor real-LSP transcripts both

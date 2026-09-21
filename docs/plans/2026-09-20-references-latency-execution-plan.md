@@ -313,6 +313,22 @@ gate.
 
 ## Benchmark contract
 
+The [index-cold first-click Settings replay](../reports/2026-09-21-settings-immediate-catalog-replay.md)
+adds an explicit `--catalog-state immediate` arm to the existing runner;
+`ready` remains its default. At the pinned `HomeInitData` usage position,
+indexed-batched planned 23 conservative batches while catalog generation 0
+was stale and timed out at 120 seconds after completing only 11. The catalog
+became ready about 26.7 seconds after the request started, but the request
+did not replan. Two independent initial-index legacy controls returned the
+same nine exact Locations in 31.6 and 38.1 seconds, with product-tree peaks
+of about 875 and 910 MB. These completed peaks cannot be compared as a
+memory win against the timed-out indexed run. The initial-index stale case
+is distinct from F5's post-mutation generation recovery and is now an open
+R-02/R-07 latency and fallback gate. Any production readiness wait or
+replanning requires a cancellable, snapshot-safe real-LSP RED/GREEN and
+completed-run RSS comparison; do not silently switch to legacy or call this
+one-run observation a release gate.
+
 Freeze exact repository commit, dirty state, server commit, Node/toolchain,
 backend version, project selection, SDK fingerprint, standard-library asset
 digest, index schema/generation, query file/symbol/zero-based UTF-16 position
@@ -340,8 +356,9 @@ references are verified. The historical Settings `LogUtil` case is not an
 oracle because its legacy response missed known cross-module references.
 
 Run independent `legacy`, `batched`, `indexed-batched` processes on the same
-checkout/SDK/server for causal A→B→C comparisons. Keep index-cold,
-semantic-cold, same-process hot and edit-warm separate. Normalize each result
+checkout/SDK/server for causal A→B→C comparisons. Keep index-cold
+`immediate`, catalog-ready semantic-cold, same-process hot and edit-warm
+separate. Normalize each result
 to workspace-relative POSIX path plus exact UTF-16 range; sort ordinally,
 report missing, extra and duplicate Locations separately. Never lowercase
 paths unconditionally. A matching count alone is not equality. Record normal
