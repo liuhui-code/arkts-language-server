@@ -19,10 +19,12 @@ workspace file event clears all entries in v1 because a nested-root change can
 invalidate an outer dependency closure; root-local guessing is not safe yet.
 
 Bound both entry count and retained bytes. Cancelled, timed-out, incomplete or
-partially verified work is never cached. Identical in-flight requests may share
-verification only if independent cancellation of one waiter cannot cancel the
-other. That coalescing remains a separate follow-up; a changed snapshot cannot
-receive the old result.
+partially verified work is never cached. Identical in-flight requests share one
+version-bound operation before semantic dispatch. Each LSP waiter retains its
+own cancellation: one client cancellation detaches only that waiter, while a
+workspace mutation invalidates every waiter on the old snapshot and aborts the
+shared operation after the final waiter detaches. A changed snapshot cannot
+join or receive the old result.
 
 ## Gate
 
@@ -32,6 +34,6 @@ Workers and Program builds; each mutation class forces a fresh result; two
 concurrent requests perform one verification while retaining independent
 cancellation. Any stale result disables the cache.
 
-The cache reuse and overlay/workspace invalidation portions are GREEN. The
-concurrent independent-cancellation portion is tracked separately as R-05 and
-does not block the narrower R-04 implementation status.
+Cache reuse, overlay/workspace invalidation and concurrent independent
+cancellation are GREEN. See the cache and
+[coalescing](../tdd/references-coalescing.md) TDD records.

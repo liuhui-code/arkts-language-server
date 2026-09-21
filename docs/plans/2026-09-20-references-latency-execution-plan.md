@@ -97,8 +97,8 @@ mode-C replay returned the same 248 Locations on all 11 requests: requests
 2–10 had a 65 ms end-to-end median, while server-side cache work was
 0.60–0.90 ms. The edit-warm request correctly rebuilt in about 4.68 s. One hot
 request waited about 1.94 s before its 0.78 ms cache hit while SDK/diagnostic
-work occupied the serial lane. Therefore R-04 is GREEN, but F3 coalescing
-(R-05) and F6 queue isolation remain open. A real-LSP RED showed that today's
+work occupied the serial lane. At that checkpoint R-04 was GREEN while R-05
+coalescing and F6 queue isolation remained open. A real-LSP RED showed that the
 freshness lane supersedes the first identical concurrent references request
 before either request can share semantic work. R-05 therefore moves with the
 R-06 snapshot/freshness ownership change; a proxy-local Promise map would not
@@ -131,9 +131,17 @@ global operations are not admitted concurrently. A real framed-LSP transcript
 proves definition and hover finish before a deliberately delayed references
 verification, their traced queue waits remain below 250 ms, the edit cancels
 the old result, and the next definition observes the new revision
-([evidence](../tdd/references-scheduling.md)). R-05 coalescing is now unblocked,
-but remains a separate slice because identical public requests currently have
-independent freshness/cancellation ownership.
+([evidence](../tdd/references-scheduling.md)). This established the independent
+freshness/cancellation ownership required by the following R-05 slice.
+
+R-05 coalescing is now implemented on top of F6. The LSP request runner keys
+identical references by method, URI, workspace, document version, position and
+declaration policy, then shares one semantic execution while retaining one
+freshness/cancellation handle per client. A real framed-LSP test proves two
+waiters produce one verifier result, cancelling one leaves the other complete,
+a document edit makes both old waiters ContentModified, and the next version
+does not join the aborted operation
+([evidence](../tdd/references-coalescing.md)).
 
 ## Benchmark contract
 

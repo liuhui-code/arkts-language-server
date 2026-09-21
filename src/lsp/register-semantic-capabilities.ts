@@ -49,7 +49,7 @@ import {
   parseCallHierarchyOutgoingItem,
   staleCallHierarchy,
 } from "./call-hierarchy-adapter.js"
-import type { SemanticRequestRunner } from "./semantic-request-runner.js"
+import { referenceRequestCoalesceKey, type SemanticRequestRunner } from "./semantic-request-runner.js"
 
 interface SemanticCapabilityDependencies {
   connection: Connection
@@ -325,6 +325,7 @@ export function registerSemanticCapabilities({
         token,
         fallback: { status: "stale" },
         scope: "workspace",
+        coalesceKey: referenceRequestCoalesceKey(params.position, params.context.includeDeclaration),
         execute: (document, signal) => semantic.references({
           document,
           position: params.position,
@@ -349,7 +350,6 @@ export function registerSemanticCapabilities({
       resumeDiagnostics()
     }
   })
-
   connection.onPrepareRename(async (params, token) => {
     const outcome = await requests.run<SemanticPrepareRenameOutcome | { status: "stale" }>({
       method: "textDocument/prepareRename",

@@ -85,7 +85,7 @@ test("interactive definition bypasses references and an edit cancels the old sna
   const events = fs.readFileSync(path.join(logDirectory, "server.log"), "utf8")
     .split("\n").filter(Boolean).map(JSON.parse)
   const interactive = events.filter(({ event }) => event === "references.interactive.start")
-  assert.deepEqual(interactive.map(({ method }) => method), ["define", "hover"])
+  assert.deepEqual(interactive.map(({ method }) => method), ["define", "hover", "define"])
   assert.ok(interactive.every(({ queueWaitMs }) => queueWaitMs >= 0 && queueWaitMs < 250))
 })
 

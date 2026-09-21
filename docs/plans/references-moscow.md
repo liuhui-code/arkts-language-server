@@ -32,8 +32,12 @@ R-06 is now implemented for references. Only classified interactive methods
 may bypass one detached references request; diagnostics and other global work
 remain serialized, and any mutation makes the old references snapshot fail
 ContentModified. The real LSP interference test records definition/hover queue
-waits below 250 ms and a fresh post-edit definition. This unblocks R-05 but
-does not mark coalescing or generalization to other global methods complete.
+waits below 250 ms and a fresh post-edit definition. Detached scheduling is
+not yet generalized to other global methods.
+R-05 is now implemented as a version-bound shared operation in the LSP request
+runner. Identical references share semantic work, but each client keeps an
+independent cancellation handle; workspace mutation cancels every old-snapshot
+waiter and prevents a new version from joining the old operation.
 
 ## Should
 
