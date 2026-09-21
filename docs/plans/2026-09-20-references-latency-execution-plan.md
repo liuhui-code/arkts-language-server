@@ -205,8 +205,15 @@ mode-A/B trace-on/off processes returned the same nine exact Locations and
 empty diagnostics ([raw measurements and limits](../reports/2026-09-21-settings-post-retention-memory-trace.md)).
 This rules out attributing the entire warmed peak to `findReferences` alone,
 but neither proves live double-Program residency nor justifies changing the
-default. A short no-forced-GC post-disposal idle measurement is the next
-causal F4 check; post-eviction PSS/release gates remain open.
+default. The follow-up [isolated post-disposal idle
+probe](../reports/2026-09-21-settings-disposal-idle-probe.md) compared three
+fresh control processes with three fresh processes that waited one second
+after disposal and before verifier admission. Every run returned the same nine
+exact Locations; none of the three idle windows showed a Node RSS decrease.
+This rejects only a **quick natural RSS recovery within one second** for this
+workload. It cannot distinguish objects awaiting later GC from retained
+compiler state or allocator pages, and is not evidence to change the default.
+Post-eviction PSS, a larger randomized sample and the release gates remain open.
 
 F5 is implemented. Watched source/project changes now schedule a fresh catalog
 generation; overlapping notifications coalesce into one subsequent catalog

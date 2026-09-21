@@ -53,3 +53,12 @@ differences. The [post-retention phase trace](../reports/2026-09-21-settings-pos
 found high pre-verifier Node RSS after the logical resident count changed 1→0
 under `dispose`; this does not prove a leak or two live Programs. Neither
 comparison graduates `budget-aware` or changes the production default.
+
+The subsequent [isolated one-second disposal-idle probe](../reports/2026-09-21-settings-disposal-idle-probe.md)
+used three independent warmed Settings replays per arm with an unchanged
+control bundle and a debug-only pre-verifier pause in a copied bundle. All six
+returned the same nine exact references; none of the three pauses showed a
+material Node RSS decline. A one-second natural idle does not force GC or
+distinguish reachable compiler state from allocator-retained pages, so this
+result neither proves a leak nor justifies changing the default retention
+policy. The memory graduation gate remains open.
