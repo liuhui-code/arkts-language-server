@@ -26,6 +26,16 @@ completion. An item is complete only after its linked gate passes; see the
 | R-18 | Won't | Multiple full-Program Workers | Rejected | Duplicates SDK/Program memory; global concurrency stays one |
 | R-19 | Won't | File-count-only memory model | Rejected | Use measured RSS/PSS and Program closure, not linear extrapolation |
 
+R-03 follow-up: an [isolated explicit-GC diagnostic](../reports/2026-09-21-settings-disposal-gc-probe.md)
+replayed three fresh Settings processes per arm after the no-forced-GC idle
+check. All six returned the same nine exact references. A GC call in the
+copied semantic Worker reclaimed roughly 0.51 GB of its used heap after
+logical disposal, while whole-Node RSS immediately fell only ~21 MB; later
+product peak RSS medians were 1,100,734,464 B without the call and
+832,151,552 B with it. This is evidence of collectible post-disposal heap,
+**not** a passed release gate or authorization to force GC in production.
+R-03 remains feature-gated with `dispose` default.
+
 The first implementation checkpoint is R-01. Settings/API-24 compatibility
 runs are valid for pinned, same-SDK strategy comparisons and performance
 investigation; they cannot mark a matched API-23 or diagnostic-equivalence

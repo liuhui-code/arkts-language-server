@@ -214,6 +214,18 @@ This rejects only a **quick natural RSS recovery within one second** for this
 workload. It cannot distinguish objects awaiting later GC from retained
 compiler state or allocator pages, and is not evidence to change the default.
 Post-eviction PSS, a larger randomized sample and the release gates remain open.
+A second, explicitly labeled [diagnostic-only GC
+probe](../reports/2026-09-21-settings-disposal-gc-probe.md) held the same
+one-second pause in both arms and exposed GC to both processes, then called
+it only in the copied experimental semantic Worker before verifier admission.
+All six further Settings runs returned the same nine exact references. GC
+reduced that Worker's used heap from roughly 538–543 MB to 30 MB and whole-Node
+RSS immediately by only ~21 MB; the three-run product peak median was
+1,100,734,464 B without GC versus 832,151,552 B with it. This supports
+collectible post-disposal heap contributing to later peak, not a proven
+compiler-object inventory or a production forced-GC policy. SDK digest
+preflight, larger samples, post-eviction PSS and the original pressure case
+remain open.
 
 F5 is implemented. Watched source/project changes now schedule a fresh catalog
 generation; overlapping notifications coalesce into one subsequent catalog

@@ -62,3 +62,12 @@ material Node RSS decline. A one-second natural idle does not force GC or
 distinguish reachable compiler state from allocator-retained pages, so this
 result neither proves a leak nor justifies changing the default retention
 policy. The memory graduation gate remains open.
+
+The [controlled GC follow-up](../reports/2026-09-21-settings-disposal-gc-probe.md)
+compared three independent no-GC and three GC replays using copied debug
+bundles, with `--expose-gc` in both arms. Explicit collection in the disposed
+semantic Worker reclaimed roughly 508–513 MB of its V8 heap but reduced
+whole-Node RSS only about 21 MB immediately; all six exact reference results
+remained unchanged. This supports collectibility, not a retained-object leak
+finding or a production `global.gc()` policy. The externally sampled peak
+difference remains exploratory and does not graduate `budget-aware`.
