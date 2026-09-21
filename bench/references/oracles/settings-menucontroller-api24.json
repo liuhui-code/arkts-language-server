@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "verified": false,
-  "source": "provisional API-24 legacy Settings MenuController replay, not API-23 matched",
+  "verified": true,
+  "source": "API-24 same-SDK strategy oracle: legacy Location set, all 248 source spans checked, known cross-module use checked; not API-23 or DevEco equivalence",
   "locations": [
     {"file":"common/index.ets","range":{"start":{"line":18,"character":9},"end":{"line":18,"character":23}}},
     {"file":"common/src/main/ets/core/controller/LifecycleMenuController.ets","range":{"start":{"line":15,"character":9},"end":{"line":15,"character":23}}},

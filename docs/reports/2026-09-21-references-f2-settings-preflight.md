@@ -1,6 +1,9 @@
 # F2 Settings primary benchmark preflight
 
-Status: **environment blocked**, not a reference or memory benchmark PASS.
+Status: **historical preflight for SDK-matched testing**. The later
+[pinned API-24 compatibility benchmark](2026-09-21-settings-api24-benchmark.md)
+supersedes this report's blanket environment block for performance work;
+an exact API-23-matched comparison remains unavailable.
 The benchmark priority changed from Photos to the real OpenHarmony Settings
 project; existing Photos observations remain smoke evidence only.
 
@@ -29,12 +32,14 @@ appropriate substitute. The Mac archive is about 1.3 GiB compressed; only
 and unpacking it without a storage plan risks filling the user volume, so no
 SDK download or extraction was attempted.
 
-Next gate: locate/install a genuine API-23 SDK for the clean 6.1-LTS checkout
-(or a genuine 26.0.1 SDK for the separately pinned master revision), compute
+For an SDK-matched cross-version gate: locate/install a genuine API-23 SDK
+for the clean 6.1-LTS checkout (or a genuine 26.0.1 SDK for the separately
+pinned master revision), compute
 its declaration digest, choose a real symbol with known references, and
 freeze a verified exact UTF-16 oracle before A/B/C replay. Running the
-API-23 project against API 24 may be useful only as an explicitly labelled
-exploratory probe; it cannot satisfy the formal correctness/memory gate.
+API-23 project against API 24 is now a pinned same-SDK strategy and
+performance benchmark. It cannot satisfy an API-23-matched or DevEco
+diagnostic-equivalence gate, but lack of API 23 no longer blocks that work.
 
 This preflight did not run references, obtain a result set, or measure server
 RSS. It must not be counted as a Settings end-to-end test.

@@ -42,6 +42,7 @@ checks are GREEN. Keep opt-in behavior until the stated graduation gate passes.
 | F4 Hot context A/B | Feature-gated budget-aware retention replacing unconditional disposal | Same-snapshot reuse plus exactness; combined Node RSS/PSS and post-eviction gates pass or revert |
 | F5 Index recovery | After mutation, safe fallback until a committed matching generation is ready, then resume indexed path | Mutation → fallback → committed catch-up → indexed real LSP transcript |
 | F6 Scheduling | Versioned global snapshot releases persistent queue; interactive lane stays responsive | Concurrent references/edit/definition transcript proves freshness and no head-of-line blocking |
+| F6b Diagnostic interference | Preserve automatic diagnostics but let a proven complete cache hit avoid waiting for unrelated diagnostic quiescence; retain the safe memory barrier on cache miss | RED/GREEN framed-LSP transcript: diagnostic in progress, cached references completes within target, diagnostics still publishes, no stale result or second heavy Program |
 | F7 Experimental reductions | Anchor reuse, scoped resident fast-path, Worker-shell reuse only with separate A/B | No false negatives, memory regression or retention; otherwise do not graduate |
 
 F1 is the first implementation slice after these documents. F3 and F4 are
@@ -79,13 +80,20 @@ samples are outstanding. Per the updated test priority, Settings is now the
 primary real-project benchmark target; Photos remains historical F2 smoke
 evidence. The clean local Settings 6.1-LTS checkout is
 `ecc550dfaed880e04e38a2477eb7235cd50475b9` and declares compile SDK 23.
-The SDK inventory on this Mac found DevEco ETS API 24 but no API 23, so Settings is
-`SDK_UNAVAILABLE` for a formal gate until a matching SDK and verified symbol
-oracle are available ([preflight](../reports/2026-09-21-references-f2-settings-preflight.md)).
-An explicitly labelled [API-24 exploratory replay](../reports/2026-09-21-settings-api24-exploratory-navigation.md)
-subsequently returned 248 exact legacy/indexed Locations and a correct
-cross-module definition; it does not satisfy the API-23 gate. Do not silently
-substitute API 24 or use the proposed master revision requiring SDK 26.0.1.
+The SDK inventory on this Mac found DevEco ETS API 24 but no API 23. The
+[preflight](../reports/2026-09-21-references-f2-settings-preflight.md)
+correctly ruled out calling API 24 an **SDK-matched** run, but matching API 23
+is no longer a prerequisite for the Settings performance track. The project
+declares compile 23; the selected API 24 and its digest are pinned and labelled
+as a compatibility configuration. The first
+[exploratory replay](../reports/2026-09-21-settings-api24-exploratory-navigation.md)
+returned 248 exact legacy/indexed Locations and a correct cross-module
+definition. A subsequent [pinned A/B/C benchmark](../reports/2026-09-21-settings-api24-benchmark.md)
+ran three independent cold processes per strategy with the same exact result
+and normal diagnostics. It does not prove API-23 or DevEco equivalence, and
+the observed diagnostic errors remain a separate correctness gate. Do not
+silently relabel the selected SDK or use the proposed master revision
+requiring SDK 26.0.1.
 Launcher/Contacts are secondary discovery candidates, not substitutes for the
 Settings gate.
 
@@ -143,6 +151,15 @@ a document edit makes both old waiters ContentModified, and the next version
 does not join the aborted operation
 ([evidence](../tdd/references-coalescing.md)).
 
+F6b is the next behavior slice. The pinned Settings/API-24 benchmark observed
+three 1.96–1.99 s complete-result cache hits out of 27 repeats. The LSP
+handler currently awaits diagnostic quiescence before consulting that cache;
+all three delays coincide with an SDK selection/automatic diagnostic start.
+First write a deterministic framed-LSP RED transcript that holds diagnostics
+in progress; do not simply suppress diagnostics or remove the quiescence
+barrier from cache misses. Only after GREEN should repeated real Settings
+memory/latency runs decide whether this meets the 500 ms navigation target.
+
 R-12 L3 hysteresis is implemented independently of R-03 graduation. Once the
 process reaches the 92% emergency threshold, subsequent samples remain L3 at
 90% and 85%; the policy exits only below the committed 85% target and then
@@ -163,13 +180,17 @@ gate.
 Freeze exact repository commit, dirty state, server commit, Node/toolchain,
 backend version, project selection, SDK fingerprint, index schema/generation,
 query file/symbol/zero-based UTF-16 position and all `ARKTS_*` overrides.
-Settings is the primary target, but its local 6.1-LTS revision and the source
-report's master revision are **discovery candidates**, not verified oracles.
-The former declares compile SDK 23; the latter requires SDK 26.0.1. Neither
-may silently run with this Mac's API 24 SDK as a **matched benchmark**.
-Explicit API-24 exploratory runs are allowed and separately labelled, as in
-the Settings report above. Report `SDK_UNAVAILABLE` for the formal gate until
-a matching SDK exists, then freeze that exact revision and SDK identity.
+Settings is the primary target. Its clean local 6.1-LTS revision declares
+compile SDK 23, while this Mac selects API 24; the pinned
+[compatibility manifest](../../bench/references/manifests/settings-menucontroller-api24.json)
+and [benchmark report](../reports/2026-09-21-settings-api24-benchmark.md)
+record both identities. Use that configuration for same-SDK strategy, latency
+and memory A/B/C work without waiting for API 23. Never call it an
+SDK-matched or cross-version-equivalent benchmark; check diagnostics and
+known reference identities separately. A missing exact API-23 installation
+blocks only a specifically API-23-matched comparison, not this track. The
+source report's master revision requires SDK 26.0.1 and remains a separate
+discovery candidate.
 An exported class seed is not a golden until compiler results and known real
 references are verified. The historical Settings `LogUtil` case is not an
 oracle because its legacy response missed known cross-module references.
@@ -200,7 +221,10 @@ as a stable tail estimate. Order strategies with a recorded seed.
 2. **Memory:** retain existing DevEco PSS, unrelated-workspace scaling and
    post-eviction release gates. The original >3 GB reproducer and references
    50% target remain open; no claim of resolution before both pass.
-3. **Latency:** measure cold separately from hot. Proposed product goals are
+3. **Latency:** measure cold separately from hot. The Settings/API-24 mode-C
+   sample had a 61 ms cached median but a 1,983 ms observed P95 across 27
+   repeats; it does not meet the user's 500 ms navigation target. Proposed
+   product goals are
    hot definition/hover P95 ≤150 ms, cached references P95 ≤200 ms and
    interactive queue wait during references P95 ≤50 ms; these are targets,
    **not current capability claims**. A cold strategy regression requires

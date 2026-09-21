@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "benchmarkId": "settings-menucontroller-api24-compatibility",
+  "benchmarkScope": "same-SDK reference-strategy differential; not API-23 or DevEco equivalence",
+  "repo": "openharmony/applications_settings",
+  "repoSha": "ecc550dfaed880e04e38a2477eb7235cd50475b9",
+  "projectDeclaredSdk": {
+    "compileSdkVersion": 23,
+    "targetSdkVersion": 20,
+    "compatibleSdkVersion": 20
+  },
+  "nodeVersion": "v26.3.0",
+  "sdk": {
+    "apiVersion": "24",
+    "version": "6.1.1.125",
+    "declarationDigest": "8098b8abbc6b06fce0e7322d6f8f82a5bbce41e847dbd39e9a98811a33d4c6e4"
+  },
+  "query": {
+    "file": "common/src/main/ets/core/controller/MenuController.ets",
+    "symbol": "MenuController",
+    "line": 70,
+    "character": 13,
+    "includeDeclaration": true
+  },
+  "oracle": {
+    "verified": true,
+    "expectedLocationCount": 248,
+    "source": "docs/reports/2026-09-21-settings-api24-benchmark.md",
+    "sha256": "1dbcb55c20ec2b289687de2131e0f1cf804bd135026319807b3e3a52fffd2d3a"
+  },
+  "serverSha256": "afb0e7084480ee5fa1c4bdc909b0a13a8d81deeed306bdf3c2d6ba67f8b2c60f",
+  "sidecarSha256": "8d4e95b5c603b8f43e0da9a7e62d74b127a94fe16f8b6d0afbc9fd0d6ebe40ae"
+}

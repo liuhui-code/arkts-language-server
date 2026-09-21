@@ -1,6 +1,8 @@
 # Settings 6.1-LTS with API 24: exploratory navigation replay
 
-Status: **exploratory cross-SDK evidence, not the API-23-matched F2 gate**.
+Status: **initial exploratory cross-SDK evidence**. The later pinned API-24
+[benchmark](2026-09-21-settings-api24-benchmark.md) supersedes this report's
+single-run performance figures; neither asserts API-23 semantic equivalence.
 No Settings source, build profile, project boundary, server behavior or runtime
 budget was changed. The previous [preflight](2026-09-21-references-f2-settings-preflight.md)
 correctly blocked a *formal matched-SDK benchmark*, but that did not mean the
@@ -35,9 +37,10 @@ because the expected count was zero; the LSP response itself had no error.
 The resulting normalized Location set became the **provisional legacy oracle**
 for these API-24 exploratory runs. This is exact strategy differential, not
 independent proof that the API-24 semantics match API 23 or DevEco.
-The [frozen provisional Location set](../../bench/references/oracles/settings-menucontroller-api24-provisional.json)
-contains all 248 distinct workspace-relative ranges and explicitly marks
-`verified: false`; it is not a formal F2 oracle.
+The [frozen Location set](../../bench/references/oracles/settings-menucontroller-api24.json)
+contains all 248 distinct workspace-relative ranges. It was subsequently
+source-span checked and used as the pinned **same-API-24 strategy oracle**;
+verification does not establish API-23 or DevEco equivalence.
 
 | Run | Exact vs provisional legacy | Automatic diagnostics | References request | Whole-run peak process-tree RSS |
 | --- | --- | --- | ---: | ---: |
@@ -108,7 +111,7 @@ node scripts/bench/replay-references.mjs \
   --sdk /Applications/DevEco-Studio.app/Contents/sdk/default/openharmony \
   --file common/src/main/ets/core/controller/MenuController.ets \
   --symbol MenuController --line 70 --character 13 \
-  --oracle bench/references/oracles/settings-menucontroller-api24-provisional.json \
+  --oracle bench/references/oracles/settings-menucontroller-api24.json \
   --out /private/tmp/settings-api24-menucontroller-indexed-new.json \
   --mode A --strategy indexed-batched --sdk-profile full \
   --dependency-profile closure --batch-roots 64 --idle-ms 0
@@ -120,7 +123,9 @@ API 24 is usable for this particular Settings navigation workload; it did not
 timeout or return an empty result. The indexed path agreed exactly with legacy
 under the **same API-24 SDK**, while reducing this cold A run's whole-run peak
 RSS by about 20.7%. That is not a cross-version correctness guarantee, a
-release-grade memory ratio, or a solved 500 ms latency goal. Formal F2 still
-requires a matching API-23 SDK, an independently reviewed exact oracle,
-multiple symbols and independent cold runs. The historical `LogUtil` case
+release-grade memory ratio, or a solved 500 ms latency goal. The later pinned
+API-24 benchmark supplies independent cold runs and a source-span-checked
+oracle; multiple symbols, full diagnostics validation and release sampling
+remain open. A matching API-23 run is optional cross-version validation, not
+a prerequisite for continuing the API-24 performance work. The historical `LogUtil` case
 must not be reused as an oracle without resolving its known missing uses.

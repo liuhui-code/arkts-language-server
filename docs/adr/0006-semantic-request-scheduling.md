@@ -26,6 +26,16 @@ methods admitted during references and report their queue wait. This decision
 does not yet generalize the detached lane to implementations, rename or call
 hierarchy.
 
+The [Settings/API-24 real-project benchmark](../reports/2026-09-21-settings-api24-benchmark.md)
+exposes a remaining boundary: the LSP references handler waits for an
+already-started automatic diagnostic to quiesce **before** entering the
+complete-result cache. Three of 27 cached repeats waited 1.96–1.99 seconds
+despite about 1 ms of eventual server-side cache work. This does not negate
+the implemented references/interactive lane separation; it adds a distinct
+diagnostic-interference RED test and safe cache-hit scheduling slice. Normal
+diagnostics must remain enabled, and a cache miss must not create an
+unbudgeted second heavy Program alongside diagnostics.
+
 ## Gate
 
 A framed LSP interference test uses a default-off verifier delay, launches
