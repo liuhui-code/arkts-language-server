@@ -174,6 +174,19 @@ adds a second declaration-policy A/B/C smoke matrix, not a stable P95 or an
 API-23/DevEco equivalence claim. `MenuController` without declaration and the
 release/pressure gates remain under-sampled.
 
+R-10 now has a distinct [fixed Settings usage-site
+baseline](../reports/2026-09-21-settings-usage-anchor-baseline.md): six new
+processes, three legacy and three indexed-batched, each returned the same nine
+exact Locations with normal diagnostics. Indexed-batched's cold median was
+7,191 ms versus 8,631 ms legacy; sampled product peak medians were
+573,988,864 versus 790,999,040 bytes. Crucially, every indexed usage request
+ran a separate 308-SourceFile anchor Program for ~2,053 ms before the
+613-SourceFile verifier batch. This is measured duplicate compiler preparation,
+not an approved fusion or a claim that the full anchor duration is removable.
+R-10 remains experimental until a public-LSP RED/GREEN proves fewer Programs,
+exact Locations and no memory/freshness regression. This usage workload is not
+pooled with the declaration-position matrix, which has no standalone anchor.
+
 F3 cache v1 is implemented through the semantic proxy, before Rust candidate
 selection. A real framed-LSP regression proves one complete miss/store, one
 same-snapshot hit with no second candidate selection or verifier batch, and a

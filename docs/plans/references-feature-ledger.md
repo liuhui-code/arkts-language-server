@@ -15,7 +15,7 @@ completion. An item is complete only after its linked gate passes; see the
 | R-07 | Must | Index trust/fallback integrity | State-race guard implemented; broader stale/ambiguous/overlay matrix remains open | A real-LSP regression proves both candidate-anchor paths fall back to complete semantics when the sidecar changes from ready to warming after serving candidates; see [RED/GREEN](../tdd/references-index-state-race.md) |
 | R-08 | Must | Index resync recovery | Implemented | Real LSP proves mutation → safe legacy fallback → committed generation advance → indexed recovery with exact Locations |
 | R-09 | Should | Resident full-scope references fast-path | Research | R-03; explicit coverage equality and exact diff |
-| R-10 | Should | Anchor reuse/fusion | Research | R-01/R-02; fewer Program builds without result or peak regression |
+| R-10 | Should | Anchor reuse/fusion | Real Settings usage-site baseline pinned; no implementation | [Six-run trace](../reports/2026-09-21-settings-usage-anchor-baseline.md): all 9/9 exact; indexed median 7,191 ms includes a separate ~2,053 ms anchor Program (308 SourceFiles) before a ~3,150 ms batch Program (613 SourceFiles). Next RED must preserve exactness while reducing Program builds, then compare RSS/overlay/re-export/freshness before graduation |
 | R-11 | Should | Worker-shell reuse spike | Experimental only | R-01/R-02; meaningful latency gain, peak ≤ per-batch ×1.10 |
 | R-12 | Should | Memory hysteresis | Implemented | L3 remains active until RSS falls below the configured target; coordinator and production-worker regressions GREEN |
 | R-13 | Could | Fine-grained cache invalidation | Deferred | R-04 plus complete dependency proof and mutation matrix |

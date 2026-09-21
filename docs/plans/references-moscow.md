@@ -106,6 +106,11 @@ waiter and prevents a new version from joining the old operation.
 R-09 full-scope resident fast-path and R-10 anchor fusion may remove redundant
 compiler preparation, but only after trace and coverage proof. R-11 Worker-shell
 reuse is a flagged experiment because earlier same-isolate retention regressed.
+R-10 now has that first trace baseline for a real Settings **usage** position:
+three indexed cold runs all required a separate ~2.05 s anchor Program before
+one verifier batch and returned the same nine exact Locations as three legacy
+runs. It remains a Should experiment, not a correctness-approved shortcut
+([evidence](../reports/2026-09-21-settings-usage-anchor-baseline.md)).
 R-12 pressure hysteresis is implemented: L3 remains active until RSS falls
 below the configured recovery target. The committed ratios remain tunable
 policy values and still require real-project benchmark review.
