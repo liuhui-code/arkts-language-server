@@ -72,3 +72,29 @@ launch. Settings/Launcher/Contacts are not represented as successful cases on
 this machine: their matching SDK/checkouts and verified symbol oracles are not
 present. F2 next needs ≥3 independent cold runs per strategy, ten hot runs,
 both `includeDeclaration` values, and additional real-project oracles.
+
+## Same-process repeat and unsaved-edit replay
+
+A later mode-C indexed-batched run used the same pinned checkout, SDK, binary,
+symbol and oracle: ten references at document version 1, then one unsaved
+comment edit and a final request at version 2. All 11 returned the same three
+exact Locations; the version-2 automatic diagnostics contained 62 items. The
+first request took 10,490 ms; requests 2–10 had a median of **8,350 ms**;
+the post-edit request took 8,342 ms. Whole-run peak RSS was 695,693,312 B.
+This confirms correctness and no monotonic multi-gigabyte growth for this
+single session, but also shows that repeat requests do not currently reuse
+enough compiler work to become interactive. Raw samples and per-request
+timeline: `/private/tmp/photos-f2-indexed-hot-20260921.json`.
+
+The same legacy mode-C control returned the same three Locations on all 11
+requests (requests 2–10 median 202 ms, post-edit 746 ms; whole-run peak
+931,422,208 B), but **no automatic diagnostic notification arrived before
+its 180-second deadline**. Its raw file is
+`/private/tmp/photos-f2-legacy-hot-20260921.json`. It is *not* a valid strict
+diagnostic differential or a complete PASS. This exposed a replay-tool bug:
+the old status predicate could say PASS after diagnostics timed out. A real
+framed-stdio CLI RED/GREEN test now requires a versioned diagnostic
+notification for PASS; the legacy raw report retains its original erroneous
+status and is excluded from gates. This observation does not by itself prove
+whether legacy diagnostics were suppressed by the server or delayed by the
+workload; that needs a separate controlled investigation.

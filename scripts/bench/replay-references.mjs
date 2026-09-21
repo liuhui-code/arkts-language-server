@@ -238,7 +238,8 @@ async function replayWithTemporaryState(options, { sourceText, sourceUri, expect
     : null
   const report = {
     schemaVersion: 1,
-    status: !failure && allExact && forbiddenSymbolRequests.length === 0 ? "PASS" : "FAIL",
+    status: !failure && allExact && forbiddenSymbolRequests.length === 0
+      && !diagnostic?.timeout && Number.isSafeInteger(diagnostic?.version) ? "PASS" : "FAIL",
     replay: options.mode === "A"
       ? "A-fresh-process-references-first"
       : options.mode === "B"

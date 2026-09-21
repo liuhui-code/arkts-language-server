@@ -10,6 +10,7 @@ const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 const runner = path.join(projectRoot, "scripts", "bench", "replay-references.mjs")
 const differential = path.join(projectRoot, "scripts", "bench", "assert-replay-differential.mjs")
 const silentServer = path.join(projectRoot, "tests", "fixtures", "lsp", "silent-replay-server.mjs")
+const noDiagnosticsServer = path.join(projectRoot, "tests", "fixtures", "lsp", "references-without-diagnostics-server.mjs")
 
 test("references replay exposes one self-contained real-project command", () => {
   const result = spawnSync(process.execPath, [runner, "--help"], {
@@ -191,6 +192,41 @@ test("references replay accepts a workspace-relative exact Location oracle", (t)
 
   assert.equal(result.status, 1, `${result.stderr}\n${result.stdout}`)
   assert.deepEqual(JSON.parse(fs.readFileSync(output, "utf8")).expectedComparableLocations, [location])
+})
+
+test("references replay cannot pass when automatic diagnostics never arrive", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-no-diagnostics-replay-"))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const workspace = path.join(root, "workspace")
+  const sdk = path.join(root, "sdk")
+  fs.mkdirSync(workspace)
+  fs.mkdirSync(sdk)
+  fs.writeFileSync(path.join(workspace, "Query.ets"), "Thing\n")
+  const oracle = path.join(root, "oracle.json")
+  const output = path.join(root, "result.json")
+  fs.writeFileSync(oracle, "[]\n")
+  const result = spawnSync(process.execPath, [
+    runner,
+    "--workspace", workspace,
+    "--sdk", sdk,
+    "--file", "Query.ets",
+    "--symbol", "Thing",
+    "--line", "0",
+    "--character", "1",
+    "--oracle", oracle,
+    "--out", output,
+    "--server", noDiagnosticsServer,
+    "--sidecar", noDiagnosticsServer,
+    "--timeout-ms", "3000",
+    "--diagnostic-timeout-ms", "1000",
+    "--idle-ms", "0",
+  ], { cwd: projectRoot, encoding: "utf8", timeout: 15_000 })
+  assert.equal(result.status, 1, `${result.stderr}\n${result.stdout}`)
+  const report = JSON.parse(fs.readFileSync(output, "utf8"))
+  assert.equal(report.status, "FAIL")
+  assert.equal(report.diagnostic.timeout, true)
+  assert.equal(report.responses.length, 1)
+  assert.equal(report.responses[0].validation.pass, true)
 })
 
 test("replay differential rejects false diagnostics despite exact reference Locations", (t) => {

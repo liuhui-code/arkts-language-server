@@ -32,3 +32,11 @@ The focused reference-depth file passed 6/0/0. The complete local gate is
 currently **RED**; no merge is requested on this evidence. The finalized
 Photos indexed replay also passed through production stdio with three exact
 Locations and 62 diagnostics (raw evidence linked in the F2 report).
+
+Follow-up parent revision: `c8634173a9d72b71c1eeea6ba67a8f987bd46675`.
+RED: `node --test --test-name-pattern='automatic diagnostics never arrive' tests/references-replay-cli.test.mjs`
+showed a real Content-Length-framed child responder could return a complete
+references result, omit `publishDiagnostics`, and still make the runner print
+`REFERENCES_REPLAY=PASS`. GREEN: the report is FAIL unless a versioned automatic
+diagnostic notification was observed. The fixture changes only benchmark
+validation; production semantic behavior remains untouched.
