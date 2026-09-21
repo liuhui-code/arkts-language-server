@@ -40,17 +40,40 @@ so it does not satisfy the user's ≤500 ms navigation target. Larger paired
 samples and Windows execution remain open; this is not an API-23 or
 DevEco-equivalence claim
 ([standard-library report](../reports/2026-09-21-settings-api24-standard-library.md)).
-R-02 also has a second Settings/API-24 oracle: `HomeInitData` with
-`includeDeclaration=false` returned the same nine exact Locations in one
-fresh legacy, one indexed-batched and one pinned-manifest indexed-batched
-replay. The pinned manifest passed SDK and runtime-asset preflight. Their
-single-run RSS peaks are evidence records, not a stable memory ratio or a
-release-latency claim. Each cold request still exceeded five seconds; repeat
-samples and remaining correctness variants stay
-open.
+R-02 now has two real Settings symbols, each with pinned oracles for both
+declaration policies. A [new matrix](../reports/2026-09-21-settings-api24-reference-matrix.md)
+ran `HomeInitData` without declaration in three independent fresh processes
+per `legacy`, `batched` and `indexed-batched` strategy: all nine responses were
+the same exact nine Locations, with zero target-file diagnostics. The observed
+request medians were 8,905 / 93,179 / 5,019 ms respectively; pure batching
+therefore remains unsuitable as the default for this case despite a modest
+median peak-RSS reduction. Single fresh legacy/indexed pairs also passed
+`HomeInitData` with declaration 10/10 and `MenuController` without declaration
+247/247; the latter still reported TS 2307. Three cold runs are not a stable
+P95, the opposite-policy pairs have only one run per strategy, and all cold
+requests missed the 500 ms navigation target. F2, matched-API-23/DevEco,
+native Windows, original >3 GB and final memory gates remain open.
+Three independent warmed mode-B `HomeInitData` processes also retained 9/9
+exact references. Their observed completion, definition and references medians
+were 8,613, 37 and 4,404 ms; the full-run peak product RSS median was
+1,136,500,736 bytes, about 2.04× the mode-A indexed median under a different
+workflow. This is a memory-warning signal, not proof that references alone
+caused the increase: the warmup may retain compiler state and its result
+contents had no golden. One repeat/edit mode-C process returned 11/11 exact
+responses, with nine unchanged repeats at 2–3 ms and a 3,855 ms post-edit
+request. Only one version-2 diagnostic publication was captured, not a full
+versioned diagnostic sequence. These runs do not graduate F2, establish a
+stable P95 or meet the cold 500 ms target.
 R-03 now has an opt-in `budget-aware` profile with a real-LSP retention test;
-the safe `dispose` profile remains default until repeated Settings memory A/B
-and post-eviction evidence graduate ADR 0002.
+the safe `dispose` profile remains default. A controlled
+[three-versus-three Settings mode-B comparison](../reports/2026-09-21-settings-api24-reference-matrix.md)
+returned 9/9 exact `HomeInitData` Locations on every run and observed
+resident 1→1 under retention versus 1→0 under disposal. References medians
+were 4,072 versus 4,404 ms; full-run product RSS peaks were 1,129,537,536
+versus 1,136,500,736 bytes. These small sample differences do not support a
+default flip or graduation: both workflows still peak around 1.13 GB, the
+1,024 MiB semantic budget is not a hard RSS cap, first references remain
+above 500 ms, and post-eviction PSS evidence is missing.
 R-08 is now implemented: watched source/project changes start a new catalog,
 legacy remains authoritative while its generation is stale, and indexed
 batching resumes only after a ready generation advances. The public transcript

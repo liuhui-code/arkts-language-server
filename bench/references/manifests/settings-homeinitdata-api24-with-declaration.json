@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "benchmarkId": "settings-homeinitdata-api24-with-declaration",
+  "benchmarkScope": "same-SDK reference-strategy differential; not API-23 or DevEco equivalence",
+  "repo": "openharmony/applications_settings",
+  "repoSha": "ecc550dfaed880e04e38a2477eb7235cd50475b9",
+  "projectDeclaredSdk": {
+    "compileSdkVersion": 23,
+    "targetSdkVersion": 20,
+    "compatibleSdkVersion": 20
+  },
+  "nodeVersion": "v26.3.0",
+  "sdk": {
+    "apiVersion": "24",
+    "version": "6.1.1.125",
+    "declarationDigest": "8098b8abbc6b06fce0e7322d6f8f82a5bbce41e847dbd39e9a98811a33d4c6e4"
+  },
+  "query": {
+    "file": "common/src/main/ets/sendable/HomeInitData.ets",
+    "symbol": "HomeInitData",
+    "line": 16,
+    "character": 13,
+    "includeDeclaration": true
+  },
+  "oracle": {
+    "verified": true,
+    "expectedLocationCount": 10,
+    "source": "docs/reports/2026-09-21-settings-api24-reference-matrix.md",
+    "sha256": "c130f156455820aa2d0ccf7aecf4cc1bdcf51e3b61cb8956568d78f78d4f65c1"
+  },
+  "serverSha256": "ec52e7fb552fb2bef239b996d3261d0b2e5f6f5017e8383861404d1d40849b2e",
+  "semanticWorkerSha256": "d41171d961eb4e6436f81f9ae97928860b5d7e932d30e9bd60832db54e0d6558",
+  "referenceVerifierWorkerSha256": "08c2bcb91537a3c0f8dfca0003a7b1cd81a7ae7ef6e6761b3b25efe1e29b6200",
+  "standardLibrarySha256": "ea78beea2aa84f93fe66645465c37eb916028b79cd9fe898d469bdf54efbf97d",
+  "sidecarSha256": "8d4e95b5c603b8f43e0da9a7e62d74b127a94fe16f8b6d0afbc9fd0d6ebe40ae"
+}

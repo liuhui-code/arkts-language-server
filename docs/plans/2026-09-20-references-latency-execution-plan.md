@@ -133,6 +133,34 @@ all three observed cold requests still took over five seconds. They do not
 establish API-23 equivalence or complete a release gate
 ([report](../reports/2026-09-21-settings-api24-standard-library.md)).
 
+The next [fixed Settings/API-24 reference matrix](../reports/2026-09-21-settings-api24-reference-matrix.md)
+uses server revision `9cc3768` and the same clean checkout, selected SDK,
+compiler assets and sidecar. For `HomeInitData` without declaration, three
+new process/index-cold runs per strategy all returned the **same nine exact
+Locations** with zero target-file diagnostics. Observed request medians were
+8,905 ms `legacy`, 93,179 ms `batched`, and 5,019 ms `indexed-batched`;
+median externally sampled product RSS peaks were 784,814,080, 733,638,656
+and 558,444,544 bytes, respectively. Pure batching's roughly 10.5× cold
+latency confirms why it is not the product default; the indexed result is a
+three-run observation, not a stable P95 or release gate. New pinned opposite-
+declaration-policy single-run pairs also passed exact differential:
+`HomeInitData` with declaration 10/10 and `MenuController` without declaration
+247/247. The latter retained one TS 2307 diagnostic. Thus both declaration
+policies now have fixed oracles for two real symbols, but F2 remains open:
+larger randomized, Windows and final pressure/release evidence is missing;
+cold requests are still above the 500 ms navigation target. Three further
+independent pinned `HomeInitData` mode-B warmed processes each returned 9/9
+exact references; their completion warmup median was 8,613 ms, definition
+warmup median 37 ms, references median 4,404 ms and full-run product RSS peak
+median 1,136,500,736 bytes. That peak is about 2.04× the mode-A indexed
+median, but the workflows differ and the warmed compiler state may contribute;
+the completion/definition *contents* were not oracle-checked. One mode-C
+repeat/edit process returned all 11 nine-location results exactly: cold first
+request 5,018 ms, nine unchanged repeats 2–3 ms each, post-unsaved-comment
+version-2 request 3,855 ms. It observed a version-2 diagnostic publication,
+not a complete per-version diagnostic sequence. Mode C needs repetition and
+edit/freshness coverage before graduation.
+
 F3 cache v1 is implemented through the semantic proxy, before Rust candidate
 selection. A real framed-LSP regression proves one complete miss/store, one
 same-snapshot hit with no second candidate selection or verifier batch, and a
@@ -155,7 +183,17 @@ The public test observes resident count 1→1 and an exact definition after the
 global query. One Settings/API-24 mode-B run passed with 248 exact Locations
 and a 936,415,232-byte process-tree peak, versus 1,063,485,440 bytes in the
 older dispose run. Because these are single runs with different executions,
-they do not graduate the profile or establish a memory improvement.
+they do not graduate the profile or establish a memory improvement. A newer
+[controlled three-versus-three HomeInitData mode-B comparison](../reports/2026-09-21-settings-api24-reference-matrix.md)
+on the same fixed Settings/API-24 build returned 9/9 exact Locations in every
+process. All retained runs logged resident 1→1 with `removed=false`, while
+dispose logged 1→0. `budget-aware` reference median was 4,072 ms versus
+4,404 ms with dispose; full-run product RSS peak medians were 1,129,537,536
+versus 1,136,500,736 bytes. These small three-run differences do **not**
+graduate R-03 or justify changing its default. Both profiles peaked around
+1.13 GB; the configured 1,024 MiB semantic budget is a policy threshold, not
+a hard Node-process limit. Post-eviction PSS and release-level latency remain
+unmeasured, and first references still exceed 500 ms.
 
 F5 is implemented. Watched source/project changes now schedule a fresh catalog
 generation; overlapping notifications coalesce into one subsequent catalog
@@ -224,9 +262,10 @@ and all `ARKTS_*` overrides. A bundle-only SHA does not identify the effective
 compiler library after adjacent `lib*.d.ts` or semantic Worker bundles change.
 The runner now records the composite manifest-plus-assets digest and both
 Worker-bundle digests, rejecting mismatched optional pins before launch. Its
-CLI suite passed 10/10. Both fixed Settings symbols now have a pinned-manifest
-replay; repeated independent samples and the remaining declaration-policy
-variants are still necessary before a formal paired gate.
+CLI suite passed 10/10. Both fixed Settings symbols now have pinned manifests
+and oracles for both declaration policies. Only one of those four
+symbol/policy pairs has this new three-run A/B/C matrix; the others still
+require independent samples before a formal paired gate.
 Settings is the primary target. Its clean local 6.1-LTS revision declares
 compile SDK 23, while this Mac selects API 24; the pinned
 [compatibility manifest](../../bench/references/manifests/settings-menucontroller-api24.json)

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "verified": true,
+  "source": "Settings API-24 same-SDK legacy compiler oracle; declaration included; common barrel and phone consumers checked; not API-23 or DevEco equivalence",
+  "locations": [
+    {"file":"common/index.ets","range":{"start":{"line":284,"character":23},"end":{"line":284,"character":35}}},
+    {"file":"common/src/main/ets/sendable/HomeInitData.ets","range":{"start":{"line":16,"character":13},"end":{"line":16,"character":25}}},
+    {"file":"common/src/main/ets/sendable/HomeInitData.ets","range":{"start":{"line":28,"character":30},"end":{"line":28,"character":42}}},
+    {"file":"product/phone/src/main/ets/Setting/Home/controller/HomePageMenuManager.ets","range":{"start":{"line":24,"character":23},"end":{"line":24,"character":35}}},
+    {"file":"product/phone/src/main/ets/Setting/Home/controller/HomePageMenuManager.ets","range":{"start":{"line":40,"character":37},"end":{"line":40,"character":49}}},
+    {"file":"product/phone/src/main/ets/Setting/Home/controller/HomePageMenuManager.ets","range":{"start":{"line":57,"character":45},"end":{"line":57,"character":57}}},
+    {"file":"product/phone/src/main/ets/Setting/Home/controller/HomePageMenuManager.ets","range":{"start":{"line":68,"character":49},"end":{"line":68,"character":61}}},
+    {"file":"product/phone/src/main/ets/Setting/Home/controller/HomePageMenuManager.ets","range":{"start":{"line":89,"character":44},"end":{"line":89,"character":56}}},
+    {"file":"product/phone/src/main/ets/Setting/Home/controller/HomePageMenuManager.ets","range":{"start":{"line":106,"character":37},"end":{"line":106,"character":49}}},
+    {"file":"product/phone/src/main/ets/Setting/Home/controller/HomePageMenuManager.ets","range":{"start":{"line":112,"character":40},"end":{"line":112,"character":52}}}
+  ]
+}
