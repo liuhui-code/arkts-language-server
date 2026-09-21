@@ -26,8 +26,28 @@ Three new independent same-build processes returned all 33 responses with
 248 exact Locations each. Their 27 cached repeats had 67 ms median, 96 ms
 observed nearest-rank P95 and 100 ms maximum. This clears the 500 ms target
 for this **cached** Settings sample, not for cold/post-edit misses or release
-P95. The 18 published errors still require separate SDK/diagnostic validation
-([F6b evidence](../reports/2026-09-21-settings-api24-diagnostic-cache.md)).
+P95. Those F6b runs published 18 errors. A subsequent real-LSP RED/GREEN
+showed that the bundle lacked adjacent `ohos-typescript` standard-library
+declarations. A second RED found that the default full library introduced a
+DOM `Text` collision; production now selects non-DOM ES2022. Focused portable
+installed-artifact acceptance passed 9/9. Two fresh Settings/API-24 no-DOM
+replays retained 248/248 exact references each and published only TS 2307, which
+still requires validation. Asset and Worker-bundle digest recording with
+optional manifest mismatch preflight passed the full replay CLI suite (10/10);
+the refreshed `MenuController` manifest and one fresh pinned indexed-batched
+replay also passed with 248 exact Locations. That cold request took 6,226 ms,
+so it does not satisfy the user's ≤500 ms navigation target. Larger paired
+samples and Windows execution remain open; this is not an API-23 or
+DevEco-equivalence claim
+([standard-library report](../reports/2026-09-21-settings-api24-standard-library.md)).
+R-02 also has a second Settings/API-24 oracle: `HomeInitData` with
+`includeDeclaration=false` returned the same nine exact Locations in one
+fresh legacy, one indexed-batched and one pinned-manifest indexed-batched
+replay. The pinned manifest passed SDK and runtime-asset preflight. Their
+single-run RSS peaks are evidence records, not a stable memory ratio or a
+release-latency claim. Each cold request still exceeded five seconds; repeat
+samples and remaining correctness variants stay
+open.
 R-03 now has an opt-in `budget-aware` profile with a real-LSP retention test;
 the safe `dispose` profile remains default until repeated Settings memory A/B
 and post-eviction evidence graduate ADR 0002.

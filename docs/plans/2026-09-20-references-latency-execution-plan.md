@@ -97,6 +97,42 @@ requiring SDK 26.0.1.
 Launcher/Contacts are secondary discovery candidates, not substitutes for the
 Settings gate.
 
+R-02 diagnostic validity has a separate standard-library delivery slice.
+At parent revision `3c0900f`, a real framed-LSP RED showed missing `Object`,
+`Array`, `Promise` and `string.includes` from the production bundle, whose
+`ohos-typescript` worker had no adjacent default `lib*.d.ts` assets. The
+runtime build now delivers the pinned compiler's 70 standard-library files
+and the backend explicitly selects non-DOM `lib.es2022.d.ts` after a second
+real-LSP RED exposed DOM `Text` collision (TS 2300/2348). The focused public
+test and portable installed-artifact acceptance are GREEN (9/9)
+([TDD](../tdd/standard-library-delivery.md)). Two fresh Settings/API-24
+mode-A replays retained 248/248 exact Locations each; normal diagnostics fell
+from 18 to one unresolved `@ohos.systemparameter` (TS 2307). Its correctness is
+not validated against DevEco or API 23. Deterministic standard-library and
+both Worker-bundle digests, optional manifest mismatch preflight and the full
+replay CLI suite are GREEN (10/10). The refreshed `MenuController` manifest
+now pins SDK, oracle, entry server, both Workers, standard-library assets and
+sidecar; one fresh pinned indexed-batched replay returned 248/248 exact
+Locations with 645,877,760-byte product RSS and 6,226 ms request time.
+Windows execution and a larger paired performance sample remain open
+([report](../reports/2026-09-21-settings-api24-standard-library.md)).
+The first full `check:fast` attempt for this delivery passed 949/950; one
+five-second correctness-test wait timed out without a Location diff. The
+test-only wait adjustment passed its isolated 3/3 run, then the full
+`pnpm check:fast` rerun passed **950/950** in 870,262.14 ms. No production
+timeout was changed; the separate product latency and memory gates remain open.
+R-02 now also has a second real Settings symbol. `HomeInitData` at
+`common/src/main/ets/sendable/HomeInitData.ets` (`16:13` zero-based UTF-16)
+uses `includeDeclaration=false` and a nine-location compiler oracle. One
+fresh legacy process, one indexed-batched process and one indexed-batched
+process with a fully pinned SDK/artifact manifest all returned the **same
+exact nine Locations**. Their external product RSS peaks were 780,861,440,
+555,511,808 and 558,116,864 bytes, respectively. These single runs establish
+the second oracle and manifest preflight, not a stable latency/memory benefit;
+all three observed cold requests still took over five seconds. They do not
+establish API-23 equivalence or complete a release gate
+([report](../reports/2026-09-21-settings-api24-standard-library.md)).
+
 F3 cache v1 is implemented through the semantic proxy, before Rust candidate
 selection. A real framed-LSP regression proves one complete miss/store, one
 same-snapshot hit with no second candidate selection or verifier batch, and a
@@ -182,8 +218,15 @@ gate.
 ## Benchmark contract
 
 Freeze exact repository commit, dirty state, server commit, Node/toolchain,
-backend version, project selection, SDK fingerprint, index schema/generation,
-query file/symbol/zero-based UTF-16 position and all `ARKTS_*` overrides.
+backend version, project selection, SDK fingerprint, standard-library asset
+digest, index schema/generation, query file/symbol/zero-based UTF-16 position
+and all `ARKTS_*` overrides. A bundle-only SHA does not identify the effective
+compiler library after adjacent `lib*.d.ts` or semantic Worker bundles change.
+The runner now records the composite manifest-plus-assets digest and both
+Worker-bundle digests, rejecting mismatched optional pins before launch. Its
+CLI suite passed 10/10. Both fixed Settings symbols now have a pinned-manifest
+replay; repeated independent samples and the remaining declaration-policy
+variants are still necessary before a formal paired gate.
 Settings is the primary target. Its clean local 6.1-LTS revision declares
 compile SDK 23, while this Mac selects API 24; the pinned
 [compatibility manifest](../../bench/references/manifests/settings-menucontroller-api24.json)

@@ -83,6 +83,9 @@ export function validateInputs(options) {
   if (options.manifest) requireFile(options.manifest, "benchmark manifest")
   requireFile(options.server, "server")
   requireFile(options.sidecar, "sidecar")
+  options.standardLibrarySha256 = digestAdjacentStandardLibrary(options.server)
+  options.semanticWorkerSha256 = digestOptionalSibling(options.server, "semantic-worker.cjs")
+  options.referenceVerifierWorkerSha256 = digestOptionalSibling(options.server, "reference-verifier-worker.cjs")
   if (fs.existsSync(options.out)) throw new Error(`output already exists: ${options.out}`)
 }
 
@@ -97,6 +100,9 @@ export async function validateBenchmarkManifest(options) {
     || !sha256(manifest.oracle?.sha256)
     || !sha256(manifest.serverSha256)
     || !sha256(manifest.sidecarSha256)
+    || (manifest.standardLibrarySha256 !== undefined && !sha256(manifest.standardLibrarySha256))
+    || (manifest.semanticWorkerSha256 !== undefined && !sha256(manifest.semanticWorkerSha256))
+    || (manifest.referenceVerifierWorkerSha256 !== undefined && !sha256(manifest.referenceVerifierWorkerSha256))
     || !Number.isSafeInteger(manifest.oracle?.expectedLocationCount)
     || manifest.oracle.expectedLocationCount < 1) block("INVALID_MANIFEST")
   const sdk = readSdkMetadata(options.sdk)
@@ -114,6 +120,14 @@ export async function validateBenchmarkManifest(options) {
     || query.line !== options.position.line || query.character !== options.position.character
     || query.includeDeclaration !== options.includeDeclaration) block("QUERY_MISMATCH")
   if (manifest.serverSha256 !== sha256File(options.server)) block("SERVER_MISMATCH")
+  if (manifest.standardLibrarySha256 !== undefined
+    && manifest.standardLibrarySha256 !== options.standardLibrarySha256) block("STANDARD_LIBRARY_MISMATCH")
+  if (manifest.semanticWorkerSha256 !== undefined
+    && manifest.semanticWorkerSha256 !== options.semanticWorkerSha256) block("SEMANTIC_WORKER_MISMATCH")
+  if (manifest.referenceVerifierWorkerSha256 !== undefined
+    && manifest.referenceVerifierWorkerSha256 !== options.referenceVerifierWorkerSha256) {
+    block("REFERENCE_VERIFIER_WORKER_MISMATCH")
+  }
   if (manifest.sidecarSha256 !== sha256File(options.sidecar)) block("SIDECAR_MISMATCH")
   if (manifest.oracle.sha256 !== sha256File(options.oracle)) block("ORACLE_MISMATCH")
   options.benchmarkManifest = manifest
@@ -126,6 +140,38 @@ export function readSdkMetadata(sdkRoot) {
 
 export function sha256File(fileName) {
   return crypto.createHash("sha256").update(fs.readFileSync(fileName)).digest("hex")
+}
+
+function digestOptionalSibling(server, basename) {
+  const sibling = path.join(path.dirname(server), basename)
+  return fs.existsSync(sibling) ? sha256File(sibling) : null
+}
+
+function digestAdjacentStandardLibrary(server) {
+  const directory = path.dirname(server)
+  const manifestPath = path.join(directory, "arkts-standard-library.json")
+  if (!fs.existsSync(manifestPath)) return null
+  const manifestBytes = fs.readFileSync(manifestPath)
+  const manifest = JSON.parse(manifestBytes.toString("utf8"))
+  const files = manifest?.files
+  if (manifest.schema !== "arkts-language-server.standard-library"
+    || manifest.schemaVersion !== 1 || !Array.isArray(files) || files.length === 0
+    || files.length > 256 || new Set(files).size !== files.length
+    || files.some(name => typeof name !== "string" || !/^lib(?:\.[a-z0-9]+)*\.d\.ts$/u.test(name))) {
+    throw new Error("BENCHMARK_BLOCKED=INVALID_STANDARD_LIBRARY")
+  }
+  const hash = crypto.createHash("sha256")
+  addAsset(hash, "arkts-standard-library.json", manifestBytes)
+  for (const name of files) addAsset(hash, name, fs.readFileSync(path.join(directory, name)))
+  return hash.digest("hex")
+}
+
+function addAsset(hash, name, bytes) {
+  hash.update(name, "utf8")
+  hash.update("\0")
+  hash.update(String(bytes.length), "utf8")
+  hash.update("\0")
+  hash.update(bytes)
 }
 
 export function gitValue(root, args) {

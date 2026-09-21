@@ -34,7 +34,6 @@ import type {
 } from "../protocol.js"
 import { resolveHarmonySdkModule } from "../sdk/module-resolver.js"
 import { officialDocumentRegistryFor } from "../../semantic/backends/ohos-typescript/registry-pool.js"
-import { officialEtsCompilerOptions } from "../../semantic/backends/ohos-typescript/ets-options.js"
 import type {
   ProjectFileAccessPort,
   ProjectFileAdmissionToken,
@@ -42,6 +41,7 @@ import type {
   SemanticWorkspaceView,
 } from "../workspace/document-store.js"
 import { CooperativeWork } from "./cooperative-work.js"
+import { arktsLanguageServiceOptions } from "./arkts-language-service-options.js"
 import { createSourceDocument, type SourceDocument } from "./source-document.js"
 import type {
   SemanticCodeFixCandidate,
@@ -240,17 +240,7 @@ export class TypeScriptLanguageServiceEngine {
       process.env.ARKLINE_HARMONY_SDK_PATH,
       sdkConfiguration,
     )
-    this.options = {
-      allowNonTsExtensions: true,
-      allowSyntheticDefaultImports: true,
-      experimentalDecorators: true,
-      module: ts.ModuleKind.ESNext,
-      moduleResolution: ts.ModuleResolutionKind.NodeJs,
-      noEmit: true,
-      skipLibCheck: true,
-      target: ts.ScriptTarget.ES2022,
-      ...officialEtsCompilerOptions(sdk.path),
-    }
+    this.options = arktsLanguageServiceOptions(sdk.path)
     this.sdkSelection = sdk
     this.sdkRoot = sdk.path
     this.sdkPhysicalRoot = this.sdkRoot ? canonicalExistingPath(this.sdkRoot) : undefined

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "benchmarkId": "settings-menucontroller-api24-compatibility",
+  "benchmarkId": "settings-homeinitdata-api24-no-declaration",
   "benchmarkScope": "same-SDK reference-strategy differential; not API-23 or DevEco equivalence",
   "repo": "openharmony/applications_settings",
   "repoSha": "ecc550dfaed880e04e38a2477eb7235cd50475b9",
@@ -16,17 +16,17 @@
     "declarationDigest": "8098b8abbc6b06fce0e7322d6f8f82a5bbce41e847dbd39e9a98811a33d4c6e4"
   },
   "query": {
-    "file": "common/src/main/ets/core/controller/MenuController.ets",
-    "symbol": "MenuController",
-    "line": 70,
+    "file": "common/src/main/ets/sendable/HomeInitData.ets",
+    "symbol": "HomeInitData",
+    "line": 16,
     "character": 13,
-    "includeDeclaration": true
+    "includeDeclaration": false
   },
   "oracle": {
     "verified": true,
-    "expectedLocationCount": 248,
-    "source": "docs/reports/2026-09-21-settings-api24-benchmark.md",
-    "sha256": "1dbcb55c20ec2b289687de2131e0f1cf804bd135026319807b3e3a52fffd2d3a"
+    "expectedLocationCount": 9,
+    "source": "docs/reports/2026-09-21-settings-api24-standard-library.md",
+    "sha256": "58908aa4ee2554864cd4467ccf7a51b3aa8e6dd570fc0f66decc6500bf7f937b"
   },
   "serverSha256": "ec52e7fb552fb2bef239b996d3261d0b2e5f6f5017e8383861404d1d40849b2e",
   "semanticWorkerSha256": "d41171d961eb4e6436f81f9ae97928860b5d7e932d30e9bd60832db54e0d6558",

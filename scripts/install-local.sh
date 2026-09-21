@@ -166,7 +166,23 @@ release_fingerprint=$(node -e '
   const crypto = require("node:crypto")
   const fs = require("node:fs")
   const digest = crypto.createHash("sha256")
-  for (const file of process.argv.slice(1)) {
+  const files = process.argv.slice(1)
+  const dist = process.argv.at(-1)
+  files.pop()
+  const manifestPath = `${dist}/arkts-standard-library.json`
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"))
+  if (manifest.schema !== "arkts-language-server.standard-library"
+    || manifest.schemaVersion !== 1 || !Array.isArray(manifest.files)
+    || manifest.files.length === 0
+    || manifest.files.some((name, index) => typeof name !== "string"
+      || !/^lib(?:\.[A-Za-z0-9_-]+)*\.d\.ts$/.test(name)
+      || (index > 0 && manifest.files[index - 1] >= name))) {
+    throw new Error("invalid ArkTS standard-library manifest")
+  }
+  files.push(manifestPath, ...manifest.files.map((name) => `${dist}/${name}`))
+  for (const file of files) {
+    const stat = fs.lstatSync(file)
+    if (!stat.isFile() || stat.isSymbolicLink()) throw new Error(`unsafe runtime file: ${file}`)
     digest.update(fs.readFileSync(file))
     digest.update("\0")
   }
@@ -174,7 +190,7 @@ release_fingerprint=$(node -e '
 ' "$source_command" "$project_root/config/semantic-runtime.json" \
   "$project_root/dist/semantic-worker.cjs" \
   "$project_root/dist/reference-verifier-worker.cjs" "$project_root/dist/server.cjs" \
-  "$project_root/target/release/arkts-index-sidecar")
+  "$project_root/target/release/arkts-index-sidecar" "$project_root/dist")
 release_id=$package_version-$release_fingerprint
 release_dir=$libexec_root/$release_id
 staging_dir=$libexec_root/.staging-$release_id-$$
@@ -193,6 +209,14 @@ cp "$project_root/dist/semantic-worker.cjs" "$staging_dir/dist/semantic-worker.c
 cp "$project_root/dist/reference-verifier-worker.cjs" \
   "$staging_dir/dist/reference-verifier-worker.cjs"
 cp "$project_root/dist/server.cjs" "$staging_dir/dist/server.cjs"
+cp "$project_root/dist/arkts-standard-library.json" "$staging_dir/dist/arkts-standard-library.json"
+node -e '
+  const fs = require("node:fs")
+  const path = require("node:path")
+  const [source, destination] = process.argv.slice(1)
+  const { files } = JSON.parse(fs.readFileSync(path.join(source, "arkts-standard-library.json"), "utf8"))
+  for (const name of files) fs.copyFileSync(path.join(source, name), path.join(destination, name))
+' "$project_root/dist" "$staging_dir/dist"
 cp "$project_root/target/release/arkts-index-sidecar" \
   "$staging_dir/target/release/arkts-index-sidecar"
 chmod 755 "$staging_dir/bin/arkts-language-server" \
@@ -202,6 +226,25 @@ mkdir -p "$libexec_root" "$install_dir"
 if [ ! -d "$release_dir" ]; then
   mv "$staging_dir" "$release_dir"
 fi
+node -e '
+  const fs = require("node:fs")
+  const path = require("node:path")
+  const [source, installed] = process.argv.slice(1)
+  const release = path.dirname(installed)
+  const releaseStat = fs.lstatSync(release)
+  if (!releaseStat.isDirectory() || releaseStat.isSymbolicLink()) throw new Error(`unsafe release: ${release}`)
+  const distStat = fs.lstatSync(installed)
+  if (!distStat.isDirectory() || distStat.isSymbolicLink()) throw new Error(`unsafe runtime directory: ${installed}`)
+  const { files } = JSON.parse(fs.readFileSync(path.join(source, "arkts-standard-library.json"), "utf8"))
+  for (const name of ["arkts-standard-library.json", ...files]) {
+    const target = path.join(installed, name)
+    const stat = fs.lstatSync(target)
+    if (!stat.isFile() || stat.isSymbolicLink()
+      || !fs.readFileSync(path.join(source, name)).equals(fs.readFileSync(target))) {
+      throw new Error(`Existing language-server release is corrupt: ${target}`)
+    }
+  }
+' "$project_root/dist" "$release_dir/dist"
 ln -s "$release_dir/bin/arkts-language-server" "$command_tmp"
 mv -f "$command_tmp" "$installed_command"
 cleanup_installation

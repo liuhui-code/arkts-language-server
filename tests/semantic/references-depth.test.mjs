@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url"
 
 import { LspProcess, projectRoot } from "../support/lsp-process.mjs"
 import { materializeConformanceWorkspace } from "../support/materialize-conformance-workspace.mjs"
+import { requestReferenceLocations } from "../support/request-reference-locations.mjs"
 
 const fixtureRoot = path.join(projectRoot, "fixtures", "semantic", "references-depth")
 const apiPath = path.join(fixtureRoot, "Api.ets")
@@ -738,17 +739,7 @@ function selectTabletTarget(materialized, { includeDesktop = false } = {}) {
 }
 
 async function requestReferences(server, id, position, includeDeclaration, uri = consumerUri) {
-  server.send({
-    jsonrpc: "2.0",
-    id,
-    method: "textDocument/references",
-    params: {
-      textDocument: { uri },
-      position,
-      context: { includeDeclaration },
-    },
-  })
-  return server.response(id)
+  return requestReferenceLocations({ server, id, uri, position, includeDeclaration, timeoutMs: 15_000 })
 }
 
 function location(uri, range) {
