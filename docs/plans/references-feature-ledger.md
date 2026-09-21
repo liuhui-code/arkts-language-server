@@ -12,7 +12,7 @@ completion. An item is complete only after its linked gate passes; see the
 | R-04 | Must | Complete-result cache v1 | Implemented: pre-index bounded cache, complete results only, conservative overlay/config/workspace invalidation | Real LSP reuse and mutation tests GREEN; Settings API-24 hot median 65 ms with zero candidate/verifier work on hit |
 | R-05 | Must | In-flight coalescing | Implemented | Real LSP proves one verification, independent client cancellation, shared ContentModified invalidation, and no cross-version join |
 | R-06 | Must | Interactive/global lanes | Implemented for references | Real LSP proves definition/hover bypass delayed references, mutation cancels the old snapshot, and the next definition sees the new revision |
-| R-07 | Must | Index trust/fallback integrity | Existing, extend | Stale/ambiguous/overlay differential remains fail conservative |
+| R-07 | Must | Index trust/fallback integrity | State-race guard implemented; broader stale/ambiguous/overlay matrix remains open | A real-LSP regression proves both candidate-anchor paths fall back to complete semantics when the sidecar changes from ready to warming after serving candidates; see [RED/GREEN](../tdd/references-index-state-race.md) |
 | R-08 | Must | Index resync recovery | Implemented | Real LSP proves mutation → safe legacy fallback → committed generation advance → indexed recovery with exact Locations |
 | R-09 | Should | Resident full-scope references fast-path | Research | R-03; explicit coverage equality and exact diff |
 | R-10 | Should | Anchor reuse/fusion | Research | R-01/R-02; fewer Program builds without result or peak regression |

@@ -149,6 +149,15 @@ process reaches the 92% emergency threshold, subsequent samples remain L3 at
 resumes normal L0–L2 classification. Coordinator/type-engine/production-worker
 regressions remain GREEN ([evidence](../tdd/semantic-memory-hysteresis.md)).
 
+R-07's ready-state race guard is implemented for both direct and
+definition-anchor candidate paths. A real LSP transcript makes the sidecar
+start warming after returning generation-1 candidates while generation 1 stays
+committed; indexed narrowing previously omitted a known `Use.ets` reference.
+The request now falls back to complete semantics in both paths
+([RED/GREEN](../tdd/references-index-state-race.md)). This closes that race,
+not the broader stale/ambiguous/overlay matrix or the real-project release
+gate.
+
 ## Benchmark contract
 
 Freeze exact repository commit, dirty state, server commit, Node/toolchain,

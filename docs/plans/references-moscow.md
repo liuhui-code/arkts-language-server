@@ -28,6 +28,11 @@ R-08 is now implemented: watched source/project changes start a new catalog,
 legacy remains authoritative while its generation is stale, and indexed
 batching resumes only after a ready generation advances. The public transcript
 keeps exact Locations across fallback and recovery; it does not weaken R-07.
+R-07 now also rejects candidates if the sidecar changes from ready to warming
+between candidate search and acceptance, even when the committed generation
+number is unchanged. Direct and definition-anchor real-LSP transcripts both
+fall back to complete semantics and retain the known cross-file reference;
+the wider trust matrix remains an open gate.
 R-06 is now implemented for references. Only classified interactive methods
 may bypass one detached references request; diagnostics and other global work
 remain serialized, and any mutation makes the old references snapshot fail

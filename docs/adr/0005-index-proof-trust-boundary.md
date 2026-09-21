@@ -28,3 +28,7 @@ before retrying or failing. Mutation → safe fallback → committed generation 
 indexed recovery has a real LSP transcript covering indexed → mutation →
 legacy fallback → generation advance → indexed recovery with exact Location
 equality. See [the TDD record](../tdd/references-index-resync.md).
+If the sidecar moves from ready to warming after it served candidates, matching
+the old committed generation is insufficient: both anchor paths must reject
+the candidate set and use complete semantics. The
+[state-race transcript](../tdd/references-index-state-race.md) covers this case.

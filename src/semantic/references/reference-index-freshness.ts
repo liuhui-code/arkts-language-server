@@ -80,10 +80,19 @@ export class ReferenceIndexFreshness {
     if (!result.supported || !result.complete || result.completeness !== "ready"
       || !result.declarationIdentity) return false
     const status = await index.status(workspaceId)
-    if (result.servedGeneration !== status.committedGeneration) return false
+    if (!isReferenceIndexCandidateEligible(result, status)) return false
     this.accepted(workspaceId, result.servedGeneration)
     return true
   }
+}
+
+export function isReferenceIndexCandidateEligible(
+  result: WorkspaceReferenceCandidateResult,
+  status: WorkspaceIndexStatus,
+): boolean {
+  return result.supported && result.complete && result.completeness === "ready"
+    && Boolean(result.declarationIdentity) && status.state === "ready"
+    && result.servedGeneration === status.committedGeneration
 }
 
 export async function prepareReferenceIndexSearch(

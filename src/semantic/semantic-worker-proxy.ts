@@ -28,6 +28,7 @@ import { referenceSearchRuntimeConfig } from "./references/reference-runtime.js"
 import { interactiveSemanticRuntimeConfig } from "./interactive-runtime.js"
 import { discoverCompletionCandidates } from "./completion-discovery.js"
 import {
+  isReferenceIndexCandidateEligible,
   prepareReferenceIndexSearch,
   ReferenceIndexFreshness,
 } from "./references/reference-index-freshness.js"
@@ -495,11 +496,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
         query.signal,
       )
       const status = await this.#referenceIndex.status(query.document.workspaceId)
-      if (!result.supported
-        || !result.complete
-        || result.completeness !== "ready"
-        || !result.declarationIdentity
-        || result.servedGeneration !== status.committedGeneration) {
+      if (!isReferenceIndexCandidateEligible(result, status)) {
         this.#logger?.info("references.index.fallback", {
           reason: "candidate-ineligible",
           targetUri: target.uri,
