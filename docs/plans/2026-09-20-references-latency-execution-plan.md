@@ -143,6 +143,12 @@ a document edit makes both old waiters ContentModified, and the next version
 does not join the aborted operation
 ([evidence](../tdd/references-coalescing.md)).
 
+R-12 L3 hysteresis is implemented independently of R-03 graduation. Once the
+process reaches the 92% emergency threshold, subsequent samples remain L3 at
+90% and 85%; the policy exits only below the committed 85% target and then
+resumes normal L0–L2 classification. Coordinator/type-engine/production-worker
+regressions remain GREEN ([evidence](../tdd/semantic-memory-hysteresis.md)).
+
 ## Benchmark contract
 
 Freeze exact repository commit, dirty state, server commit, Node/toolchain,

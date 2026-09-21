@@ -17,7 +17,7 @@ completion. An item is complete only after its linked gate passes; see the
 | R-09 | Should | Resident full-scope references fast-path | Research | R-03; explicit coverage equality and exact diff |
 | R-10 | Should | Anchor reuse/fusion | Research | R-01/R-02; fewer Program builds without result or peak regression |
 | R-11 | Should | Worker-shell reuse spike | Experimental only | R-01/R-02; meaningful latency gain, peak ≤ per-batch ×1.10 |
-| R-12 | Should | Memory hysteresis | Proposed | R-03; L3 target used, no evict/rebuild oscillation |
+| R-12 | Should | Memory hysteresis | Implemented | L3 remains active until RSS falls below the configured target; coordinator and production-worker regressions GREEN |
 | R-13 | Could | Fine-grained cache invalidation | Deferred | R-04 plus complete dependency proof and mutation matrix |
 | R-14 | Could | Compiler-derived persisted references | Deferred | Stable validity/version schema; compiler remains semantic authority |
 | R-15 | Could | Extend global lanes to other capabilities | Deferred | References scheduler correctness first; one capability per vertical slice |

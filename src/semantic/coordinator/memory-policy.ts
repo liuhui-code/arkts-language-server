@@ -8,6 +8,8 @@ export interface SemanticMemoryPolicyConfig {
 }
 
 export class SemanticMemoryPolicy {
+  #level3Active = false
+
   constructor(private readonly config: SemanticMemoryPolicyConfig) {
     if (!(config.level1Ratio < config.level2Ratio
       && config.level2Ratio < config.level3Ratio
@@ -22,7 +24,11 @@ export class SemanticMemoryPolicy {
       throw new Error("budgetBytes must be positive")
     }
     const ratio = rssBytes / budgetBytes
-    if (ratio >= this.config.level3Ratio) return "level3"
+    if (ratio >= this.config.level3Ratio) this.#level3Active = true
+    if (this.#level3Active) {
+      if (ratio >= this.config.level3TargetRatio) return "level3"
+      this.#level3Active = false
+    }
     if (ratio >= this.config.level2Ratio) return "level2"
     if (ratio >= this.config.level1Ratio) return "level1"
     return "level0"

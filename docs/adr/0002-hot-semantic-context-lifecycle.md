@@ -1,6 +1,6 @@
 # ADR 0002: Budget-aware hot semantic context
 
-Status: **Feature-gated experiment implemented; graduation evidence incomplete**.
+Status: **Feature-gated retention and L3 hysteresis implemented; graduation evidence incomplete**.
 
 ## Context
 
@@ -27,6 +27,12 @@ remains the production default until the multi-run memory gate passes.
 normal L2/L3 process-memory sampling may still trim or evict it while the
 transient verifier is active. An opt-in trace records the profile and resident
 count before/after admission.
+
+The memory policy is stateful at L3. Once RSS reaches `level3Ratio`, it remains
+at L3 while RSS is at or above `level3TargetRatio`; normal L0–L2 classification
+resumes only after RSS falls below that target. This makes the committed 85%
+target an actual recovery boundary instead of unused configuration and avoids
+evict/rebuild oscillation near the 92% entry threshold.
 
 ## Graduation gate
 

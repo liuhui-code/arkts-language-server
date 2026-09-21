@@ -44,8 +44,9 @@ waiter and prevents a new version from joining the old operation.
 R-09 full-scope resident fast-path and R-10 anchor fusion may remove redundant
 compiler preparation, but only after trace and coverage proof. R-11 Worker-shell
 reuse is a flagged experiment because earlier same-isolate retention regressed.
-R-12 pressure hysteresis follows budget-aware retention; parameter values are
-benchmarked rather than declared architecture constants.
+R-12 pressure hysteresis is implemented: L3 remains active until RSS falls
+below the configured recovery target. The committed ratios remain tunable
+policy values and still require real-project benchmark review.
 
 ## Could
 
