@@ -27,6 +27,9 @@ use rusqlite::{
 use sha2::{Digest, Sha256};
 
 mod catalog_replace;
+mod reference_insert;
+
+use reference_insert::insert_reference_documents;
 
 #[cfg(debug_assertions)]
 use std::sync::{Arc, Barrier, Mutex};
@@ -780,7 +783,8 @@ fn insert_document_symbols(
         )
         .map_err(map_sqlite_error)?;
     insert_export_documents(transaction, std::slice::from_ref(replacement), generation)?;
-    insert_reference_documents(transaction, std::slice::from_ref(replacement))
+    insert_reference_documents(transaction, std::slice::from_ref(replacement), false)?;
+    Ok(())
 }
 
 fn insert_catalog_documents(
@@ -911,143 +915,6 @@ fn insert_export_documents(
         }
     }
     Ok(())
-}
-
-fn insert_reference_documents(
-    transaction: &Transaction<'_>,
-    documents: &[DocumentSymbols],
-) -> Result<(), StoreError> {
-    const OCCURRENCE_IDENTITIES_PER_INSERT: usize = 256;
-    const VALUES_PER_OCCURRENCE_IDENTITY: usize = 4;
-    let mut occurrence_statement = transaction
-        .prepare_cached(
-            "INSERT INTO reference_occurrences(\
-                document_uri, ordinal, name, start_line, start_character, end_line, end_character, qualified\
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-        )
-        .map_err(map_sqlite_error)?;
-    let mut alias_statement = transaction
-        .prepare_cached(
-            "INSERT INTO reference_aliases(document_uri, ordinal, from_name, to_name) \
-             VALUES (?1, ?2, ?3, ?4)",
-        )
-        .map_err(map_sqlite_error)?;
-    let mut binding_statement = transaction
-        .prepare_cached(
-            "INSERT INTO reference_bindings(\
-                document_uri, ordinal, imported_name, local_name, source_specifier, kind\
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        )
-        .map_err(map_sqlite_error)?;
-    let mut occurrence_identity_values =
-        Vec::with_capacity(OCCURRENCE_IDENTITIES_PER_INSERT * VALUES_PER_OCCURRENCE_IDENTITY);
-    let mut occurrence_identity_count = 0usize;
-    for document in documents {
-        let mut occurrence_identities = Vec::with_capacity(document.occurrences.len());
-        for (ordinal, occurrence) in document.occurrences.iter().enumerate() {
-            occurrence_statement
-                .execute(params![
-                    document.uri,
-                    sqlite_ordinal(ordinal, "reference occurrence")?,
-                    occurrence.name,
-                    i64::from(occurrence.range.start.line),
-                    i64::from(occurrence.range.start.character),
-                    i64::from(occurrence.range.end.line),
-                    i64::from(occurrence.range.end.character),
-                    occurrence.qualified,
-                ])
-                .map_err(map_sqlite_error)?;
-            occurrence_identities.push((
-                occurrence.name.as_str(),
-                match occurrence.qualified {
-                    None => -1_i64,
-                    Some(false) => 0_i64,
-                    Some(true) => 1_i64,
-                },
-                occurrence.qualifier.as_deref().unwrap_or(""),
-            ));
-        }
-        occurrence_identities.sort_unstable();
-        occurrence_identities.dedup();
-        for (name, qualification, qualifier) in occurrence_identities {
-            occurrence_identity_values.extend([
-                SqlValue::Text(document.uri.clone()),
-                SqlValue::Text(name.to_owned()),
-                SqlValue::Integer(qualification),
-                SqlValue::Text(qualifier.to_owned()),
-            ]);
-            occurrence_identity_count += 1;
-            if occurrence_identity_count == OCCURRENCE_IDENTITIES_PER_INSERT {
-                insert_occurrence_identity_values(
-                    transaction,
-                    occurrence_identity_count,
-                    &occurrence_identity_values,
-                )?;
-                occurrence_identity_values.clear();
-                occurrence_identity_count = 0;
-            }
-        }
-        for (ordinal, alias) in document.aliases.iter().enumerate() {
-            alias_statement
-                .execute(params![
-                    document.uri,
-                    sqlite_ordinal(ordinal, "reference alias")?,
-                    alias.from_name,
-                    alias.to_name,
-                ])
-                .map_err(map_sqlite_error)?;
-        }
-        for (ordinal, binding) in document.bindings.iter().enumerate() {
-            binding_statement
-                .execute(params![
-                    document.uri,
-                    sqlite_ordinal(ordinal, "reference binding")?,
-                    binding.imported_name,
-                    binding.local_name,
-                    binding.source_specifier,
-                    reference_binding_kind_to_i64(binding.kind),
-                ])
-                .map_err(map_sqlite_error)?;
-        }
-    }
-    if occurrence_identity_count > 0 {
-        insert_occurrence_identity_values(
-            transaction,
-            occurrence_identity_count,
-            &occurrence_identity_values,
-        )?;
-    }
-    Ok(())
-}
-
-fn insert_occurrence_identity_values(
-    transaction: &Transaction<'_>,
-    row_count: usize,
-    values: &[SqlValue],
-) -> Result<(), StoreError> {
-    const VALUES_PER_OCCURRENCE_IDENTITY: usize = 4;
-    let mut sql = String::from(
-        "INSERT INTO reference_occurrence_identities(\
-            document_uri, name, qualification, qualifier\
-         ) VALUES ",
-    );
-    let value_group = format!("({})", ["?"; VALUES_PER_OCCURRENCE_IDENTITY].join(","));
-    sql.push_str(&vec![value_group; row_count].join(","));
-    transaction
-        .prepare_cached(&sql)
-        .map_err(map_sqlite_error)?
-        .execute(params_from_iter(values.iter()))
-        .map(|_| ())
-        .map_err(map_sqlite_error)
-}
-
-fn sqlite_ordinal(ordinal: usize, item: &str) -> Result<i64, StoreError> {
-    i64::try_from(ordinal).map_err(|_| {
-        StoreError::new(
-            StoreErrorKind::InvalidData,
-            format!("{item} ordinal exceeds SQLite integer range"),
-        )
-    })
 }
 
 const REFERENCE_NAMES_SQL: &str = "WITH RECURSIVE \

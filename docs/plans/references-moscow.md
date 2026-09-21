@@ -119,6 +119,14 @@ then measured median 6.12 seconds in reference-related insertion and 3.08
 seconds in commit, with all three real LSP runs still exact 9/9. Another
 optimization attempt needs finer write-amplification evidence; the wait
 remains default-off and the 500 ms navigation gate remains RED.
+The next [default-off reference subphase trace](../reports/2026-09-22-settings-reference-insert-subphases.md)
+kept SQL and transaction boundaries unchanged. Three fresh Settings replays
+again returned 9/9 exact Locations; median occurrence and identity work were
+3.69 and 1.75 seconds within 6.06 seconds of reference insertion, and commit
+was 3.13 seconds. A separate single-run stack sample places automatic WAL
+checkpointing inside commit, but does not establish that moving it will shorten
+activation. Record row volumes and compare complete ready-transition time
+before any SQL or durability change. This observation does not graduate R-20.
 R-07 now also rejects candidates if the sidecar changes from ready to warming
 between candidate search and acceptance, even when the committed generation
 number is unchanged. Direct and definition-anchor real-LSP transcripts both

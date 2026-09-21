@@ -26,6 +26,10 @@ struct CatalogSqlTrace {
     insert_symbols_ms: f64,
     insert_exports_ms: f64,
     insert_references_ms: f64,
+    insert_occurrences_ms: f64,
+    insert_occurrence_identities_ms: f64,
+    insert_aliases_ms: f64,
+    insert_bindings_ms: f64,
     create_index_ms: f64,
     rejected_metadata_ms: f64,
     commit_ms: f64,
@@ -96,8 +100,15 @@ pub(super) fn replace_all(
     trace.insert_exports_ms = elapsed_ms(started);
 
     let started = Instant::now();
-    insert_reference_documents(&transaction, &batch.documents)?;
+    let trace_enabled =
+        std::env::var_os("ARKTS_INDEX_CATALOG_SQL_TRACE_FILE").is_some_and(|path| !path.is_empty());
+    let reference_timings =
+        insert_reference_documents(&transaction, &batch.documents, trace_enabled)?;
     trace.insert_references_ms = elapsed_ms(started);
+    trace.insert_occurrences_ms = reference_timings.occurrences_ms;
+    trace.insert_occurrence_identities_ms = reference_timings.occurrence_identities_ms;
+    trace.insert_aliases_ms = reference_timings.aliases_ms;
+    trace.insert_bindings_ms = reference_timings.bindings_ms;
 
     let started = Instant::now();
     transaction
@@ -162,7 +173,10 @@ fn write_trace(trace: &CatalogSqlTrace) {
             "\"dropIndexMs\":{:.3},\"deleteDocumentsMs\":{:.3},",
             "\"deleteRejectedMs\":{:.3},\"insertDocumentsMs\":{:.3},",
             "\"insertSymbolsMs\":{:.3},\"insertExportsMs\":{:.3},",
-            "\"insertReferencesMs\":{:.3},\"createIndexMs\":{:.3},",
+            "\"insertReferencesMs\":{:.3},",
+            "\"insertOccurrencesMs\":{:.3},\"insertOccurrenceIdentitiesMs\":{:.3},",
+            "\"insertAliasesMs\":{:.3},\"insertBindingsMs\":{:.3},",
+            "\"createIndexMs\":{:.3},",
             "\"rejectedMetadataMs\":{:.3},\"commitMs\":{:.3},",
             "\"totalMs\":{:.3}}}"
         ),
@@ -177,6 +191,10 @@ fn write_trace(trace: &CatalogSqlTrace) {
         trace.insert_symbols_ms,
         trace.insert_exports_ms,
         trace.insert_references_ms,
+        trace.insert_occurrences_ms,
+        trace.insert_occurrence_identities_ms,
+        trace.insert_aliases_ms,
+        trace.insert_bindings_ms,
         trace.create_index_ms,
         trace.rejected_metadata_ms,
         trace.commit_ms,

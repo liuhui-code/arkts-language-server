@@ -362,9 +362,18 @@ now has three trace-on and three trace-off complete Settings replays, all
 exact 9/9. Median SQL replacement time was 10,412 ms: reference-related
 insertion 6,118 ms, commit 3,075 ms, index recreation 622 ms. The observer
 did not show measurable activation overhead in this three-run control, but
-the reference stage still aggregates four kinds of rows. Next partition that
-stage and commit/write amplification; no durability or scope change is
-authorized by these timings.
+the reference stage still aggregates four kinds of rows. A
+[default-off subphase trace](../reports/2026-09-22-settings-reference-insert-subphases.md)
+then partitioned that stage without changing SQL or transaction boundaries.
+Three further fresh Settings replays were exact 9/9: median occurrence work
+was 3,693 ms, occurrence-identity sort/dedup/write 1,751 ms, bindings 419 ms
+and aliases 96 ms; median commit was 3,131 ms. A separate macOS stack sample
+found SQLite's automatic WAL checkpoint on the commit stack, but one sample
+does not establish its wall-time share or justify changing durability. Next
+record actual row volumes and test any checkpoint hypothesis against the
+entire ready transition, not just `commitMs`. No compiler scope, SDK policy or
+production SQL optimization is authorized by these timings; first-click and
+500 ms navigation gates remain open.
 
 Freeze exact repository commit, dirty state, server commit, Node/toolchain,
 backend version, project selection, SDK fingerprint, standard-library asset

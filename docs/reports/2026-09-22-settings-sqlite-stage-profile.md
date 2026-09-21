@@ -41,6 +41,24 @@ binding writes; it is **not** proof that one table or SQL statement alone
 accounts for six seconds. `commitMs` includes SQLite's own finalization and
 storage effects; no unsafe durability setting was changed.
 
+A separate fourth exact 9/9 Settings replay sampled the Rust sidecar for four
+seconds near the commit interval. Its transaction trace recorded
+`commitMs=3,804`. Of 1,667 sampled catalog-thread ticks under
+`Transaction::commit`, 1,225 descended through SQLite's default WAL hook to
+`sqlite3_wal_checkpoint_v2`; that subtree included 868 `pwrite` and 269
+`fsync` ticks. The remaining 442 sampled commit ticks followed VDBE/pager WAL
+frame finalization. This is stack-sampling evidence that **automatic WAL
+checkpointing is a material part of commit wall time on this run**, not a
+precise percentage or proof that disabling it improves end-to-end latency.
+Moving checkpoint work after commit would merely shift cost until measured
+otherwise and needs a separate correctness/durability review.
+
+```text
+/private/tmp/settings-commit-sample-replay.json
+/private/tmp/settings-commit-sample-sql.ndjson
+/private/tmp/settings-commit-sidecar.sample.txt
+```
+
 Trace-on and trace-off activation medians were 10,600 and 10,624 ms in these
 three sequential runs. This does not show a measurable trace penalty here,
 but the sample is too small to establish a general overhead bound. The

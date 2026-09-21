@@ -12,9 +12,10 @@ use arkts_index_sqlite::SqliteStore;
 
 const ROOT: &str = "file:///catalog-trace";
 const TARGET: &str = "file:///catalog-trace/Target.ets";
+const ALIAS_COUNT: usize = 64;
 const CHILD_DB: &str = "ARKTS_INDEX_CATALOG_TRACE_TEST_DB";
 const TRACE_FILE: &str = "ARKTS_INDEX_CATALOG_SQL_TRACE_FILE";
-const FIELDS: [&str; 15] = [
+const FIELDS: [&str; 19] = [
     "generation",
     "documents",
     "preflightMs",
@@ -26,6 +27,10 @@ const FIELDS: [&str; 15] = [
     "insertSymbolsMs",
     "insertExportsMs",
     "insertReferencesMs",
+    "insertOccurrencesMs",
+    "insertOccurrenceIdentitiesMs",
+    "insertAliasesMs",
+    "insertBindingsMs",
     "createIndexMs",
     "rejectedMetadataMs",
     "commitMs",
@@ -128,7 +133,22 @@ fn catalog_activation_trace_is_opt_in_and_follows_successful_commits() {
         );
         assert_eq!(fields[0].1, (index + 1) as f64);
         assert_eq!(fields[1].1, 2.0);
-        assert!(fields[14].1 >= fields[13].1, "total includes commit");
+        let reference_parts = &fields[11..15];
+        assert!(
+            reference_parts
+                .iter()
+                .all(|(_, elapsed_ms)| *elapsed_ms > 0.0),
+            "all reference insertion subphases must execute: {record}"
+        );
+        let parts_ms: f64 = reference_parts
+            .iter()
+            .map(|(_, elapsed_ms)| elapsed_ms)
+            .sum();
+        assert!(
+            parts_ms <= fields[10].1 + 0.01,
+            "subphases must fit within insertReferencesMs (allowing 0.001-ms rounding): {record}"
+        );
+        assert!(fields[18].1 >= fields[17].1, "total includes commit");
     }
 
     let unwritable_database = temp.0.join("unwritable.sqlite3");
@@ -143,11 +163,19 @@ fn catalog_activation_trace_child() {
     for generation in [1, 2] {
         let store = SqliteStore::open(&database, ROOT).expect("open SQLite catalog");
         let mut index = WorkspaceIndex::with_store(store);
-        let documents = [
+        let consumer_source = (0..ALIAS_COUNT)
+            .map(|ordinal| {
+                format!(
+                    "import {{ Target as AliasTarget{ordinal:02} }} from './Target'\n\
+                     const value{ordinal:02} = new AliasTarget{ordinal:02}()\n"
+                )
+            })
+            .collect::<String>();
+        let documents: Vec<_> = [
             (TARGET, "export class Target {}\n"),
             (
                 "file:///catalog-trace/Consumer.ets",
-                "import { Target } from './Target'\nconst value = new Target()\n",
+                consumer_source.as_str(),
             ),
         ]
         .into_iter()
@@ -155,6 +183,22 @@ fn catalog_activation_trace_child() {
             parse_document_symbols(&Document::new(uri, source)).expect("parse ArkTS fixture")
         })
         .collect();
+        assert!(
+            documents
+                .iter()
+                .map(|document| document.aliases.len())
+                .sum::<usize>()
+                >= ALIAS_COUNT,
+            "trace fixture must exercise repeated alias insertion"
+        );
+        assert!(
+            documents
+                .iter()
+                .map(|document| document.bindings.len())
+                .sum::<usize>()
+                >= ALIAS_COUNT,
+            "trace fixture must exercise repeated binding insertion"
+        );
         let receipt = index
             .activate_catalog(generation, documents, vec![])
             .expect("activate catalog");
