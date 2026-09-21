@@ -31,7 +31,7 @@ exact Location set **and** all 62 diagnostics. Indexed-batched reduced this
 one run's whole-run peak by 26.2% relative to legacy, but its cold request
 remained about 9.7 seconds. Pure batching took 106 seconds, reinforcing that
 batching without candidate narrowing is not a usable default here. These are
-single runs; do not infer P95, a 50% memory reduction, or resolution of the
+first-run observations; do not infer P95, a 50% memory reduction, or resolution of the
 original >3 GB report. Raw JSON with the full RSS samples, request timeline,
 diagnostics and normalized results remains at:
 
@@ -39,12 +39,25 @@ diagnostics and normalized results remains at:
 - `/private/tmp/photos-f2-batched-20260921.json`
 - `/private/tmp/photos-f2-indexed-20260921.json`
 
-After extracting the oracle responsibility from the existing oversized
-runner and tightening the manifest fields, a separate finalized-code indexed
-replay again passed (3 Locations, 62 diagnostics; whole-run peak
-669,839,360 B). Its raw report is
-`/private/tmp/photos-f2-indexed-20260921-verified.json`. It is a second
-indexed sample, not a second complete A/B/C pair.
+Two more independent cold server processes were run for each strategy. All
+nine runs passed the same three-location oracle and version-1 automatic
+diagnostics (62 items). Every candidate also passed the strict Location and
+diagnostic differential against legacy. The three-run series is:
+
+| Strategy | Request duration, ms | Whole-run peak RSS, bytes | Median duration | Median peak RSS |
+| --- | --- | --- | ---: | ---: |
+| legacy | 9,589 / 9,233 / 8,442 | 896,401,408 / 894,541,824 / 881,414,144 | 9,233 ms | 894,541,824 B |
+| batched | 106,296 / 100,021 / 101,486 | 841,494,528 / 896,593,920 / 881,795,072 | 101,486 ms | 881,795,072 B |
+| indexed-batched | 9,670 / 9,572 / 9,549 | 661,549,056 / 669,839,360 / 677,011,456 | 9,572 ms | 669,839,360 B |
+
+The indexed-batched median peak was 25.1% below legacy, while median cold
+latency was 3.7% higher. Pure batching took roughly eleven times as long as
+legacy with little median peak reduction. This is a three-run smoke comparison
+for one symbol, not randomized or powered to estimate P95. Raw reports for
+the additional legacy and batched runs are
+`/private/tmp/photos-f2-{legacy,batched}-cold{2,3}-20260921.json`; the second
+indexed run is `/private/tmp/photos-f2-indexed-20260921-verified.json` and the
+third is `/private/tmp/photos-f2-indexed-cold3-20260921.json`.
 
 An initial sandboxed replay failed before the first sample (`spawn EPERM`),
 and was excluded; all three table rows were run with the macOS external
@@ -70,8 +83,8 @@ node scripts/bench/replay-references.mjs \
 The manifest refuses SDK/checkout/query/binary/oracle mismatch before server
 launch. Settings/Launcher/Contacts are not represented as successful cases on
 this machine: their matching SDK/checkouts and verified symbol oracles are not
-present. F2 next needs ≥3 independent cold runs per strategy, ten hot runs,
-both `includeDeclaration` values, and additional real-project oracles.
+present. F2 still needs complete hot/diagnostic series and additional
+matching-SDK real-project oracles.
 
 ## Same-process repeat and unsaved-edit replay
 
@@ -98,3 +111,45 @@ notification for PASS; the legacy raw report retains its original erroneous
 status and is excluded from gates. This observation does not by itself prove
 whether legacy diagnostics were suppressed by the server or delayed by the
 workload; that needs a separate controlled investigation.
+
+## Excluding the declaration
+
+The same real symbol was replayed with `includeDeclaration=false`. A discovery
+run against the three-location oracle intentionally failed with two returned
+positions; source inspection confirmed that `Consts.ets:57:13–37` is the
+declaration, while the two `BottomToolbar.ets` positions are uses. The
+[separate two-location oracle](../../bench/references/oracles/photos-bottomtoolbar-get-mutually-exclusive-desc-no-declaration.json)
+and [pinned manifest](../../bench/references/manifests/photos-bottomtoolbar-api24-no-declaration.json)
+then passed in independent fresh processes:
+
+| Strategy | Exact uses | Diagnostics | Request duration | Whole-run peak RSS |
+| --- | ---: | ---: | ---: | ---: |
+| legacy | 2 | 62 | 8,669 ms | 890,028,032 B |
+| indexed-batched | 2 | 62 | 9,515 ms | 667,672,576 B |
+
+The strict replay differential passed for exact URI/range and diagnostics.
+Raw reports are `/private/tmp/photos-f2-{legacy,indexed}-no-declaration-20260921.json`;
+the intentionally failing oracle-discovery report is
+`/private/tmp/photos-f2-false-discovery-20260921.json` and is excluded from
+benchmark totals. This completes one-symbol coverage of both declaration
+settings, not the remaining multi-symbol, multi-project or release gates.
+
+## Completion/definition-warmed references
+
+Mode B started a fresh process, opened the same document, requested completion
+and definition at the same position, then requested references. Both strategies
+returned the three-location oracle and 62 versioned automatic diagnostics;
+the strict Location/diagnostic differential passed.
+
+| Strategy | Completion | Definition | References | Whole-run peak RSS |
+| --- | ---: | ---: | ---: | ---: |
+| legacy | 8,447 ms | 500 ms | **228 ms** | 898,539,520 B |
+| indexed-batched | 8,514 ms | 450 ms | **8,908 ms** | 1,260,650,496 B |
+
+These are one run per strategy, not a median or production latency gate.
+The whole-run peak includes warm-up and references, so it must not be labelled
+as references-only memory. Nevertheless, this A/B shows that the default
+strategy did not reuse the compiler work already paid by completion/definition
+in this case; its verifier added substantial latency and total peak residency.
+The mechanism and precise phase ownership still require trace-on diagnosis.
+Raw reports are `/private/tmp/photos-f2-{legacy,indexed}-warmed-20260921.json`.

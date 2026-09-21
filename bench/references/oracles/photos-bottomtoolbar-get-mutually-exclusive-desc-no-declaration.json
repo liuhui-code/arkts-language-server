@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "locations": [
+    {
+      "file": "imageEditor/product/editor_phone/src/main/ets/component/menu/BottomToolbar.ets",
+      "range": {
+        "start": { "line": 92, "character": 40 },
+        "end": { "line": 92, "character": 64 }
+      }
+    },
+    {
+      "file": "imageEditor/product/editor_phone/src/main/ets/component/menu/BottomToolbar.ets",
+      "range": {
+        "start": { "line": 351, "character": 15 },
+        "end": { "line": 351, "character": 39 }
+      }
+    }
+  ]
+}
