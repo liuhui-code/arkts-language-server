@@ -1,6 +1,6 @@
 # ADR 0005: Index proof and fallback boundary
 
-Status: **Accepted; resynchronization recovery proposed**.
+Status: **Accepted; resynchronization recovery implemented**.
 
 ## Decision
 
@@ -13,13 +13,18 @@ resolution and no candidate truncation. Unknown or ambiguous proof cannot
 exclude files. Never lowercase workspace paths unconditionally to mask case
 differences.
 
-The current post-mutation `forceLegacy` protects correctness but persists for
-the session. A future change may restore indexed batching only after the
-sidecar commits a matching new generation and snapshot fingerprints agree.
+Post-mutation `forceLegacy` protects correctness only while the index remains
+at the previously accepted generation. Source or project changes schedule a
+new catalog. Indexed batching resumes only when the sidecar reports `ready`
+with `committedGeneration` greater than the mutation baseline. Unknown status,
+catalog failure or a non-advancing generation remains on the complete legacy
+path.
 
 ## Gate
 
 Stale, partial, ambiguous, re-export, SDK-import and unsaved-overlay cases
 must fail conservative. On verifier failure, discard all partial Locations
 before retrying or failing. Mutation → safe fallback → committed generation →
-indexed recovery must have a real LSP transcript before changing the policy.
+indexed recovery has a real LSP transcript covering indexed → mutation →
+legacy fallback → generation advance → indexed recovery with exact Location
+equality. See [the TDD record](../tdd/references-index-resync.md).

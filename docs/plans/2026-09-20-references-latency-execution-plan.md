@@ -113,6 +113,16 @@ and a 936,415,232-byte process-tree peak, versus 1,063,485,440 bytes in the
 older dispose run. Because these are single runs with different executions,
 they do not graduate the profile or establish a memory improvement.
 
+F5 is implemented. Watched source/project changes now schedule a fresh catalog
+generation; overlapping notifications coalesce into one subsequent catalog
+instead of starting concurrent runs. The semantic proxy records the last
+accepted generation, forces complete legacy semantics while the workspace is
+dirty, and restores indexed batching only after a ready committed generation
+advances beyond that baseline. A real framed-LSP regression proves indexed →
+mutation → legacy fallback → generation 1→2 → indexed recovery, with exact
+Location equality before and after recovery. Unknown/non-advancing generation
+continues to fail conservative ([evidence](../tdd/references-index-resync.md)).
+
 ## Benchmark contract
 
 Freeze exact repository commit, dirty state, server commit, Node/toolchain,

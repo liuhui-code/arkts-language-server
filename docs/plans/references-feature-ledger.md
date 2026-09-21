@@ -13,7 +13,7 @@ completion. An item is complete only after its linked gate passes; see the
 | R-05 | Must | In-flight coalescing | Blocked on R-06 snapshot/freshness ownership: current public lane supersedes the first identical request before semantic dispatch | R-04/R-06; one verification, independent waiter cancellation without weakening ContentModified |
 | R-06 | Must | Interactive/global lanes | Proposed | Versioned snapshot contract; interactive request finishes during references |
 | R-07 | Must | Index trust/fallback integrity | Existing, extend | Stale/ambiguous/overlay differential remains fail conservative |
-| R-08 | Must | Index resync recovery | Proposed | R-07; mutation → safe fallback → committed generation → indexed |
+| R-08 | Must | Index resync recovery | Implemented | Real LSP proves mutation → safe legacy fallback → committed generation advance → indexed recovery with exact Locations |
 | R-09 | Should | Resident full-scope references fast-path | Research | R-03; explicit coverage equality and exact diff |
 | R-10 | Should | Anchor reuse/fusion | Research | R-01/R-02; fewer Program builds without result or peak regression |
 | R-11 | Should | Worker-shell reuse spike | Experimental only | R-01/R-02; meaningful latency gain, peak ≤ per-batch ×1.10 |

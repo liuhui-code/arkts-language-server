@@ -24,6 +24,10 @@ does not complete R-06 or its P95 interaction gate.
 R-03 now has an opt-in `budget-aware` profile with a real-LSP retention test;
 the safe `dispose` profile remains default until repeated Settings memory A/B
 and post-eviction evidence graduate ADR 0002.
+R-08 is now implemented: watched source/project changes start a new catalog,
+legacy remains authoritative while its generation is stale, and indexed
+batching resumes only after a ready generation advances. The public transcript
+keeps exact Locations across fallback and recovery; it does not weaken R-07.
 
 ## Should
 

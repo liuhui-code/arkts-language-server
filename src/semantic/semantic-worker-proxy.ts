@@ -27,6 +27,10 @@ import { semanticRuntimeConfig } from "./coordinator/runtime-config.js"
 import { referenceSearchRuntimeConfig } from "./references/reference-runtime.js"
 import { interactiveSemanticRuntimeConfig } from "./interactive-runtime.js"
 import { discoverCompletionCandidates } from "./completion-discovery.js"
+import {
+  prepareReferenceIndexSearch,
+  ReferenceIndexFreshness,
+} from "./references/reference-index-freshness.js"
 import { ReferenceResultCache } from "./references/reference-result-cache.js"
 import {
   RootSemanticWorkerSupervisor,
@@ -53,7 +57,6 @@ interface SemanticWorkerProxyOptions {
 }
 
 type TrackedDocument = DocumentSnapshot
-
 interface WorkerControlMessage {
   readonly control: "registerRoot" | "configureProject" | "configureSdk" | "applyMemoryPressure"
   readonly epoch?: number
@@ -71,7 +74,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
   readonly #referenceIndex: WorkspaceReferenceIndexPort | undefined
   readonly #packageResolver = new LocalPackageResolver()
   readonly #documents = new Map<string, TrackedDocument>()
-  readonly #changedWorkspaceRoots = new Set<string>()
+  readonly #referenceIndexFreshness = new ReferenceIndexFreshness()
   readonly #supervisors = new Map<string, RootSemanticWorkerSupervisor>()
   readonly #handlers = new Map<number, RootSemanticWorkerEndpointHandlers>()
   readonly #referenceResults = new ReferenceResultCache()
@@ -165,7 +168,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
       if (batch.rootDirty || batch.changes.some(change => {
         const changedPath = toFilePath(change.uri)
         return changedPath?.endsWith(".ets") || changedPath?.endsWith(".ts")
-      })) this.#changedWorkspaceRoots.add(batch.rootUri)
+      })) this.#referenceIndexFreshness.changed(batch.rootUri, this.#referenceIndex)
       const rootPath = toFilePath(batch.rootUri)
       if (rootPath) this.#packageResolver.invalidate(rootPath)
       this.#mutate(batch.rootUri, {
@@ -269,7 +272,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
       position: query.position,
       includeDeclaration: query.includeDeclaration,
       ...(traceId ? { traceId } : {}),
-      ...(this.#changedWorkspaceRoots.has(query.document.workspaceId)
+      ...(this.#referenceIndexFreshness.isDirty(query.document.workspaceId)
         ? { forceLegacy: true } : {}),
       ...(candidates ? {
         candidateUris: candidates.uris,
@@ -397,10 +400,10 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
   ): Promise<ReferenceCandidateSelection | undefined> {
     if (referenceSearchRuntimeConfig(this.#environment).strategy !== "indexed-batched"
       || !this.#referenceIndex) return undefined
-    if (this.#changedWorkspaceRoots.has(query.document.workspaceId)) {
-      this.#logger?.info("references.index.fallback", { reason: "workspace-changed" })
-      return undefined
-    }
+    if (!await prepareReferenceIndexSearch(
+      this.#referenceIndexFreshness, query.document.workspaceId,
+      this.#referenceIndex, this.#logger,
+    )) return undefined
     try {
       const admittedRootUris = this.#referenceAdmissionRoots(query.document.workspaceId)
       let direct = await this.#referenceIndex.searchReferenceCandidates(
@@ -420,7 +423,9 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
         admittedRootUris,
         query.signal,
       )
-      if (await this.#eligibleReferenceCandidates(query.document.workspaceId, direct)) {
+      if (await this.#referenceIndexFreshness.accepts(
+        query.document.workspaceId, direct, this.#referenceIndex,
+      )) {
         const candidateUris = identityReferenceUris(direct)
         const supportUris = identityReferenceSupportUris(direct, candidateUris)
         const identityComplete = direct.identityComplete && supportUris !== undefined
@@ -509,6 +514,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
         })
         return undefined
       }
+      this.#referenceIndexFreshness.accepted(query.document.workspaceId, result.servedGeneration)
       const candidateUris = identityReferenceUris(result)
       const supportUris = identityReferenceSupportUris(result, candidateUris)
       const identityComplete = result.identityComplete && supportUris !== undefined
@@ -544,16 +550,6 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
     }
   }
 
-  async #eligibleReferenceCandidates(
-    workspaceId: string,
-    result: WorkspaceReferenceCandidateResult,
-  ): Promise<boolean> {
-    if (!result.supported || !result.complete || result.completeness !== "ready"
-      || !result.declarationIdentity) return false
-    const status = await this.#referenceIndex?.status(workspaceId)
-    return status !== undefined && result.servedGeneration === status.committedGeneration
-  }
-
   async #resolveReferenceCandidateSources(
     workspaceId: string,
     declarationUri: string,
@@ -562,7 +558,9 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
     admittedRootUris: readonly string[] | undefined,
     signal?: AbortSignal,
   ): Promise<WorkspaceReferenceCandidateResult> {
-    if (result.identityComplete || !await this.#eligibleReferenceCandidates(workspaceId, result)) {
+    if (result.identityComplete || !this.#referenceIndex || !await this.#referenceIndexFreshness.accepts(
+      workspaceId, result, this.#referenceIndex,
+    )) {
       return result
     }
     const rootPath = toFilePath(workspaceId)
