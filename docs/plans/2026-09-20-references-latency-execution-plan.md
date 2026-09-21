@@ -104,6 +104,15 @@ before either request can share semantic work. R-05 therefore moves with the
 R-06 snapshot/freshness ownership change; a proxy-local Promise map would not
 preserve independent cancellation and `ContentModified` semantics.
 
+F4 has its first feature-gated vertical slice. The `budget-aware` profile
+retains a warmed resident context through references under the existing
+coordinator and process-memory pressure policy; `dispose` stays the default.
+The public test observes resident count 1→1 and an exact definition after the
+global query. One Settings/API-24 mode-B run passed with 248 exact Locations
+and a 936,415,232-byte process-tree peak, versus 1,063,485,440 bytes in the
+older dispose run. Because these are single runs with different executions,
+they do not graduate the profile or establish a memory improvement.
+
 ## Benchmark contract
 
 Freeze exact repository commit, dirty state, server commit, Node/toolchain,

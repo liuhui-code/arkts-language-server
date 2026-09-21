@@ -37,6 +37,7 @@ import {
 } from "../../semantic/coordinator/semantic-coordinator.js"
 import { ReferenceSearchExecutor } from "../../semantic/references/reference-search-executor.js"
 import type { ReferenceSearchRuntimeConfig } from "../../semantic/references/reference-runtime.js"
+import { applyReferenceContextRetention, referenceCheckpoint } from "../../semantic/references/reference-context-retention.js"
 import {
   resolveReferenceAnchorInWorker,
   verifyReferenceBatchInWorker,
@@ -267,14 +268,13 @@ export class SemanticTypeEngineRegistry {
               : undefined,
           })
         ),
-        disposeResidentContext: rootPath => { this.coordinator.remove(rootPath) },
-        checkpoint: options.hostCancellationToken
-          ? () => {
-              if (options.hostCancellationToken?.isCancellationRequested()) {
-                throw new Error("Semantic request cancelled")
-              }
-            }
-          : undefined,
+        disposeResidentContext: rootPath => applyReferenceContextRetention(
+          options.references!.contextRetentionProfile,
+          this.coordinator,
+          rootPath,
+          options.onReferenceTrace,
+        ),
+        checkpoint: referenceCheckpoint(options.hostCancellationToken),
         trace: options.references.trace ? options.onReferenceTrace : undefined,
       })
     }

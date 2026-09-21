@@ -21,6 +21,9 @@ Settings/API-24 mode-C replay, requests 2–10 retained all 248 exact Locations
 with a 65 ms end-to-end median and 0.60–0.90 ms server work on cache hits.
 One request still waited about 1.94 s behind SDK/diagnostic queue work, so this
 does not complete R-06 or its P95 interaction gate.
+R-03 now has an opt-in `budget-aware` profile with a real-LSP retention test;
+the safe `dispose` profile remains default until repeated Settings memory A/B
+and post-eviction evidence graduate ADR 0002.
 
 ## Should
 

@@ -81,6 +81,14 @@ selections and two verifier batches. Therefore the nine valid hits started no
 index selection or verifier work. Whole-run peak process-tree RSS was
 849,776,640 bytes; this single run is not used as a memory graduation claim.
 
+An opt-in budget-aware context-retention mode-B follow-up also returned all
+248 Locations. Completion plus definition warm-up took 9,472 ms, references
+took 5,902 ms end to end (server duration 5,831 ms), and the trace retained
+the resident context 1→1. Peak process-tree RSS was 936,415,232 bytes, compared
+with 1,063,485,440 bytes in the earlier dispose-profile B run. This direction
+is encouraging but is not a randomized repeated A/B and does not justify
+changing the production default.
+
 Raw reports, including request timeline, diagnostics, normalized Locations and
 external RSS samples, are local to this Mac:
 
@@ -89,6 +97,7 @@ external RSS samples, are local to this Mac:
 - `/private/tmp/settings-api24-menucontroller-indexed-b.json`
 - `/private/tmp/settings-api24-menucontroller-indexed-c.json`
 - `/private/tmp/settings-api24-menucontroller-indexed-c-front-cache.json`
+- `/private/tmp/settings-api24-menucontroller-indexed-b-retain.json`
 
 Reproduce the indexed A run with a new output path and the checked-in
 provisional API-24 oracle:
