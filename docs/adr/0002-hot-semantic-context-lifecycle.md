@@ -46,4 +46,10 @@ The structural real-LSP test is GREEN: a warmed definition leaves one context,
 budget-aware references retain it, and the following definition is exact. One
 exploratory Settings/API-24 mode-B run returned the exact 248 Locations with a
 936,415,232-byte peak versus 1,063,485,440 bytes in the older dispose run, but
-single non-randomized runs are insufficient to change the default.
+single non-randomized runs are insufficient to change the default. A later
+[three-versus-three Settings comparison](../reports/2026-09-21-settings-api24-reference-matrix.md)
+also preserved exact Locations but showed only small latency and product-RSS
+differences. The [post-retention phase trace](../reports/2026-09-21-settings-post-retention-memory-trace.md)
+found high pre-verifier Node RSS after the logical resident count changed 1→0
+under `dispose`; this does not prove a leak or two live Programs. Neither
+comparison graduates `budget-aware` or changes the production default.

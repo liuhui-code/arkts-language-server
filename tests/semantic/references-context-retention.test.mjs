@@ -74,6 +74,11 @@ test("budget-aware references retain the warm interactive context", async (t) =>
     residentAfter: 1,
     removed: false,
   }])
+  const batchStart = events.find(({ event }) => event === "references.batch.start")
+  assert.ok(batchStart, "trace should mark verifier admission after context retention")
+  assert.ok(Number.isSafeInteger(batchStart.rssBytes) && batchStart.rssBytes > 0)
+  assert.ok(Number.isSafeInteger(batchStart.heapUsedBytes) && batchStart.heapUsedBytes > 0)
+  assert.ok(events.indexOf(batchStart) > events.indexOf(retention[0]))
 })
 
 function positionAt(source, offset) {

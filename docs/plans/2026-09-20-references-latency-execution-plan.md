@@ -195,6 +195,19 @@ graduate R-03 or justify changing its default. Both profiles peaked around
 a hard Node-process limit. Post-eviction PSS and release-level latency remain
 unmeasured, and first references still exceed 500 ms.
 
+An [observation-only F4 trace](../tdd/references-post-retention-memory-trace.md)
+adds Node RSS and semantic Worker heap used to trace-gated
+`references.batch.start` after the retention decision. In one new real Settings
+`HomeInitData` mode-B process, definition completion already showed
+730,607,616-byte Node RSS; logical disposal changed resident count 1→0, yet
+the pre-verifier batch-start RSS was 733,794,304 bytes. All three exploratory
+mode-A/B trace-on/off processes returned the same nine exact Locations and
+empty diagnostics ([raw measurements and limits](../reports/2026-09-21-settings-post-retention-memory-trace.md)).
+This rules out attributing the entire warmed peak to `findReferences` alone,
+but neither proves live double-Program residency nor justifies changing the
+default. A short no-forced-GC post-disposal idle measurement is the next
+causal F4 check; post-eviction PSS/release gates remain open.
+
 F5 is implemented. Watched source/project changes now schedule a fresh catalog
 generation; overlapping notifications coalesce into one subsequent catalog
 instead of starting concurrent runs. The semantic proxy records the last
