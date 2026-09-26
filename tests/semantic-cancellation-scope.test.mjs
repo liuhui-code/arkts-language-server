@@ -104,6 +104,31 @@ test("observes every in-flight terminal state through the stable host token", as
   assert.equal(token.isCancellationRequested(), false)
 })
 
+test("isolates independently concurrent request cells", async (t) => {
+  const { SemanticCancellationScope, SemanticWorkerCancelState } = buildDriver(t)
+  const scope = new SemanticCancellationScope()
+  const firstCell = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT)
+  const secondCell = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT)
+  let releaseFirst
+  const firstReleased = new Promise(resolve => { releaseFirst = resolve })
+  let firstSawCancellation = false
+
+  const first = scope.run(firstCell, async () => {
+    await firstReleased
+    firstSawCancellation = scope.hostToken.isCancellationRequested()
+  })
+  const second = scope.run(secondCell, () => {
+    assert.equal(scope.hostToken.isCancellationRequested(), false)
+    Atomics.store(new Int32Array(secondCell), 0, SemanticWorkerCancelState.clientCancelled)
+    assert.equal(scope.hostToken.isCancellationRequested(), true)
+  })
+  await assert.rejects(second)
+  releaseFirst()
+  await first
+  assert.equal(firstSawCancellation, false)
+  assert.equal(scope.hostToken.isCancellationRequested(), false)
+})
+
 test("clears the active cell after synchronous, asynchronous, and cancellation failures", async (t) => {
   const {
     SemanticCancellationScope,

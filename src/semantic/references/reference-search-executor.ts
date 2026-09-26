@@ -126,6 +126,7 @@ export class ReferenceSearchExecutor {
       let admittedProjectPaths = dependencyProfile === "identity"
         ? rootPaths
         : batch.admittedProjectPaths
+      const batchMemory = this.options.trace ? process.memoryUsage() : undefined
       this.options.trace?.("references.batch.start", {
         referenceSession,
         elapsedMs: elapsedMs(),
@@ -133,6 +134,8 @@ export class ReferenceSearchExecutor {
         batchCount: plan.batches.length,
         batchRootFiles: rootPaths.length,
         admittedProjectFiles: admittedProjectPaths?.length ?? plan.membershipFiles,
+        rssBytes: batchMemory?.rss,
+        heapUsedBytes: batchMemory?.heapUsed,
       })
       let verification: ReferenceBatchVerification
       let expansionAttempts = 0

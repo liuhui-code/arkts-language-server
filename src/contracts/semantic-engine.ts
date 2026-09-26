@@ -385,6 +385,9 @@ export interface SemanticEnginePort {
   define(query: SemanticQuery): Promise<VersionedSemanticResult<SemanticDefinition[]>>
   typeDefinitions(query: SemanticQuery): Promise<VersionedSemanticResult<SemanticDefinition[]>>
   implementations(query: SemanticQuery): Promise<VersionedSemanticResult<SemanticDefinition[]>>
+  cachedReferences?(
+    query: SemanticReferencesQuery,
+  ): VersionedSemanticResult<SemanticReferencesOutcome> | undefined
   references(
     query: SemanticReferencesQuery,
   ): Promise<VersionedSemanticResult<SemanticReferencesOutcome>>

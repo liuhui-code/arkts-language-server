@@ -41,6 +41,10 @@ async function buildPortableArtifact({ sourceRoot, output, version, commit, tool
       destination: "dist/server.cjs",
     },
     {
+      source: "dist/arkts-standard-library.json",
+      destination: "dist/arkts-standard-library.json",
+    },
+    {
       source: `target/release/${sidecarName}`,
       destination: `target/release/${sidecarName}`,
     },
@@ -53,6 +57,20 @@ async function buildPortableArtifact({ sourceRoot, output, version, commit, tool
       destination: "scripts/artifact/install-from-manifest.mjs",
     },
   ]
+  const standardLibraryManifest = await resolvePortableInput(source, "dist/arkts-standard-library.json")
+  const standardLibrary = JSON.parse(await fs.readFile(standardLibraryManifest, "utf8"))
+  if (standardLibrary.schema !== "arkts-language-server.standard-library"
+    || standardLibrary.schemaVersion !== 1
+    || !Array.isArray(standardLibrary.files)
+    || standardLibrary.files.length === 0
+    || standardLibrary.files.some((name, index) => typeof name !== "string"
+      || !/^lib(?:\.[A-Za-z0-9_-]+)*\.d\.ts$/.test(name)
+      || (index > 0 && standardLibrary.files[index - 1] >= name))) {
+    throw new Error("invalid ArkTS standard-library manifest")
+  }
+  for (const name of standardLibrary.files) {
+    inputs.push({ source: `dist/${name}`, destination: `dist/${name}` })
+  }
   const files = []
   for (const input of inputs) {
     files.push({

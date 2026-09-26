@@ -1,6 +1,6 @@
 # ADR 0002: Budget-aware hot semantic context
 
-Status: **Proposed; requires A/B memory evidence**.
+Status: **Feature-gated retention and L3 hysteresis implemented; graduation evidence incomplete**.
 
 ## Context
 
@@ -11,7 +11,7 @@ verifier builds another Program can increase total process RSS. The coordinator
 already limits resident contexts and owns trim/dispose; the external compiler's
 AST must not be manually pruned by the server.
 
-## Proposed decision
+## Decision under test
 
 Replace unconditional disposal with one budget-aware admission decision. Keep
 the active interactive root only when its identity and scope remain valid and
@@ -21,6 +21,19 @@ recovery threshold. An idle grace period, if used, is an experimental parameter,
 not a correctness invariant. Never use a small interactive Program as proof of
 a full global reference result without explicit coverage equality.
 
+The first slice exposes `dispose` and `budget-aware` profiles. `dispose`
+remains the production default until the multi-run memory gate passes.
+`budget-aware` leaves the warm resident context under coordinator ownership;
+normal L2/L3 process-memory sampling may still trim or evict it while the
+transient verifier is active. An opt-in trace records the profile and resident
+count before/after admission.
+
+The memory policy is stateful at L3. Once RSS reaches `level3Ratio`, it remains
+at L3 while RSS is at or above `level3TargetRatio`; normal L0–L2 classification
+resumes only after RSS falls below that target. This makes the committed 85%
+target an actual recovery boundary instead of unused configuration and avoids
+evict/rebuild oscillation near the 92% entry threshold.
+
 ## Graduation gate
 
 Feature-gated A/B on the same real project, SDK, query and server build must
@@ -28,3 +41,33 @@ show a hot context hit without unnecessary reconstruction, exact semantic
 results, no stale overlay, and no meaningful peak/post-eviction PSS regression.
 Report the combined Node PID RSS once, including worker threads. Roll back to
 the existing disposal policy if memory or freshness gates fail.
+
+The structural real-LSP test is GREEN: a warmed definition leaves one context,
+budget-aware references retain it, and the following definition is exact. One
+exploratory Settings/API-24 mode-B run returned the exact 248 Locations with a
+936,415,232-byte peak versus 1,063,485,440 bytes in the older dispose run, but
+single non-randomized runs are insufficient to change the default. A later
+[three-versus-three Settings comparison](../reports/2026-09-21-settings-api24-reference-matrix.md)
+also preserved exact Locations but showed only small latency and product-RSS
+differences. The [post-retention phase trace](../reports/2026-09-21-settings-post-retention-memory-trace.md)
+found high pre-verifier Node RSS after the logical resident count changed 1→0
+under `dispose`; this does not prove a leak or two live Programs. Neither
+comparison graduates `budget-aware` or changes the production default.
+
+The subsequent [isolated one-second disposal-idle probe](../reports/2026-09-21-settings-disposal-idle-probe.md)
+used three independent warmed Settings replays per arm with an unchanged
+control bundle and a debug-only pre-verifier pause in a copied bundle. All six
+returned the same nine exact references; none of the three pauses showed a
+material Node RSS decline. A one-second natural idle does not force GC or
+distinguish reachable compiler state from allocator-retained pages, so this
+result neither proves a leak nor justifies changing the default retention
+policy. The memory graduation gate remains open.
+
+The [controlled GC follow-up](../reports/2026-09-21-settings-disposal-gc-probe.md)
+compared three independent no-GC and three GC replays using copied debug
+bundles, with `--expose-gc` in both arms. Explicit collection in the disposed
+semantic Worker reclaimed roughly 508–513 MB of its V8 heap but reduced
+whole-Node RSS only about 21 MB immediately; all six exact reference results
+remained unchanged. This supports collectibility, not a retained-object leak
+finding or a production `global.gc()` policy. The externally sampled peak
+difference remains exploratory and does not graduate `budget-aware`.

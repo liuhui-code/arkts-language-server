@@ -35,6 +35,8 @@ export class DefaultWorkspaceSymbolService implements WorkspaceSymbolServicePort
   private disposed = false
   private closePromise?: Promise<void>
   private readonly opening = new Set<Promise<void>>()
+  private readonly catalogRuns = new Map<string, Promise<void>>()
+  private readonly pendingCatalogs = new Set<string>()
 
   constructor(private readonly dependencies: DefaultWorkspaceSymbolServiceDependencies) {}
 
@@ -67,6 +69,21 @@ export class DefaultWorkspaceSymbolService implements WorkspaceSymbolServicePort
 
   closeDocument(documentUri: DocumentUri): void {
     this.openDocuments.delete(documentUri)
+  }
+
+  workspaceFilesChanged(workspaceIds: readonly string[]): void {
+    if (this.disposed) return
+    for (const workspaceId of new Set(workspaceIds)) {
+      const workspace = this.workspaces.get(workspaceId)
+      if (!workspace) continue
+      this.progress.set(workspaceId, emptyProgress("discovering"))
+      this.reportAggregate()
+      if (!this.searchableWorkspaces.has(workspaceId)) {
+        this.pendingCatalogs.add(workspaceId)
+        continue
+      }
+      this.scheduleCatalog(workspace)
+    }
   }
 
   async searchSymbols(
@@ -140,7 +157,12 @@ export class DefaultWorkspaceSymbolService implements WorkspaceSymbolServicePort
     this.openDocuments.clear()
     const closing = [...this.workspaces].map(([workspaceId]) =>
       this.dependencies.index.close(workspaceId))
-    this.closePromise = Promise.allSettled([...closing, ...this.opening]).then(() => {})
+    this.pendingCatalogs.clear()
+    this.closePromise = Promise.allSettled([
+      ...closing,
+      ...this.opening,
+      ...this.catalogRuns.values(),
+    ]).then(() => {})
     return this.closePromise
   }
 
@@ -159,10 +181,25 @@ export class DefaultWorkspaceSymbolService implements WorkspaceSymbolServicePort
       }
       assertActive(signal)
       this.searchableWorkspaces.add(workspace.id)
-      void this.runCatalog(workspace, signal)
+      this.scheduleCatalog(workspace, signal)
     } catch (error) {
       this.failWorkspace(workspace.id, signal)
     }
+  }
+
+  private scheduleCatalog(workspace: WorkspaceDescriptor, signal?: AbortSignal): void {
+    if (this.disposed) return
+    if (this.catalogRuns.has(workspace.id)) {
+      this.pendingCatalogs.add(workspace.id)
+      return
+    }
+    const run = this.runCatalog(workspace, signal).finally(() => {
+      this.catalogRuns.delete(workspace.id)
+      if (!this.disposed && this.pendingCatalogs.delete(workspace.id)) {
+        this.scheduleCatalog(workspace)
+      }
+    })
+    this.catalogRuns.set(workspace.id, run)
   }
 
   private async runCatalog(

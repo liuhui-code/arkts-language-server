@@ -107,6 +107,9 @@ exit 97
     "dist/semantic-worker.cjs",
     "dist/reference-verifier-worker.cjs",
     "dist/server.cjs",
+    "dist/arkts-standard-library.json",
+    ...JSON.parse(fs.readFileSync(path.join(artifactRoot, "dist", "arkts-standard-library.json"), "utf8"))
+      .files.map((name) => `dist/${name}`),
     `target/release/${process.platform === "win32"
       ? "arkts-index-sidecar.exe"
       : "arkts-index-sidecar"}`,

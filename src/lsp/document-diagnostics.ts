@@ -6,6 +6,7 @@ import type { SemanticEnginePort } from "../contracts/semantic-engine.js"
 import { toLspDiagnostic } from "./diagnostic-mapper.js"
 
 const DIAGNOSTIC_DELAY_MS = 75
+const TEST_DIAGNOSTIC_DELAY_MS = Number(process.env.ARKTS_TEST_DIAGNOSTIC_DELAY_MS ?? 0)
 
 interface DiagnosticDependencies {
   connection: Connection
@@ -40,6 +41,7 @@ export function createDocumentDiagnostics({
   let suspensionCount = 0
   let disposed = false
   let quiescence = Promise.resolve()
+  let testDelaySequence = 0
 
   const cancel = (documentUri: string) => {
     const task = pending.get(documentUri)
@@ -67,6 +69,13 @@ export function createDocumentDiagnostics({
       const task = pending.get(document.uri)
       if (task?.controller === controller) task.started = true
       try {
+        if (Number.isSafeInteger(TEST_DIAGNOSTIC_DELAY_MS)
+          && TEST_DIAGNOSTIC_DELAY_MS > 0 && TEST_DIAGNOSTIC_DELAY_MS <= 5_000) {
+          const sequence = ++testDelaySequence
+          connection.console.log(`diagnostics test delay entered ${document.uri} ${sequence}`)
+          await new Promise(resolve => setTimeout(resolve, TEST_DIAGNOSTIC_DELAY_MS))
+          connection.console.log(`diagnostics test delay settled ${document.uri} ${sequence}`)
+        }
         const result = await semantic.diagnose({
           document: documentSnapshot,
           signal: controller.signal,

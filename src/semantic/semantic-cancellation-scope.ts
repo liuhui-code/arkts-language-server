@@ -1,3 +1,5 @@
+import { AsyncLocalStorage } from "node:async_hooks"
+
 import ts from "typescript"
 
 import {
@@ -7,12 +9,15 @@ import {
 
 export class SemanticCancellationScope {
   readonly hostToken: ts.HostCancellationToken
-  private activeCell: SharedArrayBuffer | undefined
+  private readonly cells = new AsyncLocalStorage<SharedArrayBuffer>()
 
   constructor() {
     this.hostToken = Object.freeze({
-      isCancellationRequested: () => this.activeCell !== undefined
-        && readSemanticWorkerCancellationState(this.activeCell) !== SemanticWorkerCancelState.active,
+      isCancellationRequested: () => {
+        const cell = this.cells.getStore()
+        return cell !== undefined
+          && readSemanticWorkerCancellationState(cell) !== SemanticWorkerCancelState.active
+      },
     })
   }
 
@@ -20,19 +25,16 @@ export class SemanticCancellationScope {
     cell: SharedArrayBuffer,
     operation: () => T | PromiseLike<T>,
   ): Promise<T> {
-    if (this.activeCell !== undefined) {
+    if (this.cells.getStore() !== undefined) {
       throw new Error("Semantic cancellation scope already has an active request")
     }
     readSemanticWorkerCancellationState(cell)
-    this.activeCell = cell
-    try {
+    return this.cells.run(cell, async () => {
       this.checkpoint()
       const result = await operation()
       this.checkpoint()
       return result
-    } finally {
-      this.activeCell = undefined
-    }
+    })
   }
 
   checkpoint(): void {

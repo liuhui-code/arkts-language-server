@@ -103,7 +103,7 @@ export interface WorkspaceReferenceIndexPort {
     admittedRootUris?: readonly DocumentUri[],
     signal?: AbortSignal,
   ): Promise<WorkspaceReferenceCandidateResult>
-  status(workspaceId: WorkspaceId): Promise<WorkspaceIndexStatus>
+  status(workspaceId: WorkspaceId, signal?: AbortSignal): Promise<WorkspaceIndexStatus>
 }
 
 export interface WorkspaceIndexPort {

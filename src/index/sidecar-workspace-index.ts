@@ -287,12 +287,12 @@ export class SidecarWorkspaceIndex implements WorkspaceIndexPort, WorkspaceCatal
     }
   }
 
-  async status(workspaceId: WorkspaceId): Promise<WorkspaceIndexStatus> {
+  async status(workspaceId: WorkspaceId, signal?: AbortSignal): Promise<WorkspaceIndexStatus> {
     const session = this.session(workspaceId)
     const degraded = session.degradedStatus()
     if (degraded) return degraded
     try {
-      const status = mapStatus(await session.request("status", {}))
+      const status = mapStatus(await session.request("status", {}, signal))
       session.lastStatus = status
       return status
     } catch (error) {

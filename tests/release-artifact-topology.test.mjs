@@ -236,6 +236,8 @@ if [ "\${1:-}" = "build" ]; then
   printf '%s\\n' '// staged semantic worker fixture' > dist/semantic-worker.cjs
   printf '%s\\n' '// staged reference verifier worker fixture' > dist/reference-verifier-worker.cjs
   printf '%s\\n' '// staged server fixture' > dist/server.cjs
+  printf '%s\\n' '{"schema":"arkts-language-server.standard-library","schemaVersion":1,"files":["lib.d.ts"]}' > dist/arkts-standard-library.json
+  printf '%s\\n' 'interface Object {}' > dist/lib.d.ts
   exit 0
 fi
 exit 91

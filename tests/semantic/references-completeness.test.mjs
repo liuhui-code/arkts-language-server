@@ -312,7 +312,7 @@ async function requestReferencesAt(
   documentUri,
   position,
   includeDeclaration,
-  timeoutMs = 5_000,
+  timeoutMs = 15_000,
 ) {
   server.send({
     jsonrpc: "2.0",
