@@ -48,6 +48,14 @@ public-test GREEN. A measured 22% CPU speed limit excludes the new timings
 from graduation and cross-date comparisons; first-click/500 ms and final
 memory gates remain open. Next quantify storage/WAL amplification.
 
+R-20 [page/WAL follow-up](../reports/2026-09-26-settings-catalog-storage-profile.md):
+three fresh exact 9/9 runs have identical 305.719 MiB B-tree allocation; 95.60%
+is reference storage and 52.43% is reference indexes. The independent opt-in
+read-only scan costs 5.4–27.8 seconds and is not a release performance mode.
+Physical WAL length is not cumulative I/O amplification. Next test one
+duplicate-primary-key layout candidate with row/query/migration/rollback
+equivalence and trace-off ready/RSS comparisons. Production SQL remains unchanged.
+
 An [opt-in initial-catalog wait slice](../reports/2026-09-21-settings-initial-catalog-wait-experiment.md)
 now has public-LSP RED/GREEN for generation-zero warming, not-yet-open sidecar,
 cancel and held-status deadline. Three independent real Settings/API-24

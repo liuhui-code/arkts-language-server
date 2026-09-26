@@ -134,6 +134,13 @@ occurrences and per-document identities. The Mac's measured CPU speed limit
 was 22%, so new wall times are excluded from latency graduation. Table/page
 and WAL amplification remain the next controlled investigation; R-20 stays
 Must and ungraduated.
+The [read-only storage profile](../reports/2026-09-26-settings-catalog-storage-profile.md)
+then recorded the same 305.719 MiB B-tree distribution in three exact 9/9 runs:
+95.60% reference storage and 52.43% reference indexes. This motivates a
+single controlled duplicate-primary-key layout experiment, not dropping rows
+or covering indexes. The heavy default-off scan and drifting machine/cache
+state disqualify its wall times; WAL file length is not an I/O amplification
+measurement. R-20 and the 500 ms gate remain open.
 R-07 now also rejects candidates if the sidecar changes from ready to warming
 between candidate search and acceptance, even when the committed generation
 number is unchanged. Direct and definition-anchor real-LSP transcripts both

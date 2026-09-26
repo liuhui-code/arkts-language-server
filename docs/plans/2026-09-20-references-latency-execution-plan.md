@@ -387,6 +387,17 @@ amplification before a controlled write-path change on an unconstrained
 machine. The independent facade RSS test also remains over its 30-second
 local deadline; a direct exact replay completes, but its memory gate fails.
 
+A [read-only page/WAL profile](../reports/2026-09-26-settings-catalog-storage-profile.md)
+now has three independent exact 9/9 Settings runs with identical storage:
+320,569,344 B of B-trees, 95.60% reference-related, with reference indexes alone
+52.43%. Physical DB/WAL sizes are recorded around commit without initiating a
+checkpoint. They are not cumulative I/O or compiler RSS. The scan costs
+5.4–27.8 seconds and remains independently default-off; machine/cache drift
+excludes these trace-on times from performance graduation. Next evaluate one
+reversible duplicate-primary-key storage-layout candidate, preserving all rows,
+covering queries, migrations and atomic generations; compare trace-off total
+ready time and RSS before adoption. No production storage policy changed.
+
 Freeze exact repository commit, dirty state, server commit, Node/toolchain,
 backend version, project selection, SDK fingerprint, standard-library asset
 digest, index schema/generation, query file/symbol/zero-based UTF-16 position

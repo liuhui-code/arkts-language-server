@@ -13,6 +13,9 @@ use crate::{
     read_rejected_documents, sqlite_generation, validate_replacement,
 };
 
+#[path = "catalog_storage_trace.rs"]
+mod storage_trace;
+
 #[derive(Default)]
 struct CatalogSqlTrace {
     generation: u64,
@@ -61,6 +64,8 @@ pub(super) fn replace_all(
         validate_replacement(document)?;
     }
     trace.preflight_ms = elapsed_ms(started);
+
+    let mut storage_trace = storage_trace::CatalogStorageTrace::begin(&store.connection);
 
     let started = Instant::now();
     let transaction = store
@@ -147,11 +152,17 @@ pub(super) fn replace_all(
     let rejected_documents = read_rejected_documents(&transaction)?;
     trace.rejected_metadata_ms = elapsed_ms(started);
 
+    if let Some(storage) = storage_trace.as_mut() {
+        storage.before_commit();
+    }
     let started = Instant::now();
     transaction.commit().map_err(map_sqlite_error)?;
     trace.commit_ms = elapsed_ms(started);
     trace.total_ms = elapsed_ms(total_started);
     write_trace(&trace);
+    if let Some(storage) = storage_trace {
+        storage.finish(&store.connection, batch.generation);
+    }
 
     Ok(CommitReceipt {
         committed_generation: batch.generation,
