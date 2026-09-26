@@ -152,7 +152,7 @@ fn committed_catalog_trace_counts_actual_reference_rows_without_exposing_paths()
         .collect();
     assert_eq!(generated_names.len(), 257, "all generated names must parse");
     assert!(
-        first_counts[1] > 256 && first_counts[1] % 256 != 0,
+        first_counts[1] > 256 && !first_counts[1].is_multiple_of(256),
         "fixture must flush a full 256-identity batch and a remainder"
     );
     assert!(
