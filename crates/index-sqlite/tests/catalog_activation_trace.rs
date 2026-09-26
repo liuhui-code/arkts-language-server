@@ -15,7 +15,7 @@ const TARGET: &str = "file:///catalog-trace/Target.ets";
 const ALIAS_COUNT: usize = 64;
 const CHILD_DB: &str = "ARKTS_INDEX_CATALOG_TRACE_TEST_DB";
 const TRACE_FILE: &str = "ARKTS_INDEX_CATALOG_SQL_TRACE_FILE";
-const FIELDS: [&str; 19] = [
+const FIELDS: [&str; 23] = [
     "generation",
     "documents",
     "preflightMs",
@@ -31,6 +31,10 @@ const FIELDS: [&str; 19] = [
     "insertOccurrenceIdentitiesMs",
     "insertAliasesMs",
     "insertBindingsMs",
+    "insertOccurrenceRows",
+    "insertOccurrenceIdentityRows",
+    "insertAliasRows",
+    "insertBindingRows",
     "createIndexMs",
     "rejectedMetadataMs",
     "commitMs",
@@ -148,7 +152,7 @@ fn catalog_activation_trace_is_opt_in_and_follows_successful_commits() {
             parts_ms <= fields[10].1 + 0.01,
             "subphases must fit within insertReferencesMs (allowing 0.001-ms rounding): {record}"
         );
-        assert!(fields[18].1 >= fields[17].1, "total includes commit");
+        assert!(fields[22].1 >= fields[21].1, "total includes commit");
     }
 
     let unwritable_database = temp.0.join("unwritable.sqlite3");

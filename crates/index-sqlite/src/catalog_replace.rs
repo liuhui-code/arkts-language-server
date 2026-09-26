@@ -30,6 +30,10 @@ struct CatalogSqlTrace {
     insert_occurrence_identities_ms: f64,
     insert_aliases_ms: f64,
     insert_bindings_ms: f64,
+    insert_occurrence_rows: usize,
+    insert_occurrence_identity_rows: usize,
+    insert_alias_rows: usize,
+    insert_binding_rows: usize,
     create_index_ms: f64,
     rejected_metadata_ms: f64,
     commit_ms: f64,
@@ -109,6 +113,10 @@ pub(super) fn replace_all(
     trace.insert_occurrence_identities_ms = reference_timings.occurrence_identities_ms;
     trace.insert_aliases_ms = reference_timings.aliases_ms;
     trace.insert_bindings_ms = reference_timings.bindings_ms;
+    trace.insert_occurrence_rows = reference_timings.occurrence_rows;
+    trace.insert_occurrence_identity_rows = reference_timings.occurrence_identity_rows;
+    trace.insert_alias_rows = reference_timings.alias_rows;
+    trace.insert_binding_rows = reference_timings.binding_rows;
 
     let started = Instant::now();
     transaction
@@ -176,6 +184,8 @@ fn write_trace(trace: &CatalogSqlTrace) {
             "\"insertReferencesMs\":{:.3},",
             "\"insertOccurrencesMs\":{:.3},\"insertOccurrenceIdentitiesMs\":{:.3},",
             "\"insertAliasesMs\":{:.3},\"insertBindingsMs\":{:.3},",
+            "\"insertOccurrenceRows\":{},\"insertOccurrenceIdentityRows\":{},",
+            "\"insertAliasRows\":{},\"insertBindingRows\":{},",
             "\"createIndexMs\":{:.3},",
             "\"rejectedMetadataMs\":{:.3},\"commitMs\":{:.3},",
             "\"totalMs\":{:.3}}}"
@@ -195,6 +205,10 @@ fn write_trace(trace: &CatalogSqlTrace) {
         trace.insert_occurrence_identities_ms,
         trace.insert_aliases_ms,
         trace.insert_bindings_ms,
+        trace.insert_occurrence_rows,
+        trace.insert_occurrence_identity_rows,
+        trace.insert_alias_rows,
+        trace.insert_binding_rows,
         trace.create_index_ms,
         trace.rejected_metadata_ms,
         trace.commit_ms,

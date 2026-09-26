@@ -127,6 +127,13 @@ was 3.13 seconds. A separate single-run stack sample places automatic WAL
 checkpointing inside commit, but does not establish that moving it will shorten
 activation. Record row volumes and compare complete ready-transition time
 before any SQL or durability change. This observation does not graduate R-20.
+The [row-volume slice](../reports/2026-09-26-settings-reference-row-volumes.md)
+now measures 836,501 reference-related rows for the fixed 1,846-document
+Settings catalog, stable across three exact 9/9 replays. Most rows are
+occurrences and per-document identities. The Mac's measured CPU speed limit
+was 22%, so new wall times are excluded from latency graduation. Table/page
+and WAL amplification remain the next controlled investigation; R-20 stays
+Must and ungraduated.
 R-07 now also rejects candidates if the sidecar changes from ready to warming
 between candidate search and acceptance, even when the committed generation
 number is unchanged. Direct and definition-anchor real-LSP transcripts both

@@ -11,6 +11,10 @@ pub(super) struct ReferenceInsertTimings {
     pub(super) occurrence_identities_ms: f64,
     pub(super) aliases_ms: f64,
     pub(super) bindings_ms: f64,
+    pub(super) occurrence_rows: usize,
+    pub(super) occurrence_identity_rows: usize,
+    pub(super) alias_rows: usize,
+    pub(super) binding_rows: usize,
 }
 
 pub(super) fn insert_reference_documents(
@@ -48,7 +52,7 @@ pub(super) fn insert_reference_documents(
         let started = trace_enabled.then(Instant::now);
         let mut occurrence_identities = Vec::with_capacity(document.occurrences.len());
         for (ordinal, occurrence) in document.occurrences.iter().enumerate() {
-            occurrence_statement
+            let inserted = occurrence_statement
                 .execute(params![
                     document.uri,
                     sqlite_ordinal(ordinal, "reference occurrence")?,
@@ -60,6 +64,9 @@ pub(super) fn insert_reference_documents(
                     occurrence.qualified,
                 ])
                 .map_err(map_sqlite_error)?;
+            if trace_enabled {
+                timings.occurrence_rows += inserted;
+            }
             occurrence_identities.push((
                 occurrence.name.as_str(),
                 match occurrence.qualified {
@@ -84,11 +91,14 @@ pub(super) fn insert_reference_documents(
             ]);
             occurrence_identity_count += 1;
             if occurrence_identity_count == OCCURRENCE_IDENTITIES_PER_INSERT {
-                insert_occurrence_identity_values(
+                let inserted = insert_occurrence_identity_values(
                     transaction,
                     occurrence_identity_count,
                     &occurrence_identity_values,
                 )?;
+                if trace_enabled {
+                    timings.occurrence_identity_rows += inserted;
+                }
                 occurrence_identity_values.clear();
                 occurrence_identity_count = 0;
             }
@@ -97,7 +107,7 @@ pub(super) fn insert_reference_documents(
 
         let started = trace_enabled.then(Instant::now);
         for (ordinal, alias) in document.aliases.iter().enumerate() {
-            alias_statement
+            let inserted = alias_statement
                 .execute(params![
                     document.uri,
                     sqlite_ordinal(ordinal, "reference alias")?,
@@ -105,12 +115,15 @@ pub(super) fn insert_reference_documents(
                     alias.to_name,
                 ])
                 .map_err(map_sqlite_error)?;
+            if trace_enabled {
+                timings.alias_rows += inserted;
+            }
         }
         add_elapsed(started, &mut timings.aliases_ms);
 
         let started = trace_enabled.then(Instant::now);
         for (ordinal, binding) in document.bindings.iter().enumerate() {
-            binding_statement
+            let inserted = binding_statement
                 .execute(params![
                     document.uri,
                     sqlite_ordinal(ordinal, "reference binding")?,
@@ -120,16 +133,22 @@ pub(super) fn insert_reference_documents(
                     reference_binding_kind_to_i64(binding.kind),
                 ])
                 .map_err(map_sqlite_error)?;
+            if trace_enabled {
+                timings.binding_rows += inserted;
+            }
         }
         add_elapsed(started, &mut timings.bindings_ms);
     }
     if occurrence_identity_count > 0 {
         let started = trace_enabled.then(Instant::now);
-        insert_occurrence_identity_values(
+        let inserted = insert_occurrence_identity_values(
             transaction,
             occurrence_identity_count,
             &occurrence_identity_values,
         )?;
+        if trace_enabled {
+            timings.occurrence_identity_rows += inserted;
+        }
         add_elapsed(started, &mut timings.occurrence_identities_ms);
     }
     Ok(timings)
@@ -145,7 +164,7 @@ fn insert_occurrence_identity_values(
     transaction: &Transaction<'_>,
     row_count: usize,
     values: &[SqlValue],
-) -> Result<(), StoreError> {
+) -> Result<usize, StoreError> {
     const VALUES_PER_OCCURRENCE_IDENTITY: usize = 4;
     let mut sql = String::from(
         "INSERT INTO reference_occurrence_identities(\
@@ -158,7 +177,6 @@ fn insert_occurrence_identity_values(
         .prepare_cached(&sql)
         .map_err(map_sqlite_error)?
         .execute(params_from_iter(values.iter()))
-        .map(|_| ())
         .map_err(map_sqlite_error)
 }
 

@@ -375,6 +375,18 @@ entire ready transition, not just `commitMs`. No compiler scope, SDK policy or
 production SQL optimization is authorized by these timings; first-click and
 500 ms navigation gates remain open.
 
+The [row-volume follow-up](../reports/2026-09-26-settings-reference-row-volumes.md)
+now records identical counts in three further fresh Settings runs: 637,203
+occurrences, 175,120 per-document distinct identities, 3,662 aliases and
+20,516 bindings (836,501 rows total). All returned the nine exact Locations
+with zero target-file diagnostics. The default-off public observer covers both
+full 256-row identity batches and remainder writes. This Mac reported a 22%
+CPU speed limit, so the new wall times cannot qualify performance or be
+compared with the earlier date. Next quantify table/page and WAL write
+amplification before a controlled write-path change on an unconstrained
+machine. The independent facade RSS test also remains over its 30-second
+local deadline; a direct exact replay completes, but its memory gate fails.
+
 Freeze exact repository commit, dirty state, server commit, Node/toolchain,
 backend version, project selection, SDK fingerprint, standard-library asset
 digest, index schema/generation, query file/symbol/zero-based UTF-16 position

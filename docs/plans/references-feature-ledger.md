@@ -40,6 +40,14 @@ post-mutation catch-up does not cover initial catalog warming. The runner's
 new immediate/ready switch and [public protocol test](../tdd/references-immediate-catalog-replay.md)
 make the first-click state measurable without changing production semantics.
 
+R-20 [row-volume evidence](../reports/2026-09-26-settings-reference-row-volumes.md):
+three fresh Settings processes each returned exact 9/9 and inserted the same
+836,501 reference rows (637,203 occurrences; 175,120 distinct per-document
+identities; 3,662 aliases; 20,516 bindings). Full-batch/remainder counters are
+public-test GREEN. A measured 22% CPU speed limit excludes the new timings
+from graduation and cross-date comparisons; first-click/500 ms and final
+memory gates remain open. Next quantify storage/WAL amplification.
+
 An [opt-in initial-catalog wait slice](../reports/2026-09-21-settings-initial-catalog-wait-experiment.md)
 now has public-LSP RED/GREEN for generation-zero warming, not-yet-open sidecar,
 cancel and held-status deadline. Three independent real Settings/API-24
