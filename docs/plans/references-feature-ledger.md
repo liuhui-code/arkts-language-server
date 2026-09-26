@@ -56,6 +56,13 @@ Physical WAL length is not cumulative I/O amplification. Next test one
 duplicate-primary-key layout candidate with row/query/migration/rollback
 equivalence and trace-off ready/RSS comparisons. Production SQL remains unchanged.
 
+R-20 [fresh-only layout candidate](../reports/2026-09-26-settings-occurrence-layout-experiment.md):
+compile-time opt-in schema 109 retains all reference rows and exact Settings
+Locations, reducing B-tree allocation 29.59%. Default schema 9 migrations stay
+GREEN. Trace-off references still take seconds and product RSS is not lower;
+no promotion or memory-graduation claim. Experimental/production cache profiles
+are mutually rejected; production migration and rollback are not implemented.
+
 An [opt-in initial-catalog wait slice](../reports/2026-09-21-settings-initial-catalog-wait-experiment.md)
 now has public-LSP RED/GREEN for generation-zero warming, not-yet-open sidecar,
 cancel and held-status deadline. Three independent real Settings/API-24

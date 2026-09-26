@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "benchmarkId": "settings-homeinitdata-occurrence-without-rowid-2026-09-26",
+  "benchmarkScope": "experimental fresh schema 109; occurrence table only WITHOUT ROWID; no production cache migration",
+  "repo": "openharmony/applications_settings",
+  "repoSha": "ecc550dfaed880e04e38a2477eb7235cd50475b9",
+  "projectDeclaredSdk": {
+    "compileSdkVersion": 23,
+    "targetSdkVersion": 20,
+    "compatibleSdkVersion": 20
+  },
+  "nodeVersion": "v26.3.0",
+  "sdk": {
+    "apiVersion": "24",
+    "version": "6.1.1.125",
+    "declarationDigest": "8098b8abbc6b06fce0e7322d6f8f82a5bbce41e847dbd39e9a98811a33d4c6e4"
+  },
+  "query": {
+    "file": "common/src/main/ets/sendable/HomeInitData.ets",
+    "symbol": "HomeInitData",
+    "line": 28,
+    "character": 30,
+    "includeDeclaration": false
+  },
+  "oracle": {
+    "verified": true,
+    "expectedLocationCount": 9,
+    "sha256": "58908aa4ee2554864cd4467ccf7a51b3aa8e6dd570fc0f66decc6500bf7f937b"
+  },
+  "serverSha256": "4bd585a5c89ea734f515b21d78abaf41ad2da80f413c1b18ff7dac09ace66fa5",
+  "semanticWorkerSha256": "842291ecfe0a7fd7cb147af0abd6dfa16f2b0bc8e9001b0dd466ce63838a09de",
+  "referenceVerifierWorkerSha256": "08c2bcb91537a3c0f8dfca0003a7b1cd81a7ae7ef6e6761b3b25efe1e29b6200",
+  "standardLibrarySha256": "ea78beea2aa84f93fe66645465c37eb916028b79cd9fe898d469bdf54efbf97d",
+  "sidecarSha256": "f3accc5f11fe7a2af988f051e18eefd3400c819a83bda5a66ccebbd885b30464",
+  "storageExperiment": {
+    "cargoFeature": "experimental-occurrence-without-rowid",
+    "schemaVersion": 109,
+    "productionSchemaVersion": 9
+  }
+}

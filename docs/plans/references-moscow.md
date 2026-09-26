@@ -141,6 +141,12 @@ single controlled duplicate-primary-key layout experiment, not dropping rows
 or covering indexes. The heavy default-off scan and drifting machine/cache
 state disqualify its wall times; WAL file length is not an I/O amplification
 measurement. R-20 and the 500 ms gate remain open.
+The [occurrence layout experiment](../reports/2026-09-26-settings-occurrence-layout-experiment.md)
+is isolated by an opt-in Cargo feature and fresh-only schema 109. It preserves
+all rows and exact Settings results while reducing disk B-tree allocation;
+cold references remain seconds and measured RSS does not improve. Keep this
+candidate experimental, with production migration/rollback and wider gates
+still open. R-20 remains Must/ungraduated, not a shipped optimization.
 R-07 now also rejects candidates if the sidecar changes from ready to warming
 between candidate search and acceptance, even when the committed generation
 number is unchanged. Direct and definition-anchor real-LSP transcripts both

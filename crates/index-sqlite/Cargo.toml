@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2024"
 publish = false
 
+[features]
+experimental-occurrence-without-rowid = []
+
 [dependencies]
 arkts-index-core = { path = "../index-core" }
 rusqlite = { version = "=0.40.1", features = ["bundled"] }

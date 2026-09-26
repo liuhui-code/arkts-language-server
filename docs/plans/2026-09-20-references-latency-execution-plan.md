@@ -398,6 +398,18 @@ reversible duplicate-primary-key storage-layout candidate, preserving all rows,
 covering queries, migrations and atomic generations; compare trace-off total
 ready time and RSS before adoption. No production storage policy changed.
 
+The [fresh-only occurrence layout experiment](../reports/2026-09-26-settings-occurrence-layout-experiment.md)
+now preserves all 836,501 reference rows and the exact nine Settings Locations.
+`experimental-occurrence-without-rowid` is compile-time opt-in, uses schema
+109 and rejects production schema 9; default builds retain schema 9 and its
+historical migrations. B-tree allocation falls 29.59%, but trace-off cold
+references remain seconds and observed product RSS does not improve. This is
+not a default promotion. Production migration/rollback, broader workload and
+memory/latency gates remain open; R-20 is not graduated.
+Park this candidate; next latency implementation returns to R-10 anchor
+reuse/fusion, using its existing exact usage-site baseline and a public RED
+transcript. Do not substitute storage savings for compiler-preparation gains.
+
 Freeze exact repository commit, dirty state, server commit, Node/toolchain,
 backend version, project selection, SDK fingerprint, standard-library asset
 digest, index schema/generation, query file/symbol/zero-based UTF-16 position

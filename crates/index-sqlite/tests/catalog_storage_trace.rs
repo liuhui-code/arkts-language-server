@@ -114,7 +114,6 @@ fn storage_trace_observes_committed_pages_and_wal_without_changing_queries() {
         assert!(fields["payloadBytes"] + fields["unusedBytes"] <= allocated);
         for key in [
             "occurrenceTableBytes",
-            "occurrenceIndexBytes",
             "identityTableBytes",
             "identityIndexBytes",
             "referenceOtherTableBytes",
@@ -126,6 +125,10 @@ fn storage_trace_observes_committed_pages_and_wal_without_changing_queries() {
             assert!(fields[key] > 0.0, "missing measured storage: {key}");
         }
         assert!(fields.contains_key("storageProbeMs"));
+        #[cfg(not(feature = "experimental-occurrence-without-rowid"))]
+        assert!(fields["occurrenceIndexBytes"] > 0.0);
+        #[cfg(feature = "experimental-occurrence-without-rowid")]
+        assert_eq!(fields["occurrenceIndexBytes"], 0.0);
         for key in [
             "dbFileBytesBefore",
             "walFileBytesBefore",
