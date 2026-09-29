@@ -237,7 +237,10 @@ function isReleaseAcceptance(entry) {
 }
 
 function layer(id, fast, entries, requiresReleaseSidecar = false) {
-  return Object.freeze({ id, fast, entries: Object.freeze(entries), requiresReleaseSidecar })
+  return Object.freeze({
+    id, fast, entries: Object.freeze(entries),
+    ...(requiresReleaseSidecar ? { requiresReleaseSidecar: true } : {}),
+  })
 }
 
 function ordinalCompare(left, right) {
