@@ -1,6 +1,37 @@
 //! Headless ArkTS workspace-symbol indexing.
 
-use std::fmt::Write as _;
+mod class_base_binding;
+mod class_binding_snapshot;
+mod class_binding_snapshot_resolution;
+mod class_binding_syntax;
+mod class_heritage;
+mod document_metadata;
+mod line_index;
+mod memory_store;
+mod relative_binding_sources;
+mod symbol_ranking;
+mod tokenizer;
+
+pub use class_base_binding::{ClassBaseBinding, resolve_class_base_binding};
+pub use class_binding_snapshot::{
+    ClassBindingDocument, ClassBindingProvenance, ClassBindingSnapshot,
+    MAX_CLASS_BINDING_SNAPSHOT_DOCUMENTS, validate_class_binding_snapshot_uris,
+};
+pub use class_binding_snapshot_resolution::resolve_class_base_binding_snapshot;
+pub use class_heritage::{
+    ClassHeritageBase, ClassHeritageDeclaration, ClassHeritageSearchResult, DocumentClassHeritage,
+    parse_document_class_heritage,
+};
+pub use document_metadata::parse_document_symbols;
+pub use memory_store::MemoryStore;
+pub use symbol_ranking::{acronym_for_search, fold_for_search, rank_symbols};
+
+use document_metadata::ensure_symbol_uris;
+use line_index::LineIndex;
+use relative_binding_sources::relative_source_uri_candidates;
+use symbol_ranking::symbol_match_rank;
+use tokenizer::{Token, TokenKind, tokenize};
+
 use std::{
     collections::{BTreeSet, HashMap},
     error::Error,
@@ -216,6 +247,10 @@ pub struct DocumentSymbols {
     pub occurrences: Vec<ReferenceOccurrence>,
     pub aliases: Vec<ReferenceAlias>,
     pub bindings: Vec<ReferenceBinding>,
+    /// Optional lexical discovery only; unavailable facts must remain unknown.
+    pub class_heritage: Option<DocumentClassHeritage>,
+    /// None for old/unvalidated catalog metadata. Never semantic proof.
+    pub class_binding_provenance: Option<ClassBindingProvenance>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -356,6 +391,11 @@ impl SymbolQuery {
 /// Atomic storage boundary for document symbol snapshots and generations.
 pub trait SymbolStore {
     fn metadata(&self) -> Result<StoreMetadata, StoreError>;
+    fn class_heritage(&self, document_uri: &str) -> Result<ClassHeritageSearchResult, StoreError>;
+    fn class_binding_snapshot(
+        &self,
+        document_uris: &[String],
+    ) -> Result<ClassBindingSnapshot, StoreError>;
     fn apply_batch(&mut self, batch: RefreshBatch) -> Result<CommitReceipt, StoreError>;
     fn replace_all(&mut self, batch: FullCatalogBatch) -> Result<CommitReceipt, StoreError>;
     fn search(&self, query: &SymbolQuery) -> Result<SymbolSearchResult, StoreError>;
@@ -366,312 +406,6 @@ pub trait SymbolStore {
         source_resolutions: &[ReferenceSourceResolution],
         admitted_uri_roots: &[String],
     ) -> Result<ReferenceCandidateSearchResult, StoreError>;
-}
-
-#[derive(Default)]
-pub struct MemoryStore {
-    documents: HashMap<String, DocumentSymbols>,
-    rejected_documents: BTreeSet<String>,
-    committed_generation: u64,
-}
-
-impl SymbolStore for MemoryStore {
-    fn metadata(&self) -> Result<StoreMetadata, StoreError> {
-        Ok(StoreMetadata {
-            committed_generation: self.committed_generation,
-            rejected_documents: self.rejected_documents.iter().cloned().collect(),
-        })
-    }
-
-    fn apply_batch(&mut self, batch: RefreshBatch) -> Result<CommitReceipt, StoreError> {
-        ensure_newer_generation(self.committed_generation, batch.generation)?;
-        let mut next_documents = self.documents.clone();
-        let mut next_rejected_documents = self.rejected_documents.clone();
-        for uri in batch.removed_uris {
-            next_documents.remove(&uri);
-            next_rejected_documents.remove(&uri);
-        }
-        for replacement in batch.replacements {
-            ensure_symbol_uris(&replacement)?;
-            next_rejected_documents.remove(&replacement.uri);
-            next_documents.insert(replacement.uri.clone(), replacement);
-        }
-        for uri in batch.rejected_uris {
-            next_documents.remove(&uri);
-            next_rejected_documents.insert(uri);
-        }
-        self.documents = next_documents;
-        self.rejected_documents = next_rejected_documents;
-        self.committed_generation = batch.generation;
-        Ok(CommitReceipt {
-            committed_generation: batch.generation,
-            rejected_documents: self.rejected_documents.iter().cloned().collect(),
-        })
-    }
-
-    fn replace_all(&mut self, batch: FullCatalogBatch) -> Result<CommitReceipt, StoreError> {
-        ensure_newer_generation(self.committed_generation, batch.generation)?;
-        let mut documents = HashMap::new();
-        for document in batch.documents {
-            ensure_symbol_uris(&document)?;
-            documents.insert(document.uri.clone(), document);
-        }
-        self.documents = documents;
-        self.rejected_documents = batch.rejected_uris.into_iter().collect();
-        self.committed_generation = batch.generation;
-        Ok(CommitReceipt {
-            committed_generation: batch.generation,
-            rejected_documents: self.rejected_documents.iter().cloned().collect(),
-        })
-    }
-
-    fn search(&self, query: &SymbolQuery) -> Result<SymbolSearchResult, StoreError> {
-        Ok(SymbolSearchResult {
-            items: rank_symbols(
-                query,
-                self.documents
-                    .values()
-                    .flat_map(|document| document.symbols.iter())
-                    .cloned(),
-            ),
-            served_generation: self.committed_generation,
-        })
-    }
-
-    fn search_exports(&self, query: &ExportQuery) -> Result<ExportSearchResult, StoreError> {
-        let mut items: Vec<_> = self
-            .documents
-            .values()
-            .flat_map(|document| document.exports.iter())
-            .filter(|item| fold_for_search(&item.exported_name).starts_with(query.folded()))
-            .cloned()
-            .collect();
-        items.sort_by(|left, right| {
-            fold_for_search(&left.exported_name)
-                .cmp(&fold_for_search(&right.exported_name))
-                .then_with(|| left.uri.cmp(&right.uri))
-                .then_with(|| left.ordinal.cmp(&right.ordinal))
-        });
-        items.truncate(query.limit());
-        Ok(ExportSearchResult {
-            items,
-            served_generation: self.committed_generation,
-        })
-    }
-
-    fn search_reference_candidates(
-        &self,
-        query: &ReferenceCandidateQuery,
-        source_resolutions: &[ReferenceSourceResolution],
-        admitted_uri_roots: &[String],
-    ) -> Result<ReferenceCandidateSearchResult, StoreError> {
-        let direct_declaration = self
-            .documents
-            .get(&query.declaration_uri)
-            .and_then(|document| {
-                document.exports.iter().find(|item| {
-                    item.reference_searchable
-                        && item.range.start.line == query.declaration_position.line
-                        && item.range.end.line == query.declaration_position.line
-                        && item.range.start.character <= query.declaration_position.character
-                        && query.declaration_position.character < item.range.end.character
-                })
-            });
-        let document_uris: BTreeSet<_> = self.documents.keys().cloned().collect();
-        let imported_declaration = direct_declaration
-            .is_none()
-            .then(|| {
-                let document = self.documents.get(&query.declaration_uri)?;
-                let occurrence = document.occurrences.iter().find(|occurrence| {
-                    occurrence.qualified == Some(false)
-                        && occurrence.range.start.line == query.declaration_position.line
-                        && occurrence.range.end.line == query.declaration_position.line
-                        && occurrence.range.start.character <= query.declaration_position.character
-                        && query.declaration_position.character < occurrence.range.end.character
-                })?;
-                let mut imports: Vec<_> = document
-                    .bindings
-                    .iter()
-                    .filter(|binding| {
-                        binding.kind == ReferenceBindingKind::Import
-                            && binding.local_name == occurrence.name
-                    })
-                    .cloned()
-                    .collect();
-                resolve_reference_binding_sources(&mut imports, &document_uris);
-                apply_reference_source_resolutions(
-                    &mut imports,
-                    source_resolutions,
-                    &document_uris,
-                );
-                let [binding] = imports.as_slice() else {
-                    return None;
-                };
-                if binding.source_resolution != ReferenceBindingResolution::Unique {
-                    return None;
-                }
-                let source_uri = binding.resolved_source_uri.as_deref()?;
-                if !reference_uri_admitted(source_uri, &query.declaration_uri, admitted_uri_roots) {
-                    return None;
-                }
-                let exports: Vec<_> = self
-                    .documents
-                    .get(source_uri)?
-                    .exports
-                    .iter()
-                    .filter(|item| {
-                        item.reference_searchable
-                            && item.reference_export_name.as_deref()
-                                == Some(binding.imported_name.as_str())
-                    })
-                    .collect();
-                let [declaration] = exports.as_slice() else {
-                    return None;
-                };
-                Some(*declaration)
-            })
-            .flatten();
-        let declaration = direct_declaration.or(imported_declaration);
-        let Some(declaration) = declaration else {
-            return Ok(unsupported_reference_candidates(self.committed_generation));
-        };
-        let Some(reference_export_name) = declaration.reference_export_name.as_ref() else {
-            return Ok(unsupported_reference_candidates(self.committed_generation));
-        };
-        let mut names = BTreeSet::from([
-            declaration.exported_name.clone(),
-            reference_export_name.clone(),
-        ]);
-        loop {
-            let before = names.len();
-            for binding in self
-                .documents
-                .values()
-                .filter(|document| {
-                    reference_uri_admitted(&document.uri, &declaration.uri, admitted_uri_roots)
-                })
-                .flat_map(|document| document.bindings.iter())
-            {
-                if names.contains(&binding.imported_name) {
-                    names.insert(binding.local_name.clone());
-                }
-                if names.contains(&binding.local_name) {
-                    names.insert(binding.imported_name.clone());
-                }
-                if names.len() > MAX_REFERENCE_ALIAS_NAMES {
-                    return Ok(unsupported_reference_candidates(self.committed_generation));
-                }
-            }
-            if names.len() == before {
-                break;
-            }
-        }
-        let uris: BTreeSet<_> = self
-            .documents
-            .values()
-            .filter(|document| {
-                reference_uri_admitted(&document.uri, &declaration.uri, admitted_uri_roots)
-            })
-            .flat_map(|document| document.occurrences.iter())
-            .filter(|occurrence| names.contains(&occurrence.name))
-            .map(|occurrence| occurrence.uri.clone())
-            .collect();
-        let complete = uris.len() <= query.limit;
-        let uris = uris.iter().take(query.limit).cloned().collect();
-        let occurrences: Vec<_> = self
-            .documents
-            .values()
-            .filter(|document| {
-                reference_uri_admitted(&document.uri, &declaration.uri, admitted_uri_roots)
-            })
-            .flat_map(|document| document.occurrences.iter())
-            .filter(|occurrence| names.contains(&occurrence.name))
-            .cloned()
-            .collect();
-        let mut qualifier_names: BTreeSet<_> = occurrences
-            .iter()
-            .filter_map(|occurrence| occurrence.qualifier.as_ref())
-            .cloned()
-            .collect();
-        if qualifier_names.len() > MAX_REFERENCE_ALIAS_NAMES {
-            qualifier_names.clear();
-        }
-        let mut bindings: Vec<_> = self
-            .documents
-            .values()
-            .filter(|document| {
-                reference_uri_admitted(&document.uri, &declaration.uri, admitted_uri_roots)
-            })
-            .flat_map(|document| document.bindings.iter())
-            .filter(|binding| {
-                names.contains(&binding.imported_name)
-                    || names.contains(&binding.local_name)
-                    || qualifier_names.contains(&binding.local_name)
-            })
-            .cloned()
-            .collect();
-        resolve_reference_binding_sources(&mut bindings, &document_uris);
-        apply_reference_source_resolutions(&mut bindings, source_resolutions, &document_uris);
-        if reference_binding_source_outside_admission(
-            &bindings,
-            &document_uris,
-            &declaration.uri,
-            admitted_uri_roots,
-        ) {
-            return Ok(unsupported_reference_candidates(self.committed_generation));
-        }
-        let independent_declarations: BTreeSet<_> = self
-            .documents
-            .values()
-            .filter(|document| {
-                reference_uri_admitted(&document.uri, &declaration.uri, admitted_uri_roots)
-            })
-            .flat_map(|document| document.exports.iter())
-            .filter(|item| {
-                item.reference_searchable
-                    && item
-                        .reference_export_name
-                        .as_ref()
-                        .is_some_and(|name| names.contains(name))
-                    && item.declaration_identity.is_some()
-                    && item.declaration_identity != declaration.declaration_identity
-            })
-            .filter_map(|item| {
-                Some((
-                    item.uri.clone(),
-                    item.reference_export_name.as_ref()?.clone(),
-                ))
-            })
-            .collect();
-        let occurrence_identities: BTreeSet<_> = occurrences
-            .iter()
-            .map(ReferenceOccurrenceIdentity::from)
-            .collect();
-        let occurrence_identities: Vec<_> = occurrence_identities.into_iter().collect();
-        let (identity_complete, identity_uris, narrowed_uris) = prove_reference_binding_chain(
-            &bindings,
-            &occurrence_identities,
-            &independent_declarations,
-            &declaration.uri,
-            &declaration.exported_name,
-            reference_export_name,
-            query.limit,
-        );
-        sort_reference_bindings(&mut bindings);
-        Ok(ReferenceCandidateSearchResult {
-            supported: true,
-            complete,
-            identity_complete,
-            identity_uris,
-            narrowed_uris,
-            declaration_uri: Some(declaration.uri.clone()),
-            declaration_identity: declaration.declaration_identity.clone(),
-            names: names.into_iter().collect(),
-            uris,
-            bindings,
-            served_generation: self.committed_generation,
-        })
-    }
 }
 
 fn unsupported_reference_candidates(generation: u64) -> ReferenceCandidateSearchResult {
@@ -1118,97 +852,6 @@ pub fn prove_reference_binding_chain(
     (true, identity_uris.into_iter().collect(), narrowed_uris)
 }
 
-fn relative_source_uri_candidates(owner_uri: &str, source: &str) -> Option<Vec<String>> {
-    if !owner_uri.starts_with("file:///")
-        || !(source.starts_with("./") || source.starts_with("../"))
-        || source.contains(['?', '#', '\\'])
-    {
-        return None;
-    }
-    let owner_path = owner_uri.strip_prefix("file://")?;
-    let parent_end = owner_path.rfind('/')?;
-    let combined = format!(
-        "{}/{}",
-        &owner_path[..parent_end],
-        percent_encode_uri_path(source.as_bytes())
-    );
-    let mut segments = Vec::new();
-    for segment in combined.split('/') {
-        match segment {
-            "" | "." => {}
-            ".." => {
-                segments.pop()?;
-            }
-            value => segments.push(value),
-        }
-    }
-    let base = format!("file:///{}", segments.join("/"));
-    if [".ets", ".ts", ".d.ets", ".d.ts"]
-        .iter()
-        .any(|suffix| base.ends_with(suffix))
-    {
-        return Some(vec![base]);
-    }
-    Some(vec![
-        format!("{base}.ets"),
-        format!("{base}.ts"),
-        format!("{base}.d.ets"),
-        format!("{base}.d.ts"),
-        format!("{base}/index.ets"),
-        format!("{base}/index.ts"),
-        format!("{base}/index.d.ets"),
-        format!("{base}/index.d.ts"),
-    ])
-}
-
-fn percent_encode_uri_path(bytes: &[u8]) -> String {
-    let mut encoded = String::with_capacity(bytes.len());
-    for byte in bytes {
-        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~' | b'/' | b':') {
-            encoded.push(char::from(*byte));
-        } else {
-            write!(&mut encoded, "%{byte:02X}").expect("writing to String cannot fail");
-        }
-    }
-    encoded
-}
-
-pub fn fold_for_search(value: &str) -> String {
-    value.to_lowercase()
-}
-
-pub fn acronym_for_search(name: &str) -> String {
-    name.chars()
-        .enumerate()
-        .filter_map(|(index, character)| {
-            (index == 0 || character.is_uppercase()).then_some(character)
-        })
-        .collect::<String>()
-        .to_lowercase()
-}
-
-pub fn rank_symbols(
-    query: &SymbolQuery,
-    symbols: impl IntoIterator<Item = WorkspaceSymbol>,
-) -> Vec<WorkspaceSymbol> {
-    let mut matches: Vec<_> = symbols
-        .into_iter()
-        .filter(|symbol| !query.excludes_uri(&symbol.uri))
-        .filter_map(|symbol| query.rank(&symbol.name).map(|rank| (rank, symbol)))
-        .collect();
-    matches.sort_by(|(left_rank, left), (right_rank, right)| {
-        let left_name = fold_for_search(&left.name);
-        let right_name = fold_for_search(&right.name);
-        left_rank
-            .cmp(right_rank)
-            .then_with(|| left_name.cmp(&right_name))
-            .then_with(|| left.uri.cmp(&right.uri))
-            .then_with(|| left.range.start.cmp(&right.range.start))
-    });
-    matches.truncate(query.limit());
-    matches.into_iter().map(|(_, symbol)| symbol).collect()
-}
-
 fn ensure_newer_generation(current: u64, next: u64) -> Result<(), StoreError> {
     if next > current {
         Ok(())
@@ -1218,54 +861,6 @@ fn ensure_newer_generation(current: u64, next: u64) -> Result<(), StoreError> {
             format!("generation {next} must be newer than committed generation {current}"),
         ))
     }
-}
-
-fn ensure_symbol_uris(document: &DocumentSymbols) -> Result<(), StoreError> {
-    if document
-        .symbols
-        .iter()
-        .all(|symbol| symbol.uri == document.uri)
-        && document.exports.iter().all(|item| item.uri == document.uri)
-        && document
-            .occurrences
-            .iter()
-            .all(|item| item.uri == document.uri)
-        && document.aliases.iter().all(|item| item.uri == document.uri)
-        && document
-            .bindings
-            .iter()
-            .all(|item| item.uri == document.uri)
-    {
-        Ok(())
-    } else {
-        Err(StoreError::new(
-            StoreErrorKind::InvalidData,
-            format!("symbol URI does not match document {}", document.uri),
-        ))
-    }
-}
-
-fn symbol_match_rank(name: &str, query: &str) -> Option<u8> {
-    if query.is_empty() {
-        return None;
-    }
-    let lowercase_name = fold_for_search(name);
-    if lowercase_name == query {
-        return Some(0);
-    }
-    if lowercase_name.starts_with(query) {
-        return Some(1);
-    }
-
-    let acronym = acronym_for_search(name);
-    if acronym.starts_with(query) {
-        return Some(2);
-    }
-    query
-        .chars()
-        .nth(2)
-        .is_some_and(|_| lowercase_name.contains(query))
-        .then_some(3)
 }
 
 pub struct WorkspaceIndex {
@@ -1400,68 +995,26 @@ impl WorkspaceIndex {
     pub fn metadata(&self) -> Result<StoreMetadata, StoreError> {
         self.store.metadata()
     }
-}
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum TokenKind {
-    Identifier,
-    Punctuation,
-    StringLiteral,
-}
+    pub fn class_heritage(
+        &self,
+        document_uri: &str,
+    ) -> Result<ClassHeritageSearchResult, StoreError> {
+        self.store.class_heritage(document_uri)
+    }
 
-#[derive(Clone, Debug)]
-struct Token<'a> {
-    text: &'a str,
-    kind: TokenKind,
-    start: usize,
-    end: usize,
+    pub fn class_binding_snapshot(
+        &self,
+        document_uris: &[String],
+    ) -> Result<ClassBindingSnapshot, StoreError> {
+        self.store.class_binding_snapshot(document_uris)
+    }
 }
 
 #[derive(Clone, Debug)]
 struct Container {
     name: String,
     body_depth: usize,
-}
-
-struct LineIndex<'a> {
-    text: &'a str,
-    line_starts: Vec<usize>,
-}
-
-impl<'a> LineIndex<'a> {
-    fn new(text: &'a str) -> Self {
-        let mut line_starts = Vec::with_capacity(text.len() / 40 + 1);
-        line_starts.push(0);
-        line_starts.extend(
-            text.bytes()
-                .enumerate()
-                .filter_map(|(offset, byte)| (byte == b'\n').then_some(offset + 1)),
-        );
-        Self { text, line_starts }
-    }
-
-    fn position(&self, byte_offset: usize) -> Position {
-        let line = self
-            .line_starts
-            .partition_point(|line_start| *line_start <= byte_offset)
-            .saturating_sub(1);
-        let line_start = self.line_starts[line];
-        let character = self.text[line_start..byte_offset].encode_utf16().count();
-        Position::new(line as u32, character as u32)
-    }
-}
-
-pub fn parse_document_symbols(document: &Document) -> Result<DocumentSymbols, DocumentParseError> {
-    parse_symbols(document).map(|(symbols, exports, occurrences, aliases, bindings)| {
-        DocumentSymbols {
-            uri: document.uri.clone(),
-            symbols,
-            exports,
-            occurrences,
-            aliases,
-            bindings,
-        }
-    })
 }
 
 type ParsedSymbols = (
@@ -2001,224 +1554,4 @@ fn is_non_method_keyword(identifier: &str) -> bool {
         identifier,
         "if" | "for" | "while" | "switch" | "catch" | "function"
     )
-}
-
-fn tokenize(source: &str) -> Result<Vec<Token<'_>>, DocumentParseError> {
-    let mut tokens = Vec::new();
-    let mut offset = 0usize;
-    let mut regex_allowed = true;
-
-    while offset < source.len() {
-        let rest = &source[offset..];
-        if rest.starts_with("//") {
-            offset += rest.find('\n').unwrap_or(rest.len());
-            continue;
-        }
-        if rest.starts_with("/*") {
-            let Some(end) = rest.find("*/") else {
-                return Err(DocumentParseError);
-            };
-            offset += end + 2;
-            continue;
-        }
-
-        let character = rest.chars().next().expect("offset is inside source");
-        if character.is_whitespace() {
-            offset += character.len_utf8();
-            continue;
-        }
-        if matches!(character, '\'' | '"' | '`') {
-            let end = skip_quoted(source, offset, character).ok_or(DocumentParseError)?;
-            if character != '`' {
-                tokens.push(Token {
-                    text: &source[offset + character.len_utf8()..end - character.len_utf8()],
-                    kind: TokenKind::StringLiteral,
-                    start: offset + character.len_utf8(),
-                    end: end - character.len_utf8(),
-                });
-            }
-            offset = end;
-            regex_allowed = false;
-            continue;
-        }
-        if character.is_ascii_digit() {
-            offset = skip_number(source, offset);
-            regex_allowed = false;
-            continue;
-        }
-        if is_identifier_start(character) {
-            let start = offset;
-            offset += character.len_utf8();
-            while offset < source.len() {
-                let next = source[offset..]
-                    .chars()
-                    .next()
-                    .expect("offset is inside source");
-                if !is_identifier_continue(next) {
-                    break;
-                }
-                offset += next.len_utf8();
-            }
-            tokens.push(Token {
-                text: &source[start..offset],
-                kind: TokenKind::Identifier,
-                start,
-                end: offset,
-            });
-            regex_allowed = identifier_allows_regex_after(&source[start..offset]);
-            continue;
-        }
-        if character == '/' && regex_allowed {
-            offset = skip_regex_literal(source, offset).ok_or(DocumentParseError)?;
-            regex_allowed = false;
-            continue;
-        }
-        if rest.starts_with("++") || rest.starts_with("--") {
-            tokens.push(Token {
-                text: &source[offset..offset + 2],
-                kind: TokenKind::Punctuation,
-                start: offset,
-                end: offset + 2,
-            });
-            offset += 2;
-            continue;
-        }
-        if rest.starts_with("=>") {
-            tokens.push(Token {
-                text: &source[offset..offset + 2],
-                kind: TokenKind::Punctuation,
-                start: offset,
-                end: offset + 2,
-            });
-            offset += 2;
-            regex_allowed = true;
-            continue;
-        }
-
-        let end = offset + character.len_utf8();
-        tokens.push(Token {
-            text: &source[offset..end],
-            kind: TokenKind::Punctuation,
-            start: offset,
-            end,
-        });
-        offset = end;
-        regex_allowed = punctuation_allows_regex_after(character, regex_allowed, rest);
-    }
-
-    Ok(tokens)
-}
-
-fn skip_number(source: &str, start: usize) -> usize {
-    let mut offset = start;
-    while offset < source.len() {
-        let character = source[offset..]
-            .chars()
-            .next()
-            .expect("offset is inside source");
-        if !(character.is_ascii_alphanumeric() || matches!(character, '.' | '_')) {
-            break;
-        }
-        offset += character.len_utf8();
-    }
-    offset
-}
-
-fn identifier_allows_regex_after(identifier: &str) -> bool {
-    matches!(
-        identifier,
-        "await"
-            | "case"
-            | "delete"
-            | "do"
-            | "else"
-            | "extends"
-            | "in"
-            | "instanceof"
-            | "new"
-            | "of"
-            | "return"
-            | "throw"
-            | "typeof"
-            | "void"
-            | "yield"
-    )
-}
-
-fn punctuation_allows_regex_after(
-    punctuation: char,
-    previously_allowed: bool,
-    source_from_punctuation: &str,
-) -> bool {
-    match punctuation {
-        ')' | ']' | '}' | '.' | '<' | '>' => false,
-        '!' if !source_from_punctuation.starts_with("!=") => previously_allowed,
-        '?' if source_from_punctuation.starts_with("?.") => false,
-        _ => true,
-    }
-}
-
-fn skip_regex_literal(source: &str, start: usize) -> Option<usize> {
-    let mut offset = start + 1;
-    let mut escaped = false;
-    let mut in_character_class = false;
-
-    while offset < source.len() {
-        let character = source[offset..]
-            .chars()
-            .next()
-            .expect("offset is inside source");
-        if matches!(character, '\n' | '\r' | '\u{2028}' | '\u{2029}') {
-            return None;
-        }
-        offset += character.len_utf8();
-        if escaped {
-            escaped = false;
-            continue;
-        }
-        match character {
-            '\\' => escaped = true,
-            '[' => in_character_class = true,
-            ']' => in_character_class = false,
-            '/' if !in_character_class => {
-                while offset < source.len() {
-                    let flag = source[offset..]
-                        .chars()
-                        .next()
-                        .expect("offset is inside source");
-                    if !is_identifier_continue(flag) {
-                        break;
-                    }
-                    offset += flag.len_utf8();
-                }
-                return Some(offset);
-            }
-            _ => {}
-        }
-    }
-    None
-}
-
-fn skip_quoted(source: &str, start: usize, quote: char) -> Option<usize> {
-    let mut escaped = false;
-    let content_start = start + quote.len_utf8();
-    for (relative_offset, character) in source[content_start..].char_indices() {
-        let offset = content_start + relative_offset;
-        if escaped {
-            escaped = false;
-        } else if character == '\\' {
-            escaped = true;
-        } else if character == quote {
-            return Some(offset + character.len_utf8());
-        }
-    }
-    None
-}
-
-fn is_identifier_start(character: char) -> bool {
-    character == '_' || character == '$' || character.is_alphabetic()
-}
-
-fn is_identifier_continue(character: char) -> bool {
-    is_identifier_start(character) || character.is_ascii_digit()
 }

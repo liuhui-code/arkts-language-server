@@ -22,6 +22,7 @@ dependencies = [
  "arkts-index-core",
  "arkts-index-sqlite",
  "ignore",
+ "libc",
  "serde",
  "serde_json",
 ]

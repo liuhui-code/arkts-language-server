@@ -5,6 +5,12 @@ use rusqlite::{Transaction, params, params_from_iter, types::Value as SqlValue};
 
 use crate::{map_sqlite_error, reference_binding_kind_to_i64};
 
+#[path = "reference_insert_progress.rs"]
+mod progress;
+use progress::ReferenceInsertProgress;
+
+const OCCURRENCE_IDENTITIES_PER_INSERT: usize = 256;
+
 #[derive(Default)]
 pub(super) struct ReferenceInsertTimings {
     pub(super) occurrences_ms: f64,
@@ -22,7 +28,26 @@ pub(super) fn insert_reference_documents(
     documents: &[DocumentSymbols],
     trace_enabled: bool,
 ) -> Result<ReferenceInsertTimings, StoreError> {
-    const OCCURRENCE_IDENTITIES_PER_INSERT: usize = 256;
+    insert_documents(transaction, documents, trace_enabled, None)
+}
+
+pub(super) fn insert_catalog_reference_documents(
+    transaction: &Transaction<'_>,
+    documents: &[DocumentSymbols],
+    generation: u64,
+    trace_enabled: bool,
+) -> Result<ReferenceInsertTimings, StoreError> {
+    let progress = ReferenceInsertProgress::begin(generation, documents.len());
+    insert_documents(transaction, documents, trace_enabled, progress)
+}
+
+fn insert_documents(
+    transaction: &Transaction<'_>,
+    documents: &[DocumentSymbols],
+    trace_enabled: bool,
+    mut progress: Option<ReferenceInsertProgress>,
+) -> Result<ReferenceInsertTimings, StoreError> {
+    let trace_enabled = trace_enabled || progress.is_some();
     const VALUES_PER_OCCURRENCE_IDENTITY: usize = 4;
     let mut timings = ReferenceInsertTimings::default();
     let mut occurrence_statement = transaction
@@ -48,7 +73,8 @@ pub(super) fn insert_reference_documents(
     let mut occurrence_identity_values =
         Vec::with_capacity(OCCURRENCE_IDENTITIES_PER_INSERT * VALUES_PER_OCCURRENCE_IDENTITY);
     let mut occurrence_identity_count = 0usize;
-    for document in documents {
+    let mut full_identity_sql = None;
+    for (index, document) in documents.iter().enumerate() {
         let started = trace_enabled.then(Instant::now);
         let mut occurrence_identities = Vec::with_capacity(document.occurrences.len());
         for (ordinal, occurrence) in document.occurrences.iter().enumerate() {
@@ -78,6 +104,15 @@ pub(super) fn insert_reference_documents(
             ));
         }
         add_elapsed(started, &mut timings.occurrences_ms);
+        if let Some(trace) = progress.as_mut() {
+            trace.document_checkpoint(
+                "document.occurrences.complete",
+                index + 1,
+                index,
+                occurrence_identity_count,
+                &timings,
+            );
+        }
 
         let started = trace_enabled.then(Instant::now);
         occurrence_identities.sort_unstable();
@@ -95,6 +130,7 @@ pub(super) fn insert_reference_documents(
                     transaction,
                     occurrence_identity_count,
                     &occurrence_identity_values,
+                    &mut full_identity_sql,
                 )?;
                 if trace_enabled {
                     timings.occurrence_identity_rows += inserted;
@@ -104,6 +140,15 @@ pub(super) fn insert_reference_documents(
             }
         }
         add_elapsed(started, &mut timings.occurrence_identities_ms);
+        if let Some(trace) = progress.as_mut() {
+            trace.document_checkpoint(
+                "document.identities.complete",
+                index + 1,
+                index,
+                occurrence_identity_count,
+                &timings,
+            );
+        }
 
         let started = trace_enabled.then(Instant::now);
         for (ordinal, alias) in document.aliases.iter().enumerate() {
@@ -120,6 +165,15 @@ pub(super) fn insert_reference_documents(
             }
         }
         add_elapsed(started, &mut timings.aliases_ms);
+        if let Some(trace) = progress.as_mut() {
+            trace.document_checkpoint(
+                "document.aliases.complete",
+                index + 1,
+                index,
+                occurrence_identity_count,
+                &timings,
+            );
+        }
 
         let started = trace_enabled.then(Instant::now);
         for (ordinal, binding) in document.bindings.iter().enumerate() {
@@ -138,18 +192,37 @@ pub(super) fn insert_reference_documents(
             }
         }
         add_elapsed(started, &mut timings.bindings_ms);
+        if let Some(trace) = progress.as_mut() {
+            trace.document_checkpoint(
+                "document.bindings.complete",
+                index + 1,
+                index + 1,
+                occurrence_identity_count,
+                &timings,
+            );
+        }
     }
     if occurrence_identity_count > 0 {
+        if let Some(trace) = progress.as_mut() {
+            trace.finish_checkpoint("identities.tail.start", occurrence_identity_count, &timings);
+        }
         let started = trace_enabled.then(Instant::now);
         let inserted = insert_occurrence_identity_values(
             transaction,
             occurrence_identity_count,
             &occurrence_identity_values,
+            &mut full_identity_sql,
         )?;
         if trace_enabled {
             timings.occurrence_identity_rows += inserted;
         }
         add_elapsed(started, &mut timings.occurrence_identities_ms);
+        if let Some(trace) = progress.as_mut() {
+            trace.finish_checkpoint("identities.tail.complete", 0, &timings);
+        }
+    }
+    if let Some(trace) = progress.as_mut() {
+        trace.finish_checkpoint("insert.complete", 0, &timings);
     }
     Ok(timings)
 }
@@ -164,7 +237,23 @@ fn insert_occurrence_identity_values(
     transaction: &Transaction<'_>,
     row_count: usize,
     values: &[SqlValue],
+    full_identity_sql: &mut Option<String>,
 ) -> Result<usize, StoreError> {
+    let tail_sql;
+    let sql = if row_count == OCCURRENCE_IDENTITIES_PER_INSERT {
+        full_identity_sql.get_or_insert_with(|| occurrence_identity_sql(row_count))
+    } else {
+        tail_sql = occurrence_identity_sql(row_count);
+        &tail_sql
+    };
+    transaction
+        .prepare_cached(sql)
+        .map_err(map_sqlite_error)?
+        .execute(params_from_iter(values.iter()))
+        .map_err(map_sqlite_error)
+}
+
+fn occurrence_identity_sql(row_count: usize) -> String {
     const VALUES_PER_OCCURRENCE_IDENTITY: usize = 4;
     let mut sql = String::from(
         "INSERT INTO reference_occurrence_identities(\
@@ -173,11 +262,7 @@ fn insert_occurrence_identity_values(
     );
     let value_group = format!("({})", ["?"; VALUES_PER_OCCURRENCE_IDENTITY].join(","));
     sql.push_str(&vec![value_group; row_count].join(","));
-    transaction
-        .prepare_cached(&sql)
-        .map_err(map_sqlite_error)?
-        .execute(params_from_iter(values.iter()))
-        .map_err(map_sqlite_error)
+    sql
 }
 
 fn sqlite_ordinal(ordinal: usize, item: &str) -> Result<i64, StoreError> {

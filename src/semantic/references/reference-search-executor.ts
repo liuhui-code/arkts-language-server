@@ -22,9 +22,12 @@ export interface ReferenceProgramStats {
 }
 
 export interface ReferenceBatchVerification {
+  readonly anchorVerified?: boolean
   readonly result: SemanticReferenceQueryResult
   readonly unavailableProjectPaths?: readonly string[]
   readonly timings: {
+    /** Parent-observed spawn-to-runtime-ready wall time; trace only. */
+    readonly workerStartupMs?: number
     readonly prepareHostMs: number
     readonly programReadyMs: number
     readonly queryMs: number
@@ -152,6 +155,23 @@ export class ReferenceSearchExecutor {
           includeDeclaration,
           dependencyProfile,
         )
+        if (verification.anchorVerified === false) {
+          this.options.trace?.("references.anchor.seed.rejected", {
+            referenceSession, batchIndex: batch.index, elapsedMs: elapsedMs(),
+            verifierIsolation: "transient-worker", reason: "compiler-anchor-mismatch",
+            ...verificationTraceFields(verification),
+            durationMs: Math.round((performance.now() - started) * 100) / 100,
+          })
+          this.options.checkpoint?.()
+          this.options.trace?.("references.anchor.seed.fallback", {
+            referenceSession, reason: "compiler-anchor-mismatch", strategy: "complete-scope",
+          })
+          // No discovery scope or prior Locations survive rejection. Reuse the
+          // immutable request snapshot, not the failed Program or its symbols.
+          const { expectedReferenceAnchor: _rejectedAnchor, ...originalPosition } = position
+          return this.execute(workspace, originalPosition, includeDeclaration,
+            undefined, false, undefined, undefined, semanticGraph)
+        }
         if (verification.result.status === "complete") break
         const expansion = dependencyProfile === "closure"
           && plan.semanticUnitMode === "project-graph"
@@ -199,6 +219,7 @@ export class ReferenceSearchExecutor {
       const { result } = verification
       collected.push(...result.references)
       this.options.trace?.("references.batch.complete", {
+        ...(verification.anchorVerified === undefined ? {} : { anchorVerified: verification.anchorVerified }),
         referenceSession,
         elapsedMs: elapsedMs(),
         verifierIsolation: "transient-worker",
@@ -218,29 +239,22 @@ export class ReferenceSearchExecutor {
         identitySupportFiles: dependencyProfile === "identity"
           ? identitySupportPaths?.length ?? 0
           : 0,
-        preparedProgramSourceFiles: verification.prepared.stats.programSourceFiles,
-        preparedProgramProjectFiles: verification.prepared.stats.programProjectFiles,
-        preparedSdkSourceFiles: verification.prepared.stats.sdkSourceFiles,
-        preparedProjectTextCodeUnits: verification.prepared.stats.projectTextCodeUnits,
-        preparedSdkTextCodeUnits: verification.prepared.stats.sdkTextCodeUnits,
-        preparedOtherSourceFiles: verification.prepared.stats.otherSourceFiles,
-        preparedOtherTextCodeUnits: verification.prepared.stats.otherTextCodeUnits,
-        preparedRss: verification.prepared.memory.rss,
-        preparedHeapUsed: verification.prepared.memory.heapUsed,
-        queryRssDelta: verification.memory.rss - verification.prepared.memory.rss,
-        queryHeapUsedDelta: verification.memory.heapUsed - verification.prepared.memory.heapUsed,
-        workerPrepareHostMs: verification.timings.prepareHostMs,
-        workerProgramReadyMs: verification.timings.programReadyMs,
-        workerGetProgramMs: verification.timings.getProgramMs,
-        workerCreateProgramMs: verification.timings.createProgramMs,
-        workerGetTypeCheckerMs: verification.timings.getTypeCheckerMs,
-        workerQueryMs: verification.timings.queryMs,
-        ...verification.stats,
+        ...verificationTraceFields(verification),
         locations: result.references.length,
         durationMs: Math.round((performance.now() - started) * 100) / 100,
-        rss: verification.memory.rss,
-        heapUsed: verification.memory.heapUsed,
       })
+      this.options.checkpoint?.()
+      if (dependencyProfile === "closure" && coversWholeSearchScope(
+        result.searchedProjectPaths, workspace, position.path,
+      )) {
+        this.options.trace?.("references.search-scope.complete", {
+          referenceSession, batchIndex: batch.index, elapsedMs: elapsedMs(),
+          completedBatches: batch.index + 1,
+          skippedBatches: plan.batches.length - batch.index - 1,
+          membershipFiles: plan.membershipFiles,
+        })
+        break
+      }
     }
     const mergeStarted = performance.now()
     const references = uniqueSortedReferences(collected)
@@ -252,6 +266,46 @@ export class ReferenceSearchExecutor {
       locations: references.length,
     })
     return { status: "complete", references }
+  }
+}
+
+function coversWholeSearchScope(
+  searchedPaths: readonly string[] | undefined,
+  workspace: SemanticWorkspaceView,
+  queryPath: string,
+): boolean {
+  if (!searchedPaths || workspace.projectMembership?.status !== "complete") return false
+  const searched = new Set(searchedPaths.map(filePath => path.resolve(filePath)))
+  return searched.has(path.resolve(queryPath))
+    && workspace.projectMembership.paths.every(filePath => searched.has(path.resolve(filePath)))
+    && workspace.documents.filter(document => document.overlay)
+      .every(document => searched.has(path.resolve(document.path)))
+}
+
+/** Observations already captured by the verifier; never queries compiler state. */
+function verificationTraceFields(verification: ReferenceBatchVerification): Record<string, TraceField> {
+  return {
+    preparedProgramSourceFiles: verification.prepared.stats.programSourceFiles,
+    preparedProgramProjectFiles: verification.prepared.stats.programProjectFiles,
+    preparedSdkSourceFiles: verification.prepared.stats.sdkSourceFiles,
+    preparedProjectTextCodeUnits: verification.prepared.stats.projectTextCodeUnits,
+    preparedSdkTextCodeUnits: verification.prepared.stats.sdkTextCodeUnits,
+    preparedOtherSourceFiles: verification.prepared.stats.otherSourceFiles,
+    preparedOtherTextCodeUnits: verification.prepared.stats.otherTextCodeUnits,
+    preparedRss: verification.prepared.memory.rss,
+    preparedHeapUsed: verification.prepared.memory.heapUsed,
+    queryRssDelta: verification.memory.rss - verification.prepared.memory.rss,
+    queryHeapUsedDelta: verification.memory.heapUsed - verification.prepared.memory.heapUsed,
+    workerPrepareHostMs: verification.timings.prepareHostMs,
+    workerStartupMs: verification.timings.workerStartupMs,
+    workerProgramReadyMs: verification.timings.programReadyMs,
+    workerGetProgramMs: verification.timings.getProgramMs,
+    workerCreateProgramMs: verification.timings.createProgramMs,
+    workerGetTypeCheckerMs: verification.timings.getTypeCheckerMs,
+    workerQueryMs: verification.timings.queryMs,
+    ...verification.stats,
+    rss: verification.memory.rss,
+    heapUsed: verification.memory.heapUsed,
   }
 }
 

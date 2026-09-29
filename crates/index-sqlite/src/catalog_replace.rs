@@ -7,12 +7,17 @@ use std::{
 use arkts_index_core::{CommitReceipt, FullCatalogBatch, StoreError, SymbolStore};
 use rusqlite::TransactionBehavior;
 
+use crate::catalog_insert::{
+    insert_catalog_documents, insert_export_documents, insert_symbol_documents,
+};
+use crate::reference_insert::insert_catalog_reference_documents;
 use crate::{
-    SqliteStore, insert_catalog_documents, insert_export_documents, insert_reference_documents,
-    insert_symbol_documents, invalid_generation, map_sqlite_error, read_committed_generation,
+    SqliteStore, invalid_generation, map_sqlite_error, read_committed_generation,
     read_rejected_documents, sqlite_generation, validate_replacement,
 };
 
+#[path = "catalog_stage_trace.rs"]
+mod stage_trace;
 #[path = "catalog_storage_trace.rs"]
 mod storage_trace;
 
@@ -65,6 +70,8 @@ pub(super) fn replace_all(
     }
     trace.preflight_ms = elapsed_ms(started);
 
+    let mut stage_trace = stage_trace::CatalogStageTrace::begin(&batch);
+    stage_trace::emit(&mut stage_trace, "replace.start");
     let mut storage_trace = storage_trace::CatalogStorageTrace::begin(&store.connection);
 
     let started = Instant::now();
@@ -106,14 +113,21 @@ pub(super) fn replace_all(
 
     let started = Instant::now();
     insert_export_documents(&transaction, &batch.documents, generation)?;
+    crate::class_heritage_storage::insert_documents(&transaction, &batch.documents)?;
     trace.insert_exports_ms = elapsed_ms(started);
 
+    stage_trace::emit(&mut stage_trace, "references.start");
     let started = Instant::now();
     let trace_enabled =
         std::env::var_os("ARKTS_INDEX_CATALOG_SQL_TRACE_FILE").is_some_and(|path| !path.is_empty());
-    let reference_timings =
-        insert_reference_documents(&transaction, &batch.documents, trace_enabled)?;
+    let reference_timings = insert_catalog_reference_documents(
+        &transaction,
+        &batch.documents,
+        batch.generation,
+        trace_enabled,
+    )?;
     trace.insert_references_ms = elapsed_ms(started);
+    stage_trace::emit(&mut stage_trace, "references.end");
     trace.insert_occurrences_ms = reference_timings.occurrences_ms;
     trace.insert_occurrence_identities_ms = reference_timings.occurrence_identities_ms;
     trace.insert_aliases_ms = reference_timings.aliases_ms;
@@ -123,6 +137,7 @@ pub(super) fn replace_all(
     trace.insert_alias_rows = reference_timings.alias_rows;
     trace.insert_binding_rows = reference_timings.binding_rows;
 
+    stage_trace::emit(&mut stage_trace, "index.start");
     let started = Instant::now();
     transaction
         .execute(
@@ -132,6 +147,7 @@ pub(super) fn replace_all(
         )
         .map_err(map_sqlite_error)?;
     trace.create_index_ms = elapsed_ms(started);
+    stage_trace::emit(&mut stage_trace, "index.end");
 
     let started = Instant::now();
     for uri in &batch.rejected_uris {
@@ -155,14 +171,17 @@ pub(super) fn replace_all(
     if let Some(storage) = storage_trace.as_mut() {
         storage.before_commit();
     }
+    stage_trace::emit(&mut stage_trace, "commit.start");
     let started = Instant::now();
     transaction.commit().map_err(map_sqlite_error)?;
     trace.commit_ms = elapsed_ms(started);
+    stage_trace::emit(&mut stage_trace, "commit.end");
     trace.total_ms = elapsed_ms(total_started);
     write_trace(&trace);
     if let Some(storage) = storage_trace {
         storage.finish(&store.connection, batch.generation);
     }
+    stage_trace::emit(&mut stage_trace, "replace.complete");
 
     Ok(CommitReceipt {
         committed_generation: batch.generation,

@@ -1,44 +1,36 @@
 import fs from "node:fs"
 import { createHash, randomUUID } from "node:crypto"
 import path from "node:path"
-import { fileURLToPath, pathToFileURL } from "node:url"
 import { Worker } from "node:worker_threads"
 
-import type { DocumentSnapshot, TextPosition } from "../contracts/document.js"
+import type { DocumentSnapshot } from "../contracts/document.js"
 import type { ProjectResolverPort } from "../contracts/project-resolver.js"
 import type {
   WorkspaceExportIndexPort,
-  WorkspaceReferenceCandidateResult,
   WorkspaceReferenceIndexPort,
-  WorkspaceReferenceSourceResolution,
 } from "../contracts/workspace-index.js"
 import type * as Contract from "../contracts/semantic-engine.js"
 import { isArkUIStringResourcePath } from "../core/arkui/resource-path.js"
 import { LocalPackageResolver } from "../core/sdk/local-package-resolver.js"
-import {
-  isHarmonySdkModuleSpecifier,
-  resolveHarmonySdkModule,
-} from "../core/sdk/module-resolver.js"
-import { discoverProjectSdk, type ProjectSdkSelection } from "../core/sdk/project-sdk.js"
 import type { StructuredLogger } from "../observability/logger.js"
 import { OHOS_TYPESCRIPT_BACKEND_IDENTITY } from "./backends/ohos-typescript/identity.js"
 import type { SemanticBackend } from "./backends/semantic-backend.js"
 import { semanticRuntimeConfig } from "./coordinator/runtime-config.js"
 import { referenceSearchRuntimeConfig } from "./references/reference-runtime.js"
-import { waitForInitialReferenceCatalog } from "./references/reference-initial-catalog.js"
 import { logReferenceCandidateSelection } from "./references/reference-index-telemetry.js"
+import { selectReferenceCandidates, type ReferenceCandidateSelection } from "./references/reference-candidate-selection.js"
 import { interactiveSemanticRuntimeConfig } from "./interactive-runtime.js"
 import { discoverCompletionCandidates } from "./completion-discovery.js"
-import {
-  isReferenceIndexCandidateEligible,
-  prepareReferenceIndexSearch,
-  ReferenceIndexFreshness,
-} from "./references/reference-index-freshness.js"
+import { messageEpoch, workerLogMessage } from "./semantic-worker-message-routing.js"
+import { resourceEventPath, toFilePath } from "./semantic-worker-file-identity.js"
+import { ReferenceIndexFreshness } from "./references/reference-index-freshness.js"
+import { ReferenceInputState, type ReferenceInputSnapshot } from "./references/reference-input-snapshot.js"
 import { ReferenceResultCache } from "./references/reference-result-cache.js"
 import { logReferenceCache } from "./references/reference-cache-telemetry.js"
 import {
   RootSemanticWorkerSupervisor,
   SemanticWorkerCancelState,
+  SemanticWorkerSupervisorError,
   isSemanticWorkerUriWithinRoot,
   type RootSemanticWorkerEndpoint,
   type RootSemanticWorkerEndpointHandlers,
@@ -51,7 +43,6 @@ import type {
   SemanticWorkerMethod,
   SemanticWorkerRequestArgsByMethod,
 } from "./worker-protocol.js"
-import { MAX_SEMANTIC_WORKER_REFERENCE_CANDIDATES } from "./worker-protocol.js"
 
 interface SemanticWorkerProxyOptions {
   readonly env?: NodeJS.ProcessEnv
@@ -82,6 +73,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
   readonly #supervisors = new Map<string, RootSemanticWorkerSupervisor>()
   readonly #handlers = new Map<number, RootSemanticWorkerEndpointHandlers>()
   readonly #referenceResults = new ReferenceResultCache()
+  readonly #referenceInputs = new ReferenceInputState()
   #worker: Worker | undefined
   #nextEpoch = 1
   #projectConfiguration: unknown
@@ -106,16 +98,20 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
   }
 
   configureProject(selection: unknown): void {
+    const ownedSelection = structuredClone(selection)
+    this.#referenceInputs.configurationChanged()
     this.#referenceResults.clear()
-    this.#projectConfiguration = selection
-    this.#packageResolver.configureProject(selection)
-    this.#sendControl({ control: "configureProject", value: selection })
+    this.#projectConfiguration = ownedSelection
+    this.#packageResolver.configureProject(ownedSelection)
+    this.#sendControl({ control: "configureProject", value: ownedSelection })
   }
 
   configureSdk(selection: unknown): void {
+    const ownedSelection = structuredClone(selection)
+    this.#referenceInputs.configurationChanged()
     this.#referenceResults.clear()
-    this.#sdkConfiguration = selection
-    this.#sendControl({ control: "configureSdk", value: selection })
+    this.#sdkConfiguration = ownedSelection
+    this.#sendControl({ control: "configureSdk", value: ownedSelection })
   }
 
   applyMemoryPressure(level: "level3"): void {
@@ -145,7 +141,6 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
     const previous = this.#documents.get(document.uri)
     this.#documents.set(document.uri, snapshot)
     if (previous?.version === snapshot.version && previous.text === snapshot.text) return
-    this.#referenceResults.invalidateRoot(snapshot.workspaceId)
     this.#mutate(snapshot.workspaceId, {
       kind: previous ? "change" : "open",
       uri: snapshot.uri,
@@ -158,7 +153,6 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
     const document = this.#documents.get(documentUri)
     if (!document) return
     this.#documents.delete(documentUri)
-    this.#referenceResults.invalidateRoot(document.workspaceId)
     this.#mutate(document.workspaceId, {
       kind: "close",
       uri: documentUri,
@@ -243,6 +237,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
   }
 
   cachedReferences(query: Contract.SemanticReferencesQuery, traceId?: string) {
+    if (query.signal?.aborted) return undefined
     this.sync(query.document)
     const cached = query.signal?.aborted ? undefined : this.#referenceResults.get(query)
     if (!cached) return undefined
@@ -251,13 +246,20 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
     return { documentVersion: query.document.version, value: cached }
   }
 
-  async references(query: Contract.SemanticReferencesQuery) {
+  async references(query: Contract.SemanticReferencesQuery, allowLocalSeed = true): Promise<Contract.VersionedSemanticResult<Contract.SemanticReferencesOutcome>> {
+    query = Object.freeze({ ...query,
+      document: Object.freeze({ ...query.document }),
+      position: Object.freeze({ ...query.position }),
+    })
     const traceId = this.#environment.ARKTS_REFERENCES_TRACE === "1" ? randomUUID() : undefined
     const cached = this.cachedReferences(query, traceId)
     if (cached) return cached
+    const snapshot = this.#referenceInputs.capture(query.document.workspaceId,
+      this.#documents.values(), this.#projectConfiguration, this.#sdkConfiguration)
     logReferenceCache(this.#logger, this.#referenceResults, "references.cache.miss", traceId)
     const selectionStarted = performance.now()
-    const candidates = await this.#referenceCandidates(query, traceId)
+    const candidates = await this.#referenceCandidates(query, snapshot, traceId, allowLocalSeed)
+    this.#assertReferenceSnapshot(snapshot)
     logReferenceCandidateSelection(this.#logger,
       referenceSearchRuntimeConfig(this.#environment).strategy, traceId, selectionStarted, candidates)
     const response = await this.#documentRequest<Contract.SemanticReferencesOutcome>("references", query, {
@@ -270,9 +272,15 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
         candidateUris: candidates.uris,
         candidateIdentityComplete: candidates.identityComplete,
         ...(candidates.anchorUri ? { candidateAnchorUri: candidates.anchorUri } : {}),
+        ...(candidates.anchorPosition ? { candidateAnchorPosition: candidates.anchorPosition } : {}),
         ...(candidates.supportUris ? { candidateSupportUris: candidates.supportUris } : {}),
       } : {}),
     })
+    this.#assertReferenceSnapshot(snapshot)
+    if (candidates?.anchorPosition && response.value.status !== "complete") {
+      this.#logger?.info("references.anchor.seed.fallback", { traceId, reason: response.value.reason })
+      return this.references(query, false)
+    }
     if (!query.signal?.aborted && this.#referenceResults.set(query, response.value)) {
       logReferenceCache(this.#logger, this.#referenceResults, "references.cache.store", traceId,
         response.value.status === "complete" ? response.value.references.length : 0)
@@ -383,285 +391,35 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
 
   async #referenceCandidates(
     query: Contract.SemanticReferencesQuery,
+    snapshot: ReferenceInputSnapshot,
     traceId?: string,
+    allowLocalSeed = true,
   ): Promise<ReferenceCandidateSelection | undefined> {
-    if (referenceSearchRuntimeConfig(this.#environment).strategy !== "indexed-batched"
-      || !this.#referenceIndex) return undefined
-    if (!this.#referenceIndexFreshness.isDirty(query.document.workspaceId)) {
-      await waitForInitialReferenceCatalog(this.#referenceIndex, query.document.workspaceId,
-        this.#environment, query.signal, this.#logger)
-    }
-    if (query.signal?.aborted) throw new Error("References changed during catalog wait")
-    if (!await prepareReferenceIndexSearch(
-      this.#referenceIndexFreshness, query.document.workspaceId,
-      this.#referenceIndex, this.#logger,
-    )) return undefined
-    try {
-      const admittedRootUris = this.#referenceAdmissionRoots(query.document.workspaceId)
-      let direct = await this.#referenceIndex.searchReferenceCandidates(
-        query.document.workspaceId,
-        query.document.uri,
-        query.position,
-        MAX_SEMANTIC_WORKER_REFERENCE_CANDIDATES,
-        undefined,
-        admittedRootUris,
-        query.signal,
-      )
-      direct = await this.#resolveReferenceCandidateSources(
-        query.document.workspaceId,
-        query.document.uri,
-        query.position,
-        direct,
-        admittedRootUris,
-        query.signal,
-      )
-      if (await this.#referenceIndexFreshness.accepts(
-        query.document.workspaceId, direct, this.#referenceIndex,
-      )) {
-        const candidateUris = identityReferenceUris(direct)
-        const supportUris = identityReferenceSupportUris(direct, candidateUris)
-        const identityComplete = direct.identityComplete && supportUris !== undefined
-        this.#logger?.info("references.index.accepted", {
-          anchorMode: identityComplete
-            ? "indexed-declaration-identity"
-            : direct.narrowedUris?.length
-              ? "indexed-declaration-conservative"
-              : "indexed-declaration",
-          candidateFiles: candidateUris.length,
-          conservativeCandidateFiles: direct.uris.length,
-          servedGeneration: direct.servedGeneration,
-          ...(this.#environment.ARKTS_REFERENCES_TRACE === "1"
-            ? {
-                bindingResolutions: referenceBindingResolutionSummary(direct),
-              }
-            : {}),
-        })
-        return {
-          uris: candidateUris,
-          identityComplete,
-          ...(identityComplete && direct.declarationUri
-            ? { anchorUri: direct.declarationUri }
-            : {}),
-          ...(identityComplete && supportUris ? { supportUris } : {}),
-        }
-      }
-      if (direct.completeness !== "ready" || direct.supported) {
-        this.#logger?.info("references.index.fallback", {
-          reason: "direct-candidate-ineligible",
-          supported: direct.supported,
-          complete: direct.complete,
-          completeness: direct.completeness,
-          hasDeclarationIdentity: Boolean(direct.declarationIdentity),
-          servedGeneration: direct.servedGeneration,
-        })
-        return undefined
-      }
-      const definition = await this.#documentRequest<Contract.SemanticDefinition[]>(
-        "define",
-        query,
-        { position: query.position, isolate: true, ...(traceId ? { traceId } : {}) },
-      )
-      if (definition.value.length !== 1) {
-        this.#logger?.info("references.index.fallback", {
-          reason: "definition-count",
-          definitionCount: definition.value.length,
-        })
-        return undefined
-      }
-      const target = definition.value[0]
-      let result = await this.#referenceIndex.searchReferenceCandidates(
-        query.document.workspaceId,
-        target.uri,
-        target.range.start,
-        MAX_SEMANTIC_WORKER_REFERENCE_CANDIDATES,
-        undefined,
-        admittedRootUris,
-        query.signal,
-      )
-      result = await this.#resolveReferenceCandidateSources(
-        query.document.workspaceId,
-        target.uri,
-        target.range.start,
-        result,
-        admittedRootUris,
-        query.signal,
-      )
-      const status = await this.#referenceIndex.status(query.document.workspaceId)
-      if (!isReferenceIndexCandidateEligible(result, status)) {
-        this.#logger?.info("references.index.fallback", {
-          reason: "candidate-ineligible",
-          targetUri: target.uri,
-          targetLine: target.range.start.line,
-          targetCharacter: target.range.start.character,
-          supported: result.supported,
-          complete: result.complete,
-          completeness: result.completeness,
-          hasDeclarationIdentity: Boolean(result.declarationIdentity),
-          servedGeneration: result.servedGeneration,
-          committedGeneration: status.committedGeneration,
-        })
-        return undefined
-      }
-      this.#referenceIndexFreshness.accepted(query.document.workspaceId, result.servedGeneration)
-      const candidateUris = identityReferenceUris(result)
-      const supportUris = identityReferenceSupportUris(result, candidateUris)
-      const identityComplete = result.identityComplete && supportUris !== undefined
-      this.#logger?.info("references.index.accepted", {
-        anchorMode: identityComplete
-          ? "compiler-definition-identity"
-          : result.narrowedUris?.length
-            ? "compiler-definition-conservative"
-            : "compiler-definition",
-        candidateFiles: candidateUris.length,
-        conservativeCandidateFiles: result.uris.length,
-        servedGeneration: result.servedGeneration,
-        ...(this.#environment.ARKTS_REFERENCES_TRACE === "1"
-          ? {
-              bindingResolutions: referenceBindingResolutionSummary(result),
-            }
-          : {}),
-      })
-      return {
-        uris: candidateUris,
-        identityComplete,
-        ...(identityComplete && result.declarationUri
-          ? { anchorUri: result.declarationUri }
-          : {}),
-        ...(identityComplete && supportUris ? { supportUris } : {}),
-      }
-    } catch (error) {
-      this.#logger?.info("references.index.fallback", {
-        reason: "index-error",
-        message: error instanceof Error ? error.message : String(error),
-      })
-      return undefined
-    }
+    return selectReferenceCandidates({
+      environment: this.#environment,
+      index: this.#referenceIndex,
+      exportIndex: this.#exportIndex,
+      freshness: this.#referenceIndexFreshness,
+      packageResolver: this.#packageResolver,
+      projectConfiguration: snapshot.projectConfiguration,
+      sdkConfiguration: snapshot.sdkConfiguration,
+      sourceOverlays: snapshot.sourceOverlays,
+      assertCurrent: () => this.#assertReferenceSnapshot(snapshot),
+      logger: this.#logger,
+      define: (definitionQuery, definitionTraceId) => {
+        this.#assertReferenceSnapshot(snapshot)
+        return this.#documentRequest<Contract.SemanticDefinition[]>(
+          "define", definitionQuery,
+          { position: definitionQuery.position, isolate: true, ...(definitionTraceId ? { traceId: definitionTraceId } : {}) },
+        )
+      },
+    }, query, traceId, allowLocalSeed)
   }
-
-  async #resolveReferenceCandidateSources(
-    workspaceId: string,
-    declarationUri: string,
-    declarationPosition: TextPosition,
-    result: WorkspaceReferenceCandidateResult,
-    admittedRootUris: readonly string[] | undefined,
-    signal?: AbortSignal,
-  ): Promise<WorkspaceReferenceCandidateResult> {
-    if (result.identityComplete || !this.#referenceIndex || !await this.#referenceIndexFreshness.accepts(
-      workspaceId, result, this.#referenceIndex,
-    )) {
-      return result
-    }
-    const rootPath = toFilePath(workspaceId)
-    if (!rootPath) return result
-    const packageResolver = new LocalPackageResolver()
-    packageResolver.configureProject(this.#projectConfiguration)
-    const sdk = discoverProjectSdk(
-      rootPath,
-      this.#environment.ARKLINE_HARMONY_SDK_PATH,
-      this.#sdkConfiguration,
-    )
-    const sdkTerminals = new Map<string, string | undefined>()
-    const resolutions = new Map<string, WorkspaceReferenceSourceResolution>()
-    let unresolvedBindings = 0
-    const unresolvedByKind = {
-      sdk: 0,
-      package: 0,
-      relative: 0,
-      other: 0,
-    }
-    const recordUnresolved = (sourceSpecifier: string): void => {
-      unresolvedBindings += 1
-      unresolvedByKind[referenceSourceKind(sourceSpecifier)] += 1
-    }
-    for (const binding of result.bindings ?? []) {
-      if (binding.sourceResolution === "unique") continue
-      const bindingPath = toFilePath(binding.uri)
-      if (!bindingPath) {
-        recordUnresolved(binding.sourceSpecifier)
-        continue
-      }
-      if (isHarmonySdkModuleSpecifier(binding.sourceSpecifier)) {
-        let externalTerminalIdentity = sdkTerminals.get(binding.sourceSpecifier)
-        if (!sdkTerminals.has(binding.sourceSpecifier)) {
-          externalTerminalIdentity = sdkExternalTerminalIdentity(sdk, binding.sourceSpecifier)
-          sdkTerminals.set(binding.sourceSpecifier, externalTerminalIdentity)
-        }
-        if (!externalTerminalIdentity) {
-          recordUnresolved(binding.sourceSpecifier)
-          continue
-        }
-        const key = `${binding.uri}\0${binding.sourceSpecifier}`
-        resolutions.set(key, {
-          bindingUri: binding.uri,
-          sourceSpecifier: binding.sourceSpecifier,
-          externalTerminalIdentity,
-        })
-        continue
-      }
-      const resolved = packageResolver.resolve(
-        rootPath,
-        bindingPath,
-        binding.sourceSpecifier,
-      )
-      if (!resolved?.path) {
-        recordUnresolved(binding.sourceSpecifier)
-        continue
-      }
-      const resolvedSourceUri = pathToFileURL(resolved.path).href
-      if (!isSemanticWorkerUriWithinRoot(resolvedSourceUri, workspaceId)) {
-        recordUnresolved(binding.sourceSpecifier)
-        continue
-      }
-      const key = `${binding.uri}\0${binding.sourceSpecifier}`
-      resolutions.set(key, {
-        bindingUri: binding.uri,
-        sourceSpecifier: binding.sourceSpecifier,
-        resolvedSourceUri,
-      })
-    }
-    if (resolutions.size > 0 || unresolvedBindings > 0) {
-      this.#logger?.info("references.index.source-resolutions", {
-        resolvedBindings: resolutions.size,
-        unresolvedBindings,
-        unresolvedSdkBindings: unresolvedByKind.sdk,
-        unresolvedPackageBindings: unresolvedByKind.package,
-        unresolvedRelativeBindings: unresolvedByKind.relative,
-        unresolvedOtherBindings: unresolvedByKind.other,
-        servedGeneration: result.servedGeneration,
-      })
-    }
-    if (resolutions.size === 0) return result
-    return this.#referenceIndex!.searchReferenceCandidates(
-      workspaceId,
-      declarationUri,
-      declarationPosition,
-      MAX_SEMANTIC_WORKER_REFERENCE_CANDIDATES,
-      [...resolutions.values()],
-      admittedRootUris,
-      signal,
-    )
-  }
-
-  #referenceAdmissionRoots(workspaceId: string): readonly string[] | undefined {
-    const rootPath = toFilePath(workspaceId)
-    if (!rootPath) return undefined
-    const graph = this.#packageResolver.projectFor(rootPath).semanticGraph()
-    if (graph.status !== "ready" || !graph.complete || graph.units.length === 0) return undefined
-    const admittedPaths = graph.units.flatMap(unit => {
-      const entry = this.#packageResolver.moduleEntryPath(rootPath, unit.moduleRoot)
-      return entry && !unit.sourceRoots.some(sourceRoot => (
-        entry === sourceRoot || entry.startsWith(`${sourceRoot}${path.sep}`)
-      )) ? [...unit.sourceRoots, entry] : unit.sourceRoots
-    })
-    return [...new Set(admittedPaths.map(sourceRoot => (
-      pathToFileURL(sourceRoot).href
-    )))].sort()
-  }
-
   async dispose(): Promise<void> {
     if (this.#disposed) return
     this.#disposed = true
     this.#referenceResults.clear()
+    this.#referenceInputs.clear()
     await Promise.all([...this.#supervisors.values()].map(supervisor => supervisor.dispose()))
     this.#supervisors.clear()
     this.#handlers.clear()
@@ -674,6 +432,10 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
     query: Contract.SemanticDocumentQuery,
     args: SemanticWorkerRequestArgsByMethod[Method],
   ): Promise<Contract.VersionedSemanticResult<Value>> {
+    if (query.signal?.aborted) throw new SemanticWorkerSupervisorError(
+      abortState(query.signal) === SemanticWorkerCancelState.contentModified
+        ? "content-modified" : "client-cancelled",
+    )
     this.sync(query.document)
     const value = await this.#request(method, query.document.workspaceId, query.document.uri,
       query.document.version, args, query.signal)
@@ -749,6 +511,9 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
   }
 
   #mutate(rootUri: string, mutation: RootSemanticWorkerMutationInput): void {
+    for (const knownRoot of this.#referenceInputs.changed(rootUri)) {
+      this.#referenceResults.invalidateRoot(knownRoot)
+    }
     try {
       void this.#supervisor(rootUri).mutate(mutation).catch(error => {
         this.#failure = error
@@ -829,98 +594,14 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
     if (this.#disposed) throw new Error("Semantic worker is disposed")
     if (this.#failure) throw this.#failure
   }
-}
 
-function referenceSourceKind(
-  sourceSpecifier: string,
-): "sdk" | "package" | "relative" | "other" {
-  if (isHarmonySdkModuleSpecifier(sourceSpecifier)) return "sdk"
-  if (sourceSpecifier.startsWith("./") || sourceSpecifier.startsWith("../")) return "relative"
-  if (/^(?:@[\w.-]+\/)?[\w.-]+(?:\/[^/\\]+)*$/.test(sourceSpecifier)) return "package"
-  return "other"
-}
-
-function sdkExternalTerminalIdentity(
-  sdk: ProjectSdkSelection,
-  sourceSpecifier: string,
-): string | undefined {
-  if (!sdk.ready || !sdk.path || sdk.identity?.status !== "identified") return undefined
-  try {
-    const sdkRoot = fs.realpathSync.native(sdk.path)
-    const candidate = resolveHarmonySdkModule(sdkRoot, sourceSpecifier)
-    if (!candidate) return undefined
-    const resolved = fs.realpathSync.native(candidate)
-    const relative = path.relative(sdkRoot, resolved)
-    if (!relative || relative === ".." || relative.startsWith(`..${path.sep}`)
-      || path.isAbsolute(relative) || !fs.statSync(resolved).isFile()) return undefined
-    const identity = createHash("sha256")
-      .update("arkts-sdk-terminal-v1\0")
-      .update(sdkRoot)
-      .update("\0")
-      .update(sdk.identity.apiVersion ?? "")
-      .update("\0")
-      .update(sdk.identity.componentVersion ?? "")
-      .update("\0")
-      .update(sourceSpecifier)
-      .update("\0")
-      .update(relative.split(path.sep).join("/"))
-      .digest("hex")
-    return `sdk:${identity}`
-  } catch {
-    return undefined
-  }
-}
-
-interface ReferenceCandidateSelection {
-  readonly uris: readonly string[]
-  readonly identityComplete: boolean
-  readonly anchorUri?: string
-  readonly supportUris?: readonly string[]
-}
-
-const MAX_REFERENCE_IDENTITY_SUPPORT_URIS = 64
-
-function identityReferenceUris(
-  result: WorkspaceReferenceCandidateResult,
-): readonly string[] {
-  if (result.identityComplete && result.identityUris.length > 0) return result.identityUris
-  return result.narrowedUris?.length ? result.narrowedUris : result.uris
-}
-
-function identityReferenceSupportUris(
-  result: WorkspaceReferenceCandidateResult,
-  candidateUris: readonly string[],
-): readonly string[] | undefined {
-  if (!result.identityComplete || !result.declarationUri) return undefined
-  const candidates = new Set(candidateUris)
-  const support = new Set([result.declarationUri])
-  for (const binding of result.bindings ?? []) {
-    if (binding.kind !== "reexport" || !candidates.has(binding.uri)) continue
-    if (binding.sourceResolution !== "unique" || !binding.resolvedSourceUri
-      || !candidates.has(binding.resolvedSourceUri)) {
-      return undefined
+  #assertReferenceSnapshot(snapshot: ReferenceInputSnapshot): void {
+    this.#assertAvailable()
+    if (!this.#referenceInputs.isCurrent(snapshot)) {
+      throw new SemanticWorkerSupervisorError("content-modified")
     }
-    support.add(binding.uri)
-    support.add(binding.resolvedSourceUri)
-    if (support.size > MAX_REFERENCE_IDENTITY_SUPPORT_URIS) return undefined
   }
-  return [...support].sort((left, right) => left.localeCompare(right))
 }
-
-function referenceBindingResolutionSummary(
-  result: WorkspaceReferenceCandidateResult,
-): string {
-  const counts: Record<string, number> = {}
-  for (const binding of result.bindings ?? []) {
-    const key = `${binding.sourceResolution}:${referenceSourceKind(binding.sourceSpecifier)}`
-    counts[key] = (counts[key] ?? 0) + 1
-  }
-  return Object.entries(counts)
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([key, count]) => `${key}=${count}`)
-    .join(",")
-}
-
 function abortState(signal: AbortSignal | undefined) {
   const kind = signal?.reason && typeof signal.reason === "object"
     ? (signal.reason as { kind?: unknown }).kind
@@ -930,55 +611,4 @@ function abortState(signal: AbortSignal | undefined) {
   }
   if (kind === "shutdown") return SemanticWorkerCancelState.supervisorDisposing
   return SemanticWorkerCancelState.clientCancelled
-}
-
-function messageEpoch(value: unknown): number | undefined {
-  if (!value || typeof value !== "object") return undefined
-  const epoch = (value as { epoch?: unknown }).epoch
-  return Number.isSafeInteger(epoch) ? epoch as number : undefined
-}
-
-function workerLogMessage(value: unknown): {
-  level: "info" | "error"
-  event: string
-  fields: Readonly<Record<string, string | number | boolean | null | undefined>>
-} | undefined {
-  if (!value || typeof value !== "object") return undefined
-  const candidate = value as {
-    workerEvent?: unknown
-    level?: unknown
-    event?: unknown
-    fields?: unknown
-  }
-  if (candidate.workerEvent !== "log"
-    || (candidate.level !== "info" && candidate.level !== "error")
-    || typeof candidate.event !== "string"
-    || candidate.event.length === 0
-    || !candidate.fields
-    || typeof candidate.fields !== "object"
-    || Array.isArray(candidate.fields)) return undefined
-  for (const field of Object.values(candidate.fields)) {
-    if (field !== null && field !== undefined
-      && typeof field !== "string" && typeof field !== "number" && typeof field !== "boolean") {
-      return undefined
-    }
-  }
-  return {
-    level: candidate.level,
-    event: candidate.event,
-    fields: candidate.fields as Readonly<Record<string, string | number | boolean | null | undefined>>,
-  }
-}
-
-function resourceEventPath(candidate: string): string {
-  try { return fs.realpathSync.native(candidate) }
-  catch {
-    try { return path.join(fs.realpathSync.native(path.dirname(candidate)), path.basename(candidate)) }
-    catch { return path.resolve(candidate) }
-  }
-}
-
-function toFilePath(uri: string): string | undefined {
-  try { return uri.startsWith("file:") ? fileURLToPath(uri) : undefined }
-  catch { return undefined }
 }

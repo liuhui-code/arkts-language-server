@@ -30,6 +30,7 @@ import {
   wireRequest,
 } from "./semantic-worker-command-codec.js"
 import { isInteractiveSemanticWorkerMethod } from "./semantic-request-lanes.js"
+import { findCoalescingMutation, mergeDocumentMutations } from "./semantic-worker-mutation-coalescing.js"
 
 export { SEMANTIC_WORKER_PROTOCOL_VERSION, SemanticWorkerCancelState } from "./worker-protocol.js"
 
@@ -841,37 +842,6 @@ function mergeWorkspaceInvalidations(
     resourceDirty: previous.resourceDirty || next.resourceDirty,
     resourceChanged: previous.resourceChanged || next.resourceChanged,
     changes: [...changes].map(([uri, kind]) => ({ uri, kind })),
-  })
-}
-
-function findCoalescingMutation(
-  pending: readonly MutationRecord[],
-  input: RootSemanticWorkerMutationInput,
-  documentKey: string | undefined,
-): MutationRecord | undefined {
-  const tail = pending.at(-1)
-  if (input.kind === "workspaceFilesChanged") {
-    return tail?.input.kind === "workspaceFilesChanged" ? tail : undefined
-  }
-  for (let index = pending.length - 1; index >= 0; index -= 1) {
-    const record = pending[index]
-    if (!record || record.input.kind === "workspaceFilesChanged") return undefined
-    if (record.documentKey === documentKey) return record
-  }
-  return undefined
-}
-
-function mergeDocumentMutations(
-  epoch: number,
-  previous: Exclude<RootSemanticWorkerMutationInput, { kind: "workspaceFilesChanged" }>,
-  next: Exclude<RootSemanticWorkerMutationInput, { kind: "workspaceFilesChanged" }>,
-): RootSemanticWorkerMutationInput {
-  if (previous.kind !== "open" || next.kind !== "change") return next
-  return canonicalMutationInput(epoch, {
-    kind: "open",
-    uri: next.uri,
-    documentVersion: next.documentVersion,
-    text: next.text,
   })
 }
 

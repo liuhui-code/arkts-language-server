@@ -64,9 +64,18 @@ input.on("line", line => {
         servedGeneration: 1,
         completeness: "ready",
       })
-      if (supported) warming = true
+      if (supported && process.env.ARKTS_INDEX_TEST_ANCHOR !== "export") warming = true
       break
     }
+    case "exports/search":
+      respond(request.id, {
+        items: [{ exportedName: "Thing", kind: "class", uri: pathToFileURL(path.join(root, "Target.ets")).href,
+          range: { start: { line: 0, character: 13 }, end: { line: 0, character: 18 } },
+          ordinal: 0, declarationIdentity: "target-thing" }],
+        servedGeneration: 1, completeness: "ready",
+      })
+      if (process.env.ARKTS_INDEX_TEST_ANCHOR === "export") warming = true
+      break
     case "status":
       respond(request.id, status())
       break

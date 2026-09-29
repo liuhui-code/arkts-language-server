@@ -98,6 +98,15 @@ input.on("line", line => {
       scheduleReady()
       break
     }
+    case "exports/search":
+      respond(request.id, {
+        items: committedGeneration ? [{ exportedName: "Thing", kind: "class", uri: uri("Target.ets"),
+          range: { start: { line: 0, character: 13 }, end: { line: 0, character: 18 } },
+          ordinal: 0, declarationIdentity: "target-thing" }] : [],
+        servedGeneration: committedGeneration,
+        completeness: committedGeneration ? "ready" : "stale",
+      })
+      break
     case "status": {
       const current = status()
       audit({ event: "status-served", status: current })

@@ -60,6 +60,7 @@ import { formatArktsDocument } from "../core/formatting/arkts-document-formatter
 import { FoldingRangeProvider } from "../core/syntax/folding-range-provider.js"
 import { SemanticTypeEngineRegistry } from "../core/types/type-engine.js"
 import { isMemberAccessCompletion } from "../core/types/typescript-language-service.js"
+import { publicReferenceResult } from "./references/reference-result-mapping.js"
 import {
   SemanticDocumentStore,
   type SemanticWorkspaceView,
@@ -68,6 +69,7 @@ import { LocalPackageResolver } from "../core/sdk/local-package-resolver.js"
 import type { StructuredLogger } from "../observability/logger.js"
 import type { SemanticMemoryLevel } from "./coordinator/semantic-coordinator.js"
 import type { ReferenceSearchRuntimeConfig } from "./references/reference-runtime.js"
+import { prepareReferenceAnchor } from "./references/reference-anchor-preparation.js"
 
 export interface LegacySemanticEngineRuntimeOptions {
   readonly maxResidentContexts?: number
@@ -94,8 +96,8 @@ export class LegacySemanticEngine implements SemanticEnginePort {
 
   constructor(
     private readonly projects: ProjectResolverPort,
-    logger?: StructuredLogger,
-    runtime: LegacySemanticEngineRuntimeOptions = {},
+    private readonly logger?: StructuredLogger,
+    private readonly runtime: LegacySemanticEngineRuntimeOptions = {},
   ) {
     this.interactiveProjectRootProfile = runtime.interactiveProjectRootProfile ?? "closure"
     this.memberCompletionProjectRootProfile = runtime.memberCompletionProjectRootProfile ?? "workspace"
@@ -376,11 +378,16 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     candidateAnchorUri?: string,
     candidateSupportUris?: readonly string[],
     forceLegacy = false,
+    candidateAnchorPosition?: TextPosition,
   ): Promise<VersionedSemanticResult<SemanticReferencesOutcome>> {
     assertActive(query.signal)
     this.sync(query.document)
     const workspace = this.projects.projectFor(query.document.uri)
     const position = toLegacyPosition(query.document, query.position, workspace)
+    if (candidateAnchorUri && candidateAnchorPosition) position.expectedReferenceAnchor = {
+      path: toFilePath(candidateAnchorUri)!, line: candidateAnchorPosition.line + 1,
+      column: candidateAnchorPosition.character + 1,
+    }
     const result = await this.engines.references(
       this.documents.prepare(position, true),
       position,
@@ -397,18 +404,7 @@ export class LegacySemanticEngine implements SemanticEnginePort {
       }),
       forceLegacy,
     )
-    return {
-      documentVersion: query.document.version,
-      value: result.status === "complete"
-        ? {
-            status: "complete",
-            references: result.references.map((reference) => ({
-              uri: pathToFileURL(reference.path).href,
-              range: toPublicRange(reference.range),
-            })),
-          }
-        : result,
-    }
+    return publicReferenceResult(query.document.version, result)
   }
 
   async referenceAnchor(
@@ -418,17 +414,10 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     this.sync(query.document)
     const workspace = this.projects.projectFor(query.document.uri)
     const position = toLegacyPosition(query.document, query.position, workspace)
-    const definitions = await this.engines.referenceAnchor(
-      this.documents.prepare(position, true),
-      position,
+    return prepareReferenceAnchor(
+      position, query.document.version, this.documents, this.engines,
+      this.runtime.references?.trace ? this.logger : undefined,
     )
-    return {
-      documentVersion: query.document.version,
-      value: definitions.map(target => ({
-        uri: pathToFileURL(target.path).href,
-        range: toPublicRange(target.range),
-      })),
-    }
   }
 
   async prepareRename(

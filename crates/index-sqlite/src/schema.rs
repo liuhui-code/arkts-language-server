@@ -18,7 +18,9 @@ pub(super) fn initialize_schema(
              );\
              CREATE TABLE documents(\
                 uri TEXT PRIMARY KEY,\
-                generation INTEGER NOT NULL CHECK(generation >= 0)\
+                generation INTEGER NOT NULL CHECK(generation >= 0),\
+                heritage_lexically_complete INTEGER CHECK(heritage_lexically_complete IN (0, 1)),\
+                class_bindings_source_supported INTEGER CHECK(class_bindings_source_supported IN (0, 1))\
              );\
              CREATE TABLE rejected_documents(\
                 uri TEXT PRIMARY KEY\
@@ -121,6 +123,9 @@ pub(super) fn initialize_schema(
                 ) VALUES ('delete', old.rowid, old.name_folded);\
              END;",
         ))
+        .map_err(map_sqlite_error)?;
+    transaction
+        .execute_batch(crate::class_heritage_storage::CREATE_TABLE_SQL)
         .map_err(map_sqlite_error)?;
     transaction
         .execute(

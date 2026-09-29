@@ -11,6 +11,8 @@ export interface ReferenceSearchRuntimeConfig {
   readonly sdkAmbientProfile: ReferenceSdkAmbientProfile
   readonly dependencyProfile: ReferenceDependencyProfile
   readonly contextRetentionProfile: ReferenceContextRetentionProfile
+  readonly anchorReuse: boolean
+  readonly conservativeSemanticUnits: boolean
   readonly trace: boolean
 }
 
@@ -48,6 +50,8 @@ export function referenceSearchRuntimeConfig(
     sdkAmbientProfile,
     dependencyProfile,
     contextRetentionProfile,
+    anchorReuse: environment.ARKTS_REFERENCES_ANCHOR_REUSE === "1",
+    conservativeSemanticUnits: environment.ARKTS_REFERENCES_CONSERVATIVE_SEMANTIC_UNITS === "1",
     trace: environment.ARKTS_REFERENCES_TRACE === "1",
   }
 }

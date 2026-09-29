@@ -69,6 +69,12 @@ test("interactive definition bypasses references and an edit cancels the old sna
   assert.equal(hover.error, undefined, JSON.stringify(hover.error))
   assert.equal(referencesSettled, false, "hover waited for the global references request")
 
+  // Only requests sent while references is active belong to this lane audit.
+  const interactive = readEvents(logDirectory)
+    .filter(({ event }) => event === "references.interactive.start")
+  assert.deepEqual(interactive.map(({ method }) => method), ["define", "hover"])
+  assert.ok(interactive.every(({ queueWaitMs }) => queueWaitMs >= 0 && queueWaitMs < 250))
+
   session.changeDocument({ uri: queryUri, version: 2, text: `${query}// changed\n` })
   const staleReferences = await references
   assert.deepEqual(staleReferences.error, {
@@ -82,12 +88,19 @@ test("interactive definition bypasses references and an edit cancels the old sna
   assert.deepEqual(currentDefinition.result, definition.result)
   await session.close({ timeoutMs: 5_000 })
 
-  const events = fs.readFileSync(path.join(logDirectory, "server.log"), "utf8")
-    .split("\n").filter(Boolean).map(JSON.parse)
-  const interactive = events.filter(({ event }) => event === "references.interactive.start")
-  assert.deepEqual(interactive.map(({ method }) => method), ["define", "hover", "define"])
-  assert.ok(interactive.every(({ queueWaitMs }) => queueWaitMs >= 0 && queueWaitMs < 250))
+  const completed = readEvents(logDirectory).filter(({ event, method }) =>
+    event === "request.completed" && ["textDocument/definition", "textDocument/hover"].includes(method))
+  assert.deepEqual(completed.map(({ method, outcome }) => ({ method, outcome })), [
+    { method: "textDocument/definition", outcome: "ok" },
+    { method: "textDocument/hover", outcome: "ok" },
+    { method: "textDocument/definition", outcome: "ok" },
+  ])
 })
+
+function readEvents(logDirectory) {
+  return fs.readFileSync(path.join(logDirectory, "server.log"), "utf8")
+    .split("\n").filter(Boolean).map(JSON.parse)
+}
 
 async function waitForEvent(logDirectory, event, timeoutMs = 10_000) {
   const logPath = path.join(logDirectory, "server.log")

@@ -26,6 +26,17 @@ methods admitted during references and report their queue wait. This decision
 does not yet generalize the detached lane to implementations, rename or call
 hierarchy.
 
+The [candidate-stage snapshot regression](../tdd/references-candidate-snapshot.md)
+extends freshness to asynchronous index/status work outside the persistent
+Worker's queue. Cancellation is checked before document synchronization; an
+old operation must never enqueue its version-1 buffer after version 2.
+Managed input/configuration revisions fence semantic admission and completion,
+including canonical aliases and overlapping workspace roots. A semantic
+`content-modified` failure follows the runner's stale path even if only a
+nested workspace's LSP freshness lane was directly aborted. The references
+adapter emits ContentModified (-32801), not InternalError (-32603), with no
+partial Locations. Existing first-cause client cancellation retains priority.
+
 The [pre-F6b Settings/API-24 benchmark](../reports/2026-09-21-settings-api24-benchmark.md)
 exposed a second scheduling boundary: the LSP references handler waited for
 an already-started automatic diagnostic to quiesce **before** entering the
@@ -44,6 +55,13 @@ not claim cold/miss navigation under 500 ms or graduate the release gate.
 
 ## Gate
 
+Document close is a lifecycle barrier, not a replaceable full-text snapshot.
+Queued `close → open` must reach the semantic Worker in that order, even if
+the reopened document restarts at the same or a lower version. Coalescing may
+still replace ordinary text changes, but must not erase either side of close.
+The [public reopen regression](../tdd/references-reopen-mutations.md) proves
+exact references and isolated anchor fallback without relaxing document truth.
+
 A framed LSP interference test uses a default-off verifier delay, launches
 references, then sends definition, hover and a document edit. Definition and
 hover complete before references with queue waits below 250 ms; the edit makes
@@ -51,3 +69,19 @@ the old references request fail ContentModified, and a new definition sees the
 new document revision. Direct supervisor coverage also proves out-of-order
 response routing and first-cause cancellation. See
 [the TDD evidence](../tdd/references-scheduling.md).
+
+The active-lane audit applies only while references is still running. An
+interactive request sent after awaiting the terminal references response is
+not required to produce `references.interactive.start`; it retains the normal
+public response and `request.completed` contracts. The 2026-09-28 test repair
+checks the two bypassing requests before the edit and separately audits the
+fresh definition after cancellation. Three independent runs and the 51-test
+focus pass with unchanged deadlines and no production change; the broader
+whole-fast gate remains open due to independently retained timeouts.
+
+R-10's opt-in validated-definition route preserves the same request contracts.
+Two additional [public characterization transcripts](../tdd/references-anchor-reuse.md)
+cancel or edit after the reused anchor enters a transient batch. Neither old
+request returns partial Locations; same-process recovery proves the complete
+result, including the added unsaved reference. This does not claim real-project
+cancellation latency or change the production scheduler.

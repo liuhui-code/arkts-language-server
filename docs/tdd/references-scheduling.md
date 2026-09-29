@@ -60,3 +60,46 @@ its five-second response deadline under contention, then passed all three
 cases when rerun alone. No handwritten source or test added by this slice
 exceeds 500 lines. The pre-existing `semantic-worker-supervisor.ts` debt was
 reduced from 998 to 953 lines by extracting the command codec; it did not grow.
+
+## Current gate: terminal-lane audit repair (2026-09-28)
+
+Parent `9f91122ac504365c57473a430094da09baac9309`, existing dirty tree
+preserved. The current whole-fast run and independent original 15-case
+recheck both reproduce a narrower test failure: every public assertion above
+passes, but the final audit expects `define,hover,define` in
+`references.interactive.start` and observes only `define,hover`.
+
+The last definition is sent **after** awaiting the stale references response.
+This event only describes interactive work while a global reference trace is
+active. The Worker's terminal `finally` may already have cleared that trace;
+requiring it after the terminal response is an invalid lifecycle assumption,
+not evidence that the third response failed. Same-port log ordering and the
+parent's synchronous append rule out an unflushed audit as the demonstrated
+failure. No new production event or scheduler policy is introduced.
+
+The minimal test repair checks exact `define,hover` and the unchanged
+`0 <= queueWaitMs < 250` **before** sending the edit, while both public
+`referencesSettled === false` assertions still hold. After shutdown it checks
+exact ordinary `request.completed` events for definition/hover/definition,
+all `outcome=ok`. The stale `-32801`, edited-definition exact equality,
+all request deadlines, verifier delay and production assets remain unchanged.
+
+Raw logs live under `.bench/anchor-reuse-2026-09-28/`:
+
+| Command / log | Terminal result |
+| --- | --- |
+| Original whole-fast / `availability-consumer-check-fast.log` | 1,078/1,093 PASS, 15 FAIL, exit 1; audit RED among other failures |
+| Original failed-case filter / `availability-consumer-failed-transcripts-recheck-1.log` | 12/15 PASS, 3 FAIL, exit 1; audit RED reproduced independently |
+| Three serial unchanged-deadline scheduling runs / `availability-consumer-scheduling-green-{1,2,3}.log` | Each 1/1 PASS, exit 0; 3,767.862988 / 2,968.549034 / 2,319.598416 ms |
+| Five-file supervisor/cancellation/framed-LSP/manifest focus / `availability-consumer-scheduling-focus.log` | 51/51 PASS, exit 0, zero cancellations/skips/todos; 55,935.865402 ms |
+
+The test was 110 lines, SHA256
+`6b517a37f03790242d5cd1a303ed2f15a02a982a5755c31af6b06a2c09aed932`;
+it is now 122 lines, SHA256
+`79ac1ff86a9fb16c3c2cb3d9fbce5734842042703ffaa52e7e1cc717476a7eae`.
+The existing test-layer assignment remains unchanged. These focused GREENs
+do not replace a fresh whole-fast gate: the original constructor references
+deadline still fails independently. See the
+[current consumer report](../reports/2026-09-28-settings-source-availability-consumer.md)
+for all retained failures and fingerprints. This is a TDD test-contract repair,
+not a scheduler/performance optimization or a new 500 ms claim.

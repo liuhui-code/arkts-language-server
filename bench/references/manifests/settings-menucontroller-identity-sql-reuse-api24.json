@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "benchmarkId": "settings-menucontroller-identity-sql-reuse-api24",
+  "benchmarkScope": "Native-only operation-local full256 identity SQL string reuse; same SQL/rows/batches/order/schema/durability/JS/SDK/query/oracle/180s gates; allocation-test saving is not end-to-end latency/memory graduation",
+  "repo": "openharmony/applications_settings",
+  "repoSha": "ecc550dfaed880e04e38a2477eb7235cd50475b9",
+  "projectDeclaredSdk": {
+    "compileSdkVersion": 23,
+    "targetSdkVersion": 20,
+    "compatibleSdkVersion": 20
+  },
+  "serverRevision": "9f91122ac504365c57473a430094da09baac9309",
+  "serverDirty": true,
+  "nodeVersion": "v26.3.0",
+  "sdk": {
+    "apiVersion": "24",
+    "version": "6.1.1.125",
+    "declarationDigest": "8098b8abbc6b06fce0e7322d6f8f82a5bbce41e847dbd39e9a98811a33d4c6e4"
+  },
+  "query": {
+    "file": "common/src/main/ets/core/controller/MenuController.ets",
+    "symbol": "MenuController",
+    "line": 90,
+    "character": 17,
+    "includeDeclaration": false
+  },
+  "oracle": {
+    "verified": true,
+    "expectedLocationCount": 267,
+    "source": "docs/reports/2026-09-27-settings-seed-complete-retry.md",
+    "sha256": "72980d7c79e3baf44ebba8a30094484225aebe08aefd2077cda45cbdc5e90ab3"
+  },
+  "serverSha256": "ebac64e22a90a8ab0d1171f9b50c9a11272fc705569058dce64abc16515aac36",
+  "semanticWorkerSha256": "6e236373d7693cd92f1ead0e2436f3125b83dbcf3b276497ef25109c3b742504",
+  "referenceVerifierWorkerSha256": "8cbf70973d55c294371dfbd0ddc0a9ea9771a975c7a86037728dc9faa1edceee",
+  "standardLibrarySha256": "ea78beea2aa84f93fe66645465c37eb916028b79cd9fe898d469bdf54efbf97d",
+  "sidecarSha256": "f8b9e0c7d0632fe87a6edd4858bc2e23b0a2a20d3f21db965e51a1ee87122070"
+}

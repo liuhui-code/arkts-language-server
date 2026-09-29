@@ -138,6 +138,10 @@ export class SemanticRequestRunner {
         outcome = "superseded"
         return request.fallback
       }
+      if (error instanceof Error && "code" in error && error.code === "content-modified") {
+        outcome = "stale"
+        return request.fallback
+      }
       throw error
     } finally {
       freshRequest?.finish()

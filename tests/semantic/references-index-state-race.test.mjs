@@ -8,7 +8,7 @@ import { pathToFileURL } from "node:url"
 import { LspSession } from "../support/lsp-session.mjs"
 import { projectRoot } from "../support/lsp-process.mjs"
 
-for (const anchorMode of ["direct", "definition"]) test(
+for (const anchorMode of ["direct", "definition", "export"]) test(
   `references ${anchorMode} anchor falls back when the index starts warming`, async t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-reference-index-race-"))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))

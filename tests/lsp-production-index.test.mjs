@@ -28,7 +28,8 @@ test("production composition exposes cached search and terminal catalog progress
     outfile: serverPath,
   })
   const sidecarPath = path.join(cacheDirectory, "scripted-catalog-sidecar.mjs")
-  fs.copyFileSync(sidecarFixturePath, sidecarPath)
+  buildSync({ entryPoints: [sidecarFixturePath], outfile: sidecarPath,
+    bundle: true, platform: "node", format: "esm", target: "node20" })
   fs.chmodSync(sidecarPath, 0o755)
   const auditPath = path.join(cacheDirectory, "sidecar-audit.ndjson")
   const logDirectory = path.join(cacheDirectory, "logs")

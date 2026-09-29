@@ -1,4 +1,5 @@
 import { fileURLToPath, pathToFileURL } from "node:url"
+import { readOwnDataRecord } from "./semantic-worker-record.js"
 
 export const SEMANTIC_WORKER_PROTOCOL_VERSION = 2 as const
 export const MAX_SEMANTIC_WORKER_TEXT_BYTES = 4 * 1024 * 1024
@@ -271,6 +272,7 @@ export interface SemanticWorkerReferencesArgs {
   readonly candidateUris?: readonly string[]
   readonly candidateIdentityComplete?: boolean
   readonly candidateAnchorUri?: string
+  readonly candidateAnchorPosition?: SemanticWorkerPosition
   readonly candidateSupportUris?: readonly string[]
 }
 
@@ -1357,12 +1359,12 @@ function decodeReferencesArgs(value: unknown): SemanticWorkerReferencesArgs {
   const args = ownDataRecord(
     value,
     ["position", "includeDeclaration"],
-    ["candidateUris", "candidateIdentityComplete", "candidateAnchorUri", "candidateSupportUris", "forceLegacy", "traceId"],
+    ["candidateUris", "candidateIdentityComplete", "candidateAnchorUri", "candidateAnchorPosition", "candidateSupportUris", "forceLegacy", "traceId"],
   )
   if (!args || !hasRequiredAndOnlyKeys(
     args,
     ["position", "includeDeclaration"],
-    ["candidateUris", "candidateIdentityComplete", "candidateAnchorUri", "candidateSupportUris", "forceLegacy", "traceId"],
+    ["candidateUris", "candidateIdentityComplete", "candidateAnchorUri", "candidateAnchorPosition", "candidateSupportUris", "forceLegacy", "traceId"],
   )) {
     throw invalidRequest()
   }
@@ -1401,6 +1403,9 @@ function decodeReferencesArgs(value: unknown): SemanticWorkerReferencesArgs {
     candidateAnchorUri = args.candidateAnchorUri
   }
   let candidateSupportUris: readonly string[] | undefined
+  const candidateAnchorPosition = Object.hasOwn(args, "candidateAnchorPosition")
+    ? decodePosition(args.candidateAnchorPosition) : undefined
+  if (candidateAnchorPosition && !candidateAnchorUri) throw invalidRequest()
   if (Object.hasOwn(args, "candidateSupportUris")) {
     candidateSupportUris = Object.freeze(readBoundedDenseArray(
       args.candidateSupportUris,
@@ -1423,6 +1428,7 @@ function decodeReferencesArgs(value: unknown): SemanticWorkerReferencesArgs {
     ...(candidateUris ? { candidateUris } : {}),
     ...(candidateIdentityComplete === undefined ? {} : { candidateIdentityComplete }),
     ...(candidateAnchorUri ? { candidateAnchorUri } : {}),
+    ...(candidateAnchorPosition ? { candidateAnchorPosition } : {}),
     ...(candidateSupportUris ? { candidateSupportUris } : {}),
   })
 }
@@ -1884,51 +1890,10 @@ function isCancellationState(value: number): value is SemanticWorkerCancellation
 }
 
 function ownDataRecord(
-  value: unknown,
-  requiredKeys: readonly string[],
-  optionalKeys: readonly string[] = [],
+  value: unknown, requiredKeys: readonly string[], optionalKeys: readonly string[] = [],
 ): Record<string, unknown> | undefined {
-  if (value === null || typeof value !== "object") return undefined
-  try {
-    if (Array.isArray(value)) return undefined
-  } catch {
-    return undefined
-  }
-  let prototype: object | null
-  try {
-    prototype = Object.getPrototypeOf(value)
-  } catch {
-    return undefined
-  }
-  if (prototype !== Object.prototype && prototype !== null) return undefined
-  let keys: readonly PropertyKey[]
-  try {
-    keys = Reflect.ownKeys(value)
-  } catch {
-    return undefined
-  }
-  const allowedKeys = [...requiredKeys, ...optionalKeys]
-  const maxKeys = Math.min(allowedKeys.length, MAX_SEMANTIC_WORKER_VALUE_NODES)
-  if (
-    keys.length > maxKeys
-    || requiredKeys.length > keys.length
-    || keys.some(key => typeof key !== "string" || !allowedKeys.includes(key))
-    || requiredKeys.some(key => !keys.includes(key))
-  ) return undefined
-  const copy: Record<string, unknown> = Object.create(null) as Record<string, unknown>
-  for (const key of keys as readonly string[]) {
-    let descriptor: PropertyDescriptor | undefined
-    try {
-      descriptor = Object.getOwnPropertyDescriptor(value, key)
-    } catch {
-      return undefined
-    }
-    if (!descriptor?.enumerable || !("value" in descriptor)) return undefined
-    copy[key] = descriptor.value
-  }
-  return copy
+  return readOwnDataRecord(value, requiredKeys, optionalKeys, MAX_SEMANTIC_WORKER_VALUE_NODES)
 }
-
 function readBoundedDenseArray(
   value: unknown,
   maxLength: number,

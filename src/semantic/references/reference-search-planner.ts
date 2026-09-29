@@ -50,7 +50,7 @@ export function planConservativeReferenceBatches(
     .filter(filePath => !indexedCandidates || indexedCandidates.has(filePath))
     .filter(filePath => !pinned.has(filePath))
     .sort(ordinalCompare)
-  const semanticGroups = indexedCandidates && semanticGraph?.status === "ready"
+  const semanticGroups = semanticGraph?.status === "ready"
     && semanticGraph.complete
     ? groupCandidatesBySemanticUnit(candidates, pinned, membership.paths, semanticGraph)
     : undefined

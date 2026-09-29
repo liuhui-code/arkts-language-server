@@ -100,6 +100,40 @@ test("keeps a local package nested inside its owning module in the same semantic
   assert.deepEqual(graph.units[0].dependencies, [])
 })
 
+test("local package closure records transitive module edges without adding a module or accepting unsafe metadata", (t) => {
+  const fixture = declaredModule(t)
+  const shared = path.join(fixture.root, "shared")
+  const bridge = path.join(fixture.root, "bridge")
+  fs.mkdirSync(shared)
+  fs.mkdirSync(bridge)
+  fs.writeFileSync(path.join(shared, "build-profile.json5"), "{}")
+  fs.writeFileSync(path.join(shared, "oh-package.json5"), "{ name: 'shared' }")
+  fs.writeFileSync(path.join(bridge, "Index.ets"), "export {}\n")
+  fixture.profile.modules.push({ name: "shared", srcPath: "./shared" })
+  fs.writeFileSync(fixture.profilePath, JSON.stringify(fixture.profile))
+  fs.writeFileSync(path.join(fixture.moduleRoot, "oh-package.json5"),
+    "{ name: 'alpha', dependencies: { bridge: 'file:../bridge' } }")
+  const manifest = { name: "bridge", main: "Index.ets", dependencies: { shared: "file:../shared" } }
+  fs.writeFileSync(path.join(bridge, "oh-package.json5"), JSON.stringify(manifest))
+  const graph = fixture.model.semanticGraph()
+  assert.equal(graph.complete, true)
+  assert.deepEqual(graph.units.map(unit => unit.identity.module), ["alpha", "shared"])
+  assert.deepEqual(graph.units[0].packageRoots, [bridge])
+  assert.deepEqual(graph.units[0].dependencies.map(edge => edge.module), ["shared"])
+  assert.deepEqual(graph.units[1].reverseDependencies.map(edge => edge.module), ["alpha"])
+  assert.equal(fixture.model.scopeFor(path.join(bridge, "Index.ets")).status, "unavailable",
+    "a package must not silently become a declared module")
+  for (const change of [
+    { name: "wrong" }, { main: "missing.ets" }, { main: "../outside.ets" },
+    { dynamicDependencies: { unknown: "file:../unknown" } },
+    { dependencies: { unknown: "file:../missing" } },
+  ]) {
+    fs.writeFileSync(path.join(bridge, "oh-package.json5"), JSON.stringify({ ...manifest, ...change }))
+    fixture.model.invalidate()
+    assert.equal(fixture.model.semanticGraph().complete, false)
+  }
+})
+
 test("marks non-empty dynamic module dependencies incomplete instead of guessing edges", (t) => {
   const fixture = declaredModule(t)
   fs.writeFileSync(path.join(fixture.moduleRoot, "oh-package.json5"),
@@ -290,6 +324,21 @@ test("an omitted module-profile targets list provides the default target", (t) =
   const scope = fixture.model.scopeFor(fixture.sourcePath)
   assert.equal(scope.status, "ready")
   assert.equal(scope.targetName, "default")
+})
+
+test("omitted root targets never choose between two production targets or implicitly select ohosTest", (t) => {
+  const fixture = declaredModule(t)
+  delete fixture.profile.modules[0].targets
+  fs.writeFileSync(fixture.profilePath, JSON.stringify(fixture.profile))
+  for (const targets of [
+    [{ name: "default" }, { name: "tablet" }, { name: "ohosTest" }],
+    [{ name: "ohosTest" }],
+  ]) {
+    fs.writeFileSync(fixture.moduleProfilePath, JSON.stringify({ targets }))
+    fixture.model.invalidate()
+    assert.equal(fixture.model.scopeFor(fixture.sourcePath).status, "unavailable")
+    assert.equal(fixture.model.semanticGraph().complete, false)
+  }
 })
 
 test("implicit default mapping excludes ohosTest and does not replace an explicit empty mapping", (t) => {
