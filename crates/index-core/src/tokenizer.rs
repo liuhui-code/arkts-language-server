@@ -15,10 +15,6 @@ pub(crate) struct Token<'a> {
     pub(crate) end: usize,
 }
 
-pub(crate) fn tokenize(source: &str) -> Result<Vec<Token<'_>>, DocumentParseError> {
-    Ok(scan(source, false)?.tokens)
-}
-
 pub(crate) struct Tokenization<'a> {
     pub(crate) tokens: Vec<Token<'a>>,
     /// Legacy scanning does not fully classify these forms. Never a semantic proof.

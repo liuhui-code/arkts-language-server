@@ -1,7 +1,7 @@
 //! Conservative lexical metadata; never a symbol identity or reference-scope proof.
 
 use crate::line_index::LineIndex;
-use crate::tokenizer::{Token, TokenKind, tokenize_with_status};
+use crate::tokenizer::{Token, TokenKind, Tokenization, tokenize_with_status};
 use crate::{Document, DocumentParseError, StoreError, StoreErrorKind, TextRange};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -71,9 +71,17 @@ pub fn parse_document_class_heritage(
     document: &Document,
 ) -> Result<DocumentClassHeritage, DocumentParseError> {
     let scanned = tokenize_with_status(&document.text)?;
-    let tokens = scanned.tokens;
-    let (depths, closes) = delimiter_structure(&tokens)?;
     let lines = LineIndex::new(&document.text);
+    parse_scanned_class_heritage(document, &scanned, &lines)
+}
+
+pub(super) fn parse_scanned_class_heritage(
+    document: &Document,
+    scanned: &Tokenization<'_>,
+    lines: &LineIndex,
+) -> Result<DocumentClassHeritage, DocumentParseError> {
+    let tokens = &scanned.tokens;
+    let (depths, closes) = delimiter_structure(tokens)?;
     let mut facts = DocumentClassHeritage {
         uri: document.uri.clone(),
         classes: Vec::new(),
@@ -84,9 +92,8 @@ pub fn parse_document_class_heritage(
         if token.kind != TokenKind::Identifier || token.text != "class" {
             continue;
         }
-        let start = declaration_start(&tokens, index);
-        let Some((name, base, body, heritage)) = class_header(&document.text, &tokens, index)
-        else {
+        let start = declaration_start(tokens, index);
+        let Some((name, base, body, heritage)) = class_header(&document.text, tokens, index) else {
             facts.lexically_complete = false;
             continue;
         };
@@ -94,7 +101,7 @@ pub fn parse_document_class_heritage(
             .all(|left| is_trivia(&document.text[tokens[left].end..tokens[left + 1].start]));
         if depths[index] != 0
             || !prefix_is_trivia
-            || !is_declaration_boundary(&document.text, &tokens, start)
+            || !is_declaration_boundary(&document.text, tokens, start)
         {
             facts.lexically_complete = false;
             continue;
@@ -105,11 +112,11 @@ pub fn parse_document_class_heritage(
         let end = closes[body].ok_or(DocumentParseError)?;
         facts.classes.push(ClassHeritageDeclaration {
             name: name.text.to_string(),
-            name_range: range(&lines, name.start, name.end),
-            declaration_range: range(&lines, tokens[start].start, tokens[end].end),
+            name_range: range(lines, name.start, name.end),
+            declaration_range: range(lines, tokens[start].start, tokens[end].end),
             base: base.map(|base| ClassHeritageBase {
                 name: base.text.to_string(),
-                range: range(&lines, base.start, base.end),
+                range: range(lines, base.start, base.end),
             }),
         });
     }

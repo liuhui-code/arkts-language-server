@@ -1,14 +1,11 @@
 //! Source validation for the narrow named import/re-export discovery subset.
 
 use crate::line_index::LineIndex;
-use crate::tokenizer::{Token, TokenKind, tokenize_with_status};
+use crate::tokenizer::{Token, TokenKind, Tokenization};
 use crate::{Document, Position};
 use std::collections::BTreeSet;
 
-pub(super) fn module_bindings_supported(document: &Document) -> bool {
-    let Ok(scanned) = tokenize_with_status(&document.text) else {
-        return false;
-    };
+pub(super) fn module_bindings_supported(document: &Document, scanned: &Tokenization<'_>) -> bool {
     if scanned.uncertain {
         return false;
     }
@@ -72,11 +69,10 @@ pub(super) fn module_bindings_supported(document: &Document) -> bool {
 }
 
 /// Scan once for catalog provenance; rescanning per class is quadratic.
-pub(super) fn direct_named_export_positions(document: &Document) -> BTreeSet<Position> {
-    let Ok(scanned) = tokenize_with_status(&document.text) else {
-        return BTreeSet::new();
-    };
-    let lines = LineIndex::new(&document.text);
+pub(super) fn direct_named_export_positions(
+    scanned: &Tokenization<'_>,
+    lines: &LineIndex,
+) -> BTreeSet<Position> {
     // Heritage owns the declaration span; old export metadata is not sufficient.
     // In particular a string containing "export" must not act as a modifier.
     scanned

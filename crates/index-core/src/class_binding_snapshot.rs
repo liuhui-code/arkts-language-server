@@ -3,6 +3,8 @@
 use std::collections::BTreeSet;
 
 use crate::class_binding_syntax::{direct_named_export_positions, module_bindings_supported};
+use crate::line_index::LineIndex;
+use crate::tokenizer::Tokenization;
 use crate::{
     Document, DocumentClassHeritage, ReferenceBinding, StoreError, StoreErrorKind, TextRange,
 };
@@ -91,13 +93,15 @@ pub fn validate_class_binding_snapshot_uris(uris: &[String]) -> Result<(), Store
 pub(super) fn source_provenance(
     document: &Document,
     heritage: Option<&DocumentClassHeritage>,
+    scanned: &Tokenization<'_>,
+    lines: &LineIndex,
 ) -> ClassBindingProvenance {
     let source_supported = heritage.is_some_and(|facts| facts.lexically_complete)
-        && module_bindings_supported(document);
+        && module_bindings_supported(document, scanned);
     let direct_exports = heritage
         .filter(|_| source_supported)
         .map(|facts| {
-            let export_positions = direct_named_export_positions(document);
+            let export_positions = direct_named_export_positions(scanned, lines);
             facts
                 .classes
                 .iter()
