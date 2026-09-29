@@ -56,6 +56,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/semantic/typescript-rename-cancellation.test.mjs",
       "tests/test-evidence.test.mjs",
       "tests/test-layer-manifest.test.mjs",
+      "tests/test-layer-native-prerequisite.test.mjs",
       "tests/test-layer-runner.test.mjs",
       "tests/toolchain-lock.test.mjs",
       "tests/upstream-identity.test.mjs",
@@ -66,7 +67,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/zed-adapter.test.mjs",
       "tests/zed-query-gate.test.mjs",
       "tests/semantic/document-highlight-core.test.mjs",
-    ]),
+    ], true),
     layer("protocol", true, [
       "tests/lsp-call-hierarchy-reliability.test.mjs",
       "tests/lsp-process.test.mjs",
@@ -126,7 +127,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/semantic/standard-library-diagnostics.test.mjs",
       "tests/semantic/workspace-symbol-production.test.mjs",
       "tests/version-identity.test.mjs",
-    ]),
+    ], true),
     layer("artifact-e2e", false, [
       "tests/release/index-sidecar.acceptance.mjs",
       "tests/release/local-delivery.acceptance.mjs",
@@ -235,8 +236,8 @@ function isReleaseAcceptance(entry) {
   return /^tests\/release\/[^/]+\.acceptance\.mjs$/.test(entry)
 }
 
-function layer(id, fast, entries) {
-  return Object.freeze({ id, fast, entries: Object.freeze(entries) })
+function layer(id, fast, entries, requiresReleaseSidecar = false) {
+  return Object.freeze({ id, fast, entries: Object.freeze(entries), requiresReleaseSidecar })
 }
 
 function ordinalCompare(left, right) {
