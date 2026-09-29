@@ -2,23 +2,9 @@ import fs from "node:fs"
 import path from "node:path"
 
 import type {
-  SemanticCallHierarchyItemInfo,
-  SemanticCallHierarchyIncomingQueryResult,
-  SemanticCallHierarchyOutgoingQueryResult,
-  SemanticCallHierarchyPrepareQueryResult,
-  SemanticCompletionItem,
-  SemanticCompletionItemList,
   SemanticDefinitionCandidate,
   SemanticDiagnostic,
-  SemanticDocumentHighlight,
   SemanticDocumentPosition,
-  SemanticDocumentSymbolInfo,
-  SemanticHoverInfo,
-  SemanticInlayHint,
-  SemanticSignatureHelp,
-  SemanticTextRange,
-  SemanticUsageResult,
-  SemanticNumericDiagnostic,
 } from "../protocol.js"
 import { ArkUIResourceLanguageProvider } from "../arkui/resource-language-provider.js"
 import { LocalPackageResolver } from "../sdk/local-package-resolver.js"
@@ -37,127 +23,28 @@ import {
 } from "../../semantic/coordinator/semantic-coordinator.js"
 import { ReferenceSearchExecutor } from "../../semantic/references/reference-search-executor.js"
 import type { ReferenceSearchRuntimeConfig } from "../../semantic/references/reference-runtime.js"
-import {
-  resolveReferenceAnchorInWorker,
-  verifyReferenceBatchInWorker,
-} from "../../semantic/references/reference-batch-worker.js"
+import { applyReferenceContextRetention, referenceCheckpoint } from "../../semantic/references/reference-context-retention.js"
+import { verifyReferenceBatchInWorker } from "../../semantic/references/reference-batch-worker.js"
+import { ReferenceAnchorMemo, resolveIsolatedReferenceAnchor } from "../../semantic/references/reference-anchor.js"
 
-export type SemanticTypeStatus = "ready" | "partial" | "unsupported"
-
-export interface SemanticTypeEngineState {
-  status: SemanticTypeStatus
-  engine: string
-  version: string
-  generation: number
-}
-
-export interface SemanticCodeFixCandidate {
-  title: string
-  kind: "quickfix"
-  diagnostic: SemanticNumericDiagnostic
-  fingerprint: string
-}
-
-export interface SemanticResolvedCodeFix extends SemanticCodeFixCandidate {
-  edits: Array<{
-    path: string
-    range: SemanticTextRange
-    newText: string
-    expectedVersion: number
-  }>
-}
-
-export type SemanticGlobalQueryFailureReason =
-  | "project-membership-incomplete"
-  | "source-outside-workspace"
-  | "source-unavailable"
-  | "source-unmappable"
-
-export type SemanticReferenceQueryResult =
-  | { status: "complete"; references: SemanticDefinitionCandidate[] }
-  | { status: "incomplete"; reason: SemanticGlobalQueryFailureReason }
-
-export type SemanticPrepareRenameQueryResult =
-  | { status: "ready"; range: SemanticTextRange; placeholder: string }
-  | { status: "unavailable" }
-  | { status: "incomplete"; reason: SemanticGlobalQueryFailureReason }
-
-export type SemanticRenameQueryResult =
-  | {
-      status: "complete"
-      edits: Array<{
-        path: string
-        range: SemanticTextRange
-        newText: string
-        expectedVersion: number | null
-      }>
-    }
-  | { status: "invalid-name" }
-  | { status: "unavailable" }
-  | { status: "incomplete"; reason: SemanticGlobalQueryFailureReason }
-
-export type SemanticSignatureHelpTriggerReason =
-  | { kind: "invoked" }
-  | { kind: "characterTyped"; triggerCharacter: "(" | "," | "<" }
-  | { kind: "retrigger"; triggerCharacter?: "(" | "," | "<" | ")" }
-
-export interface SemanticCompletionTraceContext {
-  readonly completionBatchIndex: number
-  readonly completionBatchCount: number
-  readonly discoveryRootCount: number
-  readonly discoveryCandidateCount: number
-  readonly discoveryRootFingerprints: string
-}
-
-export interface SemanticTypeQueryContext {
-  state: SemanticTypeEngineState
-  complete(
-    position: SemanticDocumentPosition,
-    traceContext?: SemanticCompletionTraceContext,
-  ): SemanticCompletionItemList
-  trimCompletion(traceContext: SemanticCompletionTraceContext): void
-  resolveCompletion(position: SemanticDocumentPosition, item: SemanticCompletionItem): SemanticCompletionItem
-  define(position: SemanticDocumentPosition): SemanticDefinitionCandidate[]
-  typeDefinitions(position: SemanticDocumentPosition): SemanticDefinitionCandidate[]
-  implementations(position: SemanticDocumentPosition): SemanticDefinitionCandidate[]
-  references(
-    position: SemanticDocumentPosition,
-    includeDeclaration: boolean,
-  ): SemanticReferenceQueryResult
-  prepareRename(position: SemanticDocumentPosition): SemanticPrepareRenameQueryResult
-  rename(position: SemanticDocumentPosition, newName: string): SemanticRenameQueryResult
-  usages(position: SemanticDocumentPosition): SemanticUsageResult[]
-  diagnostics(position: SemanticDocumentPosition): SemanticDiagnostic[]
-  codeActions(
-    position: SemanticDocumentPosition,
-    range: SemanticTextRange,
-  ): SemanticCodeFixCandidate[]
-  resolveCodeAction(
-    position: SemanticDocumentPosition,
-    range: SemanticTextRange,
-    fingerprint: string,
-  ): SemanticResolvedCodeFix | null
-  documentHighlights(position: SemanticDocumentPosition): SemanticDocumentHighlight[]
-  inlayHints(
-    position: SemanticDocumentPosition,
-    range: SemanticTextRange,
-  ): SemanticInlayHint[]
-  prepareCallHierarchy(position: SemanticDocumentPosition): SemanticCallHierarchyPrepareQueryResult
-  outgoingCalls(
-    position: SemanticDocumentPosition,
-    item: SemanticCallHierarchyItemInfo,
-  ): SemanticCallHierarchyOutgoingQueryResult
-  incomingCalls(
-    position: SemanticDocumentPosition,
-    item: SemanticCallHierarchyItemInfo,
-  ): SemanticCallHierarchyIncomingQueryResult
-  documentSymbols(position: SemanticDocumentPosition): SemanticDocumentSymbolInfo[]
-  hover(position: SemanticDocumentPosition): SemanticHoverInfo | null
-  signatureHelp(
-    position: SemanticDocumentPosition,
-    triggerReason: SemanticSignatureHelpTriggerReason,
-  ): SemanticSignatureHelp | null
-}
+export type {
+  SemanticTypeStatus,
+  SemanticTypeEngineState,
+  SemanticCodeFixCandidate,
+  SemanticResolvedCodeFix,
+  SemanticGlobalQueryFailureReason,
+  SemanticReferenceQueryResult,
+  SemanticPrepareRenameQueryResult,
+  SemanticRenameQueryResult,
+  SemanticSignatureHelpTriggerReason,
+  SemanticCompletionTraceContext,
+  SemanticTypeQueryContext,
+} from "./type-engine-contract.js"
+import type {
+  SemanticTypeEngineState,
+  SemanticReferenceQueryResult,
+  SemanticTypeQueryContext,
+} from "./type-engine-contract.js"
 
 interface WorkspaceEngineEntry extends SemanticManagedContext {
   engine: TypeScriptLanguageServiceEngine
@@ -170,6 +57,7 @@ interface WorkspaceEngineEntry extends SemanticManagedContext {
   lastAccess: number
   projectFiles: number
   openDocuments: number
+  anchorMemo: ReferenceAnchorMemo
 }
 
 export class SemanticTypeEngineRegistry {
@@ -189,48 +77,21 @@ export class SemanticTypeEngineRegistry {
   ): Promise<readonly SemanticDefinitionCandidate[]> {
     const isolatedWorkspace = this.withProjectFileIdentities(workspace)
     if (!isolatedWorkspace) return []
-    const rootPaths = new Set([path.resolve(workspace.state.path)])
-    for (const document of workspace.documents) {
-      if (document.overlay) rootPaths.add(path.resolve(document.path))
+    if (this.canReuseAnchor()) {
+      const memo = this.coordinator.peek(path.resolve(workspace.rootPath))?.anchorMemo
+      const definitions = memo?.lookup(workspace, position, this.options.onReferenceTrace)
+      if (definitions) return definitions
     }
-    const admitted = new Set(rootPaths)
-    const started = performance.now()
-    const verification = await resolveReferenceAnchorInWorker({
-      ...isolatedWorkspace,
-      semanticRootPaths: [...rootPaths],
-      documents: isolatedWorkspace.documents.filter(document => (
-        document.overlay || admitted.has(path.resolve(document.path))
-      )),
-    }, position, {
+    return resolveIsolatedReferenceAnchor(isolatedWorkspace, position, {
       projectConfiguration: this.projectConfiguration,
       sdkConfiguration: this.sdkConfiguration,
       sdkAmbientProfile: this.options.references?.sdkAmbientProfile,
+      trace: this.options.references?.trace,
       isCancellationRequested: this.options.hostCancellationToken
         ? () => this.options.hostCancellationToken?.isCancellationRequested() === true
         : undefined,
-    })
-    this.options.onReferenceTrace?.("references.anchor.complete", {
-      verifierIsolation: "transient-worker",
-      definitions: verification.definitions.length,
-      preparedProgramSourceFiles: verification.prepared.stats.programSourceFiles,
-      preparedProgramProjectFiles: verification.prepared.stats.programProjectFiles,
-      preparedSdkSourceFiles: verification.prepared.stats.sdkSourceFiles,
-      preparedProjectTextCodeUnits: verification.prepared.stats.projectTextCodeUnits,
-      preparedSdkTextCodeUnits: verification.prepared.stats.sdkTextCodeUnits,
-      preparedOtherSourceFiles: verification.prepared.stats.otherSourceFiles,
-      preparedOtherTextCodeUnits: verification.prepared.stats.otherTextCodeUnits,
-      preparedRss: verification.prepared.memory.rss,
-      preparedHeapUsed: verification.prepared.memory.heapUsed,
-      queryRssDelta: verification.memory.rss - verification.prepared.memory.rss,
-      queryHeapUsedDelta: verification.memory.heapUsed - verification.prepared.memory.heapUsed,
-      ...verification.stats,
-      durationMs: Math.round((performance.now() - started) * 100) / 100,
-      rss: verification.memory.rss,
-      heapUsed: verification.memory.heapUsed,
-    })
-    return verification.definitions
+    }, this.options.onReferenceTrace)
   }
-
   constructor(
     private readonly packageResolver = new LocalPackageResolver(),
     private readonly onSdkSelected?: TypeScriptLanguageServiceEngineOptions["onSdkSelected"],
@@ -267,14 +128,13 @@ export class SemanticTypeEngineRegistry {
               : undefined,
           })
         ),
-        disposeResidentContext: rootPath => { this.coordinator.remove(rootPath) },
-        checkpoint: options.hostCancellationToken
-          ? () => {
-              if (options.hostCancellationToken?.isCancellationRequested()) {
-                throw new Error("Semantic request cancelled")
-              }
-            }
-          : undefined,
+        disposeResidentContext: rootPath => applyReferenceContextRetention(
+          options.references!.contextRetentionProfile,
+          this.coordinator,
+          rootPath,
+          options.onReferenceTrace,
+        ),
+        checkpoint: referenceCheckpoint(options.hostCancellationToken),
         trace: options.references.trace ? options.onReferenceTrace : undefined,
       })
     }
@@ -287,6 +147,12 @@ export class SemanticTypeEngineRegistry {
 
   configureProject(selection: unknown): void {
     this.projectConfiguration = selection
+    this.coordinator.forEachContext(context => context.anchorMemo.clear())
+  }
+
+  private canReuseAnchor(): boolean {
+    return this.options.references?.anchorReuse === true
+      && (this.options.interactiveSdkAmbientProfile ?? "full") === this.options.references.sdkAmbientProfile
   }
 
   prepare(workspace: SemanticWorkspaceView): SemanticTypeQueryContext {
@@ -389,12 +255,12 @@ export class SemanticTypeEngineRegistry {
             }
             return completion
           }),
-      define: (position) => withLease(current => mergeDefinitions(
-        sourceContent && scope.status !== "unavailable"
-          ? current.arkui.define(position, sourceContent)
-          : [],
-        current.engine.define(position),
-      )),
+      define: (position) => withLease(current => {
+        const definitions = current.engine.define(position)
+        if (this.canReuseAnchor()) current.anchorMemo.capture(workspace, position, definitions)
+        return mergeDefinitions(sourceContent && scope.status !== "unavailable"
+          ? current.arkui.define(position, sourceContent) : [], definitions)
+      }),
       typeDefinitions: (position) => withLease(current => current.engine.typeDefinitions(position)),
       implementations: (position) => withLease(current => current.engine.implementations(position)),
       references: (position, includeDeclaration) => (
@@ -466,7 +332,7 @@ export class SemanticTypeEngineRegistry {
         candidateIdentityComplete,
         candidateAnchorPath,
         candidateSupportPaths,
-        candidatePaths
+        candidatePaths || this.options.references?.conservativeSemanticUnits
           ? this.packageResolver.projectFor(workspace.rootPath).semanticGraph()
           : undefined,
       )
@@ -511,8 +377,10 @@ export class SemanticTypeEngineRegistry {
       lastAccess: 0,
       projectFiles: 0,
       openDocuments: 0,
+      anchorMemo: new ReferenceAnchorMemo(),
       trim() {
         this.engine.trim()
+        this.anchorMemo.clear()
       },
       dispose() {
         this.engine.dispose()

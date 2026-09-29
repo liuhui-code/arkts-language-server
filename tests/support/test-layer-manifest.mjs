@@ -17,6 +17,8 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/harmony-project-model.test.mjs",
       "tests/index-adapter.test.mjs",
       "tests/index-catalog-adapter.test.mjs",
+      "tests/index-class-binding-discovery.test.mjs",
+      "tests/class-binding-input-snapshot.test.mjs",
       "tests/local-delivery-config.test.mjs",
       "tests/logging.test.mjs",
       "tests/lsp-feature-matrix.test.mjs",
@@ -29,6 +31,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/project-file-set-cache.test.mjs",
       "tests/project-resolver.test.mjs",
       "tests/references-replay-cli.test.mjs",
+      "tests/references-replay-catalog-state.test.mjs",
       "tests/release-artifact-topology.test.mjs",
       "tests/resource-sampler.test.mjs",
       "tests/sdk-discovery.test.mjs",
@@ -40,6 +43,10 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/semantic/type-engine-context-runtime.test.mjs",
       "tests/semantic-worker-call-hierarchy-protocol.test.mjs",
       "tests/semantic-worker-protocol.test.mjs",
+      "tests/semantic-worker-anchor-seed.test.mjs",
+      "tests/semantic-worker-reference-snapshot.test.mjs",
+      "tests/semantic-worker-project-snapshot.test.mjs",
+      "tests/semantic-worker-supervisor-lanes.test.mjs",
       "tests/semantic-worker-supervisor.test.mjs",
       "tests/semantic/typescript-cancellation-bridge.test.mjs",
       "tests/semantic/typescript-completion-resolve-cancellation.test.mjs",
@@ -49,16 +56,18 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/semantic/typescript-rename-cancellation.test.mjs",
       "tests/test-evidence.test.mjs",
       "tests/test-layer-manifest.test.mjs",
+      "tests/test-layer-native-prerequisite.test.mjs",
       "tests/test-layer-runner.test.mjs",
       "tests/toolchain-lock.test.mjs",
       "tests/upstream-identity.test.mjs",
       "tests/workspace-file-change-coordinator.test.mjs",
       "tests/workspace-path-consistency.test.mjs",
       "tests/workspace-symbol-service.test.mjs",
+      "tests/windows-zed-local-install.test.mjs",
       "tests/zed-adapter.test.mjs",
       "tests/zed-query-gate.test.mjs",
       "tests/semantic/document-highlight-core.test.mjs",
-    ]),
+    ], true),
     layer("protocol", true, [
       "tests/lsp-call-hierarchy-reliability.test.mjs",
       "tests/lsp-process.test.mjs",
@@ -90,6 +99,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/semantic/document-symbol-depth.test.mjs",
       "tests/semantic/editor-capabilities.test.mjs",
       "tests/semantic/folding-range.test.mjs",
+      "tests/semantic/index-catalog-phase-trace.test.mjs",
       "tests/semantic/local-package-resolution.test.mjs",
       "tests/semantic/installed-package-workflows.test.mjs",
       "tests/semantic/project-membership-language-service.test.mjs",
@@ -98,13 +108,26 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/semantic/project-target-membership.test.mjs",
       "tests/semantic/references-completeness.test.mjs",
       "tests/semantic/references-batching.test.mjs",
+      "tests/semantic/references-batch-search-coverage.test.mjs",
+      "tests/semantic/references-candidate-snapshot.test.mjs",
+      "tests/semantic/references-anchor-reuse.test.mjs",
+      "tests/semantic/references-conservative-semantic-units.test.mjs",
+      "tests/semantic/references-context-retention.test.mjs",
+      "tests/semantic/references-coalescing.test.mjs",
+      "tests/semantic/references-diagnostic-cache.test.mjs",
       "tests/semantic/references-depth.test.mjs",
+      "tests/semantic/references-index-resync.test.mjs",
+      "tests/semantic/references-initial-catalog.test.mjs",
+      "tests/semantic/references-index-state-race.test.mjs",
+      "tests/semantic/references-result-cache.test.mjs",
+      "tests/semantic/references-scheduling.test.mjs",
       "tests/semantic/rename-depth.test.mjs",
       "tests/semantic/rename-completeness.test.mjs",
       "tests/semantic/semantic-characterization.test.mjs",
+      "tests/semantic/standard-library-diagnostics.test.mjs",
       "tests/semantic/workspace-symbol-production.test.mjs",
       "tests/version-identity.test.mjs",
-    ]),
+    ], true),
     layer("artifact-e2e", false, [
       "tests/release/index-sidecar.acceptance.mjs",
       "tests/release/local-delivery.acceptance.mjs",
@@ -213,8 +236,11 @@ function isReleaseAcceptance(entry) {
   return /^tests\/release\/[^/]+\.acceptance\.mjs$/.test(entry)
 }
 
-function layer(id, fast, entries) {
-  return Object.freeze({ id, fast, entries: Object.freeze(entries) })
+function layer(id, fast, entries, requiresReleaseSidecar = false) {
+  return Object.freeze({
+    id, fast, entries: Object.freeze(entries),
+    ...(requiresReleaseSidecar ? { requiresReleaseSidecar: true } : {}),
+  })
 }
 
 function ordinalCompare(left, right) {

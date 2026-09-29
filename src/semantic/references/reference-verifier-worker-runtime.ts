@@ -27,6 +27,9 @@ interface ReferenceVerifierWorkerData {
 const port = parentPort
 if (!port) throw new Error("Reference verifier requires a parent port")
 const data = workerData as ReferenceVerifierWorkerData
+// Trace-only protocol marker after module loading, before semantic preparation.
+if (data.trace) port.postMessage({ phase: "runtime-ready" })
+applyTestDelay()
 const packageResolver = new LocalPackageResolver()
 packageResolver.configureProject(data.projectConfiguration)
 const projectAccess = data.workspace.projectFileIdentities
@@ -53,20 +56,34 @@ try {
   }
   const programReadyMs = performance.now() - programStarted
   if (data.operation === "definition") {
+    const queryStarted = performance.now()
+    const definitions = engine.define(data.position)
+    const queryMs = performance.now() - queryStarted
     port.postMessage({
       ok: true,
-      definitions: engine.define(data.position),
+      definitions,
+      timings: { prepareHostMs, programReadyMs, queryMs, ...compilerTimings },
       prepared,
       stats: engine.programFileStats(),
       memory: process.memoryUsage(),
     })
   } else {
     const queryStarted = performance.now()
-    const result = engine.references(data.position, data.includeDeclaration === true)
+    const expected = data.position.expectedReferenceAnchor
+    const definitions = expected ? engine.define(data.position) : undefined
+    const anchorVerified = expected ? definitions?.length === 1
+      && path.resolve(definitions[0].path) === path.resolve(expected.path)
+      && definitions[0].range.startLine === expected.line
+      && definitions[0].range.startColumn === expected.column : undefined
+    const result = anchorVerified === false
+      ? { status: "incomplete" as const, reason: "source-unavailable" as const }
+      : engine.references(data.position, data.includeDeclaration === true,
+          data.tolerateUnadmittedProjectDependencies !== true)
     const queryMs = performance.now() - queryStarted
     port.postMessage({
       ok: true,
       result,
+      anchorVerified,
       timings: { prepareHostMs, programReadyMs, queryMs, ...compilerTimings },
       unavailableProjectPaths: projectAccess?.unavailablePaths,
       prepared,
@@ -162,4 +179,13 @@ function readAdmittedSource(rootId: string, filePath: string, token: string): st
 
 function sourceStatIdentity(stat: fs.Stats): string {
   return [stat.dev, stat.ino, stat.size, stat.mtimeMs, stat.ctimeMs].join(":")
+}
+
+function applyTestDelay(): void {
+  const delayMs = Number.parseInt(
+    process.env.ARKTS_TEST_REFERENCE_VERIFIER_DELAY_MS ?? "0",
+    10,
+  )
+  if (!Number.isSafeInteger(delayMs) || delayMs <= 0 || delayMs > 10_000) return
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs)
 }

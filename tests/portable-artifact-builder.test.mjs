@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url"
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const artifactBuilder = path.join(projectRoot, "scripts", "artifact", "build-portable.mjs")
+const artifactInstaller = path.join(projectRoot, "scripts", "artifact", "install-from-manifest.mjs")
 const sidecarPath = `target/release/${process.platform === "win32"
   ? "arkts-index-sidecar.exe"
   : "arkts-index-sidecar"}`
@@ -20,6 +21,13 @@ function portableSourceFiles() {
     ["dist/semantic-worker.cjs", "// source-root worker marker\n"],
     ["dist/reference-verifier-worker.cjs", "// source-root verifier marker\n"],
     ["dist/server.cjs", "// source-root server marker\n"],
+    ["dist/arkts-standard-library.json", JSON.stringify({
+      schema: "arkts-language-server.standard-library",
+      schemaVersion: 1,
+      files: ["lib.d.ts", "lib.es5.d.ts"],
+    }) + "\n"],
+    ["dist/lib.d.ts", "declare interface Array<T> {}\n"],
+    ["dist/lib.es5.d.ts", "declare interface Object {}\n"],
     [sidecarPath, "source-root sidecar marker\n"],
     ["scripts/install-local.sh", "#!/bin/sh\n# source-root installer marker\n"],
     [
@@ -99,6 +107,48 @@ test("rejects a missing required source file without producing a manifest", (t) 
   assert.notEqual(result.status, 0)
   assert.match(result.stderr, /scripts[/\\]install-local\.sh/)
   assert.equal(fs.existsSync(path.join(output, "artifact-manifest.json")), false)
+})
+
+test("rejects a standard-library declaration missing from the built source", (t) => {
+  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-portable-missing-stdlib-"))
+  t.after(() => fs.rmSync(temporaryRoot, { recursive: true, force: true }))
+  const sourceRoot = path.join(temporaryRoot, "source")
+  const output = path.join(temporaryRoot, "artifact")
+  writePortableSource(sourceRoot, { without: "dist/lib.es5.d.ts" })
+
+  const result = buildArtifact({ sourceRoot, output })
+
+  assert.notEqual(result.status, 0)
+  assert.match(result.stderr, /lib\.es5\.d\.ts/)
+  assert.equal(fs.existsSync(path.join(output, "artifact-manifest.json")), false)
+})
+
+test("installs every sealed standard-library declaration without source dependencies", { skip: process.platform === "win32" }, (t) => {
+  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-portable-installed-stdlib-"))
+  t.after(() => fs.rmSync(temporaryRoot, { recursive: true, force: true }))
+  const sourceRoot = path.join(temporaryRoot, "source")
+  const output = path.join(temporaryRoot, "artifact")
+  const files = writePortableSource(sourceRoot)
+  const built = buildArtifact({ sourceRoot, output })
+  assert.equal(built.status, 0, built.stderr || built.error?.message)
+
+  const binDirectory = path.join(temporaryRoot, "prefix", "bin")
+  const installed = spawnSync(process.execPath, [artifactInstaller, output, binDirectory], {
+    cwd: os.tmpdir(), encoding: "utf8",
+  })
+  assert.equal(installed.status, 0, installed.stderr || installed.error?.message)
+  const installedRoot = path.resolve(path.dirname(fs.realpathSync(
+    path.join(binDirectory, "arkts-language-server"),
+  )), "..")
+  for (const name of ["arkts-standard-library.json", "lib.d.ts", "lib.es5.d.ts"]) {
+    assert.equal(fs.readFileSync(path.join(installedRoot, "dist", name), "utf8"), files.get(`dist/${name}`))
+  }
+  fs.renameSync(path.join(installedRoot, "dist"), path.join(installedRoot, "dist-original"))
+  fs.symlinkSync(path.join(installedRoot, "dist-original"), path.join(installedRoot, "dist"))
+  const rejected = spawnSync(process.execPath, [artifactInstaller, output, binDirectory], {
+    cwd: os.tmpdir(), encoding: "utf8",
+  })
+  assert.notEqual(rejected.status, 0, "installer accepted a symlinked runtime directory")
 })
 
 test("rejects a required source file that is a symbolic link", (t) => {

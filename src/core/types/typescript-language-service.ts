@@ -34,7 +34,6 @@ import type {
 } from "../protocol.js"
 import { resolveHarmonySdkModule } from "../sdk/module-resolver.js"
 import { officialDocumentRegistryFor } from "../../semantic/backends/ohos-typescript/registry-pool.js"
-import { officialEtsCompilerOptions } from "../../semantic/backends/ohos-typescript/ets-options.js"
 import type {
   ProjectFileAccessPort,
   ProjectFileAdmissionToken,
@@ -42,6 +41,9 @@ import type {
   SemanticWorkspaceView,
 } from "../workspace/document-store.js"
 import { CooperativeWork } from "./cooperative-work.js"
+import { typescriptProgramStats } from "./typescript-program-stats.js"
+import { completedReferenceSearchPaths } from "./typescript-reference-search-scope.js"
+import { arktsLanguageServiceOptions } from "./arkts-language-service-options.js"
 import { createSourceDocument, type SourceDocument } from "./source-document.js"
 import type {
   SemanticCodeFixCandidate,
@@ -240,17 +242,7 @@ export class TypeScriptLanguageServiceEngine {
       process.env.ARKLINE_HARMONY_SDK_PATH,
       sdkConfiguration,
     )
-    this.options = {
-      allowNonTsExtensions: true,
-      allowSyntheticDefaultImports: true,
-      experimentalDecorators: true,
-      module: ts.ModuleKind.ESNext,
-      moduleResolution: ts.ModuleResolutionKind.NodeJs,
-      noEmit: true,
-      skipLibCheck: true,
-      target: ts.ScriptTarget.ES2022,
-      ...officialEtsCompilerOptions(sdk.path),
-    }
+    this.options = arktsLanguageServiceOptions(sdk.path)
     this.sdkSelection = sdk
     this.sdkRoot = sdk.path
     this.sdkPhysicalRoot = this.sdkRoot ? canonicalExistingPath(this.sdkRoot) : undefined
@@ -336,67 +328,8 @@ export class TypeScriptLanguageServiceEngine {
     return { getProgramMs, createProgramMs, getTypeCheckerMs: performance.now() - checkerStarted }
   }
 
-  programFileStats(): {
-    programSourceFiles: number
-    programProjectFiles: number
-    sdkSourceFiles: number
-    programRootFiles: number
-    programProjectRootFiles: number
-    sdkRootFiles: number
-    otherRootFiles: number
-    projectTextCodeUnits: number
-    sdkTextCodeUnits: number
-    otherSourceFiles: number
-    otherTextCodeUnits: number
-  } {
-    const program = this.service.getProgram()
-    const sourceFiles = program?.getSourceFiles() ?? []
-    const rootFileNames = program?.getRootFileNames() ?? []
-    let programProjectFiles = 0
-    let sdkSourceFiles = 0
-    let programProjectRootFiles = 0
-    let sdkRootFiles = 0
-    let otherRootFiles = 0
-    let projectTextCodeUnits = 0
-    let sdkTextCodeUnits = 0
-    let otherSourceFiles = 0
-    let otherTextCodeUnits = 0
-    for (const sourceFile of sourceFiles) {
-      const filePath = path.resolve(sourceFile.fileName)
-      if (this.sdkRoot && isWithinRoot(this.sdkRoot, filePath)) {
-        sdkSourceFiles += 1
-        sdkTextCodeUnits += sourceFile.text.length
-      } else if (isWithinRoot(this.rootPath, filePath)) {
-        programProjectFiles += 1
-        projectTextCodeUnits += sourceFile.text.length
-      } else {
-        otherSourceFiles += 1
-        otherTextCodeUnits += sourceFile.text.length
-      }
-    }
-    for (const rootFileName of rootFileNames) {
-      const filePath = path.resolve(rootFileName)
-      if (this.sdkRoot && isWithinRoot(this.sdkRoot, filePath)) {
-        sdkRootFiles += 1
-      } else if (isWithinRoot(this.rootPath, filePath)) {
-        programProjectRootFiles += 1
-      } else {
-        otherRootFiles += 1
-      }
-    }
-    return {
-      programSourceFiles: sourceFiles.length,
-      programProjectFiles,
-      sdkSourceFiles,
-      programRootFiles: rootFileNames.length,
-      programProjectRootFiles,
-      sdkRootFiles,
-      otherRootFiles,
-      projectTextCodeUnits,
-      sdkTextCodeUnits,
-      otherSourceFiles,
-      otherTextCodeUnits,
-    }
+  programFileStats(): ReturnType<typeof typescriptProgramStats> {
+    return typescriptProgramStats(this.service.getProgram(), this.rootPath, this.sdkRoot)
   }
 
   scriptFileNames(): string[] {
@@ -1342,6 +1275,7 @@ export class TypeScriptLanguageServiceEngine {
   references(
     position: SemanticDocumentPosition,
     includeDeclaration: boolean,
+    captureSearchScope = false,
   ): SemanticReferenceQueryResult {
     const work = new CooperativeWork(this.checkpoint)
     work.boundary()
@@ -1354,6 +1288,7 @@ export class TypeScriptLanguageServiceEngine {
     const sourceOffset = lineColumnToOffset(script.sourceContent, position.line, position.column)
     const offset = script.virtualDocument.toGeneratedOffset(sourceOffset)
     work.boundary()
+    const searchedProgram = captureSearchScope ? this.service.getProgram() : undefined
     const definitions = this.service.getDefinitionAtPosition(filePath, offset) ?? []
     work.boundary()
     const definitionMembershipFailure = this.projectMembershipFailure()
@@ -1370,12 +1305,14 @@ export class TypeScriptLanguageServiceEngine {
     const sourceViews = new Map<string, ScriptRecord | LazySnapshotRecord>()
     const references: SemanticDefinitionCandidate[] = []
     const seen = new Set<string>()
+    let returnedSymbols = false
     for (const definition of definitions) {
       work.boundary()
       const symbols = this.service.findReferences(
         definition.fileName,
         definition.textSpan.start,
       ) ?? []
+      returnedSymbols ||= symbols.length > 0
       work.boundary()
       const referenceMembershipFailure = this.projectMembershipFailure()
       if (referenceMembershipFailure) return work.finish(referenceMembershipFailure)
@@ -1407,10 +1344,15 @@ export class TypeScriptLanguageServiceEngine {
       }
     }
     work.boundary()
+    const searchedProjectPaths = captureSearchScope
+      ? completedReferenceSearchPaths(searchedProgram, this.service.getProgram(),
+          definitions.length, returnedSymbols, this.rootPath)
+      : undefined
     const finalMembershipFailure = this.projectMembershipFailure()
     if (finalMembershipFailure) return work.finish(finalMembershipFailure)
     references.sort(work.comparator(compareSemanticLocations))
-    return work.finish({ status: "complete", references })
+    return work.finish({ status: "complete", references,
+      ...(searchedProjectPaths ? { searchedProjectPaths } : {}) })
   }
 
   diagnostics(position: SemanticDocumentPosition): SemanticDiagnostic[] {

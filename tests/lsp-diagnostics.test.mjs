@@ -315,6 +315,6 @@ test("concurrent references requests share the same diagnostic quiescence barrie
   await Promise.all([settled, ...responses])
   assert.equal(order[0], "diagnostics-settled", JSON.stringify(order))
   const results = await Promise.all(responses)
-  assert.deepEqual(results.map(({ error }) => error?.code ?? null).sort(), [-32801, null])
-  assert.deepEqual(results.find(({ error }) => error === undefined)?.result, [])
+  assert.deepEqual(results.map(({ error }) => error?.code ?? null), [null, null])
+  assert.deepEqual(results.map(({ result }) => result), [[], []])
 })

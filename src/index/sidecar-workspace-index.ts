@@ -1,7 +1,4 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process"
-import { mkdir, realpath } from "node:fs/promises"
-import path from "node:path"
-import { fileURLToPath, pathToFileURL } from "node:url"
 
 import type {
   DocumentSnapshot,
@@ -10,6 +7,11 @@ import type {
   WorkspaceId,
 } from "../contracts/document.js"
 import type { WorkspaceCatalogPort } from "../contracts/workspace-catalog.js"
+import type {
+  ClassBindingDiscoveryPort,
+  ClassBindingDiscoveryQuery,
+  ClassBindingDiscoveryResult,
+} from "../contracts/class-binding-discovery.js"
 import type {
   WorkspaceExportCandidate,
   WorkspaceExportIndexPort,
@@ -24,6 +26,15 @@ import type {
 } from "../contracts/workspace-index.js"
 import type { WorkspaceIndexProgress } from "../contracts/workspace-symbol-service.js"
 import { resolveIndexSidecarPath, type SidecarPathOptions } from "./sidecar-path.js"
+import { mapClassBindingResult, prepareClassBindingQuery } from "./class-binding-discovery.js"
+import {
+  canonicalDirectory,
+  canonicalFileWorkspaceRoot,
+  isEquivalentWorkspaceIdentity,
+  toWorkspaceIdentityUri,
+  tryClientWorkspaceUri,
+  tryWorkspaceIdentityUri,
+} from "./workspace-uri-identity.js"
 
 const PROTOCOL_VERSION = 1
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000
@@ -79,7 +90,7 @@ interface CatalogRun {
 }
 
 export class SidecarWorkspaceIndex implements WorkspaceIndexPort, WorkspaceCatalogPort,
-  WorkspaceExportIndexPort, WorkspaceReferenceIndexPort {
+  WorkspaceExportIndexPort, WorkspaceReferenceIndexPort, ClassBindingDiscoveryPort {
   private readonly sessions = new Map<WorkspaceId, SidecarSession>()
   private readonly openingWorkspaces = new Map<WorkspaceId, Promise<WorkspaceIndexStatus>>()
   private readonly catalogRuns = new Map<WorkspaceId, CatalogRun>()
@@ -139,7 +150,9 @@ export class SidecarWorkspaceIndex implements WorkspaceIndexPort, WorkspaceCatal
       if (typeof initialized.workspaceIdentity !== "string") {
         throw new SidecarProtocolError("index sidecar omitted workspace identity")
       }
-      assertEquivalentWorkspaceIdentity(initialized.workspaceIdentity, workspaceRoot)
+      if (!isEquivalentWorkspaceIdentity(initialized.workspaceIdentity, workspaceRoot)) {
+        throw new SidecarProtocolError("index sidecar returned the wrong workspace identity")
+      }
       session.workspaceIdentity = initialized.workspaceIdentity
       const status = mapStatus(initialized.status)
       session.lastStatus = status
@@ -287,12 +300,30 @@ export class SidecarWorkspaceIndex implements WorkspaceIndexPort, WorkspaceCatal
     }
   }
 
-  async status(workspaceId: WorkspaceId): Promise<WorkspaceIndexStatus> {
+  async resolveClassBaseBinding(
+    workspaceId: WorkspaceId,
+    query: ClassBindingDiscoveryQuery,
+    signal?: AbortSignal,
+  ): Promise<ClassBindingDiscoveryResult> {
+    const session = this.session(workspaceId)
+    const params = prepareClassBindingQuery(
+      workspaceId, session.workspaceIdentity, query, uri => toWorkspaceIdentityUri(session, uri),
+    )
+    try {
+      return mapClassBindingResult(await session.request("class-bindings/resolve", params, signal),
+        params, uri => toClientWorkspaceUri(session, uri), message => new SidecarProtocolError(message))
+    } catch (error) {
+      if (error instanceof SidecarProtocolError) session.protocolFailure(error)
+      throw error
+    }
+  }
+
+  async status(workspaceId: WorkspaceId, signal?: AbortSignal): Promise<WorkspaceIndexStatus> {
     const session = this.session(workspaceId)
     const degraded = session.degradedStatus()
     if (degraded) return degraded
     try {
-      const status = mapStatus(await session.request("status", {}))
+      const status = mapStatus(await session.request("status", {}, signal))
       session.lastStatus = status
       return status
     } catch (error) {
@@ -831,18 +862,6 @@ export class SidecarTimeoutError extends Error {
   }
 }
 
-async function canonicalFileWorkspaceRoot(rootUri: string): Promise<string> {
-  const url = new URL(rootUri)
-  if (url.protocol !== "file:") throw new Error(`workspace root must be a file URI: ${rootUri}`)
-  return realpath(fileURLToPath(url))
-}
-
-async function canonicalDirectory(directory: string): Promise<string> {
-  const absolute = path.resolve(directory)
-  await mkdir(absolute, { recursive: true })
-  return realpath(absolute)
-}
-
 function mapStatus(value: unknown): WorkspaceIndexStatus {
   const status = asRecord(value)
   if (!isIndexState(status.state) || !isNonNegativeInteger(status.committedGeneration)) {
@@ -1259,52 +1278,10 @@ function asError(value: unknown): Error {
   return value instanceof Error ? value : new Error(String(value))
 }
 
-function assertEquivalentWorkspaceIdentity(identity: string, canonicalRoot: string): void {
-  try {
-    const identityPath = fileURLToPath(identity)
-    if (path.resolve(identityPath) === path.resolve(canonicalRoot)) return
-  } catch {
-    // Fall through to the locked protocol error.
-  }
-  throw new SidecarProtocolError("index sidecar returned the wrong workspace identity")
-}
-
-function toWorkspaceIdentityUri(session: SidecarSession, uri: DocumentUri): DocumentUri {
-  const rebased = tryWorkspaceIdentityUri(session, uri)
-  if (rebased !== undefined) return rebased
-  throw new Error(`document URI is outside workspace root: ${uri}`)
-}
-
-function tryWorkspaceIdentityUri(
-  session: SidecarSession,
-  uri: DocumentUri,
-): DocumentUri | undefined {
-  return tryRebaseFileUri(uri, session.clientRootUri, session.workspaceIdentity)
-    ?? tryRebaseFileUri(uri, session.workspaceIdentity, session.workspaceIdentity)
-}
-
 function toClientWorkspaceUri(session: SidecarSession, uri: DocumentUri): DocumentUri {
-  const rebased = tryRebaseFileUri(uri, session.workspaceIdentity, session.clientRootUri)
+  const rebased = tryClientWorkspaceUri(session, uri)
   if (rebased !== undefined) return rebased
   throw new SidecarProtocolError(`index sidecar returned a symbol outside workspace root: ${uri}`)
-}
-
-function tryRebaseFileUri(
-  documentUri: DocumentUri,
-  sourceRootUri: DocumentUri,
-  targetRootUri: DocumentUri,
-): DocumentUri | undefined {
-  try {
-    const sourceRoot = fileURLToPath(sourceRootUri)
-    const documentPath = fileURLToPath(documentUri)
-    const relative = path.relative(sourceRoot, documentPath)
-    if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
-      return undefined
-    }
-    return pathToFileURL(path.join(fileURLToPath(targetRootUri), relative)).href
-  } catch {
-    return undefined
-  }
 }
 
 function resolveRequestTimeout(value: number | undefined): number {

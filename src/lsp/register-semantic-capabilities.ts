@@ -31,7 +31,6 @@ import type {
   SemanticHover,
   SemanticInlayHint,
   SemanticPrepareRenameOutcome,
-  SemanticReferencesOutcome,
   SemanticRenameOutcome,
   SemanticSignatureHelp,
   SemanticSignatureHelpTriggerReason,
@@ -49,6 +48,7 @@ import {
   parseCallHierarchyOutgoingItem,
   staleCallHierarchy,
 } from "./call-hierarchy-adapter.js"
+import { registerReferenceCapability } from "./register-reference-capability.js"
 import type { SemanticRequestRunner } from "./semantic-request-runner.js"
 
 interface SemanticCapabilityDependencies {
@@ -316,40 +316,7 @@ export function registerSemanticCapabilities({
     })
   })
 
-  connection.onReferences(async (params, token) => {
-    const resumeDiagnostics = await suspendDiagnostics()
-    try {
-      const outcome = await requests.run<SemanticReferencesOutcome | { status: "stale" }>({
-        method: "textDocument/references",
-        documentUri: params.textDocument.uri,
-        token,
-        fallback: { status: "stale" },
-        scope: "workspace",
-        execute: (document, signal) => semantic.references({
-          document,
-          position: params.position,
-          includeDeclaration: params.context.includeDeclaration,
-          signal,
-        }),
-      })
-      if (outcome.status === "stale") {
-        throw new ResponseError(
-          LSPErrorCodes.ContentModified,
-          "References request is stale",
-        )
-      }
-      if (outcome.status === "incomplete") {
-        throw new ResponseError(
-          LSPErrorCodes.RequestFailed,
-          "References require a complete workspace snapshot",
-        )
-      }
-      return outcome.references
-    } finally {
-      resumeDiagnostics()
-    }
-  })
-
+  registerReferenceCapability(connection, semantic, requests, suspendDiagnostics)
   connection.onPrepareRename(async (params, token) => {
     const outcome = await requests.run<SemanticPrepareRenameOutcome | { status: "stale" }>({
       method: "textDocument/prepareRename",

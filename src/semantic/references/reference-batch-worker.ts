@@ -15,8 +15,13 @@ interface ReferenceBatchWorkerFailure {
   readonly message: string
 }
 
+interface ReferenceWorkerReady {
+  readonly phase: "runtime-ready"
+}
+
 export interface ReferenceAnchorVerification {
   readonly definitions: readonly SemanticDefinitionCandidate[]
+  readonly timings: ReferenceBatchVerification["timings"]
   readonly prepared: ReferenceBatchVerification["prepared"]
   readonly stats: ReferenceBatchVerification["stats"]
   readonly memory: ReferenceBatchVerification["memory"]
@@ -40,6 +45,8 @@ export async function verifyReferenceBatchInWorker(
 ): Promise<ReferenceBatchVerification> {
   const workerPath = options.workerPath
     ?? path.join(__dirname, "reference-verifier-worker.cjs")
+  const started = performance.now()
+  let workerStartupMs: number | undefined
   const worker = new Worker(workerPath, {
     workerData: {
       operation: "references",
@@ -64,13 +71,18 @@ export async function verifyReferenceBatchInWorker(
   cancellationTimer?.unref()
   try {
     return await new Promise<ReferenceBatchVerification>((resolve, reject) => {
-      worker.once("message", (message: ReferenceBatchWorkerResponse | ReferenceBatchWorkerFailure) => {
+      worker.on("message", (message: ReferenceBatchWorkerResponse | ReferenceBatchWorkerFailure | ReferenceWorkerReady) => {
         if (settled) return
+        if ("phase" in message) {
+          if (options.trace) workerStartupMs = performance.now() - started
+          return
+        }
         settled = true
         if (message.ok) resolve({
           result: message.result,
+          anchorVerified: message.anchorVerified,
           unavailableProjectPaths: message.unavailableProjectPaths,
-          timings: message.timings,
+          timings: { ...message.timings, workerStartupMs },
           prepared: message.prepared,
           stats: message.stats,
           memory: message.memory,
@@ -109,6 +121,7 @@ export function resolveReferenceAnchorInWorker(
     projectConfiguration: options.projectConfiguration,
     sdkConfiguration: options.sdkConfiguration,
     sdkAmbientProfile: options.sdkAmbientProfile,
+    trace: options.trace,
   }, options)
 }
 
@@ -119,6 +132,7 @@ interface ReferenceWorkerInput {
   readonly projectConfiguration?: unknown
   readonly sdkConfiguration?: unknown
   readonly sdkAmbientProfile?: ReferenceSdkAmbientProfile
+  readonly trace?: boolean
   readonly tolerateUnadmittedProjectDependencies?: boolean
 }
 
@@ -128,6 +142,8 @@ async function runReferenceWorker(
 ): Promise<ReferenceAnchorVerification> {
   const workerPath = options.workerPath
     ?? path.join(__dirname, "reference-verifier-worker.cjs")
+  const started = performance.now()
+  let workerStartupMs: number | undefined
   const worker = new Worker(workerPath, { workerData })
   let settled = false
   const cancellationTimer = options.isCancellationRequested
@@ -140,14 +156,20 @@ async function runReferenceWorker(
   cancellationTimer?.unref()
   try {
     return await new Promise<ReferenceAnchorVerification>((resolve, reject) => {
-      worker.once("message", (message: (
+      worker.on("message", (message: (
         | (ReferenceAnchorVerification & { readonly ok: true })
         | ReferenceBatchWorkerFailure
+        | ReferenceWorkerReady
       )) => {
         if (settled) return
+        if ("phase" in message) {
+          if (options.trace) workerStartupMs = performance.now() - started
+          return
+        }
         settled = true
         if (message.ok) resolve({
           definitions: message.definitions,
+          timings: { ...message.timings, workerStartupMs },
           prepared: message.prepared,
           stats: message.stats,
           memory: message.memory,

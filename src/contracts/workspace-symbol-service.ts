@@ -24,6 +24,7 @@ export interface WorkspaceSymbolServicePort {
   ): void
   sync(document: DocumentSnapshot): void
   closeDocument(documentUri: DocumentUri): void
+  workspaceFilesChanged(workspaceIds: readonly string[]): void
   searchSymbols(
     query: string,
     limit: number,

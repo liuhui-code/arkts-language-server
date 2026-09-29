@@ -149,10 +149,10 @@ function createFixture(t, env = {}) {
   const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-catalog-adapter-"))
   t.after(() => fs.rmSync(temporaryRoot, { recursive: true, force: true }))
   const sidecarPath = path.join(temporaryRoot, "scripted-catalog-sidecar.mjs")
-  fs.copyFileSync(
-    path.join(projectRoot, "tests", "fixtures", "index", "scripted-catalog-sidecar.mjs"),
-    sidecarPath,
-  )
+  buildSync({
+    entryPoints: [path.join(projectRoot, "tests", "fixtures", "index", "scripted-catalog-sidecar.mjs")],
+    outfile: sidecarPath, bundle: true, platform: "node", format: "esm", target: "node20",
+  })
   fs.chmodSync(sidecarPath, 0o755)
   const driverPath = path.join(temporaryRoot, "catalog-adapter-driver.cjs")
   buildSync({

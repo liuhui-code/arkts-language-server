@@ -28,7 +28,8 @@ test("production composition exposes cached search and terminal catalog progress
     outfile: serverPath,
   })
   const sidecarPath = path.join(cacheDirectory, "scripted-catalog-sidecar.mjs")
-  fs.copyFileSync(sidecarFixturePath, sidecarPath)
+  buildSync({ entryPoints: [sidecarFixturePath], outfile: sidecarPath,
+    bundle: true, platform: "node", format: "esm", target: "node20" })
   fs.chmodSync(sidecarPath, 0o755)
   const auditPath = path.join(cacheDirectory, "sidecar-audit.ndjson")
   const logDirectory = path.join(cacheDirectory, "logs")
@@ -101,6 +102,19 @@ test("production composition exposes cached search and terminal catalog progress
     (message) => message.params.value.kind === "end",
   )
   assert.equal(end.params.value.kind, "end")
+
+  const projectProfilePath = path.join(workspaceAPath, "build-profile.json5")
+  fs.writeFileSync(projectProfilePath, "{}\n")
+  server.send({
+    jsonrpc: "2.0",
+    method: "workspace/didChangeWatchedFiles",
+    params: {
+      changes: [{ uri: pathToFileURL(projectProfilePath).href, type: 2 }],
+    },
+  })
+  await waitUntil(() => readAudit(auditPath)
+    .filter((request) => request.method === "catalog/start").length === 3)
+
   const indexTerminal = readStructuredLog(logDirectory)
     .find((entry) => entry.event === "index.catalog.terminal")
   assert.deepEqual(
@@ -161,6 +175,10 @@ test("production composition exposes cached search and terminal catalog progress
   const authoritativeOverlay = overlaySearch.result.find((item) => item.location.uri === openUri)
   assert.equal(authoritativeOverlay.location.range.start.line, 2)
 })
+
+function readAudit(auditPath) {
+  return fs.readFileSync(auditPath, "utf8").trim().split("\n").map(JSON.parse)
+}
 
 async function waitUntil(predicate, timeoutMs = 5_000) {
   const deadline = performance.now() + timeoutMs

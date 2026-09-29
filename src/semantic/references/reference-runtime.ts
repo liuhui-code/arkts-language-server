@@ -3,12 +3,16 @@ import type { TypeScriptSdkAmbientProfile } from "../../core/types/typescript-la
 export type ReferenceSearchStrategy = "legacy" | "batched" | "indexed-batched"
 export type ReferenceSdkAmbientProfile = Extract<TypeScriptSdkAmbientProfile, "full" | "common">
 export type ReferenceDependencyProfile = "closure" | "identity"
+export type ReferenceContextRetentionProfile = "dispose" | "budget-aware"
 
 export interface ReferenceSearchRuntimeConfig {
   readonly strategy: ReferenceSearchStrategy
   readonly batchRootLimit: number
   readonly sdkAmbientProfile: ReferenceSdkAmbientProfile
   readonly dependencyProfile: ReferenceDependencyProfile
+  readonly contextRetentionProfile: ReferenceContextRetentionProfile
+  readonly anchorReuse: boolean
+  readonly conservativeSemanticUnits: boolean
   readonly trace: boolean
 }
 
@@ -32,6 +36,10 @@ export function referenceSearchRuntimeConfig(
   if (dependencyProfile !== "closure" && dependencyProfile !== "identity") {
     throw new Error("ARKTS_REFERENCES_DEPENDENCY_PROFILE must be closure or identity")
   }
+  const contextRetentionProfile = environment.ARKTS_REFERENCES_CONTEXT_RETENTION ?? "dispose"
+  if (contextRetentionProfile !== "dispose" && contextRetentionProfile !== "budget-aware") {
+    throw new Error("ARKTS_REFERENCES_CONTEXT_RETENTION must be dispose or budget-aware")
+  }
   return {
     strategy: configuredStrategy,
     batchRootLimit: positiveInteger(
@@ -41,6 +49,9 @@ export function referenceSearchRuntimeConfig(
     ),
     sdkAmbientProfile,
     dependencyProfile,
+    contextRetentionProfile,
+    anchorReuse: environment.ARKTS_REFERENCES_ANCHOR_REUSE === "1",
+    conservativeSemanticUnits: environment.ARKTS_REFERENCES_CONSERVATIVE_SEMANTIC_UNITS === "1",
     trace: environment.ARKTS_REFERENCES_TRACE === "1",
   }
 }

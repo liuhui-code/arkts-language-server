@@ -118,6 +118,10 @@ test("memory policy maps the configured ratios to levels without double-counting
   assert.equal(policy.levelFor(700, budget), "level1")
   assert.equal(policy.levelFor(820, budget), "level2")
   assert.equal(policy.levelFor(920, budget), "level3")
+  assert.equal(policy.levelFor(900, budget), "level3")
+  assert.equal(policy.levelFor(850, budget), "level3")
+  assert.equal(policy.levelFor(849, budget), "level2")
+  assert.equal(policy.levelFor(819, budget), "level1")
 
   assert.deepEqual(semanticRuntimeMetrics({
     memoryUsage: {

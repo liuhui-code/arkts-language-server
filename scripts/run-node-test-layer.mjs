@@ -1,4 +1,5 @@
 import { spawn as spawnChild } from "node:child_process"
+import { constants as fsConstants } from "node:fs"
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
@@ -52,7 +53,20 @@ export async function runNodeTestLayer({
   }
 
   const target = evidenceTarget(selection)
-  const runChild = () => runTestChild({ spawn, nodePath, entries, cwd, target })
+  const runChild = async () => {
+    if (selectedLayers.some(layer => layer.requiresReleaseSidecar === true)) {
+      const build = await childTermination(spawn("cargo", [
+        "build", "--locked", "--package", "arkts-index-sidecar", "--release",
+        "--target-dir", path.resolve(cwd, "target"),
+      ], { cwd, stdio: "inherit" }))
+      if (build.code !== 0 || build.signal !== null) return build
+      const artifact = path.join(cwd, "target", "release",
+        process.platform === "win32" ? "arkts-index-sidecar.exe" : "arkts-index-sidecar")
+      if (!(await fs.stat(artifact)).isFile()) throw new Error("release sidecar is not a file")
+      await fs.access(artifact, fsConstants.X_OK)
+    }
+    return runTestChild({ spawn, nodePath, entries, cwd, target })
+  }
   const { code, signal } = evidenceRoot
     ? await terminationWithEvidence({ runChild, evidenceRoot, target })
     : await runChild()

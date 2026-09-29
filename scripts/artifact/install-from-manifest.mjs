@@ -23,6 +23,20 @@ try {
 
 async function installFromManifest({ artifactRoot, binDirectory }) {
   const { manifest, manifestBytes, records } = await verifyArtifact(artifactRoot)
+  const standardLibraryPath = "dist/arkts-standard-library.json"
+  if (!records.has(standardLibraryPath)) {
+    throw new Error(`artifact manifest is missing runtime file: ${standardLibraryPath}`)
+  }
+  const standardLibrary = JSON.parse(await fs.readFile(resolveArtifactPath(artifactRoot, standardLibraryPath), "utf8"))
+  if (standardLibrary.schema !== "arkts-language-server.standard-library"
+    || standardLibrary.schemaVersion !== 1
+    || !Array.isArray(standardLibrary.files)
+    || standardLibrary.files.length === 0
+    || standardLibrary.files.some((name, index) => typeof name !== "string"
+      || !/^lib(?:\.[A-Za-z0-9_-]+)*\.d\.ts$/.test(name)
+      || (index > 0 && standardLibrary.files[index - 1] >= name))) {
+    throw new Error("invalid ArkTS standard-library manifest")
+  }
   const sidecarName = process.platform === "win32"
     ? "arkts-index-sidecar.exe"
     : "arkts-index-sidecar"
@@ -32,6 +46,8 @@ async function installFromManifest({ artifactRoot, binDirectory }) {
     "dist/semantic-worker.cjs",
     "dist/reference-verifier-worker.cjs",
     "dist/server.cjs",
+    standardLibraryPath,
+    ...standardLibrary.files.map((name) => `dist/${name}`),
     `target/release/${sidecarName}`,
   ]
   for (const relativePath of runtimePaths) {
@@ -162,7 +178,21 @@ async function verifyFile(root, record) {
 }
 
 async function verifyRuntimeFiles(root, runtimePaths, records) {
-  for (const relativePath of runtimePaths) await verifyFile(root, records.get(relativePath))
+  const rootStat = await fs.lstat(root)
+  if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) {
+    throw new Error(`installed runtime root is not a real directory: ${root}`)
+  }
+  for (const relativePath of runtimePaths) {
+    let current = root
+    for (const segment of relativePath.split("/").slice(0, -1)) {
+      current = path.join(current, segment)
+      const stat = await fs.lstat(current)
+      if (!stat.isDirectory() || stat.isSymbolicLink()) {
+        throw new Error(`installed runtime path contains an unsafe directory: ${relativePath}`)
+      }
+    }
+    await verifyFile(root, records.get(relativePath))
+  }
 }
 
 async function collectArtifactFiles(root, segments, files) {

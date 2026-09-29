@@ -55,7 +55,6 @@ import { WorkspaceFileChangeCoordinator } from "./workspace-file-change-coordina
 
 const MAX_COMPLETION_ITEMS = 256
 const MAX_COMPLETION_RESOLUTIONS = 512
-
 interface CompletionResolutionRecord {
   documentUri: string
   documentVersion: number
@@ -342,6 +341,7 @@ export function runLanguageServer(services?: LanguageServerServices): void {
     semantic.workspaceFilesChanged?.(workspaceRoots.map(({ rootUri }) => ({
       rootUri, rootDirty: true, changes: [],
     })))
+    workspaceSymbols?.workspaceFilesChanged(workspaceRoots.map(({ id }) => id))
     for (const document of documents.all()) diagnostics.update(document)
     if (projectChanged) {
       logger.info("project.selection.changed", { workspaceCount: workspaceRoots.length })
@@ -358,6 +358,7 @@ export function runLanguageServer(services?: LanguageServerServices): void {
         freshness.cancelWorkspace(projects.projectFor(batch.rootUri).id)
       }
       semantic.workspaceFilesChanged?.(batches)
+      workspaceSymbols?.workspaceFilesChanged([...new Set(batches.map((batch) => projects.projectFor(batch.rootUri).id))])
       const resourceWorkspaceIds = new Set(
         batches
           .filter((batch) => batch.resourceChanged)
@@ -405,7 +406,6 @@ export function runLanguageServer(services?: LanguageServerServices): void {
     workspaceSymbols?.closeDocument(document.uri)
     diagnostics.close(document.uri)
   })
-
   connection.onCompletion(async (params, token) => {
     const result = await requests.run({
       method: "textDocument/completion",

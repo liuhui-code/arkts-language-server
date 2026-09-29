@@ -8,6 +8,7 @@ export interface SemanticDocumentPosition {
   workspaceRoot?: string
   allowSnippets?: boolean
   completionDiscovery?: SemanticCompletionDiscovery
+  expectedReferenceAnchor?: { path: string; line: number; column: number }
 }
 
 export interface SemanticCompletionDiscoveryCandidate {

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict"
-import { spawn, spawnSync } from "node:child_process"
+import { spawnSync } from "node:child_process"
+import { initialize } from "../support/installed-initialize.mjs"
 import { createHash } from "node:crypto"
 import fs from "node:fs"
 import os from "node:os"
@@ -37,6 +38,10 @@ function makeCheckout(temporaryRoot) {
   copy("dist/semantic-worker.cjs")
   copy("dist/reference-verifier-worker.cjs")
   copy("dist/server.cjs")
+  copy("dist/arkts-standard-library.json")
+  for (const name of JSON.parse(fs.readFileSync(path.join(projectRoot, "dist", "arkts-standard-library.json"), "utf8")).files) {
+    copy(`dist/${name}`)
+  }
   copy("target/release/arkts-index-sidecar")
   copy(
     "editors/zed/target/wasm32-wasip2/release/zed_arkts_local.wasm",
@@ -80,50 +85,6 @@ function makeCheckout(temporaryRoot) {
   }
 }
 
-function initialize(command, cwd, env = process.env) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, ["--stdio"], {
-      cwd,
-      env,
-      stdio: ["pipe", "pipe", "pipe"],
-    })
-    let stdout = Buffer.alloc(0)
-    let stderr = ""
-    const timeout = setTimeout(() => {
-      child.kill("SIGTERM")
-      reject(new Error(`Timed out waiting for initialize response. stderr: ${stderr}`))
-    }, 15_000)
-
-    child.once("error", (error) => {
-      clearTimeout(timeout)
-      reject(error)
-    })
-    child.stderr.on("data", (chunk) => { stderr += chunk.toString() })
-    child.stdout.on("data", (chunk) => {
-      stdout = Buffer.concat([stdout, chunk])
-      const headerEnd = stdout.indexOf("\r\n\r\n")
-      if (headerEnd < 0) return
-      const header = stdout.subarray(0, headerEnd).toString("ascii")
-      const length = Number(/Content-Length:\s*(\d+)/i.exec(header)?.[1])
-      const bodyStart = headerEnd + 4
-      if (!Number.isFinite(length) || stdout.length < bodyStart + length) return
-      clearTimeout(timeout)
-      const response = JSON.parse(stdout.subarray(bodyStart, bodyStart + length).toString("utf8"))
-      child.kill("SIGTERM")
-      resolve(response)
-    })
-
-    const body = Buffer.from(JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "initialize",
-      params: { processId: process.pid, rootUri: null, capabilities: {} },
-    }))
-    child.stdin.write(`Content-Length: ${body.length}\r\n\r\n`)
-    child.stdin.write(body)
-  })
-}
-
 test("installs one verified artifact without source dependencies or a rebuild", async (t) => {
   const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-immutable-artifact-"))
   t.after(() => fs.rmSync(temporaryRoot, { recursive: true, force: true }))
@@ -138,6 +99,9 @@ test("installs one verified artifact without source dependencies or a rebuild", 
     "dist/semantic-worker.cjs",
     "dist/reference-verifier-worker.cjs",
     "dist/server.cjs",
+    "dist/arkts-standard-library.json",
+    ...JSON.parse(fs.readFileSync(path.join(projectRoot, "dist", "arkts-standard-library.json"), "utf8"))
+      .files.map((name) => `dist/${name}`),
     `target/release/${sidecarName}`,
   ]
   const installerPaths = [
@@ -448,6 +412,9 @@ test("installed command remains self-contained after its source checkout moves",
   )
   const releaseRoot = path.resolve(path.dirname(installedLauncher), "..")
   assert.ok(fs.statSync(path.join(releaseRoot, "dist", "server.cjs")).size > 0)
+  for (const name of JSON.parse(fs.readFileSync(path.join(releaseRoot, "dist", "arkts-standard-library.json"), "utf8")).files) {
+    assert.deepEqual(fs.readFileSync(path.join(releaseRoot, "dist", name)), fs.readFileSync(path.join(projectRoot, "dist", name)))
+  }
   const sidecar = path.join(releaseRoot, "target", "release", "arkts-index-sidecar")
   assert.ok(fs.statSync(sidecar).size > 0)
   fs.accessSync(sidecar, fs.constants.X_OK)
@@ -502,6 +469,13 @@ test("reinstalling a rebuilt local beta atomically activates a new immutable rel
   })
   assert.equal(first.status, 0, first.stderr || first.error?.message)
   const firstRelease = fs.realpathSync(command)
+  const library = path.join(path.dirname(path.dirname(firstRelease)), "dist", "lib.d.ts")
+  const originalLibrary = fs.readFileSync(library)
+  fs.appendFileSync(library, "// damaged installed library\n")
+  const rejected = spawnSync(installer, [binDirectory], { cwd: os.tmpdir(), encoding: "utf8", env: environment })
+  assert.notEqual(rejected.status, 0)
+  assert.equal(fs.realpathSync(command), firstRelease)
+  fs.writeFileSync(library, originalLibrary)
 
   const marker = "# rebuilt local beta marker"
   fs.appendFileSync(path.join(checkout, "bin", "arkts-language-server"), `${marker}\n`)

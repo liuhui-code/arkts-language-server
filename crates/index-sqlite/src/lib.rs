@@ -9,12 +9,12 @@ use std::{
 };
 
 use arkts_index_core::{
-    CommitReceipt, DocumentSymbols, ExportQuery, ExportSearchResult, FullCatalogBatch,
-    MAX_REFERENCE_ALIAS_NAMES, Position, ReferenceBinding, ReferenceBindingKind,
-    ReferenceBindingResolution, ReferenceCandidateQuery, ReferenceCandidateSearchResult,
-    ReferenceOccurrenceIdentity, ReferenceSourceResolution, RefreshBatch, StoreError,
-    StoreErrorKind, StoreMetadata, SymbolKind, SymbolQuery, SymbolSearchResult, SymbolStore,
-    TextRange, WorkspaceExport, WorkspaceSymbol, acronym_for_search,
+    ClassBindingSnapshot, ClassHeritageSearchResult, CommitReceipt, DocumentSymbols, ExportQuery,
+    ExportSearchResult, FullCatalogBatch, MAX_REFERENCE_ALIAS_NAMES, Position, ReferenceBinding,
+    ReferenceBindingKind, ReferenceBindingResolution, ReferenceCandidateQuery,
+    ReferenceCandidateSearchResult, ReferenceOccurrenceIdentity, ReferenceSourceResolution,
+    RefreshBatch, StoreError, StoreErrorKind, StoreMetadata, SymbolKind, SymbolQuery,
+    SymbolSearchResult, SymbolStore, TextRange, WorkspaceExport, WorkspaceSymbol,
     apply_reference_source_resolutions, fold_for_search, prove_reference_binding_chain,
     rank_symbols, reference_binding_source_outside_admission, reference_uri_admitted,
     resolve_reference_binding_sources, sort_reference_bindings,
@@ -26,18 +26,26 @@ use rusqlite::{
 };
 use sha2::{Digest, Sha256};
 
+mod catalog_insert;
+mod catalog_replace;
+mod class_binding_migration;
+mod class_binding_storage;
+mod class_heritage_storage;
+mod reference_insert;
+mod schema;
+mod schema_migrations;
+
+use catalog_insert::insert_document_symbols;
+use reference_insert::insert_reference_documents;
+
 #[cfg(debug_assertions)]
 use std::sync::{Arc, Barrier, Mutex};
 
 const APPLICATION_ID: i64 = 0x4152_4B49;
-const SCHEMA_VERSION: i64 = 9;
-const QUALIFIED_OCCURRENCE_SCHEMA_VERSION: i64 = 8;
-const OCCURRENCE_IDENTITY_SCHEMA_VERSION: i64 = 7;
-const OCCURRENCE_PROOF_SCHEMA_VERSION: i64 = 6;
-const BINDING_SCHEMA_VERSION: i64 = 5;
-const REFERENCE_SCHEMA_VERSION: i64 = 4;
-const EXPORT_SCHEMA_VERSION: i64 = 3;
-const PREVIOUS_SCHEMA_VERSION: i64 = 2;
+#[cfg(not(feature = "experimental-occurrence-without-rowid"))]
+const SCHEMA_VERSION: i64 = 11;
+#[cfg(feature = "experimental-occurrence-without-rowid")]
+const SCHEMA_VERSION: i64 = 111;
 
 type DirectImportDeclaration = (String, String, String, Option<String>);
 
@@ -118,6 +126,8 @@ pub struct SqliteStore {
     generation_preflight_pause: Option<(Arc<Barrier>, Arc<Barrier>)>,
     #[cfg(debug_assertions)]
     search_rows_pause: Mutex<Option<(Arc<Barrier>, Arc<Barrier>)>>,
+    #[cfg(debug_assertions)]
+    class_binding_snapshot_pause: Mutex<Option<(Arc<Barrier>, Arc<Barrier>)>>,
 }
 
 impl SqliteStore {
@@ -151,75 +161,7 @@ impl SqliteStore {
             .execute_batch("PRAGMA foreign_keys = ON; PRAGMA synchronous = NORMAL;")
             .map_err(map_sqlite_error)?;
 
-        let application_id: i64 = connection
-            .pragma_query_value(None, "application_id", |row| row.get(0))
-            .map_err(map_sqlite_error)?;
-        let schema_version: i64 = connection
-            .pragma_query_value(None, "user_version", |row| row.get(0))
-            .map_err(map_sqlite_error)?;
-        match (application_id, schema_version) {
-            (0, 0) => initialize_schema(&mut connection, workspace_identity)?,
-            (APPLICATION_ID, SCHEMA_VERSION) => {
-                verify_workspace_identity(&connection, workspace_identity)?
-            }
-            (APPLICATION_ID, QUALIFIED_OCCURRENCE_SCHEMA_VERSION) => {
-                verify_workspace_identity(&connection, workspace_identity)?;
-                migrate_schema_v8_to_v9(&mut connection)?;
-            }
-            (APPLICATION_ID, OCCURRENCE_IDENTITY_SCHEMA_VERSION) => {
-                verify_workspace_identity(&connection, workspace_identity)?;
-                migrate_schema_v7_to_v8(&mut connection)?;
-                migrate_schema_v8_to_v9(&mut connection)?;
-            }
-            (APPLICATION_ID, OCCURRENCE_PROOF_SCHEMA_VERSION) => {
-                verify_workspace_identity(&connection, workspace_identity)?;
-                migrate_schema_v6_to_v7(&mut connection)?;
-                migrate_schema_v7_to_v8(&mut connection)?;
-                migrate_schema_v8_to_v9(&mut connection)?;
-            }
-            (APPLICATION_ID, BINDING_SCHEMA_VERSION) => {
-                verify_workspace_identity(&connection, workspace_identity)?;
-                migrate_schema_v5_to_v6(&mut connection)?;
-                migrate_schema_v6_to_v7(&mut connection)?;
-                migrate_schema_v7_to_v8(&mut connection)?;
-                migrate_schema_v8_to_v9(&mut connection)?;
-            }
-            (APPLICATION_ID, REFERENCE_SCHEMA_VERSION) => {
-                verify_workspace_identity(&connection, workspace_identity)?;
-                migrate_schema_v4_to_v5(&mut connection)?;
-                migrate_schema_v5_to_v6(&mut connection)?;
-                migrate_schema_v6_to_v7(&mut connection)?;
-                migrate_schema_v7_to_v8(&mut connection)?;
-                migrate_schema_v8_to_v9(&mut connection)?;
-            }
-            (APPLICATION_ID, EXPORT_SCHEMA_VERSION) => {
-                verify_workspace_identity(&connection, workspace_identity)?;
-                migrate_schema_v3_to_v4(&mut connection)?;
-                migrate_schema_v4_to_v5(&mut connection)?;
-                migrate_schema_v5_to_v6(&mut connection)?;
-                migrate_schema_v6_to_v7(&mut connection)?;
-                migrate_schema_v7_to_v8(&mut connection)?;
-                migrate_schema_v8_to_v9(&mut connection)?;
-            }
-            (APPLICATION_ID, PREVIOUS_SCHEMA_VERSION) => {
-                verify_workspace_identity(&connection, workspace_identity)?;
-                migrate_schema_v2_to_v3(&mut connection)?;
-                migrate_schema_v3_to_v4(&mut connection)?;
-                migrate_schema_v4_to_v5(&mut connection)?;
-                migrate_schema_v5_to_v6(&mut connection)?;
-                migrate_schema_v6_to_v7(&mut connection)?;
-                migrate_schema_v7_to_v8(&mut connection)?;
-                migrate_schema_v8_to_v9(&mut connection)?;
-            }
-            _ => {
-                return Err(StoreError::new(
-                    StoreErrorKind::Incompatible,
-                    format!(
-                        "unsupported index database application/schema version {application_id}/{schema_version}"
-                    ),
-                ));
-            }
-        }
+        schema_migrations::ensure_schema(&mut connection, workspace_identity)?;
 
         Ok(Self {
             connection,
@@ -229,6 +171,8 @@ impl SqliteStore {
             generation_preflight_pause: None,
             #[cfg(debug_assertions)]
             search_rows_pause: Mutex::new(None),
+            #[cfg(debug_assertions)]
+            class_binding_snapshot_pause: Mutex::new(None),
         })
     }
 
@@ -255,6 +199,19 @@ impl SqliteStore {
             .search_rows_pause
             .get_mut()
             .expect("test pause mutex should not be poisoned") = Some((rows_read, resume));
+    }
+
+    #[doc(hidden)]
+    #[cfg(debug_assertions)]
+    pub fn pause_after_class_binding_snapshot_once(
+        &mut self,
+        generation_read: Arc<Barrier>,
+        resume: Arc<Barrier>,
+    ) {
+        *self
+            .class_binding_snapshot_pause
+            .get_mut()
+            .expect("test pause mutex should not be poisoned") = Some((generation_read, resume));
     }
 
     #[doc(hidden)]
@@ -419,65 +376,18 @@ impl SymbolStore for SqliteStore {
     }
 
     fn replace_all(&mut self, batch: FullCatalogBatch) -> Result<CommitReceipt, StoreError> {
-        let current = self.metadata()?.committed_generation;
-        if batch.generation <= current {
-            return Err(invalid_generation(batch.generation, current));
-        }
-        let generation = sqlite_generation(batch.generation)?;
-        for document in &batch.documents {
-            validate_replacement(document)?;
-        }
+        catalog_replace::replace_all(self, batch)
+    }
 
-        let transaction = self
-            .connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .map_err(map_sqlite_error)?;
-        let committed_generation = read_committed_generation(&transaction)?;
-        if batch.generation <= committed_generation {
-            return Err(invalid_generation(batch.generation, committed_generation));
-        }
+    fn class_heritage(&self, document_uri: &str) -> Result<ClassHeritageSearchResult, StoreError> {
+        class_heritage_storage::search(self, document_uri)
+    }
 
-        transaction
-            .execute("DROP INDEX reference_occurrence_identities_name", [])
-            .map_err(map_sqlite_error)?;
-        transaction
-            .execute("DELETE FROM documents", [])
-            .map_err(map_sqlite_error)?;
-        transaction
-            .execute("DELETE FROM rejected_documents", [])
-            .map_err(map_sqlite_error)?;
-        insert_catalog_documents(&transaction, &batch.documents, generation)?;
-        insert_symbol_documents(&transaction, &batch.documents)?;
-        insert_export_documents(&transaction, &batch.documents, generation)?;
-        insert_reference_documents(&transaction, &batch.documents)?;
-        transaction
-            .execute(
-                "CREATE INDEX reference_occurrence_identities_name \
-                 ON reference_occurrence_identities(name, document_uri, qualification)",
-                [],
-            )
-            .map_err(map_sqlite_error)?;
-        for uri in &batch.rejected_uris {
-            transaction
-                .execute(
-                    "INSERT INTO rejected_documents(uri) VALUES (?1) \
-                     ON CONFLICT(uri) DO NOTHING",
-                    [uri],
-                )
-                .map_err(map_sqlite_error)?;
-        }
-        transaction
-            .execute(
-                "UPDATE metadata SET committed_generation = ?1 WHERE id = 1",
-                [generation],
-            )
-            .map_err(map_sqlite_error)?;
-        let rejected_documents = read_rejected_documents(&transaction)?;
-        transaction.commit().map_err(map_sqlite_error)?;
-        Ok(CommitReceipt {
-            committed_generation: batch.generation,
-            rejected_documents,
-        })
+    fn class_binding_snapshot(
+        &self,
+        document_uris: &[String],
+    ) -> Result<ClassBindingSnapshot, StoreError> {
+        class_binding_storage::snapshot(self, document_uris)
     }
 
     fn search(&self, query: &SymbolQuery) -> Result<SymbolSearchResult, StoreError> {
@@ -821,289 +731,6 @@ fn trace_reference_query_stage(
         );
     }
     *previous = now;
-}
-
-fn insert_document_symbols(
-    transaction: &Transaction<'_>,
-    replacement: &DocumentSymbols,
-) -> Result<(), StoreError> {
-    insert_symbol_documents(transaction, std::slice::from_ref(replacement))?;
-    let generation: i64 = transaction
-        .query_row(
-            "SELECT generation FROM documents WHERE uri = ?1",
-            [&replacement.uri],
-            |row| row.get(0),
-        )
-        .map_err(map_sqlite_error)?;
-    insert_export_documents(transaction, std::slice::from_ref(replacement), generation)?;
-    insert_reference_documents(transaction, std::slice::from_ref(replacement))
-}
-
-fn insert_catalog_documents(
-    transaction: &Transaction<'_>,
-    documents: &[DocumentSymbols],
-    generation: i64,
-) -> Result<(), StoreError> {
-    const DOCUMENTS_PER_INSERT: usize = 64;
-    for chunk in documents.chunks(DOCUMENTS_PER_INSERT) {
-        let mut sql = String::from("INSERT INTO documents(uri, generation) VALUES ");
-        sql.push_str(&vec!["(?,?)"; chunk.len()].join(","));
-        let mut values = Vec::with_capacity(chunk.len() * 2);
-        for document in chunk {
-            values.push(SqlValue::Text(document.uri.clone()));
-            values.push(SqlValue::Integer(generation));
-        }
-        transaction
-            .execute(&sql, params_from_iter(values.iter()))
-            .map_err(map_sqlite_error)?;
-    }
-    Ok(())
-}
-
-fn insert_symbol_documents(
-    transaction: &Transaction<'_>,
-    documents: &[DocumentSymbols],
-) -> Result<(), StoreError> {
-    const SYMBOLS_PER_INSERT: usize = 256;
-    const VALUES_PER_SYMBOL: usize = 11;
-    let mut values = Vec::with_capacity(SYMBOLS_PER_INSERT * VALUES_PER_SYMBOL);
-    let mut row_count = 0usize;
-
-    for document in documents {
-        for (ordinal, symbol) in document.symbols.iter().enumerate() {
-            let ordinal = i64::try_from(ordinal).map_err(|_| {
-                StoreError::new(
-                    StoreErrorKind::InvalidData,
-                    "symbol ordinal exceeds SQLite integer range",
-                )
-            })?;
-            values.extend([
-                SqlValue::Text(document.uri.clone()),
-                SqlValue::Integer(ordinal),
-                SqlValue::Text(symbol.name.clone()),
-                SqlValue::Text(fold_for_search(&symbol.name)),
-                SqlValue::Text(acronym_for_search(&symbol.name)),
-                SqlValue::Integer(kind_to_i64(symbol.kind)),
-                symbol
-                    .container
-                    .clone()
-                    .map_or(SqlValue::Null, SqlValue::Text),
-                SqlValue::Integer(i64::from(symbol.range.start.line)),
-                SqlValue::Integer(i64::from(symbol.range.start.character)),
-                SqlValue::Integer(i64::from(symbol.range.end.line)),
-                SqlValue::Integer(i64::from(symbol.range.end.character)),
-            ]);
-            row_count += 1;
-            if row_count == SYMBOLS_PER_INSERT {
-                insert_symbol_values(transaction, row_count, &values)?;
-                values.clear();
-                row_count = 0;
-            }
-        }
-    }
-    if row_count > 0 {
-        insert_symbol_values(transaction, row_count, &values)?;
-    }
-    Ok(())
-}
-
-fn insert_symbol_values(
-    transaction: &Transaction<'_>,
-    row_count: usize,
-    values: &[SqlValue],
-) -> Result<(), StoreError> {
-    const VALUES_PER_SYMBOL: usize = 11;
-    let mut sql = String::from(
-        "INSERT INTO symbols(\
-            document_uri, ordinal, name, name_folded, acronym_folded, kind, \
-            container, start_line, start_character, end_line, end_character\
-         ) VALUES ",
-    );
-    let value_group = format!("({})", ["?"; VALUES_PER_SYMBOL].join(","));
-    sql.push_str(&vec![value_group; row_count].join(","));
-    transaction
-        .execute(&sql, params_from_iter(values.iter()))
-        .map(|_| ())
-        .map_err(map_sqlite_error)
-}
-
-fn insert_export_documents(
-    transaction: &Transaction<'_>,
-    documents: &[DocumentSymbols],
-    generation: i64,
-) -> Result<(), StoreError> {
-    let mut statement = transaction
-        .prepare_cached(
-            "INSERT INTO exports(\
-                document_uri, generation, ordinal, exported_name, reference_export_name, \
-                name_folded, symbol_kind, \
-                declaration_identity, import_specifier, module_id, target_scope, \
-                start_line, start_character, end_line, end_character, reference_searchable\
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
-        )
-        .map_err(map_sqlite_error)?;
-    for document in documents {
-        for item in &document.exports {
-            statement
-                .execute(params![
-                    document.uri,
-                    generation,
-                    i64::from(item.ordinal),
-                    item.exported_name,
-                    item.reference_export_name,
-                    fold_for_search(&item.exported_name),
-                    kind_to_i64(item.kind),
-                    item.declaration_identity,
-                    item.import_specifier,
-                    item.module_id,
-                    item.target_scope,
-                    i64::from(item.range.start.line),
-                    i64::from(item.range.start.character),
-                    i64::from(item.range.end.line),
-                    i64::from(item.range.end.character),
-                    item.reference_searchable,
-                ])
-                .map_err(map_sqlite_error)?;
-        }
-    }
-    Ok(())
-}
-
-fn insert_reference_documents(
-    transaction: &Transaction<'_>,
-    documents: &[DocumentSymbols],
-) -> Result<(), StoreError> {
-    const OCCURRENCE_IDENTITIES_PER_INSERT: usize = 256;
-    const VALUES_PER_OCCURRENCE_IDENTITY: usize = 4;
-    let mut occurrence_statement = transaction
-        .prepare_cached(
-            "INSERT INTO reference_occurrences(\
-                document_uri, ordinal, name, start_line, start_character, end_line, end_character, qualified\
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-        )
-        .map_err(map_sqlite_error)?;
-    let mut alias_statement = transaction
-        .prepare_cached(
-            "INSERT INTO reference_aliases(document_uri, ordinal, from_name, to_name) \
-             VALUES (?1, ?2, ?3, ?4)",
-        )
-        .map_err(map_sqlite_error)?;
-    let mut binding_statement = transaction
-        .prepare_cached(
-            "INSERT INTO reference_bindings(\
-                document_uri, ordinal, imported_name, local_name, source_specifier, kind\
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        )
-        .map_err(map_sqlite_error)?;
-    let mut occurrence_identity_values =
-        Vec::with_capacity(OCCURRENCE_IDENTITIES_PER_INSERT * VALUES_PER_OCCURRENCE_IDENTITY);
-    let mut occurrence_identity_count = 0usize;
-    for document in documents {
-        let mut occurrence_identities = Vec::with_capacity(document.occurrences.len());
-        for (ordinal, occurrence) in document.occurrences.iter().enumerate() {
-            occurrence_statement
-                .execute(params![
-                    document.uri,
-                    sqlite_ordinal(ordinal, "reference occurrence")?,
-                    occurrence.name,
-                    i64::from(occurrence.range.start.line),
-                    i64::from(occurrence.range.start.character),
-                    i64::from(occurrence.range.end.line),
-                    i64::from(occurrence.range.end.character),
-                    occurrence.qualified,
-                ])
-                .map_err(map_sqlite_error)?;
-            occurrence_identities.push((
-                occurrence.name.as_str(),
-                match occurrence.qualified {
-                    None => -1_i64,
-                    Some(false) => 0_i64,
-                    Some(true) => 1_i64,
-                },
-                occurrence.qualifier.as_deref().unwrap_or(""),
-            ));
-        }
-        occurrence_identities.sort_unstable();
-        occurrence_identities.dedup();
-        for (name, qualification, qualifier) in occurrence_identities {
-            occurrence_identity_values.extend([
-                SqlValue::Text(document.uri.clone()),
-                SqlValue::Text(name.to_owned()),
-                SqlValue::Integer(qualification),
-                SqlValue::Text(qualifier.to_owned()),
-            ]);
-            occurrence_identity_count += 1;
-            if occurrence_identity_count == OCCURRENCE_IDENTITIES_PER_INSERT {
-                insert_occurrence_identity_values(
-                    transaction,
-                    occurrence_identity_count,
-                    &occurrence_identity_values,
-                )?;
-                occurrence_identity_values.clear();
-                occurrence_identity_count = 0;
-            }
-        }
-        for (ordinal, alias) in document.aliases.iter().enumerate() {
-            alias_statement
-                .execute(params![
-                    document.uri,
-                    sqlite_ordinal(ordinal, "reference alias")?,
-                    alias.from_name,
-                    alias.to_name,
-                ])
-                .map_err(map_sqlite_error)?;
-        }
-        for (ordinal, binding) in document.bindings.iter().enumerate() {
-            binding_statement
-                .execute(params![
-                    document.uri,
-                    sqlite_ordinal(ordinal, "reference binding")?,
-                    binding.imported_name,
-                    binding.local_name,
-                    binding.source_specifier,
-                    reference_binding_kind_to_i64(binding.kind),
-                ])
-                .map_err(map_sqlite_error)?;
-        }
-    }
-    if occurrence_identity_count > 0 {
-        insert_occurrence_identity_values(
-            transaction,
-            occurrence_identity_count,
-            &occurrence_identity_values,
-        )?;
-    }
-    Ok(())
-}
-
-fn insert_occurrence_identity_values(
-    transaction: &Transaction<'_>,
-    row_count: usize,
-    values: &[SqlValue],
-) -> Result<(), StoreError> {
-    const VALUES_PER_OCCURRENCE_IDENTITY: usize = 4;
-    let mut sql = String::from(
-        "INSERT INTO reference_occurrence_identities(\
-            document_uri, name, qualification, qualifier\
-         ) VALUES ",
-    );
-    let value_group = format!("({})", ["?"; VALUES_PER_OCCURRENCE_IDENTITY].join(","));
-    sql.push_str(&vec![value_group; row_count].join(","));
-    transaction
-        .prepare_cached(&sql)
-        .map_err(map_sqlite_error)?
-        .execute(params_from_iter(values.iter()))
-        .map(|_| ())
-        .map_err(map_sqlite_error)
-}
-
-fn sqlite_ordinal(ordinal: usize, item: &str) -> Result<i64, StoreError> {
-    i64::try_from(ordinal).map_err(|_| {
-        StoreError::new(
-            StoreErrorKind::InvalidData,
-            format!("{item} ordinal exceeds SQLite integer range"),
-        )
-    })
 }
 
 const REFERENCE_NAMES_SQL: &str = "WITH RECURSIVE \
@@ -1803,349 +1430,6 @@ fn deduplicate_symbols(symbols: &mut Vec<WorkspaceSymbol>) {
     });
 }
 
-fn initialize_schema(
-    connection: &mut Connection,
-    workspace_identity: &str,
-) -> Result<(), StoreError> {
-    let transaction = connection
-        .transaction_with_behavior(TransactionBehavior::Immediate)
-        .map_err(map_sqlite_error)?;
-    transaction
-        .execute_batch(
-            "CREATE TABLE metadata(\
-                id INTEGER PRIMARY KEY CHECK(id = 1),\
-                workspace_identity TEXT NOT NULL,\
-                committed_generation INTEGER NOT NULL CHECK(committed_generation >= 0)\
-             );\
-             CREATE TABLE documents(\
-                uri TEXT PRIMARY KEY,\
-                generation INTEGER NOT NULL CHECK(generation >= 0)\
-             );\
-             CREATE TABLE rejected_documents(\
-                uri TEXT PRIMARY KEY\
-             );\
-             CREATE TABLE symbols(\
-                document_uri TEXT NOT NULL REFERENCES documents(uri) ON DELETE CASCADE,\
-                ordinal INTEGER NOT NULL,\
-                name TEXT NOT NULL,\
-                name_folded TEXT NOT NULL,\
-                acronym_folded TEXT NOT NULL,\
-                kind INTEGER NOT NULL,\
-                container TEXT,\
-                start_line INTEGER NOT NULL,\
-                start_character INTEGER NOT NULL,\
-                end_line INTEGER NOT NULL,\
-                end_character INTEGER NOT NULL,\
-                PRIMARY KEY(document_uri, ordinal)\
-             );\
-             CREATE INDEX symbols_name_folded ON symbols(name_folded);\
-             CREATE INDEX symbols_acronym_folded ON symbols(acronym_folded);\
-             CREATE TABLE exports(\
-                document_uri TEXT NOT NULL REFERENCES documents(uri) ON DELETE CASCADE,\
-                generation INTEGER NOT NULL CHECK(generation >= 0),\
-                ordinal INTEGER NOT NULL CHECK(ordinal >= 0),\
-                exported_name TEXT NOT NULL,\
-                reference_export_name TEXT,\
-                name_folded TEXT NOT NULL,\
-                symbol_kind INTEGER NOT NULL,\
-                declaration_identity TEXT,\
-                import_specifier TEXT,\
-                module_id TEXT,\
-                target_scope TEXT,\
-                start_line INTEGER NOT NULL,\
-                start_character INTEGER NOT NULL,\
-                end_line INTEGER NOT NULL,\
-                end_character INTEGER NOT NULL,\
-                reference_searchable INTEGER NOT NULL CHECK(reference_searchable IN (0, 1)),\
-                PRIMARY KEY(document_uri, ordinal)\
-             );\
-             CREATE INDEX exports_name_prefix ON exports(name_folded);\
-             CREATE INDEX exports_reference_export_name \
-                ON exports(reference_export_name, document_uri);\
-             CREATE TABLE reference_occurrences(\
-                document_uri TEXT NOT NULL REFERENCES documents(uri) ON DELETE CASCADE,\
-                ordinal INTEGER NOT NULL CHECK(ordinal >= 0),\
-                name TEXT NOT NULL,\
-                start_line INTEGER NOT NULL,\
-                start_character INTEGER NOT NULL,\
-                end_line INTEGER NOT NULL,\
-                end_character INTEGER NOT NULL,\
-                qualified INTEGER CHECK(qualified IN (0, 1)),\
-                PRIMARY KEY(document_uri, ordinal)\
-             );\
-             CREATE TABLE reference_occurrence_identities(\
-                document_uri TEXT NOT NULL REFERENCES documents(uri) ON DELETE CASCADE,\
-                name TEXT NOT NULL,\
-                qualification INTEGER NOT NULL CHECK(qualification IN (-1, 0, 1)),\
-                qualifier TEXT NOT NULL,\
-                PRIMARY KEY(document_uri, name, qualification, qualifier)\
-             );\
-             CREATE INDEX reference_occurrence_identities_name \
-                ON reference_occurrence_identities(\
-                    name, document_uri, qualification, qualifier\
-                );\
-             CREATE TABLE reference_aliases(\
-                document_uri TEXT NOT NULL REFERENCES documents(uri) ON DELETE CASCADE,\
-                ordinal INTEGER NOT NULL CHECK(ordinal >= 0),\
-                from_name TEXT NOT NULL,\
-                to_name TEXT NOT NULL,\
-                PRIMARY KEY(document_uri, ordinal)\
-             );\
-             CREATE INDEX reference_aliases_from_name ON reference_aliases(from_name);\
-             CREATE INDEX reference_aliases_to_name ON reference_aliases(to_name);\
-             CREATE TABLE reference_bindings(\
-                document_uri TEXT NOT NULL REFERENCES documents(uri) ON DELETE CASCADE,\
-                ordinal INTEGER NOT NULL CHECK(ordinal >= 0),\
-                imported_name TEXT NOT NULL,\
-                local_name TEXT NOT NULL,\
-                source_specifier TEXT NOT NULL,\
-                kind INTEGER NOT NULL CHECK(kind IN (1, 2)),\
-                PRIMARY KEY(document_uri, ordinal)\
-             );\
-             CREATE INDEX reference_bindings_imported_name \
-                ON reference_bindings(imported_name);\
-             CREATE INDEX reference_bindings_local_name \
-                ON reference_bindings(local_name);\
-             CREATE VIRTUAL TABLE symbol_name_trigrams USING fts5(\
-                name_folded,\
-                content = 'symbols',\
-                content_rowid = 'rowid',\
-                tokenize = 'trigram'\
-             );\
-             CREATE TRIGGER symbols_search_insert AFTER INSERT ON symbols BEGIN \
-                INSERT INTO symbol_name_trigrams(rowid, name_folded) \
-                VALUES (new.rowid, new.name_folded);\
-             END; \
-             CREATE TRIGGER symbols_search_delete AFTER DELETE ON symbols BEGIN \
-                INSERT INTO symbol_name_trigrams(\
-                    symbol_name_trigrams, rowid, name_folded\
-                ) VALUES ('delete', old.rowid, old.name_folded);\
-             END;",
-        )
-        .map_err(map_sqlite_error)?;
-    transaction
-        .execute(
-            "INSERT INTO metadata(id, workspace_identity, committed_generation) VALUES (1, ?1, 0)",
-            [workspace_identity],
-        )
-        .map_err(map_sqlite_error)?;
-    transaction
-        .pragma_update(None, "application_id", APPLICATION_ID)
-        .map_err(map_sqlite_error)?;
-    transaction
-        .pragma_update(None, "user_version", SCHEMA_VERSION)
-        .map_err(map_sqlite_error)?;
-    transaction.commit().map_err(map_sqlite_error)
-}
-
-fn migrate_schema_v8_to_v9(connection: &mut Connection) -> Result<(), StoreError> {
-    let has_reference_export_name = {
-        let mut statement = connection
-            .prepare("PRAGMA table_info(exports)")
-            .map_err(map_sqlite_error)?;
-        let columns = statement
-            .query_map([], |row| row.get::<_, String>(1))
-            .map_err(map_sqlite_error)?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(map_sqlite_error)?;
-        columns
-            .iter()
-            .any(|column| column == "reference_export_name")
-    };
-    let transaction = connection
-        .transaction_with_behavior(TransactionBehavior::Immediate)
-        .map_err(map_sqlite_error)?;
-    if !has_reference_export_name {
-        transaction
-            .execute_batch("ALTER TABLE exports ADD COLUMN reference_export_name TEXT;")
-            .map_err(map_sqlite_error)?;
-    }
-    transaction
-        .execute_batch(
-            "UPDATE exports SET reference_export_name = exported_name \
-             WHERE reference_searchable = 1 AND reference_export_name IS NULL;\
-             CREATE INDEX IF NOT EXISTS exports_reference_export_name \
-                ON exports(reference_export_name, document_uri);",
-        )
-        .map_err(map_sqlite_error)?;
-    transaction
-        .pragma_update(None, "user_version", SCHEMA_VERSION)
-        .map_err(map_sqlite_error)?;
-    transaction.commit().map_err(map_sqlite_error)
-}
-
-fn migrate_schema_v5_to_v6(connection: &mut Connection) -> Result<(), StoreError> {
-    let transaction = connection
-        .transaction_with_behavior(TransactionBehavior::Immediate)
-        .map_err(map_sqlite_error)?;
-    transaction
-        .execute_batch(
-            "ALTER TABLE reference_occurrences ADD COLUMN qualified \
-                INTEGER CHECK(qualified IN (0, 1));",
-        )
-        .map_err(map_sqlite_error)?;
-    transaction
-        .pragma_update(None, "user_version", OCCURRENCE_PROOF_SCHEMA_VERSION)
-        .map_err(map_sqlite_error)?;
-    transaction.commit().map_err(map_sqlite_error)
-}
-
-fn migrate_schema_v6_to_v7(connection: &mut Connection) -> Result<(), StoreError> {
-    let transaction = connection
-        .transaction_with_behavior(TransactionBehavior::Immediate)
-        .map_err(map_sqlite_error)?;
-    transaction
-        .execute_batch(
-            "CREATE TABLE reference_occurrence_identities(\
-                document_uri TEXT NOT NULL REFERENCES documents(uri) ON DELETE CASCADE,\
-                name TEXT NOT NULL,\
-                qualification INTEGER NOT NULL CHECK(qualification IN (-1, 0, 1)),\
-                PRIMARY KEY(document_uri, name, qualification)\
-             );\
-             CREATE INDEX reference_occurrence_identities_name \
-                ON reference_occurrence_identities(name, document_uri, qualification);\
-             INSERT INTO reference_occurrence_identities(document_uri, name, qualification) \
-             SELECT document_uri, name, COALESCE(qualified, -1) \
-             FROM reference_occurrences \
-             GROUP BY document_uri, name, qualified;\
-             DROP INDEX reference_occurrences_name;",
-        )
-        .map_err(map_sqlite_error)?;
-    transaction
-        .pragma_update(None, "user_version", OCCURRENCE_IDENTITY_SCHEMA_VERSION)
-        .map_err(map_sqlite_error)?;
-    transaction.commit().map_err(map_sqlite_error)
-}
-
-fn migrate_schema_v7_to_v8(connection: &mut Connection) -> Result<(), StoreError> {
-    let transaction = connection
-        .transaction_with_behavior(TransactionBehavior::Immediate)
-        .map_err(map_sqlite_error)?;
-    transaction
-        .execute_batch(
-            "ALTER TABLE reference_occurrence_identities \
-                RENAME TO reference_occurrence_identities_v7;\
-             DROP INDEX reference_occurrence_identities_name;\
-             CREATE TABLE reference_occurrence_identities(\
-                document_uri TEXT NOT NULL REFERENCES documents(uri) ON DELETE CASCADE,\
-                name TEXT NOT NULL,\
-                qualification INTEGER NOT NULL CHECK(qualification IN (-1, 0, 1)),\
-                qualifier TEXT NOT NULL,\
-                PRIMARY KEY(document_uri, name, qualification, qualifier)\
-             );\
-             CREATE INDEX reference_occurrence_identities_name \
-                ON reference_occurrence_identities(\
-                    name, document_uri, qualification, qualifier\
-                );\
-             INSERT INTO reference_occurrence_identities(\
-                document_uri, name, qualification, qualifier\
-             ) \
-             SELECT document_uri, name, qualification, '' \
-             FROM reference_occurrence_identities_v7;\
-             DROP TABLE reference_occurrence_identities_v7;",
-        )
-        .map_err(map_sqlite_error)?;
-    transaction
-        .pragma_update(None, "user_version", QUALIFIED_OCCURRENCE_SCHEMA_VERSION)
-        .map_err(map_sqlite_error)?;
-    transaction.commit().map_err(map_sqlite_error)
-}
-
-fn migrate_schema_v4_to_v5(connection: &mut Connection) -> Result<(), StoreError> {
-    let transaction = connection
-        .transaction_with_behavior(TransactionBehavior::Immediate)
-        .map_err(map_sqlite_error)?;
-    transaction
-        .execute_batch(
-            "CREATE TABLE reference_bindings(\
-                document_uri TEXT NOT NULL REFERENCES documents(uri) ON DELETE CASCADE,\
-                ordinal INTEGER NOT NULL CHECK(ordinal >= 0),\
-                imported_name TEXT NOT NULL,\
-                local_name TEXT NOT NULL,\
-                source_specifier TEXT NOT NULL,\
-                kind INTEGER NOT NULL CHECK(kind IN (1, 2)),\
-                PRIMARY KEY(document_uri, ordinal)\
-             );\
-             CREATE INDEX reference_bindings_imported_name \
-                ON reference_bindings(imported_name);\
-             CREATE INDEX reference_bindings_local_name \
-                ON reference_bindings(local_name);",
-        )
-        .map_err(map_sqlite_error)?;
-    transaction
-        .pragma_update(None, "user_version", BINDING_SCHEMA_VERSION)
-        .map_err(map_sqlite_error)?;
-    transaction.commit().map_err(map_sqlite_error)
-}
-
-fn migrate_schema_v3_to_v4(connection: &mut Connection) -> Result<(), StoreError> {
-    let transaction = connection
-        .transaction_with_behavior(TransactionBehavior::Immediate)
-        .map_err(map_sqlite_error)?;
-    transaction
-        .execute_batch(
-            "ALTER TABLE exports ADD COLUMN reference_searchable \
-                INTEGER NOT NULL DEFAULT 0 CHECK(reference_searchable IN (0, 1));\
-             CREATE TABLE reference_occurrences(\
-                document_uri TEXT NOT NULL REFERENCES documents(uri) ON DELETE CASCADE,\
-                ordinal INTEGER NOT NULL CHECK(ordinal >= 0),\
-                name TEXT NOT NULL,\
-                start_line INTEGER NOT NULL,\
-                start_character INTEGER NOT NULL,\
-                end_line INTEGER NOT NULL,\
-                end_character INTEGER NOT NULL,\
-                PRIMARY KEY(document_uri, ordinal)\
-             );\
-             CREATE INDEX reference_occurrences_name ON reference_occurrences(name);\
-             CREATE TABLE reference_aliases(\
-                document_uri TEXT NOT NULL REFERENCES documents(uri) ON DELETE CASCADE,\
-                ordinal INTEGER NOT NULL CHECK(ordinal >= 0),\
-                from_name TEXT NOT NULL,\
-                to_name TEXT NOT NULL,\
-                PRIMARY KEY(document_uri, ordinal)\
-             );\
-             CREATE INDEX reference_aliases_from_name ON reference_aliases(from_name);\
-             CREATE INDEX reference_aliases_to_name ON reference_aliases(to_name);",
-        )
-        .map_err(map_sqlite_error)?;
-    transaction
-        .pragma_update(None, "user_version", REFERENCE_SCHEMA_VERSION)
-        .map_err(map_sqlite_error)?;
-    transaction.commit().map_err(map_sqlite_error)
-}
-
-fn migrate_schema_v2_to_v3(connection: &mut Connection) -> Result<(), StoreError> {
-    let transaction = connection
-        .transaction_with_behavior(TransactionBehavior::Immediate)
-        .map_err(map_sqlite_error)?;
-    transaction
-        .execute_batch(
-            "CREATE TABLE exports(\
-                document_uri TEXT NOT NULL REFERENCES documents(uri) ON DELETE CASCADE,\
-                generation INTEGER NOT NULL CHECK(generation >= 0),\
-                ordinal INTEGER NOT NULL CHECK(ordinal >= 0),\
-                exported_name TEXT NOT NULL,\
-                name_folded TEXT NOT NULL,\
-                symbol_kind INTEGER NOT NULL,\
-                declaration_identity TEXT,\
-                import_specifier TEXT,\
-                module_id TEXT,\
-                target_scope TEXT,\
-                start_line INTEGER NOT NULL,\
-                start_character INTEGER NOT NULL,\
-                end_line INTEGER NOT NULL,\
-                end_character INTEGER NOT NULL,\
-                PRIMARY KEY(document_uri, ordinal)\
-             );\
-             CREATE INDEX exports_name_prefix ON exports(name_folded);",
-        )
-        .map_err(map_sqlite_error)?;
-    transaction
-        .pragma_update(None, "user_version", EXPORT_SCHEMA_VERSION)
-        .map_err(map_sqlite_error)?;
-    transaction.commit().map_err(map_sqlite_error)
-}
-
 fn read_rejected_documents(connection: &Connection) -> Result<Vec<String>, StoreError> {
     let mut statement = connection
         .prepare("SELECT uri FROM rejected_documents ORDER BY uri")
@@ -2206,6 +1490,12 @@ fn verify_workspace_identity(
 }
 
 fn validate_replacement(document: &DocumentSymbols) -> Result<(), StoreError> {
+    if let Some(facts) = &document.class_heritage {
+        facts.validate_document(&document.uri)?;
+    }
+    if let Some(facts) = &document.class_binding_provenance {
+        facts.validate_document(document.class_heritage.as_ref())?;
+    }
     if document
         .symbols
         .iter()
@@ -2216,6 +1506,10 @@ fn validate_replacement(document: &DocumentSymbols) -> Result<(), StoreError> {
             .iter()
             .all(|item| item.uri == document.uri)
         && document.aliases.iter().all(|item| item.uri == document.uri)
+        && document
+            .bindings
+            .iter()
+            .all(|item| item.uri == document.uri)
     {
         Ok(())
     } else {

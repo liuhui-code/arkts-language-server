@@ -135,6 +135,18 @@ test("self-package definition admits a diskless target overlay within the select
   assert.deepEqual(response.result, [{ uri: targetUri, range: {
     start: positionAt(overlay, start), end: positionAt(overlay, start + "getName".length),
   } }])
+  const references = await fixture.session.request("textDocument/references", {
+    textDocument: { uri: fixture.uri }, position: positionAt(source, source.lastIndexOf("getName") + 2),
+    context: { includeDeclaration: true },
+  })
+  assert.equal(references.error, undefined)
+  const expected = [...response.result, ...[source.indexOf("getName"), source.lastIndexOf("getName")]
+    .map(offset => ({ uri: fixture.uri, range: {
+      start: positionAt(source, offset), end: positionAt(source, offset + "getName".length),
+    } }))]
+  assert.deepEqual(references.result.map(value => JSON.stringify(value)).sort(),
+    expected.map(value => JSON.stringify(value)).sort(),
+    "framed stdio references must include the diskless declaration and both real usages")
 })
 
 test("an explicit project selection disambiguates multiple targets without taking the first target", async (t) => {
