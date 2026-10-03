@@ -13,8 +13,11 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const runner = path.join(root, "scripts/bench/replay-settings-cancel-control.mjs")
 
 function invoke(...args) {
+  const env = Object.fromEntries(Object.entries(process.env).filter(
+    ([key]) => !key.startsWith("ARKTS_"),
+  ))
   return spawnSync(process.execPath, [runner, ...args], {
-    cwd: root, encoding: "utf8", timeout: 10_000,
+    cwd: root, encoding: "utf8", timeout: 10_000, env,
   })
 }
 
