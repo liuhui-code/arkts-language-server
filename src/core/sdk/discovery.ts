@@ -3,6 +3,7 @@ import os from "node:os"
 import path from "node:path"
 
 import { readSdkConfiguration } from "./configuration-reader.js"
+import type { LoadedConfigurationWitness } from "../../project/loaded-configuration-witness.js"
 
 export interface HarmonySdkIdentity {
   status: "identified" | "missing" | "invalid"
@@ -22,17 +23,18 @@ export interface HarmonySdkDiscovery {
 
 export function discoverHarmonySdk(
   configured = process.env.ARKLINE_HARMONY_SDK_PATH,
+  witness?: LoadedConfigurationWitness,
 ): HarmonySdkDiscovery {
   const resolvedPath =
     configured && configured.trim().length > 0
-      ? discoverConfiguredSdk(configured)
-      : discoverDefaultSdk(process.platform)
+      ? discoverConfiguredSdk(configured, witness)
+      : discoverDefaultSdk(process.platform, witness)
 
   if (resolvedPath) {
     return {
       ready: true,
       path: resolvedPath,
-      identity: discoverSdkIdentity(resolvedPath),
+      identity: discoverSdkIdentity(resolvedPath, witness),
     }
   }
 
@@ -42,11 +44,11 @@ export function discoverHarmonySdk(
   }
 }
 
-function discoverSdkIdentity(sdkRoot: string): HarmonySdkIdentity {
+function discoverSdkIdentity(sdkRoot: string, witness?: LoadedConfigurationWitness): HarmonySdkIdentity {
   const metadataPath = path.join(sdkRoot, "ets", "oh-uni-package.json")
   const boundary = { metadataPath, dialectCompatibility: "unverified", declarationSupport: "typescript-compatible-only" } as const
   try {
-    const metadata: unknown = JSON.parse(readSdkConfiguration(metadataPath))
+    const metadata: unknown = JSON.parse(readSdkConfiguration(metadataPath, witness))
     if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return { ...boundary, status: "invalid" }
     const record = metadata as Record<string, unknown>
     if (record.path !== "ets" || typeof record.apiVersion !== "string" || !/^[1-9]\d*$/.test(record.apiVersion)
@@ -72,22 +74,24 @@ export function defaultHarmonySdkCandidates(
   return []
 }
 
-function discoverConfiguredSdk(configured: string | undefined): string | null {
+function discoverConfiguredSdk(configured: string | undefined, witness?: LoadedConfigurationWitness): string | null {
   if (!configured || configured.trim().length === 0) {
     return null
   }
 
-  return configuredSdkCandidates(configured).find((candidate) => isValidSdkRoot(candidate)) ?? null
+  return configuredSdkCandidates(configured).find((candidate) => isValidSdkRoot(candidate, witness)) ?? null
 }
 
-function discoverDefaultSdk(platform: NodeJS.Platform): string | null {
-  return defaultHarmonySdkCandidates(platform).find((candidate) => isValidSdkRoot(candidate)) ?? null
+function discoverDefaultSdk(platform: NodeJS.Platform, witness?: LoadedConfigurationWitness): string | null {
+  return defaultHarmonySdkCandidates(platform).find((candidate) => isValidSdkRoot(candidate, witness)) ?? null
 }
 
-function isValidSdkRoot(rootPath: string): boolean {
+function isValidSdkRoot(rootPath: string, witness?: LoadedConfigurationWitness): boolean {
   try {
     return [rootPath, path.join(rootPath, "ets"), path.join(rootPath, "toolchains")]
-      .every((candidate) => fs.statSync(candidate).isDirectory())
+      .every((candidate) => witness
+        ? witness.observe(candidate, () => fs.statSync(candidate).isDirectory())
+        : fs.statSync(candidate).isDirectory())
   } catch {
     return false
   }

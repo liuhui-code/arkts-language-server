@@ -1,9 +1,158 @@
 # References / semantic MoSCoW
 
-This is the prioritization view of the [Feature Ledger](references-feature-ledger.md),
-not a second implementation plan. Baseline: `349b3abe`.
+## Current priority contract (2026-09-29 semantic-ready)
 
-## Must
+This is the only active prioritization view. [Ledger](references-feature-ledger.md)
+owns current feature state; the [semantic-ready plan](2026-09-29-semantic-ready-execution-plan.md)
+owns stage/Issue dependencies. [Product contract](semantic-ready/product-contract.md)
+and [ADR 0007–0013](../adr/README.md) document requirements and proposed mechanisms.
+S01 now implements the public benchmark harness, not a production optimization.
+The [S01 evidence](../reports/2026-09-29-semantic-ready-s01-baseline.md) preserves
+READINESS_UNSUPPORTED, a diagnostic observation failure and missing buckets;
+fast repeated cache hits do not graduate unseen/edit/eviction performance.
+
+### Must
+
+| Item | Reason and boundary |
+| --- | --- |
+| R-21/R-02 ready-state 500 ms buckets | Unseen symbols, unopened modules, edits and eviction are normal work; cached answers are a separate bucket. Initial preparation is exempt only from latency, not resources/correctness |
+| R-07/R-22 complete answers and valid generation | Candidate-ready/metadata/count equality are not semantic completeness; unknown uses exact fallback, slow fallback still fails SLO |
+| R-14 compiler facts feasibility spike | S02 is required before production schema/route investment; non-equivalence stops downstream facts route, not the correctness requirement |
+| R-20/R-23 preparation availability | Progress/cancel/time/resources and truthful capability-ready; no hidden background 5 GB, no indefinite reprepare loop |
+| R-03/R-13 budgeted reuse and conservative incrementality | Preserve compatible work without stale reuse; ordinary edit waits count. Actual strategies remain experimental/proof-gated |
+| R-01/04/05/06/08/12 maintain existing owners | Reuse tracing/cache/coalescing/references lanes/recovery/hysteresis; do not rebuild or stack equivalent frameworks |
+| R-24/25/26/27 core capability graduation | Existing definitions/implementations/completion/rename stay available; each capability's exactness and normal buckets are measured separately |
+| R-29 diagnostic/editing integrity | Keep normal diagnostics, codes/ranges/version and resource/formatting contracts; background publication freshness is not silently renamed request latency |
+| Original memory/correctness gates | >3 GB reproducer, final 50%, DevEco/PSS/scaling/post-eviction remain independent; new SLO cannot close them |
+
+### Should
+
+- R-09 existing default-off full-scope resident path: S05 must qualify real admission, not reimplement it;
+  Settings L3 misses remain evidence against graduation under the current budget.
+- R-10 implemented opt-in anchor routes: reuse only equal compiler identity/config/snapshot; mismatch falls back.
+- R-13 finer dependency invalidation only after complete reverse-impact evidence; unknown remains coarse.
+- R-15/R-28 other global routes/call hierarchy: one actual capability/forward-or-reverse direction at a time;
+  this priority does not permit deleting existing capabilities or hiding their failed gates.
+- Validated persisted restart experience and per-platform optimization after publication correctness.
+
+### Could
+
+- R-11 Worker-shell/bytecode-cache experiments only when same-host attribution identifies real benefit;
+  not permanent compiler residency or a claimed 500 ms fix.
+- Trusted prebuilt `.d.ets` boundaries only with fidelity/body-reference/source-map proof; no query-time emit.
+- CI/remote facts, compression or SQLite-layout tuning only after profiling and validity maturity.
+
+### Won't-now
+
+- R-16 second ArkTS checker, R-17 identity default without proof, R-18 unbudgeted full Programs,
+  R-19 file-count-only memory extrapolation.
+- Raise heap/budget, truncate Locations/edits, close diagnostics, shrink legal scope or delete failed samples.
+- N×full-workspace findReferences as production preparation or pre-query the benchmark target pool as ready.
+- Add empty schema/RPC/proof categories or another ProjectGraph/DB/cache/scheduler before actual consumers.
+- Change defaults, write Issues or submit/push/merge merely because planning docs now exist.
+
+### Budget and stop lines
+
+Current implementation priority preserves the open S01 coverage/evidence and
+advances the independent S05 branch; it does not repeat the failed S02 hypothesis.
+S01 is IN_PROGRESS,
+not product GREEN. The user-authorized independent
+[S02 binding hypothesis](../reports/2026-09-29-semantic-ready-s02-facts-spike.md)
+now FAILS the constructor gate: ordinary/alias exact is insufficient.
+S03 is BLOCKED; S04 and S06–S12 remain NOT_STARTED. S05 is IN_PROGRESS with
+default-off context lifecycle/rebuild reasons and public focus37/37;
+[its evidence](../reports/2026-09-29-semantic-ready-s05-context-lifecycle.md) records
+exact Settings trace-on/off and unchanged dispose/transient defaults.
+The later current-build reversed-order 100-operation Settings pairs keep every
+Location and diagnostic exact, yet compatible-disk experimental LS reuse has
+post-edit definition P95 about 1.6 s in both pairs (off about 0.27 s). This
+specific reuse candidate fails the latency gate; variable RSS ratios do not
+justify a default, budget, or transient-worker change.
+An earlier S05 whole-fast1160/1161 had1 FAIL/exit1 (struct response4 timeout);
+original-deadline isolation did not replace that failed run. A 1177/1177 full PASS
+preceded the runner safety RED/GREEN (canonical output-parent scope and source-status
+fail-closed). A sandboxed macOS `ps` permission-denied rerun stopped/exit1 is
+environmentally invalid, not a code failure/PASS. The latest approved process-sampling
+`/usr/bin/caffeinate -i pnpm check:fast` now passes **1181/1181**, exit0,
+zero fail/cancel/skip/todo (duration 1,195,387.333352 ms). This clears the
+current-source whole-fast regression gate, not the unknown timeout cause or S05 graduation.
+One post-patch real Settings experimental smoke passed exact definition/references9/9,
+normal v1 diagnostics and exit0; it is not another randomized two-arm benchmark.
+Observation and default-off compatible-disk local-LS prototype are implemented, not graduated.
+One-shot exact revision spans, actually delivered non-overlay changed text and source-version
+fingerprints guard against lost deltas/old ranges; missing or unsafe inputs still reset.
+Unknown in-root source deletion has a durable revision fence across batch order/consumption;
+final focused72/72 PASS, not a whole or resource gate.
+100 fixture edits protect correctness; unchanged Settings controls do not prove real edit savings.
+The real single-edit Settings/API24 checkpoint uses a private exact checkout, not resized scope:
+six trace-off processes preserve shifted exact definitions, 9/9 references and v1 TS2339.
+Edited definition medians off/experimental are 1,811/281 ms; references 6,597/6,611 ms
+under safe fallback, sampled Node peak RSS medians nearly equal. Initial diagnostic
+wait-order FAIL remains historical; the corrected runs keep normal diagnostics.
+A separate pinned 100-operation Settings fixed-order A/B has exact 100 edited definitions,
+11 complete references, 11 cross-module definitions, diagnostics and Level3 recovery per arm.
+Experimental/off Node peak RSS is 2,146,119,680/1,341,296,640 B = **1.600×**:
+the ≤1.10 gate FAILS; unpaired experimental repeat peaks at 1,796,046,848 B.
+Definition/references medians 311.815/261.549 and 6,698.945/6,007.669 ms do not establish a mixed-workload speedup.
+Reuse-off queue-start and verifier batch-start cancellation controls passed, not experimental/all-batch proof.
+One fixed-order pair is not randomized multi-session/PSS/P95/500 ms graduation.
+Default-off/per-batch verifiers remain; whole-fast GREEN does not explain old timeout.
+S02 FAIL blocks production facts/schema and preserves the minimal counterexample; it does not block S05.
+One stage/subslice per turn; performance runs are serial. A GREEN harness/document check is not product GREEN.
+Full-response P95≤500 ms uses trace-off real LSP and includes normal waits/fallback.
+No stage can bypass the [acceptance gates](../benchmarks/semantic-ready-acceptance.md).
+
+## Historical prioritization and evidence
+
+Everything below records the preceding plan and its dated builds. Its former
+R-13/R-14/R-15 Could and R-11/R-12 Should classifications are historical;
+the current priorities above are the explicit successor, not a second active plan.
+No failed result, source state or deadline is rewritten as PASS by this transition.
+
+This is the prioritization view of the [Feature Ledger](references-feature-ledger.md),
+not a second implementation plan. Current baseline: `911ae43c`, merged PR #91,
+with baseline `check:fast` **1103/1103 PASS**. The preceding R-09 source has its
+own fresh **1116/1116 whole-fast PASS**. Current literal-root focus38/38 and
+dependency strengthening1/1 are GREEN; its fresh frozen whole-fast is
+**1133/1133 PASS, exit0**, zero failures/cancellations/skips/todos, unchanged
+source/test/build inventory and artifact/SDK/oracle postflight.
+The historical combined gate is1124/1125
+PASS,1 FAIL; absence-identity recovery focus is 31/31 PASS and the final
+replacement whole gate is **1126/1126 PASS, exit 0**, zero failures/
+cancellations/skips/todos. Dated evidence below describes historical builds.
+
+### Historical Must
+
+Current [R-07 literal-root slice](../tdd/references-constructor-literal-roots.md)
+is default-off and consumes source-local official-parser proof without a new
+Program/checker. Pending roots only are removed; original legal scope,
+dependencies, overlays and unknown callers remain. Final old-token rechecks
+restore complete verification on mutation. Cost RED10->GREEN6 is exact,
+including the unknown caller's import of an omitted root. Focus38/38 plus
+strengthening1/1 pass; fresh frozen complete gate is1133/1133 PASS/exit0,
+with original deadlines and unchanged inputs. [Settings](../reports/2026-09-29-settings-constructor-literal-roots.md)
+is11x267 exact/valid, diagnostics/exit0, **0 hits**,14+14 batches,
+cold/edit61.205/61.528s and existing cache27-51ms. No real-workload/general
+constructor/default graduation follows; R-07 remains Must/open.
+
+Preceding empty-module checkpoint:
+
+R-07's [first consumed constructor exclusion slice](../tdd/references-constructor-empty-scope.md)
+is implemented default-off: a same-Program original-cursor search plus two actual
+old-token reads can exclude one strictly empty external disk module, never an
+unsearched overlay. Public RED6→GREEN2 batches preserves exact legacy sets for
+both declaration policies; nine new safety/behavior cases and four manifest
+tests pass. The subsequent public unrelated-sibling control fixes needless
+resident misses while preserving actual read guards/configuration invalidation;
+combined focus is 31/31 PASS; the subsequent complete frozen-input whole gate
+passes 1126/1126 at unchanged deadlines, with the first failure retained.
+[Settings/API24](../reports/2026-09-29-settings-constructor-empty-scope.md) gives
+11×267 exact/valid with diagnostics/exit0, but zero exclusion hits: cold/edit
+still need14 batches each at57.375/58.082s. General constructor scope proof
+remains Must/open, with no Settings acceleration or default graduation.
+Final-artifact Settings is also11×267 exact/valid with diagnostics/exit0, but
+still0 hits/14+14 batches and cold/edit57.394/58.108s. Replacement complete
+gate passes 1126/1126; no real-workload/default graduation follows.
 
 R-01 tracing and R-02 fixed exact benchmark make latency and memory changes
 attributable. R-03 hot context, R-04 complete-result cache, R-05 coalescing and
@@ -395,7 +544,24 @@ runner. Identical references share semantic work, but each client keeps an
 independent cancellation handle; workspace mutation cancels every old-snapshot
 waiter and prevents a new version from joining the old operation.
 
-## Should
+### Historical Should
+
+R-09 is now an actual default-off implementation slice, not only research:
+`ARKTS_REFERENCES_RESIDENT_FAST_PATH=1` reuses an unchanged, fully covering
+compiler Program before transient verification. Original-cursor exactness,
+no new Worker/Program on a hit, partial-scope rejection, source/overlay
+invalidation and L3 disposal have public framed-LSP guards. An unnotified
+package-main retarget exposed stale configuration; it and absent-owner,
+installation-link and implicit type-directive REDs are now repaired. Full
+public stdio coverage is 17/17 GREEN. The
+[fixed six-run Settings A/B](../reports/2026-09-29-settings-resident-fast-path.md)
+is exact (267 each), but all enabled queries miss at L3 and still run 24
+batches: real reuse admission/graduation is not qualified. Keep the flag off,
+not a larger budget or weaker scope proof. The
+[TDD record](../tdd/references-resident-fast-path.md) closes the implementation
+and fresh **1116/1116** full regression gate, not the real-workload graduation.
+Defaults,
+budget, diagnostics and per-batch verifier lifecycle remain unchanged.
 
 R-09 full-scope resident fast-path and R-10 anchor fusion may remove redundant
 compiler preparation, but only after trace and coverage proof. R-11 Worker-shell
@@ -505,14 +671,14 @@ R-12 pressure hysteresis is implemented: L3 remains active until RSS falls
 below the configured recovery target. The committed ratios remain tunable
 policy values and still require real-project benchmark review.
 
-## Could
+### Historical Could
 
 R-13 finer invalidation, R-14 compiler-derived persistence and R-15 reuse by
 other global capabilities depend on proven validity and references scheduler
 behavior. They cannot be used as shortcuts to the current 500 ms navigation or
 original >3 GB memory goals.
 
-## Won't
+### Historical Won't
 
 R-16 a second ArkTS TypeChecker, R-17 identity as today's default, R-18
 multiple full-Program Workers and R-19 file-count-only memory extrapolation.
@@ -750,3 +916,34 @@ normal diagnostics; SDK is null, so these failures cannot be attributed solely
 to full SDK preparation. Root cause remains unproven. Keep current whole gate
 RED and subsequent ownership/admission work unpromoted; no deadline relaxation
 or substitution for Settings/API24 validation.
+
+Should R-10 [2026-10-03 re-export anchor seed](../reports/2026-10-03-settings-reexport-anchor-seed.md):
+the Settings/API24 `HomeInitData` named re-export is direct-index `unsupported`,
+so the control pays a separate compiler anchor before its exact final batch.
+A **default-off** single-line unaliased discovery seed removes that duplicate
+preparation while retaining original-cursor compiler proof. Six fresh real
+replays preserve the nine exact Locations; request medians are 7.184/4.456 s
+off/on, product RSS peak medians 617.2/605.6 MB. Public tests reject aliased
+and wrong same-name seeds with complete fallback; additional public tests
+pass declaration inclusion, unsaved-reference edit cancellation/retry and
+explicit cancellation. One Settings mode-C pair passes 11/11 exact in each
+arm, including an unsaved comment edit, but is not a statistical gate. This
+is a narrow Should experiment, not a Must correctness-gate change, default
+promotion, 500 ms
+attainment, full memory/PSS graduation or approval of Worker residency.
+
+The next Should-level control used the same real cursor with
+`includeDeclaration=true`: seed-off/on returned identical ten-Location sets,
+including the declaration, in 7.491/4.506 s (one pair). A separately pinned
+trace-only build passed the ten-Location oracle and attributed 1.139 s to
+document preparation, 2.991 s to final verification and only 49 ms to the
+compiler reference query. The sub-costs inside document preparation are not
+yet separated. No preload/closure reduction or production default is approved
+from this one run; S05's 1.10 resource gate and the 500 ms target remain open.
+
+The separately pinned six-phase Settings control shifts the Should R-10
+investigation away from speculative preload removal: cold membership costs
+987–1,010 ms, preload 21–54 ms, and an edit-warm miss still spends 2.157 s
+in compiler `createProgram` after membership is reused. No new Must/default
+implementation is approved by this trace. S05 resource graduation remains
+the gate for any compiler-state retention.

@@ -1,16 +1,14 @@
-import fs from "node:fs"
 import path from "node:path"
 
-import type {
-  SemanticDefinitionCandidate,
-  SemanticDiagnostic,
-  SemanticDocumentPosition,
-} from "../protocol.js"
+import type { SemanticDefinitionCandidate, SemanticDocumentPosition } from "../protocol.js"
 import { ArkUIResourceLanguageProvider } from "../arkui/resource-language-provider.js"
 import { LocalPackageResolver } from "../sdk/local-package-resolver.js"
 import type { HarmonyProjectModel } from "../../project/harmony-project-model.js"
 import type { ProjectFileAccessPort, SemanticWorkspaceView } from "../workspace/document-store.js"
 import { arbitrateCompletionLists } from "./completion-arbitrator.js"
+import { mergeDefinitions, mergeDiagnostics } from "./type-result-merge.js"
+import { withProjectFileIdentities } from "./type-project-file-identities.js"
+import { canonicalTypeEngineOwner, typeContextResetReason } from "./type-context-reset.js"
 import {
   TypeScriptLanguageServiceEngine,
   type TypeScriptLanguageServiceEngineOptions,
@@ -26,6 +24,7 @@ import type { ReferenceSearchRuntimeConfig } from "../../semantic/references/ref
 import { applyReferenceContextRetention, referenceCheckpoint } from "../../semantic/references/reference-context-retention.js"
 import { verifyReferenceBatchInWorker } from "../../semantic/references/reference-batch-worker.js"
 import { ReferenceAnchorMemo, resolveIsolatedReferenceAnchor } from "../../semantic/references/reference-anchor.js"
+import { isConstructorModuleCurrent } from "../../semantic/references/reference-constructor-scope.js"
 
 export type {
   SemanticTypeStatus,
@@ -66,6 +65,7 @@ export class SemanticTypeEngineRegistry {
   private accessClock = 0
   private sdkConfiguration: unknown
   private projectConfiguration: unknown
+  private memoryLevel: SemanticMemoryLevel = "level0"
 
   private get workspaces(): { get(rootPath: string): WorkspaceEngineEntry | undefined } {
     return { get: rootPath => this.coordinator.peek(rootPath) }
@@ -75,6 +75,16 @@ export class SemanticTypeEngineRegistry {
     workspace: SemanticWorkspaceView,
     position: SemanticDocumentPosition,
   ): Promise<readonly SemanticDefinitionCandidate[]> {
+    const resident = this.withResidentReferenceContext(workspace, engine => (
+      engine.residentDefinition(workspace, position)
+    ))
+    if (resident?.length === 1) {
+      this.referenceTrace("references.anchor.complete", {
+        verifierIsolation: "resident-program", definitions: 1,
+        anchorWorkerStarts: 0, anchorProgramBuilds: 0,
+      })
+      return resident
+    }
     const isolatedWorkspace = this.withProjectFileIdentities(workspace)
     if (!isolatedWorkspace) return []
     if (this.canReuseAnchor()) {
@@ -107,9 +117,13 @@ export class SemanticTypeEngineRegistry {
       ) => void
     } = {},
   ) {
+    if (options.references?.residentFastPath) this.packageResolver.enableConfigurationWitness()
     this.coordinator = new SemanticCoordinator({
       maxResidentContexts: options.maxResidentContexts ?? 2,
       createContext: rootPath => this.createContext(rootPath),
+      onLifecycle: options.references?.trace ? (event, fields) => this.referenceTrace(
+        `semantic.context.${event}`, { ...fields, monotonicNs: process.hrtime.bigint().toString() },
+      ) : undefined,
     })
     if (options.references?.strategy === "batched"
       || options.references?.strategy === "indexed-batched") {
@@ -123,6 +137,7 @@ export class SemanticTypeEngineRegistry {
             sdkAmbientProfile: options.references?.sdkAmbientProfile,
             trace: options.references?.trace,
             tolerateUnadmittedProjectDependencies: dependencyProfile === "identity",
+            constructorScope: options.references?.constructorScope,
             isCancellationRequested: options.hostCancellationToken
               ? () => options.hostCancellationToken?.isCancellationRequested() === true
               : undefined,
@@ -134,6 +149,9 @@ export class SemanticTypeEngineRegistry {
           rootPath,
           options.onReferenceTrace,
         ),
+        validateConstructorExclusion: (workspace, exclusion) => isConstructorModuleCurrent(
+          workspace, exclusion, this.projectFileAccess,
+        ),
         checkpoint: referenceCheckpoint(options.hostCancellationToken),
         trace: options.references.trace ? options.onReferenceTrace : undefined,
       })
@@ -142,12 +160,15 @@ export class SemanticTypeEngineRegistry {
 
   configureSdk(selection: unknown): void {
     this.sdkConfiguration = selection
-    this.dispose()
+    this.coordinator.dispose("sdk-configuration")
   }
 
   configureProject(selection: unknown): void {
     this.projectConfiguration = selection
-    this.coordinator.forEachContext(context => context.anchorMemo.clear())
+    this.coordinator.forEachContext(context => {
+      context.anchorMemo.clear()
+      context.engine.invalidateResidentReferences()
+    })
   }
 
   private canReuseAnchor(): boolean {
@@ -161,23 +182,23 @@ export class SemanticTypeEngineRegistry {
     const resetEpoch = workspace.typeEngineResetEpoch ?? 0
     const contentRevision = workspace.contentRevision ?? 0
     const previous = this.coordinator.peek(rootPath)
-    if (
-      workspace.resetTypeEngine
-      || previous?.ownerId !== ownerId
-      || previous?.resetEpoch !== resetEpoch
-      || (previous !== undefined && previous.appliedContentRevision !== contentRevision)
-    ) {
-      this.coordinator.remove(rootPath)
+    const resetReason = typeContextResetReason(workspace, previous, this.options.references?.sessionReuse === "experimental")
+    if (resetReason) {
+      this.coordinator.remove(rootPath, resetReason)
     }
     const lease = this.coordinator.acquire(rootPath)
     const entry = lease.context
     const newEntry = previous !== entry
+    const prepareStartedAt = this.options.references?.trace ? performance.now() : undefined
     let state: SemanticTypeEngineState
     try {
       state = entry.engine.prepare(workspace)
+      if (prepareStartedAt !== undefined) this.referenceTrace("semantic.prepare.complete", {
+        durationMs: performance.now() - prepareStartedAt, newEntry, resetReason: resetReason ?? null,
+      })
     } catch (error) {
       lease.release()
-      if (newEntry) this.coordinator.remove(rootPath)
+      if (newEntry) this.coordinator.remove(rootPath, "prepare-failed")
       throw error
     }
     entry.ownerId = ownerId
@@ -254,9 +275,13 @@ export class SemanticTypeEngineRegistry {
               })
             }
             return completion
-          }),
+      }),
       define: (position) => withLease(current => {
+        const definitionStartedAt = this.options.references?.trace ? performance.now() : undefined
         const definitions = current.engine.define(position)
+        if (definitionStartedAt !== undefined) this.referenceTrace("semantic.definition.complete", {
+          durationMs: performance.now() - definitionStartedAt, ...current.engine.programFileStats(),
+        })
         if (this.canReuseAnchor()) current.anchorMemo.capture(workspace, position, definitions)
         return mergeDefinitions(sourceContent && scope.status !== "unavailable"
           ? current.arkui.define(position, sourceContent) : [], definitions)
@@ -320,6 +345,22 @@ export class SemanticTypeEngineRegistry {
     forceLegacy = false,
   ): Promise<SemanticReferenceQueryResult> {
     if (this.referenceSearch && !forceLegacy) {
+      const started = performance.now()
+      const resident = this.withResidentReferenceContext(workspace, engine => (
+        engine.residentReferences(workspace, position, includeDeclaration)
+      ))
+      if (resident?.status === "complete") {
+        this.referenceTrace("references.resident.hit", {
+          durationMs: performance.now() - started, locations: resident.references.length,
+          sameProgram: true, completeScope: true, verifierWorkerStarts: 0, programBuilds: 0,
+        })
+        return Promise.resolve(resident)
+      }
+      if (this.options.references?.residentFastPath) {
+        this.referenceTrace("references.resident.miss", { memoryLevel: this.memoryLevel })
+      }
+    }
+    if (this.referenceSearch && !forceLegacy) {
       const isolatedWorkspace = this.withProjectFileIdentities(workspace)
       if (!isolatedWorkspace) {
         return Promise.resolve({ status: "incomplete", reason: "source-unavailable" })
@@ -337,7 +378,17 @@ export class SemanticTypeEngineRegistry {
           : undefined,
       )
     }
-    return Promise.resolve(this.prepare(workspace).references(position, includeDeclaration))
+    const rootPath = path.resolve(workspace.rootPath)
+    const hadGlobalScope = this.coordinator.peek(rootPath)
+      ?.engine.cacheState().projectMembership.status === "complete"
+    try {
+      return Promise.resolve(this.prepare(workspace).references(position, includeDeclaration))
+    } finally {
+      if (this.options.references?.sessionReuse === "experimental"
+        && workspace.projectMembership?.status === "complete" && !hadGlobalScope) {
+        this.coordinator.remove(rootPath, "reference-global-scope")
+      }
+    }
   }
 
   workspaceCount(): number {
@@ -349,6 +400,7 @@ export class SemanticTypeEngineRegistry {
   }
 
   applyMemoryPressure(level: SemanticMemoryLevel): void {
+    this.memoryLevel = level
     this.coordinator.applyMemoryPressure(level)
   }
 
@@ -399,102 +451,49 @@ export class SemanticTypeEngineRegistry {
       projectFileAccess: this.projectFileAccess,
       sdkConfiguration: this.sdkConfiguration,
       hostCancellationToken: this.options.hostCancellationToken,
+      checkpoint: this.options.references?.residentFastPath
+        ? referenceCheckpoint(this.options.hostCancellationToken) : undefined,
       sdkAmbientProfile: this.options.interactiveSdkAmbientProfile,
+      residentReferenceReuse: this.options.references?.residentFastPath === true,
     })
   }
 
   private withProjectFileIdentities(
     workspace: SemanticWorkspaceView,
   ): SemanticWorkspaceView | undefined {
-    const membership = workspace.projectMembership
-    if (!this.projectFileAccess || !membership || membership.status !== "complete") return workspace
-    const overlays = new Set(workspace.documents.filter(document => document.overlay).map(document => (
-      path.resolve(document.path)
-    )))
-    const projectFileIdentities: Array<readonly [string, string]> = []
-    for (const memberPath of membership.paths) {
-      const filePath = path.resolve(memberPath)
-      const token = this.projectFileAccess.tokenFor(
-        workspace.canonicalRootId,
-        membership.revision,
-        filePath,
-      )
-      if (token === undefined) {
-        if (overlays.has(filePath)) continue
-        return undefined
-      }
-      projectFileIdentities.push([filePath, token])
+    return withProjectFileIdentities(workspace, this.projectFileAccess)
+  }
+
+  private withResidentReferenceContext<Result>(
+    workspace: SemanticWorkspaceView,
+    query: (engine: TypeScriptLanguageServiceEngine) => Result | undefined,
+  ): Result | undefined {
+    if (!this.options.references?.residentFastPath
+      || this.memoryLevel === "level2" || this.memoryLevel === "level3"
+      || (this.options.interactiveSdkAmbientProfile ?? "full") !== this.options.references.sdkAmbientProfile
+      || workspace.resetTypeEngine) return undefined
+    const rootPath = path.resolve(workspace.rootPath)
+    const entry = this.coordinator.peek(rootPath)
+    if (!entry || entry.ownerId !== (workspace.canonicalRootId ?? rootPath)
+      || entry.resetEpoch !== workspace.typeEngineResetEpoch
+      || entry.appliedContentRevision !== workspace.contentRevision) return undefined
+    const checkpoint = referenceCheckpoint(this.options.hostCancellationToken)
+    checkpoint?.()
+    const lease = this.coordinator.acquire(rootPath)
+    try {
+      const result = query(lease.context.engine)
+      checkpoint?.()
+      if (result !== undefined) entry.lastAccess = ++this.accessClock
+      return result
+    } finally {
+      lease.release()
     }
-    return { ...workspace, projectFileIdentities }
   }
-}
 
-function canonicalTypeEngineOwner(rootPath: string): string {
-  const resolved = path.resolve(rootPath)
-  try {
-    return fs.realpathSync.native(resolved)
-  } catch {
-    return resolved
+  private referenceTrace(event: string,
+    fields: Readonly<Record<string, string | number | boolean | null | undefined>>): void {
+    if (!this.options.references?.trace) return
+    const memory = process.memoryUsage()
+    this.options.onReferenceTrace?.(event, { ...fields, rss: memory.rss, heapUsed: memory.heapUsed })
   }
-}
-
-function mergeDefinitions(
-  arkui: SemanticDefinitionCandidate[],
-  typescript: SemanticDefinitionCandidate[],
-): SemanticDefinitionCandidate[] {
-  const result: SemanticDefinitionCandidate[] = []
-  const seen = new Set<string>()
-  for (const definition of [...arkui, ...typescript]) {
-    const key = [
-      definition.path,
-      definition.range.startLine,
-      definition.range.startColumn,
-      definition.range.endLine,
-      definition.range.endColumn,
-    ].join(":")
-    if (seen.has(key)) continue
-    seen.add(key)
-    result.push(definition)
-  }
-  return result
-}
-
-function mergeDiagnostics(
-  typescript: SemanticDiagnostic[],
-  arkui: SemanticDiagnostic[],
-): SemanticDiagnostic[] {
-  if (arkui.length === 0) return typescript
-  if (typescript.length === 0) return arkui
-  const result: SemanticDiagnostic[] = []
-  const seen = new Set<string>()
-  for (const diagnostic of [...typescript, ...arkui]) {
-    const key = JSON.stringify([
-      diagnostic.path,
-      diagnostic.range.startLine,
-      diagnostic.range.startColumn,
-      diagnostic.range.endLine,
-      diagnostic.range.endColumn,
-      diagnostic.code,
-      diagnostic.severity,
-      diagnostic.message,
-    ])
-    if (seen.has(key)) continue
-    seen.add(key)
-    result.push(diagnostic)
-  }
-  return result.sort((left, right) => (
-    ordinalCompare(left.path, right.path)
-    || left.range.startLine - right.range.startLine
-    || left.range.startColumn - right.range.startColumn
-    || left.range.endLine - right.range.endLine
-    || left.range.endColumn - right.range.endColumn
-    || ordinalCompare(String(left.code), String(right.code))
-    || ordinalCompare(left.message, right.message)
-  ))
-}
-
-function ordinalCompare(left: string, right: string): number {
-  if (left < right) return -1
-  if (left > right) return 1
-  return 0
 }

@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "benchmarkId": "settings-homeinitdata-s05-context-lifecycle-api24",
+  "benchmarkScope": "S05 observation only, same-build trace-on/off Mode B. Context sequence denotes coordinator-owned LS lifetime, not compiler Program identity. No reuse policy, residency, budget or verifier change; one run per arm is not latency/memory graduation.",
+  "repo": "openharmony/applications_settings",
+  "repoSha": "ecc550dfaed880e04e38a2477eb7235cd50475b9",
+  "projectDeclaredSdk": {
+    "compileSdkVersion": 23,
+    "targetSdkVersion": 20,
+    "compatibleSdkVersion": 20
+  },
+  "serverRevision": "911ae43c274175614559b63f0311504747d8393d",
+  "serverDirty": true,
+  "serverInputSha256": "63254a0028d7a55198be447dd3a2dddafe9563c42d4a455561bbde215ac158d2",
+  "nodeVersion": "v26.3.0",
+  "sdk": {
+    "apiVersion": "24",
+    "version": "6.1.1.125",
+    "declarationDigest": "8098b8abbc6b06fce0e7322d6f8f82a5bbce41e847dbd39e9a98811a33d4c6e4"
+  },
+  "query": {
+    "file": "common/src/main/ets/sendable/HomeInitData.ets",
+    "symbol": "HomeInitData",
+    "line": 16,
+    "character": 13,
+    "includeDeclaration": false,
+    "sourceSha256": "8159f9be58985d71e76cb7507fb1bf421a47cacb6aaf99cbddb9e6efc703774f"
+  },
+  "oracle": {
+    "verified": true,
+    "expectedLocationCount": 9,
+    "source": "docs/reports/2026-09-29-semantic-ready-s01-baseline.md",
+    "sha256": "58908aa4ee2554864cd4467ccf7a51b3aa8e6dd570fc0f66decc6500bf7f937b"
+  },
+  "serverSha256": "14855eb0b6c99eb1bf7d43bde91b529a93d1dd1c4731770f67c1f9ce0b6691c3",
+  "semanticWorkerSha256": "7b36e9011316a37b7123636b501e7b2748856d53c7c4de91cbe0c368b65836f1",
+  "referenceVerifierWorkerSha256": "d1aef7269d636e965a67dfe9181af64d6ca5b24e7c2019008e8725fa8707e513",
+  "standardLibrarySha256": "ea78beea2aa84f93fe66645465c37eb916028b79cd9fe898d469bdf54efbf97d",
+  "sidecarSha256": "18f871605571c246ce5667f5aa65c9f4b3b851235c87ae83cf794fbb85adf6b1"
+}

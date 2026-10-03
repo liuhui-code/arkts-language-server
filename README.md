@@ -209,6 +209,21 @@ and the full SDK. Set `ARKTS_REFERENCES_STRATEGY=legacy` to use the original
 full-Program path; `ARKTS_REFERENCES_DEPENDENCY_PROFILE=identity` remains an
 experimental opt-in.
 
+`ARKTS_REFERENCES_RESIDENT_FAST_PATH=1` is a separate default-off experiment:
+reuse an already built, unchanged Program only when it covers the complete
+query scope. Missing coverage, changed source/configuration or memory pressure
+keeps the complete fallback. It does not enable persistent verifier Workers or
+promise sub-500 ms cold queries; see the [R-09 evidence](docs/tdd/references-resident-fast-path.md).
+
+`ARKTS_REFERENCES_CONSTRUCTOR_SCOPE=1` is also default-off. After an exact
+constructor search, it may omit proven-safe pending disk roots: exactly empty
+external modules or closed export-const modules with scalar literal values.
+Both owners read current text under the original token, and publication
+rechecks consumed exclusions. Original membership/dependencies, unknown sources
+and all open overlays retain complete verification. This is not general
+constructor narrowing or a demonstrated Settings speedup; see the
+[R-07 evidence](docs/tdd/references-constructor-literal-roots.md).
+
 ## Verify
 
 Fast deterministic Node gate:

@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "benchmarkId": "settings-menucontroller-constructor-empty-scope-freshness-api24",
+  "benchmarkScope": "R-07 default-off constructor empty-module probe after the R-09 negative-lookup freshness repair. Settings source, SDK, oracle, disposal and budget are unchanged; resident reuse remains disabled here. This pins the corrected final artifacts, not the first-run artifacts or a constructor coverage graduation.",
+  "repo": "openharmony/applications_settings",
+  "repoSha": "ecc550dfaed880e04e38a2477eb7235cd50475b9",
+  "projectDeclaredSdk": {
+    "compileSdkVersion": 23,
+    "targetSdkVersion": 20,
+    "compatibleSdkVersion": 20
+  },
+  "serverRevision": "911ae43c274175614559b63f0311504747d8393d",
+  "serverDirty": true,
+  "nodeVersion": "v26.3.0",
+  "sdk": {
+    "apiVersion": "24",
+    "version": "6.1.1.125",
+    "declarationDigest": "8098b8abbc6b06fce0e7322d6f8f82a5bbce41e847dbd39e9a98811a33d4c6e4"
+  },
+  "query": {
+    "file": "common/src/main/ets/core/controller/MenuController.ets",
+    "symbol": "MenuController",
+    "line": 90,
+    "character": 17,
+    "includeDeclaration": false
+  },
+  "oracle": {
+    "verified": true,
+    "expectedLocationCount": 267,
+    "source": "docs/reports/2026-09-27-settings-seed-complete-retry.md",
+    "sha256": "72980d7c79e3baf44ebba8a30094484225aebe08aefd2077cda45cbdc5e90ab3"
+  },
+  "serverSha256": "14855eb0b6c99eb1bf7d43bde91b529a93d1dd1c4731770f67c1f9ce0b6691c3",
+  "semanticWorkerSha256": "9f584083a00826d2024b1a311a782536a375b34d2a23a6932c0635e18c282370",
+  "referenceVerifierWorkerSha256": "1891790d51d4565005b75d6730202f087702e252ab19f6206ed2b827da6505ad",
+  "standardLibrarySha256": "ea78beea2aa84f93fe66645465c37eb916028b79cd9fe898d469bdf54efbf97d",
+  "sidecarSha256": "18f871605571c246ce5667f5aa65c9f4b3b851235c87ae83cf794fbb85adf6b1"
+}

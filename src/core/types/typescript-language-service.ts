@@ -42,7 +42,12 @@ import type {
 } from "../workspace/document-store.js"
 import { CooperativeWork } from "./cooperative-work.js"
 import { typescriptProgramStats } from "./typescript-program-stats.js"
-import { completedReferenceSearchPaths } from "./typescript-reference-search-scope.js"
+import { TypeScriptContentVersions } from "./typescript-content-versions.js"
+import { exactSourceRange, queryTypeScriptReferences, semanticLocationKey, typescriptSpanKey } from "./typescript-reference-query.js"
+import { TypeScriptResidentReferenceState } from "./typescript-resident-reference-state.js"
+import { LoadedConfigurationWitness } from "../../project/loaded-configuration-witness.js"
+import { discoverSdkAmbientDeclarations } from "./typescript-sdk-ambient.js"
+import { witnessedModuleResolutionHost } from "./typescript-resolution-witness.js"
 import { arktsLanguageServiceOptions } from "./arkts-language-service-options.js"
 import { createSourceDocument, type SourceDocument } from "./source-document.js"
 import type {
@@ -159,6 +164,7 @@ export interface TypeScriptLanguageServiceEngineOptions {
   }
   sdkConfiguration?: unknown
   sdkAmbientProfile?: TypeScriptSdkAmbientProfile
+  residentReferenceReuse?: boolean
   tolerateUnadmittedProjectDependencies?: boolean
 }
 
@@ -166,7 +172,7 @@ export class TypeScriptLanguageServiceEngine {
   private readonly scripts = new Map<string, ScriptRecord>()
   private readonly projectMembershipPaths = new Set<string>()
   private semanticRootPaths: Set<string> | undefined
-  private readonly projectContentVersions = new Map<string, number>()
+  private readonly projectContentVersions = new TypeScriptContentVersions()
   private readonly lazySnapshots = new Map<string, LazySnapshotRecord>()
   private readonly sdkDeclarationPaths: string[]
   private readonly sdkRoot: string | null
@@ -177,6 +183,8 @@ export class TypeScriptLanguageServiceEngine {
   private combinedFileNames: string[] | undefined
   private readonly options: ts.CompilerOptions
   private readonly service: ts.LanguageService
+  private readonly residentReferencesState: TypeScriptResidentReferenceState | undefined
+  private readonly configurationWitness: LoadedConfigurationWitness | undefined
   private readonly checkpoint: (() => void) | undefined
   private readonly readSourceFile: (filePath: string) => string | null
   private readonly projectFileAccess: ProjectFileAccessPort | undefined
@@ -192,7 +200,6 @@ export class TypeScriptLanguageServiceEngine {
   private projectMembershipRevision = 0
   private projectMembershipRootId: string
   private projectMembershipSourceUnavailable = false
-  private projectContentRevision = 0
   private readonly packageResolver: LocalPackageResolver
   private overlayPaths: ReadonlyMap<string, string> | undefined
   private relativeModuleResolutionWork = 0
@@ -217,6 +224,7 @@ export class TypeScriptLanguageServiceEngine {
       lazySnapshotLimits = {},
       sdkConfiguration,
       sdkAmbientProfile = "full",
+      residentReferenceReuse = false,
       tolerateUnadmittedProjectDependencies = false,
     }: TypeScriptLanguageServiceEngineOptions = {},
   ) {
@@ -237,22 +245,36 @@ export class TypeScriptLanguageServiceEngine {
       MAX_LAZY_SNAPSHOT_BYTES,
       "lazy snapshot bytes",
     )
+    this.configurationWitness = residentReferenceReuse ? new LoadedConfigurationWitness() : undefined
+    if (residentReferenceReuse) this.packageResolver.enableConfigurationWitness()
     const sdk = discoverProjectSdk(
       rootPath,
       process.env.ARKLINE_HARMONY_SDK_PATH,
       sdkConfiguration,
+      this.configurationWitness,
     )
-    this.options = arktsLanguageServiceOptions(sdk.path)
+    this.options = arktsLanguageServiceOptions(sdk.path, this.configurationWitness)
     this.sdkSelection = sdk
     this.sdkRoot = sdk.path
     this.sdkPhysicalRoot = this.sdkRoot ? canonicalExistingPath(this.sdkRoot) : undefined
     onSdkSelected?.(rootPath, sdk)
-    this.sdkDeclarationPaths = discoverSdkAmbientDeclarations(this.sdkRoot, sdkAmbientProfile)
+    this.sdkDeclarationPaths = discoverSdkAmbientDeclarations(this.sdkRoot, sdkAmbientProfile, this.configurationWitness)
     this.membershipFileNames = [...this.sdkDeclarationPaths]
     this.service = ts.createLanguageService(
       this.createHost(hostCancellationToken),
       officialDocumentRegistryFor(sdk),
     )
+    const residentCheckpoint = (): void => {
+      this.checkpoint?.()
+      if (hostCancellationToken?.isCancellationRequested()) throw new ts.OperationCanceledException()
+    }
+    this.residentReferencesState = residentReferenceReuse
+      ? new TypeScriptResidentReferenceState(this.sdkDeclarationPaths, safeRead, residentCheckpoint, () => {
+          const compiler = this.configurationWitness?.freshness(residentCheckpoint)
+          const resolver = this.packageResolver.configurationFreshness(rootPath, residentCheckpoint)
+          return compiler && resolver ? () => compiler() && resolver() : undefined
+        })
+      : undefined
   }
 
   prepare(workspace: SemanticWorkspaceView): SemanticTypeEngineState {
@@ -274,6 +296,13 @@ export class TypeScriptLanguageServiceEngine {
       )
     }
     this.evict(protectedPaths)
+    if (this.residentReferencesState) {
+      const residentWorkspace = !workspace.projectMembership && this.projectMembershipStatus === "complete"
+        ? { ...workspace, projectMembership: { status: "complete" as const,
+            revision: this.projectMembershipRevision, paths: [...this.projectMembershipPaths] } }
+        : workspace
+      this.residentReferencesState.prepare(residentWorkspace, this.generation, this.scriptFileNames())
+    }
     return {
       status: workspace.state.syntaxReady ? typescriptTypeStatus(workspace.state.path) : "unsupported",
       engine: "typescript-language-service",
@@ -374,6 +403,7 @@ export class TypeScriptLanguageServiceEngine {
     }) as CompletionInfoCompat | undefined
     work.boundary()
     if (!info) return work.finish({ items: [], isIncomplete: false })
+    this.captureResidentProgram()
     const completionEntries = arktsStructThisCompletionEntries(
       this.service,
       filePath,
@@ -1228,7 +1258,9 @@ export class TypeScriptLanguageServiceEngine {
       }
       work.item()
     }
-    return work.finish(candidates)
+    const result = work.finish(candidates)
+    this.captureResidentProgram()
+    return result
   }
 
   usages(position: SemanticDocumentPosition): SemanticUsageResult[] {
@@ -1277,82 +1309,65 @@ export class TypeScriptLanguageServiceEngine {
     includeDeclaration: boolean,
     captureSearchScope = false,
   ): SemanticReferenceQueryResult {
-    const work = new CooperativeWork(this.checkpoint)
-    work.boundary()
-    const initialMembershipFailure = this.projectMembershipFailure()
-    if (initialMembershipFailure) return work.finish(initialMembershipFailure)
-    const filePath = path.resolve(position.path)
-    const script = this.scripts.get(filePath)
-    if (!script) return work.finish({ status: "incomplete", reason: "source-unavailable" })
-    script.lastAccess = ++this.accessClock
-    const sourceOffset = lineColumnToOffset(script.sourceContent, position.line, position.column)
-    const offset = script.virtualDocument.toGeneratedOffset(sourceOffset)
-    work.boundary()
-    const searchedProgram = captureSearchScope ? this.service.getProgram() : undefined
-    const definitions = this.service.getDefinitionAtPosition(filePath, offset) ?? []
-    work.boundary()
-    const definitionMembershipFailure = this.projectMembershipFailure()
-    if (definitionMembershipFailure) return work.finish(definitionMembershipFailure)
-    if (definitions.length === 0) return work.finish({ status: "complete", references: [] })
+    const result = this.queryReferences(position, includeDeclaration, captureSearchScope)
+    if (result.status === "complete") this.captureResidentProgram()
+    return result
+  }
 
-    const canonicalDefinitionKeys = new Set<string>()
-    for (const definition of definitions) {
-      canonicalDefinitionKeys.add(
-        typescriptSpanKey(path.resolve(definition.fileName), definition.textSpan),
-      )
-      work.item()
-    }
-    const sourceViews = new Map<string, ScriptRecord | LazySnapshotRecord>()
-    const references: SemanticDefinitionCandidate[] = []
-    const seen = new Set<string>()
-    let returnedSymbols = false
-    for (const definition of definitions) {
-      work.boundary()
-      const symbols = this.service.findReferences(
-        definition.fileName,
-        definition.textSpan.start,
-      ) ?? []
-      returnedSymbols ||= symbols.length > 0
-      work.boundary()
-      const referenceMembershipFailure = this.projectMembershipFailure()
-      if (referenceMembershipFailure) return work.finish(referenceMembershipFailure)
-      for (const symbol of symbols) {
-        for (const reference of symbol.references) {
-          const targetPath = path.resolve(reference.fileName)
-          work.item()
-          const isCanonicalDefinition = reference.isDefinition === true
-            || canonicalDefinitionKeys.has(typescriptSpanKey(targetPath, reference.textSpan))
-          if (!includeDeclaration && isCanonicalDefinition) continue
-          if (!isWithinRoot(this.rootPath, targetPath)) {
-            return work.finish({ status: "incomplete", reason: "source-outside-workspace" })
-          }
-          let sourceView = sourceViews.get(targetPath)
-          if (!sourceView) {
-            sourceView = this.scripts.get(targetPath) ?? this.loadLazySnapshot(targetPath)
-            if (!sourceView) {
-              return work.finish({ status: "incomplete", reason: "source-unavailable" })
-            }
-            sourceViews.set(targetPath, sourceView)
-          }
-          const range = exactSourceRange(sourceView, reference.textSpan)
-          if (!range) return work.finish({ status: "incomplete", reason: "source-unmappable" })
-          const key = semanticLocationKey(targetPath, range)
-          if (seen.has(key)) continue
-          seen.add(key)
-          references.push({ path: targetPath, range })
-        }
-      }
-    }
-    work.boundary()
-    const searchedProjectPaths = captureSearchScope
-      ? completedReferenceSearchPaths(searchedProgram, this.service.getProgram(),
-          definitions.length, returnedSymbols, this.rootPath)
-      : undefined
-    const finalMembershipFailure = this.projectMembershipFailure()
-    if (finalMembershipFailure) return work.finish(finalMembershipFailure)
-    references.sort(work.comparator(compareSemanticLocations))
-    return work.finish({ status: "complete", references,
-      ...(searchedProjectPaths ? { searchedProjectPaths } : {}) })
+  residentReferences(
+    workspace: SemanticWorkspaceView, position: SemanticDocumentPosition, includeDeclaration: boolean,
+  ): SemanticReferenceQueryResult | undefined {
+    if (this.projectMembershipFailure()) return undefined
+    const program = this.residentReferencesState?.admit(workspace, this.generation, this.scriptFileNames())
+    if (!program) return undefined
+    const result = this.queryReferences(position, includeDeclaration, true, program)
+    if (result.status !== "complete" || !result.searchedProjectPaths
+      || this.residentReferencesState?.admit(workspace, this.generation, this.scriptFileNames()) !== program) return undefined
+    const searched = new Set(result.searchedProjectPaths.map(filePath => path.resolve(filePath)))
+    return searched.has(path.resolve(position.path))
+      && workspace.projectMembership!.paths.every(filePath => searched.has(path.resolve(filePath)))
+      && workspace.documents.filter(document => document.overlay).every(document => searched.has(path.resolve(document.path)))
+      ? result : undefined
+  }
+
+  residentDefinition(
+    workspace: SemanticWorkspaceView, position: SemanticDocumentPosition,
+  ): SemanticDefinitionCandidate[] | undefined {
+    if (this.projectMembershipFailure()) return undefined
+    const program = this.residentReferencesState?.admit(workspace, this.generation, this.scriptFileNames())
+    if (!program) return undefined
+    let rawDefinitions = 0
+    const result = this.definitionCandidates(position, (filePath, offset) => {
+      const definitions = this.service.getDefinitionAtPosition(filePath, offset)
+      rawDefinitions = definitions?.length ?? 0
+      return definitions
+    }, new CooperativeWork(this.checkpoint))
+    return rawDefinitions === 1 && result.length === 1 && this.service.getProgram() === program
+      && this.residentReferencesState?.admit(workspace, this.generation, this.scriptFileNames()) === program
+      ? result : undefined
+  }
+
+  invalidateResidentReferences(): void {
+    this.residentReferencesState?.invalidate()
+  }
+
+  private captureResidentProgram(): void {
+    if (this.residentReferencesState) this.residentReferencesState.observe(this.service.getProgram())
+  }
+
+  private queryReferences(
+    position: SemanticDocumentPosition, includeDeclaration: boolean, captureSearchScope: boolean, expectedProgram?: ts.Program,
+  ): SemanticReferenceQueryResult {
+    return queryTypeScriptReferences({
+      rootPath: this.rootPath, service: this.service, checkpoint: this.checkpoint,
+      membershipFailure: () => this.projectMembershipFailure(),
+      querySource: filePath => {
+        const script = this.scripts.get(filePath)
+        if (script) script.lastAccess = ++this.accessClock
+        return script
+      },
+      sourceView: filePath => this.scripts.get(filePath) ?? this.loadLazySnapshot(filePath),
+    }, position, includeDeclaration, captureSearchScope, expectedProgram)
   }
 
   diagnostics(position: SemanticDocumentPosition): SemanticDiagnostic[] {
@@ -1367,6 +1382,7 @@ export class TypeScriptLanguageServiceEngine {
     work.boundary()
     const semanticDiagnostics = this.service.getSemanticDiagnostics(filePath)
     work.boundary()
+    this.captureResidentProgram()
     const diagnostics: SemanticDiagnostic[] = mapTypescriptDiagnosticGroups(
       filePath,
       script.virtualDocument,
@@ -1670,6 +1686,7 @@ export class TypeScriptLanguageServiceEngine {
   }
 
   dispose(): void {
+    this.invalidateResidentReferences()
     this.service.dispose()
     this.overlayPaths = undefined
     this.scripts.clear()
@@ -1684,6 +1701,7 @@ export class TypeScriptLanguageServiceEngine {
   }
 
   trim(): void {
+    this.invalidateResidentReferences()
     this.service.cleanupSemanticCache()
   }
 
@@ -1701,7 +1719,7 @@ export class TypeScriptLanguageServiceEngine {
         this.generation,
         this.projectMembershipStatus,
         this.projectMembershipRevision,
-        this.projectContentRevision,
+        this.projectContentVersions.revision,
       ].join(":"),
       getScriptFileNames: () => this.scriptFileNames(),
       getScriptKind: (fileName) => fileName.endsWith(".ets")
@@ -1720,13 +1738,10 @@ export class TypeScriptLanguageServiceEngine {
       getScriptVersion: (fileName) => {
         const filePath = path.resolve(fileName)
         const resident = this.scripts.get(filePath)
-        return resident
-          ? String(resident.version)
-          : this.projectMembershipPaths.has(filePath)
-            ? `content-${this.projectContentVersions.get(filePath) ?? 0}`
-            : "0"
+        return this.projectContentVersions.scriptVersion(filePath, resident?.version,
+          this.projectMembershipPaths.has(filePath), resident?.sourceFingerprint)
       },
-      directoryExists: ts.sys.directoryExists,
+      directoryExists: directory => this.filesystemLookup(directory, () => ts.sys.directoryExists(directory)),
       fileExists: (fileName) => {
         const filePath = path.resolve(fileName)
         if (this.scripts.has(filePath)) return true
@@ -1737,12 +1752,13 @@ export class TypeScriptLanguageServiceEngine {
                 this.projectMembershipRevision,
                 filePath,
               ) !== undefined
-            : isRegularBoundedFile(filePath)
+            : this.filesystemLookup(filePath, () => isRegularBoundedFile(filePath))
         }
-        return isRegularBoundedFile(filePath)
+        return this.filesystemLookup(filePath, () => isRegularBoundedFile(filePath))
       },
-      getDirectories: ts.sys.getDirectories,
-      readDirectory: ts.sys.readDirectory,
+      getDirectories: directory => this.filesystemLookup(directory, () => ts.sys.getDirectories(directory)),
+      readDirectory: (directory, extensions, exclude, include, depth) => this.filesystemLookup(directory,
+        () => ts.sys.readDirectory(directory, extensions, exclude, include, depth)),
       readFile: (fileName) => {
         const filePath = path.resolve(fileName)
         const resident = this.scripts.get(filePath)?.content
@@ -1750,7 +1766,7 @@ export class TypeScriptLanguageServiceEngine {
         const lazy = this.loadLazySnapshot(filePath)?.content
         if (lazy !== undefined) return lazy
         if (this.projectMembershipPaths.has(filePath)) return undefined
-        return safeRead(filePath) ?? undefined
+        return this.filesystemLookup(filePath, () => safeRead(filePath)) ?? undefined
       },
       resolveModuleNames: (names, containingFile) => {
         const resolvedContainingFile = path.resolve(containingFile)
@@ -1765,6 +1781,10 @@ export class TypeScriptLanguageServiceEngine {
         ))
       },
     }
+  }
+
+  private filesystemLookup<T>(filePath: string, lookup: () => T): T {
+    return this.configurationWitness ? this.configurationWitness.observe(filePath, lookup) : lookup()
   }
 
   private resolveModule(
@@ -1783,7 +1803,7 @@ export class TypeScriptLanguageServiceEngine {
           ? ({ resolvedFileName: local.path, extension: moduleExtension(local.path) } as ts.ResolvedModule)
           : undefined
       }
-      const sdkModule = this.sdkRoot ? resolveHarmonySdkModule(this.sdkRoot, name) : null
+      const sdkModule = this.sdkRoot ? resolveHarmonySdkModule(this.sdkRoot, name, this.configurationWitness) : null
       if (sdkModule) {
         return ({
           resolvedFileName: sdkModule,
@@ -1791,7 +1811,8 @@ export class TypeScriptLanguageServiceEngine {
           isExternalLibraryImport: true,
         } as ts.ResolvedModule)
       }
-      return ts.resolveModuleName(name, containingFile, this.options, ts.sys).resolvedModule
+      return ts.resolveModuleName(name, containingFile, this.options,
+        witnessedModuleResolutionHost(this.configurationWitness)).resolvedModule
     }
     const base = path.resolve(path.dirname(containingFile), name)
     const candidates = /(?:\.d\.(?:ets|ts)|\.ets|\.tsx?)$/u.test(base)
@@ -1809,7 +1830,9 @@ export class TypeScriptLanguageServiceEngine {
           path.join(base, "index.d.ts"),
         ]
     const resolved = candidates.find((candidate) =>
-      this.scripts.has(path.resolve(candidate)) || isRegularBoundedFile(candidate))
+      this.scripts.has(path.resolve(candidate)) || (this.configurationWitness
+        ? this.configurationWitness.observe(candidate, () => isRegularBoundedFile(candidate))
+        : isRegularBoundedFile(candidate)))
     const resolvedPath = resolved && path.resolve(resolved)
     const sourcePath = resolvedPath && relativeBoundaryRoot
       ? this.packageResolver.installedSourcePath(
@@ -1998,11 +2021,9 @@ export class TypeScriptLanguageServiceEngine {
     contentRevision: number | undefined,
     changedPaths: string[] | undefined,
   ): void {
-    if (contentRevision !== undefined) this.projectContentRevision = contentRevision
-    if ((changedPaths?.length ?? 0) > 0) this.relativeResolutionFailures.clear()
-    for (const changedPath of changedPaths ?? []) {
-      const filePath = path.resolve(changedPath)
-      this.projectContentVersions.set(filePath, this.projectContentRevision)
+    const paths = this.projectContentVersions.update(contentRevision, changedPaths)
+    if (paths.length > 0) this.relativeResolutionFailures.clear()
+    for (const filePath of paths) {
       this.removeScript(filePath)
       this.removeLazySnapshot(filePath)
     }
@@ -2525,67 +2546,6 @@ function inlayHintDisplayText(
     work.item()
   }
   return mapped.join("")
-}
-
-function discoverSdkAmbientDeclarations(
-  sdkRoot: string | null,
-  profile: TypeScriptSdkAmbientProfile,
-): string[] {
-  if (!sdkRoot) return []
-  if (profile === "core") {
-    const core = [
-      path.join(sdkRoot, "ets", "component", "common.d.ts"),
-      path.join(sdkRoot, "ets", "component", "units.d.ts"),
-      path.join(sdkRoot, "ets", "component", "common_ts_ets_api.d.ts"),
-      path.join(sdkRoot, "ets", "component", "enums.d.ts"),
-    ]
-    if (core.every((candidate) => fs.existsSync(candidate))
-      && fullSdkIndexOnlyReferences(sdkRoot, core)) return core
-  }
-  if (profile === "common") {
-    const common = path.join(sdkRoot, "ets", "component", "common.d.ts")
-    if (!fs.existsSync(common)) {
-      throw new Error(`SDK common ambient declaration is unavailable: ${common}`)
-    }
-    return [common]
-  }
-  const prelude = [
-    path.join(sdkRoot, "ets", "component", "index-full.d.ts"),
-    path.join(sdkRoot, "ets", "component", "common.d.ts"),
-    path.join(sdkRoot, "ets", "component", "arkui.d.ts"),
-  ].find((candidate) => fs.existsSync(candidate))
-  return prelude ? [prelude] : []
-}
-
-function fullSdkIndexOnlyReferences(sdkRoot: string, expectedPaths: readonly string[]): boolean {
-  const indexPath = path.join(sdkRoot, "ets", "component", "index-full.d.ts")
-  try {
-    const contents = fs.readFileSync(indexPath, "utf8")
-    if (contents.split(/\r?\n/).some((line) => (
-      /^\s*\/\/\//.test(line)
-      && !/^\s*\/\/\/\s*<reference path="[^"]+"\s*\/>\s*$/.test(line)
-    ))) return false
-    const source = ts.createSourceFile(
-      indexPath,
-      contents,
-      ts.ScriptTarget.Latest,
-      false,
-      ts.ScriptKind.TS,
-    )
-    if (
-      source.statements.length > 0
-      || source.hasNoDefaultLib
-      || source.typeReferenceDirectives.length > 0
-      || source.libReferenceDirectives.length > 0
-      || source.referencedFiles.length !== expectedPaths.length
-    ) return false
-    const expected = new Set(expectedPaths.map((filePath) => path.resolve(filePath)))
-    return source.referencedFiles.every((reference) => (
-      expected.delete(path.resolve(path.dirname(indexPath), reference.fileName))
-    )) && expected.size === 0
-  } catch {
-    return false
-  }
 }
 
 function quickInfoDocumentation(info: ts.QuickInfo): string | undefined {
@@ -3530,33 +3490,6 @@ function hasOverlappingEdits(
   return false
 }
 
-function typescriptSpanKey(filePath: string, span: ts.TextSpan): string {
-  return `${filePath}:${span.start}:${span.length}`
-}
-
-function exactSourceRange(
-  sourceView: ScriptRecord | LazySnapshotRecord,
-  span: ts.TextSpan,
-): SemanticTextRange | undefined {
-  if (
-    !Number.isSafeInteger(span.start)
-    || !Number.isSafeInteger(span.length)
-    || span.start < 0
-    || span.length <= 0
-    || span.start + span.length > sourceView.content.length
-  ) return undefined
-  const sourceStart = sourceView.virtualDocument.toSourceOffset(span.start)
-  const sourceEnd = sourceView.virtualDocument.toSourceOffset(span.start + span.length)
-  if (
-    sourceEnd <= sourceStart
-    || sourceView.virtualDocument.toGeneratedOffset(sourceStart) !== span.start
-    || sourceView.virtualDocument.toGeneratedOffset(sourceEnd) !== span.start + span.length
-    || sourceView.content.slice(span.start, span.start + span.length)
-      !== sourceView.virtualDocument.sourceContent.slice(sourceStart, sourceEnd)
-  ) return undefined
-  return sourceView.virtualDocument.generatedSpanToSourceRange(span.start, span.length)
-}
-
 function exactSourceBoundaryRange(
   sourceView: ScriptRecord | LazySnapshotRecord,
   span: ts.TextSpan,
@@ -3609,27 +3542,6 @@ function exactSourcePosition(
   return script.virtualDocument.toGeneratedOffset(sourceOffset) === generatedOffset
     ? sourceOffset
     : undefined
-}
-
-function semanticLocationKey(filePath: string, range: SemanticTextRange): string {
-  return [
-    filePath,
-    range.startLine,
-    range.startColumn,
-    range.endLine,
-    range.endColumn,
-  ].join(":")
-}
-
-function compareSemanticLocations(
-  left: SemanticDefinitionCandidate,
-  right: SemanticDefinitionCandidate,
-): number {
-  return left.path.localeCompare(right.path)
-    || left.range.startLine - right.range.startLine
-    || left.range.startColumn - right.range.startColumn
-    || left.range.endLine - right.range.endLine
-    || left.range.endColumn - right.range.endColumn
 }
 
 function isIdentifierText(value: string) {

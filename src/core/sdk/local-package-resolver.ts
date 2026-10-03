@@ -1,36 +1,10 @@
 import fs from "node:fs"
 import path from "node:path"
 
-import JSON5 from "json5"
 import { HarmonyProjectModel } from "../../project/harmony-project-model.js"
-
-/*! @license JSON5 2.2.3
-MIT License
-
-Copyright (c) 2012-2018 Aseem Kishore, and [others].
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-[others]: https://github.com/json5/json5/contributors
-*/
-
-const MAX_MANIFEST_BYTES = 64 * 1024
+import { readHarmonyProfile } from "../../project/harmony-profile-reader.js"
+import { LoadedConfigurationWitness } from "../../project/loaded-configuration-witness.js"
+import { clientWorkspaceRoot, findInstalledPackage } from "./local-package-installation.js"
 const MAX_CACHED_MANIFESTS = 128
 const MAX_CACHED_DIRECTORY_OWNERS = 256
 const MAX_CACHED_INSTALLATIONS = 256
@@ -55,6 +29,23 @@ export class LocalPackageResolver {
   private readonly canonicalRoots = new Map<string, string>()
   private readonly projectModels = new Map<string, HarmonyProjectModel>()
   private projectSelection: unknown
+  private configurationWitness?: LoadedConfigurationWitness
+
+  enableConfigurationWitness(): void {
+    if (this.configurationWitness) return
+    this.configurationWitness = new LoadedConfigurationWitness()
+    if (this.manifests.size || this.directoryOwners.size || this.installations.size || this.canonicalRoots.size) {
+      this.configurationWitness.markUnprovable()
+    }
+    for (const model of this.projectModels.values()) model.enableConfigurationWitness()
+  }
+
+  configurationFreshness(rootPath: string, checkpoint: () => void): (() => boolean) | undefined {
+    const resolver = this.configurationWitness?.freshness(checkpoint)
+    const model = this.projectModels.get(path.resolve(rootPath))?.configurationFreshness(checkpoint)
+    if (!resolver || !model) return undefined
+    return () => resolver() && model()
+  }
 
   configureProject(selection: unknown): void {
     this.projectSelection = selection
@@ -65,7 +56,10 @@ export class LocalPackageResolver {
   projectFor(rootPath: string): HarmonyProjectModel {
     const root = path.resolve(rootPath)
     let model = this.projectModels.get(root)
-    if (!model) model = new HarmonyProjectModel(root, this.projectSelection)
+    if (!model) {
+      model = new HarmonyProjectModel(root, this.projectSelection)
+      if (this.configurationWitness) model.enableConfigurationWitness()
+    }
     this.projectModels.delete(root)
     this.projectModels.set(root, model)
     while (this.projectModels.size > 4) this.projectModels.delete(this.projectModels.keys().next().value!)
@@ -149,7 +143,7 @@ export class LocalPackageResolver {
         try {
           const physicalRoot = this.canonicalRoot(root)
           if (physicalRoot === undefined) return { path: null }
-          physicalPackageRoot = fs.realpathSync.native(packageRoot)
+          physicalPackageRoot = this.observed(packageRoot, () => fs.realpathSync.native(packageRoot))
           if (!inside(physicalRoot, physicalPackageRoot)) return { path: null }
         } catch { return { path: null } }
         checkpoint()
@@ -217,6 +211,9 @@ export class LocalPackageResolver {
     for (const manifestPath of this.manifests.keys()) {
       if (rootPath === undefined || inside(rootPath, manifestPath)) this.manifests.delete(manifestPath)
     }
+    this.configurationWitness?.reset()
+    // A surviving cache entry was loaded under the previous witness, not this one.
+    if (this.manifests.size) this.configurationWitness?.markUnprovable()
   }
 
   private resolveSelfSource(
@@ -368,7 +365,7 @@ export class LocalPackageResolver {
       return cached
     }
     let physicalRoot: string
-    try { physicalRoot = fs.realpathSync.native(root) }
+    try { physicalRoot = this.observed(root, () => fs.realpathSync.native(root)) }
     catch { return undefined }
     this.canonicalRoots.set(root, physicalRoot)
     while (this.canonicalRoots.size > MAX_CACHED_ROOTS) {
@@ -386,7 +383,9 @@ export class LocalPackageResolver {
       this.installations.set(key, cached)
       return cached
     }
-    const installed = this.findInstalledPackage(root, start, name, checkpoint)
+    const physicalRoot = this.canonicalRoot(root)
+    const installed = physicalRoot === undefined ? undefined
+      : findInstalledPackage(physicalRoot, start, name, checkpoint, this.configurationWitness)
     // Do not retain misses: a newly created installation must remain observable.
     if (installed !== undefined) {
       this.installations.set(key, installed)
@@ -395,38 +394,6 @@ export class LocalPackageResolver {
       }
     }
     return installed
-  }
-
-  private findInstalledPackage(root: string, start: string, name: string, checkpoint: () => void): string | undefined {
-    const physicalRoot = this.canonicalRoot(root)
-    if (physicalRoot === undefined) return undefined
-    let directory: string
-    try {
-      directory = fs.realpathSync.native(start)
-    } catch { return undefined }
-    const clientRoot = clientWorkspaceRoot(physicalRoot, start, checkpoint)
-    if (clientRoot === undefined) return undefined
-    for (let depth = 0; depth < MAX_ANCESTORS && physicallyInside(physicalRoot, directory); depth += 1) {
-      checkpoint()
-      const candidate = path.join(directory, "oh_modules", name)
-      try {
-        // Let the installation's link select its store entry; never enumerate .ohpm.
-        fs.lstatSync(candidate)
-        try {
-          // Different installation links must not create different TypeScript types.
-          return path.join(clientRoot, path.relative(physicalRoot, fs.realpathSync.native(candidate)))
-        } catch { return undefined }
-      } catch (error) {
-        // A broken or unreadable nearer installation must not select another version.
-        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-          return path.join(clientRoot, path.relative(physicalRoot, candidate))
-        }
-      }
-      const parent = path.dirname(directory)
-      if (parent === directory) break
-      directory = parent
-    }
-    return undefined
   }
 
   private ownerDirectory(root: string, start: string, checkpoint: () => void): string | undefined {
@@ -463,63 +430,32 @@ export class LocalPackageResolver {
       this.manifests.set(filePath, cached)
       return cached
     }
-    const result = readManifest(filePath)
+    const result = readManifest(filePath, this.configurationWitness)
     this.manifests.set(filePath, result)
     while (this.manifests.size > MAX_CACHED_MANIFESTS) {
       this.manifests.delete(this.manifests.keys().next().value!)
     }
     return result
   }
+
+  private observed<T>(filePath: string, lookup: () => T): T {
+    return this.configurationWitness ? this.configurationWitness.observe(filePath, lookup) : lookup()
+  }
 }
 
-function clientWorkspaceRoot(physicalRoot: string, start: string, checkpoint: () => void): string | undefined {
-  let directory = start
-  for (let depth = 0; depth < MAX_ANCESTORS; depth += 1) {
-    checkpoint()
-    try {
-      if (fs.realpathSync.native(directory) === physicalRoot) return directory
-    } catch { return undefined }
-    const parent = path.dirname(directory)
-    if (parent === directory) break
-    directory = parent
+function readManifest(filePath: string, witness?: LoadedConfigurationWitness): PackageManifest | null | undefined {
+  const value = readHarmonyProfile(filePath, witness)
+  if (!value) return value
+  const dependencies = new Map<string, string>()
+  if (object(value.dependencies)) {
+    for (const [name, dependency] of Object.entries(value.dependencies)) {
+      if (typeof dependency === "string") dependencies.set(name, dependency)
+    }
   }
-  return undefined
-}
-
-function readManifest(filePath: string): PackageManifest | null | undefined {
-  let descriptor: number | undefined
-  try {
-    descriptor = fs.openSync(filePath, fs.constants.O_RDONLY | fs.constants.O_NONBLOCK)
-    const stat = fs.fstatSync(descriptor)
-    if (!stat.isFile() || stat.size > MAX_MANIFEST_BYTES) return null
-    const buffer = Buffer.alloc(MAX_MANIFEST_BYTES + 1)
-    let length = 0
-    while (length < buffer.length) {
-      const count = fs.readSync(descriptor, buffer, length, buffer.length - length, null)
-      if (count === 0) break
-      length += count
-    }
-    if (length > MAX_MANIFEST_BYTES) return null
-    const value: unknown = JSON5.parse(buffer.toString("utf8", 0, length))
-    if (!object(value)) return null
-    const dependencies = new Map<string, string>()
-    if (object(value.dependencies)) {
-      for (const [name, dependency] of Object.entries(value.dependencies)) {
-        if (typeof dependency === "string") dependencies.set(name, dependency)
-      }
-    }
-    const entry = [value.typings, value.types, value.main]
-      .find((field) => typeof field === "string" && field.length > 0)
-    return {
-      name: typeof value.name === "string" && value.name.length > 0 ? value.name : undefined,
-      entry: typeof entry === "string" ? entry : undefined,
-      dependencies,
-    }
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code === "ENOENT" ? undefined : null
-  } finally {
-    if (descriptor !== undefined) fs.closeSync(descriptor)
-  }
+  const entry = [value.typings, value.types, value.main]
+    .find((field) => typeof field === "string" && field.length > 0)
+  return { name: typeof value.name === "string" && value.name.length > 0 ? value.name : undefined,
+    entry: typeof entry === "string" ? entry : undefined, dependencies }
 }
 
 function object(value: unknown): value is Record<string, unknown> {

@@ -2,7 +2,11 @@
 
 References and semantic latency decisions are indexed in
 [the ADR collection](adr/README.md); the active implementation sequence is in
-[the references latency plan](plans/2026-09-20-references-latency-execution-plan.md).
+[the semantic-ready plan](plans/2026-09-29-semantic-ready-execution-plan.md).
+The [preceding references latency plan](plans/2026-09-20-references-latency-execution-plan.md)
+retains implementation and failed-gate history. New semantic facts/readiness
+remain proposed; the [product contract](plans/semantic-ready/product-contract.md)
+does not change production defaults or equate candidate-ready with semantic-ready.
 
 The public process contract is `arkts-language-server --stdio`. Zed knows only
 that contract; it does not depend on server internals.

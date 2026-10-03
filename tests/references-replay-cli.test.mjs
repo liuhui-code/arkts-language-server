@@ -30,6 +30,7 @@ test("references replay exposes one self-contained real-project command", () => 
   assert.match(result.stdout, /--oracle <report.json>/u)
   assert.match(result.stdout, /--out <report.json>/u)
   assert.match(result.stdout, /--dependency-profile <closure\|identity>/u)
+  assert.match(result.stdout, /--warmup <completion-definition\|implementation>/u)
   assert.match(result.stdout, /textDocument\/references/u)
 })
 

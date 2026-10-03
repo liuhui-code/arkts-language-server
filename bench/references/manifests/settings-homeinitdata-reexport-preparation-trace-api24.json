@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "benchmarkId": "settings-homeinitdata-reexport-preparation-trace-api24",
+  "benchmarkScope": "default-off preparation trace on the real Settings re-export cursor; API24 compatibility track",
+  "repo": "openharmony/applications_settings",
+  "repoSha": "ecc550dfaed880e04e38a2477eb7235cd50475b9",
+  "projectDeclaredSdk": {
+    "compileSdkVersion": 23,
+    "targetSdkVersion": 20,
+    "compatibleSdkVersion": 20
+  },
+  "nodeVersion": "v26.3.0",
+  "sdk": {
+    "apiVersion": "24",
+    "version": "6.1.1.125",
+    "declarationDigest": "8098b8abbc6b06fce0e7322d6f8f82a5bbce41e847dbd39e9a98811a33d4c6e4"
+  },
+  "query": {
+    "file": "common/index.ets",
+    "symbol": "HomeInitData",
+    "line": 284,
+    "character": 23,
+    "includeDeclaration": true
+  },
+  "oracle": {
+    "verified": true,
+    "expectedLocationCount": 10,
+    "source": "docs/reports/2026-09-21-settings-api24-reference-matrix.md",
+    "sha256": "c130f156455820aa2d0ccf7aecf4cc1bdcf51e3b61cb8956568d78f78d4f65c1"
+  },
+  "serverSha256": "74d195ba73b06b4fe2ab0efcc3ea7d6aab072958f50cc3aa804fd769d3bb9562",
+  "semanticWorkerSha256": "5b1f6277a07ffe5326b0b13c7d327db5999dd61e8c66d1110926c081bcb8cffa",
+  "referenceVerifierWorkerSha256": "9db6259509197e46306e05ef3bf111eecfd1060393014f9a2b2e0c5bf47ab3b2",
+  "standardLibrarySha256": "ea78beea2aa84f93fe66645465c37eb916028b79cd9fe898d469bdf54efbf97d",
+  "sidecarSha256": "18f871605571c246ce5667f5aa65c9f4b3b851235c87ae83cf794fbb85adf6b1"
+}

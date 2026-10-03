@@ -2,6 +2,64 @@
 
 Status: **Accepted; resynchronization recovery implemented**.
 
+## Default-off source-local literal roots (2026-09-29)
+
+The [next consumed slice](../tdd/references-constructor-literal-roots.md) adds
+one closed external-module grammar: export-const/simple identifiers/scalar
+literal values, parsed by the same pinned frontend without Program/checker.
+Imports/re-exports, type annotations, identifier values, directives/JSDoc,
+parse errors and unknown grammar cannot prove exclusion. Ordinary comments
+are harmless. Source-local facts do not depend on the target class/name.
+
+After actual same-Program original-cursor constructor verification, safe pending
+roots may be omitted while original complete membership, dependency availability,
+all overlays and unknown roots remain. This is not a smaller legal search
+universe. Worker and owner read original-token text; all consumed exclusions
+are rechecked before publication. A failed read discards work and restores
+the original plan, with exclusion disabled through recursive fallback.
+
+Public cost RED10->GREEN6 batches preserves exact legacy sets including an
+unopened inherited caller; a dependency-seam strengthening verifies that an
+omitted literal root can still be loaded through that caller's import. Focus
+38/38 and the strengthening1/1 pass; fresh frozen-input whole-fast is
+**1133/1133 PASS, exit0**, zero failures/cancellations/skips/todos. Runtime,
+SDK/oracle and unchanged source/test/build pins also pass postflight.
+[Fixed Settings](../reports/2026-09-29-settings-constructor-literal-roots.md)
+is11x267 exact/valid, normal diagnostics/exit0, **0 rule hits** and14+14 complete
+batches at61.205/61.528s. This does not graduate general constructor scope or
+latency. `ARKTS_REFERENCES_CONSTRUCTOR_SCOPE` stays default-off; fullSDK,
+closure, budget, diagnostic and transient Worker defaults are unchanged.
+
+## Default-off empty-module constructor admission (2026-09-29)
+
+The [first consumed exclusion slice](../tdd/references-constructor-empty-scope.md)
+uses an existing successful same-Program search and a unique **raw constructor**
+definition. If all original membership/query/overlay paths are searched except
+one disk member, that member may be excluded only when Worker and accepting
+owner both actually read its old-token current text and it is strictly ASCII
+whitespace + `export {}` + optional semicolon. The closed grammar has no caller
+or binding-affecting declaration/import/directive; the recognizer is linear.
+The evidence is separate from searched paths, and never derives from class
+export identity or unions of partial searches. Unknown remains complete fallback.
+
+Real stdio cost RED6→GREEN2 completed batches for both declaration policies
+preserves exact legacy Locations. Nine public safety/behavior cases plus four
+manifest tests pass. `ARKTS_REFERENCES_CONSTRUCTOR_SCOPE=1` is experimental;
+default off. This is the first admitted narrow rule, **not** general inherited
+constructor candidate completeness, Settings acceleration or R-07 graduation.
+The [fixed Settings/API24 replay](../reports/2026-09-29-settings-constructor-empty-scope.md)
+is 11 × 267 exact/valid, with normal diagnostics and exit0, but zero exclusion
+hits. Cold/edit still require 14 complete batches each at 57.375/58.082s;
+nine existing cache hits are 25–42ms. The first whole-fast is1124/1125 PASS,
+1 FAIL on R-09 unchanged automatic-types admission. Controlled sibling mutation
+reproduces a needless miss, repaired with actual-load guards preserved;
+combined focus is31/31 PASS. Final-artifact Settings is also11×267 exact/valid,
+diagnostics/exit0 but0 exclusions/14+14 batches at57.394/58.108s. The replacement
+complete whole-fast passes **1126/1126, exit 0**, zero failures/cancellations/
+skips/todos at unchanged deadlines and frozen source/test/build inputs. The
+first failed gate remains recorded; neither whole-fast nor exact Settings
+results graduate general constructor scope or cold/edit latency.
+
 ## Current constructor scope-admission rule (2026-09-29)
 
 The [fresh complete regression gate](../reports/2026-09-29-awake-regression-gate-recovery.md)
@@ -30,7 +88,7 @@ membership, query and overlays; unions of partial searches do not substitute.
 Reuse evidence produced by the existing verification operation. Do not add
 an unused certification port, an idle `class-bindings/resolve` RPC or a second
 full compiler query merely to issue a certificate. No new production narrowing
-rule is accepted at this checkpoint: an actual real-LSP vertical slice must
+rule was accepted at that prior checkpoint: an actual real-LSP vertical slice must
 first establish an applicable exclusion proof with exact legacy Location sets
 for both declaration policies, edits and cancellation. The fixed Settings
 scope must not be edited to manufacture that proof.
@@ -374,12 +432,12 @@ resolution and no candidate truncation. Unknown or ambiguous proof cannot
 exclude files. Never lowercase workspace paths unconditionally to mask case
 differences.
 
-Post-mutation `forceLegacy` protects correctness only while the index remains
-at the previously accepted generation. Source or project changes schedule a
-new catalog. Indexed batching resumes only when the sidecar reports `ready`
-with `committedGeneration` greater than the mutation baseline. Unknown status,
-catalog failure or a non-advancing generation remains on the complete legacy
-path.
+Post-mutation recovery requires `ready` and `committedGeneration` strictly
+greater than `max(accepted, committed, building)` captured at each watched edit.
+A catalog already building can contain pre-edit bytes: its commit cannot certify
+the edit. Native optional `buildingGeneration` is only a freshness fence, not
+semantic proof. Failed status capture keeps the root dirty; otherwise remain
+on complete legacy until a later catalog commits.
 
 Initial catalog warming is not post-mutation recovery. A global request may
 observe generation 0 before the first committed catalog and fall back to

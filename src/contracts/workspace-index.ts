@@ -13,6 +13,8 @@ export type WorkspaceIndexCompleteness = "ready" | "partial" | "stale"
 export interface WorkspaceIndexStatus {
   state: WorkspaceIndexState
   committedGeneration: number
+  /** Catalog already running when the caller observed this status. */
+  buildingGeneration?: number
   message?: string
 }
 

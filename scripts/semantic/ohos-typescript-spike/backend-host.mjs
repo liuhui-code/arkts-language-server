@@ -52,6 +52,11 @@ export function createSpikeProject(compiler, root, inputFiles, runtime = {}) {
   const service = compiler.createLanguageService(host, registry)
   let disposed = false
   let trimCount = 0
+  let referenceSearchCalls = 0
+  const referenceSearch = () => {
+    if (runtime.forbidReferenceQueries) throw new Error("reference queries forbidden during extraction")
+    referenceSearchCalls += 1
+  }
 
   return {
     fileName(relativePath) {
@@ -73,6 +78,7 @@ export function createSpikeProject(compiler, root, inputFiles, runtime = {}) {
       return service.getDefinitionAtPosition(this.fileName(relativePath), position) ?? []
     },
     references(relativePath, position) {
+      referenceSearch()
       return service.getReferencesAtPosition(this.fileName(relativePath), position) ?? []
     },
     renameInfo(relativePath, position) {
@@ -101,6 +107,13 @@ export function createSpikeProject(compiler, root, inputFiles, runtime = {}) {
     sourceFile(relativePath) {
       return service.getProgram()?.getSourceFile(this.fileName(relativePath))
     },
+    program() {
+      return service.getProgram()
+    },
+    referenceGroups(relativePath, position) {
+      referenceSearch()
+      return service.findReferences(this.fileName(relativePath), position) ?? []
+    },
     trim() {
       if (disposed) throw new Error("Cannot trim a disposed spike context")
       if (typeof service.cleanupSemanticCache !== "function") {
@@ -118,6 +131,7 @@ export function createSpikeProject(compiler, root, inputFiles, runtime = {}) {
         snapshotMaterializedBytes,
         trimCount,
         disposed,
+        referenceSearchCalls,
       }
     },
     dispose() {

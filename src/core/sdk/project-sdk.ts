@@ -27,6 +27,7 @@ import { getProperties } from "properties-file"
 
 import { discoverHarmonySdk, type HarmonySdkDiscovery } from "./discovery.js"
 import { readSdkConfiguration } from "./configuration-reader.js"
+import type { LoadedConfigurationWitness } from "../../project/loaded-configuration-witness.js"
 
 export interface ProjectSdkSelection extends HarmonySdkDiscovery {
   source: "configuration" | "project" | "environment" | "default"
@@ -37,6 +38,7 @@ export function discoverProjectSdk(
   workspaceRoot: string,
   fallback = process.env.ARKLINE_HARMONY_SDK_PATH,
   editorConfiguration?: unknown,
+  witness?: LoadedConfigurationWitness,
 ): ProjectSdkSelection {
   const configuredByEditor = editorSdkPath(editorConfiguration)
   if (configuredByEditor.status === "invalid") {
@@ -44,20 +46,20 @@ export function discoverProjectSdk(
   }
   if (configuredByEditor.status === "configured") {
     return {
-      ...discoverHarmonySdk(configuredByEditor.path),
+      ...discoverHarmonySdk(configuredByEditor.path, witness),
       source: "configuration",
     }
   }
   const configuration = path.join(workspaceRoot, "local.properties")
   const fallbackSelection = (): ProjectSdkSelection => ({
-    ...discoverHarmonySdk(fallback), source: fallback?.trim() ? "environment" : "default",
+    ...discoverHarmonySdk(fallback, witness), source: fallback?.trim() ? "environment" : "default",
   })
   try {
-    const properties = getProperties(readSdkConfiguration(configuration))
+    const properties = getProperties(readSdkConfiguration(configuration, witness))
     const configured = properties["sdk.dir"]
     if (configured === undefined) return fallbackSelection()
     if (!configured.trim()) return { ready: false, path: null, source: "project" }
-    return { ...discoverHarmonySdk(path.resolve(workspaceRoot, configured)), source: "project" }
+    return { ...discoverHarmonySdk(path.resolve(workspaceRoot, configured), witness), source: "project" }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       // open() reports ENOENT for both absent configuration and an existing

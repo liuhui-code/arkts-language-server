@@ -864,12 +864,12 @@ export class SidecarTimeoutError extends Error {
 
 function mapStatus(value: unknown): WorkspaceIndexStatus {
   const status = asRecord(value)
-  if (!isIndexState(status.state) || !isNonNegativeInteger(status.committedGeneration)) {
+  if (!isIndexState(status.state) || !isNonNegativeInteger(status.committedGeneration)
+    || (status.buildingGeneration !== undefined && !isNullableGeneration(status.buildingGeneration))) {
     throw new SidecarProtocolError("index sidecar returned an invalid status")
   }
-  return {
-    state: status.state,
-    committedGeneration: status.committedGeneration,
+  return { state: status.state, committedGeneration: status.committedGeneration,
+    ...(typeof status.buildingGeneration === "number" ? { buildingGeneration: status.buildingGeneration } : {}),
     ...(typeof status.message === "string" ? { message: status.message } : {}),
   }
 }
@@ -1083,8 +1083,8 @@ function mapCatalogStatus(value: unknown): MappedCatalogStatus {
       ...(status.totalFiles === undefined ? {} : { totalFiles: status.totalFiles }),
     },
     indexStatus: {
-      state: status.state,
-      committedGeneration: status.committedGeneration,
+      state: status.state, committedGeneration: status.committedGeneration,
+      ...(typeof status.buildingGeneration === "number" ? { buildingGeneration: status.buildingGeneration } : {}),
       ...(typeof status.message === "string" ? { message: status.message } : {}),
     },
     phase: status.phase,

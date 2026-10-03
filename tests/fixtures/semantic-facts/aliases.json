@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "files": {
+    "a.ets": "export function Foo(): number { return 1; }\nFoo();\n",
+    "b.ets": "export { Foo as PublicFoo } from \"./a\";\n",
+    "c.ets": "import { PublicFoo as LocalFoo } from \"./b\";\nimport * as ns from \"./b\";\nLocalFoo();\nns[\"PublicFoo\"]();\nconst holder = { LocalFoo };\n",
+    "collision.ets": "export function Foo(): number { return 2; }\nFoo();\n"
+  }
+}

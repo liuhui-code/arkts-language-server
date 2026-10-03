@@ -55,6 +55,10 @@ export type SemanticReferenceQueryResult =
       references: SemanticDefinitionCandidate[]
       /** Internal, operation-scoped proof from one completed compiler search. */
       searchedProjectPaths?: readonly string[]
+      /** Unique raw compiler constructor definition from that same search. */
+      constructorTarget?: { readonly path: string; readonly start: number; readonly length: number }
+      /** Negative source evidence; never represents a compiler-searched file. */
+      constructorExcludedSources?: readonly { readonly path: string; readonly token: string }[]
     }
   | { status: "incomplete"; reason: SemanticGlobalQueryFailureReason }
 

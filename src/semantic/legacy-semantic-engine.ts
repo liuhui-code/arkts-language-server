@@ -69,7 +69,7 @@ import { LocalPackageResolver } from "../core/sdk/local-package-resolver.js"
 import type { StructuredLogger } from "../observability/logger.js"
 import type { SemanticMemoryLevel } from "./coordinator/semantic-coordinator.js"
 import type { ReferenceSearchRuntimeConfig } from "./references/reference-runtime.js"
-import { prepareReferenceAnchor } from "./references/reference-anchor-preparation.js"
+import { prepareReferenceAnchor, prepareReferenceSearchWorkspace } from "./references/reference-anchor-preparation.js"
 
 export interface LegacySemanticEngineRuntimeOptions {
   readonly maxResidentContexts?: number
@@ -389,7 +389,7 @@ export class LegacySemanticEngine implements SemanticEnginePort {
       column: candidateAnchorPosition.character + 1,
     }
     const result = await this.engines.references(
-      this.documents.prepare(position, true),
+      prepareReferenceSearchWorkspace(position, this.documents, this.runtime.references?.trace ? this.logger : undefined),
       position,
       query.includeDeclaration,
       candidateUris?.flatMap((uri) => {

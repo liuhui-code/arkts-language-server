@@ -35,6 +35,7 @@ export interface ReferenceBatchWorkerOptions {
   readonly sdkAmbientProfile?: ReferenceSdkAmbientProfile
   readonly trace?: boolean
   readonly tolerateUnadmittedProjectDependencies?: boolean
+  readonly constructorScope?: boolean
 }
 
 export async function verifyReferenceBatchInWorker(
@@ -58,6 +59,7 @@ export async function verifyReferenceBatchInWorker(
       sdkAmbientProfile: options.sdkAmbientProfile,
       trace: options.trace,
       tolerateUnadmittedProjectDependencies: options.tolerateUnadmittedProjectDependencies,
+      constructorScope: options.constructorScope,
     },
   })
   let settled = false

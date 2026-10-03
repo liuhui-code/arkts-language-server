@@ -26,12 +26,23 @@ export class ReferenceIndexFreshness {
       baselineGeneration: this.#acceptedGenerations.get(workspaceId),
     }
     this.#dirtyGenerations.set(workspaceId, dirty)
-    if (dirty.baselineGeneration !== undefined || !index) return
+    if (!index) return
     dirty.capture = index.status(workspaceId).then((status) => {
       if (this.#dirtyGenerations.get(workspaceId) === dirty) {
-        dirty.baselineGeneration = status.committedGeneration
+        // A catalog already building can contain bytes from before this edit.
+        // The watched change queues another catalog; only a later generation
+        // can certify that the edit was included.
+        dirty.baselineGeneration = Math.max(
+          dirty.baselineGeneration ?? 0,
+          status.committedGeneration,
+          status.buildingGeneration ?? 0,
+        )
       }
-    }).catch(() => {})
+    }).catch(() => {
+      if (this.#dirtyGenerations.get(workspaceId) === dirty) {
+        dirty.baselineGeneration = undefined
+      }
+    })
   }
 
   isDirty(workspaceId: string): boolean {

@@ -53,6 +53,8 @@ function receive(message) {
       start: { line: 0, character: 0 }, end: { line: 0, character: 5 },
     } }] })
     completeCatalogIfReady()
+  } else if (message.method === "textDocument/implementation") {
+    send({ id: message.id, result: [] })
   } else if (message.method === "shutdown") {
     send({ id: message.id, result: null })
   } else if (message.method === "exit") {

@@ -20,7 +20,7 @@ export function applyReferenceContextRetention<Context extends SemanticManagedCo
   trace?: Trace,
 ): void {
   const residentBefore = coordinator.stats().residentContextCount
-  const removed = profile === "budget-aware" ? false : coordinator.remove(rootPath)
+  const removed = profile === "budget-aware" ? false : coordinator.remove(rootPath, "reference-dispose")
   trace?.("references.context.retention", {
     profile,
     residentBefore,
