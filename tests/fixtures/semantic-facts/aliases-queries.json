@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "queries": [
+    { "id": "alias-origin-true", "file": "a.ets", "line": 0, "character": 16, "includeDeclaration": true },
+    { "id": "alias-origin-false", "file": "a.ets", "line": 0, "character": 16, "includeDeclaration": false },
+    { "id": "alias-use-false", "file": "c.ets", "line": 2, "character": 1, "includeDeclaration": false },
+    { "id": "collision-false", "file": "collision.ets", "line": 0, "character": 16, "includeDeclaration": false }
+  ]
+}

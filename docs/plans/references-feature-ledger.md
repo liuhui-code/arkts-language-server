@@ -1,8 +1,94 @@
 # References / semantic Feature Ledger
 
-Status as of baseline `349b3abe`. Priority is product priority, not a claim of
+Current governance: [semantic-ready execution plan](2026-09-29-semantic-ready-execution-plan.md),
+[product contract](semantic-ready/product-contract.md), [MoSCoW](references-moscow.md)
+and [ADR 0007–0013](../adr/README.md). This remains the **only active Ledger**.
+S00 documentation is integrated. S01 harness and candidate-ready controls are
+implemented but not graduated: semantic readiness FAIL, incomplete bucket coverage;
+S02's public-checker binding projection hypothesis is FAIL at the mandatory
+constructor gate; S03 is BLOCKED. S05 is IN_PROGRESS: default-off context
+lifecycle/rebuild reasons and compatible-disk local-LS prototype implemented, default off; graduation open;
+S04 and S06–S12 remain NOT_STARTED.
+See the [single S01 report](../reports/2026-09-29-semantic-ready-s01-baseline.md)
+and [S02 counterexample](../reports/2026-09-29-semantic-ready-s02-facts-spike.md).
+The [single S05 report](../reports/2026-09-29-semantic-ready-s05-context-lifecycle.md)
+records public focus37/37 and same-build Settings trace-on/off, 9/9 exact each.
+Trace-off warmed definition48ms and references4,647ms are single observations,
+not P95 or reuse graduation. LS sequence is not compiler Program identity;
+no retention, SDK scope, worker lifecycle or budget policy changed.
+The S05 prototype admits only fully delivered ordinary disk deltas with exact revision spans;
+100 fixture disk edits, fresh normal type diagnostics and alias/undelivered-source guards protect
+the prototype. Host versions include existing source fingerprints against counter collisions.
+Unedited Settings off/experimental replays are regression controls, not disk reuse or SLO evidence.
+Latest delivered-disk source focused72/72 PASS/exit0 includes both alias policies and
+four deletion order/consumption cases; unknown in-root deletion now durably advances revision.
+This shared freshness fix and source-version composite also execute with reuse off;
+turning off reuse is not reverting the old build. The original whole failure remains
+historical and its timeout cause is still unproven; a later current-source whole gate passes below.
+Latest same-build Settings off/experimental (one unedited ModeB run each) are9/9 exact,
+normal diagnostics0/exit0; warmed definition33ms, references3,473/3,578ms.
+This is a regression control, not real edit savings or ready-state P95/500ms graduation.
+The single-edit Settings/API24 checkpoint has three fresh trace-off processes per arm:
+definitions and shifted 9/9 references exact, normal v1 TS2339 and clean source;
+post-edit definition medians off/experimental 1,811/281 ms, references 6,597/6,611 ms
+via safe `workspace-changed` fallback, Node RSS peak medians essentially equal.
+This is narrow local-LS evidence, not Program identity or P95/500 ms graduation.
+The pinned 100-operation Settings mixed replay then completed one fixed-order A/B:
+each arm exact 100 edited definitions, 11 full references, 11 cross-module definitions,
+normal exact diagnostics, Level3 ack at 50 and exact recovery at 51. Experimental/off
+sampled Node peak RSS was 2,146,119,680/1,341,296,640 B = **1.600×**, failing
+the ≤1.10 gate; an unpaired experimental-only repeat peaked at 1,796,046,848 B.
+Primary-definition/references medians were 311.815/261.549 and 6,698.945/6,007.669 ms; default stays off, S05 IN_PROGRESS.
+The current-build two reversed-order Settings 100-operation pairs are again exact,
+but experimental/off post-edit definition P95 is 1,657/278 and 1,608/272 ms.
+RSS peak ratios 1.079×/0.929× do not establish a stable memory benefit; the
+compatible-disk LS candidate **fails latency graduation** and remains default-off.
+[S05 report](../reports/2026-09-29-semantic-ready-s05-context-lifecycle.md) retains raw curves; reuse-off queue-start and verifier batch-start cancellation controls pass, not experimental/all-batch proof.
+An earlier S05 whole-fast was1160/1161 PASS,1 FAIL/exit1: original-deadline struct
+response4 timeout; isolated replays did not supersede that run. The initial
+current-worktree 1177/1177 full PASS preceded a CLI safety patch that rejects report
+destinations inside original Settings/SDK (including symlink aliases) and unavailable
+source git status. An intervening sandboxed `ps` permission-denied run was stopped/exit1
+and is environmentally invalid, not a code regression or PASS. The latest approved
+macOS process-sampling `/usr/bin/caffeinate -i pnpm check:fast` is
+**1181/1181 PASS, exit0**, zero fail/cancel/skip/todo (duration 1,195,387.333352 ms).
+One post-patch real Settings experimental smoke also passed exact before/after definitions,
+9/9 references, normal v1 TS2339 and exit0; it is not a repeated A/B/P95 sample.
+The prior failure remains historical, but current source no longer has an unpassed
+whole-fast gate. This does not identify the original 20 s timeout cause or graduate S05.
+S01 focused29/29 and fresh whole-fast1147/1147 PASS/exit0 at unchanged frozen
+inputs certify tooling/regressions, not semantic readiness or 500 ms product graduation.
+D-01–D-09 are local
+Issue drafts, not GitHub numbers; no Issue was created or closed.
+Requirement documented / Planned / Spike-required / Implemented / Experimental
+and Graduated are distinct: existing implementation tests do not prove the new
+ready-state SLO. R-04/05/06/08/12 are reused, not newly implemented here.
+
+Explicit priority changes: R-13 conservative incremental maintenance and R-14
+feasibility spike are now Must; fine-grained invalidation remains proof-gated
+Should. R-15 global capability reuse is Should, R-11 shell reuse is Could, and
+R-12 pressure response is Must. S02 FAIL blocks production facts/schema;
+S05 remains independent after S01. R-09 is already implemented default-off,
+not reset to the attachment's older Research state. R-20 is reframed as
+initial preparation availability, not a candidate-ready shortcut.
+
+Current implementation baseline: `911ae43c` (PR #91 merged; baseline fast
+**1103/1103 PASS**). The preceding R-09 source has its own
+**1116/1116 whole-fast PASS**. The current literal-root source has focus38/38
+plus dependency strengthening1/1 GREEN; its fresh frozen whole gate is
+**1133/1133 PASS, exit0**, zero failures/cancellations/skips/todos, with unchanged
+source/test/build byte inventory and artifact/SDK/oracle postflight.
+The historical combined gate is1124/1125 PASS,
+1 FAIL; negative-lookup recovery focus is 31/31 PASS and the final replacement
+whole-fast is **1126/1126 PASS, exit 0**, zero failures/cancellations/skips/todos.
+No focused rerun supersedes a whole gate. Dated checkpoints below are historical evidence; their
+old FAILs and counts are not the current baseline. Priority is product priority, not a claim of
 completion. An item is complete only after its linked gate passes; see the
-[execution plan](2026-09-20-references-latency-execution-plan.md).
+[current execution plan](2026-09-29-semantic-ready-execution-plan.md).
+The [preceding plan](2026-09-20-references-latency-execution-plan.md) and dated
+checkpoints below retain their original build evidence and previous priorities.
+Historical cold/didOpen timings are not semantic-ready bucket measurements;
+the new initial-preparation exemption neither graduates nor rewrites them.
 
 | ID | Priority | Feature | State | Dependency and observable exit |
 | --- | --- | --- | --- | --- |
@@ -12,22 +98,56 @@ completion. An item is complete only after its linked gate passes; see the
 | R-04 | Must | Complete-result cache v1 | Implemented: pre-index bounded cache, complete results only, conservative overlay/config/workspace invalidation; F6b moves proven hits ahead of diagnostic quiescence | Real LSP RED/GREEN and three same-build Settings/API-24 mode-C runs: 27 hits, median 67 ms, observed P95 96 ms, max 100 ms, all exact. Larger release samples and mutation/SDK matrix remain open; [F6b report](../reports/2026-09-21-settings-api24-diagnostic-cache.md) |
 | R-05 | Must | In-flight coalescing | Implemented | Real LSP proves one verification, independent client cancellation, shared ContentModified invalidation, and no cross-version join |
 | R-06 | Must | Interactive/global lanes | Implemented for references; F6b lets complete cache hits bypass diagnostic quiescence, not misses | Real LSP proves definition/hover bypass delayed references and correct mutation freshness; F6b RED/GREEN proves cached references finish before a held diagnostic settles while versioned diagnostics still publish. Cold/miss latency and wider release sampling remain open |
-| R-07 | Must | Index trust/fallback integrity | Standalone current-source availability consumer implemented; fresh whole-fast1093/1093 GREEN, complete production admission remains open | [Consumer RED/GREEN](../tdd/references-source-availability-consumer.md) reads bounded current text instead of stale metadata; explicit missing/unknown evidence cannot authorize a binding. Public Node96/framed-LSP17 and 267-tuple Settings compatibility pass, not 500 ms. Omitted legacy behavior is not a freshness certificate. Caller-owned absence, complete overlay/scope enumeration and compiler constructor coverage remain separate; no production exclusion/default promotion |
+| R-07 | Must | Index trust/fallback integrity | Partial: current-source consumer plus default-off empty/literal module exclusion consumed; general constructor scope proof open | [Literal-root RED/GREEN](../tdd/references-constructor-literal-roots.md): 10->6 actual batches, exact sets with unknown inherited caller and omitted-root dependency; focus38/38 plus strengthening1/1 and fresh whole-fast1133/1133 PASS/exit0. Worker/owner old-token current reads and final recheck preserve membership/dependencies/overlays; changed proof restores complete work. [Settings](../reports/2026-09-29-settings-constructor-literal-roots.md) is11x267 exact/valid but0 rule hits,14+14 batches and61.205/61.528s; nine existing hits27-51ms. No Settings/500ms/default graduation. The preceding empty-module/freshness build has its own1126/1126 historical gate |
 | R-08 | Must | Index resync recovery | Implemented | Real LSP proves mutation → safe legacy fallback → committed generation advance → indexed recovery with exact Locations |
-| R-09 | Should | Resident full-scope references fast-path | Research | R-03; explicit coverage equality and exact diff |
-| R-10 | Should | Anchor reuse/fusion | Default-off warm memo and narrow cold local-export seed implemented; graduation open | [Warm RED/GREEN](../tdd/references-anchor-reuse.md), [cold RED/GREEN](../tdd/references-local-export-anchor-seed.md) and [six-process Settings A/B](../reports/2026-09-26-settings-local-export-anchor-seed.md) preserve compiler authority and exact results. Cold seed requires proof plus original-cursor validation in each final batch; mismatch discards/retries. Both flags stay off. No verifier residency change; broader symbol/SDK, distribution, memory/freshness/500 ms gates remain blocking |
-| R-11 | Should | Worker-shell reuse spike | Startup attribution measured; reuse not implemented/graduated | [Default-off trace and four real probes](../reports/2026-09-27-settings-worker-startup-attribution.md): constructor diagnostics FAIL; three short-query controls exact/diagnostic PASS. Startup secondary at 6.6% / 7.5–8.4% there, not a universal ratio or 500 ms solution. Later [original-deadline small-fixture controls](../reports/2026-09-28-settings-source-availability-consumer.md) fail with/without RSS sampling; startup receipt is their largest wall field, not pure creation CPU. R-01/R-02; reuse still needs meaningful latency gain and peak ≤ per-batch ×1.10 |
-| R-12 | Should | Memory hysteresis | Implemented | L3 remains active until RSS falls below the configured target; coordinator and production-worker regressions GREEN |
-| R-13 | Could | Fine-grained cache invalidation | Deferred | R-04 plus complete dependency proof and mutation matrix |
-| R-14 | Could | Compiler-derived persisted references | Deferred | Stable validity/version schema; compiler remains semantic authority |
-| R-15 | Could | Extend global lanes to other capabilities | Deferred | References scheduler correctness first; one capability per vertical slice |
+| R-09 | Should | Resident full-scope references fast-path | Implemented default-off; current 18-case public coverage and final whole-fast 1126/1126 GREEN after absence-identity recovery | [TDD](../tdd/references-resident-fast-path.md): unchanged full Program and original cursor; unrelated sibling mutation no longer evicts negative evidence, actual load/configuration guards retained. [Six fixed Settings runs](../reports/2026-09-29-settings-resident-fast-path.md) each give 267 exact Locations, but all enabled queries miss at L3 and retain 24 batches; medians refs101,011/97,490 ms and warmup28,696/33,257 ms. Settings admission/graduation unqualified; no real reuse saving, budget increase or default promotion |
+| R-10 | Should | Anchor reuse/fusion | Default-off warm memo, local-export and unaliased re-export cold seeds implemented; graduation open | [Warm RED/GREEN](../tdd/references-anchor-reuse.md), [local-export RED/GREEN](../tdd/references-local-export-anchor-seed.md), [re-export RED/GREEN](../tdd/references-reexport-anchor-seed.md) and [Settings A/B plus mode C](../reports/2026-10-03-settings-reexport-anchor-seed.md) preserve compiler authority and exact results. Fixture include-declaration/edit/cancel and Settings 11-query comment-edit replay pass; the single mode-C pair is not a distribution. Cold seeds require proof plus original-cursor validation in each final batch; mismatch discards/retries. All flags stay off. No verifier residency change; broader symbol/SDK, distribution, memory/freshness/500 ms gates remain blocking |
+| R-11 | Could | Worker-shell reuse spike | Startup attribution measured; reuse not implemented/graduated | [Default-off trace and four real probes](../reports/2026-09-27-settings-worker-startup-attribution.md): constructor diagnostics FAIL; three short-query controls exact/diagnostic PASS. Startup secondary at 6.6% / 7.5–8.4% there, not a universal ratio or 500 ms solution. Later [original-deadline small-fixture controls](../reports/2026-09-28-settings-source-availability-consumer.md) fail with/without RSS sampling; startup receipt is their largest wall field, not pure creation CPU. S05 may test this separately; no default promotion without meaningful latency gain and peak ≤ per-batch ×1.10 |
+| R-12 | Must | Memory hysteresis | Implemented | L3 remains active until RSS falls below the configured target; coordinator and production-worker regressions GREEN; reused by S05/S12, not recreated |
+| R-13 | Must | Conservative incremental facts/overlay maintenance | Planned; NOT_STARTED; finer dependency invalidation remains proof-gated Should | S07 after S04/S06; existing DocumentAuthority/ProjectGraph own changes; new file facts replace old, public/global changes expand invalidation, unknown goes coarse; ordinary edit waits still count toward 500 ms |
+| R-14 | Must | Compiler-derived facts feasibility, then conditional persistence | S02 tested public-checker-binding-projection-v1 FAIL; production/schema blocked | [S02](../reports/2026-09-29-semantic-ready-s02-facts-spike.md): 8 ordinary/alias + class-control exact; constructor false/true miss2/3. Extraction0 references and independent facts consumer; focused41/41 GREEN certifies tooling, not projection. Other mandatory kinds/Settings NOT_RUN. New compiler-hook hypothesis or independent S05 needed; no N×full-workspace preparation and no S03 until complete proof |
+| R-15 | Should | Reuse proven global lifecycle for other capabilities | Planned; existing LSP capabilities unchanged; new routes NOT_STARTED | S08/S10/S11 one capability or direction per slice; reuse lanes/freshness, independently prove implementation/rename/call semantics; no empty universal framework |
 | R-16 | Won't | Second ArkTS TypeChecker | Rejected | Rust index must not become semantic truth |
 | R-17 | Won't | Identity as production default now | Rejected pending proof | Known SDK-import false negative |
 | R-18 | Won't | Multiple full-Program Workers | Rejected | Duplicates SDK/Program memory; global concurrency stays one |
 | R-19 | Won't | File-count-only memory model | Rejected | Use measured RSS/PSS and Program closure, not linear extrapolation |
-| R-20 | Must | Initial-index first-click readiness | Opt-in bounded-wait and operation-local identity SQL reuse RED/GREEN; **not graduated** | Three Settings index-cold runs are exact/one-batch at 537–560 MB but take 39.8–50.5 s and delay diagnostics; legacy takes 8.6–9.6 s at 838–964 MB. Fresh-catalog SQL trace localized activation to reference inserts and commit; a second exact 9/9 three-run trace split median 6.06 s reference work into 3.69 s occurrences, 1.75 s identity work, 0.42 s bindings and 0.10 s aliases, with 3.13 s commit. A one-run stack sample implicates automatic WAL checkpointing but not an end-to-end saving. A 96-row insert A/B regressed activation and was removed. Default wait stays off. Current [recovery/SQL reuse](../reports/2026-09-28-settings-catalog-recovery-identity-sql.md) restores the old-binary real baseline and reduces fixture Rust allocation requests, not proven latency/RSS/CPU. Exit still requires current full validation, cold navigation/diagnostic gate, randomized strategy samples and original >3 GB pressure case; [wait](../reports/2026-09-21-settings-initial-catalog-wait-experiment.md), [rejected A/B](../reports/2026-09-22-settings-sqlite-batch-rejected.md), [SQL stages](../reports/2026-09-22-settings-sqlite-stage-profile.md), [subphases](../reports/2026-09-22-settings-reference-insert-subphases.md) |
+| R-20 | Must | Initial preparation availability (reframed) | S04 preparation/progress/semantic readiness planned, NOT_STARTED; preceding opt-in wait/SQL reuse not graduated | Three Settings index-cold runs are exact/one-batch at 537–560 MB but take 39.8–50.5 s and delay diagnostics; legacy takes 8.6–9.6 s at 838–964 MB. Fresh-catalog SQL trace localized activation to reference inserts and commit; a second exact 9/9 three-run trace split median 6.06 s reference work into 3.69 s occurrences, 1.75 s identity work, 0.42 s bindings and 0.10 s aliases, with 3.13 s commit. A one-run stack sample implicates automatic WAL checkpointing but not an end-to-end saving. A 96-row insert A/B regressed activation and was removed. Default wait stays off. Current [recovery/SQL reuse](../reports/2026-09-28-settings-catalog-recovery-identity-sql.md) restores the old-binary real baseline and reduces fixture Rust allocation requests, not proven latency/RSS/CPU. S04 must prove semantic readiness; initial-preparation exemption does not turn historical slow/failing samples into PASS. Exit still requires current full validation, ready-state navigation/diagnostic gate, randomized strategy samples and original >3 GB pressure case; [wait](../reports/2026-09-21-settings-initial-catalog-wait-experiment.md), [rejected A/B](../reports/2026-09-22-settings-sqlite-batch-rejected.md), [SQL stages](../reports/2026-09-22-settings-sqlite-stage-profile.md), [subphases](../reports/2026-09-22-settings-reference-insert-subphases.md) |
+| R-21 | Must | Ready-state full-response 500 ms contract | S01 public suite/control implemented; no product graduation. 56 exact references, 50 repeated cache hits; first-query/body-edit controls slow, READINESS_UNSUPPORTED and missing buckets retained | S00/S01/S12; each capability/bucket P95≤500 ms; preparation separate, normal edit/new symbol/module/eviction waits included; [contract](semantic-ready/product-contract.md), [S01 evidence](../reports/2026-09-29-semantic-ready-s01-baseline.md) |
+| R-22 | Must | Versioned semantic readiness | Planned; NOT_STARTED | S03/S04/S07; semantic owner consumes valid compiler-derived generation/input/coverage; candidate committedGeneration keeps its original meaning |
+| R-23 | Must | Bounded first preparation and progress/cancellation | Planned; NOT_STARTED | S04 after S02/S03; existing supervisor/Coordinator and standard progress; valid capability-ready only; whole lifecycle memory measured |
+| R-24 | Must | Definition/typeDefinition ready-state graduation | Existing capability; new path/graduation NOT_STARTED | S05/S09a/S12; compatible hot LS or proven projection; exact URI/UTF-16 sets and each normal bucket ≤500 ms; no unnecessary cold rebuild after references |
+| R-25 | Must | Implementations ready-state graduation | Existing capability; independent projection NOT_STARTED | S02/S08/S12; interfaces/override/generic/aliases/new implementations exact; references/lexical heritage are not implementation proof |
+| R-26 | Must | Completion/auto-import/hover/signature graduation | Existing capabilities; new reuse/graduation NOT_STARTED | S05/S09b/S12; official hot LS, current overlay, existing completion edit/sort/snippet/isIncomplete contracts; discovery not another whole-workspace Program |
+| R-27 | Must | Safe prepareRename/rename fast path | Existing capability; new path NOT_STARTED | S10a/b after S06/S07/S09; conflict/legality and complete versioned WorkspaceEdit; temporary-copy application validates result; positions alone are insufficient |
+| R-28 | Should | Call hierarchy ready-state routing | Existing capability; new path NOT_STARTED | S11a/b/c after S06/S07/S08; separately proven call projection, direction/fromRanges/item freshness; preserve old capability while ungraduated |
+| R-29 | Must | Diagnostics and resource/formatting coexistence | Existing capabilities; new readiness regression NOT_STARTED | S09c/S12; normal diagnostics codes/ranges/versions and background freshness separate from request SLO; optimize only measured gaps, no second linter LS |
 
-Latest checkpoint 2026-09-29:
+## Historical implementation checkpoints
+
+The following preserves earlier states and prioritization as dated evidence,
+not a second active status table. Current R-13/R-14/R-15 priority is defined above.
+
+Preceding empty-module checkpoint (2026-09-29): R-07's first safe, default-off exclusion actually
+removes redundant transient verification in its public fixture (6→2, exact).
+Settings has no matching proof: 11×267 exact, cold/edit still14+14 batches.
+General inherited-constructor coverage stays open. The first whole-fast is
+1124/1125 PASS,1 FAIL; negative-lookup recovery passes31/31 focus, not a whole
+gate. Final-artifact Settings is11×267 exact/valid, normal diagnostics/exit0;
+0 rule hits/14+14 batches, cold/edit57.394/58.108s, nine existing hits25–32ms.
+Replacement whole-fast is **1126/1126 PASS, exit 0**, zero failures/
+cancellations/skips/todos. No real-workload graduation follows.
+
+Prior R-09 checkpoint (2026-09-29): the production-consumed R-09 path and its
+freshness guards pass full public coverage. Six fixed Settings/API24 replays
+are exact, but none qualifies for reuse under the original budget; fresh
+complete fast regression is **1116/1116 PASS, exit0**, zero failures/
+cancellations/skips/todos at unchanged deadlines and runtime pins.
+This removes redundant compiler preparation when complete hot state already
+exists; it is not another observation-only round. R-07 constructor-specific
+exclusion, R-11 Worker reuse and the independent release gates remain open.
+Could R-13–R-15 remain deferred, not silently marked done.
+
+Prior checkpoint 2026-09-29:
 [awake-host recovery and fixed Settings](../reports/2026-09-29-awake-regression-gate-recovery.md)
 has focus9/9 and complete `check:fast` **1093/1093 PASS,exit0**, zero failures,
 cancellations/skips/todos at unchanged deadlines and artifact pins. Prior
@@ -676,3 +796,13 @@ returns exact matching completion labels in4,298ms cold/39.7ms warm with normal
 diagnostics and one null-SDK selection. Do not substitute these for fixed
 Settings/API24,500ms, full regression or memory gates; no new implementation
 slice/default is advanced on this evidence.
+
+R-01/R-10 [2026-10-03 Settings re-export and six-phase trace](../reports/2026-10-03-settings-reexport-anchor-seed.md):
+one real API24 `includeDeclaration=true` seed-off/on pair returned the same
+10 exact Locations and normal diagnostics; first requests were 7.491/4.506 s.
+A trace-only build passed public LSP RED→GREEN and a further 10/10 mode-A,
+11/11 mode-C real oracle. Cold membership costs 987–1,010 ms, preload 21–54 ms;
+after an unsaved comment membership is ~0.05 ms but compiler `createProgram`
+remains 2.157 s and references 3.094 s. This closes narrow attribution and
+declaration-inclusive controls only. R-10 remains default-off, S05 resource
+FAIL, S03 BLOCKED, and ≤500 ms/final memory gates remain open.

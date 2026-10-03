@@ -1,6 +1,11 @@
 # References / semantic latency execution plan
 
-Status: **active successor for latency work**, 2026-09-20. Parent revision:
+Status: **historical implementation/evidence plan; continued by the
+[2026-09-29 semantic-ready plan](2026-09-29-semantic-ready-execution-plan.md)**.
+The successor owns future stage order, not a rewritten verdict for any dated
+checkpoint below. Existing code/defaults and unfinished original memory gates
+remain in force; new facts/readiness stages are not implemented by this notice.
+Original plan date: 2026-09-20. Parent revision:
 `349b3abe2e4ff35e00d3cead7f7c766fd981b49f`. The
 [bounded references plan](2026-09-10-bounded-references-execution-plan.md)
 remains the evidence record and authority for its unfinished original >3 GB
@@ -9,6 +14,82 @@ reproducer and final memory gate. This plan does not mark either complete.
 Source: user-supplied `deep-research-report.md`, checked against current `main`.
 The [ADR index](../adr/README.md), [Feature Ledger](references-feature-ledger.md)
 and [MoSCoW](references-moscow.md) are the compact decision and status views.
+
+### Current implementation work (2026-09-29)
+
+The current [R-07 literal-root slice](../tdd/references-constructor-literal-roots.md)
+is implemented default-off. Same-frontend closed export-const/scalar syntax
+proves only pending candidate roots irrelevant; original membership/dependencies,
+overlays and unknown callers remain. Final old-token rereads discard exclusions
+on source change and restore complete verification. Public cost RED10->GREEN6
+preserves exact legacy references, including an unopened inherited alias and
+its dependency on an omitted root. Related focus38/38 and dependency
+strengthening1/1 pass. **Current frozen final whole-fast is1133/1133 PASS,
+exit0**, zero failures/cancellations/skips/todos,1,093,203.504409ms. Source/test/
+build byte inventory and runtime/SDK/oracle pins remain unchanged and pass
+postflight; preceding1126-case PASS is historical, not current certification.
+[Fixed Settings](../reports/2026-09-29-settings-constructor-literal-roots.md)
+is11x267 exact/valid, normal diagnostics/exit0, but0 rule hits,14+14 batches
+and cold/edit61.205/61.528s; nine existing hits27-51ms. No Settings latency or
+general constructor/default graduation follows. R-07 remains Must/open.
+
+Preceding empty-module checkpoint:
+
+R-07 now has a [first consumed, default-off constructor exclusion rule](../tdd/references-constructor-empty-scope.md).
+An exact original-cursor search may exclude one otherwise unsearched disk member
+only after both owners read its current original-token text and prove the closed
+empty-module grammar; overlays remain searched. Real stdio cost RED6→GREEN2
+completed batches preserves exact legacy results for both declaration policies.
+Nine public behavior/safety cases plus four manifest tests are GREEN. The
+first whole-fast is1124/1125 PASS,1 FAIL: an unchanged R-09 automatic-types
+control misses both resident admissions. The actual unrelated-sibling mechanism
+is reproduced twice and repaired without relaxing load/configuration guards;
+combined public focus is31/31 PASS. The final replacement complete whole-fast
+is **1126/1126 PASS, exit 0**, zero failures/cancellations/skips/todos, duration
+1,052,240.191742 ms. Original deadlines and source/test/build inputs remained
+frozen throughout the run; the first failed gate is retained.
+The first fixed
+[Settings/API24 mode C](../reports/2026-09-29-settings-constructor-empty-scope.md)
+is 11 × 267 exact/valid, normal diagnostics/exit0, but the rule has zero hits.
+Cold/edit still use 14 complete batches each at57.375/58.082s; nine existing
+cache hits are25–42ms. General constructor scope proof remains Must/open,
+not a completed latency optimization, 500ms or default graduation.
+The final-artifact replay also gives11×267 exact/valid, normal diagnostics/exit0,
+still0 exclusions/14+14 batches: cold/edit57.394/58.108s and nine existing cache
+hits25–32ms. It validates the corrected build, not Settings reuse or acceleration.
+
+Baseline is now `911ae43c274175614559b63f0311504747d8393d`, merged PR #91,
+with **1103/1103 baseline fast PASS**. Historical counts and FAILs below belong
+to their dated builds; they neither override this baseline nor certify the
+active branch. The preceding R-09 implementation has its own fresh
+**1116/1116 whole-fast PASS, exit0**, zero failures/cancellations/skips/todos.
+
+F7/R-09 now has a production-consumed, default-off resident full-scope path:
+reuse the actual unchanged compiler Program, verify the original cursor, and
+avoid transient anchor/batch Workers only after full membership/overlay/SDK
+coverage and same-Program evidence. Source edits, partial scope and L3 disposal
+must miss safely. Actual loaded configuration/lookup witnesses close the
+package-main, absent-owner, installation-link and automatic types REDs; the
+17-case real stdio coverage is GREEN. Fixed Settings/API24 warmed A/B is now
+six exact 267-location runs at unchanged project/budget: all three enabled
+queries miss at L3 and still use 24 transient batches. R-09 admission is not
+qualified on this workload and remains default-off; no real build saving or
+500 ms result is claimed. Its implementation and fresh whole-fast gate are
+complete at that checkpoint; Settings/default graduation remains unqualified.
+The subsequent R-09 absence-identity repair above also passes its new full gate;
+that regression result does not graduate real Settings resident admission.
+The first R-07
+exclusion slice above genuinely consumes complete-scope evidence, but only for
+one proven empty module. Further narrowing must prove every additional excluded
+original legal source; no idle binding RPC supplies that proof.
+See [the executable TDD record](../tdd/references-resident-fast-path.md).
+
+This is implementation progress, not completion of the whole plan. R-07
+constructor-specific candidate exclusion remains open; R-11 reuse is still an
+experiment not implemented, and R-13–R-15 are deferred Could items. The
+500 ms, original >3 GB, final 50% memory, PSS/DevEco and native Windows gates
+remain independent. `indexed-batched + closure + full SDK`, `dispose`, normal
+diagnostics and per-batch verifier ownership stay unchanged.
 
 ### Latest awake-host recovery and Settings checkpoint (2026-09-29)
 

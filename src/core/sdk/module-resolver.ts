@@ -1,5 +1,6 @@
 import fs from "node:fs"
 import path from "node:path"
+import type { LoadedConfigurationWitness } from "../../project/loaded-configuration-witness.js"
 
 export function harmonySdkModuleCandidates(
   sdkRoot: string,
@@ -41,7 +42,9 @@ export function isHarmonySdkModuleSpecifier(moduleSpecifier: string): boolean {
 export function resolveHarmonySdkModule(
   sdkRoot: string,
   moduleSpecifier: string,
+  witness?: LoadedConfigurationWitness,
 ): string | null {
   return harmonySdkModuleCandidates(sdkRoot, moduleSpecifier)
-    .find((candidate) => fs.existsSync(candidate)) ?? null
+    .find((candidate) => witness ? witness.observe(candidate, () => fs.existsSync(candidate))
+      : fs.existsSync(candidate)) ?? null
 }

@@ -11,6 +11,7 @@ import {
   type SemanticWorkspaceView,
 } from "../../core/workspace/document-store.js"
 import type { ReferenceSdkAmbientProfile } from "./reference-runtime.js"
+import { constructorModuleExclusions } from "./reference-constructor-scope.js"
 
 interface ReferenceVerifierWorkerData {
   readonly operation: "references" | "definition"
@@ -22,6 +23,7 @@ interface ReferenceVerifierWorkerData {
   readonly sdkAmbientProfile?: ReferenceSdkAmbientProfile
   readonly trace?: boolean
   readonly tolerateUnadmittedProjectDependencies?: boolean
+  readonly constructorScope?: boolean
 }
 
 const port = parentPort
@@ -79,6 +81,10 @@ try {
       ? { status: "incomplete" as const, reason: "source-unavailable" as const }
       : engine.references(data.position, data.includeDeclaration === true,
           data.tolerateUnadmittedProjectDependencies !== true)
+    if (data.constructorScope && result.status === "complete") {
+      const exclusions = constructorModuleExclusions(data.workspace, data.position.path, result, projectFileAccess)
+      if (exclusions) result.constructorExcludedSources = exclusions
+    }
     const queryMs = performance.now() - queryStarted
     port.postMessage({
       ok: true,

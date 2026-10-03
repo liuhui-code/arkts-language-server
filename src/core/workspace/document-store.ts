@@ -9,6 +9,8 @@ import type {
 } from "../protocol.js"
 import { resolveWorkspaceRoot, type WorkspaceDocument } from "../sdk/workspace-loader.js"
 import { LocalPackageResolver } from "../sdk/local-package-resolver.js"
+import { WorkspaceContentChanges, type WorkspaceContentDelta } from "./workspace-content-changes.js"
+import { appendAuthoritativeOverlays, projectOverlayAuthority, withoutShadowedPaths } from "./overlay-authority.js"
 
 const MAX_CACHED_DOCUMENTS = 512
 const MAX_CACHED_BYTES = 16 * 1024 * 1024
@@ -112,6 +114,32 @@ export interface SemanticOperationControl {
   checkpoint(): void
 }
 
+export type SemanticPreparePhase = "current-load" | "overlay-authority" | "dependency-closure"
+  | "project-membership" | "workspace-preload" | "finalize"
+
+export interface SemanticPreparePhaseDetails {
+  cacheHit?: boolean
+  pathCount?: number
+  status?: "complete" | "partial"
+  addedDocuments?: number
+}
+
+export type SemanticPrepareObserver = (
+  phase: SemanticPreparePhase,
+  durationMs: number,
+  details?: SemanticPreparePhaseDetails,
+) => void
+
+function observePreparePhase(observer: SemanticPrepareObserver | undefined,
+  phase: SemanticPreparePhase, started: number, details?: SemanticPreparePhaseDetails): void {
+  if (!observer) return
+  try {
+    observer(phase, Math.max(0, performance.now() - started), details)
+  } catch {
+    // Diagnostics must not affect document authority or project membership.
+  }
+}
+
 const NOOP_OPERATION_CONTROL: SemanticOperationControl = Object.freeze({
   checkpoint(): void {},
 })
@@ -150,6 +178,8 @@ export interface SemanticWorkspaceView {
   semanticRootPaths?: readonly string[]
   removedPaths?: string[]
   changedPaths?: string[]
+  /** One-shot store-owned evidence that every intervening revision is a compatible disk delta. */
+  contentDelta?: WorkspaceContentDelta
   contentRevision: number
   resetTypeEngine?: boolean
   state: SemanticResponseState
@@ -174,11 +204,7 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
   private readonly dependencyGenerations = new Map<string, number>()
   private readonly dependencyClosures = new Map<string, DependencyClosureCacheEntry>()
   private readonly projectFileSets = new Map<string, ProjectFileSetCacheEntry>()
-  private readonly watchedRemovedPaths = new Map<string, Set<string>>()
-  private readonly watchedChangedPaths = new Map<string, Set<string>>()
-  private readonly contentRevisions = new Map<string, number>()
-  private readonly typeEngineResetRoots = new Set<string>()
-  private readonly typeEngineResetEpochs = new Map<string, number>()
+  private readonly contentChanges: WorkspaceContentChanges
   private readonly enumerateWorkspaceSources: (rootPath: string) => Iterable<string>
   private readonly operationControl: SemanticOperationControl
   private readonly maxProjectFileSetRoots: number
@@ -231,6 +257,7 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
       MAX_WATCHED_CHANGED_PATHS,
       "watched changed paths",
     )
+    this.contentChanges = new WorkspaceContentChanges(this.maxWatchedRemovedPaths, this.maxWatchedChangedPaths)
   }
 
   restore(documents: SemanticReplayDocument[]): number {
@@ -317,7 +344,7 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
       )
       for (const affectedRoot of matches.get(filePath)?.keys() ?? []) {
         this.markTypeEngineReset(affectedRoot)
-        this.contentRevisions.set(affectedRoot, (this.contentRevisions.get(affectedRoot) ?? 0) + 1)
+        this.contentChanges.advance(affectedRoot)
       }
     }
     this.includeOpenedProjectSource(document.workspaceRoot, filePath)
@@ -359,7 +386,7 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
       }
       for (const resetRoot of resetRoots) this.markTypeEngineReset(resetRoot)
       for (const changedRoot of changedRoots) {
-        this.contentRevisions.set(changedRoot, (this.contentRevisions.get(changedRoot) ?? 0) + 1)
+        this.contentChanges.advance(changedRoot)
       }
     }
   }
@@ -456,7 +483,7 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
     }
     for (const resetRoot of resetRoots) this.markTypeEngineReset(resetRoot)
     for (const changedRoot of changedRoots) {
-      this.contentRevisions.set(changedRoot, (this.contentRevisions.get(changedRoot) ?? 0) + 1)
+      this.contentChanges.advance(changedRoot)
     }
     this.publishProjectMembership(canonicalRoot, current)
     return {
@@ -512,7 +539,7 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
       for (const owner of dirtyClosureOwners) this.dependencyClosures.delete(owner)
       for (const knownPath of invalidatedPaths) {
         this.markWatchedRemoved(canonicalRoot, knownPath)
-        if (this.typeEngineResetRoots.has(canonicalRoot)) break
+        if (this.contentChanges.hasReset(canonicalRoot)) break
       }
       const affectedRoots = new Set(dirtyProjectRoots)
       for (const pathsByRoot of invalidationMatches.values()) {
@@ -521,10 +548,7 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
         }
       }
       for (const affectedRoot of affectedRoots) {
-        this.contentRevisions.set(
-          affectedRoot,
-          (this.contentRevisions.get(affectedRoot) ?? 0) + 1,
-        )
+        this.contentChanges.advance(affectedRoot)
         this.markTypeEngineReset(affectedRoot)
       }
       for (const dirtyProjectRoot of dirtyProjectRoots) {
@@ -633,6 +657,7 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
         }
       }
       if (change.kind === "deleted") {
+        if (!overlay) changedRoots.add(canonicalRoot)
         if (!overlay && paths) {
           const index = paths.indexOf(sourcePath)
           if (index >= 0) {
@@ -727,8 +752,12 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
       for (const changedPath of changedPaths) this.markWatchedChanged(changedRoot, changedPath)
     }
     for (const resetRoot of resetRoots) this.markTypeEngineReset(resetRoot)
+    const compatibleDiskDelta = rejectedSourceChanges.length === 0 && sourceChanges.length > 0
+      && sourceChanges.every(change => change.kind === "changed" && !change.overlay
+        && change.membershipEligible && knownPathsBeforeInvalidation.has(change.sourcePath))
     for (const changedRoot of changedRoots) {
-      this.contentRevisions.set(changedRoot, (this.contentRevisions.get(changedRoot) ?? 0) + 1)
+      this.contentChanges.advance(changedRoot, compatibleDiskDelta && changedRoot === canonicalRoot
+        && !resetRoots.has(changedRoot) ? lexicalRoot : undefined)
     }
     for (const dirtyRoot of dirtyMembershipRoots) this.projectFileSets.delete(dirtyRoot)
   }
@@ -848,42 +877,15 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
   }
 
   private markTypeEngineReset(canonicalRoot: string): void {
-    if (this.typeEngineResetRoots.has(canonicalRoot)) return
-    this.typeEngineResetRoots.add(canonicalRoot)
-    this.typeEngineResetEpochs.set(
-      canonicalRoot,
-      (this.typeEngineResetEpochs.get(canonicalRoot) ?? 0) + 1,
-    )
+    this.contentChanges.reset(canonicalRoot)
   }
 
   private markWatchedRemoved(canonicalRoot: string, filePath: string): void {
-    if (this.typeEngineResetRoots.has(canonicalRoot)) return
-    let removed = this.watchedRemovedPaths.get(canonicalRoot)
-    if (!removed) {
-      removed = new Set()
-      this.watchedRemovedPaths.set(canonicalRoot, removed)
-    }
-    if (!removed.has(filePath) && removed.size >= this.maxWatchedRemovedPaths) {
-      removed.clear()
-      this.markTypeEngineReset(canonicalRoot)
-      return
-    }
-    removed.add(filePath)
+    this.contentChanges.markRemoved(canonicalRoot, filePath)
   }
 
   private markWatchedChanged(canonicalRoot: string, filePath: string): void {
-    if (this.typeEngineResetRoots.has(canonicalRoot)) return
-    let changed = this.watchedChangedPaths.get(canonicalRoot)
-    if (!changed) {
-      changed = new Set()
-      this.watchedChangedPaths.set(canonicalRoot, changed)
-    }
-    if (!changed.has(filePath) && changed.size >= this.maxWatchedChangedPaths) {
-      changed.clear()
-      this.markTypeEngineReset(canonicalRoot)
-      return
-    }
-    changed.add(filePath)
+    this.contentChanges.markChanged(canonicalRoot, filePath)
   }
 
   dispose(): void {
@@ -892,18 +894,16 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
     this.dependencyGenerations.clear()
     this.dependencyClosures.clear()
     this.projectFileSets.clear()
-    this.watchedRemovedPaths.clear()
-    this.watchedChangedPaths.clear()
-    this.contentRevisions.clear()
-    this.typeEngineResetRoots.clear()
-    this.typeEngineResetEpochs.clear()
+    this.contentChanges.clear()
     this.accessClock = 0
     this.overlayOrderClock = 0
     this.cachedBytes = 0
     this.projectMembershipRevision = 0
   }
 
-  prepare(position: SemanticDocumentPosition, includeWorkspaceFiles = false): SemanticWorkspaceView {
+  prepare(position: SemanticDocumentPosition, includeWorkspaceFiles = false,
+    observer?: SemanticPrepareObserver): SemanticWorkspaceView {
+    const currentLoadStarted = observer ? performance.now() : 0
     this.operationControl.checkpoint()
     const transaction = this.beginDocumentCacheTransaction()
     try {
@@ -914,6 +914,7 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
       const canonicalRoot = canonicalWorkspaceRoot(rootPath)
       const previousCurrent = this.documents.get(currentPath)
       const current = this.loadCurrent(currentPath, position, transaction, canonicalRoot)
+      observePreparePhase(observer, "current-load", currentLoadStarted)
       return this.prepareFromCurrent(
         currentPath,
         rootPath,
@@ -922,6 +923,7 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
         current,
         includeWorkspaceFiles,
         transaction,
+        observer,
       )
     } catch (error) {
       this.rollbackDocumentCacheTransaction(transaction)
@@ -991,31 +993,14 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
     current: DocumentRecord,
     includeWorkspaceFiles: boolean,
     transaction: DocumentCacheTransaction,
+    observer?: SemanticPrepareObserver,
   ): SemanticWorkspaceView {
+    const overlayStarted = observer ? performance.now() : 0
     const overlays = this.openOverlays(canonicalRoot)
-    const authoritativeOverlays = new Map<string, DocumentRecord>()
-    for (const record of overlays) {
-      const previous = authoritativeOverlays.get(record.physicalPath)
-      if (!previous || record.overlayOrder > previous.overlayOrder) {
-        authoritativeOverlays.set(record.physicalPath, record)
-      }
-    }
-    // The globally freshest overlay remains authoritative for other documents,
-    // while a request made from an older open alias must still see its own text.
-    if (current.overlay) authoritativeOverlays.set(current.physicalPath, current)
-    const overlayPaths = new Map(
-      [...authoritativeOverlays].map(([physicalPath, record]) => [physicalPath, record.path]),
-    )
-    const authoritativeOverlayPaths = new Set(overlayPaths.values())
-    const shadowedPaths = new Set([
-      ...[...overlayPaths].flatMap(([physicalPath, overlayPath]) => {
-        const lexicalPath = lexicalWorkspacePath(rootPath, canonicalRoot, physicalPath)
-        return lexicalPath !== undefined && lexicalPath !== overlayPath ? [lexicalPath] : []
-      }),
-      ...overlays.flatMap((record) => (
-        authoritativeOverlayPaths.has(record.path) ? [] : [record.path]
-      )),
-    ])
+    const { overlayPaths, authoritativeOverlayPaths, shadowedPaths } =
+      projectOverlayAuthority(rootPath, canonicalRoot, overlays, current)
+    observePreparePhase(observer, "overlay-authority", overlayStarted)
+    const dependencyStarted = observer ? performance.now() : 0
     const closureResult = this.collectDependencyClosure(
       current,
       previousCurrent === current,
@@ -1026,35 +1011,23 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
     const closure = closureResult.entries.filter(({ record }) => !shadowedPaths.has(record.path))
     const closureAuthorityChanged = closure.length !== closureResult.entries.length
     const loadedPaths = new Set(closure.map(({ record }) => record.path))
-    const excludedOverlayPaths: string[] = []
-    for (const record of overlays) {
-      if (!authoritativeOverlayPaths.has(record.path)) {
-        excludedOverlayPaths.push(record.path)
-        continue
-      }
-      if (loadedPaths.has(record.path)) continue
-      if (!this.isActiveProjectSource(rootPath, record.path)) {
-        excludedOverlayPaths.push(record.path)
-        continue
-      }
-      closure.push({ record, cacheHit: true })
-      loadedPaths.add(record.path)
-    }
+    const excludedOverlayPaths = appendAuthoritativeOverlays(
+      closure, overlays, authoritativeOverlayPaths, loadedPaths,
+      sourcePath => this.isActiveProjectSource(rootPath, sourcePath),
+    )
     const documentCacheHit = closure.every(({ cacheHit }) => cacheHit)
+    observePreparePhase(observer, "dependency-closure", dependencyStarted, {
+      cacheHit: closureResult.cacheHit && !closureAuthorityChanged,
+    })
+    const membershipStarted = observer ? performance.now() : 0
     let projectMembership: ProjectMembershipSnapshot | undefined
     if (includeWorkspaceFiles) {
-      projectMembership = this.projectMembership(rootPath)
-      if (shadowedPaths.size > 0) {
-        const visiblePaths = projectMembership.paths.filter(
-          (sourcePath) => !shadowedPaths.has(sourcePath),
-        )
-        if (visiblePaths.length !== projectMembership.paths.length) {
-          projectMembership = {
-            ...projectMembership,
-            paths: visiblePaths,
-          }
-        }
-      }
+      projectMembership = withoutShadowedPaths(this.projectMembership(rootPath), shadowedPaths)
+      observePreparePhase(observer, "project-membership", membershipStarted, {
+        pathCount: projectMembership.paths.length, status: projectMembership.status,
+      })
+      const preloadStarted = observer ? performance.now() : 0
+      const beforePreload = closure.length
       let totalBytes = closure.reduce((total, { record }) => total + Buffer.byteLength(record.content), 0)
       for (const sourcePath of projectMembership.paths) {
         if (loadedPaths.has(sourcePath) || closure.length >= MAX_CLOSURE_DOCUMENTS) continue
@@ -1074,7 +1047,14 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
         loadedPaths.add(sourcePath)
         totalBytes += bytes
       }
+      observePreparePhase(observer, "workspace-preload", preloadStarted, {
+        addedDocuments: closure.length - beforePreload,
+      })
+    } else {
+      observePreparePhase(observer, "project-membership", membershipStarted)
+      observePreparePhase(observer, "workspace-preload", observer ? performance.now() : 0)
     }
+    const finalizeStarted = observer ? performance.now() : 0
     const documents = closure.map(({ record }) => ({
       path: record.path,
       content: record.content,
@@ -1085,27 +1065,24 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
     transaction.committed = true
     const dependencyGeneration = this.updateDependencyGeneration(rootPath, closure)
     this.evict(currentPath, new Set(documents.map((document) => document.path)))
-    const watchedRemovedPaths = this.watchedRemovedPaths.get(canonicalRoot)
-    this.watchedRemovedPaths.delete(canonicalRoot)
-    const watchedChangedPaths = this.watchedChangedPaths.get(canonicalRoot)
-    this.watchedChangedPaths.delete(canonicalRoot)
-    const resetTypeEngine = this.typeEngineResetRoots.delete(canonicalRoot)
+    const changes = this.contentChanges.take(canonicalRoot)
 
-    return {
+    const view: SemanticWorkspaceView = {
       rootPath,
       canonicalRootId: canonicalRoot,
       overlayPaths,
-      typeEngineResetEpoch: this.typeEngineResetEpochs.get(canonicalRoot) ?? 0,
+      typeEngineResetEpoch: changes.typeEngineResetEpoch,
       documents,
       projectMembership,
       removedPaths: [...new Set([
-        ...(watchedRemovedPaths ?? []),
+        ...changes.removedPaths,
         ...closureResult.removedPaths,
         ...excludedOverlayPaths,
       ])],
-      changedPaths: [...(watchedChangedPaths ?? [])],
-      contentRevision: this.contentRevisions.get(canonicalRoot) ?? 0,
-      resetTypeEngine,
+      changedPaths: changes.changedPaths,
+      contentDelta: changes.contentDelta,
+      contentRevision: changes.contentRevision,
+      resetTypeEngine: changes.resetTypeEngine,
       state: {
         path: currentPath,
         contentGeneration: current.contentGeneration,
@@ -1118,6 +1095,8 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
         syntaxReady: current.available,
       },
     }
+    observePreparePhase(observer, "finalize", finalizeStarted)
+    return view
   }
 
   private openOverlays(canonicalRoot: string): DocumentRecord[] {
@@ -1716,18 +1695,6 @@ function canonicalWorkspaceRoot(rootPath: string): string {
   } catch {
     return resolved
   }
-}
-
-function lexicalWorkspacePath(
-  rootPath: string,
-  canonicalRoot: string,
-  physicalPath: string,
-): string | undefined {
-  const relative = path.relative(canonicalRoot, physicalPath)
-  if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
-    return undefined
-  }
-  return path.resolve(rootPath, relative)
 }
 
 function isWorkspacePhysicalAlias(

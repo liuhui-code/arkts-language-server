@@ -49,6 +49,20 @@ test("immediate replay requests exact references before catalog completion", (t)
   assert.ok(phaseIndex("references-request-start") < phaseIndex("catalog-complete"))
   assert.equal(report.diagnostic.version, 1)
 
+  const warmOutput = path.join(root, "implementation-warm.json")
+  const warmArgs = [...args, "--mode", "B", "--warmup", "implementation"]
+  warmArgs[warmArgs.indexOf("--out") + 1] = warmOutput
+  const warm = spawnSync(process.execPath, warmArgs, {
+    cwd: projectRoot, encoding: "utf8", timeout: 15_000,
+  })
+  assert.equal(warm.status, 0, `${warm.stderr}\n${warm.stdout}`)
+  const warmReport = JSON.parse(fs.readFileSync(warmOutput, "utf8"))
+  assert.equal(warmReport.replay, "B-fresh-process-implementation-warmup")
+  const methods = warmReport.requestEvidence.requestedMethods
+  assert.ok(methods.indexOf("textDocument/implementation") < methods.indexOf("textDocument/references"))
+  assert.ok(!methods.includes("textDocument/completion") && !methods.includes("textDocument/definition"))
+  assert.equal(warmReport.responses[0].validation.pass, true)
+
   const readyOutput = path.join(root, "ready-first.json")
   const readyArgs = [...args]
   readyArgs[readyArgs.indexOf("--out") + 1] = readyOutput

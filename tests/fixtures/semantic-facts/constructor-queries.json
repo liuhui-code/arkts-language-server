@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "queries": [
+    { "id": "class-control", "file": "model.ets", "line": 0, "character": 13, "includeDeclaration": true },
+    { "id": "constructor-false", "file": "model.ets", "line": 1, "character": 3, "includeDeclaration": false },
+    { "id": "constructor-true", "file": "model.ets", "line": 1, "character": 3, "includeDeclaration": true }
+  ]
+}

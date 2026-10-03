@@ -74,3 +74,30 @@ export function logReferenceSeedProofRejection(
     servedGeneration: result.servedGeneration, committedGeneration: status.committedGeneration,
   })
 }
+
+/** Trace-only explanation for a compiler anchor; never changes index admission. */
+export function logReferenceDirectProof(
+  logger: StructuredLogger | undefined, traceId: string | undefined,
+  result: WorkspaceReferenceCandidateResult, generationAccepted: boolean,
+  exportIndexAvailable: boolean, anchorSeedAvailable: boolean,
+): void {
+  if (!traceId) return
+  const reason = !result.supported ? "unsupported"
+    : !generationAccepted ? "generation-rejected"
+      : !result.identityComplete ? "identity-incomplete"
+        : !result.declarationUri || !result.declarationIdentity ? "declaration-metadata-missing"
+          : !exportIndexAvailable ? "export-index-unavailable"
+            : result.names.length > 64 ? "name-limit"
+              : !anchorSeedAvailable ? "export-metadata-missing" : "seed-accepted"
+  logger?.info("references.index.direct-proof", {
+    traceId, reason,
+    supported: result.supported,
+    complete: result.complete,
+    completeness: result.completeness,
+    identityComplete: result.identityComplete,
+    generationAccepted,
+    hasDeclarationIdentity: Boolean(result.declarationIdentity),
+    servedGeneration: result.servedGeneration,
+    candidateNames: result.names.length,
+  })
+}

@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "queries": [
+    { "id": "target-true", "file": "origin.ets", "line": 0, "character": 16, "includeDeclaration": true },
+    { "id": "target-false", "file": "origin.ets", "line": 0, "character": 16, "includeDeclaration": false },
+    { "id": "other-use-true", "file": "consumer.ets", "line": 2, "character": 1, "includeDeclaration": true },
+    { "id": "other-use-false", "file": "consumer.ets", "line": 2, "character": 1, "includeDeclaration": false }
+  ]
+}

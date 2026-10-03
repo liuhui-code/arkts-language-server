@@ -155,3 +155,21 @@ correctness, P95, 500 ms or the final memory gates.
 Require exact Location equality, a statistically meaningful latency gain,
 peak RSS no more than 10% above per-batch, and the existing post-eviction
 memory gate. Any retention trend reverts to the transient default.
+
+## 2026-10-03: re-export discovery seed, not verifier reuse
+
+The [public RED/GREEN](../tdd/references-reexport-anchor-seed.md) and
+[six-process Settings/API24 A/B](../reports/2026-10-03-settings-reexport-anchor-seed.md)
+identify a named re-export cursor for which the direct index proof is
+`unsupported`. An opt-in, unaliased single-line class-export **seed** avoids
+the separate anchor Program; each final transient batch still resolves the
+original cursor and rejects a wrong target before returning any Locations.
+Three runs per arm preserve the nine exact Locations and show 7.184→4.456 s
+request medians; product RSS peak medians are 617.2→605.6 MB. This small,
+trace-on, one-symbol experiment neither supersedes per-batch Worker ownership
+nor proves the 500 ms, P95, edited-overlay, PSS or release-memory gates.
+`ARKTS_REFERENCES_REEXPORT_ANCHOR_SEED` therefore stays **default off**.
+The follow-up public declaration/edit/cancel transcripts and one Settings
+ten-repeat-plus-unsaved-comment pair preserve exact Locations and transient
+batch proof, including post-edit cache invalidation. They do not change this
+ADR's Worker lifecycle decision or the unpassed release gates.

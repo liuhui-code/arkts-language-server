@@ -61,6 +61,8 @@ export interface ReferenceSearchExecutorOptions {
     dependencyProfile: ReferenceDependencyProfile,
   ) => Promise<ReferenceBatchVerification>
   readonly disposeResidentContext: (rootPath: string) => void
+  readonly validateConstructorExclusion?: (workspace: SemanticWorkspaceView,
+    exclusion: { readonly path: string; readonly token: string }) => boolean
   readonly checkpoint?: () => void
   readonly trace?: (event: string, fields: Readonly<Record<string, TraceField>>) => void
 }
@@ -79,6 +81,7 @@ export class ReferenceSearchExecutor {
     candidateAnchorPath?: string,
     candidateSupportPaths?: readonly string[],
     semanticGraph?: HarmonySemanticGraph,
+    allowConstructorExclusion = true,
   ): Promise<SemanticReferenceQueryResult> {
     const sessionStarted = performance.now()
     const plan = planConservativeReferenceBatches(
@@ -121,7 +124,11 @@ export class ReferenceSearchExecutor {
     })
     this.options.disposeResidentContext(rootPath)
     const collected: SemanticDefinitionCandidate[] = []
-    for (const batch of plan.batches) {
+    const consumedExclusions = new Map<string, { readonly path: string; readonly token: string }>()
+    let batches = plan.batches
+    let rootsReplanned = false
+    for (let batchCursor = 0; batchCursor < batches.length; batchCursor += 1) {
+      const batch = batches[batchCursor]!
       const started = performance.now()
       const rootPaths = dependencyProfile === "identity" && identitySupportPaths
         ? uniquePaths([...batch.rootPaths, ...identitySupportPaths])
@@ -134,7 +141,7 @@ export class ReferenceSearchExecutor {
         referenceSession,
         elapsedMs: elapsedMs(),
         batchIndex: batch.index,
-        batchCount: plan.batches.length,
+        batchCount: batches.length,
         batchRootFiles: rootPaths.length,
         admittedProjectFiles: admittedProjectPaths?.length ?? plan.membershipFiles,
         rssBytes: batchMemory?.rss,
@@ -170,7 +177,7 @@ export class ReferenceSearchExecutor {
           // immutable request snapshot, not the failed Program or its symbols.
           const { expectedReferenceAnchor: _rejectedAnchor, ...originalPosition } = position
           return this.execute(workspace, originalPosition, includeDeclaration,
-            undefined, false, undefined, undefined, semanticGraph)
+            undefined, false, undefined, undefined, semanticGraph, allowConstructorExclusion)
         }
         if (verification.result.status === "complete") break
         const expansion = dependencyProfile === "closure"
@@ -212,7 +219,8 @@ export class ReferenceSearchExecutor {
             reason: verification.result.reason,
             failedBatchIndex: batch.index,
           })
-          return this.execute(workspace, position, includeDeclaration, candidatePaths)
+          return this.execute(workspace, position, includeDeclaration, candidatePaths,
+            false, undefined, undefined, undefined, allowConstructorExclusion)
         }
         return verification.result
       }
@@ -224,7 +232,7 @@ export class ReferenceSearchExecutor {
         elapsedMs: elapsedMs(),
         verifierIsolation: "transient-worker",
         batchIndex: batch.index,
-        batchCount: plan.batches.length,
+        batchCount: batches.length,
         batchRootFiles: rootPaths.length,
         batchCandidateRoots: batch.candidateRoots,
         batchSemanticUnits: batch.semanticUnits,
@@ -244,18 +252,61 @@ export class ReferenceSearchExecutor {
         durationMs: Math.round((performance.now() - started) * 100) / 100,
       })
       this.options.checkpoint?.()
+      const exclusions = allowConstructorExclusion && result.constructorTarget
+        ? result.constructorExcludedSources?.filter(exclusion => {
+            this.options.checkpoint?.()
+            return this.options.validateConstructorExclusion?.(workspace, exclusion) === true
+          }) ?? [] : []
+      const excludedPaths = new Set(exclusions.map(exclusion => path.resolve(exclusion.path)))
       if (dependencyProfile === "closure" && coversWholeSearchScope(
-        result.searchedProjectPaths, workspace, position.path,
+        result.searchedProjectPaths, workspace, position.path, excludedPaths,
       )) {
-        this.options.trace?.("references.search-scope.complete", {
+        for (const exclusion of exclusions) consumedExclusions.set(exclusion.path, exclusion)
+        this.options.checkpoint?.()
+        this.options.trace?.(exclusions.length ? "references.constructor-scope.complete" : "references.search-scope.complete", {
           referenceSession, batchIndex: batch.index, elapsedMs: elapsedMs(),
           completedBatches: batch.index + 1,
-          skippedBatches: plan.batches.length - batch.index - 1,
+          skippedBatches: batches.length - batch.index - 1,
           membershipFiles: plan.membershipFiles,
+          ...(exclusions.length ? { excludedFiles: exclusions.length } : {}),
         })
         break
       }
+      const searched = new Set(result.searchedProjectPaths?.map(filePath => path.resolve(filePath)))
+      if (!rootsReplanned && dependencyProfile === "closure" && plan.candidateMode === "conservative"
+        && exclusions.length > 0 && batch.rootPaths.every(filePath => searched.has(path.resolve(filePath)))) {
+        const pinned = new Set([path.resolve(workspace.state.path), ...workspace.documents
+          .filter(document => document.overlay).map(document => path.resolve(document.path))])
+        const remaining = uniquePaths(batches.slice(batchCursor + 1).flatMap(next => next.rootPaths))
+          .filter(filePath => !pinned.has(filePath))
+        const removed = exclusions.filter(exclusion => remaining.includes(path.resolve(exclusion.path)))
+        if (removed.length > 0) {
+          const remainingPlan = planConservativeReferenceBatches(workspace, this.options.batchRootLimit,
+            remaining.filter(filePath => !excludedPaths.has(filePath)), semanticGraph)!
+          const oldBatchCount = batches.length
+          batches = [...batches.slice(0, batchCursor + 1), ...remainingPlan.batches
+            .map((next, index) => ({ ...next, index: batchCursor + 1 + index }))]
+          rootsReplanned = true
+          for (const exclusion of removed) consumedExclusions.set(exclusion.path, exclusion)
+          this.options.trace?.("references.constructor-roots.replanned", {
+            referenceSession, batchIndex: batch.index, elapsedMs: elapsedMs(),
+            excludedFiles: removed.length, originalBatches: oldBatchCount,
+            batchCount: batches.length, membershipFiles: plan.membershipFiles,
+          })
+        }
+      }
     }
+    for (const exclusion of consumedExclusions.values()) {
+      this.options.checkpoint?.()
+      if (this.options.validateConstructorExclusion?.(workspace, exclusion) !== true) {
+        this.options.trace?.("references.constructor-roots.fallback", {
+          referenceSession, reason: "source-changed", strategy: "complete-scope",
+        })
+        return this.execute(workspace, position, includeDeclaration, candidatePaths,
+          candidateIdentityComplete, candidateAnchorPath, candidateSupportPaths, semanticGraph, false)
+      }
+    }
+    this.options.checkpoint?.()
     const mergeStarted = performance.now()
     const references = uniqueSortedReferences(collected)
     this.options.trace?.("references.merge.complete", {
@@ -273,11 +324,13 @@ function coversWholeSearchScope(
   searchedPaths: readonly string[] | undefined,
   workspace: SemanticWorkspaceView,
   queryPath: string,
+  excludedPaths?: ReadonlySet<string>,
 ): boolean {
   if (!searchedPaths || workspace.projectMembership?.status !== "complete") return false
   const searched = new Set(searchedPaths.map(filePath => path.resolve(filePath)))
   return searched.has(path.resolve(queryPath))
-    && workspace.projectMembership.paths.every(filePath => searched.has(path.resolve(filePath)))
+    && workspace.projectMembership.paths.every(filePath => searched.has(path.resolve(filePath))
+      || excludedPaths?.has(path.resolve(filePath)))
     && workspace.documents.filter(document => document.overlay)
       .every(document => searched.has(path.resolve(document.path)))
 }

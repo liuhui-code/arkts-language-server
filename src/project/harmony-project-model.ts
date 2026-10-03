@@ -1,10 +1,10 @@
 import fs from "node:fs"
 import path from "node:path"
 
-import JSON5 from "json5"
 import { buildSemanticGraph } from "./harmony-semantic-graph.js"
+import { readHarmonyProfile } from "./harmony-profile-reader.js"
+import { LoadedConfigurationWitness } from "./loaded-configuration-witness.js"
 
-const MAX_PROFILE_BYTES = 64 * 1024
 const MAX_MODULES = 256
 
 export interface HarmonyProjectScope {
@@ -62,10 +62,21 @@ export class HarmonyProjectModel {
   private readonly selection: ProjectSelection | undefined
   private snapshot?: ProjectSnapshot
   private graph?: HarmonySemanticGraph
+  private configurationWitness?: LoadedConfigurationWitness
 
   constructor(rootPath: string, selection?: unknown) {
     this.rootPath = path.resolve(rootPath)
     this.selection = parseSelection(selection)
+  }
+
+  enableConfigurationWitness(): void {
+    if (this.configurationWitness) return
+    this.configurationWitness = new LoadedConfigurationWitness()
+    if (this.snapshot || this.graph) this.configurationWitness.markUnprovable()
+  }
+
+  configurationFreshness(checkpoint: () => void): (() => boolean) | undefined {
+    return this.configurationWitness?.freshness(checkpoint)
   }
 
   scopeFor(sourcePath: string): HarmonyProjectScope {
@@ -108,13 +119,14 @@ export class HarmonyProjectModel {
       this.rootPath,
       this.selection!.product,
       snapshot.modules,
-      readProfile,
+      filePath => readHarmonyProfile(filePath, this.configurationWitness),
     )
   }
 
   invalidate(): void {
     this.snapshot = undefined
     this.graph = undefined
+    this.configurationWitness?.reset()
   }
 
   private load(): ProjectSnapshot {
@@ -123,7 +135,7 @@ export class HarmonyProjectModel {
     })
     const selection = this.selection
     if (!selection) return invalid("invalid-project-selection")
-    const profile = readProfile(path.join(this.rootPath, "build-profile.json5"))
+    const profile = readHarmonyProfile(path.join(this.rootPath, "build-profile.json5"), this.configurationWitness)
     if (profile === undefined) {
       if (selection.product !== "default" || selection.targets.size > 0) {
         return invalid("selected-project-profile-unavailable")
@@ -134,7 +146,7 @@ export class HarmonyProjectModel {
           status: "unconfigured",
           sourceRoots: Object.freeze([this.rootPath]),
           resourceRoots: Object.freeze([this.rootPath]),
-        }, [physicalPath(this.rootPath) ?? this.rootPath]),
+        }, [physicalPath(this.rootPath, this.configurationWitness) ?? this.rootPath]),
       })
     }
     if (!profile) return invalid("invalid-project-profile")
@@ -150,7 +162,7 @@ export class HarmonyProjectModel {
     if (!Array.isArray(profile.modules) || profile.modules.length > MAX_MODULES) {
       return invalid("invalid-module-list")
     }
-    const physicalRoot = physicalPath(this.rootPath)
+    const physicalRoot = physicalPath(this.rootPath, this.configurationWitness)
     if (!physicalRoot) return invalid("project-root-unavailable")
     const names = new Set<string>()
     const roots = new Set<string>()
@@ -162,12 +174,12 @@ export class HarmonyProjectModel {
         return invalid("invalid-module-declaration")
       }
       const moduleRoot = path.resolve(this.rootPath, module.srcPath)
-      const physicalModule = physicalPath(moduleRoot)
+      const physicalModule = physicalPath(moduleRoot, this.configurationWitness)
       if (!inside(this.rootPath, moduleRoot) || !physicalModule || !inside(physicalRoot, physicalModule)
         || roots.has(physicalModule)) return invalid("invalid-module-root")
       names.add(module.name)
       roots.add(physicalModule)
-      const scope = moduleScope(module, moduleRoot, physicalModule, selection)
+      const scope = moduleScope(module, moduleRoot, physicalModule, selection, this.configurationWitness)
       modules.push(Object.freeze({
         name: module.name,
         rootPath: moduleRoot,
@@ -189,8 +201,9 @@ function moduleScope(
   moduleRoot: string,
   physicalModule: string,
   selection: ProjectSelection,
+  witness?: LoadedConfigurationWitness,
 ): HarmonyProjectScope {
-  const profile = readProfile(path.join(moduleRoot, "build-profile.json5"))
+  const profile = readHarmonyProfile(path.join(moduleRoot, "build-profile.json5"), witness)
   if (!profile || (profile.targets !== undefined && !Array.isArray(profile.targets))) {
     return unavailable("module-profile-unavailable")
   }
@@ -235,13 +248,13 @@ function moduleScope(
         return unavailable("invalid-source-roots")
       }
       const sourceParent = path.join(moduleRoot, "src")
-      const physicalSourceParent = physicalPath(sourceParent)
+      const physicalSourceParent = physicalPath(sourceParent, witness)
       for (const directory of source.sourceRoots) {
         if (typeof directory !== "string" || !directory || path.isAbsolute(directory)) {
           return unavailable("invalid-source-root")
         }
         const root = path.resolve(moduleRoot, directory)
-        const physical = physicalPath(root)
+        const physical = physicalPath(root, witness)
         if (path.dirname(root) !== sourceParent || !physical || !physicalSourceParent
           || path.dirname(physical) !== physicalSourceParent || !inside(physicalModule, physical)) {
           return unavailable("source-root-not-main-sibling")
@@ -270,7 +283,7 @@ function moduleScope(
     }
   }
   sourceRoots.push(mainSourceRoot)
-  physicalSourceRoots.push(physicalPath(mainSourceRoot) ?? path.resolve(mainSourceRoot))
+  physicalSourceRoots.push(physicalPath(mainSourceRoot, witness) ?? path.resolve(mainSourceRoot))
   let resourceRoots = [path.join(moduleRoot, "src", "main", "resources")]
   if (target.resource !== undefined) {
     const resource = object(target.resource)
@@ -284,7 +297,7 @@ function moduleScope(
           return unavailable("invalid-resource-directory")
         }
         const root = path.resolve(moduleRoot, directory)
-        const physical = physicalPath(root)
+        const physical = physicalPath(root, witness)
         if (!inside(moduleRoot, root) || !physical || !inside(physicalModule, physical)) {
           return unavailable("resource-directory-outside-module")
         }
@@ -346,34 +359,13 @@ function projectScope(
   return frozen
 }
 
-function readProfile(filePath: string): Record<string, unknown> | null | undefined {
-  let descriptor: number | undefined
-  try {
-    descriptor = fs.openSync(filePath, fs.constants.O_RDONLY | fs.constants.O_NONBLOCK)
-    const stat = fs.fstatSync(descriptor)
-    if (!stat.isFile() || stat.size > MAX_PROFILE_BYTES) return null
-    const buffer = Buffer.alloc(MAX_PROFILE_BYTES + 1)
-    let length = 0
-    while (length <= MAX_PROFILE_BYTES) {
-      const read = fs.readSync(descriptor, buffer, length, buffer.length - length, null)
-      if (read === 0) break
-      length += read
-    }
-    if (length > MAX_PROFILE_BYTES) return null
-    return object(JSON5.parse(buffer.toString("utf8", 0, length))) ?? null
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code === "ENOENT" ? undefined : null
-  } finally {
-    if (descriptor !== undefined) fs.closeSync(descriptor)
-  }
-}
-
 function object(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown> : undefined
 }
 
-function physicalPath(filePath: string): string | undefined {
+function physicalPath(filePath: string, witness?: LoadedConfigurationWitness): string | undefined {
+  if (witness) return witness.observe(filePath, () => physicalPath(filePath))
   const resolved = path.resolve(filePath)
   try { return fs.realpathSync.native(resolved) }
   catch {

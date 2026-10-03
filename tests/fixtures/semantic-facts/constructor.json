@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "files": {
+    "model.ets": "export class Base {\n  constructor() {}\n}\nexport class Derived extends Base {}\nnew Base()\nnew Derived()\n"
+  }
+}

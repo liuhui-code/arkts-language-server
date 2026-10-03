@@ -3,8 +3,28 @@ import { pathToFileURL } from "node:url"
 import type { SemanticDefinition, VersionedSemanticResult } from "../../contracts/semantic-engine.js"
 import type { SemanticDocumentPosition } from "../../core/protocol.js"
 import type { SemanticTypeEngineRegistry } from "../../core/types/type-engine.js"
-import type { SemanticDocumentStore } from "../../core/workspace/document-store.js"
+import type { SemanticDocumentStore, SemanticPrepareObserver, SemanticWorkspaceView } from "../../core/workspace/document-store.js"
 import type { StructuredLogger } from "../../observability/logger.js"
+
+export function prepareReferenceSearchWorkspace(
+  position: SemanticDocumentPosition,
+  documents: SemanticDocumentStore,
+  trace?: StructuredLogger,
+): SemanticWorkspaceView {
+  const started = performance.now()
+  const observer: SemanticPrepareObserver | undefined = trace
+    ? (phase, durationMs, details) => trace.info("references.search.document-prepare.phase", {
+      phase, durationMs, ...details,
+    }) : undefined
+  const workspace = documents.prepare(position, true, observer)
+  try {
+    trace?.info("references.search.document-prepare.complete", {
+      durationMs: performance.now() - started,
+      preparedDocuments: workspace.documents.length,
+    })
+  } catch { /* Tracing must not change references. */ }
+  return workspace
+}
 
 /** Preserve complete membership preparation while measuring its own wall time. */
 export async function prepareReferenceAnchor(

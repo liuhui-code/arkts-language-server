@@ -1,9 +1,11 @@
 import fs from "node:fs"
+import type { LoadedConfigurationWitness } from "../../project/loaded-configuration-witness.js"
 
 const MAX_CONFIGURATION_BYTES = 64 * 1024
 
 /** Bound allocations even if a configuration file grows after fstat. */
-export function readSdkConfiguration(filePath: string): string {
+export function readSdkConfiguration(filePath: string, witness?: LoadedConfigurationWitness): string {
+  if (witness) return witness.observe(filePath, () => readSdkConfiguration(filePath))
   const descriptor = fs.openSync(filePath, fs.constants.O_RDONLY | fs.constants.O_NONBLOCK)
   try {
     const stat = fs.fstatSync(descriptor)

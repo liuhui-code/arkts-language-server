@@ -11,6 +11,7 @@ let workspaceIdentity = pathToFileURL(workspaceRoot).href
 let generation = 0
 let committedGeneration = 0
 let catalogTimer
+const declarationLines = new Map()
 
 const input = readline.createInterface({ input: process.stdin })
 input.on("line", (line) => {
@@ -28,6 +29,10 @@ input.on("line", (line) => {
     }
     case "catalog/start": {
       generation += 1
+      if (process.env.ARKTS_INDEX_TEST_SCENARIO === "reference-generation-race") {
+        const text = fs.readFileSync(path.join(workspaceRoot, "Target.ets"), "utf8")
+        declarationLines.set(generation, text.slice(0, text.indexOf("export class Thing")).split("\n").length - 1)
+      }
       respond(request.id, {
         accepted: true,
         generation,
@@ -35,6 +40,19 @@ input.on("line", (line) => {
       })
       progress(status("discovering", "warming", "stale", generation))
       if (process.env.ARKTS_INDEX_TEST_SCENARIO === "stalled-catalog") break
+      if (process.env.ARKTS_INDEX_TEST_SCENARIO === "reference-generation-race"
+        && generation > 1) {
+        progress(status("activating", "ready", "ready", generation))
+        const release = `${process.env.ARKTS_INDEX_TEST_AUDIT}.release-${generation}`
+        catalogTimer = setInterval(() => {
+          if (!fs.existsSync(release)) return
+          clearInterval(catalogTimer)
+          committedGeneration = generation
+          progress({ ...status("ready", "ready", "ready", null),
+            discovered: 3, indexed: 3, totalFiles: 3 })
+        }, 10)
+        break
+      }
       if (process.env.ARKTS_INDEX_TEST_SCENARIO === "activation-heartbeats") {
         let heartbeats = 0
         catalogTimer = setInterval(() => {
@@ -119,6 +137,21 @@ input.on("line", (line) => {
     }
     case "references/candidates": {
       const packageResolutionScenario = process.env.ARKTS_INDEX_TEST_SCENARIO
+      if (packageResolutionScenario === "reference-generation-race") {
+        const uri = file => pathToFileURL(path.join(workspaceRoot, file)).href
+        const files = ["Target.ets", "Query.ets", "Use.ets"]
+        const supported = request.params.declarationUri === uri("Target.ets")
+          && request.params.declarationPosition.line === declarationLines.get(committedGeneration)
+        respond(request.id, {
+          supported, complete: supported, identityComplete: supported,
+          identityUris: supported ? files.map(uri) : [], narrowedUris: [],
+          declarationUri: supported ? uri("Target.ets") : null,
+          declarationIdentity: supported ? "race-target-thing" : null,
+          names: supported ? ["Thing"] : [], uris: supported ? files.map(uri) : [],
+          bindings: [], servedGeneration: committedGeneration, completeness: "ready",
+        })
+        break
+      }
       if (packageResolutionScenario === "reference-disjoint-reexport"
         || packageResolutionScenario === "reference-disjoint-reexport-broken-chain") {
         const uri = file => pathToFileURL(path.join(workspaceRoot, file)).href
@@ -398,7 +431,9 @@ input.on("line", (line) => {
       break
     }
     case "status":
-      respond(request.id, status("ready", "ready", "ready", null))
+      respond(request.id, status("ready", "ready", "ready",
+        process.env.ARKTS_INDEX_TEST_SCENARIO === "reference-generation-race"
+          && generation > committedGeneration ? generation : null))
       break
     case "shutdown":
       clearTimeout(catalogTimer)

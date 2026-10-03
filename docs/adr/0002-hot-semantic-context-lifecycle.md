@@ -2,6 +2,51 @@
 
 Status: **Feature-gated retention and L3 hysteresis implemented; graduation evidence incomplete**.
 
+## R-09 default-off implementation (2026-09-29)
+
+The subsequent [negative-lookup recovery](../tdd/references-constructor-empty-scope.md)
+distinguishes two identities: later freshness of an exact absent path retains
+the existing parent's stable entity/link and rewalks the full missing chain,
+not unrelated sibling timestamps; actual-load before/after keeps full stamps.
+Existing files and directly enumerated directories retain full freshness stamps.
+This avoids unnecessary miss/rebuild without certifying a missing→read→missing
+window or re-stamping an old cache. The public sibling cost RED0→GREEN2 hits
+preserves exact Locations and zero transient batches; configuration mutation
+guards remain. The 31-case combined focus and fresh complete **1126/1126
+whole-fast** pass at unchanged deadlines. The first **1124/1125, 1 FAIL** gate
+is retained as history; its failed control is not hidden by a singleton rerun.
+See the recovery record for the final frozen artifacts and full-gate log digest.
+
+`ARKTS_REFERENCES_RESIDENT_FAST_PATH=1` is a separate, default-off experiment.
+It consumes an already built resident compiler Program; it must not build a
+Program, warm a scope, or turn a partial interactive context into global proof.
+Admission requires unchanged owner/reset/content/overlay identities, complete
+original membership plus every open overlay and SDK root, the same actual
+Program before and after compiler verification, a unique definition, and no
+L2/L3 pressure. The original cursor is queried; an indexed class seed is not a
+substitute for constructor semantics. Leases pin the existing context.
+
+Source text is checked against what the Program actually loaded. Configuration
+freshness must similarly be bound to actual reads/lookups, including missing
+manifests and installation links; restamping current metadata cannot certify an
+old resolver cache. Package-entry, absent-owner, installation-link and implicit
+type-directive configuration REDs are now repaired; the full 17-case public
+stdio coverage is GREEN, including SDK metadata/loader/selection and source/
+overlay mutations. Unknown evidence is a miss, not approximate references.
+Misses preserve the existing complete pipeline.
+
+The retention default remains `dispose`, alongside `indexed-batched + closure
++ full SDK`. There is no persistent verifier, second compiler, budget increase,
+diagnostic suppression or candidate exclusion. The
+[public TDD record](../tdd/references-resident-fast-path.md) records the
+17-case public coverage and fresh **1116/1116 whole-fast PASS**. The fixed
+[six-run Settings A/B](../reports/2026-09-29-settings-resident-fast-path.md)
+returns 267 exact Locations each, but all three enabled requests miss at L3,
+after resident eviction, and still run 24 batches. No build is saved there.
+This is a failed real-workload admission/graduation gate, not a reason to raise
+the budget or relax coverage. Keep the flag off; this implementation alone
+does not graduate R-03/R-09 or prove cold navigation within 500 ms.
+
 ## Context
 
 The current reference executor calls `disposeResidentContext(rootPath)` before

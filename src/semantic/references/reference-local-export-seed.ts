@@ -39,3 +39,37 @@ export async function localExportAnchorSeed(
   if (candidates.length !== 1) return undefined
   return { ...candidates[0], servedGeneration: result.servedGeneration }
 }
+
+/** A narrow discovery seed; the verifier must still resolve the original cursor. */
+export async function unaliasedReexportAnchorSeed(
+  index: WorkspaceExportIndexPort | undefined,
+  query: SemanticReferencesQuery,
+) {
+  if (!index) return undefined
+  const line = query.document.text.split(/\r\n|\r|\n/)[query.position.line]
+  if (!line) return undefined
+  const match = /^\s*export\s*\{([^{}]*)\}\s*from\s*(['"])(\.[^'"]+)\2\s*;?\s*$/u.exec(line)
+  if (!match) return undefined
+  const bindingsStart = line.indexOf("{") + 1
+  let offset = 0
+  let name: string | undefined
+  for (const part of match[1].split(",")) {
+    const trimmed = part.trim()
+    const start = bindingsStart + offset + part.indexOf(trimmed)
+    if (/^[$_\p{ID_Start}][$_\p{ID_Continue}]*$/u.test(trimmed)
+      && start <= query.position.character
+      && query.position.character < start + trimmed.length) {
+      name = trimmed
+      break
+    }
+    offset += part.length + 1
+  }
+  if (!name) return undefined
+  const result = await index.searchExports(query.document.workspaceId, name, 128, query.signal)
+  if (result.completeness !== "ready" || result.items.length >= 128) return undefined
+  const candidates = result.items.filter(item => item.exportedName === name
+    && item.uri !== query.document.uri && item.kind === "class"
+    && item.declarationIdentity && !item.importSpecifier)
+  if (candidates.length !== 1) return undefined
+  return { ...candidates[0], servedGeneration: result.servedGeneration }
+}

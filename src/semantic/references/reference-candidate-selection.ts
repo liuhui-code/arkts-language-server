@@ -16,9 +16,9 @@ import {
   prepareReferenceIndexSearch,
   type ReferenceIndexFreshness,
 } from "./reference-index-freshness.js"
-import { logReferenceCandidateFallback, logReferenceSeedProofRejection, traceReferenceCandidatePhase } from "./reference-index-telemetry.js"
+import { logReferenceCandidateFallback, logReferenceDirectProof, logReferenceSeedProofRejection, traceReferenceCandidatePhase } from "./reference-index-telemetry.js"
 import { waitForInitialReferenceCatalog } from "./reference-initial-catalog.js"
-import { indexedReferenceAnchorSeed, localExportAnchorSeed } from "./reference-local-export-seed.js"
+import { indexedReferenceAnchorSeed, localExportAnchorSeed, unaliasedReexportAnchorSeed } from "./reference-local-export-seed.js"
 import { referenceSearchRuntimeConfig } from "./reference-runtime.js"
 import { resolveReferenceCandidateSources } from "./reference-source-resolution.js"
 import type { ReferenceSourceOverlaySnapshot } from "./reference-input-snapshot.js"
@@ -96,6 +96,8 @@ export async function selectReferenceCandidates(
     context.assertCurrent()
     const directAnchor = directAccepted && allowLocalSeed
       ? await indexedReferenceAnchorSeed(context.exportIndex, query, direct) : undefined
+    logReferenceDirectProof(context.logger, traceId, direct, directAccepted,
+      context.exportIndex !== undefined, directAnchor !== undefined)
     if (directAnchor) {
       if (!await context.freshness.accepts(
         query.document.workspaceId, direct, context.index,
@@ -144,8 +146,11 @@ export async function selectReferenceCandidates(
       })
       return undefined
     }
-    const seed = allowLocalSeed && context.environment.ARKTS_REFERENCES_LOCAL_EXPORT_ANCHOR === "1"
-      ? await localExportAnchorSeed(context.exportIndex, query) : undefined
+    const reexportSeed = allowLocalSeed && context.environment.ARKTS_REFERENCES_REEXPORT_ANCHOR_SEED === "1"
+      ? await unaliasedReexportAnchorSeed(context.exportIndex, query) : undefined
+    const seed = reexportSeed ?? (allowLocalSeed
+      && context.environment.ARKTS_REFERENCES_LOCAL_EXPORT_ANCHOR === "1"
+      ? await localExportAnchorSeed(context.exportIndex, query) : undefined)
     const definition = seed ? { value: [seed] } : await context.define(query, traceId)
     if (definition.value.length !== 1) {
       context.logger?.info("references.index.fallback", {
@@ -204,7 +209,7 @@ export async function selectReferenceCandidates(
       servedGeneration: result.servedGeneration, anchorWorkerStarts: 0,
       anchorProgramBuilds: 0, validation: "pending-final-compiler-batches" })
     context.logger?.info("references.index.accepted", {
-      anchorMode: seed ? "indexed-local-export-seed" : identityComplete
+      anchorMode: reexportSeed ? "indexed-reexport-seed" : seed ? "indexed-local-export-seed" : identityComplete
         ? "compiler-definition-identity"
         : result.narrowedUris?.length
           ? "compiler-definition-conservative"

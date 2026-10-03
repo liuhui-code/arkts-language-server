@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "benchmarkId": "settings-homeinitdata-s05-scope-restoration-guarded-api24",
+  "benchmarkScope": "Diagnostic-only guarded S05 global-to-interactive scope restoration. Same frozen Settings checkout, API24 SDK, oracle and 100-op schedule; not a release gate.",
+  "repo": "openharmony/applications_settings",
+  "repoSha": "ecc550dfaed880e04e38a2477eb7235cd50475b9",
+  "projectDeclaredSdk": {
+    "compileSdkVersion": 23,
+    "targetSdkVersion": 20,
+    "compatibleSdkVersion": 20
+  },
+  "serverRevision": "911ae43c274175614559b63f0311504747d8393d",
+  "serverDirty": true,
+  "nodeVersion": "v26.3.0",
+  "sdk": {
+    "apiVersion": "24",
+    "version": "6.1.1.125",
+    "declarationDigest": "8098b8abbc6b06fce0e7322d6f8f82a5bbce41e847dbd39e9a98811a33d4c6e4"
+  },
+  "query": {
+    "file": "product/phone/src/main/ets/Setting/Home/controller/HomePageMenuManager.ets",
+    "symbol": "HomeInitData",
+    "line": 40,
+    "character": 37,
+    "includeDeclaration": false,
+    "sourceSha256": "72550ee88705a703ef3b7b1186636a25a0727432e15f864f842982e14951589d",
+    "expectedDiagnostics": [
+      {
+        "range": {
+          "start": {
+            "line": 60,
+            "character": 70
+          },
+          "end": {
+            "line": 60,
+            "character": 85
+          }
+        },
+        "severity": 1,
+        "code": 2339,
+        "source": "arkts",
+        "message": "Property 'isMainOsAccount' does not exist on type 'AccountManager'."
+      }
+    ]
+  },
+  "secondaryQuery": {
+    "file": "common/index.ets",
+    "symbol": "HomeInitData",
+    "line": 284,
+    "character": 23,
+    "sourceSha256": "7b651428439aee2c1fba43a112c88c95b7b69e2a8223f43c35dfc108c5952ade",
+    "expectedDefinitionBefore": {
+      "line": 16,
+      "character": 13
+    },
+    "expectedDefinitionAfter": {
+      "line": 17,
+      "character": 13
+    },
+    "expectedDiagnostics": [],
+    "oracleVerification": "Independent public LSP control on the frozen Settings/API24 checkout: definition resolves to HomeInitData.ets 16:13-16:25 and common/index.ets v1 diagnostics are empty."
+  },
+  "watchedEdit": {
+    "file": "common/src/main/ets/sendable/HomeInitData.ets",
+    "sourceSha256": "8159f9be58985d71e76cb7507fb1bf421a47cacb6aaf99cbddb9e6efc703774f",
+    "kind": "toggle-prefix-one-comment-line",
+    "expectedDefinitionBefore": {
+      "line": 16,
+      "character": 13
+    },
+    "expectedDefinitionAfter": {
+      "line": 17,
+      "character": 13
+    }
+  },
+  "schedule": {
+    "seed": 20260930,
+    "minimumOperations": 100,
+    "referenceEvery": 10,
+    "referenceOffset": 1,
+    "finalReference": true,
+    "moduleSwitchEvery": 10,
+    "moduleSwitchOffset": 1,
+    "finalModuleSwitch": true,
+    "pressureAfterOperations": [
+      50
+    ]
+  },
+  "oracle": {
+    "verified": true,
+    "expectedLocationCount": 9,
+    "source": "docs/reports/2026-09-29-semantic-ready-s01-baseline.md",
+    "sha256": "58908aa4ee2554864cd4467ccf7a51b3aa8e6dd570fc0f66decc6500bf7f937b"
+  },
+  "serverSha256": "b7d3404a8a6f1ee05565a39370757a2445536c6e05a8f74bf9b7ec9ec2364977",
+  "semanticWorkerSha256": "abc094157433ffe1be0206f77eebd565752021b24e2c7415a28b60201eb721b3",
+  "referenceVerifierWorkerSha256": "9db6259509197e46306e05ef3bf111eecfd1060393014f9a2b2e0c5bf47ab3b2",
+  "standardLibrarySha256": "ea78beea2aa84f93fe66645465c37eb916028b79cd9fe898d469bdf54efbf97d",
+  "sidecarSha256": "18f871605571c246ce5667f5aa65c9f4b3b851235c87ae83cf794fbb85adf6b1",
+  "sourceManifestSha256": "309b92eb6fdb3f48872d7ba80dfe381adb0ec546d722ad9c53d00f1ee6865175"
+}

@@ -18,6 +18,19 @@ defect fix, refactor, build/CI change, and developer-tooling change.
 - stdout belongs exclusively to LSP/internal protocols. Operational logs go to
   stderr.
 
+## Source file size
+
+- Handwritten source, test, and script files must stay at or below 500 physical
+  lines (including blank lines and comments). Generated and vendored files are
+  excluded.
+- Existing files above 500 lines are migration debt, not permission to add more
+  large files. When changing one, keep its line count from growing and extract
+  a cohesive responsibility toward the limit in the same change. Preserve
+  behavior with a characterization test before refactoring.
+- Do not split code mechanically just to satisfy the count; keep module
+  boundaries and ownership clear. Record any remaining over-limit file in the
+  change summary so the incremental migration stays visible.
+
 ## Agent skills
 
 Before using repository-planning, triage, diagnosis, TDD, or architecture

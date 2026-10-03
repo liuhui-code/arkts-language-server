@@ -26,11 +26,22 @@ export function parseArguments(args) {
     index += 1
   }
   if (flags.has("--help")) return { help: true }
+  if (values.has("--prepared-suite")) {
+    if ([...values.keys()].some(name => !["--prepared-suite", "--out"].includes(name))
+      || flags.size > 0) throw new Error("--prepared-suite is mutually exclusive with single-query options")
+    if (!values.has("--out")) throw new Error("--out is required")
+    return { preparedSuite: path.resolve(values.get("--prepared-suite")), out: path.resolve(values.get("--out")) }
+  }
   for (const required of ["--workspace", "--sdk", "--file", "--symbol", "--line", "--character", "--oracle", "--out"]) {
     if (!values.has(required)) throw new Error(`${required} is required`)
   }
   const mode = values.get("--mode") ?? "A"
   if (!new Set(["A", "B", "C"]).has(mode)) throw new Error("--mode must be A, B, or C")
+  const warmup = values.get("--warmup") ?? "completion-definition"
+  if (!new Set(["completion-definition", "implementation"]).has(warmup)) {
+    throw new Error("--warmup must be completion-definition or implementation")
+  }
+  if (values.has("--warmup") && mode !== "B") throw new Error("--warmup requires --mode B")
   const catalogState = values.get("--catalog-state") ?? "ready"
   if (!new Set(["ready", "immediate"]).has(catalogState)) {
     throw new Error("--catalog-state must be ready or immediate")
@@ -63,6 +74,7 @@ export function parseArguments(args) {
     server: path.resolve(values.get("--server") ?? path.join(projectRoot, "dist", "server.cjs")),
     sidecar: path.resolve(values.get("--sidecar") ?? path.join(projectRoot, "target", "release", "arkts-index-sidecar")),
     mode,
+    warmup,
     catalogState,
     strategy,
     sdkProfile,
@@ -228,9 +240,12 @@ framed stdio, exact Location oracle validation, normal diagnostics, and external
 process-tree RSS sampling.
 
 Options:
+  --prepared-suite <file.json>   pinned multi-target baseline; exclusive with single-query options
   --manifest <file.json>         pin real project, SDK, query, oracle and binaries
   --mode <A|B|C>                 A: references first; B: warm completion and
                                  definition; C: ten references plus unsaved edit
+  --warmup <completion-definition|implementation>
+                                 mode B only; default: completion-definition
   --catalog-state <ready|immediate>
                                  ready: wait for indexing; immediate: request
                                  after initialize without waiting for indexing

@@ -2,7 +2,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
-export function loadOracle(fileName, currentWorkspace) {
+export function loadOracle(fileName, currentWorkspace, overlays = new Map()) {
   const value = JSON.parse(fs.readFileSync(fileName, "utf8"))
   if (value?.schemaVersion === 1 && Array.isArray(value.locations)) {
     const locations = value.locations.map(({ file, range }) => {
@@ -14,7 +14,7 @@ export function loadOracle(fileName, currentWorkspace) {
       if (relative.startsWith("..") || path.isAbsolute(relative)) {
         throw new Error("oracle location escapes workspace")
       }
-      validateRange(fs.readFileSync(target, "utf8"), range)
+      validateRange(overlays.get(pathToFileURL(target).href) ?? fs.readFileSync(target, "utf8"), range)
       return { uri: pathToFileURL(target).href, range }
     })
     return { locations: comparableLocations(locations, currentWorkspace) }
@@ -28,7 +28,7 @@ export function loadOracle(fileName, currentWorkspace) {
   return { locations: comparableLocations(normalizeReferences(locations), oracleWorkspace) }
 }
 
-export function validateLocations(locations, comparable, expected, workspace) {
+export function validateLocations(locations, comparable, expected, workspace, overlays = new Map()) {
   const errors = []
   for (const location of locations) {
     try {
@@ -38,7 +38,7 @@ export function validateLocations(locations, comparable, expected, workspace) {
         errors.push(`reference outside workspace: ${location.uri}`)
         continue
       }
-      validateRange(fs.readFileSync(fileName, "utf8"), location.range)
+      validateRange(overlays.get(location.uri) ?? fs.readFileSync(fileName, "utf8"), location.range)
     } catch (error) {
       errors.push(error.message)
     }

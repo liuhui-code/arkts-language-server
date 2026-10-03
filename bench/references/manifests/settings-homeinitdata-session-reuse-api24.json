@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "benchmarkId": "settings-homeinitdata-s05-session-reuse-regression-api24",
+  "benchmarkScope": "S05 default-off compatible-disk-LS prototype regression control only: same frozen Settings sources, trace-off Mode B, off/experimental flags. This runner does not issue watched disk edits; it cannot establish real disk-reuse savings, P95, 100-operation resource trends or graduation.",
+  "repo": "openharmony/applications_settings",
+  "repoSha": "ecc550dfaed880e04e38a2477eb7235cd50475b9",
+  "projectDeclaredSdk": {
+    "compileSdkVersion": 23,
+    "targetSdkVersion": 20,
+    "compatibleSdkVersion": 20
+  },
+  "serverRevision": "911ae43c274175614559b63f0311504747d8393d",
+  "serverDirty": true,
+  "serverInputSha256": "0792af0d1a600b53d0a557813a74ec1ec5de1aef2fac30640abd78cd22ee761a",
+  "nodeVersion": "v26.3.0",
+  "sdk": {
+    "apiVersion": "24",
+    "version": "6.1.1.125",
+    "declarationDigest": "8098b8abbc6b06fce0e7322d6f8f82a5bbce41e847dbd39e9a98811a33d4c6e4"
+  },
+  "query": {
+    "file": "common/src/main/ets/sendable/HomeInitData.ets",
+    "symbol": "HomeInitData",
+    "line": 16,
+    "character": 13,
+    "includeDeclaration": false,
+    "sourceSha256": "8159f9be58985d71e76cb7507fb1bf421a47cacb6aaf99cbddb9e6efc703774f"
+  },
+  "oracle": {
+    "verified": true,
+    "expectedLocationCount": 9,
+    "source": "docs/reports/2026-09-29-semantic-ready-s01-baseline.md",
+    "sha256": "58908aa4ee2554864cd4467ccf7a51b3aa8e6dd570fc0f66decc6500bf7f937b"
+  },
+  "serverSha256": "b7d3404a8a6f1ee05565a39370757a2445536c6e05a8f74bf9b7ec9ec2364977",
+  "semanticWorkerSha256": "aec33a87239a7e225d30aaf3299c47afdd760f110d3d6b15a89479e0680c0339",
+  "referenceVerifierWorkerSha256": "9db6259509197e46306e05ef3bf111eecfd1060393014f9a2b2e0c5bf47ab3b2",
+  "standardLibrarySha256": "ea78beea2aa84f93fe66645465c37eb916028b79cd9fe898d469bdf54efbf97d",
+  "sidecarSha256": "18f871605571c246ce5667f5aa65c9f4b3b851235c87ae83cf794fbb85adf6b1"
+}
