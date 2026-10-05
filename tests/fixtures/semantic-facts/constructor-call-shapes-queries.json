@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "queries": [
+    { "id": "base-false", "file": "shapes.ets", "line": 1, "character": 3, "includeDeclaration": false },
+    { "id": "base-true", "file": "shapes.ets", "line": 1, "character": 3, "includeDeclaration": true },
+    { "id": "named-false", "file": "shapes.ets", "line": 8, "character": 5, "includeDeclaration": false },
+    { "id": "named-true", "file": "shapes.ets", "line": 8, "character": 5, "includeDeclaration": true }
+  ]
+}

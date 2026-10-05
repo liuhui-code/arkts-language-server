@@ -4,10 +4,10 @@ import path from "node:path"
 import ts from "typescript"
 
 import { createSpikeProject } from "../ohos-typescript-spike/backend-host.mjs"
-import { digest, inputIdentity, normalizeLocations, ordinal, queryOffset, readSources } from "./input.mjs"
+import { digest, inputIdentity, normalizeLocations, ordinal, queryOffset, readOracleSources, readSources } from "./input.mjs"
 
-// Experimental binding projection, NOT an accepted complete references algorithm.
-export function extract(inputPath) {
+// Experimental projections, NOT accepted complete references algorithms.
+export function extract(inputPath, hypothesis = "public-checker-binding-projection-v1") {
   const input = readSources(inputPath)
   const started = process.hrtime.bigint()
   const cpu = process.cpuUsage()
@@ -20,11 +20,62 @@ export function extract(inputPath) {
     const symbols = new Map()
     const selections = []
     const occurrences = []
+    const unsupportedSelections = []
+    const unsupportedConstructorKeys = new Set()
     let symbolQueries = 0
     let aliasQueries = 0
+    let resolvedSignatureQueries = 0
+    function constructorFact(declaration) {
+      if (!declaration || !ts.isConstructorDeclaration(declaration) || declaration.modifiers?.length
+        || declaration.parent.members.filter(ts.isConstructorDeclaration).length !== 1) return undefined
+      const sourceFile = declaration.getSourceFile()
+      const file = relativeFile(root, sourceFile.fileName)
+      if (!files[file]) return undefined
+      const keyword = declaration.getChildren(sourceFile)
+        .find((child) => child.kind === ts.SyntaxKind.ConstructorKeyword)
+      if (!keyword) return undefined
+      const span = tokenSpan(keyword, sourceFile)
+      const declarations = [{ file, ...span, contentSha256: files[file].contentSha256 }]
+      const key = digest(JSON.stringify(declarations))
+      symbols.set(key, { key, declarations })
+      return { key, file, span, sourceFile }
+    }
     for (const file of Object.keys(input.files).sort()) {
       const source = program.getSourceFile(project.fileName(file))
       function visit(node) {
+        if (hypothesis === "resolved-signature-explicit-constructor-v2") {
+          if (ts.isNewExpression(node)) {
+            unsupportedSelections.push({ file, ...tokenSpan(node.expression, source) })
+          }
+          if (ts.isConstructorDeclaration(node)) {
+            const fact = constructorFact(node)
+            if (fact) {
+              selections.push({ file: fact.file, ...fact.span, key: fact.key })
+              occurrences.push({ key: fact.key,
+                location: sourceLocation(fact.sourceFile, fact.file, fact.span),
+                isCanonicalDeclaration: true })
+            }
+          } else if (ts.isNewExpression(node)
+            || (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.SuperKeyword)) {
+            resolvedSignatureQueries += 1
+            const fact = constructorFact(checker.getResolvedSignature(node)?.declaration)
+            if (fact) {
+              const callee = node.expression
+              const calleeSymbol = ts.isIdentifier(callee) ? checker.getSymbolAtLocation(callee) : undefined
+              const classDeclaration = calleeSymbol?.declarations?.[0]
+              const directClass = calleeSymbol && !(calleeSymbol.flags & ts.SymbolFlags.Alias)
+                && calleeSymbol.declarations?.length === 1 && ts.isClassDeclaration(classDeclaration)
+                && files[relativeFile(root, classDeclaration.getSourceFile().fileName)]
+              if (ts.isCallExpression(node) || callee.kind === ts.SyntaxKind.ThisKeyword || directClass) {
+                occurrences.push({ key: fact.key,
+                  location: sourceLocation(source, file, tokenSpan(callee, source)),
+                  isCanonicalDeclaration: false })
+              } else {
+                unsupportedConstructorKeys.add(fact.key)
+              }
+            }
+          }
+        }
         if (ts.isIdentifier(node) || ts.isStringLiteralLike(node)) {
           symbolQueries += 1
           let symbol = ts.isIdentifier(node) && ts.isShorthandPropertyAssignment(node.parent)
@@ -59,10 +110,12 @@ export function extract(inputPath) {
       visit(source)
     }
     const facts = {
-      schemaVersion: 1, hypothesis: "public-checker-binding-projection-v1",
+      schemaVersion: 1, hypothesis,
       productionApproved: false, inputSha256: inputIdentity(input.files),
       compiler: compilerIdentity(), files,
       symbols: [...symbols.values()], selections, occurrences,
+      ...(hypothesis === "resolved-signature-explicit-constructor-v2"
+        ? { unsupportedSelections, unsupportedConstructorKeys: [...unsupportedConstructorKeys] } : {}),
     }
     const diagnostics = Object.keys(input.files).flatMap((file) => [
       ...project.syntacticDiagnostics(file), ...project.semanticDiagnostics(file),
@@ -75,6 +128,7 @@ export function extract(inputPath) {
       referenceSearchGuard: "host references/referenceGroups forbidden",
       languageServiceContexts: 1, programSourceFiles: program.getSourceFiles().length,
       explicitSymbolQueries: symbolQueries, explicitAliasQueries: aliasQueries,
+      ...(hypothesis === "resolved-signature-explicit-constructor-v2" ? { resolvedSignatureQueries } : {}),
       ...resourceMetrics(started, cpu), compactFactsBytes: Buffer.byteLength(JSON.stringify(facts)),
       diagnostics, errorDiagnostics: diagnostics.filter(({ category }) => category === ts.DiagnosticCategory.Error).length,
     } }
@@ -86,8 +140,8 @@ export function extract(inputPath) {
 // Oracle follows production definition→findReferences and declaration filtering.
 // Only this oracle is permitted to perform one full search per selected target.
 export function oracle(inputPath, queries) {
-  const input = readSources(inputPath)
-  const root = path.dirname(inputPath)
+  const input = readOracleSources(inputPath)
+  const root = input.root
   const started = process.hrtime.bigint()
   const cpu = process.cpuUsage()
   const project = createSpikeProject(ts, root, input.files)
@@ -118,7 +172,15 @@ export function oracle(inputPath, queries) {
       }
       return { id: query.id, status: "COMPLETE", locations: normalizeLocations(locations) }
     })
-    return { answers, inputSha256: inputIdentity(input.files), compiler: compilerIdentity(),
+    if (input.kind === "disk-workspace"
+      && readOracleSources(inputPath).inputSha256 !== input.inputSha256) {
+      throw new Error("disk oracle workspace changed during query")
+    }
+    return { answers, inputSha256: input.inputSha256, compiler: compilerIdentity(),
+      ...(input.kind === "disk-workspace" ? { inputMode: input.kind,
+        hostParity: "HOST_PARITY_NOT_MET", productionApproved: false,
+        workspaceRoot: root, listedSourceSha256: input.inputSha256,
+        sdkRoot: input.sdkRoot, sdkUsedByHost: false } : {}),
       queriesSha256: digest(JSON.stringify(queries)), metrics: { pid: process.pid, findReferencesCalls,
       requestedQueries: queries.length, ...resourceMetrics(started, cpu) } }
   } finally {

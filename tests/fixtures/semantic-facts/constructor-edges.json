@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "files": {
+    "edges.ets": "export class Named {\n  public constructor() {}\n}\nexport class Child extends Named {}\nnew Named()\nnew Child()\nexport class Over {\n  constructor(value: number);\n  constructor(value: string);\n  constructor(value: number | string) {}\n}\nnew Over(1)\nnew Over('a')\n"
+  }
+}

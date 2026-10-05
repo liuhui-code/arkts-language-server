@@ -17,11 +17,20 @@ const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 test("classifies every executable test entry exactly once in an explicit layer", () => {
   const audit = validateTestLayerManifest({ root: projectRoot, manifest: TEST_LAYER_MANIFEST })
 
-  assert.equal(audit.entryCount, 136)
+  assert.equal(audit.entryCount, 147)
+  assert.equal(audit.assignments["tests/semantic/local-file-dependency-alias.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/semantic/references-direct-proof-trace.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/semantic/semantic-context-lifecycle.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/semantic/semantic-session-reuse.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/semantic-facts-spike.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/semantic-facts-resolved-signature-spike.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/semantic-facts-bulk-hook-builder.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/semantic-facts-compiler-bulk-hook-spike.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/semantic-facts-disk-oracle.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/semantic-facts-installed-package-scope.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/semantic-facts-installed-production-pin.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/semantic-facts-origin-hook-builder.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/semantic-facts-worklist-hook-spike.test.mjs"], "unit-contract")
   assert.equal(audit.assignments["tests/prepared-suite-cli.test.mjs"], "unit-contract")
   assert.equal(audit.assignments["tests/replay-settings-cancel-control-cli.test.mjs"], "unit-contract")
   assert.equal(audit.assignments["tests/replay-settings-disk-edit-cli.test.mjs"], "unit-contract")
@@ -47,6 +56,8 @@ test("classifies every executable test entry exactly once in an explicit layer",
   )
   assert.equal(audit.assignments["tests/document-store-cancellation.test.mjs"], "unit-contract")
   assert.equal(audit.assignments["tests/semantic/references-index-state-race.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/references-preopen-index-recovery.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/references-native-preopen-index-recovery.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/semantic/references-initial-catalog.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/semantic/index-catalog-phase-trace.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/index-adapter.test.mjs"], "unit-contract")
@@ -216,9 +227,9 @@ test("classifies every executable test entry exactly once in an explicit layer",
     "bundle-e2e",
   )
   assert.deepEqual(audit.layerCounts, {
-    "unit-contract": 67,
+    "unit-contract": 75,
     protocol: 8,
-    "bundle-e2e": 55,
+    "bundle-e2e": 58,
     "artifact-e2e": 3,
     "sealed-artifact-e2e": 1,
     large: 1,

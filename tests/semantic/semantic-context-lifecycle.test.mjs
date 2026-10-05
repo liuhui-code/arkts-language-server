@@ -55,6 +55,12 @@ test("disabled lifecycle tracing preserves exact navigation without lifecycle ob
   assert.equal(plain.events.some(entry => entry.event === "semantic.prepare.complete"), false)
   assert.ok(traced.events.some(entry => entry.event === "semantic.definition.complete"
     && Number.isFinite(entry.durationMs) && entry.programSourceFiles > 0))
+  assert.ok(traced.events.filter(entry => entry.event === "semantic.definition.complete")
+    .every(entry => Number.isFinite(entry.createProgramMs) && entry.createProgramMs >= 0
+      && Number.isSafeInteger(entry.createProgramEvents) && entry.createProgramEvents >= 0
+      && Number.isFinite(entry.otherDefinitionMs) && entry.otherDefinitionMs >= 0))
+  assert.ok(traced.events.some(entry => entry.event === "semantic.definition.complete"
+    && entry.createProgramEvents > 0 && entry.createProgramMs > 0))
   assert.equal(plain.events.some(entry => entry.event === "semantic.definition.complete"), false)
   assert.equal(plain.events.some(entry => entry.event.startsWith("semantic.context.")), false)
   assert.equal(plain.events.filter(entry => entry.event === "sdk.selected").length,
@@ -71,9 +77,37 @@ test("experimental disk deltas keep a compatible LS while definitions move to th
   const edited = run.checkpoints.find(entry => entry.step === "disk-comment").events
     .filter(entry => entry.event === "semantic.context.reuse").at(-1)
   assert.equal(edited?.contextSequence, first?.contextSequence)
+  const programAt = step => run.checkpoints.find(entry => entry.step === step).events
+    .find(entry => entry.event === "semantic.definition.complete")?.programSequence
+  assert.ok(Number.isSafeInteger(programAt("first")) && programAt("first") > 0)
+  assert.equal(programAt("unchanged"), programAt("first"),
+    "an unchanged request should observe the same compiler Program")
+  assert.notEqual(programAt("disk-comment"), programAt("first"),
+    "retaining a Language Service after a disk edit must not be mislabeled Program reuse")
   assert.deepEqual(run.events.filter(entry => entry.event === "semantic.context.evict")
     .map(entry => entry.reason), ["sdk-configuration", "memory-level3"])
   assert.ok(run.diagnostics.every(message => message.params.diagnostics.length === 0))
+})
+
+test("traced definitions expose compiler SourceFile identity reuse across an ordinary disk edit", async t => {
+  const run = await replay(t, { trace: true, sessionReuse: "experimental" })
+  const observed = step => run.checkpoints.find(entry => entry.step === step).events
+    .find(entry => entry.event === "semantic.definition.complete")
+  const unchanged = observed("unchanged"), edited = observed("disk-comment")
+  for (const entry of [unchanged, edited]) {
+    assert.ok(entry.sdkSourceFiles > 0 && entry.programProjectFiles > 0)
+    assert.equal(entry.sdkSourceFilesReused + entry.sdkSourceFilesFirstObserved,
+      entry.sdkSourceFiles)
+    assert.equal(entry.projectSourceFilesReused + entry.projectSourceFilesFirstObserved,
+      entry.programProjectFiles)
+  }
+  assert.equal(unchanged.sdkSourceFilesReused, unchanged.sdkSourceFiles)
+  assert.equal(unchanged.projectSourceFilesReused, unchanged.programProjectFiles)
+  assert.equal(edited.sdkSourceFilesReused, edited.sdkSourceFiles)
+  assert.ok(edited.projectSourceFilesReused > 0,
+    "an ordinary disk edit should not require every project SourceFile to be replaced")
+  assert.ok(edited.projectSourceFilesFirstObserved > 0,
+    "the edited SourceFile must be observed under a new compiler identity")
 })
 
 test("compatible disk reuse refreshes compiler types and normal versioned diagnostics", async t => {

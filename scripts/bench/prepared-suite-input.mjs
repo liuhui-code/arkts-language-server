@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process"
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
+import { pathToFileURL } from "node:url"
 
 import { digestSdk } from "../semantic/lock-toolchain.mjs"
 import { applyTextEdits } from "../../tests/support/lsp-edits.mjs"
@@ -80,12 +81,14 @@ export async function readPreparedSuite(options) {
     target.oracle.path = path.resolve(target.oracle.path)
     if (sha256File(target.oracle.path) !== target.oracle.sha256) invalid("ORACLE_MISMATCH")
     target.expected = loadOracle(target.oracle.path, suite.workspace)
+    if (hasDuplicateLocations(target.expected)) invalid("ORACLE_DUPLICATE")
   }
   if (!Array.isArray(suite.scenarios) || suite.scenarios.length === 0) invalid("EMPTY_SCENARIOS")
   const scenarioIds = new Set()
   const seen = new Set()
   const queriedSnapshots = new Map()
   const oracleSnapshots = new Map()
+  const editedOracles = new Map()
   const editedTexts = new Map()
   let snapshot = 0
   for (const scenario of suite.scenarios) {
@@ -113,6 +116,14 @@ export async function readPreparedSuite(options) {
       if (!scenario.edit.oracle || scenario.edit.oracle.verified !== true) invalid("EDIT_ORACLE")
       scenario.edit.oracle.path = path.resolve(scenario.edit.oracle.path)
       if (sha256File(scenario.edit.oracle.path) !== scenario.edit.oracle.sha256) invalid("EDIT_ORACLE")
+      const overlays = new Map([...editedTexts].map(([file, text]) => [pathToFileURL(file).href, text]))
+      const nextOracle = loadOracle(scenario.edit.oracle.path, suite.workspace, overlays)
+      if (hasDuplicateLocations(nextOracle)) invalid("EDIT_ORACLE_DUPLICATE")
+      if (scenario.bucket === "edit-reference" && (target.kind !== "references"
+        || sameOracleLocations(nextOracle, editedOracles.get(queryIdentity) ?? target.expected))) {
+        invalid("EDIT_REFERENCE_NO_DELTA")
+      }
+      editedOracles.set(queryIdentity, nextOracle)
       oracleSnapshots.set(queryIdentity, snapshot)
     }
   }
@@ -130,6 +141,20 @@ export async function readPreparedSuite(options) {
 
 export function digestJson(value) {
   return crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex")
+}
+
+function locationKeys(oracle) {
+  return oracle.locations.map(({ file, range: { start, end } }) =>
+    JSON.stringify([file, start.line, start.character, end.line, end.character]))
+}
+
+function hasDuplicateLocations(oracle) {
+  const keys = locationKeys(oracle)
+  return new Set(keys).size !== keys.length
+}
+
+function sameOracleLocations(left, right) {
+  return JSON.stringify(locationKeys(left)) === JSON.stringify(locationKeys(right))
 }
 
 function localSource(workspace, file) {

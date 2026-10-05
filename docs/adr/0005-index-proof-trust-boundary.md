@@ -2,6 +2,52 @@
 
 Status: **Accepted; resynchronization recovery implemented**.
 
+## Declared local package aliases (2026-10-04)
+
+A dependency key may be an import alias for a declared relative/`file:` package;
+the target manifest name need not equal that key. In the real Settings/API24
+project, rejecting `@ohos/settings.uikit → file:../uikit` (target name `uikit`)
+caused TS2307 and reduced a cross-module `DialogPage` stock references query to
+2/3 same-file positions. A real stdio LSP RED→GREEN now resolves the target
+without relaxing installed-package name validation or physical path guards; the
+same pinned stock query returns 30/31 positions across 24 files. The old
+2/3 result was a broken-host observation, not an admissible correctness oracle.
+
+The Node index source-resolution path consumes the same resolver, while Rust
+does not separately enforce target-name equality. A fresh-process public LSP
+fixture now compares legacy and default indexed-batched URI/UTF-16 sets under
+both declaration policies: 3/3 and 4/4 exact, native catalog ready, two index
+acceptances, zero fallback. This proves that narrow declared-module case, not
+the full real Settings symbol's index admission. The explicit-constructor
+variant remains exact against legacy for both declaration policies but safely
+records `candidate-ineligible` twice and zero index acceptances. A ready index
+alone must never certify an unproven binding or permit partial references.
+The subsequent real Settings/API24 public LSP queries were 30/30 and 31/31
+exact in legacy/default for the two declaration policies, but default logged
+`candidate-ineligible` and ran complete conservative batches (93,298/94,639 ms
+vs 8,037/9,317 ms legacy, single cold runs). It
+demonstrates correct fallback, **not** real-project index proof admission;
+the ineligible proof condition requires its own public contract before changing it.
+A trace-on cold replay showed 24 sequential conservative batches for 1,496
+member files; Program preparation consumed about 81.7 seconds cumulatively,
+while compiler references queries consumed about 2.1 seconds. This cost is a
+measured consequence of fail-conservative proof rejection, not permission to
+relax proof or return incomplete results.
+Here the compiler anchor is an explicit `constructor` keyword, while the
+indexed export span covers the class name. The candidate query cannot produce
+a declaration identity for that constructor; mapping it to the class by text
+would violate existing inherited-constructor and factory correctness guards.
+This is not merely a cursor-span mismatch: the current name-occurrence proof
+does not cover constructor references through `new this()`, inherited
+`new Leaf()`, `super()`, or an own-constructor barrier. A small direct-import
+alias-resolution improvement could aid ordering but cannot, by itself, certify
+`identityComplete` or exclude any legal file. Constructor-specific compiler
+identity and complete inheritance/alias coverage would need a separate gate.
+For non-module local packages,
+the current ProjectGraph may still mark an alias-name mismatch incomplete and
+fall back to conservative scope; do not interpret that fallback as absence.
+See the [Settings production-host report](../reports/2026-10-04-semantic-ready-s02-production-host-oracle.md).
+
 ## Default-off source-local literal roots (2026-09-29)
 
 The [next consumed slice](../tdd/references-constructor-literal-roots.md) adds
@@ -436,8 +482,12 @@ Post-mutation recovery requires `ready` and `committedGeneration` strictly
 greater than `max(accepted, committed, building)` captured at each watched edit.
 A catalog already building can contain pre-edit bytes: its commit cannot certify
 the edit. Native optional `buildingGeneration` is only a freshness fence, not
-semantic proof. Failed status capture keeps the root dirty; otherwise remain
-on complete legacy until a later catalog commits.
+semantic proof. If status capture fails before the index opens, keep the root
+dirty. Recovery then additionally requires a catalog that starts after the edit:
+capture its real pre-start committed/building watermark and observe a terminal
+ready commit strictly newer than that watermark. Missing any part leaves the
+complete fallback in place; never invent generation zero. The public pre-open
+RED/GREEN and native timing caveat are in the [S05 report](../reports/2026-09-29-semantic-ready-s05-context-lifecycle.md).
 
 Initial catalog warming is not post-mutation recovery. A global request may
 observe generation 0 before the first committed catalog and fall back to

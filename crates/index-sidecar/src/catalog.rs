@@ -21,6 +21,14 @@ use ignore::{
     gitignore::{Gitignore, GitignoreBuilder},
 };
 
+#[path = "catalog_test_gate.rs"]
+mod test_gate;
+
+use self::test_gate::{
+    ActivationGateResult, TEST_ACTIVATION_WAITING, activation_file_gate, test_entry_delay,
+    wait_at_test_activation_gate, wait_at_test_catalog_gate, wait_for_test_entry_delay,
+};
+
 const MAX_SOURCE_BYTES: u64 = 2 * 1024 * 1024;
 const READ_CHUNK_BYTES: usize = 64 * 1024;
 const PROGRESS_FILE_BATCH: usize = 64;
@@ -100,9 +108,21 @@ struct LoadedIgnore {
 
 impl CatalogControl {
     pub fn cancel(&self) -> bool {
-        self.state
+        if self
+            .state
             .compare_exchange(
                 CATALOG_RUNNING,
+                CATALOG_CANCELLED,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            )
+            .is_ok()
+        {
+            return true;
+        }
+        self.state
+            .compare_exchange(
+                TEST_ACTIVATION_WAITING,
                 CATALOG_CANCELLED,
                 Ordering::AcqRel,
                 Ordering::Acquire,
@@ -168,7 +188,7 @@ fn scan_workspace(
         generation,
         progress: progress.clone(),
     });
-    if wait_at_test_catalog_gate(state) {
+    if wait_at_test_catalog_gate(state, CATALOG_CANCELLED) {
         let _ = updates.send(CatalogUpdate::Cancelled {
             generation,
             progress,
@@ -263,7 +283,7 @@ fn scan_workspace(
                     continue;
                 }
             };
-            if wait_for_test_entry_delay(test_entry_delay, state) {
+            if wait_for_test_entry_delay(test_entry_delay, state, CATALOG_CANCELLED) {
                 let _ = updates.send(CatalogUpdate::Cancelled {
                     generation,
                     progress,
@@ -430,10 +450,17 @@ fn scan_workspace(
         &mut progress,
     );
     progress.total_files = Some(progress.discovered);
+    let file_gate =
+        activation_file_gate(generation).map_err(|message| (progress.clone(), message))?;
+    let activating_state = if file_gate.is_some() {
+        TEST_ACTIVATION_WAITING
+    } else {
+        CATALOG_ACTIVATING
+    };
     if state
         .compare_exchange(
             CATALOG_RUNNING,
-            CATALOG_ACTIVATING,
+            activating_state,
             Ordering::AcqRel,
             Ordering::Acquire,
         )
@@ -449,6 +476,35 @@ fn scan_workspace(
         generation,
         progress: progress.clone(),
     });
+    if let Some(file_gate) = file_gate {
+        match file_gate.wait_for_release(state, CATALOG_CANCELLED) {
+            Ok(ActivationGateResult::Released) => {}
+            #[cfg(debug_assertions)]
+            Ok(ActivationGateResult::Cancelled) => {
+                let _ = updates.send(CatalogUpdate::Cancelled {
+                    generation,
+                    progress,
+                });
+                return Ok(());
+            }
+            Err(message) => return Err((progress, message)),
+        }
+        if state
+            .compare_exchange(
+                TEST_ACTIVATION_WAITING,
+                CATALOG_ACTIVATING,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            )
+            .is_err()
+        {
+            let _ = updates.send(CatalogUpdate::Cancelled {
+                generation,
+                progress,
+            });
+            return Ok(());
+        }
+    }
     wait_at_test_activation_gate();
     let store = SqliteStore::open(database_path, workspace_identity)
         .map_err(|error| (progress.clone(), error.to_string()))?;
@@ -560,72 +616,8 @@ fn is_gitignored(matchers: &[Gitignore], path: &Path, is_directory: bool) -> boo
     false
 }
 
-#[cfg(debug_assertions)]
-fn wait_at_test_catalog_gate(state: &AtomicU8) -> bool {
-    let Ok(milliseconds) = std::env::var("ARKTS_INDEX_TEST_CATALOG_GATE_MS") else {
-        return false;
-    };
-    let Ok(milliseconds) = milliseconds.parse::<u64>() else {
-        return false;
-    };
-    let deadline = Instant::now() + Duration::from_millis(milliseconds);
-    while Instant::now() < deadline {
-        if is_cancelled(state) {
-            return true;
-        }
-        thread::sleep(Duration::from_millis(5));
-    }
-    is_cancelled(state)
-}
-
-#[cfg(not(debug_assertions))]
-fn wait_at_test_catalog_gate(_state: &AtomicU8) -> bool {
-    false
-}
-
 fn is_cancelled(state: &AtomicU8) -> bool {
     state.load(Ordering::Acquire) == CATALOG_CANCELLED
-}
-
-#[cfg(debug_assertions)]
-fn wait_at_test_activation_gate() {
-    let Ok(milliseconds) = std::env::var("ARKTS_INDEX_TEST_ACTIVATION_GATE_MS") else {
-        return;
-    };
-    let Ok(milliseconds) = milliseconds.parse::<u64>() else {
-        return;
-    };
-    thread::sleep(Duration::from_millis(milliseconds));
-}
-
-#[cfg(not(debug_assertions))]
-fn wait_at_test_activation_gate() {}
-
-#[cfg(debug_assertions)]
-fn test_entry_delay() -> Duration {
-    std::env::var("ARKTS_INDEX_TEST_ENTRY_DELAY_MS")
-        .ok()
-        .and_then(|milliseconds| milliseconds.parse::<u64>().ok())
-        .map_or(Duration::ZERO, Duration::from_millis)
-}
-
-#[cfg(not(debug_assertions))]
-fn test_entry_delay() -> Duration {
-    Duration::ZERO
-}
-
-fn wait_for_test_entry_delay(delay: Duration, state: &AtomicU8) -> bool {
-    if delay.is_zero() {
-        return false;
-    }
-    let deadline = Instant::now() + delay;
-    while Instant::now() < deadline {
-        if is_cancelled(state) {
-            return true;
-        }
-        thread::sleep(Duration::from_millis(5));
-    }
-    is_cancelled(state)
 }
 
 #[allow(clippy::too_many_arguments)]

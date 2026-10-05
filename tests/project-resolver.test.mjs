@@ -277,7 +277,7 @@ test("declared local package subpaths resolve inside the target package", (t) =>
   )
 })
 
-test("local package subpaths fail closed without target ownership or containment", (t) => {
+test("local package alias subpaths reject escapes and undeclared dependencies", (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-package-subpath-boundary-"))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const browser = path.join(root, "browser")
@@ -302,7 +302,7 @@ test("local package subpaths fail closed without target ownership or containment
   assert.deepEqual(
     resolver.resolve(root, source, "@ohos/common/src/Escaped"),
     { path: null },
-    "the target package must own the declared package identity",
+    "a declared file: alias must not follow a source symlink outside its target package",
   )
   fs.writeFileSync(
     path.join(common, "oh-package.json5"),
@@ -324,6 +324,25 @@ test("local package subpaths fail closed without target ownership or containment
     undefined,
     "a package subpath cannot authorize an undeclared dependency",
   )
+})
+
+test("installed package subpaths still require matching manifest names", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-installed-subpath-name-"))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const source = path.join(root, "entry", "src", "Page.ets")
+  const installed = path.join(root, "entry", "oh_modules", "@ohos", "common")
+  const target = path.join(installed, "src", "Target.ets")
+  fs.mkdirSync(path.dirname(source), { recursive: true })
+  fs.mkdirSync(path.dirname(target), { recursive: true })
+  fs.writeFileSync(path.join(root, "entry", "oh-package.json5"),
+    "{ dependencies: { '@ohos/common': '1.0.0' } }")
+  fs.writeFileSync(path.join(installed, "oh-package.json5"), "{ name: '@ohos/other' }")
+  fs.writeFileSync(target, "export class Target {}")
+  const resolver = new driver.LocalPackageResolver()
+  assert.deepEqual(resolver.resolve(root, source, "@ohos/common/src/Target"), { path: null })
+  fs.writeFileSync(path.join(installed, "oh-package.json5"), "{ name: '@ohos/common' }")
+  resolver.invalidate(root)
+  assert.deepEqual(resolver.resolve(root, source, "@ohos/common/src/Target"), { path: target })
 })
 
 test("an installed but undeclared dependency is neither resolved nor inspected", (t) => {

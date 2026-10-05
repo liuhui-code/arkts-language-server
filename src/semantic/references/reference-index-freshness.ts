@@ -3,11 +3,15 @@ import type {
   WorkspaceReferenceCandidateResult,
   WorkspaceReferenceIndexPort,
 } from "../../contracts/workspace-index.js"
+import type { SemanticWorkspaceFileChangeBatch } from "../../contracts/semantic-engine.js"
 import type { StructuredLogger } from "../../observability/logger.js"
+import { toFilePath } from "../semantic-worker-file-identity.js"
 
 interface DirtyIndexGeneration {
   baselineGeneration?: number
   capture?: Promise<void>
+  postEditCatalogGeneration?: number
+  postEditCatalogCapture?: Promise<void>
 }
 
 export interface ReferenceIndexFreshnessResult {
@@ -20,6 +24,29 @@ export interface ReferenceIndexFreshnessResult {
 export class ReferenceIndexFreshness {
   readonly #acceptedGenerations = new Map<string, number>()
   readonly #dirtyGenerations = new Map<string, DirtyIndexGeneration>()
+  readonly #catalogDirtyGenerations = new Map<string, {
+    dirty: DirtyIndexGeneration
+    baselineGeneration: number
+  }>()
+
+  workspaceFilesChanged(
+    batch: SemanticWorkspaceFileChangeBatch,
+    index?: WorkspaceReferenceIndexPort,
+  ): void {
+    if (batch.rootDirty || batch.changes.some(change => {
+      const changedPath = toFilePath(change.uri)
+      return changedPath?.endsWith(".ets") || changedPath?.endsWith(".ts")
+    })) this.changed(batch.rootUri, index)
+  }
+
+  catalog(
+    workspaceId: string,
+    phase: "starting" | "ready",
+    index: WorkspaceReferenceIndexPort,
+  ): Promise<void> | void {
+    if (phase === "starting") return this.catalogStarted(workspaceId, index)
+    this.catalogReady(workspaceId, index)
+  }
 
   changed(workspaceId: string, index?: WorkspaceReferenceIndexPort): void {
     const dirty: DirtyIndexGeneration = {
@@ -49,6 +76,31 @@ export class ReferenceIndexFreshness {
     return this.#dirtyGenerations.has(workspaceId)
   }
 
+  async catalogStarted(workspaceId: string, index: WorkspaceReferenceIndexPort): Promise<void> {
+    if (!this.#dirtyGenerations.has(workspaceId)) return
+    const status = await safeStatus(index, workspaceId)
+    // The caller awaits this before catalog/start; bind the latest edit token.
+    const dirty = this.#dirtyGenerations.get(workspaceId)
+    if (!status || !dirty) return
+    this.#catalogDirtyGenerations.set(workspaceId, {
+      dirty,
+      baselineGeneration: Math.max(status.committedGeneration, status.buildingGeneration ?? 0),
+    })
+  }
+
+  catalogReady(workspaceId: string, index: WorkspaceReferenceIndexPort): void {
+    const pending = this.#catalogDirtyGenerations.get(workspaceId)
+    this.#catalogDirtyGenerations.delete(workspaceId)
+    if (!pending || this.#dirtyGenerations.get(workspaceId) !== pending.dirty) return
+    pending.dirty.postEditCatalogCapture = safeStatus(index, workspaceId).then((status) => {
+      if (this.#dirtyGenerations.get(workspaceId) === pending.dirty
+        && status?.state === "ready"
+        && status.committedGeneration > pending.baselineGeneration) {
+        pending.dirty.postEditCatalogGeneration = status.committedGeneration
+      }
+    })
+  }
+
   accepted(workspaceId: string, generation: number): void {
     this.#acceptedGenerations.set(workspaceId, generation)
   }
@@ -60,13 +112,17 @@ export class ReferenceIndexFreshness {
     const dirty = this.#dirtyGenerations.get(workspaceId)
     if (!dirty) return { usable: true, recovered: false }
     await dirty.capture
+    await dirty.postEditCatalogCapture
     const status = await safeStatus(index, workspaceId)
     if (this.#dirtyGenerations.get(workspaceId) !== dirty) {
       return { usable: true, recovered: false }
     }
     const baselineGeneration = dirty.baselineGeneration
-    if (status?.state === "ready" && baselineGeneration !== undefined
-      && status.committedGeneration > baselineGeneration) {
+    if (status?.state === "ready" && (
+      (baselineGeneration !== undefined && status.committedGeneration > baselineGeneration)
+      || (dirty.postEditCatalogGeneration !== undefined
+        && status.committedGeneration >= dirty.postEditCatalogGeneration)
+    )) {
       this.#dirtyGenerations.delete(workspaceId)
       return {
         usable: true,

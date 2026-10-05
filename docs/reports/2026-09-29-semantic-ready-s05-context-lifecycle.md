@@ -1,6 +1,6 @@
 # S05：context 生命周期与相容磁盘 LS 复用实验
 
-日期：2026-09-29。状态：**观测及default-off磁盘LS原型已实现；S05 IN_PROGRESS，毕业未完成**。
+日期：2026-09-29。当前状态（2026-10-05）：**S05 相容磁盘 LS 候选评估已收口／REJECTED；仅观测与默认关闭的原型已实现，生产能力未实现、未毕业**。下文的 `IN_PROGRESS` 是各历史检查点当时的状态。
 S02 public-checker投影FAIL与S03 BLOCKED保持不变。以下第一检查点不修改默认策略、
 缓存/语义加载、预算、worker数量、SDK或工程边界；没有commit/push/PR/merge/Issue写入。
 
@@ -544,3 +544,294 @@ evict。该关联说明“少创建context”并不保证低时延，且L3抖动
 不证明旧Program由谁持有，也不把trace-on RSS与上表trace-off门禁相除。
 当前不启用实验复用、不改预算/Worker/GC或reference范围。S05仍IN_PROGRESS，
 该相容磁盘LS候选未毕业；S02/S03与500ms整体状态不因此改变。
+
+## 当前构建复核：定义尖峰的 compiler 阶段归因（2026-10-03）
+
+Parent `c4df943e5ff9dc1d724bb2aee75d7c4a197efcf4`；仅增加默认关闭的
+`semantic.definition.complete` compiler 计时。先在真实子进程 LSP 测试中要求
+`createProgramMs/createProgramEvents/otherDefinitionMs`，原产物执行
+`node --test --test-name-pattern='disabled lifecycle tracing preserves exact navigation' tests/semantic/semantic-context-lifecycle.test.mjs`
+为 RED/exit1（字段缺失）；最小实现后相同命令 GREEN/1 pass，完整 lifecycle
+focused 15/15 GREEN，`pnpm check` exit0。计时包裹实际 `engine.define()`，不预先
+调用 `getProgram()`；fork 的 `PerformanceDotting` 只在 trace 开启时采集已发生的
+`createProgram` 事件，`otherDefinitionMs` 仅是 `engine.define()` 内扣除该事件的
+未细分余量（含其内部checker/候选映射），不包含后续结果合并，**不是**独立
+`getTypeCheckerMs`。上游合并同类事件，所以 `createProgramEvents` 是事件组数，
+不能用它断言一次查询究竟构建了几个 Program。关闭 trace 时不启用该 collector。
+
+同一干净 Settings `ecc550df…0b9`、DevEco API24 `6.1.1.125` 兼容轨、九位置
+oracle 与 100 次冻结操作，独立进程顺序跑 trace-on `off → experimental`。
+[本次 manifest](../../bench/references/manifests/settings-homeinitdata-definition-compiler-trace-api24.json)
+SHA256 `e3dedb6c421127e69875d1df05f69e2108f44518423519986d79f6ece229c8cf`，
+固定实际 worker bundle `3e8455b3…2f`；仅 session-reuse flag 不同。
+两臂均 PASS：100 次磁盘编辑后 primary definition、11 次 refs、11 次跨模块
+definition 全部 exact，正常版本诊断、L3 ack/恢复和退出均通过，原工程仍 clean。
+首次受限运行的外部采样器未产出首样本，**没有发出 LSP 语义请求**，保留为
+`.bench/semantic-ready-s05/settings-definition-compiler-trace-off.json` 环境失败，
+不纳入以下统计。获准的外部采样请求间隔 50ms，两臂实际样本间隔中位均为 123ms。
+
+| trace-on 诊断，不是性能毕业样本 | off | experimental |
+| --- | ---: | ---: |
+| 编辑后 primary definition 中位 / P95 | 255 / 281 ms | 249 / 300 ms |
+| 100 次中 `>500ms` | 2 | 5 |
+| 对应慢请求 `createProgram` | 1.33–1.48 s | 1.31–1.41 s |
+| 每次 primary definition 观察到至少一个 `createProgram` 事件组 | 100/100 | 100/100 |
+| Node PID 外部采样 peak RSS | 2,028,408,832 B | 2,152,054,784 B |
+| server+sidecar tree peak RSS | 2,290,003,968 B | 2,426,044,416 B |
+| 外部样本数 | 876 | 857 |
+
+实验慢请求位于操作2–5、12；off 慢请求位于操作1–2。两臂其余大多数
+`createProgram` 约 0.2s，Program 都报告 422 SourceFiles。由此**本次尖峰
+主要发生在实际 compiler `createProgram` 期间**；单凭 Coordinator
+`create`/L3 事件无法定量归因。此一对 trace-on 运行的实验臂尖峰少于
+此前 trace-off 反序两对，说明操作时间分布不稳定，不能据 300ms 的本次 P95
+推翻此前 1.657/1.608s 的失败门禁，也不能把 RSS 当 PSS 或宣称 500ms 发布目标达成。
+实验仍默认关闭；S05 保持 IN_PROGRESS，下一次行为改动须先解释 compiler
+冷热切换，并过 trace-off 反序、exact、1.10×资源及 post-eviction 门禁。
+
+不可覆盖的原始报告（完整请求、Location、诊断、采样曲线与事件）：
+`.bench/semantic-ready-s05/settings-definition-compiler-trace-{off,experimental}-escalated.json`，
+SHA256 依次为 `f32a156009cd561954854461b5f67c0c7e8802097c55057dcfc32b953d952515`
+和 `eb81b8caa8d4126c2cc7f70009638df1d8743fb32d1594ee1afbf058eb1f2d1b`。
+固定构建仍在本机时可从仓库根目录重放；每臂必须使用新的输出路径：
+
+```sh
+/usr/bin/caffeinate -i node scripts/bench/replay-settings-mixed-ops.mjs \
+  --workspace .bench/real-projects/settings-ecc550 \
+  --sdk /Applications/DevEco-Studio.app/Contents/sdk/default/openharmony \
+  --manifest bench/references/manifests/settings-homeinitdata-definition-compiler-trace-api24.json \
+  --oracle bench/references/oracles/settings-homeinitdata-api24-no-declaration.json \
+  --operations 100 --session-reuse off --trace \
+  --out .bench/semantic-ready-s05/settings-definition-compiler-trace-off-replay-new.json
+```
+
+将 `--session-reuse off` 改为 `experimental` 并更换 `--out` 即为第二臂。
+本切片 `pnpm check:fast` 在获准的 macOS 进程采样环境完成
+**1,207/1,207 PASS、exit0**（`1,116,548.281385 ms`），0 fail/cancel/skip/todo；
+初次沙箱内整套尝试因多个外部采样用例无法获取 `ps` 首样本而中断/exit130，
+不计为代码回归或通过。`git diff --check` 通过。新增 helper 为36行，
+`type-engine.ts` 为500行，没有扩大既有超限 source。
+
+## 启动前 watched edit 后的索引恢复切片（2026-10-03）
+
+Parent HEAD `c4df943e5ff9dc1d724bb2aee75d7c4a197efcf4`，保留原有
+未提交 S05 trace 改动。公开子进程 LSP 测试先在
+`window/workDoneProgress/create` 回复前编辑未打开的 `Use.ets`，确保索引尚未
+open。原产物运行
+`node --test tests/semantic/references-preopen-index-recovery.test.mjs`
+为 **RED 0/1**：首次请求精确、完整地 fallback；catalog 随后 ready 后仍缺
+`references.index.recovered`，根因是 pre-open `index.status` 失败导致 dirty
+水位未定义。不能把未知水位设为 0，因为磁盘上可能已有旧提交代次。
+
+最小修正使 catalog 在真正启动前读取可信 committed/building 水位，绑定当时
+最新的 watched-edit token；只在同一次 catalog 报 ready、提交代次严格超过该
+水位后解除 dirty。期间任何未知或竞争仍走完整 fallback。新增测试验证编辑后
+移位的精确 Locations、两种 `includeDeclaration`、两次 cache-miss indexed 查询
+及正常退出；不改变默认策略、SDK 范围、worker 数或预算。`semantic-worker-proxy.ts`
+由既有 614 行降至 613 行，相关变更分类归入索引新鲜度 owner。
+
+`pnpm build`、`pnpm check`、定向公开/manifest **11/11** 与获准 macOS 外部
+进程采样的 `pnpm check:fast` **1208/1208、exit 0**。首次受限沙箱整套运行
+受 `ps` 权限影响中断，不能计作代码 FAIL 或 PASS。可选原生 sidecar
+generation-race 测试的中间窗口被第三代 catalog 提前提交，原断言未满足；
+该非确定性运行不构成新路径通过证据，旧持久代次加 pre-open 编辑仍需专门覆盖。
+
+随后将该公开 LSP 用例强化为**旧代候选确实会漏文件**的对照：sidecar
+先暴露 committed generation 1，在索引尚未打开时新增含 `Thing` 引用的
+`Added.ets`；generation 2 被显式暂停，旧代候选不含新增文件。索引打开前及
+新代提交前的请求都精确走完整 fallback；释放 generation 2 后，两种
+`includeDeclaration` 经各自 cache miss 均走 indexed 路径并包含新增文件的
+真实位置。负向控制曾故意让新代仍遗漏 `Added.ets`，测试按预期报告
+两个位置缺失；恢复 fixture 后通过。最终 `pnpm check`、`pnpm build`、
+索引专项公开 LSP 8/8 通过，fixture 490 行。该加强发生在上述
+1208/1208 整套检查之后；整套数字不能冒充新 fixture 的复跑。此测试
+使用脚本 sidecar 的内存 generation，不等于重开已有 SQLite 数据库的原生持久代次验证。
+
+### 原生 SQLite 旧代次与 pre-open 编辑组合回归（2026-10-04）
+
+新增公开子进程 LSP 测试
+[`references-native-preopen-index-recovery.test.mjs`](../../tests/semantic/references-native-preopen-index-recovery.test.mjs)，
+使用 release Rust sidecar 和同一 SQLite cache，连续五次独立运行均通过。
+第一进程完成 catalog 并以 `workspace/symbol` 验证真实声明；第二进程在
+`window/workDoneProgress/create` 回复前新增含引用的 `Added.ets`、watch-edit
+`Use.ets`，且保持正常自动诊断。两种 `includeDeclaration` 均经完整 fallback
+返回精确的 6／7 个位置，没有接受旧候选。回复后，第二进程的
+`discovering.committedGeneration` 等于第一进程已提交代次，证明重新打开的是
+同一持久旧代；新代提交后两种策略再次精确，均记录 indexed accepted，
+并出现 `references.index.recovered`。测试已归入 `bundle-e2e` 常规测试层。
+
+验证命令：
+`node --test tests/semantic/references-native-preopen-index-recovery.test.mjs tests/semantic/references-preopen-index-recovery.test.mjs tests/release/index-sidecar.acceptance.mjs tests/test-layer-manifest.test.mjs`，
+本轮 7/7 PASS；`pnpm check` PASS。原生新测试另经五次连续独立回放均 PASS。
+此用例覆盖“启动前编辑 + 持久旧代重开 + 新代提交后的恢复”两个端点；
+原生 catalog 对四个文件提交过快，尚未确定性覆盖“sidecar 已打开、旧代可查、
+新代尚未提交”的中间窗口。该窗口仍由上述 scripted generation 测试控制。
+这是 R-08 正确性回归，不是 Settings 真实工程、热 LS 资源毕业、500 ms 或
+原始 >3 GB 内存门禁证据；没有修改生产策略。
+
+另以干净 Settings `ecc550df…0b9`、DevEco API24 `6.1.1.125` 兼容轨做一次
+新进程、catalog-ready、mode-A、默认 indexed-batched 回放：`HomeInitData.ets`
+UTF-16 `16:13`，`includeDeclaration=false`，**9/9 精确 Locations**、正常 v1
+空诊断、indexed accepted、退出 0。客户端 references 完整响应约 4.596 秒；
+外部采样 server+sidecar 峰值 RSS 610,127,872 B，非 PSS／统计性时延门禁。
+原始曲线与响应保存在
+`.bench/semantic-ready-s05/settings-index-catalog-lifecycle-regression-20261003.json`
+（SHA256 `9e4ccfcd07e3b09ac7a48387f32f15f8c991a1d3d6d0288f8a38aacb9993bbcd`）；
+未用 manifest 预检 SDK declaration digest，故只作真实工程回归控制，
+不是匹配 API23、pre-open 编辑或最终 500 ms／PSS 毕业证据。
+
+阶段决策（2026-10-03）：相容磁盘 LS 保留这一**具体候选不予准入**。
+两组反序、每臂 100 操作的真实 Settings trace-off 对照已显示实验臂
+definition P95 1.608–1.657 秒、关闭臂 0.272–0.278 秒；单次 trace-on
+compiler 事件不能推翻这个结果。后续不再通过重复采样同一机制争取放行；
+开关保持 default-off，原完整 fallback、预算和 transient verifier 不变。
+这只结束该候选的评估，**不是** S05 全部能力 IMPLEMENTED，也不阻止
+独立且有新机制/新 RED 的安全切片；S02→S03 的精确性阻断仍在。
+
+## 后续观测切片：LS 身份与 Program 身份分开（2026-10-03）
+
+父修订仍为 `c4df943e5ff9dc1d724bb2aee75d7c4a197efcf4`；保留既有 dirty tree。
+本切片只给现有 trace 的 `programFileStats()` 增加 worker-isolate 内的
+`programSequence`：用 `WeakMap<Program, number>` 给**查询后已经取得的** Program
+赋观察序号，不额外调用 `getProgram()`、不保留强引用、不改变 compiler 查询或
+默认关闭的 trace。该值不是 `createProgram` 调用次数，不跨 worker/进程可比较，
+也不能证明实际查询执行期间使用的 Program 对象身份。原有
+`contextSequence` 仍只代表 Coordinator 的 LS 生命周期。
+
+公开真实子进程 LSP 测试先要求相容磁盘复用轨在未修改的两次定义后观察同一
+Program，磁盘注释编辑后在同一 `contextSequence` 下观察不同 Program。
+旧构建运行
+`node --test --test-name-pattern='experimental disk deltas keep a compatible LS' tests/semantic/semantic-context-lifecycle.test.mjs`
+为 RED/exit1，首个定义缺少 `programSequence`；最小实现后该命令 1/1 GREEN，
+完整 lifecycle focused 15/15 GREEN、`pnpm build`、`pnpm check` 和
+`git diff --check` 均通过。本切片尚未重跑完整 `pnpm check:fast`。
+fixture 只证明“同一 LS 不必等于同一 Program”；不证明编辑后旧 Program
+被保留、发生泄漏，或该机制解释真实 Settings 的全部时延。
+
+使用干净 Settings `ecc550dfaed880e04e38a2477eb7235cd50475b9`、DevEco
+API24 `6.1.1.125` 兼容轨、`HomeInitData.ets` UTF-16 `16:13` 再跑一次真实
+Mode B（新进程→catalog ready→didOpen→completion→definition→references）。
+[固定本次构建的 manifest](../../bench/references/manifests/settings-homeinitdata-program-identity-api24.json)
+SHA256 为 `8b823c953f8101340a073131aa32a2307988214b16bacdb5112882e444deeae5`；
+server/semantic-worker/verifier-worker bundle SHA256 分别为
+`a27fad38ba94f4315473e58577ceba9526b9bb8d0e4b48fba179112e0d9f6ad4`、
+`e1302435980e8848d41da5f2260a963ae3b4637e96efcb199068946ee56df202`、
+`12b44f6c546fb4f2c8b1213976bca56dc32c4b50347a9ce5fb89786a5b301d6e`。
+首次受限采样在首样本前 `spawn EPERM`、未发语义请求，保留
+`.bench/semantic-ready-s05/settings-program-identity-api24.json` 为环境失败；
+获准外部只读 PID 采样后的新输出为
+`.bench/semantic-ready-s05/settings-program-identity-api24-escalated.json`
+（SHA256 `adf8c7c507d8aefd08ae9485a5b3c04062e7c7819957ba97a62b34bb4caeb217`）。
+
+真实回放 PASS/exit0：`textDocument/references` 9/9 精确 Locations，目标 v1
+诊断 0，Settings 原仓仍 clean；请求完整响应 3,393ms，外部 194 个样本观察到
+Node PID 峰值 RSS 1,127,804,928B、server+sidecar 同时刻树峰值
+1,168,662,528B。worker_threads RSS 已含在 Node PID 中，不重复相加；
+此为 RSS、非 PSS，也不是多次运行的 P95。交互定义在 persistent worker
+观察到 `programSequence=1`、2,261 SourceFiles；一次 transient verifier batch
+也报告 `programSequence=1`、674 SourceFiles，但**两者属于不同 isolate，数字相同
+绝不表示同一个 Program**。本次无编辑、不构成真实 Settings Program 切换证据。
+完整原始时间线、采样曲线和结果均在上述 JSON；既有相容磁盘候选仍 default-off
+且不准入，S05 仍 IN_PROGRESS，S02/S03 与 500ms/资源发布门禁不变。
+
+固定构建在本机可用时，从仓库根目录以新输出路径重放：
+
+```sh
+node scripts/bench/replay-references.mjs \
+  --workspace .bench/real-projects/settings-ecc550 \
+  --sdk /Applications/DevEco-Studio.app/Contents/sdk/default/openharmony \
+  --file common/src/main/ets/sendable/HomeInitData.ets --symbol HomeInitData \
+  --line 16 --character 13 --exclude-declaration \
+  --oracle bench/references/oracles/settings-homeinitdata-api24-no-declaration.json \
+  --manifest bench/references/manifests/settings-homeinitdata-program-identity-api24.json \
+  --mode B --catalog-state ready --timeout-ms 180000 --diagnostic-timeout-ms 180000 \
+  --idle-ms 1000 --sample-interval-ms 50 --trace \
+  --out .bench/semantic-ready-s05/settings-program-identity-api24-replay-new.json
+```
+
+## SourceFile 身份与真实 Settings 磁盘编辑（2026-10-04）
+
+父修订仍为 `c4df943e5ff9dc1d724bb2aee75d7c4a197efcf4`；原有未提交改动保留。
+这是**仅观测、默认关闭**的切片：在既有查询后 `programFileStats()` 遍历中，用
+`WeakSet<SourceFile>` 统计同一 worker isolate 已见过的 SDK／工程 SourceFile
+对象。仅 `ARKTS_REFERENCES_TRACE=1` 才访问该 WeakSet；不增加
+`getProgram()`／`getTypeChecker()` 调用，不持有 SourceFile 强引用。
+`programSequence` 仍是观察到的 Program 身份，不是 compiler 构建次数。
+公开真实 stdio LSP 测试先 RED（新字段缺失），后 GREEN；完整 lifecycle 文件
+16/16、S02 磁盘 oracle 与既有 spike／测试分层聚焦 17/17、`pnpm check`、
+`git diff --check` 均通过；本切片**未重跑完整 `pnpm check:fast`**。
+
+沿用干净 Settings `ecc550dfaed880e04e38a2477eb7235cd50475b9` 和 DevEco
+API24/ETS 6.1.1.125，SDK 声明摘要
+`8098b8abbc6b06fce0e7322d6f8f82a5bbce41e847dbd39e9a98811a33d4c6e4`。
+同一当前构建 `server.cjs` SHA-256
+`a27fad38ba94f4315473e58577ceba9526b9bb8d0e4b48fba179112e0d9f6ad4`，
+`semantic-worker.cjs`／`reference-verifier-worker.cjs` SHA-256 分别为
+`fe4c07ab39deb3a01c9be44a67fd76631dd2fb5140c5e35330b68207956b2310`／
+`5dc6e94772ce58f1257a62341b80ebdc18542682f1aa6841837463f4922e6680`；
+sidecar SHA-256 `18f871605571c246ce5667f5aa65c9f4b3b851235c87ae83cf794fbb85adf6b1`。
+两臂为串行、各一个新进程、trace-on、原工程无修改；脚本在**无硬链接私有克隆**
+中给 `HomeInitData.ets` 前置一行注释，依次请求原使用位置
+`HomePageMenuManager.ets` UTF-16 `40:37` 的 definition、编辑后 definition、
+references，保留自动诊断。首次受限沙箱回放仅因采样器首样本 `spawn EPERM`
+在语义请求前 FAIL；获准只读进程采样后以**新输出路径**重跑两臂 PASS。
+
+| 单次观测 | experimental | off |
+| --- | ---: | ---: |
+| 编辑前／后 Program 序号（同一 persistent isolate） | 1 → 2 | 1 → 2 |
+| 编辑后 SDK SourceFile 已见／首次见 | 306／0 | 0／306 |
+| 编辑后工程 SourceFile 已见／首次见 | 63／1 | 0／64 |
+| 编辑后 `createProgram` 事件时长 | 244.7 ms | 1454.7 ms |
+| 编辑后 definition 客户端完整响应 | 298 ms | 1747 ms |
+| 编辑后 references 客户端完整响应 | 6478 ms | 6207 ms |
+| 精确 references／正常 v1 诊断／退出 | 9/9／1 条 TS2339／0 | 9/9／1 条 TS2339／0 |
+| 外部采样 Node PID RSS 峰值 | 753094656 B | 805097472 B |
+| 外部采样 Node+sidecar 树 RSS 峰值 | 1005498368 B | 1066217472 B |
+
+两臂编辑前定义也均精确指向 `16:13`，编辑后精确移至 `17:13`；9 个引用
+URI＋UTF-16 range 与移位 oracle 精确一致，原 Settings checkout 事后仍 clean。
+worker_threads 已包含在 Node PID RSS，不重复加总；树 RSS 不是 PSS，也不含
+Zed。请求采样间隔设 50 ms，实际采样约 120–155 ms，峰值是观测下界。
+这些数据证明**这一次编辑下**实验臂的新 Program 复用了全部被观察的 SDK
+SourceFile 对象和 63/64 个工程对象；不能证明旧 Program 已回收、TypeChecker
+复用、AST 成本大小或总体时延因果。两臂各只有一次且开启 trace，不能推翻此前
+两对反序、每臂 100 操作的 trace-off P95 失败；相容磁盘 LS 候选继续不准入、
+默认 `off`，S05 仍 IN_PROGRESS，500 ms 与内存发布门禁仍未达成。
+
+原始结果与完整请求／诊断／RSS 曲线保存在本机 `.bench/semantic-ready-s05/`：
+`settings-sourcefile-identity-experimental-20261004-escalated.json` SHA-256
+`64f4c3d5b833a47a05fc7d2701dbb0889a11b48ab5c47cab05fa1c322212b0ac`，
+`settings-sourcefile-identity-off-20261004-escalated.json` SHA-256
+`743484371b16eb6c2022633c6d69beedc8e8d202d2894f6ca4d0552902e03a87`。
+沙箱失败报告单独保留，不混作语义结果。
+
+```sh
+node scripts/bench/replay-settings-disk-edit.mjs \
+  --workspace .bench/real-projects/settings-ecc550 \
+  --sdk /Applications/DevEco-Studio.app/Contents/sdk/default/openharmony \
+  --out .bench/semantic-ready-s05/sourcefile-replay-new.json \
+  --session-reuse experimental --trace
+```
+
+更换为 `--session-reuse off` 与另一个全新 `--out` 路径可复跑对照臂。
+本次未传 `--manifest`，虽然原始报告记录了 checkout、SDK／oracle／产物摘要
+和全部有效 `ARKTS_*` 环境，但**不是已冻结 manifest 的 release 门禁样本**。
+
+## S05 安全决策收口（2026-10-05）
+
+本阶段对**相容磁盘 local LS 复用这一具体候选**的安全评估已完成，结论为
+`REJECTED`，而非继续用单次 trace-on 收益争取准入。两对反序、每臂 100 次真实
+Settings/API24 操作的 trace-off 对照虽然保持 Location、诊断与 L3 后恢复精确，
+实验臂编辑后定义 P95 为 1.657／1.608 秒，关闭臂为 0.278／0.272 秒；早期
+固定顺序配对还观察到 1.600× 的 Node RSS 峰值比，超过 ≤1.10 门禁。后续峰值比
+方向不一致，故不能将 1.600× 推断为稳定资源倍率，但也没有可用于毕业的资源
+收益或 post-eviction PSS 证据。单次 SourceFile 对象复用证明存在局部机制，
+不证明长期保留安全或抵消上述 trace-off 时延失败。
+
+`ARKTS_SEMANTIC_SESSION_REUSE` 保持默认 `off`；未满足准入条件时沿用现有完整
+语义 fallback、预算／L3 和 per-batch transient verifier。**S05 安全决策完成
+不等于热会话生产能力 `IMPLEMENTED`，不等于 P95 ≤500 ms、原始 >3 GB／50% 或
+DevEco/PSS/post-eviction 内存发布门禁通过，也不 supersede ADR 0003。**
+如以后提出不同复用机制，须有新的公开 RED、独立的 exact/新鲜度/取消与资源
+门禁，再作为新切片评审；不得把这个已否决候选重命名为已完成优化。
+S02 仍 FAIL，S03 仍 BLOCKED；本决策不解除 facts 路线停止线。

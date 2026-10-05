@@ -10,7 +10,6 @@ import { projectRoot } from "../support/lsp-process.mjs"
 
 test("a newer watched edit cannot recover references from an older committed catalog", async t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-reference-generation-race-"))
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const workspace = path.join(root, "workspace")
   const logDirectory = path.join(root, "logs")
   const auditPath = path.join(root, "index-audit.ndjson")
@@ -26,6 +25,7 @@ test("a newer watched edit cannot recover references from an older committed cat
   const targetUri = pathToFileURL(targetPath).href
   const position = { line: 1, character: query.split("\n")[1].indexOf("Thing") + 1 }
   const nativeSidecar = process.env.ARKTS_INDEX_RACE_REAL_SIDECAR
+  const nativeGatePath = path.join(root, "activate-generation-3.release")
   const session = new LspSession({
     command: process.execPath,
     args: [path.join(projectRoot, "dist/server.cjs"), "--stdio"],
@@ -37,7 +37,10 @@ test("a newer watched edit cannot recover references from an older committed cat
       ARKTS_INDEX_CACHE_DIR: path.join(root, "cache"),
       ARKTS_INDEX_SIDECAR_PATH: nativeSidecar || path.join(projectRoot,
         "tests/fixtures/index/scripted-catalog-sidecar.mjs"),
-      ...(nativeSidecar ? { ARKTS_INDEX_TEST_ACTIVATION_GATE_MS: "5000" } : {
+      ...(nativeSidecar ? {
+        ARKTS_INDEX_TEST_ACTIVATION_GATE_GENERATION: "3",
+        ARKTS_INDEX_TEST_ACTIVATION_GATE_FILE: nativeGatePath,
+      } : {
         ARKTS_INDEX_TEST_AUDIT: auditPath,
         ARKTS_INDEX_TEST_SCENARIO: "reference-generation-race",
       }),
@@ -51,7 +54,14 @@ test("a newer watched edit cannot recover references from an older committed cat
       textDocument: { publishDiagnostics: { versionSupport: true } },
     },
   })
-  t.after(() => session.close().catch(() => {}))
+  t.after(async () => {
+    try {
+      if (nativeSidecar) fs.writeFileSync(nativeGatePath, "ready\n")
+      await session.close().catch(() => {})
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
   await session.initialize({ timeoutMs: 20_000 })
   const create = await session.transport.serverRequest(
     "window/workDoneProgress/create", () => true, 20_000)
@@ -102,6 +112,12 @@ test("a newer watched edit cannot recover references from an older committed cat
         && event.phase === "activating" && event.buildingGeneration === 3
         && event.committedGeneration === 2)
   }, 20_000)
+  if (nativeSidecar) {
+    await new Promise(resolve => setTimeout(resolve, 100))
+    assert.equal(events(logDirectory).some(event => event.event === "index.catalog.phase"
+      && event.phase === "ready" && event.committedGeneration === 3), false,
+    "generation 3 must remain behind the native activation gate")
+  }
 
   const candidateCount = nativeSidecar ? null : audits(auditPath, "references/candidates").length
   const beforeMiddle = events(logDirectory).length
@@ -114,10 +130,12 @@ test("a newer watched edit cannot recover references from an older committed cat
   `older generation must not recover the second edit: ${JSON.stringify(middleEvents.filter(
     event => event.event.startsWith("references.index.")))}`)
   assert.equal(middleEvents.some(event => event.event === "references.index.recovered"), false)
+  assert.equal(middleEvents.some(event => event.event === "references.index.accepted"), false,
+    "generation 2 candidates must not be admitted for the second edit")
   if (!nativeSidecar) assert.equal(audits(auditPath, "references/candidates").length,
     candidateCount, "no candidate lookup may use generation 2")
 
-  if (!nativeSidecar) fs.writeFileSync(`${auditPath}.release-3`, "ready\n")
+  fs.writeFileSync(nativeSidecar ? nativeGatePath : `${auditPath}.release-3`, "ready\n")
   await waitUntil(() => events(logDirectory).some(event => event.event === "index.catalog.phase"
     && event.phase === "ready" && event.committedGeneration === 3), 20_000)
   const beforeRecovery = events(logDirectory).length

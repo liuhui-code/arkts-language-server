@@ -72,7 +72,7 @@ test(packageReferences
   const consumerUri = pathToFileURL(path.join(workspace, consumerFile)).href
   const overlay = sources[consumerFile] + "export const unsaved = new PublicThing()\n"
   const results = []
-  for (const profile of ["legacy", "default", "semantic-units"]) {
+  for (const profile of ["legacy", "default", "semantic-units", ...(packageReferences ? ["trace-off"] : [])]) {
     const logDirectory = path.join(root, `${profile}-logs`)
     const session = new LspSession({
       command: process.execPath, args: [path.join(projectRoot, "dist", "server.cjs"), "--stdio"],
@@ -85,7 +85,7 @@ test(packageReferences
         ARKTS_INDEX_SIDECAR_PATH: path.join(projectRoot, "target", "release", "arkts-index-sidecar"),
         ARKTS_LSP_LOG_DIR: logDirectory,
         ARKTS_REFERENCES_STRATEGY: profile === "legacy" ? "legacy" : "indexed-batched",
-        ARKTS_REFERENCES_BATCH_ROOTS: "1", ARKTS_REFERENCES_TRACE: "1",
+        ARKTS_REFERENCES_BATCH_ROOTS: "1", ARKTS_REFERENCES_TRACE: profile === "trace-off" ? "0" : "1",
         ARKTS_REFERENCES_CONSERVATIVE_SEMANTIC_UNITS: profile === "semantic-units" ? "1" : "0",
         ARKTS_REFERENCES_LOCAL_EXPORT_ANCHOR: "0", ARKTS_REFERENCES_ANCHOR_REUSE: "0",
       },
@@ -126,7 +126,24 @@ test(packageReferences
   }
   assert.deepEqual(results[1].locations, results[0].locations)
   assert.deepEqual(results[2].locations, results[0].locations)
-  if (packageReferences) return
+  if (packageReferences) {
+    assert.deepEqual(results[3].locations, results[0].locations, "disabled trace preserves the public error response")
+    for (const result of results.slice(1, 3)) {
+      const incomplete = result.events.filter(event => event.event === "references.batch.incomplete")
+      assert.ok(incomplete.length >= 2, "each failed public request exposes its incomplete verifier batch")
+      for (const event of incomplete) {
+        assert.equal(event.reason, "source-unavailable")
+        assert.ok(Number.isInteger(event.batchIndex) && event.batchIndex >= 0)
+        assert.equal(event.candidateMode, "conservative")
+        assert.ok(["conservative", "project-graph"].includes(event.semanticUnitMode))
+        assert.ok(!JSON.stringify(event).includes(workspace), "trace must not include absolute project paths")
+        assert.ok(!JSON.stringify(event).includes(sources[queryFile]), "trace must not include source text")
+      }
+    }
+    assert.ok(!results[3].events.some(event => event.event === "references.batch.incomplete"),
+      "disabled trace emits no batch-incomplete events")
+    return
+  }
   const batches = result => result.events.filter(event => event.event === "references.batch.complete")
   const experiment = batches(results[2])
   assert.ok(experiment.length > 0)

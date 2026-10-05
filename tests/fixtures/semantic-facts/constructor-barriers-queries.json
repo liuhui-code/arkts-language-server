@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "queries": [
+    { "id": "base-false", "file": "barriers.ets", "line": 1, "character": 3, "includeDeclaration": false },
+    { "id": "base-true", "file": "barriers.ets", "line": 1, "character": 3, "includeDeclaration": true },
+    { "id": "child-false", "file": "barriers.ets", "line": 7, "character": 3, "includeDeclaration": false },
+    { "id": "child-true", "file": "barriers.ets", "line": 7, "character": 3, "includeDeclaration": true }
+  ]
+}

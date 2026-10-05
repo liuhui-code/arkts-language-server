@@ -163,10 +163,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
   workspaceFilesChanged(batches: readonly Contract.SemanticWorkspaceFileChangeBatch[]): void {
     if (batches.length > 0) this.#referenceResults.clear()
     for (const batch of batches) {
-      if (batch.rootDirty || batch.changes.some(change => {
-        const changedPath = toFilePath(change.uri)
-        return changedPath?.endsWith(".ets") || changedPath?.endsWith(".ts")
-      })) this.#referenceIndexFreshness.changed(batch.rootUri, this.#referenceIndex)
+      this.#referenceIndexFreshness.workspaceFilesChanged(batch, this.#referenceIndex)
       const rootPath = toFilePath(batch.rootUri)
       if (rootPath) this.#packageResolver.invalidate(rootPath)
       this.#mutate(batch.rootUri, {
@@ -179,6 +176,8 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
       })
     }
   }
+
+  indexCatalog(workspaceId: string, phase: "starting" | "ready"): Promise<void> | void { if (this.#referenceIndex) return this.#referenceIndexFreshness.catalog(workspaceId, phase, this.#referenceIndex) }
 
   async complete(query: Contract.SemanticQuery) {
     const discovery = await discoverCompletionCandidates(this.#exportIndex, query)

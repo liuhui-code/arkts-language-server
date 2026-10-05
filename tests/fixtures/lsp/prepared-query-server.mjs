@@ -33,6 +33,7 @@ function send(message) {
 
 function diagnose(uri, version) {
   if (mode === "no-diagnostics") return
+  if (["edit-reference-superseded-diagnostic", "late-v2-diagnostics"].includes(mode) && version === 1) return
   send({ method: "textDocument/publishDiagnostics", params: {
     uri, version, diagnostics: [],
   } })
@@ -90,11 +91,24 @@ function receive(message) {
       }
     }
     const uri = message.params.textDocument.uri
-    const firstLine = (documents.get(uri) ?? "").split(/\r?\n/u)[0]
-    send({ id: message.id, result: [{ uri, range: {
+    const lines = (documents.get(uri) ?? "").split(/\r?\n/u)
+    const firstLine = lines[0]
+    const locations = [{ uri, range: {
       start: { line: 0, character: mode === "wrong-range" ? 1 : 0 },
       end: { line: 0, character: firstLine.length },
-    } }] })
+    } }]
+    if (["edit-reference", "edit-reference-superseded-diagnostic"].includes(mode)
+      && message.method === "textDocument/references" && lines[1] === "Thing") {
+      locations.push({ uri, range: {
+        start: { line: 1, character: 0 }, end: { line: 1, character: 5 },
+      } })
+    }
+    if (mode === "late-v2-diagnostics" && message.method === "textDocument/references"
+      && referenceRequests === 1) {
+      setTimeout(() => send({ id: message.id, result: locations }), 450)
+    } else {
+      send({ id: message.id, result: locations })
+    }
   } else if (message.method === "shutdown") {
     send({ id: message.id, result: null })
   } else if (message.method === "exit") {

@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "benchmarkId": "settings-homeinitdata-edit-reference-api24",
+  "seed": 20261003,
+  "workspace": ".bench/real-projects/settings-ecc550",
+  "sdk": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony",
+  "server": "dist/server.cjs",
+  "sidecar": "target/release/arkts-index-sidecar",
+  "pins": {
+    "repoSha": "ecc550dfaed880e04e38a2477eb7235cd50475b9",
+    "workspaceStatus": "",
+    "workspaceFilesSha256": "4becf56cb2ff65cc58bd1ae53b6937b194f9020770ad397e526f3a51b85b0d40",
+    "serverRevision": "c4df943e5ff9dc1d724bb2aee75d7c4a197efcf4",
+    "serverInputSha256": "812b2d645a2e239e6aa6fab5482a4687f507f0b1e94ac6ac022b9598a19677b2",
+    "serverSha256": "a27fad38ba94f4315473e58577ceba9526b9bb8d0e4b48fba179112e0d9f6ad4",
+    "sidecarSha256": "18f871605571c246ce5667f5aa65c9f4b3b851235c87ae83cf794fbb85adf6b1",
+    "semanticWorkerSha256": "3e8455b310b8d9f240a86020a2840aaa1a031edb7a40cb27d232734f33a1527f",
+    "referenceVerifierWorkerSha256": "9db6259509197e46306e05ef3bf111eecfd1060393014f9a2b2e0c5bf47ab3b2",
+    "standardLibrarySha256": "ea78beea2aa84f93fe66645465c37eb916028b79cd9fe898d469bdf54efbf97d",
+    "nodeVersion": "v26.3.0",
+    "backendVersion": "4.9.5-r10",
+    "backendSha256": "af9e3c4689e3250de1d869b219abb76081c6ea1d3df81bd6b8f6a74c3174b6bc",
+    "lockfileSha256": "ece84ab0afea7a411c453aac7371f0e47381455c5e3cc03f639adff9d2bf1131",
+    "memoryGatesSha256": "ac23114be952a5fe5c030040937d3c97aec1cecdda2ba42e4dbb854f89b37570",
+    "sdkMetadata": {
+      "apiVersion": "24", "displayName": "Ets", "meta": { "metaVersion": "3.0.0" },
+      "path": "ets", "releaseType": "Release", "version": "6.1.1.125"
+    },
+    "sdkDeclarationDigest": "8098b8abbc6b06fce0e7322d6f8f82a5bbce41e847dbd39e9a98811a33d4c6e4"
+  },
+  "runtime": {
+    "timeoutMs": 180000,
+    "diagnosticTimeoutMs": 180000,
+    "sampleIntervalMs": 50,
+    "env": {
+      "ARKTS_REFERENCES_STRATEGY": "indexed-batched",
+      "ARKTS_REFERENCES_BATCH_ROOTS": "64",
+      "ARKTS_REFERENCES_DEPENDENCY_PROFILE": "closure",
+      "ARKTS_REFERENCES_SDK_AMBIENT_PROFILE": "full",
+      "ARKTS_REFERENCES_CONTEXT_RETENTION": "dispose",
+      "ARKTS_MEMORY_BUDGET_MB": "1024",
+      "ARKTS_REFERENCES_TRACE": "0",
+      "ARKTS_REFERENCES_ANCHOR_REUSE": "0",
+      "ARKTS_REFERENCES_RESIDENT_FAST_PATH": "0",
+      "ARKTS_REFERENCES_CONSTRUCTOR_SCOPE": "0",
+      "ARKTS_REFERENCES_CONSERVATIVE_SEMANTIC_UNITS": "0",
+      "ARKTS_REFERENCES_LOCAL_EXPORT_ANCHOR": "0"
+    }
+  },
+  "readiness": { "candidateControl": true },
+  "targets": [{
+    "id": "home-class", "moduleId": "common", "kind": "references",
+    "file": "common/src/main/ets/sendable/HomeInitData.ets",
+    "symbol": "HomeInitData", "position": { "line": 16, "character": 13 },
+    "includeDeclaration": false,
+    "sourceSha256": "8159f9be58985d71e76cb7507fb1bf421a47cacb6aaf99cbddb9e6efc703774f",
+    "oracle": {
+      "path": "bench/references/oracles/settings-homeinitdata-api24-no-declaration.json",
+      "sha256": "58908aa4ee2554864cd4467ccf7a51b3aa8e6dd570fc0f66decc6500bf7f937b",
+      "verified": true
+    }
+  }],
+  "scenarios": [
+    { "id": "home-first", "bucket": "first-unseen-symbol", "targetId": "home-class" },
+    { "id": "home-new-unsaved-reference", "bucket": "edit-reference", "targetId": "home-class",
+      "edit": {
+        "file": "common/src/main/ets/sendable/HomeInitData.ets",
+        "changes": [{ "range": { "start": { "line": 28, "character": 45 },
+          "end": { "line": 28, "character": 45 } },
+          "newText": "\nhomeInitData = new HomeInitData();" }],
+        "sha256": "bb42d34d79f5f8b527460a91c26c8214ef78435d1a1b8181651638795c40a4b0",
+        "oracle": {
+          "path": "bench/references/oracles/settings-homeinitdata-edit-reference-api24-no-declaration.json",
+          "sha256": "b6e6f6058e780c1be14e6fc8fb7668c6afb95b1e85ea3e900bb77f6096d3b99f",
+          "verified": true
+        }
+      }
+    }
+  ]
+}

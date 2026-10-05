@@ -7,6 +7,10 @@
 所有支持范围、阈值、场景分类、目标池和采样规则在变更／取样前冻结。
 门禁结果只使用 `PASS`、`FAIL`、`BLOCKED`、`NOT_RUN`；功能实现状态与性能毕业状态分别记录。
 `Implemented`、候选索引 ready、单次快速响应或已有 ADR 均不等于本契约 PASS。
+阶段实施可在精确性、完整性、新鲜度、取消与新路径资源安全通过后继续，即使
+G-LATENCY 的 500 ms 仍为 FAIL；该 FAIL 必须保留原始证据并留待 S12b，
+不许重标 PASS。最终毕业、默认推广、发布及 #85 关闭仍要求全套门禁通过。
+S02 投影语义不等价及 S05 候选资源回归不是单独的时延失败，不能据此放行。
 
 ## G-CORRECT：完整语义与精确差分
 
@@ -81,6 +85,22 @@ Settings revision `ecc550dfaed880e04e38a2477eb7235cd50475b9` 声明 compile SDK 
 独立进程比较 legacy、batched、indexed-batched，保留各自精确 oracle、正常 diagnostics 和退出状态。
 API-23-matched、跨版本等价及 DevEco 对照为独立门禁；API 24 compatibility 结果不得声称它们通过。
 历史 Settings `LogUtil` 的不完整 legacy 结果不能成为 golden；class 与 constructor、两个 declaration policy 始终分开。
+同一 checkout 未安装 `oh_modules`：`MenuCustomComponent.ets` 的
+`@ohos/mpchart@3.0.15` 子路径导入在真实 LSP 产生 TS2307。因此依赖这些
+导入的符号须标为 `ENV_INCOMPLETE`，不得把 import binding 上的结果当完整
+语义 oracle；已单独验证的其他 Settings 符号仍可按各自证据验收。要升级为
+全工程 S02 oracle，须先锁定实际依赖版本／内容、安装拓扑和搜索范围。
+同 SHA 的隔离 `ohpm install --all` 对照已消除这些 TS2307，但当前
+默认 production pin v2 按设计拒绝 `oh_modules`。显式 v3
+`--pin-installed` 已固定包内容／拓扑及本地 `file:` 目标；安装后的
+`DialogPage` stock 30／31 个 URI＋UTF-16 位置与既有 oracle 全等。
+公开 CLI RED→GREEN fixture 已为实际进入 Program、字节与 v3 pin 一致的
+本地包文件建立独立的实验 semantic search／origin 准入；工程成员和查询
+目标集合不扩大，包内两种声明策略与 stock 精确一致。真实安装后 Settings
+全量 v6 hook 仍 exit42、无 facts：新的首个失败文件又含一个固定 commit
+缺失的相对 controller import，真实 LSP 对该 import 报 TS2307。公开 LSP
+`source-unavailable` 的具体来源尚未定位。fixture 成功和 v3 pin 成功都
+不等于全工程 S02 oracle 已就绪。
 
 ## G-MEMORY：原门禁与全生命周期
 

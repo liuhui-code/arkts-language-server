@@ -180,6 +180,19 @@ export class ReferenceSearchExecutor {
             undefined, false, undefined, undefined, semanticGraph, allowConstructorExclusion)
         }
         if (verification.result.status === "complete") break
+        this.options.trace?.("references.batch.incomplete", {
+          referenceSession,
+          elapsedMs: elapsedMs(),
+          reason: verification.result.reason,
+          batchIndex: batch.index,
+          batchCount: batches.length,
+          candidateMode: plan.candidateMode,
+          semanticUnitMode: plan.semanticUnitMode,
+          dependencyProfile,
+          expansionAttempts,
+          ...verificationTraceFields(verification),
+          durationMs: Math.round((performance.now() - started) * 100) / 100,
+        })
         const expansion = dependencyProfile === "closure"
           && plan.semanticUnitMode === "project-graph"
           && verification.result.reason === "source-unavailable"
