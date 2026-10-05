@@ -437,3 +437,33 @@ trace-off真实Content-Length stdio回放均100/11/11 exact、正常诊断/L3/�
 另有同build trace-on off/experimental各一臂作归因，不能替代trace-off门禁。
 固定产物、四份原始RSS曲线/Location与P95及局限见[唯一S05报告](../reports/2026-09-29-semantic-ready-s05-context-lifecycle.md)。
 实验复用仍默认关闭；本轮未跑完整`pnpm check:fast`，不申请合并。
+
+## R-08 原生 generation 交错窗口的确定性门禁（2026-10-05）
+
+Parent HEAD `c4df943e5ff9dc1d724bb2aee75d7c4a197efcf4`，保留已有未提交修改。
+此前 scripted LSP 能用释放文件卡住第 3 代，但原生 debug sidecar 只支持固定
+5 秒延迟，第三代常在中间查询期间提交。先加强同一公开 LSP 测试：指定
+`ARKTS_INDEX_TEST_ACTIVATION_GATE_GENERATION=3` 和绝对释放文件，在中间请求
+前确认第三代仍未 ready；除精确 URI／UTF-16 集合与 `workspace-changed`
+fallback 外，显式禁止该请求的 `references.index.accepted` 和 `recovered`。
+
+RED 命令（测试已更新、原 debug sidecar 未更新）：
+
+```sh
+ARKTS_INDEX_RACE_REAL_SIDECAR=target/debug/arkts-index-sidecar \
+  node --test tests/semantic/references-index-generation-race.test.mjs
+```
+
+结果 exit 1：`generation 3 must remain behind the native activation gate`；
+旧 sidecar 提前 ready。最小实现只为 debug sidecar 增加指定代次的文件闸门：
+等待有 30 秒失败边界，收到取消不提交该代；原延时闸门保持，Release 构建
+忽略新环境变量。测试明确释放后，第 3 代提交并恢复 indexed；测试清理
+先释放再关闭子进程，RED 也正常退出。
+
+同命令 GREEN 1/1、exit 0，随后五个独立新进程重复均通过；scripted 同轨
+1/1、exit 0。包含原生持久旧代重开、scripted pre-open 及分层检查的聚焦
+测试 8/8 GREEN。`cargo test -p arkts-index-sidecar` 为 52 passed、1 个既有
+ignored；Release build、debug/release Clippy、rustfmt 与 `git diff --check`
+通过。`catalog.rs` 从 692 行降到 681 行，仍是既有超 500 行迁移债。
+这一门禁只证明原生侧 **generation 2 已提交而 generation 3 尚在构建** 的
+新鲜度边界，未证明 Settings 真实工程时延或任何 500 ms／内存发布门禁。

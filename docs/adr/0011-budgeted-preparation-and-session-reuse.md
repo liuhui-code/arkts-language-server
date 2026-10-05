@@ -1,6 +1,8 @@
 # ADR 0011：统一预算下的首次准备、热会话与回收
 
-日期：2026-09-29。状态：**Proposed；不覆盖现行 ADR 0003**。
+日期：2026-09-29。状态：**Proposed；S05 相容磁盘 LS 候选 REJECTED／默认 off；不覆盖现行 ADR 0003**。
+下文的 `S05 IN_PROGRESS` 是对应检查点当时的历史状态，以末尾的
+2026-10-05 安全决策为当前结论。
 
 ## Context
 
@@ -155,8 +157,30 @@ the retained compiler object. This candidate fails the latency gate, remains
 default-off, and gives no reason to change the 1024 MiB budget or transient
 verifier policy. The ADR remains Proposed.
 
+## 2026-10-05 S05 negative safety decision
+
+The S05 experiment is decision-complete for the **compatible-disk local-LS
+reuse candidate**, not accepted as a production capability. The two reversed-
+order, trace-off, 100-operation Settings/API24 pairs preserve exact results but
+show experimental post-edit definition P95 of 1.657/1.608 s against
+0.278/0.272 s with reuse off. An earlier fixed-order pair exceeded the
+≤1.10 peak Node RSS admission gate at 1.600×; later ratios vary, so this is
+not a stable memory-effect estimate or a PSS result. The single trace-on
+SourceFile reuse observation is narrower and does not reverse the trace-off
+failure.
+
+Keep `ARKTS_SEMANTIC_SESSION_REUSE=off` by default and retain the existing
+complete semantic fallback, L3/budget policy and per-batch transient verifier.
+The prototype and observability are implemented; **budgeted hot-session
+production reuse is NOT IMPLEMENTED or graduated**, and neither the 500 ms
+contract nor the original >3 GB/50% and PSS/post-eviction memory gates pass.
+This decision does not supersede ADR 0003. Any different reuse mechanism
+requires a new public RED and independent correctness, freshness,
+cancellation and resource gates; it must not relabel this rejected candidate.
+S02 remains FAIL and S03 remains BLOCKED.
+
 ## Relations
 
-继续使用 [ADR 0002](0002-hot-semantic-context-lifecycle.md) 已实现的 default-off retention、L3 hysteresis 和 R-09 准入；[R-09 TDD](../tdd/references-resident-fast-path.md) 与 [Settings 报告](../reports/2026-09-29-settings-resident-fast-path.md) 保留实现与失败毕业的区别。R-10 已有有界 anchor memo 不等于复用 Program；R-11 shell reuse 仍是次级实验。S05 通过且评审后才可显式说明对 ADR 0003 的 supersession 范围。
+继续使用 [ADR 0002](0002-hot-semantic-context-lifecycle.md) 已实现的 default-off retention、L3 hysteresis 和 R-09 准入；[R-09 TDD](../tdd/references-resident-fast-path.md) 与 [Settings 报告](../reports/2026-09-29-settings-resident-fast-path.md) 保留实现与失败毕业的区别。R-10 已有有界 anchor memo 不等于复用 Program；R-11 shell reuse 仍是次级实验。只有未来不同候选通过自身门禁及评审，才可显式讨论对 ADR 0003 的 supersession 范围；本次否决不产生该范围。
 
 边界见[设计契约](../plans/semantic-ready/design-contracts.md)；门禁见[验收协议](../benchmarks/semantic-ready-acceptance.md)；依赖见[执行计划](../plans/2026-09-29-semantic-ready-execution-plan.md)。

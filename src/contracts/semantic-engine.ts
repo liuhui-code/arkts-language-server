@@ -378,6 +378,7 @@ export interface SemanticEnginePort {
   sync(document: DocumentSnapshot): void
   close(documentUri: DocumentUri): void
   workspaceFilesChanged?(batches: readonly SemanticWorkspaceFileChangeBatch[]): void
+  indexCatalog?(workspaceId: string, phase: "starting" | "ready"): Promise<void> | void
   complete(query: SemanticQuery): Promise<VersionedSemanticResult<SemanticCompletionList>>
   resolveCompletion(
     query: SemanticCompletionResolveQuery,

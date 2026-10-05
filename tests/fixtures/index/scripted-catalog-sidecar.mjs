@@ -21,6 +21,7 @@ input.on("line", (line) => {
     case "initialize": {
       workspaceRoot = request.params.workspaceRoot
       workspaceIdentity = pathToFileURL(workspaceRoot).href
+      if (process.env.ARKTS_INDEX_TEST_SCENARIO === "reference-preopen-stale") generation = committedGeneration = 1
       respond(request.id, {
         workspaceIdentity,
         status: status("idle", "warming", "stale", null),
@@ -40,8 +41,8 @@ input.on("line", (line) => {
       })
       progress(status("discovering", "warming", "stale", generation))
       if (process.env.ARKTS_INDEX_TEST_SCENARIO === "stalled-catalog") break
-      if (process.env.ARKTS_INDEX_TEST_SCENARIO === "reference-generation-race"
-        && generation > 1) {
+      if ((process.env.ARKTS_INDEX_TEST_SCENARIO === "reference-generation-race"
+        && generation > 1) || process.env.ARKTS_INDEX_TEST_SCENARIO === "reference-preopen-stale") {
         progress(status("activating", "ready", "ready", generation))
         const release = `${process.env.ARKTS_INDEX_TEST_AUDIT}.release-${generation}`
         catalogTimer = setInterval(() => {
@@ -137,11 +138,14 @@ input.on("line", (line) => {
     }
     case "references/candidates": {
       const packageResolutionScenario = process.env.ARKTS_INDEX_TEST_SCENARIO
-      if (packageResolutionScenario === "reference-generation-race") {
+      if (packageResolutionScenario === "reference-generation-race"
+        || packageResolutionScenario === "reference-preopen-stale") {
         const uri = file => pathToFileURL(path.join(workspaceRoot, file)).href
-        const files = ["Target.ets", "Query.ets", "Use.ets"]
+        const files = ["Target.ets", "Query.ets", "Use.ets",
+          ...(packageResolutionScenario === "reference-preopen-stale" && committedGeneration > 1 ? ["Added.ets"] : [])]
         const supported = request.params.declarationUri === uri("Target.ets")
-          && request.params.declarationPosition.line === declarationLines.get(committedGeneration)
+          && request.params.declarationPosition.line === (packageResolutionScenario === "reference-preopen-stale"
+            ? 0 : declarationLines.get(committedGeneration))
         respond(request.id, {
           supported, complete: supported, identityComplete: supported,
           identityUris: supported ? files.map(uri) : [], narrowedUris: [],
@@ -432,7 +436,7 @@ input.on("line", (line) => {
     }
     case "status":
       respond(request.id, status("ready", "ready", "ready",
-        process.env.ARKTS_INDEX_TEST_SCENARIO === "reference-generation-race"
+        ["reference-generation-race", "reference-preopen-stale"].includes(process.env.ARKTS_INDEX_TEST_SCENARIO)
           && generation > committedGeneration ? generation : null))
       break
     case "shutdown":

@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "files": {
+    "barriers.ets": "export class Base {\n  constructor() {}\n  static create() { return new this() }\n}\nexport class Implicit extends Base {}\nexport class Leaf extends Implicit {}\nexport class Child extends Base {\n  constructor() { super() }\n}\nexport class OwnLeaf extends Child {\n  constructor() { super() }\n}\nnew Base()\nnew Implicit()\nnew Leaf()\nnew Child()\nnew OwnLeaf()\n"
+  }
+}

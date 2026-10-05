@@ -207,10 +207,12 @@ export class DefaultWorkspaceSymbolService implements WorkspaceSymbolServicePort
     signal?: AbortSignal,
   ): Promise<void> {
     try {
+      await this.dependencies.semantic.indexCatalog?.(workspace.id, "starting")
       await this.dependencies.catalog.start(
         workspace,
         (progress) => {
           if (this.disposed) return
+          if (progress.phase === "ready") this.dependencies.semantic.indexCatalog?.(workspace.id, "ready")
           this.progress.set(workspace.id, progress)
           this.reportAggregate()
         },

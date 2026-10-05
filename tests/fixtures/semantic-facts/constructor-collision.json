@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "files": {
+    "left.ets": "export class Widget {\n  constructor() {}\n}\nexport const left = new Widget()\n",
+    "right.ets": "export class Widget {\n  constructor() {}\n}\nexport const right = new Widget()\n",
+    "usage.ets": "import { Widget as LeftWidget } from \"./left\"\nimport { Widget as RightWidget } from \"./right\"\nconst first = new LeftWidget()\nconst second = new RightWidget()\n"
+  }
+}

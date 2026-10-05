@@ -3,14 +3,145 @@
 Current governance: [semantic-ready execution plan](2026-09-29-semantic-ready-execution-plan.md),
 [product contract](semantic-ready/product-contract.md), [MoSCoW](references-moscow.md)
 and [ADR 0007–0013](../adr/README.md). This remains the **only active Ledger**.
+The 2026-10-03 sequencing decision separates implementation from product graduation:
+an exact, fresh, complete and resource-safe slice may be implemented while its
+500 ms bucket remains FAIL. That failure stays open for S12b; it cannot turn an
+unimplemented or semantically invalid route into a completed feature.
 S00 documentation is integrated. S01 harness and candidate-ready controls are
 implemented but not graduated: semantic readiness FAIL, incomplete bucket coverage;
+the [2026-10-03 real Settings edit-reference follow-up](../reports/2026-09-29-semantic-ready-s01-baseline.md#2026-10-03-追加真实未保存引用编辑控制)
+adds exact 9→10 unsaved-reference results in legacy and indexed-batched, with
+normal v2 diagnostics, but both runs remain READINESS_UNSUPPORTED/FAIL;
+the [2026-10-04 Settings public-API edit control](../reports/2026-09-29-semantic-ready-s01-baseline.md)
+widens an exported member type in an unsaved buffer and preserves the same nine
+exact URI+UTF-16 Locations in both strategies with normal v2 diagnostics.
+It is one candidate-ready sample, not semantic-ready or P95 graduation;
+S01 preflight now rejects duplicate oracle Locations and compares normalized
+sets rather than counts for edit-reference deltas (public CLI focus20/20;
+final fixed-tree `check:fast` 1222/1222 PASS, not S01 graduation);
 S02's public-checker binding projection hypothesis is FAIL at the mandatory
-constructor gate; S03 is BLOCKED. S05 is IN_PROGRESS: default-off context
-lifecycle/rebuild reasons and compatible-disk local-LS prototype implemented, default off; graduation open;
+constructor gate. A distinct resolved-signature v2 passes seven explicit-
+constructor targets but produces four extra positions for aliased/parenthesized
+heritage; both hypotheses are FAIL. A third isolated compiler hook has exact
+inherited-alias/overload answers but still performs per-constructor internal
+queries (`NON_BULK`); S02 is FAIL and S03 is BLOCKED. S05's compatible-disk local-LS
+candidate is `DECISION_COMPLETE / REJECTED`: default-off context lifecycle/rebuild
+observation and prototype are implemented, but hot-session production reuse is
+NOT IMPLEMENTED or graduated; safe fallback and per-batch verifiers remain;
 S04 and S06–S12 remain NOT_STARTED.
+An [isolated v4 compiler worklist](../reports/2026-10-04-semantic-ready-s02-shared-worklist-spike.md)
+now shares file/name and import-map passes for multiple constructors: three
+narrow public oracle slices are exact, but `public constructor` false-policy
+misses one Location and Settings/SDK/resource coverage is not run. It changes
+neither the S02 FAIL/S03 BLOCKED status nor production defaults.
+The [isolated v5 origin worklist](../reports/2026-10-04-semantic-ready-s02-origin-worklist-spike.md)
+repairs the `public constructor` declaration-policy slice and matches more
+constructor fixtures. `new Base`/`new Derived` usage-site remains explicit
+`UNSUPPORTED` (stock has 3/4 Locations); Settings/SDK and scale were untested
+at that checkpoint.
+S02 stays FAIL and S03 BLOCKED.
+The [isolated v6 usage-origin worklist](../reports/2026-10-04-semantic-ready-s02-usage-origin-worklist-spike.md)
+matches direct `new Base`/`new Derived` usage-site Locations under both declaration
+policies, including the inherited two-origin selection. The `new Alias()` call-shapes
+fixture stops with `HOOK_UNSUPPORTED` and no facts; ordinary/alias nonconstructor
+queries remain `UNSUPPORTED`. At that fixture checkpoint Settings/SDK and scale
+were untested; a subsequent real Settings extraction attempt is documented below. S02 stays
+FAIL, S03 BLOCKED, and production defaults are unchanged.
+The [read-only disk-oracle input slice](../reports/2026-10-04-semantic-ready-s02-disk-oracle-slice.md)
+retains original source paths and pins only the listed files, but reports
+`HOST_PARITY_NOT_MET`: the spike host does not consume API24 SDK or Harmony
+resolution. It is not a Settings oracle or S02 gate pass.
+The [production-host stock/hook follow-up](../reports/2026-10-04-semantic-ready-s02-production-host-oracle.md)
+uses the actual DocumentStore/LS with full SDK and exactly pinned Settings
+membership, source, SDK declaration/compiler-option and default project-configuration
+digests; installed dependencies are rejected. Stock HomeInitData no-/with-declaration
+answers match existing public LSP goldens 9/9 and 10/10; the MenuController
+constructor usage at UTF-16 90:17, excluding declaration, matches its separate
+267-location golden exactly. The isolated v6 hook now accepts the same production-host
+disk input. A tiny pinned SDK/project fixture passes the facts-only constructor
+query and exact stock/hook SHA-256 comparisons of sorted Program root paths and
+compiler options, not just counts. But clean Settings/API24 extraction with all
+1,496 members was **attempted and failed** after about 10.5 s: exit42,
+`FAIL/HOOK_UNSUPPORTED`, reason `ORIGIN_WORKLIST_UNSUPPORTED_OUTSIDE_ROOT_OR_SPAN`,
+no facts or partial answer. The Settings hook equivalence/resource gate is thus
+RUN-and-FAIL, not a fixture success or an unrun real-project test; failure occurred
+before real-project hook root/options metadata or 267-location facts could be compared.
+Failure-detail replay identifies its first outside-root origin as compiler
+`lib.es5.d.ts` for Settings `new Array()`. A mixed local-constructor/Array public
+CLI fixture now keeps local false/true-policy facts exact while marking Array
+`UNSUPPORTED` and the artifact `FAIL/PARTIAL`, not complete. The same clean
+Settings pin replay then stops at `ORIGIN_WORKLIST_UNSUPPORTED_ADJUSTED_BRANCH`
+without facts; this does not unblock the 267-location hook comparison.
+That `ADJUSTED_BRANCH` was observed with a broken local `file:` package-alias
+resolution: the real Settings `DialogPage` import had TS2307, so its old stock
+2/3 same-file Locations were not a valid exact oracle. A real stdio LSP RED→GREEN
+fix for declared local aliases preserves installed-package and path-boundary
+guards; the same pinned Settings/API24 stock query now yields 30/31 Locations
+across 24 files. Hook extraction was rerun against this corrected oracle;
+the old adjusted-branch observation is not a standalone compiler counterexample.
+The after-fix extraction still exits42 with that reason and no facts, but its
+first failing selection was not recorded in the original output. A default-off,
+sanitized failure detail now identifies it as `new CustomUiInfo` in
+`MenuCustomComponent.ets`, with the compiler definition on the same file's
+import binding, **not** `DialogPage`; status remains exit42/no facts. A real LSP
+`didOpen` of that file reports four TS2307 diagnostics for `@ohos/mpchart`
+subpath imports: the pinned checkout declares version 3.0.15 but has no
+installed `oh_modules`. This is a dependency-incomplete environment for that
+symbol, not proof of a hook bug on resolved compiler semantics.
+A separate same-commit `ohpm install --all` checkout with exact declared
+versions removes all four mpchart TS2307s; fresh LSP definition resolves into
+the installed 3.0.15 package. Default production pin v2 still rejects this
+checkout at `oh_modules`; an explicit public-CLI-tested v3 `--pin-installed`
+now fixes installed bytes, symlink topology, owner lock/manifest and declared
+local `file:` targets. The same installed Settings/API24 input is pinned with
+1,496 project members. Its stock `DialogPage` answers are complete and exactly
+equal to both existing URI+UTF-16 oracles (30/31); this is not hook parity.
+A separate public CLI RED→GREEN fixture now proves a narrow package boundary:
+compiler references reach an installed local package, stock and experimental
+facts-only results match for both declaration policies, and ordinary
+ProjectGraph membership remains one project file. The hook indexes project +
+verified package sources but selects query targets only from project files;
+package constructors are not new project queries. A same-name/version orphan
+registry package was independently RED and now fails pin instead of borrowing
+another lock row. This is a small fixture slice, not whole-Settings hook parity:
+the installed Settings v6 extraction still exits42 with no facts at another
+`ADJUSTED_BRANCH` in `TouchpadPointerSpeedComponent.ets`. Its relative
+controller target is absent from the fixed commit and real LSP emits TS2307;
+this is environment-incomplete, not a proven failure on resolved semantics.
+The installed-package `new CustomUiInfo` exploratory LSP references requests
+both returned explicit `-32803` errors, not empty or complete Locations;
+initial trace showed complete project membership but only batch 0 start.
+A public LSP RED→GREEN added default-off `references.batch.incomplete` tracing;
+the installed Settings replay now identifies batch 0/24 as `source-unavailable`
+while preserving -32803. The specific unavailable source is not in the trace,
+so a package-scope fix is not yet justified by location-level evidence.
+The real Settings/API24 LSP `DialogPage` differential is 30/30 (exclude
+declaration) and 31/31 (include declaration) exact for legacy and default,
+with no target-alias TS2307. Yet default logs `candidate-ineligible` and falls
+back to complete batching: cold requests take 93,298/94,639 ms versus legacy
+8,037/9,317 ms, with externally sampled product RSS peaks 789,233,664/
+799,465,472 versus 827,109,376/832,028,672 B. This is a correctness pass
+and latency failure, not accepted real-project index proof.
+A separate trace-on cold run remains 30/30 exact at 95,401.63 ms: fallback
+scans 1,496 member files in 24 sequential batches; their Program-ready time
+totals 81,733.91 ms, while compiler reference queries total 2,133.18 ms.
+Repeated compiler preparation, not `findReferences`, dominates this run.
+The ineligible anchor is the explicit `constructor` keyword, not the class
+export identifier span; no declaration identity was produced although the
+catalog generation was ready and matched. A class-name remap without compiler
+proof is unsafe for inherited constructor/factory semantics.
+The public explicit-constructor alias LSP fixture also proves both declaration
+policies exactly match legacy while default safely falls back twice; the
+implicit-constructor fixture remains index-accepted twice.
+Nonconstructor, implementation, overlay and scale gates remain NOT_RUN. S02 remains
+FAIL, S03 BLOCKED and production defaults unchanged. The original simple oracle
+remains explicitly non-parity.
 See the [single S01 report](../reports/2026-09-29-semantic-ready-s01-baseline.md)
-and [S02 counterexample](../reports/2026-09-29-semantic-ready-s02-facts-spike.md).
+and [S02 v1 counterexample](../reports/2026-09-29-semantic-ready-s02-facts-spike.md)
+plus [v2 bounded probe](../reports/2026-10-03-semantic-ready-s02-resolved-signature-spike.md)
+and [v3 non-bulk hook probe](../reports/2026-10-03-semantic-ready-s02-compiler-bulk-hook-spike.md).
+The [v4 shared-worklist probe](../reports/2026-10-04-semantic-ready-s02-shared-worklist-spike.md)
+keeps its failed declaration-policy control and does not constitute production facts.
 The [single S05 report](../reports/2026-09-29-semantic-ready-s05-context-lifecycle.md)
 records public focus37/37 and same-build Settings trace-on/off, 9/9 exact each.
 Trace-off warmed definition48ms and references4,647ms are single observations,
@@ -43,6 +174,31 @@ The current-build two reversed-order Settings 100-operation pairs are again exac
 but experimental/off post-edit definition P95 is 1,657/278 and 1,608/272 ms.
 RSS peak ratios 1.079×/0.929× do not establish a stable memory benefit; the
 compatible-disk LS candidate **fails latency graduation** and remains default-off.
+[S05's default-off compiler-phase trace](../reports/2026-09-29-semantic-ready-s05-context-lifecycle.md)
+then passed one real Settings 100-operation pair with full exact results: every edited
+definition triggered `createProgram`, and the 2/off and 5/experimental >500ms
+requests spent about 1.3–1.5s there. A single trace-on pair does not reverse the
+two trace-off graduation failures or identify L3 eviction alone as the cause.
+[The follow-up S05 observation](../reports/2026-09-29-semantic-ready-s05-context-lifecycle.md)
+distinguishes post-query Program identity from LS identity: public LSP fixture keeps
+one context across a disk comment edit but observes a new Program; the pinned
+Settings/API24 no-edit Mode B replay remains 9/9 exact with normal diagnostics.
+The latter does not prove real-project edit reuse or graduate the rejected candidate.
+The [trace-only SourceFile identity control](../reports/2026-09-29-semantic-ready-s05-context-lifecycle.md)
+now observes a real Settings/API24 disk edit: experimental retains 306/306 SDK and
+63/64 project SourceFile objects across a new Program, while off retains 0/306
+and 0/64. Both arms are exact, but one trace-on pair does not reverse the
+100-operation trace-off latency failure; default remains off.
+S05's 2026-10-05 safety decision closes **this candidate's evaluation** as
+`REJECTED`, not the R-03/R-24/R-26 production capabilities. Two reversed-order
+trace-off Settings/API24 100-operation pairs show experimental edited-definition
+P95 1.657/1.608 s versus off 0.278/0.272 s; an earlier 1.600× peak Node RSS
+pair also exceeded the ≤1.10 admission limit, while later ratios vary.
+No stable memory benefit, post-eviction PSS, 500 ms or original >3 GB/50%
+graduation follows. `ARKTS_SEMANTIC_SESSION_REUSE` remains default `off`, with
+complete semantic fallback, budget/L3 and transient verifier unchanged; this
+does not supersede ADR 0003 or unblock S02 FAIL/S03 BLOCKED. A different
+mechanism requires a new public RED and its own exact/freshness/resource gates.
 [S05 report](../reports/2026-09-29-semantic-ready-s05-context-lifecycle.md) retains raw curves; reuse-off queue-start and verifier batch-start cancellation controls pass, not experimental/all-batch proof.
 An earlier S05 whole-fast was1160/1161 PASS,1 FAIL/exit1: original-deadline struct
 response4 timeout; isolated replays did not supersede that run. The initial
@@ -72,7 +228,7 @@ S05 remains independent after S01. R-09 is already implemented default-off,
 not reset to the attachment's older Research state. R-20 is reframed as
 initial preparation availability, not a candidate-ready shortcut.
 
-Current implementation baseline: `911ae43c` (PR #91 merged; baseline fast
+Historical integration baseline: `911ae43c` (PR #91 merged; baseline fast
 **1103/1103 PASS**). The preceding R-09 source has its own
 **1116/1116 whole-fast PASS**. The current literal-root source has focus38/38
 plus dependency strengthening1/1 GREEN; its fresh frozen whole gate is
@@ -83,7 +239,10 @@ The historical combined gate is1124/1125 PASS,
 whole-fast is **1126/1126 PASS, exit 0**, zero failures/cancellations/skips/todos.
 No focused rerun supersedes a whole gate. Dated checkpoints below are historical evidence; their
 old FAILs and counts are not the current baseline. Priority is product priority, not a claim of
-completion. An item is complete only after its linked gate passes; see the
+completion. `Implemented` requires applicable public correctness, freshness,
+completeness, cancellation and new-path resource-safety gates; `Graduated` additionally
+requires the linked product latency and memory gates. A failed 500 ms bucket remains
+FAIL without blocking the next safe implementation slice; see the
 [current execution plan](2026-09-29-semantic-ready-execution-plan.md).
 The [preceding plan](2026-09-20-references-latency-execution-plan.md) and dated
 checkpoints below retain their original build evidence and previous priorities.
@@ -99,13 +258,13 @@ the new initial-preparation exemption neither graduates nor rewrites them.
 | R-05 | Must | In-flight coalescing | Implemented | Real LSP proves one verification, independent client cancellation, shared ContentModified invalidation, and no cross-version join |
 | R-06 | Must | Interactive/global lanes | Implemented for references; F6b lets complete cache hits bypass diagnostic quiescence, not misses | Real LSP proves definition/hover bypass delayed references and correct mutation freshness; F6b RED/GREEN proves cached references finish before a held diagnostic settles while versioned diagnostics still publish. Cold/miss latency and wider release sampling remain open |
 | R-07 | Must | Index trust/fallback integrity | Partial: current-source consumer plus default-off empty/literal module exclusion consumed; general constructor scope proof open | [Literal-root RED/GREEN](../tdd/references-constructor-literal-roots.md): 10->6 actual batches, exact sets with unknown inherited caller and omitted-root dependency; focus38/38 plus strengthening1/1 and fresh whole-fast1133/1133 PASS/exit0. Worker/owner old-token current reads and final recheck preserve membership/dependencies/overlays; changed proof restores complete work. [Settings](../reports/2026-09-29-settings-constructor-literal-roots.md) is11x267 exact/valid but0 rule hits,14+14 batches and61.205/61.528s; nine existing hits27-51ms. No Settings/500ms/default graduation. The preceding empty-module/freshness build has its own1126/1126 historical gate |
-| R-08 | Must | Index resync recovery | Implemented | Real LSP proves mutation → safe legacy fallback → committed generation advance → indexed recovery with exact Locations |
+| R-08 | Must | Index resync recovery | Implemented; native persisted pre-open endpoints now covered | Real LSP proves mutation → safe legacy fallback → committed generation advance → indexed recovery with exact Locations. A scripted test controls the old-generation/new-generation intermediate window; a separate native SQLite two-process test verifies exact fallback for pre-open watched edits, then observes the restored old committed generation during catalog startup and both declaration policies recover after a newer commit. Native intermediate-window timing is not yet deterministically covered. [S05 evidence](../reports/2026-09-29-semantic-ready-s05-context-lifecycle.md) |
 | R-09 | Should | Resident full-scope references fast-path | Implemented default-off; current 18-case public coverage and final whole-fast 1126/1126 GREEN after absence-identity recovery | [TDD](../tdd/references-resident-fast-path.md): unchanged full Program and original cursor; unrelated sibling mutation no longer evicts negative evidence, actual load/configuration guards retained. [Six fixed Settings runs](../reports/2026-09-29-settings-resident-fast-path.md) each give 267 exact Locations, but all enabled queries miss at L3 and retain 24 batches; medians refs101,011/97,490 ms and warmup28,696/33,257 ms. Settings admission/graduation unqualified; no real reuse saving, budget increase or default promotion |
 | R-10 | Should | Anchor reuse/fusion | Default-off warm memo, local-export and unaliased re-export cold seeds implemented; graduation open | [Warm RED/GREEN](../tdd/references-anchor-reuse.md), [local-export RED/GREEN](../tdd/references-local-export-anchor-seed.md), [re-export RED/GREEN](../tdd/references-reexport-anchor-seed.md) and [Settings A/B plus mode C](../reports/2026-10-03-settings-reexport-anchor-seed.md) preserve compiler authority and exact results. Fixture include-declaration/edit/cancel and Settings 11-query comment-edit replay pass; the single mode-C pair is not a distribution. Cold seeds require proof plus original-cursor validation in each final batch; mismatch discards/retries. All flags stay off. No verifier residency change; broader symbol/SDK, distribution, memory/freshness/500 ms gates remain blocking |
 | R-11 | Could | Worker-shell reuse spike | Startup attribution measured; reuse not implemented/graduated | [Default-off trace and four real probes](../reports/2026-09-27-settings-worker-startup-attribution.md): constructor diagnostics FAIL; three short-query controls exact/diagnostic PASS. Startup secondary at 6.6% / 7.5–8.4% there, not a universal ratio or 500 ms solution. Later [original-deadline small-fixture controls](../reports/2026-09-28-settings-source-availability-consumer.md) fail with/without RSS sampling; startup receipt is their largest wall field, not pure creation CPU. S05 may test this separately; no default promotion without meaningful latency gain and peak ≤ per-batch ×1.10 |
 | R-12 | Must | Memory hysteresis | Implemented | L3 remains active until RSS falls below the configured target; coordinator and production-worker regressions GREEN; reused by S05/S12, not recreated |
 | R-13 | Must | Conservative incremental facts/overlay maintenance | Planned; NOT_STARTED; finer dependency invalidation remains proof-gated Should | S07 after S04/S06; existing DocumentAuthority/ProjectGraph own changes; new file facts replace old, public/global changes expand invalidation, unknown goes coarse; ordinary edit waits still count toward 500 ms |
-| R-14 | Must | Compiler-derived facts feasibility, then conditional persistence | S02 tested public-checker-binding-projection-v1 FAIL; production/schema blocked | [S02](../reports/2026-09-29-semantic-ready-s02-facts-spike.md): 8 ordinary/alias + class-control exact; constructor false/true miss2/3. Extraction0 references and independent facts consumer; focused41/41 GREEN certifies tooling, not projection. Other mandatory kinds/Settings NOT_RUN. New compiler-hook hypothesis or independent S05 needed; no N×full-workspace preparation and no S03 until complete proof |
+| R-14 | Must | Compiler-derived facts feasibility, then conditional persistence | S02 FAIL: v1/v2 semantic counterexamples, v3 NON_BULK, v4 declaration-policy miss, v5 usage-site gap; isolated v6 direct `new` slice exact but alias/nonconstructor fail; real Settings/API24 production-host extraction RUN-and-FAIL; production/schema blocked | [V1](../reports/2026-09-29-semantic-ready-s02-facts-spike.md) misses constructor positions; [V2](../reports/2026-10-03-semantic-ready-s02-resolved-signature-spike.md) adds four false heritage references; [V3](../reports/2026-10-03-semantic-ready-s02-compiler-bulk-hook-spike.md) repeats per-target grouping; [V4](../reports/2026-10-04-semantic-ready-s02-shared-worklist-spike.md) misses a modified-constructor Location; [V5](../reports/2026-10-04-semantic-ready-s02-origin-worklist-spike.md) recovers that slice but cannot answer multi-origin usage-site; [V6](../reports/2026-10-04-semantic-ready-s02-usage-origin-worklist-spike.md) gives direct `new Base`/`new Derived` exact false 2/2 and true 3/4, yet alias-bound `new Alias()` returns `HOOK_UNSUPPORTED`/exit42 with no facts. [Production-host follow-up](../reports/2026-10-04-semantic-ready-s02-production-host-oracle.md): tiny pinned hook/stock constructor exact with matching sorted-root/options digests; mixed local/Array fixture now explicitly retains partial local facts and marks Array unknown. Full clean Settings 1,496-member hook extraction still exit42 `HOOK_UNSUPPORTED` before facts, now at `ADJUSTED_BRANCH`; stock MenuController 267 exact is **not** hook exact. Nonconstructor, implementation, overlay and scale gates NOT_RUN. No S03 until a fully exact and resource-gated producer exists |
 | R-15 | Should | Reuse proven global lifecycle for other capabilities | Planned; existing LSP capabilities unchanged; new routes NOT_STARTED | S08/S10/S11 one capability or direction per slice; reuse lanes/freshness, independently prove implementation/rename/call semantics; no empty universal framework |
 | R-16 | Won't | Second ArkTS TypeChecker | Rejected | Rust index must not become semantic truth |
 | R-17 | Won't | Identity as production default now | Rejected pending proof | Known SDK-import false negative |
@@ -121,6 +280,12 @@ the new initial-preparation exemption neither graduates nor rewrites them.
 | R-27 | Must | Safe prepareRename/rename fast path | Existing capability; new path NOT_STARTED | S10a/b after S06/S07/S09; conflict/legality and complete versioned WorkspaceEdit; temporary-copy application validates result; positions alone are insufficient |
 | R-28 | Should | Call hierarchy ready-state routing | Existing capability; new path NOT_STARTED | S11a/b/c after S06/S07/S08; separately proven call projection, direction/fromRanges/item freshness; preserve old capability while ungraduated |
 | R-29 | Must | Diagnostics and resource/formatting coexistence | Existing capabilities; new readiness regression NOT_STARTED | S09c/S12; normal diagnostics codes/ranges/versions and background freshness separate from request SLO; optimize only measured gaps, no second linter LS |
+
+R-20's linked full validation and >3 GB pressure checks in the table are product
+graduation gates, not permission to claim S04 is implemented. S04 implementation
+first needs truthful readiness, versioned diagnostics, cancellation and resource
+safety; 500 ms navigation failures remain R-21/S12b work. S02's failed constructor
+equivalence still blocks the S03 prerequisite for that route.
 
 ## Historical implementation checkpoints
 

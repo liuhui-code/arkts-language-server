@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "queries": [
+    { "id": "new-base-false", "file": "model.ets", "line": 4, "character": 5, "includeDeclaration": false },
+    { "id": "new-derived-false", "file": "model.ets", "line": 5, "character": 5, "includeDeclaration": false },
+    { "id": "new-base-true", "file": "model.ets", "line": 4, "character": 5, "includeDeclaration": true },
+    { "id": "new-derived-true", "file": "model.ets", "line": 5, "character": 5, "includeDeclaration": true }
+  ]
+}

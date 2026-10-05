@@ -182,6 +182,155 @@ test("prepared suite applies a pinned unsaved edit and queries immediately at th
   assert.equal(fs.readFileSync(path.join(fixture.suite.workspace, "Query.ets"), "utf8"), "Thing\n")
 })
 
+test("edit-reference queries the unsaved second Thing immediately with an exact edited oracle", async (t) => {
+  const fixture = await makeSuite(t, "edit-reference")
+  const editedOracle = path.join(fixture.directory, "edited-oracle.json")
+  fs.writeFileSync(editedOracle, JSON.stringify({ schemaVersion: 1, locations: [
+    { file: "Query.ets", range: { start: { line: 0, character: 0 }, end: { line: 0, character: 5 } } },
+    { file: "Query.ets", range: { start: { line: 1, character: 0 }, end: { line: 1, character: 5 } } },
+  ] }))
+  const { sha256File } = await import("../scripts/bench/reference-replay-input.mjs")
+  const changes = [{ range: { start: { line: 1, character: 0 }, end: { line: 1, character: 0 } }, newText: "Thing\n" }]
+  fixture.suite.scenarios.push({ id: "add-reference", bucket: "edit-reference", targetId: "thing", edit: {
+    file: "Query.ets", changes, sha256: digestJson(changes),
+    oracle: { path: editedOracle, sha256: sha256File(editedOracle), verified: true },
+  } })
+  saveSuite(fixture)
+  const result = runSuite(fixture)
+  assert.equal(result.status, 1, `${result.stderr}\n${result.stdout}`)
+  const report = JSON.parse(fs.readFileSync(fixture.output, "utf8"))
+  const edited = report.requests.find(request => request.scenarioId === "add-reference")
+  assert.ok(edited, JSON.stringify({ failure: report.failure, requests: report.requests }))
+  assert.equal(edited.bucket, "edit-reference")
+  assert.equal(edited.documentVersion, 2)
+  assert.equal(edited.priorCompleteSnapshot, false)
+  assert.equal(edited.status, "COMPLETE")
+  assert.equal(edited.correctness.equal, true)
+  assert.equal(edited.correctness.locations.length, 2)
+  assert.equal(report.gateStatus.diagnostics, "PASS")
+  assert.ok(report.diagnostics.some(item => item.version === 2 && !item.error))
+  const didChange = report.timeline.findIndex(event => event.scenarioId === "add-reference" && event.phase === "didChange-sent")
+  assert.equal(report.timeline[didChange + 1].phase, "request-start")
+  assert.equal(report.timeline[didChange + 1].scenarioId, "add-reference")
+  assert.equal(fs.readFileSync(path.join(fixture.suite.workspace, "Query.ets"), "utf8"), "Thing\n")
+})
+
+test("superseded diagnostics do not fail or delay the edited reference snapshot", async (t) => {
+  const fixture = await makeSuite(t, "edit-reference-superseded-diagnostic")
+  fixture.suite.runtime.diagnosticTimeoutMs = 4000
+  const editedOracle = path.join(fixture.directory, "edited-oracle.json")
+  fs.writeFileSync(editedOracle, JSON.stringify({ schemaVersion: 1, locations: [
+    { file: "Query.ets", range: { start: { line: 0, character: 0 }, end: { line: 0, character: 5 } } },
+    { file: "Query.ets", range: { start: { line: 1, character: 0 }, end: { line: 1, character: 5 } } },
+  ] }))
+  const { sha256File } = await import("../scripts/bench/reference-replay-input.mjs")
+  const changes = [{ range: { start: { line: 1, character: 0 }, end: { line: 1, character: 0 } }, newText: "Thing\n" }]
+  fixture.suite.scenarios.push({ id: "add-reference", bucket: "edit-reference", targetId: "thing", edit: {
+    file: "Query.ets", changes, sha256: digestJson(changes),
+    oracle: { path: editedOracle, sha256: sha256File(editedOracle), verified: true },
+  } })
+  saveSuite(fixture)
+  const result = runSuite(fixture)
+  assert.equal(result.status, 1, `${result.stderr}\n${result.stdout}`)
+  const report = JSON.parse(fs.readFileSync(fixture.output, "utf8"))
+  assert.equal(report.requests.length, 3, JSON.stringify({ failure: report.failure, timeline: report.timeline }))
+  assert.ok(report.requests.every(request => request.status === "COMPLETE" && request.correctness.equal))
+  assert.equal(report.requests.at(-1).documentVersion, 2)
+  assert.equal(report.gateStatus.diagnostics, "PASS")
+  assert.equal(report.correctness.status, "PASS")
+  assert.ok(report.diagnostics.some(item => item.version === 2 && !item.error))
+  const publishedV2 = report.timeline.find(event => event.phase === "publishDiagnostics" && event.version === 2)
+  const closed = report.timeline.find(event => event.phase === "server-process-closed")
+  assert.ok(publishedV2 && closed)
+  assert.ok(closed.monotonicMs - publishedV2.monotonicMs < 2000,
+    "a superseded v1 diagnostic waiter must not consume the 4-second diagnostic timeout")
+})
+
+test("a delayed first query cannot let an obsolete diagnostic deadline fail later v2 diagnostics", async (t) => {
+  const fixture = await makeSuite(t, "late-v2-diagnostics")
+  fixture.suite.runtime.timeoutMs = 2000
+  fixture.suite.runtime.diagnosticTimeoutMs = 200
+  const changes = [{ range: { start: { line: 1, character: 0 }, end: { line: 1, character: 0 } },
+    newText: "// edited body\n" }]
+  fixture.suite.scenarios.push({ id: "edit", bucket: "edit-body", targetId: "thing", edit: {
+    file: "Query.ets", changes, sha256: digestJson(changes), oracle: fixture.suite.targets[0].oracle,
+  } })
+  saveSuite(fixture)
+  const result = runSuite(fixture)
+  assert.equal(result.status, 1, `${result.stderr}\n${result.stdout}`)
+  const report = JSON.parse(fs.readFileSync(fixture.output, "utf8"))
+  assert.equal(report.requests.length, 3, JSON.stringify({ failure: report.failure, timeline: report.timeline }))
+  assert.ok(report.requests.every(request => request.status === "COMPLETE" && request.correctness.equal))
+  const opened = report.timeline.find(event => event.phase === "didOpen-sent")
+  const changed = report.timeline.find(event => event.phase === "didChange-sent")
+  assert.ok(changed.monotonicMs - opened.monotonicMs > fixture.suite.runtime.diagnosticTimeoutMs,
+    "v1 diagnostic deadline must expire before the v2 edit")
+  assert.ok(report.diagnostics.some(item => item.version === 2 && !item.error))
+  assert.equal(report.gateStatus.diagnostics, "PASS")
+  assert.equal(report.correctness.status, "PASS")
+})
+
+test("edit-reference rejects a comment-only edit with an unchanged reference oracle", async (t) => {
+  const fixture = await makeSuite(t)
+  const changes = [{ range: { start: { line: 1, character: 0 }, end: { line: 1, character: 0 } },
+    newText: "// no new reference\n" }]
+  fixture.suite.scenarios.push({ id: "false-reference-edit", bucket: "edit-reference", targetId: "thing", edit: {
+    file: "Query.ets", changes, sha256: digestJson(changes), oracle: fixture.suite.targets[0].oracle,
+  } })
+  saveSuite(fixture)
+  const result = runSuite(fixture)
+  assert.equal(result.status, 2, `${result.stderr}\n${result.stdout}`)
+  assert.match(result.stderr, /PREPARED_SUITE_INVALID=EDIT_REFERENCE_NO_DELTA/u)
+  assert.equal(fs.existsSync(fixture.output), false)
+})
+
+test("edit-reference rejects duplicate edited oracle Locations before launching", async (t) => {
+  const fixture = await makeSuite(t)
+  const editedOracle = path.join(fixture.directory, "duplicate-edited-oracle.json")
+  const location = { file: "Query.ets", range: {
+    start: { line: 0, character: 0 }, end: { line: 0, character: 5 },
+  } }
+  fs.writeFileSync(editedOracle, JSON.stringify({ schemaVersion: 1, locations: [location, location] }))
+  const { sha256File } = await import("../scripts/bench/reference-replay-input.mjs")
+  const changes = [{ range: { start: { line: 1, character: 0 }, end: { line: 1, character: 0 } },
+    newText: "// no new reference\n" }]
+  fixture.suite.scenarios.push({ id: "duplicate-oracle", bucket: "edit-reference", targetId: "thing", edit: {
+    file: "Query.ets", changes, sha256: digestJson(changes),
+    oracle: { path: editedOracle, sha256: sha256File(editedOracle), verified: true },
+  } })
+  saveSuite(fixture)
+  const result = runSuite(fixture)
+  assert.equal(result.status, 2, `${result.stderr}\n${result.stdout}`)
+  assert.match(result.stderr, /PREPARED_SUITE_INVALID=EDIT_ORACLE_DUPLICATE/u)
+  assert.equal(fs.existsSync(fixture.output), false)
+})
+
+test("edit-reference accepts a moved Location without requiring a count change", async (t) => {
+  const fixture = await makeSuite(t, "wrong-range")
+  const editedOracle = path.join(fixture.directory, "moved-edited-oracle.json")
+  fs.writeFileSync(editedOracle, JSON.stringify({ schemaVersion: 1, locations: [{
+    file: "Query.ets", range: {
+      start: { line: 0, character: 1 }, end: { line: 0, character: 6 },
+    },
+  }] }))
+  const { sha256File } = await import("../scripts/bench/reference-replay-input.mjs")
+  const changes = [{ range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
+    newText: " " }]
+  fixture.suite.scenarios.push({ id: "moved-reference", bucket: "edit-reference", targetId: "thing", edit: {
+    file: "Query.ets", changes, sha256: digestJson(changes),
+    oracle: { path: editedOracle, sha256: sha256File(editedOracle), verified: true },
+  } })
+  saveSuite(fixture)
+  const result = runSuite(fixture)
+  assert.equal(result.status, 1, `${result.stderr}\n${result.stdout}`)
+  const report = JSON.parse(fs.readFileSync(fixture.output, "utf8"))
+  const moved = report.requests.find(request => request.scenarioId === "moved-reference")
+  assert.ok(moved, JSON.stringify({ failure: report.failure, requests: report.requests }))
+  assert.equal(moved.status, "COMPLETE")
+  assert.equal(moved.correctness.equal, true)
+  assert.equal(moved.correctness.locations.length, 1)
+})
+
 test("partial capture cannot pass a bucket with unexecuted planned requests", async (t) => {
   const fixture = await makeSuite(t, "break-edit-oracle")
   fixture.suite.runtime.env.ARKTS_TEST_PREPARED_ORACLE = fixture.suite.targets[0].oracle.path

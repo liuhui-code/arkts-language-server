@@ -45,7 +45,7 @@ async function captureSuite(options, suite, temporary) {
   sampler.stderr.on("data", chunk => { samplerStderr += chunk })
   const requests = []
   const diagnostics = []
-  const diagnosticTasks = []
+  const diagnosticObservers = new Map()
   const overlays = new Map()
   const openedModules = new Set()
   const completedQueries = new Map()
@@ -151,7 +151,7 @@ async function captureSuite(options, suite, temporary) {
         }
         mark("request-complete", { scenarioId: scenario.id, elapsedMs, status, exact: correctness.equal })
       }
-      await Promise.all(diagnosticTasks)
+      await Promise.all([...diagnosticObservers.values()].map(observer => observer.promise))
     }
   } catch (error) { failure = { message: error.message }; mark("failure", failure) }
   finally {
@@ -166,8 +166,8 @@ async function captureSuite(options, suite, temporary) {
   const samples = readJsonLines(samplesPath)
   const postflightPins = await capturePreparedIdentity(suite)
   const inputUnchanged = JSON.stringify(postflightPins) === JSON.stringify(suite.pins)
-  const diagnosticsStatus = diagnostics.some(item => item.error) ? "FAIL"
-    : diagnosticTasks.length && diagnostics.length === diagnosticTasks.length ? "PASS" : "NOT_RUN"
+  const diagnosticsStatus = diagnosticObservers.size === 0 ? "NOT_RUN"
+    : [...diagnosticObservers.values()].every(observer => observer.result && !observer.result.error) ? "PASS" : "FAIL"
   const report = {
     schema: "arkts-language-server.prepared-query-report", schemaVersion: 1, status: "FAIL",
     inputIdentity: { ...suite.pins, suiteDigest: suite.suiteDigest, targetPoolDigest: suite.poolDigest,
@@ -202,10 +202,28 @@ async function captureSuite(options, suite, temporary) {
   return report
 
   function observeDiagnostics(uri, version) {
-    diagnosticTasks.push(session.transport.notification("textDocument/publishDiagnostics",
-      message => message.params?.uri === uri && message.params?.version === version, suite.runtime.diagnosticTimeoutMs)
-      .then(message => { diagnostics.push({ uri, version, timestamp: Date.now(), diagnostics: message.params.diagnostics })
-        mark("publishDiagnostics", { uri, version, count: message.params.diagnostics.length }) })
-      .catch(error => { diagnostics.push({ uri, version, error: error.message }); mark("diagnostic-not-observed", { uri, version }) }))
+    const current = diagnosticObservers.get(uri)
+    if (current) {
+      mark("diagnostic-version-superseded", { uri, fromVersion: current.version, toVersion: version })
+      current.superseded = true
+      if (current.result) current.result.supersededByVersion = version
+    }
+    const observer = { version, superseded: false, result: null, promise: null }
+    diagnosticObservers.set(uri, observer)
+    observer.promise = session.transport.notification("textDocument/publishDiagnostics",
+      message => !observer.superseded && message.params?.uri === uri && message.params?.version === version,
+      suite.runtime.diagnosticTimeoutMs)
+      .then(message => {
+        if (observer.superseded) return
+        observer.result = { uri, version, timestamp: Date.now(), diagnostics: message.params.diagnostics }
+        diagnostics.push(observer.result)
+        mark("publishDiagnostics", { uri, version, count: message.params.diagnostics.length })
+      })
+      .catch(error => {
+        if (observer.superseded) return
+        observer.result = { uri, version, error: error.message }
+        diagnostics.push(observer.result)
+        mark("diagnostic-not-observed", { uri, version })
+      })
   }
 }

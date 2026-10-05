@@ -9,6 +9,7 @@ import { arbitrateCompletionLists } from "./completion-arbitrator.js"
 import { mergeDefinitions, mergeDiagnostics } from "./type-result-merge.js"
 import { withProjectFileIdentities } from "./type-project-file-identities.js"
 import { canonicalTypeEngineOwner, typeContextResetReason } from "./type-context-reset.js"
+import { traceCompilerQuery } from "./compiler-query-timing.js"
 import {
   TypeScriptLanguageServiceEngine,
   type TypeScriptLanguageServiceEngineOptions,
@@ -277,10 +278,10 @@ export class SemanticTypeEngineRegistry {
             return completion
       }),
       define: (position) => withLease(current => {
-        const definitionStartedAt = this.options.references?.trace ? performance.now() : undefined
-        const definitions = current.engine.define(position)
-        if (definitionStartedAt !== undefined) this.referenceTrace("semantic.definition.complete", {
-          durationMs: performance.now() - definitionStartedAt, ...current.engine.programFileStats(),
+        const { result: definitions, timing } = traceCompilerQuery(
+          () => current.engine.define(position), this.options.references?.trace === true)
+        if (timing) this.referenceTrace("semantic.definition.complete", {
+          ...timing, ...current.engine.programFileStats(),
         })
         if (this.canReuseAnchor()) current.anchorMemo.capture(workspace, position, definitions)
         return mergeDefinitions(sourceContent && scope.status !== "unavailable"

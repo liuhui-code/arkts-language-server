@@ -149,7 +149,7 @@ export class LocalPackageResolver {
         checkpoint()
         const target = this.readManifest(path.join(packageRoot, "oh-package.json5"))
         if (dependencySubpath !== undefined) {
-          if (target?.name !== dependencyName) return { path: null }
+          if (!target?.name || (relative === undefined && target.name !== dependencyName)) return { path: null }
           return {
             path: this.resolvePackageSource(
               packageRoot,

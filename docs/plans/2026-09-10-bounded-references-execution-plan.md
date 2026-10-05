@@ -454,6 +454,15 @@ file dependency 与未保存 overlay 共用该约束；未声明、名称不匹�
 closed。真实 LSP 子进程合同证明 `@ohos/shared/src/main/ets/Target` 可使第二次 index proof 从五个
 conservative candidates 收窄到四个 identity candidates，Location set 与 conservative batching exact。
 
+2026-10-04 纠偏：上述“目标 manifest `name` 必须等于 dependency key”只保留为当时
+实现与安装包子路径的历史约束，**不再是已声明本地 `file:`/相对依赖的规则**。
+真实 Settings 的依赖别名 `@ohos/settings.uikit` 指向包名 `uikit`；旧规则使
+真实 import 报 TS2307 并把跨模块 references 错误截成同文件结果。新的真实
+stdio LSP RED→GREEN 在保留声明、扩展名、lexical/physical containment、
+symlink 与路径穿越拒绝的前提下，允许该本地别名；安装包仍要求名称相等。
+修正证据及旧 oracle 失效边界见
+[Settings 生产宿主报告](../reports/2026-10-04-semantic-ready-s02-production-host-oracle.md)。
+
 固定 Photos 6.1 `PhotoAsset` 成功回放解析了 310 条 source binding，但另有 292 条仍未解析，因此
 identity proof 正确保持 incomplete：index 仍返回 1,586 个 conservative URI，membership 后为 1,154
 个 candidates/11 批。九个 Location 与 legacy oracle exact；请求 47.677 秒，进程树 RSS 峰值

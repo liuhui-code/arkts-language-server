@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "queries": [
+    { "id": "heritage-false", "file": "heritage.ets", "line": 1, "character": 3, "includeDeclaration": false },
+    { "id": "heritage-true", "file": "heritage.ets", "line": 1, "character": 3, "includeDeclaration": true }
+  ]
+}

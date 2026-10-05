@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "queries": [
+    { "id": "left-false", "file": "left.ets", "line": 1, "character": 3, "includeDeclaration": false },
+    { "id": "right-false", "file": "right.ets", "line": 1, "character": 3, "includeDeclaration": false },
+    { "id": "left-true", "file": "left.ets", "line": 1, "character": 3, "includeDeclaration": true },
+    { "id": "right-true", "file": "right.ets", "line": 1, "character": 3, "includeDeclaration": true }
+  ]
+}

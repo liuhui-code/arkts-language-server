@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "queries": [
+    { "id": "modified-false", "file": "edges.ets", "line": 1, "character": 10, "includeDeclaration": false },
+    { "id": "modified-true", "file": "edges.ets", "line": 1, "character": 10, "includeDeclaration": true }
+  ]
+}

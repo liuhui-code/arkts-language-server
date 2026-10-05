@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "queries": [
+    { "id": "overload-false", "file": "edges.ets", "line": 7, "character": 3, "includeDeclaration": false },
+    { "id": "overload-true", "file": "edges.ets", "line": 7, "character": 3, "includeDeclaration": true }
+  ]
+}

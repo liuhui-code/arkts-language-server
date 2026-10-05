@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "files": {
+    "heritage.ets": "export class Base {\n  constructor() {}\n}\nconst Alias = Base\nexport class ViaAlias extends Alias {}\nnew ViaAlias()\nexport class ViaParen extends (Base) {}\nnew ViaParen()\n"
+  }
+}
