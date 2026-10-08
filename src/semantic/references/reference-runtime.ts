@@ -17,6 +17,8 @@ export interface ReferenceSearchRuntimeConfig {
   readonly conservativeSemanticUnits: boolean
   readonly trace: boolean
   readonly sessionReuse?: "off" | "experimental"
+  readonly l01RearmTrim?: boolean
+  readonly l01PressureAdmission?: boolean
 }
 
 const DEFAULT_BATCH_ROOT_LIMIT = 64
@@ -63,6 +65,10 @@ export function referenceSearchRuntimeConfig(
     conservativeSemanticUnits: environment.ARKTS_REFERENCES_CONSERVATIVE_SEMANTIC_UNITS === "1",
     trace: environment.ARKTS_REFERENCES_TRACE === "1",
     sessionReuse,
+    l01RearmTrim: environment.ARKTS_BENCHMARK_CONTROL === "1"
+      && environment.ARKTS_L01_REARM_TRIM === "1",
+    l01PressureAdmission: environment.ARKTS_BENCHMARK_CONTROL === "1"
+      && environment.ARKTS_L01_PRESSURE_ADMISSION === "1",
   }
 }
 

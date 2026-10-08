@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "benchmarkId": "settings-resident-L01-hot-definition-api24",
+  "seed": 20261006,
+  "workspace": ".bench/real-projects/settings-ecc550",
+  "sdk": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony",
+  "server": "dist/server.cjs",
+  "sidecar": "target/release/arkts-index-sidecar",
+  "pins": {
+    "repoSha": "ecc550dfaed880e04e38a2477eb7235cd50475b9",
+    "workspaceStatus": "",
+    "workspaceFilesSha256": "4becf56cb2ff65cc58bd1ae53b6937b194f9020770ad397e526f3a51b85b0d40",
+    "serverRevision": "72a2fa897659fa0c44d9aeaf1a7b721c74f06a86",
+    "serverInputSha256": "c5f961a4f621cb01b0f1767cf250a5e0fff86af2f6389e5e3f2eb8acab1d430a",
+    "serverSha256": "99d16dc05bd8ca74cf538de80b39ac805c47de92ec98b2079924995220e0f5b2",
+    "sidecarSha256": "84597a63c396ceaf2a84a3ded455b5cc29d21b6c4ad3c049f7b3ca820c2fd796",
+    "semanticWorkerSha256": "3353b595a6822970079655d5643be63d385702600f34110fd87a494e2fc12b57",
+    "referenceVerifierWorkerSha256": "4439095e8ea91f8c616ed12c5c99c56d927a9359d86bc0b53c47ca179c3b439f",
+    "standardLibrarySha256": "ea78beea2aa84f93fe66645465c37eb916028b79cd9fe898d469bdf54efbf97d",
+    "nodeVersion": "v26.3.0",
+    "backendVersion": "4.9.5-r10",
+    "backendSha256": "af9e3c4689e3250de1d869b219abb76081c6ea1d3df81bd6b8f6a74c3174b6bc",
+    "lockfileSha256": "ece84ab0afea7a411c453aac7371f0e47381455c5e3cc03f639adff9d2bf1131",
+    "memoryGatesSha256": "ac23114be952a5fe5c030040937d3c97aec1cecdda2ba42e4dbb854f89b37570",
+    "sdkMetadata": {
+      "apiVersion": "24",
+      "displayName": "Ets",
+      "meta": { "metaVersion": "3.0.0" },
+      "path": "ets",
+      "releaseType": "Release",
+      "version": "6.1.1.125"
+    },
+    "sdkDeclarationDigest": "8098b8abbc6b06fce0e7322d6f8f82a5bbce41e847dbd39e9a98811a33d4c6e4"
+  },
+  "runtime": {
+    "timeoutMs": 180000,
+    "diagnosticTimeoutMs": 180000,
+    "sampleIntervalMs": 50,
+    "env": {
+      "ARKTS_REFERENCES_STRATEGY": "legacy",
+      "ARKTS_REFERENCES_BATCH_ROOTS": "64",
+      "ARKTS_REFERENCES_DEPENDENCY_PROFILE": "closure",
+      "ARKTS_REFERENCES_SDK_AMBIENT_PROFILE": "full",
+      "ARKTS_REFERENCES_CONTEXT_RETENTION": "dispose",
+      "ARKTS_SEMANTIC_SESSION_REUSE": "off",
+      "ARKTS_REFERENCES_ANCHOR_REUSE": "0",
+      "ARKTS_REFERENCES_RESIDENT_FAST_PATH": "0",
+      "ARKTS_REFERENCES_CONSTRUCTOR_SCOPE": "0",
+      "ARKTS_REFERENCES_CONSERVATIVE_SEMANTIC_UNITS": "0",
+      "ARKTS_REFERENCES_LOCAL_EXPORT_ANCHOR": "0",
+      "ARKTS_MEMORY_BUDGET_MB": "1024",
+      "ARKTS_REFERENCES_TRACE": "0"
+    }
+  },
+  "readiness": { "candidateControl": true },
+  "preOpenTargetIds": ["menu-class-declaration", "homeinit-cross-module-definition"],
+  "targets": [
+    {
+      "id": "menu-class-declaration",
+      "moduleId": "common",
+      "kind": "references",
+      "file": "common/src/main/ets/core/controller/MenuController.ets",
+      "symbol": "MenuController",
+      "position": { "line": 70, "character": 13 },
+      "includeDeclaration": true,
+      "sourceSha256": "cf11c46c03ebab3e164178c2caf0e2deb059edfbf5129f074d6a57cfec2a335e",
+      "oracle": {
+        "path": "bench/references/oracles/settings-menucontroller-api24.json",
+        "sha256": "1dbcb55c20ec2b289687de2131e0f1cf804bd135026319807b3e3a52fffd2d3a",
+        "verified": true
+      }
+    },
+    {
+      "id": "homeinit-cross-module-definition",
+      "moduleId": "product/phone",
+      "kind": "definition",
+      "file": "product/phone/src/main/ets/Setting/Home/controller/HomePageMenuManager.ets",
+      "symbol": "HomeInitData",
+      "position": { "line": 40, "character": 37 },
+      "sourceSha256": "72550ee88705a703ef3b7b1186636a25a0727432e15f864f842982e14951589d",
+      "oracle": {
+        "path": "bench/references/oracles/settings-homeinitdata-definition-api24.json",
+        "sha256": "fecba615ba40067e80b421369ad670f226364b5426243c6db789cb9a499a7a35",
+        "verified": true
+      }
+    }
+  ],
+  "scenarios": [
+    { "id": "prepare-menu-class-declaration", "bucket": "first-unseen-symbol", "targetId": "menu-class-declaration" },
+    { "id": "new-definition-preopened", "bucket": "first-unseen-symbol", "targetId": "homeinit-cross-module-definition" }
+  ]
+}

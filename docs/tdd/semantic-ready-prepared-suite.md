@@ -60,3 +60,23 @@ whole gate 开始前冻结452份 source/test/script/config/benchmark输入文件
 
 没有修改预算、worker 数、SDK、deadline、golden 或项目边界；
 没有提交、push、创建 Issue/PR 或合并。
+
+## L01 可选预打开：同一快照的跨文件未查询目标
+
+2026-10-06，parent revision `72a2fa897659fa0c44d9aeaf1a7b721c74f06a86`。
+只扩展 prepared-suite 输入和真实 LSP replay，不改变 production semantic 路由。
+可选 `preOpenTargetIds` 在 candidate catalog ready 后、首个语义请求前，
+按清单顺序向已校验的 workspace target 文件发送正常 `didOpen`；
+未配置时继续按 scenario 首次使用时打开。每个预打开文件仍观察正常诊断。
+
+公开 RED：`node --test --test-name-pattern 'pre-opens pinned target documents' tests/prepared-suite-cli.test.mjs`。
+普通沙箱首次被 macOS `ps` 采样权限阻断，不能算行为 RED；同命令授权只读采样后
+exit 1，首请求前只有 `thing` 的 `didOpen`，缺 `second`。
+最小实现后同命令 exit 0，1/1 PASS；双文件真实 Content-Length transcript 的
+Location oracle 和两份正常诊断均通过。未知/重复 target ID 与越界文件在启动前拒绝。
+输入 pin 和 readiness 语义未改变；预打开不冒充 server semantic-ready。
+
+整份 `node --test tests/prepared-suite-cli.test.mjs` 首轮 22/23 PASS：
+并行重型检查期间，原有 timeout-case 的 CLI 子进程触及测试自带 15 秒限时
+（`spawnSync.status=null`）。负载结束后以原命令的单用例过滤、相同只读 RSS
+采样权限隔离复测，1/1 PASS，耗时约 1.90 秒；未修改测试限时。

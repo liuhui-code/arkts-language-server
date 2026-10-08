@@ -82,6 +82,7 @@ export class ReferenceSearchExecutor {
     candidateSupportPaths?: readonly string[],
     semanticGraph?: HarmonySemanticGraph,
     allowConstructorExclusion = true,
+    maxBatches?: number,
   ): Promise<SemanticReferenceQueryResult> {
     const sessionStarted = performance.now()
     const plan = planConservativeReferenceBatches(
@@ -122,6 +123,13 @@ export class ReferenceSearchExecutor {
       candidateMode: plan.candidateMode,
       semanticUnitMode: plan.semanticUnitMode,
     })
+    if (maxBatches !== undefined && plan.batches.length > maxBatches) {
+      this.options.trace?.("references.pressure.rejected", {
+        referenceSession, reason: "resource-budget-exceeded",
+        batchCount: plan.batches.length, maxBatches,
+      })
+      return { status: "incomplete", reason: "resource-budget-exceeded" }
+    }
     this.options.disposeResidentContext(rootPath)
     const collected: SemanticDefinitionCandidate[] = []
     const consumedExclusions = new Map<string, { readonly path: string; readonly token: string }>()
@@ -177,7 +185,7 @@ export class ReferenceSearchExecutor {
           // immutable request snapshot, not the failed Program or its symbols.
           const { expectedReferenceAnchor: _rejectedAnchor, ...originalPosition } = position
           return this.execute(workspace, originalPosition, includeDeclaration,
-            undefined, false, undefined, undefined, semanticGraph, allowConstructorExclusion)
+            undefined, false, undefined, undefined, semanticGraph, allowConstructorExclusion, maxBatches)
         }
         if (verification.result.status === "complete") break
         this.options.trace?.("references.batch.incomplete", {
@@ -233,7 +241,7 @@ export class ReferenceSearchExecutor {
             failedBatchIndex: batch.index,
           })
           return this.execute(workspace, position, includeDeclaration, candidatePaths,
-            false, undefined, undefined, undefined, allowConstructorExclusion)
+            false, undefined, undefined, undefined, allowConstructorExclusion, maxBatches)
         }
         return verification.result
       }
@@ -316,7 +324,7 @@ export class ReferenceSearchExecutor {
           referenceSession, reason: "source-changed", strategy: "complete-scope",
         })
         return this.execute(workspace, position, includeDeclaration, candidatePaths,
-          candidateIdentityComplete, candidateAnchorPath, candidateSupportPaths, semanticGraph, false)
+          candidateIdentityComplete, candidateAnchorPath, candidateSupportPaths, semanticGraph, false, maxBatches)
       }
     }
     this.options.checkpoint?.()

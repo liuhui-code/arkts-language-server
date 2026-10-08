@@ -21,6 +21,7 @@ await build({
     server: "src/server.ts",
     "semantic-worker": "src/semantic/semantic-worker-runtime.ts",
     "reference-verifier-worker": "src/semantic/references/reference-verifier-worker-runtime.ts",
+    "diagnostic-verifier-worker": "src/semantic/diagnostics/diagnostic-verifier-worker-runtime.ts",
   },
   bundle: true,
   platform: "node",

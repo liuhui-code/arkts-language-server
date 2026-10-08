@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "locations": [
+    {
+      "file": "common/src/main/ets/sendable/HomeInitData.ets",
+      "range": {
+        "start": { "line": 16, "character": 13 },
+        "end": { "line": 16, "character": 25 }
+      }
+    }
+  ]
+}

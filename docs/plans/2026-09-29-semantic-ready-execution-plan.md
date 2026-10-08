@@ -1,5 +1,16 @@
 # ArkTS semantic-ready / 500 ms 接续执行计划
 
+> **2026-10-06 路线更新：本页保留 S-series 的历史实施与失败证据，
+> 不再是活跃阶段顺序。** 唯一活跃实施计划是
+> [预算约束长驻 LS L01–L08](2026-10-06-budgeted-resident-semantic-plan.md)，
+> 对应 [ADR 0014](../adr/0014-budgeted-long-lived-semantic-session.md)。
+> L01 [首轮 Settings/API24 实验](../reports/2026-10-06-resident-l01-baseline.md)
+> 对同文件未查符号得到 286/1,025/267 ms，42/42 exact；500 ms 稳定性
+> 未达标、资源未毕业。生产仍走 `indexed-batched + closure + full SDK`、`dispose`、
+> transient per-batch verifier。S02 v1–v6 为 FAIL/暂停研究，未经
+> 新决策不做 v7；S03 facts 发布 BLOCKED；S05 compatible-disk 候选
+> DECISION_COMPLETE/REJECTED，不能重标为 L01 成功。
+
 初始整合日期：2026-09-29；当时 HEAD/附件基线为
 `911ae43c274175614559b63f0311504747d8393d`。这是历史基线，不要求回退。
 2026-10-03 本轮开始时 HEAD 为 `c4df943e5ff9dc1d724bb2aee75d7c4a197efcf4`，
@@ -98,8 +109,9 @@ S01 harness和真实candidate-ready对照已实现，但两个suite仍READINESS_
 `DECISION_COMPLETE / REJECTED`，实验默认 off、真实资源/时延毕业未完成；
 仅 trace-on 的真实 Settings SourceFile 身份对照已采样，不推翻两对
 100 操作 trace-off 失败。历史检查点中的 `IN_PROGRESS` 为当时状态。
-S04、S06–S12仍NOT_STARTED。
-新技术 ADR 0008–0013 为 Proposed。Issue 为本地草案，未创建、未修改 GitHub #85。
+S04、S06–S12在该 S-series 顺序中仍NOT_STARTED；现由 L-series 接续。
+ADR 0008 研究暂停、0009/S03 依赖阻断、0010–0013 仍为未毕业提案；
+新 ADR 0014 仅接受实验实施。Issue 为本地草案，未创建、未修改 GitHub #85。
 S00 检查状态见 [整合报告](../reports/2026-09-29-semantic-ready-plan-integration.md)。
 S01 当前唯一证据见 [基线报告](../reports/2026-09-29-semantic-ready-s01-baseline.md)。
 S02 的v1反例见[事实投影反例报告](../reports/2026-09-29-semantic-ready-s02-facts-spike.md)，
@@ -121,7 +133,8 @@ S05 相容磁盘复用候选仍默认关闭，不因调整时延顺序获得准�
 import/heritage 动态任务均各自推进；共享外层 NameTable 不能构成真实批量 producer。
 具体停止线见 [S02 compiler hook 报告](../reports/2026-10-03-semantic-ready-s02-compiler-bulk-hook-spike.md)。
 
-这是唯一当前实施顺序。需求由 [产品契约](semantic-ready/product-contract.md) 管理，
+本页后续 S-series 顺序是历史决策，不是当前待执行队列；当前顺序见
+[L01–L08](2026-10-06-budgeted-resident-semantic-plan.md)。需求由 [产品契约](semantic-ready/product-contract.md) 管理，
 状态由 [Ledger](references-feature-ledger.md) 管理，取舍见 [MoSCoW](references-moscow.md)，
 决策见 [ADR](../adr/README.md)，逻辑边界见 [设计合同](semantic-ready/design-contracts.md)，
 门禁见 [验收规范](../benchmarks/semantic-ready-acceptance.md)。
@@ -138,7 +151,13 @@ import/heritage 动态任务均各自推进；共享外层 NameTable 不能构�
 此前 `check:fast` 1133/1133 属于已有 literal-root build，不能挪用于 S01 新工具；
 本轮检查状态由 S01 报告记录。
 
-## 顺序、停止线与状态
+## S-series 历史顺序、停止线与状态（非当前执行队列）
+
+当前只实施 L01；其安全继续门禁与≤500 ms 产品门禁分开。
+即使首次新符号仍超过 500 ms，只要精确性/新鲜度/取消/资源安全
+通过，仍可继续 L02 增量有效性实验，并明确保留性能 FAIL；
+不能据此接线、默认推广或声称产品目标达成。S02/S03/S05 的旧
+依赖图如下，仅用于解释当时为何停线：
 
 ```text
 S00 → S01 → S02 → S03 → S04 → S06 → S07 → S08
@@ -150,6 +169,7 @@ S12a → S12b 性能逼近与产品发布评审
 ```
 
 S02 任一必需投影不等价：S03 及后续生产 facts 路线 BLOCKED，保留反例与完整 fallback。
+当前已暂停 S02 v1–v6 研究；v7 必须有新独立假说及显式决策。
 S05 仅依赖 S01，已独立完成相容磁盘 LS 候选的否决和安全 fallback 决策，
 不再重复采样同一机制争取放行；该候选不必达到 500 ms 才能结束评估。
 被否决的复用能力不得标 `IMPLEMENTED` 或被 S09 默认采用，也不 supersede ADR0003。
@@ -160,19 +180,22 @@ S09/S10/S11 一轮一个能力/方向，不一次改所有 provider。
 | --- | --- | --- |
 | S00 | 文档已整合；检查见报告 | R-21、治理与当前状态纠偏 |
 | S01 | IN_PROGRESS：harness/control 已实现；ready FAIL、覆盖缺口 | R-01/02/21：真实 ready 后分桶基准；不冒称产品 GREEN |
-| S02 | FAIL：v1/v2有反例；v3 NON_BULK；v4 modifier过滤FAIL；v5多定义usage-site UNSUPPORTED；v6直接 `new` 窄切片exact、外部 origin 可在小 fixture 显式 `PARTIAL/UNSUPPORTED`，但别名变量 `new Alias()`、非构造查询与真实 Settings 同宿主提取仍失败，其它必测NOT_RUN | R-07/14/25：须完整等价且可承受的compiler分组来源；不批准S03 |
+| S02 | FAIL／研究暂停：v1/v2有反例；v3 NON_BULK；v4 modifier过滤FAIL；v5多定义usage-site UNSUPPORTED；v6直接 `new` 窄切片exact、外部 origin 可在小 fixture 显式 `PARTIAL/UNSUPPORTED`，但别名变量 `new Alias()`、非构造查询与真实 Settings 同宿主提取仍失败，其它必测NOT_RUN；未经新决策不做v7 | R-07/14/25：须完整等价且可承受的compiler分组来源；不批准S03 |
 | S03 | BLOCKED；须新的S02投影门禁PASS | R-08/14/22：同库版本化发布；不得接入失败假说 |
-| S04 | NOT_STARTED | R-06/20/22/23：有界准备与就绪 |
+| S04 | NOT_STARTED；原 facts 前置路线不再活跃，改由 L01–L03 实验 | R-06/20/22/23：有界准备与就绪的历史范围 |
 | S05 | DECISION_COMPLETE / REJECTED：观测与default-off相容disk LS原型已实现；生产复用未实现、未毕业 | R-03/09/10/11/12/24/26：受预算复用候选未获准；保留安全fallback |
-| S06 | NOT_STARTED | R-04/05/07/10/14：references 投影首查 |
-| S07 | NOT_STARTED | R-04/07/08/13/22：普通编辑增量 |
-| S08 | NOT_STARTED | R-15/25：implementations 独立投影 |
-| S09a/b/c | NOT_STARTED | R-24/26/29：定义、补全等当前文档体验 |
-| S10a/b | NOT_STARTED | R-15/27：prepareRename、rename |
-| S11a/b/c | NOT_STARTED | R-15/28：prepare/incoming/outgoing calls |
-| S12a/b | NOT_STARTED | R-02/21/22：先核实计划实现与缺口，再逐能力、平台与资源发布评审 |
+| S06 | NOT_STARTED；事实路线暂停，L04 接 references | R-04/05/07/10/14：references 投影首查的历史范围 |
+| S07 | NOT_STARTED；由 L02 验证普通编辑 | R-04/07/08/13/22：普通编辑增量的历史范围 |
+| S08 | NOT_STARTED；由 L05 验证 implementations | R-15/25：implementations 独立投影的历史范围 |
+| S09a/b/c | NOT_STARTED；由 L06 按能力验证 | R-24/26/29：定义、补全等当前文档体验的历史范围 |
+| S10a/b | NOT_STARTED；由 L07 按能力验证 | R-15/27：prepareRename、rename 的历史范围 |
+| S11a/b/c | NOT_STARTED；由 L07 按方向验证 | R-15/28：prepare/incoming/outgoing calls 的历史范围 |
+| S12a/b | NOT_STARTED；由 L08 承接发布评审 | R-02/21/22：实施盘点、逐能力与平台/资源发布评审的历史范围 |
 
-## 建议 Issue 草案与依赖
+新状态以 [L01–L08 计划](2026-10-06-budgeted-resident-semantic-plan.md)
+为准；上表不是允许跳过 L01–L03 安全门禁的待办列表。
+
+## S-series 历史 Issue 草案与依赖（不自动创建）
 
 父追踪单：[GitHub #85](https://github.com/liuhui-code/arkts-language-server/issues/85)。
 下面 D-01–D-09 **不是 GitHub Issue 编号**。AFK 表示定义可交给 Agent 实施，

@@ -53,6 +53,28 @@ versioned diagnostics still publish. In three fresh-process
 100 ms maximum, with exact 248-Location responses. These smoke results do
 not claim cold/miss navigation under 500 ms or graduate the release gate.
 
+## Queued automatic diagnostics and interactive navigation (2026-10-06)
+
+After references resume normal automatic diagnostics, a second queued
+`diagnose` could occupy the sole semantic Worker before a later definition.
+The [public framed-LSP RED/GREEN](../tdd/l01-diagnostic-priority.md) proves that
+ordering, then verifies a narrow priority rule: mutations remain first; only
+the earliest `define` or `hover` may bypass a contiguous prefix of queued
+diagnoses, and the oldest diagnose can be bypassed at most once. No interactive
+request may cross a queued global operation. An already-running synchronous
+diagnosis remains non-preemptible. The existing detached-references lane keeps
+its separate interactive policy; the one-bypass fairness bound applies only
+outside that lane. A concurrent edit still invalidates the old definition,
+publishes version-2 diagnostics, and permits a fresh exact definition.
+
+The [three-process Settings/API24 check](../reports/2026-10-06-resident-l01-diagnostic-priority.md)
+returns the exact previously unqueried definition before the second normal
+diagnostic, but complete responses take 824.4/703.9/691.0 ms. This change
+corrects a queue-order defect; it does **not** establish 500 ms navigation,
+semantic readiness, or a memory release gate. The test-only diagnosis hold is
+default-off and absent from the real-project runs. Compiler preparation and
+the first active diagnosis remain separate measured concerns.
+
 ## Gate
 
 Document close is a lifecycle barrier, not a replaceable full-text snapshot.

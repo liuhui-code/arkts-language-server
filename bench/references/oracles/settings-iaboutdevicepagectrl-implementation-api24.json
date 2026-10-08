@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "locations": [
+    {
+      "file": "product/phone/src/main/ets/Setting/AboutDevice/SubHome/controller/AboutDevicePageController.ets",
+      "range": {
+        "start": { "line": 44, "character": 13 },
+        "end": { "line": 44, "character": 38 }
+      }
+    }
+  ]
+}

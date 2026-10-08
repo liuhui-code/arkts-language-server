@@ -90,6 +90,11 @@ export class SemanticCoordinator<Context extends SemanticManagedContext> {
     return this.#contexts.get(contextId)?.context
   }
 
+  markSemanticWork(contextId: string, context: Context): void {
+    const resident = this.#contexts.get(contextId)
+    if (resident?.context === context) resident.trimmed = false
+  }
+
   forEachContext(visitor: (context: Context, contextId: string) => void): void {
     for (const [contextId, resident] of this.#contexts) visitor(resident.context, contextId)
   }

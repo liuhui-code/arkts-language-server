@@ -98,6 +98,74 @@ test("Settings cancel control cancels an observed batch and validates exact reco
   assert.equal(report.sourcePreserved, true)
 })
 
+test("Settings cancel control observes a legacy queue start before cancellation", async t => {
+  const fixture = await makeFixture(t, "legacy-cancel")
+  const result = invoke(...fixture.args, "--strategy", "legacy")
+  assert.equal(result.status, 0, `${result.stderr}\n${result.stdout}`)
+  const report = JSON.parse(fs.readFileSync(fixture.output, "utf8"))
+  assert.equal(report.status, "PASS")
+  assert.equal(report.environment.effectiveArktsEnvironment.ARKTS_REFERENCES_STRATEGY, "legacy")
+  assert.equal(report.cancellation.stage.state, "queue-start")
+  assert.equal(report.cancellation.stage.event.event, "references.queue.start")
+  assert.equal(report.cancellation.evidenceScope, "queue-start-before-full-result")
+  assert.equal(report.cancellation.response.error.code, -32800)
+  assert.equal("result" in report.cancellation.response, false)
+  assert.equal(report.recovery.references.validation.pass, true)
+  assert.equal(report.recovery.definition.exact, true)
+  assert.equal(report.diagnostic.exact, true)
+})
+
+test("Settings cancel control requires an interrupted compiler query for the in-flight gate", async t => {
+  const fixture = await makeFixture(t, "compiler-cancel")
+  const result = invoke(...fixture.args, "--strategy", "legacy", "--cancel-stage", "compiler-query")
+  assert.equal(result.status, 0, `${result.stderr}\n${result.stdout}`)
+  const report = JSON.parse(fs.readFileSync(fixture.output, "utf8"))
+  assert.equal(report.status, "PASS")
+  assert.equal(report.cancellation.stage.state, "find-references-start")
+  assert.equal(report.cancellation.stage.event.event, "references.find-references.start")
+  assert.equal(report.cancellation.compilerQuery.outcome, "cancelled-in-flight")
+  assert.equal(report.cancellation.compilerQuery.findReferences.outcome, "threw-cancellation")
+  assert.equal(report.cancellation.response.error.code, -32800)
+  assert.equal("result" in report.cancellation.response, false)
+  assert.equal(report.recovery.references.validation.pass, true)
+  assert.equal(report.recovery.definition.exact, true)
+  assert.equal(report.diagnostic.exact, true)
+})
+
+test("Settings cancel control rejects a protocol cancel after the compiler query completes", async t => {
+  const fixture = await makeFixture(t, "compiler-completed-after-cancel")
+  const result = invoke(...fixture.args, "--strategy", "legacy", "--cancel-stage", "compiler-query")
+  assert.equal(result.status, 1, `${result.stderr}\n${result.stdout}`)
+  const report = JSON.parse(fs.readFileSync(fixture.output, "utf8"))
+  assert.equal(report.status, "FAIL")
+  assert.equal(report.cancellation.response.error.code, -32800)
+  assert.equal(report.cancellation.compilerQuery.outcome, "completed")
+  assert.equal(report.recovery.references.validation.pass, true)
+})
+
+test("Settings cancel control rejects a compiler cancellation that predates client cancel", async t => {
+  const fixture = await makeFixture(t, "compiler-cancel-before-client")
+  const result = invoke(...fixture.args, "--strategy", "legacy", "--cancel-stage", "compiler-query")
+  assert.equal(result.status, 1, `${result.stderr}\n${result.stdout}`)
+  const report = JSON.parse(fs.readFileSync(fixture.output, "utf8"))
+  assert.equal(report.status, "FAIL")
+  assert.equal(report.cancellation.response.error.code, -32800)
+  assert.equal(report.cancellation.compilerQuery.outcome, "cancelled-before-client")
+  assert.equal(report.recovery.references.validation.pass, true)
+})
+
+test("Settings cancel control rejects cancellation after TypeScript findReferences returns", async t => {
+  const fixture = await makeFixture(t, "compiler-mapping-cancel")
+  const result = invoke(...fixture.args, "--strategy", "legacy", "--cancel-stage", "compiler-query")
+  assert.equal(result.status, 1, `${result.stderr}\n${result.stdout}`)
+  const report = JSON.parse(fs.readFileSync(fixture.output, "utf8"))
+  assert.equal(report.status, "FAIL")
+  assert.equal(report.cancellation.response.error.code, -32800)
+  assert.equal(report.cancellation.compilerQuery.outcome, "cancelled-in-flight")
+  assert.equal(report.cancellation.compilerQuery.findReferences.outcome, "completed")
+  assert.equal(report.recovery.references.validation.pass, true)
+})
+
 test("Settings cancel control classifies a completed response as NOT_CANCELLED", async t => {
   const fixture = await makeFixture(t, "completed")
   const result = invoke(...fixture.args)
@@ -119,6 +187,16 @@ test("Settings cancel control classifies a completion racing with cancel as NOT_
   assert.equal(report.cancellation.sent, true)
   assert.equal(report.cancellation.stage.event.event, "references.batch.start")
   assert.equal(report.cancellation.response.result.length, 9)
+  assert.equal(report.recovery.references.validation.pass, true)
+})
+
+test("Settings cancel control rejects a partial result racing with legacy cancel", async t => {
+  const fixture = await makeFixture(t, "race-partial")
+  const result = invoke(...fixture.args, "--strategy", "legacy")
+  assert.equal(result.status, 1, `${result.stderr}\n${result.stdout}`)
+  const report = JSON.parse(fs.readFileSync(fixture.output, "utf8"))
+  assert.equal(report.status, "FAIL")
+  assert.equal(report.cancellation.terminalValidation.pass, false)
   assert.equal(report.recovery.references.validation.pass, true)
 })
 
@@ -222,7 +300,8 @@ const locations = () => [...Array.from({ length: 8 }, (_, line) => ({ uri: uri(c
   range: { start: { line, character: 0 }, end: { line, character: 12 } } })),
   { uri: uri(consumer), range: { start: { line: 40, character: 37 },
     end: { line: 40, character: 49 } } }]
-const log = value => fs.appendFileSync(path.join(process.env.ARKTS_LSP_LOG_DIR, "server.log"), JSON.stringify(value) + "\\n")
+const log = value => fs.appendFileSync(path.join(process.env.ARKTS_LSP_LOG_DIR, "server.log"),
+  JSON.stringify({ ts: new Date().toISOString(), ...value }) + "\\n")
 process.stdin.on("data", chunk => { buffer = Buffer.concat([buffer, chunk]); for (;;) {
   const end = buffer.indexOf("\\r\\n\\r\\n"); if (end < 0) break
   const length = Number(/Content-Length: (\\d+)/i.exec(buffer.subarray(0, end).toString("ascii"))?.[1])
@@ -241,16 +320,33 @@ function accept(message) {
   if (message.method === "textDocument/references") { references++
     if (references === 1 && mode === "completed") { send({ id: message.id, result: locations() }); return }
     if (references === 1) { log({ event: "references.queue.start", requestId: 3, traceId: "fixture" })
-      log({ event: "references.batch.start", referenceSession: 1, batchIndex: 0,
-        batchCount: 2, traceId: "fixture" })
+      if (mode.startsWith("compiler-")) { log({ event: "references.compiler-query.start", traceId: "fixture" })
+        log({ event: "references.find-references.start", traceId: "fixture", callIndex: 1 }) }
+      if (mode !== "legacy-cancel") log({ event: "references.batch.start", referenceSession: 1,
+        batchIndex: 0, batchCount: 2, traceId: "fixture" })
       globalThis.cancelId = message.id
     } else send(mode === "recovery-both"
       ? { id: message.id, error: { code: -32603, message: "failed recovery" }, result: locations() }
       : { id: message.id, result: locations() }); return }
   if (message.method === "$/cancelRequest") { if (message.params.id === globalThis.cancelId) {
-    send(mode === "race" ? { id: globalThis.cancelId, result: locations() }
-      : { id: globalThis.cancelId, error: { code: -32800, message: "Request cancelled by client" } })
-    if (mode === "duplicate") send({ id: globalThis.cancelId, result: locations() })
+    const finish = () => {
+      if (mode.startsWith("compiler-")) log({ event: mode === "compiler-cancel"
+        || mode === "compiler-cancel-before-client" ? "references.find-references.throw"
+        : "references.find-references.complete", traceId: "fixture", callIndex: 1,
+      ...(mode === "compiler-cancel" || mode === "compiler-cancel-before-client"
+        ? { cancelled: true } : {}) })
+      if (mode.startsWith("compiler-")) log({ event: mode === "compiler-cancel"
+        || mode === "compiler-cancel-before-client" || mode === "compiler-mapping-cancel"
+        ? "references.compiler-query.cancelled" : "references.compiler-query.complete",
+      traceId: "fixture", ...(mode === "compiler-cancel-before-client"
+        ? { ts: "2000-01-01T00:00:00.000Z" } : {}) })
+      send(mode === "race" || mode === "race-partial"
+        ? { id: globalThis.cancelId, result: mode === "race-partial" ? locations().slice(0, 1) : locations() }
+        : { id: globalThis.cancelId, error: { code: -32800, message: "Request cancelled by client" } })
+      if (mode === "duplicate") send({ id: globalThis.cancelId, result: locations() })
+    }
+    if (mode.startsWith("compiler-")) setTimeout(finish, 5)
+    else finish()
   } return }
   if (message.method === "textDocument/definition") { send({ id: message.id, result: [{ uri: uri(declaration),
     range: { start: { line: 16, character: 13 }, end: { line: 16, character: 25 } } }] }); return }

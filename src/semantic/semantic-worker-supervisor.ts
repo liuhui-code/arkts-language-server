@@ -29,7 +29,7 @@ import {
   wireMutation,
   wireRequest,
 } from "./semantic-worker-command-codec.js"
-import { isInteractiveSemanticWorkerMethod } from "./semantic-request-lanes.js"
+import { takeNextSemanticWorkerRequest } from "./semantic-request-lanes.js"
 import { findCoalescingMutation, mergeDocumentMutations } from "./semantic-worker-mutation-coalescing.js"
 
 export { SEMANTIC_WORKER_PROTOCOL_VERSION, SemanticWorkerCancelState } from "./worker-protocol.js"
@@ -141,6 +141,7 @@ export class RootSemanticWorkerSupervisor {
   readonly #waitForDisposeDeadline: () => Promise<void>
   readonly #pendingMutations: MutationRecord[] = []
   readonly #pendingRequests: RequestRecord[] = []
+  #bypassedDiagnostic: RequestRecord | undefined
   #active: CommandRecord | undefined
   #activeTerminal: Deferred<void> | undefined
   #detachedReference: RequestRecord | undefined
@@ -333,7 +334,11 @@ export class RootSemanticWorkerSupervisor {
     if (this.#active || this.#disposed) return
     const mutation = this.#pendingMutations.shift()
     if (mutation) this.#queuedMutationTextBytes -= mutation.textBytes
-    const record = mutation ?? this.#takePendingRequest()
+    const selection = mutation ? undefined : takeNextSemanticWorkerRequest(
+      this.#pendingRequests, Boolean(this.#detachedReference), this.#bypassedDiagnostic,
+    )
+    if (selection) this.#bypassedDiagnostic = selection.bypassedDiagnostic
+    const record = mutation ?? selection?.request
     if (!record) return
     if (
       record.kind === "request"
@@ -667,13 +672,6 @@ export class RootSemanticWorkerSupervisor {
   #finishDetachedReferenceTerminal(): void {
     this.#detachedReferenceTerminal?.resolve(undefined)
     this.#detachedReferenceTerminal = undefined
-  }
-
-  #takePendingRequest(): RequestRecord | undefined {
-    if (!this.#detachedReference) return this.#pendingRequests.shift()
-    const index = this.#pendingRequests.findIndex(record =>
-      isInteractiveSemanticWorkerMethod(record.input.method))
-    return index < 0 ? undefined : this.#pendingRequests.splice(index, 1)[0]
   }
 
   #settleRequest(record: RequestRecord, message: unknown, detached: boolean): void {

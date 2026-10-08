@@ -19,7 +19,7 @@
     "id": "definition.alias-reexport",
     "mandatory": true,
     "scenario": "direct",
-    "evidence": { "file": "tests/semantic/semantic-characterization.test.mjs", "testName": "resolves a definition through an import alias and barrel export" },
+    "evidence": { "file": "tests/semantic/definition-alias-barrel.test.mjs", "testName": "resolves a definition through an import alias and barrel export" },
     "oracleFields": ["result[].uri", "result[].range"],
     "assertions": ["Import aliases and barrel re-exports resolve to the declaration identity, URI, and range."]
   },

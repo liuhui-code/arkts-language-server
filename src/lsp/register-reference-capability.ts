@@ -48,7 +48,9 @@ export function registerReferenceCapability(
     if (outcome.status === "incomplete") {
       throw new ResponseError(
         LSPErrorCodes.RequestFailed,
-        "References require a complete workspace snapshot",
+        outcome.reason === "resource-budget-exceeded"
+          ? "References exceed the current semantic memory budget"
+          : "References require a complete workspace snapshot",
       )
     }
     return outcome.references

@@ -17,10 +17,19 @@ const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 test("classifies every executable test entry exactly once in an explicit layer", () => {
   const audit = validateTestLayerManifest({ root: projectRoot, manifest: TEST_LAYER_MANIFEST })
 
-  assert.equal(audit.entryCount, 147)
+  assert.equal(audit.entryCount, 163)
+  assert.equal(audit.assignments["tests/l01-soak-suite-generator-cli.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/prepared-suite-diagnostic-worker-pin-cli.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/prepared-suite-gc-probe-pin.test.mjs"], "unit-contract")
   assert.equal(audit.assignments["tests/semantic/local-file-dependency-alias.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/definition-alias-barrel.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/semantic/references-direct-proof-trace.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/semantic/semantic-context-lifecycle.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/semantic-l3-reference-admission.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/semantic-post-eviction-gc-probe.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/semantic-worker-recycle.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/semantic-l2-rearm-witness.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/semantic-script-admission-trace.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/semantic/semantic-session-reuse.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/semantic-facts-spike.test.mjs"], "unit-contract")
   assert.equal(audit.assignments["tests/semantic-facts-resolved-signature-spike.test.mjs"], "unit-contract")
@@ -32,6 +41,10 @@ test("classifies every executable test entry exactly once in an explicit layer",
   assert.equal(audit.assignments["tests/semantic-facts-origin-hook-builder.test.mjs"], "unit-contract")
   assert.equal(audit.assignments["tests/semantic-facts-worklist-hook-spike.test.mjs"], "unit-contract")
   assert.equal(audit.assignments["tests/prepared-suite-cli.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/prepared-suite-diagnostic-barrier-cli.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/prepared-suite-l3-cli.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/prepared-suite-worker-recycle-cli.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/discover-semantic-oracle-cli.test.mjs"], "unit-contract")
   assert.equal(audit.assignments["tests/replay-settings-cancel-control-cli.test.mjs"], "unit-contract")
   assert.equal(audit.assignments["tests/replay-settings-disk-edit-cli.test.mjs"], "unit-contract")
   assert.equal(audit.assignments["tests/replay-settings-mixed-ops-cli.test.mjs"], "unit-contract")
@@ -193,7 +206,15 @@ test("classifies every executable test entry exactly once in an explicit layer",
   )
   assert.equal(audit.assignments["tests/semantic/references-depth.test.mjs"], "bundle-e2e")
   assert.equal(
+    audit.assignments["tests/semantic/references-compiler-query-trace.test.mjs"],
+    "bundle-e2e",
+  )
+  assert.equal(
     audit.assignments["tests/semantic/references-diagnostic-cache.test.mjs"],
+    "bundle-e2e",
+  )
+  assert.equal(
+    audit.assignments["tests/semantic/references-diagnostic-scheduling.test.mjs"],
     "bundle-e2e",
   )
   assert.equal(
@@ -227,9 +248,9 @@ test("classifies every executable test entry exactly once in an explicit layer",
     "bundle-e2e",
   )
   assert.deepEqual(audit.layerCounts, {
-    "unit-contract": 75,
+    "unit-contract": 82,
     protocol: 8,
-    "bundle-e2e": 58,
+    "bundle-e2e": 67,
     "artifact-e2e": 3,
     "sealed-artifact-e2e": 1,
     large: 1,

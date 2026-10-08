@@ -1,6 +1,6 @@
 import fs from "node:fs"
 import { AsyncLocalStorage } from "node:async_hooks"
-import { parentPort, workerData, type MessagePort } from "node:worker_threads"
+import { parentPort, threadId, workerData } from "node:worker_threads"
 
 import type { DocumentSnapshot } from "../contracts/document.js"
 import type * as Contract from "../contracts/semantic-engine.js"
@@ -9,11 +9,15 @@ import { SingleRootProjectResolver } from "../project/single-root-project-resolv
 import { OhosTypeScriptSemanticEngine } from "./backends/ohos-typescript/engine.js"
 import { semanticRuntimeMetrics } from "./coordinator/metrics.js"
 import { SemanticMemoryPolicy } from "./coordinator/memory-policy.js"
+import { createPostEvictionGcProbe } from "./coordinator/post-eviction-gc-probe.js"
+import type { SemanticMemoryLevel } from "./coordinator/semantic-coordinator.js"
 import type { SemanticRuntimeConfig } from "./coordinator/runtime-config.js"
+import { runTransientDiagnosis } from "./diagnostics/transient-diagnosis.js"
 import type { ReferenceSearchRuntimeConfig } from "./references/reference-runtime.js"
 import type { InteractiveSemanticRuntimeConfig } from "./interactive-runtime.js"
 import { SemanticCancellationScope } from "./semantic-cancellation-scope.js"
 import { isInteractiveSemanticWorkerMethod } from "./semantic-request-lanes.js"
+import { isWorkerControl, requireParentPort, type WorkerControl } from "./semantic-worker-runtime-control.js"
 import {
   SEMANTIC_WORKER_PROTOCOL_VERSION,
   SemanticWorkerCancelState,
@@ -36,23 +40,6 @@ interface RuntimeWorkerData {
   readonly metricsPath?: string
 }
 
-interface RegisterRootControl {
-  readonly control: "registerRoot"
-  readonly epoch: number
-  readonly rootUri: string
-}
-
-type ConfigurationControl =
-  | { readonly control: "configureProject"; readonly value: unknown }
-  | { readonly control: "configureSdk"; readonly value: unknown }
-
-interface MemoryPressureControl {
-  readonly control: "applyMemoryPressure"
-  readonly value: "level3"
-}
-
-type WorkerControl = RegisterRootControl | ConfigurationControl | MemoryPressureControl
-
 const port = requireParentPort(parentPort)
 const data = workerData as RuntimeWorkerData
 const roots = new Map<number, string>()
@@ -62,6 +49,9 @@ const appliedRevisions = new Map<number, number>()
 const projects = new SingleRootProjectResolver(data.rootUri)
 const cancellation = new SemanticCancellationScope()
 const referenceTraces = new AsyncLocalStorage<string | undefined>()
+const testDiagnoseHoldMs = Number(process.env.ARKTS_TEST_WORKER_DIAGNOSE_HOLD_MS ?? 0)
+const testDiagnoseHoldSuffix = process.env.ARKTS_TEST_WORKER_DIAGNOSE_HOLD_URI_SUFFIX
+let testDiagnoseHeld = false
 const logger: StructuredLogger = {
   info: (event, fields) => postLog("info", event, referenceFields(event, fields)),
   error: (event, fields) => postLog("error", event, referenceFields(event, fields)),
@@ -78,6 +68,13 @@ const engine = new OhosTypeScriptSemanticEngine(projects, logger, {
   autoImportTrimBetweenBatches: data.interactive?.autoImportTrimBetweenBatches,
 })
 const memoryPolicy = new SemanticMemoryPolicy(data.runtimeConfig)
+const postEvictionGcProbe = createPostEvictionGcProbe(
+  process.env.ARKTS_BENCHMARK_CONTROL === "1" && process.env.ARKTS_L01_POST_EVICTION_GC_PROBE === "1",
+  logger, () => engine.runtimeStats())
+let projectConfiguration = data.projectConfiguration
+let sdkConfiguration = data.sdkConfiguration
+let memoryLevel: SemanticMemoryLevel = "level0"
+let witnessedL3Eviction = false
 
 engine.configureProject(data.projectConfiguration)
 engine.configureSdk(data.sdkConfiguration)
@@ -165,11 +162,27 @@ function applyControl(control: WorkerControl): void {
     projects.configure([...configuredRoots])
     appliedRevisions.set(control.epoch, 0)
   } else if (control.control === "configureProject") {
+    projectConfiguration = control.value
     engine.configureProject(control.value)
   } else if (control.control === "configureSdk") {
+    sdkConfiguration = control.value
     engine.configureSdk(control.value)
+  } else if (control.control === "recycleWitness") {
+    const stats = engine.runtimeStats()
+    const eligible = witnessedL3Eviction && stats.residentContextCount === 0
+      && stats.leaseCount === 0 && activeGlobalReferenceTraceId === undefined
+    port.postMessage({ workerEvent: "recycleWitness", token: control.token,
+      eligible, reason: eligible ? "ready" : !witnessedL3Eviction
+        ? "no-l3-eviction" : "worker-not-quiescent", threadId })
   } else {
+    memoryLevel = control.value
+    const before = engine.runtimeStats()
     engine.applyMemoryPressure(control.value)
+    if (control.value === "level3"
+      && engine.runtimeStats().residentContextCount < before.residentContextCount) {
+      witnessedL3Eviction = true
+    }
+    postEvictionGcProbe("explicit-control", control.value, before)
   }
 }
 
@@ -299,7 +312,7 @@ function invoke(
     case "foldingRanges": return valueOf(engine.foldingRanges({ document, ...request.args, signal }))
     case "formatDocument": return valueOf(engine.formatDocument({ document, options: request.args.options, signal }))
     case "documentSymbols": return valueOf(engine.documentSymbols({ document, signal }))
-    case "diagnose": return valueOf(engine.diagnose({ document, signal }))
+    case "diagnose": return diagnose(document, signal)
     case "codeActions": return valueOf(engine.codeActions({ document, range: request.args.range, signal }))
     case "resolveCodeAction": return valueOf(engine.resolveCodeAction({
       document,
@@ -329,6 +342,47 @@ function invoke(
       signal,
     })
   }
+}
+
+function diagnose(document: DocumentSnapshot, signal: AbortSignal): Promise<unknown> {
+  if (!testDiagnoseHeld
+    && typeof testDiagnoseHoldSuffix === "string"
+    && testDiagnoseHoldSuffix.length > 0
+    && document.uri.endsWith(testDiagnoseHoldSuffix)
+    && Number.isSafeInteger(testDiagnoseHoldMs)
+    && testDiagnoseHoldMs > 0
+    && testDiagnoseHoldMs <= 5_000) {
+    testDiagnoseHeld = true
+    return holdTestDiagnosis(document, signal)
+  }
+  if (process.env.ARKTS_BENCHMARK_CONTROL === "1"
+    && process.env.ARKTS_L01_TRANSIENT_DIAGNOSTICS === "1"
+    && memoryLevel === "level3") {
+    logger.info("diagnostics.transient.start", { uri: document.uri, documentVersion: document.version, memoryLevel })
+    return runTransientDiagnosis({
+      rootUri: document.workspaceId,
+      documents: [...documents.values()].filter(snapshot => snapshot.workspaceId === document.workspaceId),
+      document,
+      projectConfiguration,
+      sdkConfiguration,
+      interactiveSdkAmbientProfile: data.interactive?.sdkAmbientProfile,
+      interactiveProjectRootProfile: data.interactive?.projectRootProfile,
+    }, signal).then(result => {
+      logger.info("diagnostics.transient.complete", {
+        uri: document.uri, documentVersion: document.version, memoryLevel,
+        diagnosticCount: result.value.length,
+      })
+      return result.value
+    })
+  }
+  return valueOf(engine.diagnose({ document, signal }))
+}
+
+async function holdTestDiagnosis(document: DocumentSnapshot, signal: AbortSignal): Promise<unknown> {
+  logger.info("semantic.test.diagnose.hold.start", { uri: document.uri, delayMs: testDiagnoseHoldMs })
+  await new Promise(resolve => setTimeout(resolve, testDiagnoseHoldMs))
+  logger.info("semantic.test.diagnose.hold.end", { uri: document.uri })
+  return valueOf(engine.diagnose({ document, signal }))
 }
 
 async function valueOf<Value>(result: Promise<Contract.VersionedSemanticResult<Value>>): Promise<Value> {
@@ -384,10 +438,16 @@ function sampleMemory(): void {
     openDocuments: before.openDocuments,
     leaseCount: before.leaseCount,
   }))
-  engine.applyMemoryPressure(memoryPolicy.levelFor(
+  memoryLevel = memoryPolicy.levelFor(
     memory.rss,
     data.runtimeConfig.memoryBudgetBytes,
-  ))
+  )
+  engine.applyMemoryPressure(memoryLevel)
+  if (memoryLevel === "level3"
+    && engine.runtimeStats().residentContextCount < before.residentContextCount) {
+    witnessedL3Eviction = true
+  }
+  postEvictionGcProbe("automatic-sample", memoryLevel, before)
 }
 
 function writeMetrics(metrics: ReturnType<typeof semanticRuntimeMetrics>): void {
@@ -415,24 +475,4 @@ function dispose(): void {
 
 function isMutationLike(value: unknown): boolean {
   return value !== null && typeof value === "object" && "revision" in value
-}
-
-function isWorkerControl(value: unknown): value is WorkerControl {
-  if (!value || typeof value !== "object") return false
-  const control = (value as { control?: unknown }).control
-  if (control === "registerRoot") {
-    const candidate = value as Partial<RegisterRootControl>
-    return Number.isSafeInteger(candidate.epoch)
-      && typeof candidate.rootUri === "string"
-      && candidate.rootUri.startsWith("file:")
-  }
-  if (control === "applyMemoryPressure") {
-    return (value as Partial<MemoryPressureControl>).value === "level3"
-  }
-  return control === "configureProject" || control === "configureSdk"
-}
-
-function requireParentPort(candidate: MessagePort | null): MessagePort {
-  if (!candidate) throw new Error("semantic worker requires a parent port")
-  return candidate
 }
