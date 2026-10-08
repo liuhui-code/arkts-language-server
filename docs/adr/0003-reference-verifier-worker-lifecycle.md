@@ -2,6 +2,16 @@
 
 Status: **Accepted**.
 
+2026-10-06 decision boundary: [ADR 0014](0014-budgeted-long-lived-semantic-session.md)
+and its L01–L08 plan authorize a **different, default-off** resident-LS experiment.
+This ADR remains the current production references lifecycle and exact fallback.
+L01 leaving one complete LS alive for a previously unqueried Settings symbol
+does not itself make per-batch verifiers obsolete. L04 may consider a resident
+references route only after scope-completeness, exactness, freshness, cancellation,
+latency and shared-memory gates pass; any supersession must name the capability
+and retain transient verification for misses/unknown scope. The rejected S05
+compatible-disk candidate remains rejected, not evidence of L01 success.
+
 The [awake-host regression recovery](../reports/2026-09-29-awake-regression-gate-recovery.md)
 now passes the three original timeout cases in three independent runs (9/9)
 and the complete fast gate (1093/1093,exit0,zero cancelled/skipped/todo), with

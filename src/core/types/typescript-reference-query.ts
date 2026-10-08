@@ -5,6 +5,7 @@ import type { SemanticDefinitionCandidate, SemanticDocumentPosition, SemanticTex
 import type { SemanticReferenceQueryResult } from "./type-engine-contract.js"
 import type { SourceDocument } from "./source-document.js"
 import { CooperativeWork } from "./cooperative-work.js"
+import { traceTypeScriptFindReferences } from "./compiler-query-timing.js"
 import { lineColumnToOffset } from "./text-position.js"
 import { completedReferenceSearchPaths } from "./typescript-reference-search-scope.js"
 
@@ -61,7 +62,8 @@ export function queryTypeScriptReferences(
   let returnedSymbols = false
   for (const definition of definitions) {
     work.boundary()
-    const symbols = port.service.findReferences(definition.fileName, definition.textSpan.start) ?? []
+    const symbols = traceTypeScriptFindReferences(
+      () => port.service.findReferences(definition.fileName, definition.textSpan.start)) ?? []
     returnedSymbols ||= symbols.length > 0
     work.boundary()
     const referenceMembershipFailure = port.membershipFailure()

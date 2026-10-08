@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "benchmarkId": "settings-resident-L01-implementation-discovery-api24",
+  "workspace": ".bench/real-projects/settings-ecc550",
+  "sdk": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony",
+  "server": "dist/server.cjs",
+  "sidecar": "target/release/arkts-index-sidecar",
+  "query": {
+    "file": "feature/aboutdevice/src/main/ets/controller/IAboutDevicePageCtrl.ets",
+    "symbol": "IAboutDevicePageCtrl",
+    "position": { "line": 17, "character": 20 },
+    "sourceSha256": "87c4921d252254f0db311b03793256c6074e83dac60962935500761de4f4eac4"
+  },
+  "knownLocation": {
+    "file": "product/phone/src/main/ets/Setting/AboutDevice/SubHome/controller/AboutDevicePageController.ets",
+    "range": {
+      "start": { "line": 44, "character": 13 },
+      "end": { "line": 44, "character": 38 }
+    }
+  },
+  "runtime": {
+    "timeoutMs": 180000,
+    "diagnosticTimeoutMs": 180000,
+    "env": {
+      "ARKTS_SEMANTIC_SESSION_REUSE": "off",
+      "ARKTS_MEMORY_BUDGET_MB": "1024"
+    }
+  },
+  "pins": {
+    "repoSha": "ecc550dfaed880e04e38a2477eb7235cd50475b9",
+    "workspaceStatus": "",
+    "workspaceFilesSha256": "4becf56cb2ff65cc58bd1ae53b6937b194f9020770ad397e526f3a51b85b0d40",
+    "serverRevision": "72a2fa897659fa0c44d9aeaf1a7b721c74f06a86",
+    "serverInputSha256": "c5f961a4f621cb01b0f1767cf250a5e0fff86af2f6389e5e3f2eb8acab1d430a",
+    "serverSha256": "99d16dc05bd8ca74cf538de80b39ac805c47de92ec98b2079924995220e0f5b2",
+    "sidecarSha256": "84597a63c396ceaf2a84a3ded455b5cc29d21b6c4ad3c049f7b3ca820c2fd796",
+    "semanticWorkerSha256": "3353b595a6822970079655d5643be63d385702600f34110fd87a494e2fc12b57",
+    "referenceVerifierWorkerSha256": "4439095e8ea91f8c616ed12c5c99c56d927a9359d86bc0b53c47ca179c3b439f",
+    "standardLibrarySha256": "ea78beea2aa84f93fe66645465c37eb916028b79cd9fe898d469bdf54efbf97d",
+    "nodeVersion": "v26.3.0",
+    "backendVersion": "4.9.5-r10",
+    "backendSha256": "af9e3c4689e3250de1d869b219abb76081c6ea1d3df81bd6b8f6a74c3174b6bc",
+    "lockfileSha256": "ece84ab0afea7a411c453aac7371f0e47381455c5e3cc03f639adff9d2bf1131",
+    "memoryGatesSha256": "ac23114be952a5fe5c030040937d3c97aec1cecdda2ba42e4dbb854f89b37570",
+    "sdkMetadata": {
+      "apiVersion": "24",
+      "displayName": "Ets",
+      "meta": { "metaVersion": "3.0.0" },
+      "path": "ets",
+      "releaseType": "Release",
+      "version": "6.1.1.125"
+    },
+    "sdkDeclarationDigest": "8098b8abbc6b06fce0e7322d6f8f82a5bbce41e847dbd39e9a98811a33d4c6e4"
+  }
+}

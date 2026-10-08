@@ -10,12 +10,23 @@ import { loadOracle, validPosition } from "./reference-location-oracle.mjs"
 import { gitValue, projectRoot, readSdkMetadata, sha256File, validateInputs } from "./reference-replay-input.mjs"
 
 export const preparedBuckets = ["first-unseen-symbol", "first-unopened-module", "repeated-snapshot",
-  "edit-body", "edit-reference", "edit-public-api", "after-eviction", "restart-after-validated-ready"]
+  "edit-body", "edit-reference", "edit-public-api", "after-eviction", "pressure-recovery-repeat",
+  "restart-after-validated-ready"]
 
 export async function capturePreparedIdentity(options) {
   const assets = { ...options, file: options.file ?? gitFiles(options.workspace)[0],
     oracle: options.oracle ?? options.server, out: path.join(options.workspace, ".prepared-unused-output") }
   validateInputs(assets)
+  const transientDiagnosis = options.runtime?.env?.ARKTS_BENCHMARK_CONTROL === "1"
+    && options.runtime?.env?.ARKTS_L01_TRANSIENT_DIAGNOSTICS === "1"
+  const gcProbe = options.runtime?.env?.ARKTS_BENCHMARK_CONTROL === "1"
+    && options.runtime?.env?.ARKTS_L01_POST_EVICTION_GC_PROBE === "1"
+  if (transientDiagnosis && !/^[0-9a-f]{64}$/u.test(assets.diagnosticVerifierWorkerSha256 ?? "")) {
+    throw new Error("PREPARED_SUITE_BLOCKED=DIAGNOSTIC_WORKER_UNAVAILABLE")
+  }
+  if (gcProbe && process.env.NODE_OPTIONS !== "--expose-gc") {
+    throw new Error("PREPARED_SUITE_BLOCKED=GC_PROBE_NODE_OPTIONS")
+  }
   return {
     repoSha: gitValue(options.workspace, ["rev-parse", "HEAD"]),
     workspaceStatus: gitValue(options.workspace, ["status", "--porcelain"]),
@@ -26,8 +37,10 @@ export async function capturePreparedIdentity(options) {
     serverSha256: sha256File(options.server), sidecarSha256: sha256File(options.sidecar),
     semanticWorkerSha256: assets.semanticWorkerSha256,
     referenceVerifierWorkerSha256: assets.referenceVerifierWorkerSha256,
+    ...(transientDiagnosis ? { diagnosticVerifierWorkerSha256: assets.diagnosticVerifierWorkerSha256 } : {}),
     standardLibrarySha256: assets.standardLibrarySha256,
     nodeVersion: process.version,
+    ...(gcProbe ? { nodeOptions: process.env.NODE_OPTIONS } : {}),
     backendVersion: JSON.parse(fs.readFileSync(path.join(projectRoot, "node_modules/typescript/package.json"))).version,
     backendSha256: sha256File(path.join(projectRoot, "node_modules/typescript/lib/typescript.js")),
     lockfileSha256: sha256File(path.join(projectRoot, "pnpm-lock.yaml")),
@@ -83,6 +96,15 @@ export async function readPreparedSuite(options) {
     target.expected = loadOracle(target.oracle.path, suite.workspace)
     if (hasDuplicateLocations(target.expected)) invalid("ORACLE_DUPLICATE")
   }
+  if (suite.preOpenTargetIds !== undefined) {
+    if (!Array.isArray(suite.preOpenTargetIds)) invalid("PREOPEN_TARGET")
+    const preOpenIds = new Set()
+    for (const id of suite.preOpenTargetIds) {
+      if (typeof id !== "string" || !ids.has(id)) invalid("PREOPEN_TARGET")
+      if (preOpenIds.has(id)) invalid("DUPLICATE_PREOPEN_TARGET")
+      preOpenIds.add(id)
+    }
+  }
   if (!Array.isArray(suite.scenarios) || suite.scenarios.length === 0) invalid("EMPTY_SCENARIOS")
   const scenarioIds = new Set()
   const seen = new Set()
@@ -91,10 +113,14 @@ export async function readPreparedSuite(options) {
   const editedOracles = new Map()
   const editedTexts = new Map()
   let snapshot = 0
-  for (const scenario of suite.scenarios) {
+  for (const [scenarioIndex, scenario] of suite.scenarios.entries()) {
     if (typeof scenario.id !== "string" || !scenario.id || scenarioIds.has(scenario.id)) invalid("DUPLICATE_SCENARIO")
     scenarioIds.add(scenario.id)
     if (!preparedBuckets.includes(scenario.bucket) || !ids.has(scenario.targetId)) invalid("SCENARIO_TARGET")
+    if (scenario.waitForPreOpenDiagnostics !== undefined) {
+      if (scenario.waitForPreOpenDiagnostics !== true || !suite.preOpenTargetIds?.length
+        || scenarioIndex === 0 || snapshot > 0 || scenario.edit) invalid("PREOPEN_DIAGNOSTIC_BARRIER")
+    }
     const target = suite.targets.find(item => item.id === scenario.targetId)
     const selection = JSON.stringify([target.kind, target.file, target.symbol, target.position])
     const queryIdentity = JSON.stringify([selection, target.includeDeclaration])
@@ -104,6 +130,9 @@ export async function readPreparedSuite(options) {
     if (scenario.bucket === "first-unseen-symbol" && seen.has(selection)) invalid("DUPLICATE_UNSEEN_TARGET")
     if (scenario.bucket === "repeated-snapshot" && queriedSnapshots.get(queryIdentity) !== snapshot) {
       invalid("REPEAT_WITHOUT_IDENTICAL_SNAPSHOT")
+    }
+    if (scenario.bucket === "pressure-recovery-repeat" && queriedSnapshots.get(queryIdentity) !== snapshot) {
+      invalid("PRESSURE_REPEAT_WITHOUT_IDENTICAL_SNAPSHOT")
     }
     seen.add(selection)
     queriedSnapshots.set(queryIdentity, snapshot)
@@ -132,6 +161,13 @@ export async function readPreparedSuite(options) {
     suite.runtime[name] ??= fallback
     if (!Number.isSafeInteger(suite.runtime[name]) || suite.runtime[name] <= 0) invalid("RUNTIME_LIMIT")
   }
+  suite.runtime.postIdleMs ??= 0
+  if (!Number.isSafeInteger(suite.runtime.postIdleMs) || suite.runtime.postIdleMs < 0
+    || suite.runtime.postIdleMs > 60_000) invalid("RUNTIME_LIMIT")
+  suite.runtime.afterEvictionObservationMs ??= 0
+  if (!Number.isSafeInteger(suite.runtime.afterEvictionObservationMs)
+    || suite.runtime.afterEvictionObservationMs < 0
+    || suite.runtime.afterEvictionObservationMs > 60_000) invalid("RUNTIME_LIMIT")
   suite.runtime.env ??= {}
   if (Object.entries(suite.runtime.env).some(([name, value]) => !name.startsWith("ARKTS_") || typeof value !== "string"
     || ["ARKTS_INDEX_CACHE_DIR", "ARKTS_LSP_LOG_DIR", "ARKTS_INDEX_SIDECAR_PATH"].includes(name))) invalid("RUNTIME_ENV")

@@ -49,6 +49,7 @@ async function captureSuite(options, suite, temporary) {
   const overlays = new Map()
   const openedModules = new Set()
   const completedQueries = new Map()
+  const attemptedQueries = new Set()
   const queryOracles = new Map()
   let snapshot = 0
   const blockedScenarios = []
@@ -80,8 +81,28 @@ async function captureSuite(options, suite, temporary) {
     // Unknown experimental capabilities, timers and catalog progress are never trusted.
     mark("semantic-readiness-unsupported", { reason: "NO_GENERATION_BOUND_PUBLIC_CONTRACT" })
     if (suite.readiness.candidateControl && candidate.state === "ready") {
+      for (const targetId of suite.preOpenTargetIds ?? []) {
+        openTargetDocument(suite.targets.find(target => target.id === targetId), true)
+      }
       for (const scenario of suite.scenarios) {
-        if (["first-unopened-module", "after-eviction", "restart-after-validated-ready"].includes(scenario.bucket)) {
+        if (scenario.waitForPreOpenDiagnostics) {
+          const expected = suite.preOpenTargetIds.map(targetId => {
+            const target = suite.targets.find(item => item.id === targetId)
+            const uri = pathToFileURL(path.join(suite.workspace, target.file)).href
+            return { targetId, uri, observer: diagnosticObservers.get(uri) }
+          })
+          await Promise.all(expected.map(item => item.observer?.promise))
+          for (const { targetId, uri, observer } of expected) {
+            if (!observer || observer.version !== 1 || observer.superseded
+              || observer.result?.uri !== uri || observer.result?.version !== 1
+              || observer.result.error || !Array.isArray(observer.result.diagnostics)) {
+              throw new Error(`PREOPEN_DIAGNOSTIC_BARRIER_FAILED=${targetId}`)
+            }
+          }
+          mark("pre-open-diagnostics-barrier-complete", { scenarioId: scenario.id,
+            targetIds: suite.preOpenTargetIds, version: 1 })
+        }
+        if (["first-unopened-module", "restart-after-validated-ready"].includes(scenario.bucket)) {
           blockedScenarios.push({ id: scenario.id, reason: scenario.bucket === "first-unopened-module"
             ? "UNOPENED_QUERY_PATH_NOT_VERIFIED" : "LIFECYCLE_CONTROL_UNAVAILABLE" })
           continue
@@ -92,15 +113,81 @@ async function captureSuite(options, suite, temporary) {
           blockedScenarios.push({ id: scenario.id, reason: "MODULE_ALREADY_OPENED" })
           continue
         }
-        if (!session.documentVersions.has(uri)) {
-          const text = fs.readFileSync(path.join(suite.workspace, target.file), "utf8")
-          overlays.set(uri, text)
-          observeDiagnostics(uri, 1)
-          session.openDocument({ uri, version: 1, text })
-          openedModules.add(target.moduleId)
-          mark("didOpen-sent", { targetId: target.id, version: 1 })
-        }
+        openTargetDocument(target)
         const queryIdentity = JSON.stringify([target.kind, target.file, target.position, target.includeDeclaration])
+        if (["after-eviction", "pressure-recovery-repeat"].includes(scenario.bucket)) {
+          if (scenario.bucket === "after-eviction"
+            && (attemptedQueries.size === 0 || attemptedQueries.has(queryIdentity))) {
+            blockedScenarios.push({ id: scenario.id, reason: "UNSEEN_RECOVERY_TARGET_REQUIRED" })
+            continue
+          }
+          if (scenario.bucket === "pressure-recovery-repeat"
+            && completedQueries.get(queryIdentity) !== snapshot) {
+            blockedScenarios.push({ id: scenario.id, reason: "COMPLETE_SNAPSHOT_REQUIRED" })
+            continue
+          }
+          if (suite.runtime.env.ARKTS_BENCHMARK_CONTROL !== "1"
+            || suite.runtime.env.ARKTS_REFERENCES_TRACE !== "1") {
+            blockedScenarios.push({ id: scenario.id, reason: "LIFECYCLE_CONTROL_UNAVAILABLE" })
+            continue
+          }
+          const evictionsBefore = pressureEvictions().length
+          mark("memory-pressure-request-start", { scenarioId: scenario.id, level: "level3" })
+          let pressure
+          try {
+            pressure = await session.request("arkts/benchmark/applyMemoryPressure",
+              { level: "level3" }, { timeoutMs: suite.runtime.timeoutMs })
+          } catch (error) {
+            pressure = { error: { message: error.message } }
+          }
+          mark("memory-pressure-response-complete", { scenarioId: scenario.id,
+            applied: pressure.result?.applied ?? null, error: pressure.error?.message ?? null })
+          if (pressure.result?.applied !== "level3") {
+            blockedScenarios.push({ id: scenario.id, reason: "LIFECYCLE_CONTROL_UNAVAILABLE" })
+            continue
+          }
+          const eviction = await waitForPressureEviction(evictionsBefore)
+          if (!eviction) {
+            blockedScenarios.push({ id: scenario.id, reason: "EVICTION_NOT_OBSERVED" })
+            continue
+          }
+          mark("memory-pressure-eviction-observed", { scenarioId: scenario.id,
+            reason: eviction.reason, contextSequence: eviction.contextSequence })
+          const observationStart = performance.now()
+          if (suite.runtime.afterEvictionObservationMs > 0) {
+            mark("post-eviction-observation-start", { scenarioId: scenario.id,
+              durationMs: suite.runtime.afterEvictionObservationMs })
+          }
+          if (suite.runtime.env.ARKTS_L01_SEMANTIC_WORKER_RECYCLE === "1") {
+            mark("semantic-worker-recycle-request-start", { scenarioId: scenario.id })
+            let recycle
+            try {
+              recycle = await session.request("arkts/benchmark/recycleSemanticWorker", {},
+                { timeoutMs: suite.runtime.timeoutMs })
+            } catch (error) {
+              recycle = { error: { message: error.message } }
+            }
+            mark("semantic-worker-recycle-complete", { scenarioId: scenario.id,
+              recycled: recycle.result?.recycled ?? false,
+              oldThreadId: recycle.result?.oldThreadId ?? null,
+              newThreadId: recycle.result?.newThreadId ?? null,
+              error: recycle.error?.message ?? null })
+            if (recycle.result?.recycled !== true
+              || !Number.isSafeInteger(recycle.result.oldThreadId)
+              || !Number.isSafeInteger(recycle.result.newThreadId)
+              || recycle.result.oldThreadId === recycle.result.newThreadId) {
+              blockedScenarios.push({ id: scenario.id, reason: "WORKER_RECYCLE_FAILED" })
+              continue
+            }
+          }
+          if (suite.runtime.afterEvictionObservationMs > 0) {
+            await delay(Math.max(0, suite.runtime.afterEvictionObservationMs
+              - (performance.now() - observationStart)))
+            const elapsedMs = performance.now() - observationStart
+            mark("post-eviction-observation-complete", { scenarioId: scenario.id, elapsedMs,
+              overrunMs: Math.max(0, elapsedMs - suite.runtime.afterEvictionObservationMs) })
+          }
+        }
         let expected = queryOracles.get(queryIdentity) ?? target.expected
         if (scenario.edit) {
           snapshot++
@@ -126,6 +213,7 @@ async function captureSuite(options, suite, temporary) {
         const begin = performance.now()
         const requestId = session.nextRequestId
         mark("request-start", { scenarioId: scenario.id, method: `textDocument/${target.kind}` })
+        attemptedQueries.add(queryIdentity)
         let response
         let status = "COMPLETE"
         try {
@@ -152,6 +240,11 @@ async function captureSuite(options, suite, temporary) {
         mark("request-complete", { scenarioId: scenario.id, elapsedMs, status, exact: correctness.equal })
       }
       await Promise.all([...diagnosticObservers.values()].map(observer => observer.promise))
+      if (suite.runtime.postIdleMs > 0) {
+        mark("post-query-idle-start", { durationMs: suite.runtime.postIdleMs })
+        await delay(suite.runtime.postIdleMs)
+        mark("post-query-idle-complete")
+      }
     }
   } catch (error) { failure = { message: error.message }; mark("failure", failure) }
   finally {
@@ -177,7 +270,8 @@ async function captureSuite(options, suite, temporary) {
       workspace: suite.workspace, sdk: suite.sdk, hostname: os.hostname(),
       serverWorktreeStatus: gitValue(projectRoot, ["status", "--porcelain"]),
       traceMode: suite.runtime.env.ARKTS_REFERENCES_TRACE === "1" ? "attribution-only" : "trace-off",
-      launch: { command: process.execPath, args: [suite.server, "--stdio"] },
+      launch: { command: process.execPath, args: [suite.server, "--stdio"],
+        nodeOptions: process.env.NODE_OPTIONS ?? null },
       effectiveArktsFlags: suite.runtime.env,
       parentArktsFlagsCleared: Object.keys(process.env).filter(key => key.startsWith("ARKTS_")) },
     readiness: { candidate, semantic: { status: "READINESS_UNSUPPORTED",
@@ -200,6 +294,17 @@ async function captureSuite(options, suite, temporary) {
   }
   writePreparedReport(options.out, report)
   return report
+
+  function openTargetDocument(target, preOpen = false) {
+    const uri = pathToFileURL(path.join(suite.workspace, target.file)).href
+    if (session.documentVersions.has(uri)) return
+    const text = fs.readFileSync(path.join(suite.workspace, target.file), "utf8")
+    overlays.set(uri, text)
+    observeDiagnostics(uri, 1)
+    session.openDocument({ uri, version: 1, text })
+    openedModules.add(target.moduleId)
+    mark("didOpen-sent", { targetId: target.id, version: 1, ...(preOpen ? { preOpen: true } : {}) })
+  }
 
   function observeDiagnostics(uri, version) {
     const current = diagnosticObservers.get(uri)
@@ -225,5 +330,20 @@ async function captureSuite(options, suite, temporary) {
         diagnostics.push(observer.result)
         mark("diagnostic-not-observed", { uri, version })
       })
+  }
+
+  function pressureEvictions() {
+    return readStructuredLogs(logDir).filter(event => event.event === "semantic.context.evict"
+      && event.reason === "memory-level3")
+  }
+
+  async function waitForPressureEviction(previousCount) {
+    const deadline = performance.now() + Math.min(suite.runtime.timeoutMs, 5000)
+    while (performance.now() < deadline) {
+      const eviction = pressureEvictions()[previousCount]
+      if (eviction) return eviction
+      await delay(25)
+    }
+    return null
   }
 }

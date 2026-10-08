@@ -82,6 +82,7 @@ export interface SemanticReference {
 
 export type SemanticGlobalQueryFailureReason =
   | "project-membership-incomplete"
+  | "resource-budget-exceeded"
   | "source-outside-workspace"
   | "source-unavailable"
   | "source-unmappable"
@@ -373,7 +374,8 @@ export interface SemanticWorkspaceFileChangeBatch {
 export interface SemanticEnginePort {
   configureProject?(selection: unknown): void
   configureSdk?(selection: unknown): void
-  applyMemoryPressure?(level: "level3"): void
+  applyMemoryPressure?(level: "level2" | "level3"): void
+  recycleSemanticWorker?(): Promise<{ recycled: true; oldThreadId: number; newThreadId: number }>
   isResourceFile?(rootUri: string, fileUri: string): boolean
   sync(document: DocumentSnapshot): void
   close(documentUri: DocumentUri): void

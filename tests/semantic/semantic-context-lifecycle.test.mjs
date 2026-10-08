@@ -1,12 +1,51 @@
 import assert from "node:assert/strict"
 import fs from "node:fs"
+import { createRequire } from "node:module"
 import os from "node:os"
 import path from "node:path"
 import test from "node:test"
 import { fileURLToPath, pathToFileURL } from "node:url"
+import { runInNewContext } from "node:vm"
+import { transformSync } from "esbuild"
 
 import { LspSession } from "../support/lsp-session.mjs"
 import { projectRoot } from "../support/lsp-process.mjs"
+
+test("compiler trace collector failure preserves a completed semantic result", () => {
+  const sourcePath = path.join(projectRoot, "src/core/types/compiler-query-timing.ts")
+  const compiled = transformSync(fs.readFileSync(sourcePath, "utf8"),
+    { loader: "ts", format: "cjs", target: "node20" }).code
+  const module = { exports: {} }
+  const require = createRequire(sourcePath)
+  runInNewContext(compiled, { module, exports: module.exports, require, performance, process })
+  const dotting = require("typescript").PerformanceDotting
+  const original = dotting.getEventData
+  try {
+    dotting.getEventData = () => { throw new Error("collector failed after query") }
+    let queries = 0
+    const observed = module.exports.traceCompilerQuery(() => { queries++; return "exact" }, true)
+    assert.equal(observed.result, "exact")
+    assert.equal(queries, 1)
+    assert.equal(observed.timing.collectorAvailable, false)
+    assert.equal(observed.timing.createProgramMs, null)
+    assert.equal(observed.timing.createProgramEvents, null)
+  } finally {
+    dotting.getEventData = original
+  }
+  const originalClear = dotting.clearEvent
+  try {
+    dotting.clearEvent = () => { throw new Error("collector setup or cleanup failed") }
+    const observed = module.exports.traceCompilerQuery(() => "exact", true)
+    assert.equal(observed.result, "exact")
+    assert.equal(observed.timing.collectorAvailable, false)
+    assert.equal(observed.timing.createProgramMs, null)
+    assert.throws(() => module.exports.traceCompilerQuery(() => {
+      throw new Error("semantic query failed")
+    }, true), /semantic query failed/)
+  } finally {
+    dotting.clearEvent = originalClear
+  }
+})
 
 test("interactive definitions stay exact across overlays, disk changes, SDK change and eviction", async t => {
   const run = await replay(t, { trace: true })
@@ -65,6 +104,25 @@ test("disabled lifecycle tracing preserves exact navigation without lifecycle ob
   assert.equal(plain.events.some(entry => entry.event.startsWith("semantic.context.")), false)
   assert.equal(plain.events.filter(entry => entry.event === "sdk.selected").length,
     traced.events.filter(entry => entry.event === "sdk.selected").length)
+  assert.ok(plain.diagnostics.every(message => message.params.diagnostics.length === 0))
+})
+
+test("legacy references trace post-query Program identity for a new symbol without changing results", async t => {
+  const traced = await replay(t, { trace: true, global: true, referenceTraceProbe: true })
+  const plain = await replay(t, { trace: false, global: true, referenceTraceProbe: true })
+  assert.deepEqual(plain.referenceResults, traced.referenceResults)
+  const observed = traced.events.filter(entry => entry.event === "semantic.references.complete")
+  assert.equal(observed.length, 2)
+  assert.ok(observed.every(entry => entry.programSequence > 0
+    && entry.programSourceFiles > 0 && entry.programProjectFiles > 0
+    && Number.isFinite(entry.durationMs) && entry.durationMs >= 0
+    && Number.isFinite(entry.createProgramMs) && entry.createProgramMs >= 0
+    && Number.isSafeInteger(entry.createProgramEvents) && entry.createProgramEvents >= 0
+    && Number.isFinite(entry.otherReferenceMs) && entry.otherReferenceMs >= 0))
+  assert.equal(observed[1].programSequence, observed[0].programSequence)
+  assert.ok(observed.every(entry => Number.isSafeInteger(entry.checkerSequence) && entry.checkerSequence > 0))
+  // The real Settings trace shows distinct post-query checkers for one Program.
+  assert.equal(plain.events.some(entry => entry.event === "semantic.references.complete"), false)
   assert.ok(plain.diagnostics.every(message => message.params.diagnostics.length === 0))
 })
 
@@ -294,7 +352,8 @@ async function replayUnknownDeletion(t, sessionReuse, order) {
   }
 }
 
-async function replay(t, { trace, global = false, sessionReuse = "off", typeEdits = false, diskIterations = 1 }) {
+async function replay(t, { trace, global = false, referenceTraceProbe = false,
+  sessionReuse = "off", typeEdits = false, diskIterations = 1 }) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-context-lifecycle-"))
   const workspace = path.join(root, "workspace")
   fs.mkdirSync(workspace)
@@ -322,7 +381,8 @@ async function replay(t, { trace, global = false, sessionReuse = "off", typeEdit
     env: {
       ARKLINE_HARMONY_SDK_PATH: sdkA, DEVECO_SDK_HOME: sdkA,
       ARKTS_INDEX_CACHE_DIR: path.join(root, "cache"), ARKTS_LSP_LOG_DIR: logs,
-      ARKTS_REFERENCES_TRACE: trace ? "1" : "0", ARKTS_REFERENCES_STRATEGY: "indexed-batched",
+      ARKTS_REFERENCES_TRACE: trace ? "1" : "0",
+      ARKTS_REFERENCES_STRATEGY: referenceTraceProbe ? "legacy" : "indexed-batched",
       ARKTS_REFERENCES_CONTEXT_RETENTION: "dispose", ARKTS_REFERENCES_RESIDENT_FAST_PATH: "0",
       ARKTS_REFERENCES_ANCHOR_REUSE: "0", ARKTS_BENCHMARK_CONTROL: "1",
       ARKTS_SEMANTIC_SESSION_REUSE: sessionReuse,
@@ -338,7 +398,7 @@ async function replay(t, { trace, global = false, sessionReuse = "off", typeEdit
   await session.transport.progress(catalog.params.token, message => message.params.value.kind === "end", 10_000)
   session.openDocument({ uri: queryUri, version: 1, text: query })
   const diagnostics = [await diagnostic(1)]
-  const results = [], checkpoints = []
+  const results = [], checkpoints = [], referenceResults = []
   async function define(step) {
     const before = events().length
     const response = await session.request("textDocument/definition", {
@@ -374,6 +434,16 @@ async function replay(t, { trace, global = false, sessionReuse = "off", typeEdit
       }))]
     assert.deepEqual(references.result.map(value => JSON.stringify(value)).sort(),
       expected.map(value => JSON.stringify(value)).sort())
+    referenceResults.push(references.result)
+    if (referenceTraceProbe) {
+      const next = await session.request("textDocument/references", {
+        textDocument: { uri: queryUri }, position: positionAt(query, query.indexOf("value") + 1),
+        context: { includeDeclaration: true },
+      }, { timeoutMs: 20_000 })
+      assert.equal(next.error, undefined, JSON.stringify(next.error))
+      assert.deepEqual(next.result, [{ uri: queryUri, range: rangeOf(query, "value") }])
+      referenceResults.push(next.result)
+    }
     await define("after-references")
   }
   for (let index = 0; index < diskIterations; index++) {
@@ -409,10 +479,11 @@ async function replay(t, { trace, global = false, sessionReuse = "off", typeEdit
   await define("after-eviction")
   await define("unchanged-after-eviction")
   await session.close({ timeoutMs: 5_000 })
-  const normalizedResults = results.map(locations => locations.map(location => ({
+  const normalize = locations => locations.map(location => ({
     ...location, uri: path.relative(workspace, fileURLToPath(location.uri)).split(path.sep).join("/"),
-  })))
-  return { results, normalizedResults, diagnostics, checkpoints, events: events() }
+  }))
+  return { results, normalizedResults: results.map(normalize),
+    referenceResults: referenceResults.map(normalize), diagnostics, checkpoints, events: events() }
 }
 
 function positionAt(source, offset) {

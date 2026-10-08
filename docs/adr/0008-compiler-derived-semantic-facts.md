@@ -1,6 +1,10 @@
 # ADR 0008：由 compiler 批量生成语义事实
 
-日期：2026-09-29。状态：**Proposed；S02 可证伪验证后再决定生产采用**。
+日期：2026-09-29。2026-10-06 状态：**S02 FAIL；研究暂停；S03 BLOCKED**。
+保留 v1–v6 的真实反例与负面成本证据；没有新的独立决策，不启动 v7、
+不接事实 schema/producer/路由。新的活跃实施主线是
+[ADR 0014](0014-budgeted-long-lived-semantic-session.md) 的预算约束长驻
+官方 LS；它不将本 ADR 的失败事实投影重新命名为成功。
 
 S02 checkpoint：`public-checker-binding-projection-v1` **FAIL**；普通导出/alias
 切片exact，但constructor keyword的两种declaration policy漏2/3个位置。
@@ -64,7 +68,8 @@ origin。其余窄构造器 fixture 保持精确，但含 `new Alias()` 的 call
 1,496 成员真实提取返回 `FAIL/HOOK_UNSUPPORTED`、exit42，原因为
 `ORIGIN_WORKLIST_UNSUPPORTED_OUTSIDE_ROOT_OR_SPAN`，没有 facts 或部分答案。
 因此小 fixture 成功不能推出 MenuController 267-location 的 hook parity，
-更不能推出提取成本可接受。ADR 仍 Proposed，S02 FAIL、S03 BLOCKED。
+更不能推出提取成本可接受。当时 ADR 仍 Proposed；当前研究暂停、
+S02 FAIL、S03 BLOCKED。
 后续默认关闭的诊断确认真实首个外部 origin 为 `new Array()` 所指的
 compiler `lib.es5.d.ts`；小型混合工程可把它显式标成 `UNSUPPORTED`，同时
 本地构造器两种声明策略与 stock exact，但产物仍为 `FAIL/PARTIAL`。
@@ -105,7 +110,7 @@ commit 中不存在，真实 LSP 报 TS2307；这不是已解析语义的独立�
 
 完整结果缓存只加速同一查询。未查询过的符号若要复用准备成本，需要有效的语义投影；现有词法候选索引不能直接成为完整语义答案。
 
-## Proposed decision
+## 原研究提案（暂停实施）
 
 - 将 R-14 的提取可行性验证提升为 Must，而不是直接批准生产 schema 或重构。
 - 在固定 `ohos-typescript` 后端内批量提取 compiler 派生事实，复用其绑定和搜索规则，记录所用后端源码/API 的依据。
@@ -121,7 +126,11 @@ commit 中不存在，真实 LSP 报 TS2307；这不是已解析语义的独立�
 
 S02 差分覆盖构造函数、`new this`、`super`、别名重导出、继承成员、同名、overlay、SDK/配置变化及真实 Settings oracle。清空完整答案缓存并释放验证 Program 后，未查询符号仍须精确；同时报告提取总 CPU、时间及峰值内存。
 
-任一必测语义不能等价即 S02 FAIL，阻止依赖事实的生产 schema、发布和路由。保留反例，再评估受控 LS 复用或上游 hook；不能用词法补丁制造完整证明。S05 在 S01 后可独立继续，不被这项提取失败阻断。
+任一必测语义不能等价即 S02 FAIL，阻止依赖事实的生产 schema、发布和路由。
+当前决定暂停同路线研究；v7 只有在提出不同的 compiler-derived 假说、
+显式重新授权并包含 v1–v6 全部反例及真实 Settings/SDK/资源门禁时才可开始。
+不能用词法补丁制造完整证明。S05 已完成其相容磁盘候选否决；新的 L01
+机制独立验证，不能借用本 S02 的部分 fixture PASS。
 
 ## Relations
 

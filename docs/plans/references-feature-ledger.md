@@ -1,8 +1,205 @@
 # References / semantic Feature Ledger
 
-Current governance: [semantic-ready execution plan](2026-09-29-semantic-ready-execution-plan.md),
+Current governance: [budgeted resident-session L01–L08 plan](2026-10-06-budgeted-resident-semantic-plan.md),
 [product contract](semantic-ready/product-contract.md), [MoSCoW](references-moscow.md)
-and [ADR 0007–0013](../adr/README.md). This remains the **only active Ledger**.
+and [ADR collection, including 0014](../adr/README.md). This remains the **only active Ledger**.
+2026-10-06 pivot: the previous [S-series plan](2026-09-29-semantic-ready-execution-plan.md)
+is historical. S02 v1–v6 FAIL is retained and research paused (no v7 absent a new
+decision); S03 facts publication stays BLOCKED. The distinct S05 compatible-disk
+LS candidate is `DECISION_COMPLETE / REJECTED` after the 1.600× RSS peak and
+slow edited-definition P95 controls. L01 is **IN_PROGRESS, not PASSED**:
+one complete official LS, no dispose after preparation, previously unqueried
+real Settings/API24 symbols, exact oracle and RSS/Program identity observation.
+The [first three-process control](../reports/2026-10-06-resident-l01-baseline.md)
+was 42/42 exact with same-file new-query 286/1,025/267 ms, so the 500 ms
+stability screen is NOT_MET and full resource/readiness gates remain open.
+The [true-declaration A/B/C control](../reports/2026-10-06-resident-l01-declarations-ab.md)
+adds two fresh processes per strategy, 16/16 exact requests and normal diagnostics:
+unqueried cross-file `HomeInitData` takes 8.061/23.880 s on current indexed-batched,
+versus 178/225 ms on the same-snapshot legacy full LS after its first query.
+Only repeated same-symbol requests hit the ~2 ms exact cache. Small-N and noisy RSS
+sampling prohibit P95 or memory-graduation claims; these pins are historical after
+the trace-only checker observer edit.
+The [current-build unsaved-reference control](../reports/2026-10-06-resident-l01-unsaved-reference-edit.md)
+adds three fresh processes, 12/12 exact, a 9→10 v2 overlay delta and current
+diagnostics; edit-warm first queries take 1.371–1.597 s. A separate trace sees
+context reuse but a new Program after the edit. The post-query Checker sequence
+changes even for one Program, so it is not a stable reuse gate. This closes one
+freshness control, not L02 incrementality, Settings cancellation/L3 safety or
+readiness graduation.
+The [real Settings L3 recovery](../reports/2026-10-06-resident-l01-l3-recovery.md)
+proves one benchmark-controlled eviction followed by an unseen symbol's 10/10
+exact Locations and normal diagnostics. Its trace-on recovery is 13.797 s,
+sampled Node RSS peak at least 1,087,504,384 bytes, with further automatic
+evictions. It is a single completeness control, not stable memory or latency.
+The [fixed Settings implementation oracle](../reports/2026-10-06-resident-l01-implementation-discovery.md)
+comes from two agreeing fresh-process complete results, not a static guess.
+[Three more prepared-suite processes](../reports/2026-10-06-resident-l01-hot-implementation.md)
+return 6/6 exact: after each first full-scope references, the previously
+unqueried interface implementation takes 280.4/255.2/350.9 ms, with normal
+diagnostics. That one pre-opened, post-cost bucket is promising but cannot
+graduate R-25/L05, semantic readiness, P95 or memory gates.
+The [single real Settings queue-start cancellation control](../reports/2026-10-06-resident-l01-cancel-control.md)
+returns one `-32800` without a partial result; fresh same-process references
+are 9/9 exact, definition exact, and diagnostics normal. Cancelled work's
+document preparation still ran for about 1.2 s, so compiler-in-flight
+preemption, repeated cancellation and long-run resource safety remained open.
+The [three-process references-callback cancellation control](../reports/2026-10-06-resident-l01-compiler-cancel.md)
+observes whole-callback cancellation on the same trace after `$/cancelRequest`,
+one `-32800`, no partial result, 9/9 exact references and exact definition
+recovery with normal diagnostics. The callback takes 5.76–6.90 s to stop;
+this does not establish where TypeScript stops. A narrower
+[three-process `findReferences` call control](../reports/2026-10-06-resident-l01-find-references-cancel.md)
+waits for the actual TypeScript call, then observes its cancellation throw in
+12/2/2 ms and a single public terminal in 19/4/4 ms, with exact recovery.
+The first request still waits 7.9–9.0 s before that call; timely cancellation
+of earlier preparation and repeated-cancel/long-run resource safety remain Must.
+The [three-process cross-module definition control](../reports/2026-10-06-resident-l01-hot-definition.md)
+adds 6/6 exact requests: after 248/248 first references, the previously
+unqueried `HomeInitData` usage resolves to its declaration in 1,060/858/777 ms.
+Normal diagnostics remain enabled; 0/3 samples meet 500 ms. This is a concrete
+L01 new-symbol latency failure, not evidence of Program/Checker reuse or L06
+route graduation.
+One [trace-on attribution control](../reports/2026-10-06-resident-l01-hot-definition-trace.md)
+separates a 1,309.4 ms complete definition response from its 2.56 ms compiler
+definition callback. Two normal pre-open diagnostics overlap the request; the
+second completes just before the callback. The trace lacks a definition queue
+boundary, so this is a discriminating scheduling hypothesis, not a measured
+per-phase allocation or permission to suppress diagnostics.
+The [trace-off diagnostic barrier A/B](../reports/2026-10-06-resident-l01-diagnostic-barrier-ab.md)
+keeps both v1 diagnostics and all exact Locations: three fresh processes send
+the unqueried cross-module definition only after both publications and respond
+in 11.6/8.8/12.2 ms; a subsequent no-barrier process still takes 747.7 ms.
+The barrier waits 792.6–923.4 ms **before** the request, however; it moves
+cost outside the request timer rather than reducing first-references-to-definition
+wall time. Scheduling/freshness remains Must, not a 500 ms or ready-state pass.
+The [queued-diagnostic priority slice](../reports/2026-10-06-resident-l01-diagnostic-priority.md)
+has a real framed-LSP RED/GREEN for one definition bypass of a queued second
+diagnosis and a mutation/v2-diagnostic safety regression. In three pinned
+Settings/API24 new processes, exact definition responses precede the second
+diagnostic but still take 824.4/703.9/691.0 ms (0/3 at 500 ms). This closes
+the narrow queue-order defect, not L01 performance/readiness or resource gates.
+The [L01 script-admission trace](../reports/2026-10-06-resident-l01-script-admission.md)
+then attributes 748–782 ms of three trace-on unqueried definitions to
+`createProgram`. A separate pinned Settings run observes 13 newly resident
+scripts, all 13 previously lazy-read with matching source fingerprints,
+host generation 257→270, and Program sequence 1→2. No edit or context eviction
+occurred. This supports, but does not causally prove, a host-version-only
+rebuild. L02 needs a default-off exactness/memory/latency A/B after the L01
+safety gate; production versions and 500 ms status remain unchanged.
+The [L01 100-edit Settings/API24 resource control](../reports/2026-10-07-resident-l01-resource-soak.md)
+now has 102/102 exact trace-off references with normal v1/v101 diagnostics
+after a visible initial barrier, but edit P50/P95 is 2.484/4.437 s and
+sampled Node RSS peak is at least 1.45 GB. A separate trace-on five-L3 run
+is 107/107 exact but records 104 context create/evict pairs; an unbarriered
+trace-off run retains a missing v1 diagnostic failure. This closes one
+100-edit exactness slice, **not** L01 resource admission, stable residency,
+semantic readiness or 500 ms. Investigate churn before L02 production work;
+do not increase the budget or alter the production default to hide it.
+[Short no-control Settings attribution](../reports/2026-10-07-resident-l01-pressure-attribution.md)
+reproduced 13 and 14 automatic L3 evictions across two independent 20-edit
+processes (both 22/22 exact, diagnostics PASS). High post-query process RSS
+explains the recreate/evict loop under this soft budget; strongly retained
+compiler/registry objects were not yet identified in those RSS-only runs.
+[Two later fresh Settings registry probes](../reports/2026-10-07-resident-l01-registry-ownership.md)
+repeated `trim 2261→2261`, rebuild, `dispose 4522→2261` on the same
+SourceFile-path cohort with 22/22 exact results and diagnostics PASS; the
+fork's trim/dispose ownership gap is a concrete backend defect candidate.
+Refcounts do not quantify retained bytes; R-03/R-30 resource admission remains
+BLOCKED pending a real-LSP regression, fix, and memory recheck.
+That [regression and two fixed-build Settings replays](../reports/2026-10-07-resident-l01-registry-recycle.md)
+are now complete: sampled L2/L3 residual refs reach zero and both runs are
+22/22 exact with diagnostics PASS. However fixed-run edit maxima are
+28.227/27.004 s, repeated cold `createProgram` can take 21–24 s, and peak
+RSS varies 1.518/1.030 GB. Mark only backend ownership repaired; R-03/R-30
+resource and latency admission remain BLOCKED, production indexed routing
+unchanged.
+The [repeated-L2 Settings control](../reports/2026-10-07-resident-l01-l2-rearm.md)
+closes only the public Registry lifecycle regression: `L2 → exact query → L2`
+now releases each observed Program-owned refcount to zero when explicitly
+enabled. One fixed-build 20-edit process is 22/22 exact with normal diagnostics,
+but incurs four natural L3 evictions, seven >20 s edits, and at least 1.969 GB
+sampled Node RSS. Therefore `ARKTS_L01_REARM_TRIM` requires benchmark control
+and remains default-off; R-03/R-30 resource admission stays BLOCKED. Next
+test a Program-generation witness and pressure-aware resident re-admission,
+with full semantic fallback. Do not graduate L02 or the 500 ms gate from the
+fixture GREEN.
+[The L2 build-witness RED/GREEN](../tdd/l01-l2-program-witness.md) has now
+closed one experimental false re-arm: invalid rename reaches the resident
+context but cannot mark it rebuilt; a later observed `createProgram` event can.
+This positive grouped compiler event is not strict resident Program identity,
+and the Settings resource gate remains BLOCKED.
+The [automatic-L3 admission experiment](../reports/2026-10-07-resident-l01-pressure-admission.md)
+is now a negative Must-level result for R-03/R-30. Public framed-LSP tests
+showed no repeated resident creation and exact results in small stale-index and
+unsaved-overlay controls. Real Settings/API24 executed 22/22 planned requests,
+but only 20 completed exactly; two reached 180 s while a 24-batch conservative
+full-scope search was still at batch 14. External Node peak RSS was at least
+1.410 GB. The doubly gated flag remains default-off and **NO-GO**; a lower
+observed peak does not excuse timeouts or incomplete results. L01 safety and
+L02 admission remain BLOCKED.
+[A same-build indexed control](../reports/2026-10-07-resident-l01-indexed-pressure-control.md)
+then showed the boundary of index narrowing: `HomeInitData` had three exact
+one-batch responses but needed 11.088–13.624 s; `MenuController` was
+candidate-ineligible, planned 24 batches and timed out at 180.011 s. Two
+explicit L3 recovery samples were blocked because no eviction was observed;
+diagnostics/overall status failed. This is not indexed L3 admission.
+[The matched-build legacy/indexed A/B](../reports/2026-10-07-resident-l01-matched-strategy-ab.md)
+keeps R-03/R-30 blocked: legacy completed all six exact requests but took
+60.734 s for the first constructor query, 23–27 s for the two L3 recoveries,
+and sampled 1.537 GB Node RSS; indexed timed out on that first query and did
+not execute either L3 control. Different executed request sets prohibit a
+causal peak-RSS ratio. A [public RED/GREEN admission guard](../tdd/l01-pressure-multibatch-rejection.md)
+now makes the *default-off* automatic-L3 experiment return an explicit resource
+error before a multi-batch verifier starts. Its one-batch fixture remains exact,
+but the guard is not a hard per-batch RSS bound or Settings graduation.
+[Real Settings L3 follow-up](../reports/2026-10-07-resident-l01-pressure-guard-settings.md)
+returned four exact responses and two explicit `-32803` refusals before any
+of the 24 planned batches started (84.5/96.9 ms). Normal diagnostics passed,
+but 4/6 complete is FAIL, not a safety or 500 ms graduation.
+The [same-input production-default comparator](../reports/2026-10-07-resident-l01-production-comparator.md)
+returned 22/22 exact locations and normal diagnostics under both strategies.
+All 20 unsaved edits actually used indexed one-batch verification, not legacy;
+indexed edit P95 was 4.145 s versus legacy 2.524 s while sampled Node RSS
+peak fell from 1.245 to 0.843 GB. The initial identity-ineligible symbol
+required 24 conservative batches and 111.220 s, dominated by repeated Program
+preparation. These are Must-level latency/resource facts, not L01 admission.
+Production remains `indexed-batched + closure + full SDK` and transient batches.
+The L01 safety gate can permit L02 validity research with a recorded >500 ms
+`PERFORMANCE_FAIL`; neither that continuation nor this Ledger changes default
+or graduates the product SLO.
+[Three matched Settings post-L3 GC controls](../reports/2026-10-07-resident-l01-post-eviction-gc-attribution.md)
+now close a narrow Must-level ownership question: all six new processes kept
+four exact reference responses and normal diagnostics, then returned an
+explicit resource error; the three benchmark-only GC probes reduced disposed
+semantic-Worker heap from 638–646 MB to about 33 MB, while Node RSS fell only
+29–31 MB immediately. This argues against a strong-reference leak for that
+context, not for every path. The control/probe peak difference is not a
+production GC benefit or PSS gate. Preventing overlap with the next normal
+diagnostic Program without losing exactness remains L01 BLOCKED; L02 and the
+500 ms product gate remain open.
+[The three-process production-default indexed-after-L3 control](../reports/2026-10-07-resident-l01-indexed-after-l3.md)
+separates that explicit legacy refusal from the actual indexed route: after a
+witnessed context eviction, a previously unqueried real Settings declaration
+returned 10/10 exact Locations in all three new processes with normal
+diagnostics. Its complete references requests still took 4.557–4.586 s;
+`READINESS_UNSUPPORTED` and resource/product gates remain open. The proof was
+identity-complete for this one symbol and planned one batch; the constructor
+symbol's ready index remains correctly unsupported and must not be narrowed
+by class-name matching. That checkpoint's full `check:fast` was 1322/1322 GREEN under
+the fixture SDK and permitted external RSS sampling; this test status is not
+L01 or L02 admission.
+[A three-pair, fixed-build post-L3 Worker recycle control](../reports/2026-10-08-resident-l01-semantic-worker-recycle-ab.md)
+adds a default-off L01 resource slice: all six Settings runs preserve exact
+1-location definition, 10-location references and normal diagnostics; paired
+sampled Node peaks fall 29.3%–31.6%, while reference median is still
+4.524→4.574 s. A public LSP RED/GREEN caught and fixed lost unsaved edits
+on a timed-out recycle witness. This is not a persistent Worker or production
+recycle approval: immediate pre-query RSS, PSS, 100-edit stability,
+identity-ineligible multi-batch, semantic readiness and original memory gates
+remain open. The later fixed-worktree `pnpm check:fast` is **1327/1327 PASS**
+with permitted macOS external RSS sampling; this test pass is not product
+graduation. L01 resource admission and L02 production wiring stay blocked.
 The 2026-10-03 sequencing decision separates implementation from product graduation:
 an exact, fresh, complete and resource-safe slice may be implemented while its
 500 ms bucket remains FAIL. That failure stays open for S12b; it cannot turn an
@@ -220,13 +417,13 @@ Requirement documented / Planned / Spike-required / Implemented / Experimental
 and Graduated are distinct: existing implementation tests do not prove the new
 ready-state SLO. R-04/05/06/08/12 are reused, not newly implemented here.
 
-Explicit priority changes: R-13 conservative incremental maintenance and R-14
-feasibility spike are now Must; fine-grained invalidation remains proof-gated
-Should. R-15 global capability reuse is Should, R-11 shell reuse is Could, and
-R-12 pressure response is Must. S02 FAIL blocks production facts/schema;
-S05 remains independent after S01. R-09 is already implemented default-off,
-not reset to the attachment's older Research state. R-20 is reframed as
-initial preparation availability, not a candidate-ready shortcut.
+The former S-series priority made R-14 feasibility Must. **Current 2026-10-06
+priority replaces that order:** R-14 becomes paused Could/research; R-30–R-34
+and the L01–L08 dependencies below own the implementation critical path.
+Fine-grained invalidation remains proof-gated; R-11 Worker-shell reuse is not
+a shortcut for official-LS Program preparation. R-09 is implemented default-off,
+not reset to Research. R-20 remains initial preparation availability rather
+than a candidate-ready shortcut.
 
 Historical integration baseline: `911ae43c` (PR #91 merged; baseline fast
 **1103/1103 PASS**). The preceding R-09 source has its own
@@ -243,13 +440,60 @@ completion. `Implemented` requires applicable public correctness, freshness,
 completeness, cancellation and new-path resource-safety gates; `Graduated` additionally
 requires the linked product latency and memory gates. A failed 500 ms bucket remains
 FAIL without blocking the next safe implementation slice; see the
-[current execution plan](2026-09-29-semantic-ready-execution-plan.md).
+[current L01–L08 execution plan](2026-10-06-budgeted-resident-semantic-plan.md).
 The [preceding plan](2026-09-20-references-latency-execution-plan.md) and dated
 checkpoints below retain their original build evidence and previous priorities.
 Historical cold/didOpen timings are not semantic-ready bucket measurements;
 the new initial-preparation exemption neither graduates nor rewrites them.
 
-| ID | Priority | Feature | State | Dependency and observable exit |
+## Current 2026-10-06 L-series priority and status
+
+This table supersedes the former R-01–R-29 priorities **for the listed IDs**.
+Unlisted R-IDs retain their former priority and completed public contracts.
+The detailed rows below are dated evidence, not a second active sequencing table.
+`Must` is priority, never evidence of implementation or graduation.
+
+| ID | Current priority | Current state and next gate |
+| --- | --- | --- |
+| R-03 | Must | Budget-aware retention requirement open; S05 compatible-disk candidate REJECTED. L01 tests a different LS mechanism; L03 owns budget graduation |
+| R-09 | Should | Existing full-scope resident path implemented default-off; Settings L3 admission failed. L04 may use it only with exact complete coverage and L03 resource safety |
+| R-10 | Could | Anchor memo/seeds implemented default-off; no longer critical path to 500 ms. Revisit only if L01 attributes meaningful independent setup cost |
+| R-11 | Could | Worker-shell reuse unimplemented; transient production fallback stays. Do not substitute shell lifetime for LS/Program reuse |
+| R-13 | Must | Conservative edit/overlay validity maps to L02, not S03 facts publication; fine-grained invalidation remains proof-gated |
+| R-14 | Could / paused research | S02 v1–v6 FAIL/NON_BULK/unsupported evidence retained; no v7 or facts schema without new decision. S03 remains BLOCKED |
+| R-20 | Must | Initial preparation availability measured in L01; candidate-index ready is not semantic ready |
+| R-21 | Must | Post-ready full-response P95≤500 ms remains product gate; L01 single new-symbol result is exploratory, not P95 graduation |
+| R-22 | Must | Versioned semantic readiness to be proved from valid LS input/coverage in L02–L04; no S03 fact-generation prerequisite |
+| R-23 | Must | Bounded preparation/progress/cancellation maps to L01–L03; budget never waived by initial preparation |
+| R-24 | Must | Definition/typeDefinition L01 probe and L06 route; exact semantics and ready-state bucket still ungraduated |
+| R-25 | Must | Settings `IAboutDevicePageCtrl` implementation oracle now verified by two fresh processes; three pre-opened post-full-scope L01 processes return 1/1 exact at 280.4/255.2/350.9 ms. Other implementation categories, edits, cancellation, readiness/P95/resource gates and L05 production route remain open; no facts projection prerequisite |
+| R-26 | Must | Completion/auto-import/hover/signature L06; no current product graduation |
+| R-27 | Must | PrepareRename/rename L07, complete edit/conflict/freshness proof before route |
+| R-28 | Should | Call hierarchy L07 per-direction proof, no generic references substitute |
+| R-29 | Must | Normal diagnostics in L01/L02/L06 and L08 soak; never silence to improve time |
+| R-30 | Must | **L01 resident-LS baseline IN_PROGRESS:** first Settings/API24 control 42/42 exact, new same-file query 286/1,025/267 ms; pre-open control 15/15 exact, new cross-file query 166/156/165 ms. True-declaration A/B/C adds 16/16 exact: default indexed new cross-file 8.061/23.880 s versus legacy same-snapshot 178/225 ms. Current-build unsaved edit adds 12/12 exact, 9→10 refs/v2 diagnostics but edit-warm 1.371–1.597 s. Single real L3 control returns 10/10 exact after confirmed eviction, yet trace-on recovery 13.797 s and later auto evictions. Checker sequences are trace-only post-query and unstable even for one Program. 500 ms stability NOT_MET; three callback-start cancel controls eventually abort after 5.76–6.90 s, while three later `findReferences`-start controls prove TypeScript-call cancellation in 12/2/2 ms with exact recovery. Earlier preparation cancellation and long-term resource gates remain open. [Call-level evidence](../reports/2026-10-06-resident-l01-find-references-cancel.md); production default unchanged |
+| R-31 | Must | **L02 incremental refresh NOT_STARTED:** ordinary edit first, then API/import/create/delete/package/SDK boundaries, exact snapshot and phase-cost evidence. Edited Program may legitimately change identity; trace-only L01 already saw 1495/1496 project and 652/652 SDK SourceFiles reused yet ~1.08 s grouped Program build. AST reuse count alone cannot graduate L02 or 500 ms |
+| R-32 | Must | **NEW — L03 soft-budget/pressure NOT_STARTED:** measured steady RSS/PSS, hysteresis and cost-aware unleased eviction; no blind budget increase |
+| R-33 | Must | **NEW — L04–L07 route/fallback NOT_STARTED:** resident route only on proven coverage/freshness, transient exact path on miss, per-capability public gates |
+| R-34 | Must | **NEW — L08 soak/release NOT_STARTED:** no monotonic growth, exactness, per-bucket P95≤500 ms, original references memory/DevEco/PSS/portability gates |
+
+R-29/R-30 resource follow-up: [two fresh Settings/API24 L3 ownership
+replays](../reports/2026-10-07-resident-l01-post-eviction-ownership.md) each
+returned four exact responses and one explicit resource error. A pending
+normal diagnostic recreated a resident context after explicit eviction; both
+Registry disposals reached zero references, yet Node RSS remained about
+1.01–1.02 GB through 30 seconds idle. This is a repeatable RSS platform, not
+proof of live-object leakage or a PSS pass. Preserve versioned diagnostics;
+diagnostic admission during pressure and live-heap/PSS attribution remain
+Must-level L01 safety work. L02 is still unadmitted.
+
+## Prior R-01–R-29 detailed evidence snapshot
+
+The `Priority` column in this dated evidence table is **pre-pivot** wherever
+the current table above lists an override. Historical next-step wording does
+not authorize restarting S02 or graduating the rejected S05 candidate.
+
+| ID | Former priority | Feature | Evidence state at checkpoint | Former dependency and observable exit |
 | --- | --- | --- | --- | --- |
 | R-01 | Must | Phase-level semantic tracing | Implemented: batch timeline, queue/candidate/anchor correlation and opt-in compiler `getProgram` / `createProgram` / `getTypeChecker` split | Real-LSP exactness GREEN; external trace-off RSS and fixed real-project benchmark belong to R-02 |
 | R-02 | Must | Fixed manifests and exact oracle | In progress: Settings declares compile API 23; selected API 24 is pinned for same-SDK compatibility A/B/C, not SDK equivalence. Standard-library delivery and runtime-asset preflight passed. `HomeInitData` now has three fresh process/index-cold runs per strategy for both declaration settings: all 9/9 without declaration and 10/10 with declaration were exact, with zero target-file diagnostics. With-declaration request medians: legacy 9,030 ms, pure batched 90,894 ms, indexed-batched 5,107 ms; product RSS peak medians: 788,803,584, 743,411,712 and 554,479,616 bytes. `MenuController` has pinned 248/247-location oracles for both settings but only single-run opposite-policy evidence and one unresolved TS 2307 diagnostic. No cold result met 500 ms | [Original Settings matrix](../reports/2026-09-21-settings-api24-reference-matrix.md), [with-declaration matrix](../reports/2026-09-21-settings-with-declaration-matrix.md), [standard-library report](../reports/2026-09-21-settings-api24-standard-library.md): expand randomized/mode-C samples, edit diagnostic/freshness coverage, native Windows, diagnostic triage, original >3 GB and final 50%/PSS release gates. Retain separate matched-API-23/DevEco gate |

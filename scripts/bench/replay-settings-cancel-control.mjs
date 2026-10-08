@@ -14,9 +14,12 @@ import {
   gitValue, projectRoot, sha256File, validateBenchmarkManifest, validateInputs,
 } from "./reference-replay-input.mjs"
 import {
-  attachNearestRss, childExit, delay, maxNullable, readJsonLines, readStructuredLogs,
+  attachNearestRss, childExit, maxNullable, readJsonLines, readStructuredLogs,
   waitForCatalog, waitForSample,
 } from "./reference-replay-evidence.mjs"
+import {
+  observeCompilerQueryOutcome, waitForFindReferencesStart, waitForScheduledCancellationStage,
+} from "./reference-compiler-cancellation-evidence.mjs"
 
 const defaultManifest = path.join(projectRoot,
   "bench/references/manifests/settings-homeinitdata-mixed-ops-api24.json")
@@ -33,11 +36,14 @@ const help = `Usage:
     --workspace <clean Settings checkout> \\
     --sdk <API24 SDK path> \\
     --out <new report.json> \\
+    --strategy <indexed-batched|legacy>  (default: indexed-batched)
+    --cancel-stage <scheduled|compiler-query>  (default: scheduled; compiler-query requires legacy)
     --session-reuse <off|experimental>  (default: off)
 
-Runs textDocument/references, synchronizes on observed batch scheduling
-(before verifier creation, not proof of verifier-in-flight), then sends
-$/cancelRequest for its explicit ID and validates fresh
+Runs textDocument/references, synchronizes on observed batch scheduling,
+legacy queue start, or the opt-in TypeScript findReferences entry. Only compiler-query
+mode requires an observed compiler cancellation after $/cancelRequest.
+Then validates fresh
 textDocument/references and textDocument/definition recovery. Trace is on for
 this control and its latency is not a product timing sample.
 
@@ -66,7 +72,7 @@ try {
 function parseArguments(args) {
   if (args.length === 1 && args[0] === "--help") return { help: true }
   const values = new Map()
-  const names = new Set(["--workspace", "--sdk", "--out", "--session-reuse", "--manifest",
+  const names = new Set(["--workspace", "--sdk", "--out", "--strategy", "--cancel-stage", "--session-reuse", "--manifest",
     "--oracle", "--server", "--sidecar", "--sample-interval-ms"])
   for (let index = 0; index < args.length; index += 2) {
     const name = args[index]
@@ -83,6 +89,17 @@ function parseArguments(args) {
   if (sessionReuse !== "off" && sessionReuse !== "experimental") {
     throw new Error("--session-reuse must be off or experimental")
   }
+  const strategy = values.get("--strategy") ?? "indexed-batched"
+  if (strategy !== "indexed-batched" && strategy !== "legacy") {
+    throw new Error("--strategy must be indexed-batched or legacy")
+  }
+  const cancelStage = values.get("--cancel-stage") ?? "scheduled"
+  if (cancelStage !== "scheduled" && cancelStage !== "compiler-query") {
+    throw new Error("--cancel-stage must be scheduled or compiler-query")
+  }
+  if (cancelStage === "compiler-query" && strategy !== "legacy") {
+    throw new Error("--cancel-stage compiler-query requires --strategy legacy")
+  }
   const sampleIntervalMs = Number(values.get("--sample-interval-ms") ?? "50")
   if (!Number.isSafeInteger(sampleIntervalMs) || sampleIntervalMs <= 0) {
     throw new Error("--sample-interval-ms must be a positive integer")
@@ -91,7 +108,7 @@ function parseArguments(args) {
     workspace: path.resolve(values.get("--workspace")),
     sdk: path.resolve(values.get("--sdk")),
     out: path.resolve(values.get("--out")),
-    sessionReuse,
+    sessionReuse, strategy, cancelStage,
     manifest: path.resolve(values.get("--manifest") ?? defaultManifest),
     oracle: path.resolve(values.get("--oracle") ?? defaultOracle),
     server: path.resolve(values.get("--server") ?? path.join(projectRoot, "dist/server.cjs")),
@@ -158,7 +175,7 @@ function effectiveEnvironment(options, cacheDir, logDir) {
     ARKTS_LSP_LOG_DIR: logDir,
     ARKTS_SEMANTIC_SESSION_REUSE: options.sessionReuse,
     ARKTS_REFERENCES_TRACE: "1",
-    ARKTS_REFERENCES_STRATEGY: "indexed-batched",
+    ARKTS_REFERENCES_STRATEGY: options.strategy,
     ARKTS_REFERENCES_BATCH_ROOTS: "64",
     ARKTS_REFERENCES_DEPENDENCY_PROFILE: "closure",
     ARKTS_REFERENCES_SDK_AMBIENT_PROFILE: "full",
@@ -252,27 +269,50 @@ async function replayClone(options, input) {
     let terminal = null
     const terminalPromise = session.transport.response(requestId, timeoutMs)
     void terminalPromise.then(response => { terminal = { response } }, error => { terminal = { error } })
-    const stage = await waitForBatchScheduled(logDir, session, requestId, priorTraceIds,
-      () => terminal)
+    const stage = options.cancelStage === "compiler-query"
+      ? await waitForFindReferencesStart(logDir, priorTraceIds, () => terminal,
+        () => hasReceivedResponse(session, requestId), timeoutMs)
+      : await waitForScheduledCancellationStage(logDir, priorTraceIds, options.strategy,
+        () => terminal, () => hasReceivedResponse(session, requestId), timeoutMs)
     mark("references.cancel-stage", stage)
-    const sent = stage.state === "batch-scheduled" && terminal === null
+    const sent = ["batch-scheduled", "queue-start", "find-references-start"].includes(stage.state)
+      && terminal === null
       && !hasReceivedResponse(session, requestId)
+    const cancelSentAt = sent ? Date.now() : null
     if (sent) {
       session.transport.send({ jsonrpc: "2.0", method: "$/cancelRequest",
         params: { id: requestId } })
-      mark("cancelRequest.sent", { requestId, stage: stage.event.event })
+      mark("cancelRequest.sent", { requestId, stage: stage.event.event,
+        sendStartedEpochMs: cancelSentAt })
     }
     let response = null, responseError = null
     try { response = await terminalPromise }
     catch (error) { responseError = error.message }
+    const compilerQuery = options.cancelStage === "compiler-query"
+      ? await observeCompilerQueryOutcome(logDir, stage.event?.traceId, cancelSentAt, 30_000) : null
     mark("references.cancel-target.terminal", { requestId,
       error: response?.error ?? responseError, hasResult: Object.hasOwn(response ?? {}, "result") })
     stageUnavailable = stage.state === "missing"
+    let terminalValidation = null
+    if (Object.hasOwn(response ?? {}, "result")) {
+      try {
+        const locations = normalizeReferences(response.result)
+        terminalValidation = validateLocations(locations, comparableLocations(locations, clone),
+          oracle, clone)
+      } catch (error) {
+        terminalValidation = { pass: false, errors: [error.message] }
+      }
+    }
     const outcome = sent && response?.error?.code === -32800
-      && !Object.hasOwn(response, "result") ? "PASS"
-      : response && Object.hasOwn(response, "result") ? "NOT_CANCELLED" : "FAIL"
-    cancellation = { requestId, stage, evidenceScope: "batch-scheduled-before-verifier",
-      sent, response, responseError, outcome }
+      && !Object.hasOwn(response, "result")
+      && (options.cancelStage !== "compiler-query"
+        || (compilerQuery?.outcome === "cancelled-in-flight"
+          && compilerQuery.findReferences?.outcome === "threw-cancellation")) ? "PASS"
+      : terminalValidation?.pass && !response?.error ? "NOT_CANCELLED" : "FAIL"
+    cancellation = { requestId, stage, evidenceScope: options.strategy === "legacy"
+      ? options.cancelStage === "compiler-query" ? "find-references-call-interruption-tested" : "queue-start-before-full-result"
+      : "batch-scheduled-before-verifier",
+      sent, response, responseError, compilerQuery, terminalValidation, outcome }
     if (!response) throw new Error(responseError ?? "cancel target had no terminal response")
     const recoveredReferences = await session.request("textDocument/references", params, { timeoutMs })
     const normalized = normalizeReferences(recoveredReferences.result)
@@ -315,26 +355,6 @@ async function replayClone(options, input) {
   })
 }
 
-async function waitForBatchScheduled(logDir, session, requestId, priorTraceIds, terminal) {
-  const deadline = Date.now() + timeoutMs
-  while (Date.now() < deadline) {
-    if (terminal() || hasReceivedResponse(session, requestId)) return { state: "terminal" }
-    const events = readStructuredLogs(logDir)
-    if (events.some(event => event.event === "request.completed"
-      && event.method === "textDocument/references")) return { state: "terminal" }
-    const queueTraceIds = new Set(events.filter(event => event.event === "references.queue.start")
-      .map(event => event.traceId).filter(traceId => traceId && !priorTraceIds.has(traceId)))
-    const completed = events.filter(event => event.event === "references.batch.complete")
-    const active = events.filter(event => event.event === "references.batch.start")
-      .findLast(start => queueTraceIds.has(start.traceId)
-        && !completed.some(end => end.referenceSession === start.referenceSession
-        && end.batchIndex === start.batchIndex))
-    if (active) return { state: "batch-scheduled", event: active }
-    await delay(10)
-  }
-  return { state: "missing", reason: "NO_OBSERVED_IN_FLIGHT_BATCH" }
-}
-
 function hasReceivedResponse(session, id) {
   return session.transport.diagnosticSnapshot().transcript.entries.some(entry => (
     entry.direction === "receive" && entry.kind === "response" && entry.id === id
@@ -374,7 +394,9 @@ function makeReport(options, input, run) {
   })
   return {
     schemaVersion: 1, status,
-    benchmarkId: "settings-homeinitdata-s05-cancel-control-api24",
+    benchmarkId: options.strategy === "legacy"
+      ? "settings-homeinitdata-l01-cancel-control-api24"
+      : "settings-homeinitdata-s05-cancel-control-api24",
     sourceBenchmarkId: input.manifest.benchmarkId,
     environment: {
       sourceWorkspace: input.originalRoot, sourceHead: input.originalHead,

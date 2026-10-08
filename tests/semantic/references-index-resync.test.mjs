@@ -9,6 +9,14 @@ import { LspSession } from "../support/lsp-session.mjs"
 import { projectRoot } from "../support/lsp-process.mjs"
 
 test("references recover indexed batching after a newer catalog generation commits", async (t) => {
+  await exerciseIndexResync(t, false)
+})
+
+test("experimental L3 uses complete batching while a changed index is stale", async (t) => {
+  await exerciseIndexResync(t, true)
+})
+
+async function exerciseIndexResync(t, pressureAdmission) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-reference-resync-"))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const workspace = path.join(root, "workspace")
@@ -54,6 +62,11 @@ test("references recover indexed batching after a newer catalog generation commi
       ARKTS_LSP_LOG_DIR: logDirectory,
       ARKTS_REFERENCES_STRATEGY: "indexed-batched",
       ARKTS_REFERENCES_TRACE: "1",
+      ...(pressureAdmission ? {
+        ARKTS_MEMORY_BUDGET_MB: "1",
+        ARKTS_BENCHMARK_CONTROL: "1",
+        ARKTS_L01_PRESSURE_ADMISSION: "1",
+      } : {}),
     },
     capabilities: { window: { workDoneProgress: true } },
   })
@@ -71,12 +84,25 @@ test("references recover indexed batching after a newer catalog generation commi
     10_000,
   )
   session.openDocument({ uri: queryUri, version: 1, text: query })
+  if (pressureAdmission) {
+    const definition = await session.request("textDocument/definition", {
+      textDocument: { uri: queryUri }, position,
+    }, { timeoutMs: 20_000 })
+    assert.equal(definition.error, undefined, JSON.stringify(definition.error))
+    await waitUntil(() => loggedEvents(logDirectory).some(event => event.event === "semantic.context.evict"
+      && event.reason === "memory-level3"))
+  }
 
   const references = (includeDeclaration) => session.request("textDocument/references", {
     textDocument: { uri: queryUri }, position, context: { includeDeclaration },
   }, { timeoutMs: 20_000 })
   const indexed = await references(true)
   assert.equal(indexed.error, undefined, JSON.stringify(indexed.error))
+  const indexedWithoutDeclaration = await references(false)
+  assert.equal(indexedWithoutDeclaration.error, undefined,
+    JSON.stringify(indexedWithoutDeclaration.error))
+  assert.ok(indexedWithoutDeclaration.result.some(location => location.uri.endsWith("/Use.ets")),
+    "the oracle includes a real unopened cross-file reference")
 
   fs.writeFileSync(targetPath, `${target}// catalog refresh\n`)
   session.transport.send({
@@ -86,7 +112,7 @@ test("references recover indexed batching after a newer catalog generation commi
   })
   const fallback = await references(false)
   assert.equal(fallback.error, undefined, JSON.stringify(fallback.error))
-  assert.ok(fallback.result.length > 0)
+  assert.deepEqual(sortedLocations(fallback.result), sortedLocations(indexedWithoutDeclaration.result))
   await waitUntil(() => audit(auditPath)
     .filter(request => request.method === "catalog/start").length === 2)
   await new Promise(resolve => setTimeout(resolve, 1_100))
@@ -96,16 +122,26 @@ test("references recover indexed batching after a newer catalog generation commi
   assert.deepEqual(sortedLocations(recovered.result), sortedLocations(indexed.result))
   await session.close({ timeoutMs: 5_000 })
 
-  const events = fs.readFileSync(path.join(logDirectory, "server.log"), "utf8")
-    .split("\n").filter(Boolean).map(JSON.parse)
-  assert.equal(events.filter(({ event }) => event === "references.index.accepted").length, 2)
+  const events = loggedEvents(logDirectory)
+  assert.equal(events.filter(({ event }) => event === "references.index.accepted").length, 3)
   assert.ok(events.some(({ event, reason }) => (
     event === "references.index.fallback" && reason === "workspace-changed"
   )))
   assert.ok(events.some(({ event }) => event === "references.index.recovered"))
   assert.equal(audit(auditPath)
-    .filter(request => request.method === "references/candidates").length, 2)
-})
+    .filter(request => request.method === "references/candidates").length, 3)
+  if (pressureAdmission) {
+    assert.ok(events.some(event => event.event === "references.pressure.fallback"))
+    assert.ok(events.some(event => event.event === "references.plan.complete"
+      && event.candidateMode === "conservative"))
+  }
+}
+
+function loggedEvents(logDirectory) {
+  const logFile = path.join(logDirectory, "server.log")
+  if (!fs.existsSync(logFile)) return []
+  return fs.readFileSync(logFile, "utf8").split("\n").filter(Boolean).map(JSON.parse)
+}
 
 function audit(auditPath) {
   return fs.readFileSync(auditPath, "utf8").split("\n").filter(Boolean).map(JSON.parse)

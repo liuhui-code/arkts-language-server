@@ -1,6 +1,10 @@
 # ADR 0011：统一预算下的首次准备、热会话与回收
 
-日期：2026-09-29。状态：**Proposed；S05 相容磁盘 LS 候选 REJECTED／默认 off；不覆盖现行 ADR 0003**。
+日期：2026-09-29。2026-10-06 状态：**预算/压力政策 Proposed；S05 相容磁盘 LS 候选 REJECTED／默认 off；不覆盖现行 ADR 0003**。
+本 ADR 拥有统一预算、压力、滞回和驱逐政策，不授予任何具体 LS
+生命周期生产准入。不同机制的长驻 LS 实验由
+[ADR 0014](0014-budgeted-long-lived-semantic-session.md) 管理，其 L01
+不以 S05 的 `ARKTS_SEMANTIC_SESSION_REUSE=experimental` 作为成功基线。
 下文的 `S05 IN_PROGRESS` 是对应检查点当时的历史状态，以末尾的
 2026-10-05 安全决策为当前结论。
 
@@ -8,13 +12,17 @@
 
 首次准备可慢，资源仍须有界。现有 per-batch transient verifier 是安全基线。R-09 已实现且默认关闭；固定 Settings A/B 的 enabled 查询均在 L3 驱逐后 miss，仍使用 24 batches，没有真实构建节省或毕业证据。
 
-## Proposed decision
+## 预算政策提案（L03 前须由 L01/L02 实测校准）
 
 - 初始准备、增量维护和查询使用现有 worker/supervisor/coordinator。复用滞回、leases 和取消机制，只添加实际准入所需信息，不建通用缓存管理框架。
 - 全局重任务默认并发一；交互 LS 与全局 verifier 可能同时存在，必须累计预算。并发一不意味着只有一个 Program。
 - S05 在 S01 后独立分辨 Worker shell、SDK/registry 和兼容 LS/snapshot 复用的收益及驻留成本。仅经自身 gate 证明的范围获准保留。
 - 内容兼容时评估增量更新；SDK/options/project 边界变化仍重建。没有新鲜度证据不能删除 reset；DocumentRegistry 只在兼容运行域共享，不声称跨 isolate 共享 JS 对象。
 - 所有准备 CPU、初始/增量峰值、保留状态和回收理由纳入同一资源报表。超预算时取消或暂停后台任务、释放未 leased 的冷上下文，或终止 verifier；不能手工删 compiler AST/Type/Symbol 节点。
+
+L03 只有在 L01 的 steady/peak 和 L02 的编辑资源曲线已得到以后，
+才能选择 soft budget、pressure target 和成本感知驱逐。不能为实验
+绕过 S05 的 1.600× 失败或盲目提高 1024 MiB 策略预算。
 
 ## Gate and rollback
 
@@ -181,6 +189,6 @@ S02 remains FAIL and S03 remains BLOCKED.
 
 ## Relations
 
-继续使用 [ADR 0002](0002-hot-semantic-context-lifecycle.md) 已实现的 default-off retention、L3 hysteresis 和 R-09 准入；[R-09 TDD](../tdd/references-resident-fast-path.md) 与 [Settings 报告](../reports/2026-09-29-settings-resident-fast-path.md) 保留实现与失败毕业的区别。R-10 已有有界 anchor memo 不等于复用 Program；R-11 shell reuse 仍是次级实验。只有未来不同候选通过自身门禁及评审，才可显式讨论对 ADR 0003 的 supersession 范围；本次否决不产生该范围。
+继续使用 [ADR 0002](0002-hot-semantic-context-lifecycle.md) 已实现的 default-off retention、L3 hysteresis 和 R-09 准入；[R-09 TDD](../tdd/references-resident-fast-path.md) 与 [Settings 报告](../reports/2026-09-29-settings-resident-fast-path.md) 保留实现与失败毕业的区别。R-10 已有有界 anchor memo 不等于复用 Program；R-11 shell reuse 仍是次级实验。ADR 0014 拥有新 LS 生命周期，当前 ADR 只负责其资源政策；只有未来不同候选通过自身门禁及评审，才可显式讨论对 ADR 0003 的 supersession 范围；S05 否决不产生该范围。
 
 边界见[设计契约](../plans/semantic-ready/design-contracts.md)；门禁见[验收协议](../benchmarks/semantic-ready-acceptance.md)；依赖见[执行计划](../plans/2026-09-29-semantic-ready-execution-plan.md)。

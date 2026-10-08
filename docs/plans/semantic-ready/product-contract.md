@@ -1,9 +1,11 @@
 # 产品契约：首次语义准备与就绪后交互
 
-状态：根据用户提供的文档包整合需求口径；**没有宣称性能达标**。
-技术选型仍受 S02/S05 可证伪实验与后续逐能力验收约束。
+状态：产品要求仍有效，**没有宣称性能达标**。2026-10-06 的技术实施
+改走 [L01–L08 当前计划](../2026-10-06-budgeted-resident-semantic-plan.md)：
+预算约束长驻官方 LS 与现行 exact transient fallback。S02 未通过、S03
+BLOCKED、S05 旧候选 REJECTED，均不再是当前实施前置。
 决策见 [ADR 0007](../../adr/0007-semantic-readiness-and-500ms-slo.md)，
-执行顺序见 [当前计划](../2026-09-29-semantic-ready-execution-plan.md)，
+执行顺序见 [当前计划](../2026-10-06-budgeted-resident-semantic-plan.md)，
 具体统计见 [验收规范](../../benchmarks/semantic-ready-acceptance.md)。
 
 ## 不可交换的要求
@@ -44,7 +46,8 @@
 
 - `discoveryState` 沿用候选索引 warming/ready/degraded，不改变原义。
 - `semanticState` 区分 unprepared/preparing/ready/updating/degraded/cancelled。
-- `semanticGeneration` 绑定有效编译输入、source 身份、覆盖与投影版本。
+- `semanticGeneration` 绑定有效编译输入、source 身份、官方 LS/Program
+  覆盖及后端版本；只有将来另行批准投影时才加入投影版本。
 - `readyCapabilities`/`unavailableReasons` 明确每项能力可用范围和未就绪原因。
 
 只有已冻结产品支持矩阵中的必需能力都有完整、有效的查询路径，才可宣称总体 ready。
@@ -58,13 +61,14 @@
 ## 身份与路由
 
 输入身份绑定 canonical root、product/target、backend/patch、SDK/stdlib、options、
-ProjectGraph/membership revision、source manifest、authoritative overlays 及投影/schema 版本。
+ProjectGraph/membership revision、source manifest、authoritative overlays；
+投影/schema 版本仅在将来批准对应能力时纳入。
 准备/变更时维护内容摘要；不每次全仓哈希。mtime/size 不足以证明相同语义。
 未知监听、嵌套 root、realpath 别名影响范围不能证明时保守失效。
 
-拟议路由：有效完整结果 cache → 该 query-kind 的有效 compiler-derived 投影
-→ 配置/版本/搜索覆盖足够的热 LS → 原 exact fallback。
-References/implementations 的投影分别证明；completion/hover/signature 优先复用官方 LS。
+拟议路由：有效完整结果 cache → 配置/版本/搜索覆盖足够且资源允许的
+官方热 LS → 当前 exact transient fallback。各能力独立证明覆盖和新鲜度；
+S02 的 compiler-derived 投影不在当前生产路线，不能冒充已实现的中间层。
 Fallback 慢仍是性能失败；未知不等于 complete 空数组。
 
 ## 证据与范围
@@ -73,7 +77,7 @@ Fallback 慢仍是性能失败；未知不等于 complete 空数组。
 现有 API24 兼容轨用于同 SDK 因果比较，不静默换 SDK，不冒充匹配 SDK/DevEco 等价。
 匹配 SDK 与 DevEco 对照是独立门禁，不阻止记录授权兼容轨的实际失败/收益。
 
-Pinned compiler 是否能批量产出精确投影尚未知；遍历 identifier、`getSymbolAtLocation`
-或词法 `extends` 不自动等价于 references/implementation。
-S02 失败则停止生产 schema 投入，保留完整慢路径并评估受预算热 LS 或另行批准的边界实验。
+Pinned compiler 的 S02 批量事实 v1–v6 未通过真实工程门禁；遍历 identifier、
+`getSymbolAtLocation` 或词法 `extends` 不自动等价于 references/implementation。
+目前停止生产投影/schema 投入，保留完整慢路径并实测受预算热 LS。
 没有承诺任意规模、任意负载下全部请求必然低于 500 ms。

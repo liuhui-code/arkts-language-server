@@ -45,6 +45,7 @@ export interface SemanticResolvedCodeFix extends SemanticCodeFixCandidate {
 
 export type SemanticGlobalQueryFailureReason =
   | "project-membership-incomplete"
+  | "resource-budget-exceeded"
   | "source-outside-workspace"
   | "source-unavailable"
   | "source-unmappable"

@@ -40,6 +40,29 @@ test("the type engine registry uses the two-context coordinator and honors press
   assert.equal(registry.workspaceCount(), 0)
 })
 
+test("a failed optional script-admission observer cannot fail semantic preparation", (t) => {
+  const { SemanticTypeEngineRegistry } = buildTypeEngineDriver(t)
+  const rootPath = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-admission-observer-"))
+  t.after(() => fs.rmSync(rootPath, { recursive: true, force: true }))
+  const filePath = path.join(rootPath, "Main.ets")
+  const content = "export class MainThing {}\n"
+  fs.writeFileSync(filePath, content)
+  let observed = 0
+  const registry = new SemanticTypeEngineRegistry(undefined, undefined, undefined, {
+    references: { trace: true },
+    onReferenceTrace(event) {
+      if (event === "semantic.prepare.script-admission") {
+        observed += 1
+        throw new Error("observer unavailable")
+      }
+    },
+  })
+  t.after(() => registry.dispose())
+  const state = registry.prepare(workspace(rootPath, filePath, content))
+  assert.equal(state.state.engine, "typescript-language-service")
+  assert.equal(observed, 1)
+})
+
 function workspace(rootPath, filePath, content) {
   return {
     rootPath,

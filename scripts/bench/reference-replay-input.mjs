@@ -103,6 +103,7 @@ export function validateInputs(options) {
   options.standardLibrarySha256 = digestAdjacentStandardLibrary(options.server)
   options.semanticWorkerSha256 = digestOptionalSibling(options.server, "semantic-worker.cjs")
   options.referenceVerifierWorkerSha256 = digestOptionalSibling(options.server, "reference-verifier-worker.cjs")
+  options.diagnosticVerifierWorkerSha256 = digestOptionalSibling(options.server, "diagnostic-verifier-worker.cjs")
   if (fs.existsSync(options.out)) throw new Error(`output already exists: ${options.out}`)
 }
 

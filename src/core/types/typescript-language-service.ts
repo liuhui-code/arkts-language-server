@@ -33,7 +33,7 @@ import type {
   SemanticUsageResult,
 } from "../protocol.js"
 import { resolveHarmonySdkModule } from "../sdk/module-resolver.js"
-import { officialDocumentRegistryFor } from "../../semantic/backends/ohos-typescript/registry-pool.js"
+import { officialDocumentRegistryFor, recycleOfficialSemanticService, disposeOfficialSemanticService } from "../../semantic/backends/ohos-typescript/registry-pool.js"
 import type {
   ProjectFileAccessPort,
   ProjectFileAdmissionToken,
@@ -50,6 +50,7 @@ import { discoverSdkAmbientDeclarations } from "./typescript-sdk-ambient.js"
 import { witnessedModuleResolutionHost } from "./typescript-resolution-witness.js"
 import { arktsLanguageServiceOptions } from "./arkts-language-service-options.js"
 import { createSourceDocument, type SourceDocument } from "./source-document.js"
+import { isRegularBoundedFile, safeRead } from "./typescript-safe-source-read.js"
 import type {
   SemanticCodeFixCandidate,
   SemanticPrepareRenameQueryResult,
@@ -66,11 +67,9 @@ import {
   typescriptTypeStatus,
 } from "./typescript-language-helpers.js"
 import { lineColumnToOffset, offsetToLineColumn, spanToRange } from "./text-position.js"
+import { cacheLimit, MAX_SCRIPTS, MAX_SCRIPT_BYTES, MAX_LAZY_SNAPSHOTS, MAX_LAZY_SNAPSHOT_BYTES } from "./typescript-cache-limits.js"
 
-const MAX_SCRIPTS = 512
-const MAX_SCRIPT_BYTES = 16 * 1024 * 1024
-const MAX_LAZY_SNAPSHOTS = 128
-const MAX_LAZY_SNAPSHOT_BYTES = 8 * 1024 * 1024
+const MAX_TRACED_LAZY_FINGERPRINTS = 4_096
 const MAX_COMPLETIONS = 128
 const MAX_MODULE_EXPORT_COMPLETION_SCAN = 4096
 const RANKED_TYPESCRIPT_COMPLETION_SORT_PREFIX = "1000"
@@ -78,7 +77,6 @@ const MAX_CALL_HIERARCHY_PREPARE_ITEMS = 16
 const MAX_CALL_HIERARCHY_EDGES = 256
 const MAX_CALL_HIERARCHY_RANGES_PER_EDGE = 64
 const MAX_CALL_HIERARCHY_TOTAL_RANGES = 2_048
-const MAX_SOURCE_FILE_BYTES = 4 * 1_024 * 1_024
 const MIN_MODULE_EXPORT_PREFIX_LENGTH = 2
 const ENGINE_VERSION = `typescript-${ts.version}-arkts-v2`
 
@@ -153,6 +151,7 @@ export type TypeScriptSdkAmbientProfile = "full" | "common" | "core"
 
 export interface TypeScriptLanguageServiceEngineOptions {
   onSdkSelected?: (workspaceRoot: string, selection: ProjectSdkSelection) => void
+  onScriptAdmission?: (fields: Readonly<Record<string, number>>) => void
   packageResolver?: LocalPackageResolver
   checkpoint?: () => void
   hostCancellationToken?: ts.HostCancellationToken
@@ -174,6 +173,7 @@ export class TypeScriptLanguageServiceEngine {
   private semanticRootPaths: Set<string> | undefined
   private readonly projectContentVersions = new TypeScriptContentVersions()
   private readonly lazySnapshots = new Map<string, LazySnapshotRecord>()
+  private readonly tracedLazyFingerprints: Map<string, string> | undefined
   private readonly sdkDeclarationPaths: string[]
   private readonly sdkRoot: string | null
   private readonly sdkSelection: ProjectSdkSelection
@@ -182,11 +182,13 @@ export class TypeScriptLanguageServiceEngine {
   private membershipFileNames: string[]
   private combinedFileNames: string[] | undefined
   private readonly options: ts.CompilerOptions
-  private readonly service: ts.LanguageService
+  private readonly host: ts.LanguageServiceHost
+  private service: ts.LanguageService
   private readonly residentReferencesState: TypeScriptResidentReferenceState | undefined
   private readonly configurationWitness: LoadedConfigurationWitness | undefined
   private readonly checkpoint: (() => void) | undefined
   private readonly readSourceFile: (filePath: string) => string | null
+  private readonly onScriptAdmission: TypeScriptLanguageServiceEngineOptions["onScriptAdmission"]
   private readonly projectFileAccess: ProjectFileAccessPort | undefined
   private readonly tolerateUnadmittedProjectDependencies: boolean
   private readonly maxLazySnapshots: number
@@ -217,6 +219,7 @@ export class TypeScriptLanguageServiceEngine {
     {
       packageResolver = new LocalPackageResolver(),
       onSdkSelected,
+      onScriptAdmission,
       checkpoint,
       hostCancellationToken,
       readSourceFile = safeRead,
@@ -229,6 +232,8 @@ export class TypeScriptLanguageServiceEngine {
     }: TypeScriptLanguageServiceEngineOptions = {},
   ) {
     this.packageResolver = packageResolver
+    this.onScriptAdmission = onScriptAdmission
+    this.tracedLazyFingerprints = onScriptAdmission ? new Map() : undefined
     this.checkpoint = checkpoint
     this.readSourceFile = readSourceFile
     this.projectFileAccess = projectFileAccess
@@ -260,10 +265,8 @@ export class TypeScriptLanguageServiceEngine {
     onSdkSelected?.(rootPath, sdk)
     this.sdkDeclarationPaths = discoverSdkAmbientDeclarations(this.sdkRoot, sdkAmbientProfile, this.configurationWitness)
     this.membershipFileNames = [...this.sdkDeclarationPaths]
-    this.service = ts.createLanguageService(
-      this.createHost(hostCancellationToken),
-      officialDocumentRegistryFor(sdk),
-    )
+    this.host = this.createHost(hostCancellationToken)
+    this.service = ts.createLanguageService(this.host, officialDocumentRegistryFor(sdk))
     const residentCheckpoint = (): void => {
       this.checkpoint?.()
       if (hostCancellationToken?.isCancellationRequested()) throw new ts.OperationCanceledException()
@@ -285,9 +288,24 @@ export class TypeScriptLanguageServiceEngine {
     this.updateSemanticRootPaths(workspace.semanticRootPaths)
     this.updateProjectContent(workspace.contentRevision, workspace.changedPaths)
     this.removeProjectFiles(workspace.removedPaths)
+    const generationBefore = this.generation
+    const residentScriptsBefore = this.scripts.size
+    let newResidentScripts = 0
+    let promotedFromLazy = 0
+    let promotedWithMatchingFingerprint = 0
     for (const document of workspace.documents) {
       const filePath = path.resolve(document.path)
       protectedPaths.add(filePath)
+      if (this.onScriptAdmission && !this.scripts.has(filePath)) {
+        newResidentScripts += 1
+        const lazyFingerprint = this.tracedLazyFingerprints?.get(filePath)
+        if (lazyFingerprint) {
+          promotedFromLazy += 1
+          if (lazyFingerprint === fingerprintSource(document.content)) {
+            promotedWithMatchingFingerprint += 1
+          }
+        }
+      }
       this.updateScript(
         filePath,
         document.content,
@@ -296,6 +314,17 @@ export class TypeScriptLanguageServiceEngine {
       )
     }
     this.evict(protectedPaths)
+    if (this.onScriptAdmission) {
+      try {
+        this.onScriptAdmission({
+          residentScriptsBefore, residentScriptsAfter: this.scripts.size,
+          newResidentScripts, generationBefore, generationAfter: this.generation,
+          promotedFromLazy, promotedWithMatchingFingerprint,
+        })
+      } catch {
+        // Optional observation cannot fail an authoritative semantic query.
+      }
+    }
     if (this.residentReferencesState) {
       const residentWorkspace = !workspace.projectMembership && this.projectMembershipStatus === "complete"
         ? { ...workspace, projectMembership: { status: "complete" as const,
@@ -1687,7 +1716,7 @@ export class TypeScriptLanguageServiceEngine {
 
   dispose(): void {
     this.invalidateResidentReferences()
-    this.service.dispose()
+    disposeOfficialSemanticService(this.service, this.sdkSelection)
     this.overlayPaths = undefined
     this.scripts.clear()
     this.projectMembershipPaths.clear()
@@ -1702,7 +1731,7 @@ export class TypeScriptLanguageServiceEngine {
 
   trim(): void {
     this.invalidateResidentReferences()
-    this.service.cleanupSemanticCache()
+    this.service = recycleOfficialSemanticService(this.service, this.host, this.sdkSelection)
   }
 
   private createHost(
@@ -1945,6 +1974,7 @@ export class TypeScriptLanguageServiceEngine {
     let membershipChanged = false
     for (const removedPath of removedPaths ?? []) {
       const filePath = path.resolve(removedPath)
+      this.tracedLazyFingerprints?.delete(filePath)
       membershipChanged = this.projectMembershipPaths.delete(filePath) || membershipChanged
       this.projectContentVersions.delete(filePath)
       this.removeScript(filePath)
@@ -1962,6 +1992,7 @@ export class TypeScriptLanguageServiceEngine {
       && membership.revision === this.projectMembershipRevision
     ) return
 
+    this.tracedLazyFingerprints?.clear()
     this.projectMembershipStatus = membership.status
     this.projectMembershipReason = membership.reason
     this.projectMembershipRevision = membership.revision
@@ -2024,6 +2055,7 @@ export class TypeScriptLanguageServiceEngine {
     const paths = this.projectContentVersions.update(contentRevision, changedPaths)
     if (paths.length > 0) this.relativeResolutionFailures.clear()
     for (const filePath of paths) {
+      this.tracedLazyFingerprints?.delete(filePath)
       this.removeScript(filePath)
       this.removeLazySnapshot(filePath)
     }
@@ -2073,6 +2105,13 @@ export class TypeScriptLanguageServiceEngine {
       sourceFingerprint: fingerprintSource(sourceContent),
       bytes: Buffer.byteLength(sourceContent) + Buffer.byteLength(content),
       ...(admissionToken === undefined ? {} : { admissionToken }),
+    }
+    if (this.tracedLazyFingerprints) {
+      this.tracedLazyFingerprints.delete(filePath)
+      this.tracedLazyFingerprints.set(filePath, record.sourceFingerprint)
+      if (this.tracedLazyFingerprints.size > MAX_TRACED_LAZY_FINGERPRINTS) {
+        this.tracedLazyFingerprints.delete(this.tracedLazyFingerprints.keys().next().value!)
+      }
     }
     if (record.bytes <= this.maxLazySnapshotBytes && this.maxLazySnapshots > 0) {
       this.lazySnapshots.set(filePath, record)
@@ -2928,70 +2967,6 @@ function sameCallHierarchyItem(
     && left.name === right.name
     && left.kind === right.kind
     && sameTextRange(left.selectionRange, right.selectionRange)
-}
-
-function safeRead(filePath: string): string | null {
-  let descriptor: number | undefined
-  try {
-    const initial = fs.lstatSync(filePath)
-    if (!initial.isFile() && !initial.isSymbolicLink()) return null
-    descriptor = fs.openSync(
-      filePath,
-      fs.constants.O_RDONLY | (fs.constants.O_NONBLOCK ?? 0),
-    )
-    const before = fs.fstatSync(descriptor)
-    if (!before.isFile() || !isBoundedSourceSize(before.size)) return null
-    const bytes = Buffer.allocUnsafe(before.size + 1)
-    let offset = 0
-    while (offset < bytes.length) {
-      const bytesRead = fs.readSync(descriptor, bytes, offset, bytes.length - offset, null)
-      if (bytesRead === 0) break
-      offset += bytesRead
-    }
-    const after = fs.fstatSync(descriptor)
-    if (offset !== before.size || !sameSourceStat(before, after)) return null
-    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true })
-      .decode(bytes.subarray(0, offset))
-  } catch {
-    return null
-  } finally {
-    if (descriptor !== undefined) {
-      try {
-        fs.closeSync(descriptor)
-      } catch {
-        // The read already failed closed.
-      }
-    }
-  }
-}
-
-function isRegularBoundedFile(filePath: string): boolean {
-  try {
-    const stat = fs.statSync(filePath)
-    return stat.isFile() && isBoundedSourceSize(stat.size)
-  } catch {
-    return false
-  }
-}
-
-function isBoundedSourceSize(size: number): boolean {
-  return Number.isSafeInteger(size) && size >= 0 && size <= MAX_SOURCE_FILE_BYTES
-}
-
-function sameSourceStat(left: fs.Stats, right: fs.Stats): boolean {
-  return left.dev === right.dev
-    && left.ino === right.ino
-    && left.size === right.size
-    && left.mtimeMs === right.mtimeMs
-    && left.ctimeMs === right.ctimeMs
-}
-
-function cacheLimit(value: number | undefined, fallback: number, label: string): number {
-  if (value === undefined) return fallback
-  if (!Number.isSafeInteger(value) || value < 0 || value > fallback) {
-    throw new RangeError(`${label} must be an integer between 0 and ${fallback}`)
-  }
-  return value
 }
 
 function isWithinRoot(rootPath: string, filePath: string) {

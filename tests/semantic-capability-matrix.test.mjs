@@ -55,7 +55,19 @@ test("keeps unproven rule providers out of the production semantic runtime", () 
   const semanticSources = readTypeScriptTree(path.join(projectRoot, "src", "semantic"))
     + readTypeScriptTree(path.join(projectRoot, "src", "core", "types"))
   assert.doesNotMatch(semanticSources, /ets2panda|ace[_-]ets2bundle/iu)
-  assert.equal((semanticSources.match(/\.createLanguageService\s*\(/gu) ?? []).length, 1)
+  const languageServiceFactory = /\.createLanguageService\s*\(/gu
+  const engineSource = fs.readFileSync(
+    path.join(projectRoot, "src", "core", "types", "typescript-language-service.ts"),
+    "utf8",
+  )
+  const registryPoolSource = fs.readFileSync(
+    path.join(projectRoot, "src", "semantic", "backends", "ohos-typescript", "registry-pool.ts"),
+    "utf8",
+  )
+  // The official engine owns initial construction and its registry pool owns L2 recycling.
+  assert.equal((engineSource.match(languageServiceFactory) ?? []).length, 1)
+  assert.equal((registryPoolSource.match(languageServiceFactory) ?? []).length, 1)
+  assert.equal((semanticSources.match(languageServiceFactory) ?? []).length, 2)
   assert.doesNotMatch(semanticSources, /\.createProgram\s*\(/gu)
 
   const resourceProvider = fs.readFileSync(

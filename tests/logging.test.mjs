@@ -64,7 +64,8 @@ test("writes structured lifecycle and request logs without polluting LSP stdout"
     method: "textDocument/completion",
     params: { textDocument: { uri: documentUri }, position: { line: 4, character: 9 } },
   })
-  assert.ok((await session.response(2)).result)
+  // This transcript checks logging, not cold completion latency.
+  assert.ok((await session.response(2, 10_000)).result)
   session.send({ jsonrpc: "2.0", id: 3, method: "shutdown", params: null })
   await session.response(3)
   session.send({ jsonrpc: "2.0", method: "exit", params: null })

@@ -1,8 +1,11 @@
-# 最小设计合同：语义事实、版本、路由与复用
+# 历史设计合同：语义事实、版本、路由与复用
 
-状态：**Proposed**。字段是逻辑合同，不是现有接口、已批准 schema 或已实现能力。
-Producer 算法由 S02 决定；具体数据库迁移号仅在 S03 核对实际 schema 后分配。
-关联 [执行计划](../2026-09-29-semantic-ready-execution-plan.md)、
+状态：**Archived proposal / 未获生产准入**。本页保留 S02/S03 原始研究合同，
+不是当前实施顺序或已批准的 schema。S02 v1–v6 未通过，S03 BLOCKED，
+S05 相容磁盘实验 REJECTED；不得按下文旧投影路由直接接生产。
+当前路线见 [L01–L08 计划](../2026-10-06-budgeted-resident-semantic-plan.md)
+与 [ADR 0014](../../adr/0014-budgeted-long-lived-semantic-session.md)。
+历史背景关联 [原 S-series 计划](../2026-09-29-semantic-ready-execution-plan.md)、
 [产品契约](product-contract.md) 和 [ADR 索引](../../adr/README.md)。
 
 ## 每类真值一个 owner
@@ -18,7 +21,7 @@ Producer 算法由 S02 决定；具体数据库迁移号仅在 S03 核对实际 
 | 完整答案 cache | ReferenceResultCache | 各能力重复无界 cache |
 | ready 状态 | semantic owner 消费有效提交代 | UI 自建另一个 ready 真值 |
 
-## 拟议逻辑记录
+## 未实施的 S02/S03 逻辑记录
 
 `SemanticGeneration`：独立 `id`、完整 `inputKey`、`producerIdentity`、
 `projectionVersion`、实际分析单元/source 身份/能力覆盖及未知原因；
@@ -50,10 +53,11 @@ oracle 可以逐目标调用，但成本、调用计数与提取独立报告。
 持久化数据描述磁盘源码版本；overlay 的内存事实替换同文件旧行，不写成磁盘真值。
 删除位置不能通过 union 旧表复活。相同 mtime 不证明内容未变。
 
-## 两个集中实验控制
+## 历史实验控制（不作为新路线准入）
 
-S05的SESSION_REUSE已在既有reference runtime集中解析，默认off；
-FACTS_MODE仍未实现，S03首次需要时再接入，不复制配置owner。
+S05 的 `SESSION_REUSE` 已在既有 reference runtime 集中解析，默认 off，
+但其实验候选已 REJECTED；新 L01 不复用该 flag。`FACTS_MODE` 未实现，
+S03 BLOCKED，不按此页继续接入。
 
 | 控制 | 拟议值 | 拟议默认 | 用途 |
 | --- | --- | --- | --- |
@@ -71,7 +75,7 @@ host resident版本携带已有source SHA与每路径磁盘revision，防跨LS�
 未知in-root source删除须推进durable revision，不能只清pending span而在后续change时复活。
 不能因为定义已返回而关闭正常诊断；完整global查询仍须原coverage证明。
 
-## 查询与生命周期
+## 原拟议查询与生命周期（仅供研究对照）
 
 | 条件 | 动作 |
 | --- | --- |
@@ -91,6 +95,7 @@ Leased context 不 dispose；释放只调用后端生命周期，不手工删 AS
 
 ## 停止空架构扩张
 
-S02 未通过不写生产 schema/RPC；S03 新端口必须有真实 producer→存储→读取消费验证。
+S02 未通过不写生产 schema/RPC；S03 保持 BLOCKED，只有新决策和真实
+producer→存储→读取消费验证才能重启。
 第二个实际消费者出现前不建万能 GlobalSemanticQueryFramework。
 每个增量记录消除的重复工作；失败留反例，不补第二套语言语义。

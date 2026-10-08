@@ -3,6 +3,8 @@ import type ts from "typescript"
 
 const observedPrograms = new WeakMap<ts.Program, number>()
 let nextProgramSequence = 0
+const observedCheckers = new WeakMap<ts.TypeChecker, number>()
+let nextCheckerSequence = 0
 const observedSourceFiles = new WeakSet<ts.SourceFile>()
 
 /** Counts the existing Program only; does not create a second semantic owner. */
@@ -13,6 +15,8 @@ export function typescriptProgramStats(program: ts.Program | undefined, rootPath
   const counts = {
     // Post-query observation in this worker isolate, not a compiler build count.
     programSequence: sequenceFor(program),
+    // This post-query getter is trace-only; identity may change for one Program.
+    checkerSequence: observeSourceFileIdentity ? checkerSequenceFor(program) : 0,
     programSourceFiles: sourceFiles.length, programProjectFiles: 0, sdkSourceFiles: 0,
     projectSourceFilesReused: 0, projectSourceFilesFirstObserved: 0,
     sdkSourceFilesReused: 0, sdkSourceFilesFirstObserved: 0,
@@ -59,6 +63,21 @@ function sequenceFor(program: ts.Program | undefined): number {
   const sequence = ++nextProgramSequence
   observedPrograms.set(program, sequence)
   return sequence
+}
+
+function checkerSequenceFor(program: ts.Program | undefined): number {
+  if (!program) return 0
+  try {
+    const checker = program.getTypeChecker()
+    const existing = observedCheckers.get(checker)
+    if (existing !== undefined) return existing
+    const sequence = ++nextCheckerSequence
+    observedCheckers.set(checker, sequence)
+    return sequence
+  } catch {
+    // Optional observation must not change a completed semantic response.
+    return 0
+  }
 }
 
 function within(rootPath: string, filePath: string) {

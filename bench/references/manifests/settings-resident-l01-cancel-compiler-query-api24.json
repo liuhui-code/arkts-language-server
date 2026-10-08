@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "benchmarkId": "settings-resident-L01-legacy-compiler-cancel-api24",
+  "repo": "openharmony/applications_settings",
+  "repoSha": "ecc550dfaed880e04e38a2477eb7235cd50475b9",
+  "projectDeclaredSdk": {
+    "compileSdkVersion": 23,
+    "targetSdkVersion": 20,
+    "compatibleSdkVersion": 20
+  },
+  "serverRevision": "72a2fa897659fa0c44d9aeaf1a7b721c74f06a86",
+  "serverDirty": true,
+  "nodeVersion": "v26.3.0",
+  "backendVersion": "4.9.5-r10",
+  "sdk": {
+    "apiVersion": "24",
+    "version": "6.1.1.125",
+    "declarationDigest": "8098b8abbc6b06fce0e7322d6f8f82a5bbce41e847dbd39e9a98811a33d4c6e4"
+  },
+  "query": {
+    "file": "product/phone/src/main/ets/Setting/Home/controller/HomePageMenuManager.ets",
+    "symbol": "HomeInitData",
+    "line": 40,
+    "character": 37,
+    "includeDeclaration": false,
+    "sourceSha256": "72550ee88705a703ef3b7b1186636a25a0727432e15f864f842982e14951589d",
+    "expectedDiagnostics": [
+      {
+        "range": {
+          "start": {
+            "line": 60,
+            "character": 70
+          },
+          "end": {
+            "line": 60,
+            "character": 85
+          }
+        },
+        "severity": 1,
+        "code": 2339,
+        "source": "arkts",
+        "message": "Property 'isMainOsAccount' does not exist on type 'AccountManager'."
+      }
+    ]
+  },
+  "watchedEdit": {
+    "file": "common/src/main/ets/sendable/HomeInitData.ets",
+    "sourceSha256": "8159f9be58985d71e76cb7507fb1bf421a47cacb6aaf99cbddb9e6efc703774f",
+    "expectedDefinitionBefore": {
+      "line": 16,
+      "character": 13
+    }
+  },
+  "oracle": {
+    "verified": true,
+    "expectedLocationCount": 9,
+    "sha256": "58908aa4ee2554864cd4467ccf7a51b3aa8e6dd570fc0f66decc6500bf7f937b"
+  },
+  "serverSha256": "d03fb34c69c70c4a1c26350acd9e752683ced9cdff145beec8f8434952abd54e",
+  "semanticWorkerSha256": "3cac0ca7506bcef82bf6c1b5d17e3722cf5d13e2b730548fb85cce557ab2541c",
+  "referenceVerifierWorkerSha256": "0f9fd49c4e2104de93e9a5f8cedd0b716f2b1f94440ff61eb548d30bb810ff5f",
+  "standardLibrarySha256": "ea78beea2aa84f93fe66645465c37eb916028b79cd9fe898d469bdf54efbf97d",
+  "sidecarSha256": "84597a63c396ceaf2a84a3ded455b5cc29d21b6c4ad3c049f7b3ca820c2fd796"
+}

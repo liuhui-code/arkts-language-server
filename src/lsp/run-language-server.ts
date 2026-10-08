@@ -46,6 +46,7 @@ import {
 import { CallHierarchySourceAuthority } from "./call-hierarchy-source-authority.js"
 import { toLspDiagnostic } from "./diagnostic-mapper.js"
 import { RequestFreshness } from "./request-freshness.js"
+import { registerBenchmarkControls } from "./register-benchmark-controls.js"
 import {
   negotiatedSymbolKind,
   registerSemanticCapabilities,
@@ -184,16 +185,9 @@ export function runLanguageServer(services?: LanguageServerServices): void {
     requests,
     suspendDiagnostics: () => diagnostics.suspend(),
   })
-  if (process.env.ARKTS_BENCHMARK_CONTROL === "1") {
-    connection.onRequest("arkts/benchmark/applyMemoryPressure", (params: unknown) => {
-      if ((params as { level?: unknown } | null)?.level !== "level3"
-        || !semantic.applyMemoryPressure) {
-        throw new ResponseError(ErrorCodes.InvalidParams, "level3 memory pressure is unavailable")
-      }
-      semantic.applyMemoryPressure("level3")
-      return { applied: "level3" }
-    })
-  }
+  registerBenchmarkControls({ connection, semantic,
+    suspendDiagnostics: () => diagnostics.suspend(),
+    workspaceRootCount: () => workspaceRoots.length })
   logger.info("server.started", { transport: "stdio" })
 
   connection.onInitialize((params: InitializeParams) => {

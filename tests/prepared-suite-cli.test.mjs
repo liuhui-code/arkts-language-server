@@ -41,6 +41,64 @@ test("candidate catalog readiness never certifies semantic-ready or cached SLO",
   assert.equal(report.preparation.targetQueries, 0)
 })
 
+test("prepared suite pre-opens pinned target documents before the first semantic request", async (t) => {
+  const fixture = await makeSuite(t)
+  const secondFile = path.join(fixture.suite.workspace, "Second.ets")
+  fs.writeFileSync(secondFile, "Thing\n")
+  const committed = spawnSync("git", ["add", "Second.ets"], { cwd: fixture.suite.workspace, encoding: "utf8" })
+  assert.equal(committed.status, 0, committed.stderr)
+  const commit = spawnSync("git", ["-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+    "commit", "-qm", "second target"], { cwd: fixture.suite.workspace, encoding: "utf8" })
+  assert.equal(commit.status, 0, commit.stderr)
+  const secondOracle = path.join(fixture.directory, "second-oracle.json")
+  fs.writeFileSync(secondOracle, JSON.stringify({ schemaVersion: 1, locations: [{ file: "Second.ets",
+    range: { start: { line: 0, character: 0 }, end: { line: 0, character: 5 } } }] }))
+  const { sha256File } = await import("../scripts/bench/reference-replay-input.mjs")
+  fixture.suite.targets.push({ ...fixture.suite.targets[0], id: "second", moduleId: "second",
+    file: "Second.ets", sourceSha256: sha256File(secondFile),
+    oracle: { path: secondOracle, sha256: sha256File(secondOracle), verified: true } })
+  fixture.suite.preOpenTargetIds = ["thing", "second"]
+  fixture.suite.scenarios.push({ id: "second-first", bucket: "first-unseen-symbol", targetId: "second" })
+  fixture.suite.pins = await capturePreparedIdentity(fixture.suite)
+  saveSuite(fixture)
+  const result = runSuite(fixture)
+  assert.equal(result.status, 1, `${result.stderr}\n${result.stdout}`)
+  const report = JSON.parse(fs.readFileSync(fixture.output, "utf8"))
+  assert.equal(report.correctness.status, "PASS", JSON.stringify(report.failure))
+  const firstRequest = report.timeline.findIndex(event => event.phase === "request-start")
+  const opens = report.timeline.slice(0, firstRequest).filter(event => event.phase === "didOpen-sent")
+  assert.deepEqual(opens.map(event => event.targetId), ["thing", "second"])
+  assert.equal(report.diagnostics.length, 2)
+  assert.ok(report.requests.every(request => request.correctness.equal))
+})
+
+test("prepared suite rejects unknown and duplicate pre-open target IDs before server launch", async (t) => {
+  const fixture = await makeSuite(t)
+  for (const [ids, reason] of [
+    [["missing"], "PREOPEN_TARGET"],
+    [["thing", "thing"], "DUPLICATE_PREOPEN_TARGET"],
+  ]) {
+    fixture.suite.preOpenTargetIds = ids
+    saveSuite(fixture)
+    const result = runSuite(fixture)
+    assert.equal(result.status, 2, result.stderr)
+    assert.match(result.stderr, new RegExp(`PREPARED_SUITE_INVALID=${reason}`))
+    assert.equal(fs.existsSync(fixture.output), false)
+  }
+})
+
+test("prepared suite rejects a pre-open target outside the pinned workspace", async (t) => {
+  const fixture = await makeSuite(t)
+  fs.writeFileSync(path.join(fixture.directory, "outside.ets"), "Thing\n")
+  fixture.suite.targets[0].file = "../outside.ets"
+  fixture.suite.preOpenTargetIds = ["thing"]
+  saveSuite(fixture)
+  const result = runSuite(fixture)
+  assert.equal(result.status, 2, result.stderr)
+  assert.match(result.stderr, /PREPARED_SUITE_INVALID=SOURCE_PATH/u)
+  assert.equal(fs.existsSync(fixture.output), false)
+})
+
 test("prepared suite mode is exclusive and rejects unresolved pins without launching", async (t) => {
   const fixture = await makeSuite(t)
   const exclusive = runSuite(fixture, ["--file", "Query.ets"])
@@ -150,6 +208,17 @@ test("repeated-snapshot cannot change method or declaration policy", async (t) =
   const result = runSuite(fixture)
   assert.equal(result.status, 2)
   assert.match(result.stderr, /REPEAT_WITHOUT_IDENTICAL_SNAPSHOT/u)
+})
+
+test("repeated L3 recovery requires a completed query of the same snapshot", async t => {
+  const fixture = await makeSuite(t)
+  fixture.suite.scenarios[0] = { id: "premature-pressure", bucket: "pressure-recovery-repeat",
+    targetId: "thing" }
+  saveSuite(fixture)
+  const result = runSuite(fixture)
+  assert.equal(result.status, 2, result.stderr)
+  assert.match(result.stderr, /PRESSURE_REPEAT_WITHOUT_IDENTICAL_SNAPSHOT/u)
+  assert.equal(fs.existsSync(fixture.output), false)
 })
 
 test("exact Locations cannot qualify a baseline without normal diagnostic observations", async (t) => {

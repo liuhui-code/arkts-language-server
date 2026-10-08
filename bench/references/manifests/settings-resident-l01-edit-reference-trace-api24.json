@@ -1,0 +1,107 @@
+{
+  "schemaVersion": 1,
+  "benchmarkId": "settings-resident-L01-edit-reference-trace-api24",
+  "seed": 20261006,
+  "workspace": ".bench/real-projects/settings-ecc550",
+  "sdk": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony",
+  "server": "dist/server.cjs",
+  "sidecar": "target/release/arkts-index-sidecar",
+  "pins": {
+    "repoSha": "ecc550dfaed880e04e38a2477eb7235cd50475b9",
+    "workspaceStatus": "",
+    "workspaceFilesSha256": "4becf56cb2ff65cc58bd1ae53b6937b194f9020770ad397e526f3a51b85b0d40",
+    "serverRevision": "72a2fa897659fa0c44d9aeaf1a7b721c74f06a86",
+    "serverInputSha256": "cc7444a87204160f0eb8fe5a8c4d97c605238c2726c07c560a42f48f4f1bfb34",
+    "serverSha256": "99d16dc05bd8ca74cf538de80b39ac805c47de92ec98b2079924995220e0f5b2",
+    "sidecarSha256": "84597a63c396ceaf2a84a3ded455b5cc29d21b6c4ad3c049f7b3ca820c2fd796",
+    "semanticWorkerSha256": "02d3d310cf2a21545d646ef035d9281c4160eccb07a203771185551fde8b600b",
+    "referenceVerifierWorkerSha256": "f3c2ff6d96348bff9abdff961f943b6398f0f1eb9c1f547368f927db7a43825d",
+    "standardLibrarySha256": "ea78beea2aa84f93fe66645465c37eb916028b79cd9fe898d469bdf54efbf97d",
+    "nodeVersion": "v26.3.0",
+    "backendVersion": "4.9.5-r10",
+    "backendSha256": "af9e3c4689e3250de1d869b219abb76081c6ea1d3df81bd6b8f6a74c3174b6bc",
+    "lockfileSha256": "ece84ab0afea7a411c453aac7371f0e47381455c5e3cc03f639adff9d2bf1131",
+    "memoryGatesSha256": "ac23114be952a5fe5c030040937d3c97aec1cecdda2ba42e4dbb854f89b37570",
+    "sdkMetadata": {
+      "apiVersion": "24",
+      "displayName": "Ets",
+      "meta": { "metaVersion": "3.0.0" },
+      "path": "ets",
+      "releaseType": "Release",
+      "version": "6.1.1.125"
+    },
+    "sdkDeclarationDigest": "8098b8abbc6b06fce0e7322d6f8f82a5bbce41e847dbd39e9a98811a33d4c6e4"
+  },
+  "runtime": {
+    "timeoutMs": 180000,
+    "diagnosticTimeoutMs": 180000,
+    "sampleIntervalMs": 50,
+    "env": {
+      "ARKTS_REFERENCES_STRATEGY": "legacy",
+      "ARKTS_REFERENCES_SDK_AMBIENT_PROFILE": "full",
+      "ARKTS_SEMANTIC_SESSION_REUSE": "off",
+      "ARKTS_MEMORY_BUDGET_MB": "1024",
+      "ARKTS_REFERENCES_TRACE": "1"
+    }
+  },
+  "readiness": { "candidateControl": true },
+  "preOpenTargetIds": ["menu-constructor", "home-class"],
+  "targets": [
+    {
+      "id": "menu-constructor",
+      "moduleId": "common",
+      "kind": "references",
+      "file": "common/src/main/ets/core/controller/MenuController.ets",
+      "symbol": "MenuController",
+      "position": { "line": 90, "character": 17 },
+      "includeDeclaration": false,
+      "sourceSha256": "cf11c46c03ebab3e164178c2caf0e2deb059edfbf5129f074d6a57cfec2a335e",
+      "oracle": {
+        "path": "bench/references/oracles/settings-menucontroller-constructor-api24-no-declaration.json",
+        "sha256": "72980d7c79e3baf44ebba8a30094484225aebe08aefd2077cda45cbdc5e90ab3",
+        "verified": true
+      }
+    },
+    {
+      "id": "home-class",
+      "moduleId": "common",
+      "kind": "references",
+      "file": "common/src/main/ets/sendable/HomeInitData.ets",
+      "symbol": "HomeInitData",
+      "position": { "line": 16, "character": 13 },
+      "includeDeclaration": false,
+      "sourceSha256": "8159f9be58985d71e76cb7507fb1bf421a47cacb6aaf99cbddb9e6efc703774f",
+      "oracle": {
+        "path": "bench/references/oracles/settings-homeinitdata-api24-no-declaration.json",
+        "sha256": "58908aa4ee2554864cd4467ccf7a51b3aa8e6dd570fc0f66decc6500bf7f937b",
+        "verified": true
+      }
+    }
+  ],
+  "scenarios": [
+    { "id": "prepare-menu-constructor", "bucket": "first-unseen-symbol", "targetId": "menu-constructor" },
+    { "id": "home-baseline", "bucket": "first-unseen-symbol", "targetId": "home-class" },
+    {
+      "id": "home-new-unsaved-reference",
+      "bucket": "edit-reference",
+      "targetId": "home-class",
+      "edit": {
+        "file": "common/src/main/ets/sendable/HomeInitData.ets",
+        "changes": [{
+          "range": {
+            "start": { "line": 28, "character": 45 },
+            "end": { "line": 28, "character": 45 }
+          },
+          "newText": "\nhomeInitData = new HomeInitData();"
+        }],
+        "sha256": "bb42d34d79f5f8b527460a91c26c8214ef78435d1a1b8181651638795c40a4b0",
+        "oracle": {
+          "path": "bench/references/oracles/settings-homeinitdata-edit-reference-api24-no-declaration.json",
+          "sha256": "b6e6f6058e780c1be14e6fc8fb7668c6afb95b1e85ea3e900bb77f6096d3b99f",
+          "verified": true
+        }
+      }
+    },
+    { "id": "home-edited-repeat-control", "bucket": "repeated-snapshot", "targetId": "home-class" }
+  ]
+}
