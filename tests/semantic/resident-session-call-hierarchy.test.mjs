@@ -101,7 +101,8 @@ test("promoted call hierarchy refreshes overlay call sites and detects an unnoti
 test("call hierarchy restores the latest overlay after an actual post-L3 Worker replacement",
   { timeout: 60_000 }, async t => {
     const fixture = createFixture(t)
-    const session = await startSession(t, fixture, true, { ARKTS_L01_SEMANTIC_WORKER_RECYCLE: "1" })
+    const session = await startSession(t, fixture, true,
+      { ARKTS_L01_SEMANTIC_WORKER_RECYCLE: "1", ARKTS_MEMORY_BUDGET_MB: "64" })
     await warmAndPromote(session, fixture)
     await assertCalls(session, fixture)
     const caller = `// changed caller before recycle 😀\n${fixture.sources["ZCaller.ets"]}`

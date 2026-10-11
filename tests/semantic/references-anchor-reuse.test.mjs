@@ -334,7 +334,8 @@ test("opt-in references include the moved declaration after an unwatched disk ed
 test("cancelling references after anchor reuse returns no partial result and permits exact recovery", async (t) => {
   const result = await replay(t, { reuse: true, interrupt: "cancel" })
   assert.equal(result.anchor.verifierIsolation, "validated-definition")
-  assert.equal(result.recoveryAnchor.verifierIsolation, "transient-worker")
+  // Cancellation does not change inputs; budget-aware retention keeps the valid anchor.
+  assert.equal(result.recoveryAnchor.verifierIsolation, "validated-definition")
 })
 
 test("editing during reused-anchor verification rejects the old snapshot and finds the new reference", async (t) => {

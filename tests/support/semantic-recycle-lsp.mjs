@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import fs from "node:fs"
 import path from "node:path"
+import { completeLogEvents } from "./complete-log-events.mjs"
 
 export async function navigation(session, uri) {
   const position = { line: 1, character: 28 }
@@ -35,7 +36,7 @@ export async function waitForEvent(logs, predicate, afterEntry = 0) {
   const deadline = Date.now() + 10_000
   while (Date.now() < deadline) {
     if (fs.existsSync(file)) {
-      const entries = fs.readFileSync(file, "utf8").split("\n").filter(Boolean).map(JSON.parse)
+      const entries = completeLogEvents(file)
       const entry = entries.slice(afterEntry).find(predicate)
       if (entry) return entry
     }

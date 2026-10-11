@@ -8,6 +8,23 @@ import test from "node:test"
 import { pathToFileURL } from "node:url"
 
 import { projectRoot } from "./support/lsp-process.mjs"
+import { readEvents as implementationEvents } from "./support/resident-implementation-lsp.mjs"
+import { readEvents as interactiveEvents } from "./support/resident-interactive-lsp.mjs"
+
+test("resident transcript readers wait for complete records without hiding corrupt records", t => {
+  const logs = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-resident-log-reader-"))
+  t.after(() => fs.rmSync(logs, { recursive: true, force: true }))
+  const file = path.join(logs, "server.log")
+  const complete = { event: "first", source: "😀" }
+  for (const reader of [implementationEvents, interactiveEvents]) {
+    fs.writeFileSync(file, `${JSON.stringify(complete)}\n{"event":"par`)
+    assert.deepEqual(reader({ logs }), [complete])
+    fs.appendFileSync(file, 'tial"}\n')
+    assert.deepEqual(reader({ logs }), [complete, { event: "partial" }])
+    fs.appendFileSync(file, "corrupt-complete-record\n")
+    assert.throws(() => reader({ logs }), SyntaxError)
+  }
+})
 
 test("prints the absolute language-server log path without starting LSP", (t) => {
   const logDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-lsp-log-path-"))

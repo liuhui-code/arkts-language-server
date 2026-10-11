@@ -302,7 +302,8 @@ for (const [name, trace, benchmarkControl = "1", automaticFlag = "1", queuedNavi
           ARKTS_LSP_LOG_DIR: logs,
           ARKTS_REFERENCES_STRATEGY: "legacy",
           ARKTS_REFERENCES_TRACE: trace,
-          ARKTS_MEMORY_BUDGET_MB: "64",
+          // This legacy resident-diagnosis control must create a context before natural eviction.
+          ARKTS_MEMORY_BUDGET_MB: "64", ARKTS_L01_TRANSIENT_DIAGNOSTICS: "0",
           ARKTS_BENCHMARK_CONTROL: benchmarkControl,
           ARKTS_L01_SEMANTIC_WORKER_RECYCLE: "0",
           ARKTS_L03_PRESSURE_WORKER_RECYCLE: automaticFlag,
@@ -396,7 +397,8 @@ for (const [closedRoots, benchmarkControl = "1", automaticFlag = "1", costPolicy
           ARKTS_LSP_LOG_DIR: logs,
           ARKTS_REFERENCES_STRATEGY: closedRoots ? "batched" : "legacy",
           ARKTS_REFERENCES_TRACE: "1",
-          ARKTS_MEMORY_BUDGET_MB: "64",
+          // Default transient diagnosis has its own no-resident pressure transcript.
+          ARKTS_MEMORY_BUDGET_MB: "64", ARKTS_L01_TRANSIENT_DIAGNOSTICS: "0",
           ARKTS_BENCHMARK_CONTROL: benchmarkControl,
           ARKTS_L01_SEMANTIC_WORKER_RECYCLE: "0",
           ARKTS_L03_PRESSURE_WORKER_RECYCLE: automaticFlag,

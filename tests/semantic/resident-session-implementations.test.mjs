@@ -110,7 +110,7 @@ test(`${prefix}implementation edits immediately remove and restore classes with 
   })
 }
 
-for (const [prefix, env] of [["", {}],
+for (const [prefix, env] of [["", { ARKTS_MEMORY_BUDGET_MB: "64" }],
   ["L05 selected policy: ", { ...selectedL03Policy, ARKTS_MEMORY_BUDGET_MB: "64" }]]) {
 test(`${prefix}implementations recover authoritative overlays after a witnessed post-L3 Worker replacement`,
   { timeout: 60_000 }, async t => {

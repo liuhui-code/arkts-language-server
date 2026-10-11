@@ -50,6 +50,8 @@ test("prepared suite observes an opt-in semantic Worker recycle before post-L3 r
       runtime: { timeoutMs: 30_000, diagnosticTimeoutMs: 30_000, sampleIntervalMs: 25,
         afterEvictionObservationMs: 120,
         env: { ARKTS_REFERENCES_STRATEGY: "legacy", ARKTS_REFERENCES_TRACE: "1",
+          // Force-recycle control, independent of the default live-RSS eligibility guard.
+          ARKTS_L03_COST_AWARE_EVICTION: "0",
           ARKTS_BENCHMARK_CONTROL: "1", ARKTS_L01_SEMANTIC_WORKER_RECYCLE: "1",
           ARKTS_MEMORY_BUDGET_MB: "1024" } },
       readiness: { candidateControl: true }, preOpenTargetIds: ["warm", "cold"],

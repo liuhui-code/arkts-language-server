@@ -59,6 +59,8 @@ test(recoveredBeforeControl ? "prepared suite verifies recovery when natural L3 
     runtime: { timeoutMs: 30_000, diagnosticTimeoutMs: 30_000, sampleIntervalMs: 25,
       postIdleMs: 200, afterEvictionObservationMs: 120,
       env: { ARKTS_REFERENCES_STRATEGY: recoveredBeforeControl ? "batched" : "legacy", ARKTS_REFERENCES_TRACE: "1",
+        // This control requires resident admission before witnessing its natural disposal.
+        ARKTS_L01_PRESSURE_ADMISSION: recoveredBeforeControl ? "0" : undefined,
         ARKTS_TEST_REFERENCE_VERIFIER_DELAY_MS: recoveredBeforeControl ? "1500" : "0",
         ARKTS_REFERENCES_CONTEXT_RETENTION: "budget-aware",
         ARKTS_BENCHMARK_CONTROL: "1", ARKTS_MEMORY_BUDGET_MB: recoveredBeforeControl ? "1" : "1024" } },

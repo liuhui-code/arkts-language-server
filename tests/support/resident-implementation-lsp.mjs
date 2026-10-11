@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url"
 
 import { LspSession } from "./lsp-session.mjs"
 import { projectRoot } from "./lsp-process.mjs"
+import { completeLogEvents } from "./complete-log-events.mjs"
 
 export function createFixture(t, { manyImplementations = 0, fillerCount = 270 } = {}) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-resident-implementations-"))
@@ -143,8 +144,7 @@ export function location(fixture, name, source, offset, symbol) {
 }
 
 export function readEvents(fixture) {
-  return fs.readFileSync(path.join(fixture.logs, "server.log"), "utf8")
-    .trim().split("\n").map(JSON.parse)
+  return completeLogEvents(path.join(fixture.logs, "server.log"))
 }
 
 export async function waitForEvent(fixture, predicate, afterEntry = 0) {

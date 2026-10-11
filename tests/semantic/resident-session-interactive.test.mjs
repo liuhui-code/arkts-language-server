@@ -93,7 +93,7 @@ test("interactive requests immediately observe public API edits and current call
 test("interactive navigation recovers current overlays after a real post-L3 Worker replacement",
   { timeout: 60_000 }, async t => {
     // The 64 MiB profile qualifies physical replacement, not the normal policy budget.
-    for (const env of [{}, { ...selectedL03Policy, ARKTS_MEMORY_BUDGET_MB: "64" }]) {
+    for (const env of [{ ARKTS_MEMORY_BUDGET_MB: "64" }, { ...selectedL03Policy, ARKTS_MEMORY_BUDGET_MB: "64" }]) {
       const fixture = createFixture(t)
       const session = await startSession(t, fixture, true, { ...env, ARKTS_L01_SEMANTIC_WORKER_RECYCLE: "1" })
       await warmAndPromote(session, fixture)

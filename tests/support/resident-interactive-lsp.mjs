@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url"
 
 import { LspSession } from "./lsp-session.mjs"
 import { projectRoot } from "./lsp-process.mjs"
+import { completeLogEvents } from "./complete-log-events.mjs"
 
 export const selectedL03Policy = {
   ARKTS_REFERENCES_CONTEXT_RETENTION: "budget-aware",
@@ -154,8 +155,7 @@ export function location(fixture, name, source, offset, symbol) {
 }
 
 export function readEvents(fixture) {
-  return fs.readFileSync(path.join(fixture.logs, "server.log"), "utf8")
-    .trim().split("\n").map(JSON.parse)
+  return completeLogEvents(path.join(fixture.logs, "server.log"))
 }
 
 export function canonicalCompletion(item) {
