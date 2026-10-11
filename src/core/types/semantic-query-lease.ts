@@ -7,12 +7,14 @@ export function runWithSemanticLease<Context extends SemanticManagedContext, Res
   contextId: string,
   run: (context: Context) => Result,
   observeBuild: boolean,
+  observeCost = false,
 ): Result {
   const lease = coordinator.acquire(contextId)
   try {
-    if (!observeBuild) return run(lease.context)
-    const { result, buildObserved } = observeCompilerProgramBuild(() => run(lease.context))
-    if (buildObserved) coordinator.markSemanticWork(contextId, lease.context)
+    if (!observeBuild && !observeCost) return run(lease.context)
+    const { result, buildObserved, rebuildCostMs } = observeCompilerProgramBuild(() => run(lease.context))
+    if (observeBuild && buildObserved) coordinator.markSemanticWork(contextId, lease.context)
+    if (rebuildCostMs !== undefined) coordinator.recordRebuildCost(contextId, lease.context, rebuildCostMs)
     return result
   } finally {
     lease.release()

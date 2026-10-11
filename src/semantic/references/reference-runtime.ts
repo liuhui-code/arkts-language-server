@@ -19,6 +19,7 @@ export interface ReferenceSearchRuntimeConfig {
   readonly sessionReuse?: "off" | "experimental"
   readonly l01RearmTrim?: boolean
   readonly l01PressureAdmission?: boolean
+  readonly l03CostAwareEviction?: boolean
 }
 
 const DEFAULT_BATCH_ROOT_LIMIT = 64
@@ -41,7 +42,7 @@ export function referenceSearchRuntimeConfig(
   if (dependencyProfile !== "closure" && dependencyProfile !== "identity") {
     throw new Error("ARKTS_REFERENCES_DEPENDENCY_PROFILE must be closure or identity")
   }
-  const contextRetentionProfile = environment.ARKTS_REFERENCES_CONTEXT_RETENTION ?? "dispose"
+  const contextRetentionProfile = environment.ARKTS_REFERENCES_CONTEXT_RETENTION ?? "budget-aware"
   if (contextRetentionProfile !== "dispose" && contextRetentionProfile !== "budget-aware") {
     throw new Error("ARKTS_REFERENCES_CONTEXT_RETENTION must be dispose or budget-aware")
   }
@@ -60,15 +61,15 @@ export function referenceSearchRuntimeConfig(
     dependencyProfile,
     contextRetentionProfile,
     anchorReuse: environment.ARKTS_REFERENCES_ANCHOR_REUSE === "1",
-    residentFastPath: environment.ARKTS_REFERENCES_RESIDENT_FAST_PATH === "1",
+    residentFastPath: (environment.ARKTS_REFERENCES_RESIDENT_FAST_PATH ?? "1") === "1",
     constructorScope: environment.ARKTS_REFERENCES_CONSTRUCTOR_SCOPE === "1",
     conservativeSemanticUnits: environment.ARKTS_REFERENCES_CONSERVATIVE_SEMANTIC_UNITS === "1",
     trace: environment.ARKTS_REFERENCES_TRACE === "1",
     sessionReuse,
     l01RearmTrim: environment.ARKTS_BENCHMARK_CONTROL === "1"
       && environment.ARKTS_L01_REARM_TRIM === "1",
-    l01PressureAdmission: environment.ARKTS_BENCHMARK_CONTROL === "1"
-      && environment.ARKTS_L01_PRESSURE_ADMISSION === "1",
+    l01PressureAdmission: (environment.ARKTS_L01_PRESSURE_ADMISSION ?? "1") === "1",
+    l03CostAwareEviction: (environment.ARKTS_L03_COST_AWARE_EVICTION ?? "1") === "1",
   }
 }
 

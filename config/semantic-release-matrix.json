@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "stage": "L08",
+  "platforms": ["darwin", "linux", "win32"],
+  "capabilities": [
+    "references:includeDeclaration=false",
+    "references:includeDeclaration=true",
+    "implementation",
+    "definition",
+    "typeDefinition",
+    "hover",
+    "signatureHelp",
+    "completion",
+    "completionResolve",
+    "prepareRename",
+    "rename",
+    "prepareCallHierarchy",
+    "incomingCalls",
+    "outgoingCalls"
+  ],
+  "buckets": [
+    "first-unseen-symbol",
+    "first-unopened-module",
+    "repeated-snapshot",
+    "edit-body",
+    "edit-reference",
+    "edit-public-api",
+    "after-eviction",
+    "restart-after-validated-ready"
+  ],
+  "gates": ["correctness", "ready", "latency", "memory", "lifecycle", "portability"],
+  "latency": { "targetMs": 500, "p95MsMax": 550, "minimumRequests": 100, "minimumSessions": 5 },
+  "reuseSoak": { "minimumAlternatingCycles": 100 },
+  "memoryGates": "config/memory-release-gates.json",
+  "historicalReferences": { "reproducePeakBytesAbove": 3000000000, "peakReductionMin": 0.5 },
+  "independentEnvironmentGates": ["deveco-pss-comparison"],
+  "retainedCapabilityRegression": "pnpm check:fast"
+}

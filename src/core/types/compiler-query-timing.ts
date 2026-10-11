@@ -5,7 +5,11 @@ type EmitReferenceTrace = (
 ) => void
 
 let activeFindReferencesTrace: { emit: EmitReferenceTrace; callIndex: number } | undefined
+let activeImplementationTrace: { emit: EmitReferenceTrace; queryIndex: number } | undefined
+let implementationQuerySequence = 0
 let observedProgramBuildClock = 0
+// Inner traced callbacks clear the collector; retain only their positive grouped build evidence.
+let observedProgramBuildCostMs = 0
 
 export interface CompilerQueryTiming {
   readonly durationMs: number
@@ -47,7 +51,10 @@ export function traceCompilerQuery<Result>(
         .filter(event => event.name === "createProgram")
       const createProgramMs = programEvents.reduce((total, event) => total + event.duration / 1_000_000, 0)
       if (!Number.isFinite(createProgramMs)) return { result, timing: unavailable }
-      if (programEvents.length > 0) observedProgramBuildClock += 1
+      if (programEvents.length > 0) {
+        observedProgramBuildClock += 1
+        observedProgramBuildCostMs += createProgramMs
+      }
       return { result, timing: {
         durationMs, collectorAvailable: true, createProgramMs,
         createProgramEvents: programEvents.length,
@@ -65,10 +72,14 @@ export function traceCompilerQuery<Result>(
 export function observeCompilerProgramBuild<Result>(query: () => Result): {
   result: Result
   buildObserved: boolean
+  rebuildCostMs?: number
 } {
   const before = observedProgramBuildClock
+  const costBefore = observedProgramBuildCostMs
   const { result } = traceCompilerQuery(query, true)
-  return { result, buildObserved: observedProgramBuildClock > before }
+  const rebuildCostMs = observedProgramBuildCostMs - costBefore
+  return { result, buildObserved: observedProgramBuildClock > before,
+    ...(Number.isFinite(rebuildCostMs) && rebuildCostMs > 0 ? { rebuildCostMs } : {}) }
 }
 
 export function traceReferenceQuery<Result>(
@@ -109,6 +120,73 @@ export function traceReferenceQuery<Result>(
     // The compiler query already completed; keep its authoritative result.
   }
   return result
+}
+
+/** Observe a complete implementation callback without preparing another Program. */
+export function traceImplementationQuery<Result extends readonly unknown[]>(
+  query: () => Result,
+  programStats: () => Readonly<Record<string, number>>,
+  emit?: EmitReferenceTrace,
+): Result {
+  if (!emit) return query()
+  const previous = activeImplementationTrace
+  const trace = { emit, queryIndex: ++implementationQuerySequence }
+  const { result, timing } = traceCompilerQuery(() => {
+    activeImplementationTrace = trace
+    try { return query() }
+    finally { activeImplementationTrace = previous }
+  }, true)
+  try {
+    const memory = process.memoryUsage()
+    emit("semantic.implementation.complete", {
+      ...timing!, ...programStats(), queryIndex: trace.queryIndex, implementations: result.length,
+      rss: memory.rss, heapUsed: memory.heapUsed,
+    })
+  } catch {
+    // Optional attribution cannot turn a complete result into a failure.
+  }
+  return result
+}
+
+/** Observe successful edit/call callbacks only, never prepare a Program for a rejected query. */
+export function traceSemanticQuery<Result extends { readonly status: string }>(
+  kind: string,
+  query: () => Result,
+  programStats: () => Readonly<Record<string, number>>,
+  emit?: EmitReferenceTrace,
+): Result {
+  if (!emit) return query()
+  const { result, timing } = traceCompilerQuery(query, true)
+  if (result.status !== "ready" && result.status !== "complete") return result
+  try {
+    const memory = process.memoryUsage()
+    emit(`semantic.${kind}.complete`, { ...timing!, ...programStats(),
+      rss: memory.rss, heapUsed: memory.heapUsed })
+  } catch {
+    // Optional attribution cannot alter an authoritative result.
+  }
+  return result
+}
+
+/** The synchronous compiler call only: mapping cancellation is a separate boundary. */
+export function traceTypeScriptImplementation<Result>(query: () => Result): Result {
+  const trace = activeImplementationTrace
+  if (!trace) return query()
+  const startedAt = performance.now()
+  const emit = (event: string, fields: Readonly<Record<string, number | boolean>>) => {
+    try { trace.emit(event, { ...fields, queryIndex: trace.queryIndex }) }
+    catch { /* Optional observation must not alter the compiler call. */ }
+  }
+  emit("implementations.compiler-call.start", {})
+  try {
+    const result = query()
+    emit("implementations.compiler-call.complete", { elapsedMs: performance.now() - startedAt })
+    return result
+  } catch (error) {
+    emit("implementations.compiler-call.throw", { elapsedMs: performance.now() - startedAt,
+      cancelled: error instanceof ts.OperationCanceledException })
+    throw error
+  }
 }
 
 /** Observe only the synchronous TypeScript call, before result mapping/checkpoints. */

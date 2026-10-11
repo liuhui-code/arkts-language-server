@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto"
 import { pathToFileURL } from "node:url"
 
 import {
@@ -40,6 +39,11 @@ import { createStructuredLogger, processMemoryFields, type StructuredLogger } fr
 import { createProductionSemanticEngine } from "../semantic/backends/production-semantic-engine.js"
 import { createDocumentDiagnostics } from "./document-diagnostics.js"
 import {
+  CompletionResolutionStore,
+  type CompletionResolutionData,
+  type CompletionResolutionRecord,
+} from "./completion-resolution-store.js"
+import {
   CodeActionResolutionStore,
   type CodeActionResolutionData,
 } from "./code-action-resolution-store.js"
@@ -47,6 +51,7 @@ import { CallHierarchySourceAuthority } from "./call-hierarchy-source-authority.
 import { toLspDiagnostic } from "./diagnostic-mapper.js"
 import { RequestFreshness } from "./request-freshness.js"
 import { registerBenchmarkControls } from "./register-benchmark-controls.js"
+import { registerSemanticReadiness } from "./register-semantic-readiness.js"
 import {
   negotiatedSymbolKind,
   registerSemanticCapabilities,
@@ -55,17 +60,6 @@ import { requestCancelled, SemanticRequestRunner } from "./semantic-request-runn
 import { WorkspaceFileChangeCoordinator } from "./workspace-file-change-coordinator.js"
 
 const MAX_COMPLETION_ITEMS = 256
-const MAX_COMPLETION_RESOLUTIONS = 512
-interface CompletionResolutionRecord {
-  documentUri: string
-  documentVersion: number
-  position: { line: number; character: number }
-  completion: SemanticCompletion
-}
-
-interface CompletionResolutionData {
-  arktsCompletionId: string
-}
 
 interface CompletionClientProfile {
   commitCharacters: boolean
@@ -78,42 +72,6 @@ const DEFAULT_COMPLETION_CLIENT_PROFILE: CompletionClientProfile = Object.freeze
   insertReplaceEdits: false,
   snippets: false,
 })
-
-class CompletionResolutionStore {
-  private readonly entries = new Map<string, CompletionResolutionRecord>()
-
-  remember(record: CompletionResolutionRecord): CompletionResolutionData {
-    const id = randomUUID()
-    this.entries.set(id, record)
-    while (this.entries.size > MAX_COMPLETION_RESOLUTIONS) {
-      const oldest = this.entries.keys().next().value
-      if (oldest === undefined) break
-      this.entries.delete(oldest)
-    }
-    return { arktsCompletionId: id }
-  }
-
-  find(data: unknown): CompletionResolutionRecord | undefined {
-    if (
-      data === null
-      || typeof data !== "object"
-      || Array.isArray(data)
-      || Object.keys(data).length !== 1
-      || typeof (data as { arktsCompletionId?: unknown }).arktsCompletionId !== "string"
-    ) return undefined
-    return this.entries.get((data as CompletionResolutionData).arktsCompletionId)
-  }
-
-  forgetDocument(documentUri: string): void {
-    for (const [id, record] of this.entries) {
-      if (record.documentUri === documentUri) this.entries.delete(id)
-    }
-  }
-
-  clear(): void {
-    this.entries.clear()
-  }
-}
 
 export interface LanguageServerServices {
   logger?: StructuredLogger
@@ -188,6 +146,8 @@ export function runLanguageServer(services?: LanguageServerServices): void {
   registerBenchmarkControls({ connection, semantic,
     suspendDiagnostics: () => diagnostics.suspend(),
     workspaceRootCount: () => workspaceRoots.length })
+  registerSemanticReadiness({ connection, semantic, assertRunning,
+    workspaceRootUris: () => workspaceRoots.map(root => root.rootUri) })
   logger.info("server.started", { transport: "stdio" })
 
   connection.onInitialize((params: InitializeParams) => {

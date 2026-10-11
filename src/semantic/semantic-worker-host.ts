@@ -5,6 +5,7 @@ import { semanticRuntimeConfig } from "./coordinator/runtime-config.js"
 import { interactiveSemanticRuntimeConfig } from "./interactive-runtime.js"
 import { referenceSearchRuntimeConfig } from "./references/reference-runtime.js"
 import { messageEpoch, workerLogMessage } from "./semantic-worker-message-routing.js"
+import { pressureWorkerRecycleEnabled } from "./semantic-worker-runtime-control.js"
 import {
   RootSemanticWorkerSupervisor,
   type RootSemanticWorkerEndpoint,
@@ -28,6 +29,7 @@ interface SemanticWorkerHostOptions {
   readonly environment: NodeJS.ProcessEnv
   readonly workerData: (rootUri: string) => ReturnType<typeof semanticWorkerData>
   readonly onFailure: (error: unknown) => void
+  readonly onPressureRecycle: () => void
 }
 
 interface RecycleWitness {
@@ -57,10 +59,7 @@ export class SemanticWorkerHost {
 
   constructor(options: SemanticWorkerHostOptions) { this.#options = options }
 
-  get rootCount(): number { return this.#supervisors.size }
-  get singleRootUri(): string | undefined {
-    return this.#supervisors.size === 1 ? this.#supervisors.keys().next().value : undefined
-  }
+  get rootUris(): readonly string[] { return [...this.#supervisors.keys()] }
 
   supervisor(rootUri: string): RootSemanticWorkerSupervisor {
     const existing = this.#supervisors.get(rootUri)
@@ -169,6 +168,12 @@ export class SemanticWorkerHost {
     })
     worker.on("message", (message: unknown) => {
       if (this.#worker !== worker) return
+      if (message && typeof message === "object"
+        && (message as { workerEvent?: unknown }).workerEvent === "pressureRecycle"
+        && pressureWorkerRecycleEnabled(this.#options.environment)) {
+        this.#options.onPressureRecycle()
+        return
+      }
       const log = workerLogMessage(message)
       if (log) {
         this.#options.logger?.[log.level](log.event, log.fields)

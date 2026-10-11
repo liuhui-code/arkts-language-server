@@ -1,14 +1,8 @@
 import assert from "node:assert/strict"
-import fs from "node:fs"
-import os from "node:os"
-import path from "node:path"
-import { createRequire } from "node:module"
 import test from "node:test"
 import { MessageChannel } from "node:worker_threads"
 
-import { buildSync } from "esbuild"
-
-import { projectRoot } from "./support/lsp-process.mjs"
+import { buildDriver } from "./support/semantic-worker-protocol-driver.mjs"
 
 test("decodes a versioned semantic document mutation into an immutable snapshot", (t) => {
   const {
@@ -321,7 +315,7 @@ test("accepts only the current semantic method allowlist with exact argument fam
     }],
     ["prepareCallHierarchy", position],
     ["outgoingCalls", { item: callHierarchyItem, sourceFingerprint: "a".repeat(64) }],
-    ["incomingCalls", { item: callHierarchyItem, sourceFingerprint: "b".repeat(64) }],
+    ["incomingCalls", { item: callHierarchyItem, sourceFingerprint: "b".repeat(64) }], ["semanticReadiness", { prepare: false }],
   ]
 
   assert.deepEqual(protocol.SEMANTIC_WORKER_METHODS, cases.map(([method]) => method))
@@ -330,7 +324,7 @@ test("accepts only the current semantic method allowlist with exact argument fam
     const decoded = protocol.decodeSemanticWorkerRequest(requestEnvelope(protocol, {
       id: index + 1,
       method,
-      args,
+      args, ...(method === "semanticReadiness" ? { uri: "file:///workspace", expectedDocumentVersion: null } : {}),
     }))
     assert.equal(decoded.method, method)
     assert.deepEqual(decoded.args, args)
@@ -977,19 +971,4 @@ function assertDeepFrozen(value) {
   if (value === null || typeof value !== "object") return
   assert.equal(Object.isFrozen(value), true)
   for (const nested of Object.values(value)) assertDeepFrozen(nested)
-}
-
-function buildDriver(t) {
-  const outputRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-worker-protocol-"))
-  t.after(() => fs.rmSync(outputRoot, { recursive: true, force: true }))
-  const outfile = path.join(outputRoot, "semantic-worker-protocol.cjs")
-  buildSync({
-    entryPoints: [path.join(projectRoot, "src", "semantic", "worker-protocol.ts")],
-    bundle: true,
-    platform: "node",
-    target: "node20",
-    format: "cjs",
-    outfile,
-  })
-  return createRequire(import.meta.url)(outfile)
 }

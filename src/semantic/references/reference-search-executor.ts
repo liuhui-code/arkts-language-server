@@ -83,6 +83,7 @@ export class ReferenceSearchExecutor {
     semanticGraph?: HarmonySemanticGraph,
     allowConstructorExclusion = true,
     maxBatches?: number,
+    admitVerifier?: () => boolean,
   ): Promise<SemanticReferenceQueryResult> {
     const sessionStarted = performance.now()
     const plan = planConservativeReferenceBatches(
@@ -123,12 +124,16 @@ export class ReferenceSearchExecutor {
       candidateMode: plan.candidateMode,
       semanticUnitMode: plan.semanticUnitMode,
     })
-    if (maxBatches !== undefined && plan.batches.length > maxBatches) {
+    const rejectBudget = (batchCount: number, batchIndex?: number) => {
       this.options.trace?.("references.pressure.rejected", {
         referenceSession, reason: "resource-budget-exceeded",
-        batchCount: plan.batches.length, maxBatches,
+        batchCount, maxBatches, batchIndex,
+        admissionPhase: batchIndex === undefined ? "plan" : "verifier",
       })
-      return { status: "incomplete", reason: "resource-budget-exceeded" }
+      return { status: "incomplete", reason: "resource-budget-exceeded" } as const
+    }
+    if (maxBatches !== undefined && plan.batches.length > maxBatches) {
+      return rejectBudget(plan.batches.length)
     }
     this.options.disposeResidentContext(rootPath)
     const collected: SemanticDefinitionCandidate[] = []
@@ -137,6 +142,10 @@ export class ReferenceSearchExecutor {
     let rootsReplanned = false
     for (let batchCursor = 0; batchCursor < batches.length; batchCursor += 1) {
       const batch = batches[batchCursor]!
+      if (admitVerifier) {
+        this.options.checkpoint?.()
+        if (!admitVerifier()) return rejectBudget(batches.length, batch.index)
+      }
       const started = performance.now()
       const rootPaths = dependencyProfile === "identity" && identitySupportPaths
         ? uniquePaths([...batch.rootPaths, ...identitySupportPaths])
@@ -159,6 +168,7 @@ export class ReferenceSearchExecutor {
       let expansionAttempts = 0
       for (;;) {
         this.options.checkpoint?.()
+        if (expansionAttempts > 0 && admitVerifier && !admitVerifier()) return rejectBudget(batches.length, batch.index)
         verification = await this.options.verifyBatch(
           scopedWorkspace(
             workspace,
@@ -185,7 +195,7 @@ export class ReferenceSearchExecutor {
           // immutable request snapshot, not the failed Program or its symbols.
           const { expectedReferenceAnchor: _rejectedAnchor, ...originalPosition } = position
           return this.execute(workspace, originalPosition, includeDeclaration,
-            undefined, false, undefined, undefined, semanticGraph, allowConstructorExclusion, maxBatches)
+            undefined, false, undefined, undefined, semanticGraph, allowConstructorExclusion, maxBatches, admitVerifier)
         }
         if (verification.result.status === "complete") break
         this.options.trace?.("references.batch.incomplete", {
@@ -241,7 +251,7 @@ export class ReferenceSearchExecutor {
             failedBatchIndex: batch.index,
           })
           return this.execute(workspace, position, includeDeclaration, candidatePaths,
-            false, undefined, undefined, undefined, allowConstructorExclusion, maxBatches)
+            false, undefined, undefined, undefined, allowConstructorExclusion, maxBatches, admitVerifier)
         }
         return verification.result
       }
@@ -324,7 +334,7 @@ export class ReferenceSearchExecutor {
           referenceSession, reason: "source-changed", strategy: "complete-scope",
         })
         return this.execute(workspace, position, includeDeclaration, candidatePaths,
-          candidateIdentityComplete, candidateAnchorPath, candidateSupportPaths, semanticGraph, false, maxBatches)
+          candidateIdentityComplete, candidateAnchorPath, candidateSupportPaths, semanticGraph, false, maxBatches, admitVerifier)
       }
     }
     this.options.checkpoint?.()

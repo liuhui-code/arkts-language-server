@@ -1,5 +1,10 @@
 # Architecture and ownership
 
+The 2026-10-11 [maintainer default-policy decision](adr/0015-default-resident-optimization-policy.md)
+enables six selected resident optimizations with explicit opt-out. Earlier
+default-off stage statements below are historical; normal ownership, budgets,
+exact fallback and unfinished L08 gates are unchanged.
+
 References and semantic latency decisions are indexed in
 [the ADR collection](adr/README.md); the active implementation sequence is in
 [the L01–L08 budgeted resident-session plan](plans/2026-10-06-budgeted-resident-semantic-plan.md).
@@ -10,6 +15,24 @@ research is paused after FAIL and S03 remains BLOCKED. [ADR 0014](adr/0014-budge
 accepts a different long-lived official-LS experiment, **not** a production
 default change. The [product contract](plans/semantic-ready/product-contract.md)
 does not equate candidate-ready with semantic-ready.
+Final product validation belongs to L08. L01–L07 continue through slice-level
+functionality, public LSP regressions and execution protection; final memory,
+latency, overall readiness and soak/portability targets guide later implementation
+without blocking its sequence. Default promotion and release wait for L08.
+
+The 2026-10-10 [L06 stage audit](reports/2026-10-10-resident-l06-completion-audit.md)
+passes A–E: 19 public interactive cases, focused252, real62 and fresh whole1492,
+with matching terminal input identities. Actual loaded compiler/resolver witnesses
+protect current inputs; realpath/presence/content observations retain distinct
+meaning and original bounds. Existing semantic owners, lanes and defaults remain;
+L07 also completed its own contracts; final product gates remain at L08.
+
+The current [L07 audit](reports/2026-10-10-resident-l07-completion-audit.md)
+passes A–E:25 public edit/call cases, current real62 full payloads
+and latest diagnostics equal, with actual lazy-promotion Program reuse and an
+OFF rebuild counterfactual. Fresh frozen full check:fast1511/1511, root exit0,
+and every terminal input identity match; L07 stage DONE. Normal budgets,
+diagnostics, owners and default-off experiments remain; no product graduation.
 
 The public process contract is `arkts-language-server --stdio`. Zed knows only
 that contract; it does not depend on server internals.

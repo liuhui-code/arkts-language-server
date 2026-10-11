@@ -1,13 +1,14 @@
-import fs from "node:fs"
 import { AsyncLocalStorage } from "node:async_hooks"
 import { parentPort, threadId, workerData } from "node:worker_threads"
 
 import type { DocumentSnapshot } from "../contracts/document.js"
 import type * as Contract from "../contracts/semantic-engine.js"
+import { IncompleteImplementationError } from "../core/types/typescript-implementation-query.js"
+import { SemanticInputUnavailableError } from "../core/types/typescript-query-inputs.js"
 import type { StructuredLogger } from "../observability/logger.js"
 import { SingleRootProjectResolver } from "../project/single-root-project-resolver.js"
 import { OhosTypeScriptSemanticEngine } from "./backends/ohos-typescript/engine.js"
-import { semanticRuntimeMetrics } from "./coordinator/metrics.js"
+import { createSemanticRuntimeMetricsRecorder } from "./coordinator/metrics.js"
 import { SemanticMemoryPolicy } from "./coordinator/memory-policy.js"
 import { createPostEvictionGcProbe } from "./coordinator/post-eviction-gc-probe.js"
 import type { SemanticMemoryLevel } from "./coordinator/semantic-coordinator.js"
@@ -17,7 +18,8 @@ import type { ReferenceSearchRuntimeConfig } from "./references/reference-runtim
 import type { InteractiveSemanticRuntimeConfig } from "./interactive-runtime.js"
 import { SemanticCancellationScope } from "./semantic-cancellation-scope.js"
 import { isInteractiveSemanticWorkerMethod } from "./semantic-request-lanes.js"
-import { isWorkerControl, requireParentPort, type WorkerControl } from "./semantic-worker-runtime-control.js"
+import { isWorkerControl, pressureWorkerRecycleEnabled, requireParentPort,
+  type WorkerControl } from "./semantic-worker-runtime-control.js"
 import {
   SEMANTIC_WORKER_PROTOCOL_VERSION,
   SemanticWorkerCancelState,
@@ -60,6 +62,9 @@ const engine = new OhosTypeScriptSemanticEngine(projects, logger, {
   maxResidentContexts: data.runtimeConfig.maxResidentContexts,
   hostCancellationToken: cancellation.hostToken,
   references: data.references,
+  refreshMemoryPressure: data.references?.l01PressureAdmission ? sampleMemory : undefined,
+  readMemoryPressure: data.references?.l03CostAwareEviction ? readMemoryPressure : undefined,
+  onTransientWorker: data.metricsPath ? (kind, phase) => runtimeMetrics.onTransientWorker?.(kind, phase) : undefined,
   interactiveSdkAmbientProfile: data.interactive?.sdkAmbientProfile,
   interactiveProjectRootProfile: data.interactive?.projectRootProfile,
   memberCompletionProjectRootProfile: data.interactive?.memberCompletionProjectRootProfile,
@@ -68,6 +73,8 @@ const engine = new OhosTypeScriptSemanticEngine(projects, logger, {
   autoImportTrimBetweenBatches: data.interactive?.autoImportTrimBetweenBatches,
 })
 const memoryPolicy = new SemanticMemoryPolicy(data.runtimeConfig)
+const runtimeMetrics = createSemanticRuntimeMetricsRecorder(data.metricsPath,
+  () => ({ semanticWorkerCount: 1, ...engine.runtimeStats() }))
 const postEvictionGcProbe = createPostEvictionGcProbe(
   process.env.ARKTS_BENCHMARK_CONTROL === "1" && process.env.ARKTS_L01_POST_EVICTION_GC_PROBE === "1",
   logger, () => engine.runtimeStats())
@@ -169,11 +176,14 @@ function applyControl(control: WorkerControl): void {
     engine.configureSdk(control.value)
   } else if (control.control === "recycleWitness") {
     const stats = engine.runtimeStats()
-    const eligible = witnessedL3Eviction && stats.residentContextCount === 0
+    const quiescent = stats.residentContextCount === 0
       && stats.leaseCount === 0 && activeGlobalReferenceTraceId === undefined
+    const pressureRecovered = witnessedL3Eviction && quiescent
+      && data.references?.l03CostAwareEviction === true && readMemoryPressure() !== "level3"
+    const eligible = witnessedL3Eviction && quiescent && !pressureRecovered
     port.postMessage({ workerEvent: "recycleWitness", token: control.token,
       eligible, reason: eligible ? "ready" : !witnessedL3Eviction
-        ? "no-l3-eviction" : "worker-not-quiescent", threadId })
+        ? "no-l3-eviction" : pressureRecovered ? "pressure-recovered" : "worker-not-quiescent", threadId })
   } else {
     memoryLevel = control.value
     const before = engine.runtimeStats()
@@ -231,7 +241,7 @@ async function answerRequest(request: SemanticWorkerRequest): Promise<void> {
     return
   }
   const document = documents.get(request.uri)
-  if (!document || (
+  if (request.method === "semanticReadiness" ? request.uri !== rootUri || request.expectedDocumentVersion !== null : !document || (
     request.expectedDocumentVersion !== null
     && document.version !== request.expectedDocumentVersion
   )) {
@@ -239,7 +249,11 @@ async function answerRequest(request: SemanticWorkerRequest): Promise<void> {
     return
   }
   try {
-    const value = await cancellation.run(request.cancelCell, () => invoke(request, document, rootUri))
+    const value = await cancellation.run(request.cancelCell, () => request.method === "semanticReadiness"
+      ? engine.semanticReadiness({ rootUri, prepare: request.args.prepare, signal: cancellationSignal(request.cancelCell) })
+        .then(report => report.semanticGeneration ? { ...report,
+          semanticGeneration: `${request.epoch}:${request.requiredRevision}:${report.semanticGeneration}:${report.inputIdentity!.sha256}` } : report)
+      : invoke(request, document!, rootUri))
     port.postMessage({
       protocol: SEMANTIC_WORKER_PROTOCOL_VERSION,
       epoch: request.epoch,
@@ -249,7 +263,7 @@ async function answerRequest(request: SemanticWorkerRequest): Promise<void> {
       ok: true,
       value,
     })
-  } catch {
+  } catch (error) {
     const state = readSemanticWorkerCancellationState(request.cancelCell)
     const code: SemanticWorkerErrorCode = state === SemanticWorkerCancelState.clientCancelled
       ? "client-cancelled"
@@ -257,13 +271,14 @@ async function answerRequest(request: SemanticWorkerRequest): Promise<void> {
         ? "content-modified"
         : state === SemanticWorkerCancelState.supervisorDisposing
           ? "worker-unavailable"
-          : "internal-error"
+          : error instanceof IncompleteImplementationError || error instanceof SemanticInputUnavailableError
+            ? "workspace-incomplete" : "internal-error"
     postError(request, code)
   }
 }
 
 function invoke(
-  request: SemanticWorkerRequest,
+  request: Exclude<SemanticWorkerRequest, { readonly method: "semanticReadiness" }>,
   document: DocumentSnapshot,
   rootUri: string,
 ): Promise<unknown> {
@@ -355,8 +370,7 @@ function diagnose(document: DocumentSnapshot, signal: AbortSignal): Promise<unkn
     testDiagnoseHeld = true
     return holdTestDiagnosis(document, signal)
   }
-  if (process.env.ARKTS_BENCHMARK_CONTROL === "1"
-    && process.env.ARKTS_L01_TRANSIENT_DIAGNOSTICS === "1"
+  if ((process.env.ARKTS_L01_TRANSIENT_DIAGNOSTICS ?? "1") === "1"
     && memoryLevel === "level3") {
     logger.info("diagnostics.transient.start", { uri: document.uri, documentVersion: document.version, memoryLevel })
     return runTransientDiagnosis({
@@ -367,7 +381,7 @@ function diagnose(document: DocumentSnapshot, signal: AbortSignal): Promise<unkn
       sdkConfiguration,
       interactiveSdkAmbientProfile: data.interactive?.sdkAmbientProfile,
       interactiveProjectRootProfile: data.interactive?.projectRootProfile,
-    }, signal).then(result => {
+    }, signal, runtimeMetrics.onTransientWorker).then(result => {
       logger.info("diagnostics.transient.complete", {
         uri: document.uri, documentVersion: document.version, memoryLevel,
         diagnosticCount: result.value.length,
@@ -426,36 +440,32 @@ function cancellationSignal(cell: SharedArrayBuffer): AbortSignal {
   } as AbortSignal
 }
 
+function readMemoryPressure(): SemanticMemoryLevel {
+  const memory = process.memoryUsage()
+  runtimeMetrics.sample(memory)
+  memoryLevel = memoryPolicy.levelFor(memory.rss, data.runtimeConfig.memoryBudgetBytes)
+  return memoryLevel
+}
+
 function sampleMemory(): void {
   if (disposed) return
   const memory = process.memoryUsage()
   const before = engine.runtimeStats()
-  writeMetrics(semanticRuntimeMetrics({
-    memoryUsage: memory,
-    semanticWorkerCount: 1,
-    residentContextCount: before.residentContextCount,
-    projectFiles: before.projectFiles,
-    openDocuments: before.openDocuments,
-    leaseCount: before.leaseCount,
-  }))
+  runtimeMetrics.sample(memory, { semanticWorkerCount: 1, ...before })
   memoryLevel = memoryPolicy.levelFor(
     memory.rss,
     data.runtimeConfig.memoryBudgetBytes,
   )
-  engine.applyMemoryPressure(memoryLevel)
-  if (memoryLevel === "level3"
+  const appliedLevel = memoryLevel
+  engine.applyMemoryPressure(appliedLevel)
+  if (appliedLevel === "level3"
     && engine.runtimeStats().residentContextCount < before.residentContextCount) {
     witnessedL3Eviction = true
+    if (pressureWorkerRecycleEnabled(process.env)) {
+      port.postMessage({ workerEvent: "pressureRecycle", threadId })
+    }
   }
-  postEvictionGcProbe("automatic-sample", memoryLevel, before)
-}
-
-function writeMetrics(metrics: ReturnType<typeof semanticRuntimeMetrics>): void {
-  if (!data.metricsPath) return
-  try { fs.appendFileSync(data.metricsPath, `${JSON.stringify(metrics)}\n`) }
-  catch (error) {
-    process.stderr.write(`semantic metrics write failed: ${error instanceof Error ? error.message : String(error)}\n`)
-  }
+  postEvictionGcProbe("automatic-sample", appliedLevel, before)
 }
 
 function postLog(

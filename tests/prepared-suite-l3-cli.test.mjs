@@ -10,7 +10,9 @@ import { sha256File } from "../scripts/bench/reference-replay-input.mjs"
 
 const runner = path.resolve("scripts/bench/replay-references.mjs")
 
-test("prepared suite recovers an exact unseen reference after observed L3 eviction", async t => {
+for (const recoveredBeforeControl of [false, true]) {
+test(recoveredBeforeControl ? "prepared suite verifies recovery when natural L3 already disposed the context"
+  : "prepared suite recovers an exact unseen reference after observed L3 eviction", async t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-prepared-l3-"))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const workspace = path.join(directory, "workspace")
@@ -56,8 +58,10 @@ test("prepared suite recovers an exact unseen reference after observed L3 evicti
     pins: await capturePreparedIdentity({ workspace, sdk, server, sidecar }),
     runtime: { timeoutMs: 30_000, diagnosticTimeoutMs: 30_000, sampleIntervalMs: 25,
       postIdleMs: 200, afterEvictionObservationMs: 120,
-      env: { ARKTS_REFERENCES_STRATEGY: "legacy", ARKTS_REFERENCES_TRACE: "1",
-        ARKTS_BENCHMARK_CONTROL: "1", ARKTS_MEMORY_BUDGET_MB: "1024" } },
+      env: { ARKTS_REFERENCES_STRATEGY: recoveredBeforeControl ? "batched" : "legacy", ARKTS_REFERENCES_TRACE: "1",
+        ARKTS_TEST_REFERENCE_VERIFIER_DELAY_MS: recoveredBeforeControl ? "1500" : "0",
+        ARKTS_REFERENCES_CONTEXT_RETENTION: "budget-aware",
+        ARKTS_BENCHMARK_CONTROL: "1", ARKTS_MEMORY_BUDGET_MB: recoveredBeforeControl ? "1" : "1024" } },
     readiness: { candidateControl: true },
     preOpenTargetIds: ["warm", "cold"],
     targets: [
@@ -70,8 +74,10 @@ test("prepared suite recovers an exact unseen reference after observed L3 evicti
     ],
     scenarios: [
       { id: "prepare-warm", bucket: "first-unseen-symbol", targetId: "warm" },
-      { id: "recover-cold", bucket: "after-eviction", targetId: "cold" },
-      { id: "recover-cold-again", bucket: "pressure-recovery-repeat", targetId: "cold" },
+      { id: "recover-cold", bucket: "after-eviction", targetId: "cold",
+        acceptObservedEviction: recoveredBeforeControl },
+      { id: "recover-cold-again", bucket: "pressure-recovery-repeat", targetId: "cold",
+        acceptObservedEviction: recoveredBeforeControl },
     ],
   }
   const input = path.join(directory, "suite.json")
@@ -83,10 +89,21 @@ test("prepared suite recovers an exact unseen reference after observed L3 evicti
     { encoding: "utf8", timeout: 60_000 })
   assert.equal(run.status, 1, `${run.stderr}\n${run.stdout}`)
   const report = JSON.parse(fs.readFileSync(output, "utf8"))
-  assert.equal(report.readiness.semantic.status, "READINESS_UNSUPPORTED")
+  assert.equal(report.readiness.semantic.status, "DEGRADED", JSON.stringify(report.readiness))
+  assert.equal(report.readiness.semantic.observed.semanticGeneration, null)
+  assert.deepEqual(report.readiness.semantic.observed.readyCapabilities, [])
+  assert.deepEqual(report.readiness.semantic.observed.unavailableReasons, ["sdk-coverage-unproven"])
   assert.equal(report.gateStatus.ready, "FAIL")
   assert.equal(report.gateStatus.latency, "BLOCKED")
-  assert.equal(report.correctness.status, "PASS", JSON.stringify(report.failure))
+  if (recoveredBeforeControl) {
+    const started = report.timeline.find(event => event.phase === "request-start").timestamp
+    assert.ok(report.serverEvents.some(event => event.event === "semantic.context.evict"
+      && event.reason === "memory-level3" && event.residentContextCount === 0
+      && Date.parse(event.ts) >= started), "natural disposal must be observed during the preceding query")
+  }
+  assert.equal(report.correctness.status, "PASS", JSON.stringify({
+    failure: report.failure, blocked: report.blockedScenarios, unchanged: report.inputIdentity.inputUnchanged,
+  }))
   assert.deepEqual(report.requests.map(request => request.scenarioId), [
     "prepare-warm", "recover-cold", "recover-cold-again",
   ])
@@ -101,6 +118,12 @@ test("prepared suite recovers an exact unseen reference after observed L3 evicti
   assert.ok(report.serverEvents.some(event => event.event === "semantic.context.evict"
     && event.reason === "memory-level3"))
   assert.equal(report.timeline.filter(event => event.phase === "memory-pressure-eviction-observed").length, 2)
+  if (recoveredBeforeControl) {
+    assert.ok(report.timeline.some(event => event.phase === "memory-pressure-eviction-observed"
+      && event.origin === "already-observed"))
+    assert.ok(report.serverEvents.some(event => event.event === "semantic.context.evict"
+      && event.reason === "memory-level3" && event.residentContextCount === 0))
+  }
   for (const scenarioId of ["recover-cold", "recover-cold-again"]) {
     const observed = report.timeline.find(event => event.phase === "memory-pressure-eviction-observed"
       && event.scenarioId === scenarioId)
@@ -121,7 +144,8 @@ test("prepared suite recovers an exact unseen reference after observed L3 evicti
   assert.ok(idleStart && idleEnd && idleEnd.monotonicMs - idleStart.monotonicMs >= 200)
   const probes = fs.readFileSync(registryProbe, "utf8").trim().split("\n").map(JSON.parse)
   const disposal = probes.filter(probe => probe.phase === "before-dispose" || probe.phase === "after-dispose")
-  assert.ok(disposal.length >= 4)
+  assert.ok(disposal.length >= (recoveredBeforeControl ? 2 : 4),
+    "an already-empty context reuses its disposal witness without fabricating another resident disposal")
   for (let index = 0; index < disposal.length; index += 2) {
     assert.equal(disposal[index].phase, "before-dispose")
     assert.equal(disposal[index + 1].phase, "after-dispose")
@@ -130,4 +154,20 @@ test("prepared suite recovers an exact unseen reference after observed L3 evicti
     assert.ok(disposal[index].totalRefCount > 0)
     assert.equal(disposal[index + 1].totalRefCount, 0)
   }
+  if (!recoveredBeforeControl) {
+    for (const [scenarioIndex, value] of [[1, "yes"], [0, true]]) {
+      const invalid = structuredClone(suite)
+      invalid.scenarios[scenarioIndex].acceptObservedEviction = value
+      const invalidInput = path.join(directory, `invalid-${scenarioIndex}.json`)
+      const invalidOutput = path.join(directory, `invalid-report-${scenarioIndex}.json`)
+      fs.writeFileSync(invalidInput, JSON.stringify(invalid))
+      const rejected = spawnSync(process.execPath,
+        [runner, "--prepared-suite", invalidInput, "--out", invalidOutput],
+        { encoding: "utf8", timeout: 60_000 })
+      assert.equal(rejected.status, 2, "observed eviction requires a boolean on a recovery scenario")
+      assert.match(rejected.stderr, /PREPARED_SUITE_INVALID=OBSERVED_EVICTION_CONTROL/)
+      assert.equal(fs.existsSync(invalidOutput), false)
+    }
+  }
 })
+}

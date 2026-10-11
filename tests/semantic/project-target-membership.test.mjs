@@ -10,6 +10,7 @@ import { buildSync } from "esbuild"
 
 import { LspSession } from "../support/lsp-session.mjs"
 import { projectRoot } from "../support/lsp-process.mjs"
+import { buildDocumentStoreDriver } from "../support/build-document-store-driver.mjs"
 
 test("completion does not expose globals from an inactive target source directory", async (t) => {
   const fixture = targetFixture(t)
@@ -188,6 +189,231 @@ test("module-root entries and installed package dependency closures remain avail
     assert.equal(response.result?.length, 1)
     assert.equal(response.result[0].uri, pathToFileURL(expectedPath).href)
   }
+})
+
+test("a complete membership refresh does not repeatedly canonicalize every regular source leaf", (t) => {
+  const fixture = targetFixture(t)
+  fs.writeFileSync(fixture.mainPath, "export const page = 1\n")
+  for (let index = 0; index < 96; index++) {
+    fs.writeFileSync(path.join(path.dirname(fixture.mainPath), `Source${index}.ets`),
+      `export const source${index} = ${index}\n`)
+  }
+  const { SemanticDocumentStore } = buildDocumentStoreDriver(fixture.root)
+  const store = new SemanticDocumentStore()
+  t.after(() => store.dispose())
+  const position = { path: fixture.mainPath, workspaceRoot: fixture.workspaceRoot, line: 1, column: 1 }
+  const baseline = store.prepare(position, true).projectMembership
+  const members = new Set(baseline.paths)
+  assert.equal(baseline.status, "complete")
+  assert.equal(members.size, 99)
+  const original = fs.realpathSync.native
+  let leafLookups = 0
+  t.mock.method(fs.realpathSync, "native", (candidate, ...args) => {
+    if (members.has(path.resolve(candidate))) leafLookups++
+    return original(candidate, ...args)
+  })
+  assert.deepEqual(store.refreshProjectMembership(fixture.workspaceRoot), { changed: false, removedPaths: [] })
+  assert.deepEqual(store.prepare(position, true).projectMembership, baseline)
+  assert.ok(leafLookups <= members.size,
+    `complete ${members.size}-member refresh performed ${leafLookups} physical leaf lookups`)
+})
+
+test("a directory retarget during enumeration cannot certify an inactive source member", (t) => {
+  const fixture = targetFixture(t)
+  fs.writeFileSync(fixture.mainPath, "export const page = 1\n")
+  const sourceDirectory = path.dirname(fixture.mainPath)
+  const originalDirectory = `${sourceDirectory}-original`
+  const inactiveDirectory = path.dirname(fixture.desktopPath)
+  fs.writeFileSync(path.join(inactiveDirectory, path.basename(fixture.mainPath)), "class InactiveRetarget {}\n")
+  const { SemanticDocumentStore } = buildDocumentStoreDriver(fixture.root)
+  const store = new SemanticDocumentStore()
+  t.after(() => store.dispose())
+  const position = { path: fixture.tabletPath, workspaceRoot: fixture.workspaceRoot, line: 1, column: 1 }
+  const baseline = store.prepare(position, true).projectMembership
+  assert.equal(baseline.status, "complete")
+  let retargeted = false
+  const open = fs.opendirSync
+  t.mock.method(fs, "opendirSync", (directory, ...args) => {
+    const handle = open(directory, ...args)
+    if (path.resolve(directory) !== sourceDirectory) return handle
+    const read = handle.readSync.bind(handle)
+    handle.readSync = () => {
+      const entry = read()
+      if (entry?.isFile() && !retargeted) {
+        fs.renameSync(sourceDirectory, originalDirectory)
+        fs.symlinkSync(inactiveDirectory, sourceDirectory, "dir")
+        retargeted = true
+      }
+      return entry
+    }
+    return handle
+  })
+  store.refreshProjectMembership(fixture.workspaceRoot)
+  const current = store.prepare(position, true).projectMembership
+  assert.equal(retargeted, true)
+  assert.ok(current.status === "partial" || !current.paths.includes(fixture.mainPath),
+    "a complete catalog must not admit the old lexical path now pointing into an inactive target")
+  fs.unlinkSync(sourceDirectory)
+  fs.renameSync(originalDirectory, sourceDirectory)
+  store.refreshProjectMembership(fixture.workspaceRoot)
+  const recovered = store.prepare(position, true).projectMembership
+  assert.equal(recovered.status, "complete")
+  assert.deepEqual(recovered.paths, baseline.paths)
+})
+
+test("a source container retarget after its children close cannot certify the old membership", (t) => {
+  const fixture = targetFixture(t)
+  fs.writeFileSync(fixture.mainPath, "export const page = 1\n")
+  const sourceContainer = path.join(fixture.moduleRoot, "src")
+  const originalContainer = `${sourceContainer}-original`
+  const undeclaredContainer = path.join(fixture.workspaceRoot, "ghost-source")
+  fs.mkdirSync(undeclaredContainer)
+  const { SemanticDocumentStore } = buildDocumentStoreDriver(fixture.root)
+  const store = new SemanticDocumentStore()
+  t.after(() => store.dispose())
+  const position = { path: fixture.mainPath, workspaceRoot: fixture.workspaceRoot, line: 1, column: 1 }
+  const baseline = store.prepare(position, true).projectMembership
+  let retargeted = false
+  const open = fs.opendirSync
+  t.mock.method(fs, "opendirSync", (directory, ...args) => {
+    const handle = open(directory, ...args)
+    if (path.resolve(directory) !== fixture.moduleRoot) return handle
+    const close = handle.closeSync.bind(handle)
+    handle.closeSync = () => {
+      close()
+      if (!retargeted) {
+        fs.renameSync(sourceContainer, originalContainer)
+        fs.symlinkSync(undeclaredContainer, sourceContainer, "dir")
+        retargeted = true
+      }
+    }
+    return handle
+  })
+  store.refreshProjectMembership(fixture.workspaceRoot)
+  fs.unlinkSync(sourceContainer)
+  fs.renameSync(originalContainer, sourceContainer)
+  assert.equal(retargeted, true)
+  const uncertain = store.prepare(position, true).projectMembership
+  assert.equal(uncertain.status, "partial", "final container witnesses must reject a late retarget")
+  store.refreshProjectMembership(fixture.workspaceRoot)
+  const recovered = store.prepare(position, true).projectMembership
+  assert.equal(recovered.status, "complete")
+  assert.deepEqual(recovered.paths, baseline.paths)
+})
+
+test("a complete membership refresh bounds whole-directory resolution without dropping source directories", (t) => {
+  const fixture = targetFixture(t)
+  fs.writeFileSync(fixture.mainPath, "export const page = 1\n")
+  for (let index = 0; index < 48; index++) {
+    const source = path.join(path.dirname(fixture.mainPath), `group-${index}`, "Source.ets")
+    fs.mkdirSync(path.dirname(source))
+    fs.writeFileSync(source, `export const source${index} = ${index}\n`)
+  }
+  const { SemanticDocumentStore } = buildDocumentStoreDriver(fixture.root)
+  const store = new SemanticDocumentStore()
+  t.after(() => store.dispose())
+  const position = { path: fixture.mainPath, workspaceRoot: fixture.workspaceRoot, line: 1, column: 1 }
+  const baseline = store.prepare(position, true).projectMembership
+  assert.equal(baseline.status, "complete")
+  assert.equal(baseline.paths.length, 51)
+  const opened = new Set(), resolutions = new Map()
+  const realpath = fs.realpathSync.native, open = fs.opendirSync
+  t.mock.method(fs.realpathSync, "native", (candidate, ...args) => {
+    const resolved = path.resolve(candidate)
+    resolutions.set(resolved, (resolutions.get(resolved) ?? 0) + 1)
+    return realpath(candidate, ...args)
+  })
+  t.mock.method(fs, "opendirSync", (directory, ...args) => {
+    opened.add(path.resolve(directory))
+    return open(directory, ...args)
+  })
+  assert.deepEqual(store.refreshProjectMembership(fixture.workspaceRoot), { changed: false, removedPaths: [] })
+  const directoryResolutions = [...opened].reduce((total, directory) => total + (resolutions.get(directory) ?? 0), 0)
+  assert.deepEqual(store.prepare(position, true).projectMembership, baseline)
+  assert.ok(directoryResolutions <= opened.size + 6,
+    `complete ${baseline.paths.length}-source refresh resolved ${opened.size} directories ${directoryResolutions} times`)
+})
+
+test("replacing a source directory at the same physical path cannot certify an omitted new member", (t) => {
+  const fixture = targetFixture(t)
+  fs.writeFileSync(fixture.mainPath, "export const page = 1\n")
+  const sourceDirectory = path.dirname(fixture.mainPath), originalDirectory = path.join(fixture.root, "original-source-directory")
+  const newSource = path.join(sourceDirectory, "NewCaller.ets")
+  const { SemanticDocumentStore } = buildDocumentStoreDriver(fixture.root)
+  const store = new SemanticDocumentStore()
+  t.after(() => store.dispose())
+  const position = { path: fixture.tabletPath, workspaceRoot: fixture.workspaceRoot, line: 1, column: 1 }
+  const baseline = store.prepare(position, true).projectMembership
+  const open = fs.opendirSync
+  let replaced = false
+  t.mock.method(fs, "opendirSync", (directory, ...args) => {
+    const handle = open(directory, ...args)
+    if (path.resolve(directory) !== sourceDirectory) return handle
+    const read = handle.readSync.bind(handle)
+    handle.readSync = () => {
+      const entry = read()
+      if (entry?.isFile() && !replaced) {
+        fs.renameSync(sourceDirectory, originalDirectory)
+        fs.mkdirSync(sourceDirectory)
+        fs.writeFileSync(fixture.mainPath, "export const page = 1\n")
+        fs.writeFileSync(newSource, "export const newCaller = 1\n")
+        replaced = true
+      }
+      return entry
+    }
+    return handle
+  })
+  store.refreshProjectMembership(fixture.workspaceRoot)
+  const uncertain = store.prepare(position, true).projectMembership
+  assert.equal(replaced, true)
+  assert.equal(uncertain.status, "partial", "the old open directory cannot certify a complete new tree")
+  store.refreshProjectMembership(fixture.workspaceRoot)
+  const recovered = store.prepare(position, true).projectMembership
+  assert.equal(recovered.status, "complete")
+  assert.deepEqual(recovered.paths, [...baseline.paths, newSource].sort())
+})
+
+test("a complete membership refresh bounds repeated rooted path comparisons without changing its members", (t) => {
+  const fixture = targetFixture(t)
+  fs.writeFileSync(fixture.mainPath, "export const page = 1\n")
+  for (let index = 0; index < 96; index++) {
+    fs.writeFileSync(path.join(path.dirname(fixture.mainPath), `Source${index}.ets`),
+      `export const source${index} = ${index}\n`)
+  }
+  const { SemanticDocumentStore } = buildDocumentStoreDriver(fixture.root)
+  const store = new SemanticDocumentStore()
+  t.after(() => store.dispose())
+  const position = { path: fixture.mainPath, workspaceRoot: fixture.workspaceRoot, line: 1, column: 1 }
+  const baseline = store.prepare(position, true).projectMembership
+  assert.equal(baseline.status, "complete")
+  assert.equal(baseline.paths.length, 99)
+  const relative = path.relative
+  let comparisons = 0
+  t.mock.method(path, "relative", (...args) => { comparisons++; return relative(...args) })
+  assert.deepEqual(store.refreshProjectMembership(fixture.workspaceRoot), { changed: false, removedPaths: [] })
+  const refreshComparisons = comparisons
+  assert.deepEqual(store.prepare(position, true).projectMembership, baseline)
+  assert.ok(refreshComparisons <= baseline.paths.length * 3 + 32,
+    `complete ${baseline.paths.length}-source refresh compared ${refreshComparisons} rooted path pairs`)
+})
+
+test("a source directory sharing only an active root name prefix remains outside membership", (t) => {
+  const fixture = targetFixture(t)
+  fs.writeFileSync(fixture.mainPath, "export const page = 1\n")
+  const shadowRoot = path.join(fixture.moduleRoot, "src", "main-shadow")
+  const shadowPath = path.join(shadowRoot, "Shadow.ets")
+  fs.mkdirSync(shadowRoot)
+  fs.writeFileSync(shadowPath, "class OutsidePrefix {}\n")
+  const { SemanticDocumentStore } = buildDocumentStoreDriver(fixture.root)
+  const store = new SemanticDocumentStore()
+  t.after(() => store.dispose())
+  const membership = store.prepare({ path: fixture.mainPath, workspaceRoot: fixture.workspaceRoot,
+    line: 1, column: 1 }, true).projectMembership
+  assert.equal(membership.status, "complete")
+  assert.equal(membership.paths.length, 3)
+  assert.equal(membership.paths.includes(fixture.mainPath), true)
+  assert.equal(membership.paths.includes(fixture.tabletPath), true)
+  assert.equal(membership.paths.includes(shadowPath), false)
 })
 
 function targetFixture(t) {

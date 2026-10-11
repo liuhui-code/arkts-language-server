@@ -4,12 +4,13 @@ import path from "node:path"
 
 import type { DocumentSnapshot } from "../contracts/document.js"
 import type { ProjectResolverPort } from "../contracts/project-resolver.js"
+import { semanticUnprepared, type SemanticReadinessQuery, type SemanticReadinessReport } from "../contracts/semantic-readiness.js"
+import { isProjectResourceFile } from "./resource-file-identity.js"
 import type {
   WorkspaceExportIndexPort,
   WorkspaceReferenceIndexPort,
 } from "../contracts/workspace-index.js"
 import type * as Contract from "../contracts/semantic-engine.js"
-import { isArkUIStringResourcePath } from "../core/arkui/resource-path.js"
 import { LocalPackageResolver } from "../core/sdk/local-package-resolver.js"
 import type { StructuredLogger } from "../observability/logger.js"
 import { OHOS_TYPESCRIPT_BACKEND_IDENTITY } from "./backends/ohos-typescript/identity.js"
@@ -20,8 +21,9 @@ import { selectReferenceCandidates, type ReferenceCandidateSelection } from "./r
 import { interactiveSemanticRuntimeConfig } from "./interactive-runtime.js"
 import { discoverCompletionCandidates } from "./completion-discovery.js"
 import { resourceEventPath, toFilePath } from "./semantic-worker-file-identity.js"
-import { SemanticWorkerHost, semanticWorkerData,
-  type DeferredSemanticMutation } from "./semantic-worker-host.js"
+import { SemanticWorkerHost, semanticWorkerData } from "./semantic-worker-host.js"
+import { SemanticWorkerRecycle, workerAbortState as abortState } from "./semantic-worker-recycle.js"
+import { SemanticWorkerMutationTracker } from "./semantic-worker-mutation-tracker.js"
 import { ReferenceIndexFreshness } from "./references/reference-index-freshness.js"
 import { ReferenceInputState, type ReferenceInputSnapshot } from "./references/reference-input-snapshot.js"
 import { ReferenceResultCache } from "./references/reference-result-cache.js"
@@ -54,7 +56,6 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
   readonly #projects: ProjectResolverPort
   readonly #logger: StructuredLogger | undefined
   readonly #environment: NodeJS.ProcessEnv
-  readonly #workerPath: string
   readonly #exportIndex: WorkspaceExportIndexPort | undefined
   readonly #referenceIndex: WorkspaceReferenceIndexPort | undefined
   readonly #packageResolver = new LocalPackageResolver()
@@ -63,12 +64,9 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
   readonly #host: SemanticWorkerHost
   readonly #referenceResults = new ReferenceResultCache()
   readonly #referenceInputs = new ReferenceInputState()
-  readonly #pendingMutations = new Set<Promise<void>>()
-  readonly #deferredMutations: DeferredSemanticMutation[] = []
+  readonly #mutations: SemanticWorkerMutationTracker
+  readonly #recycle: SemanticWorkerRecycle
   #inFlightPreparations = 0
-  #inFlightRequests = 0
-  #recycling = false
-  #recycleMutationObserved = false
   #projectConfiguration: unknown
   #sdkConfiguration: unknown
   #failure: unknown
@@ -85,21 +83,25 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
     this.#exportIndex = options.exportIndex
     this.#referenceIndex = options.referenceIndex
     const adjacentWorker = path.join(__dirname, "semantic-worker.cjs")
-    this.#workerPath = options.workerPath ?? (fs.existsSync(adjacentWorker)
+    const workerPath = options.workerPath ?? (fs.existsSync(adjacentWorker)
       ? adjacentWorker
       : path.resolve(process.cwd(), "dist", "semantic-worker.cjs"))
     this.#host = new SemanticWorkerHost({
-      workerPath: this.#workerPath,
+      workerPath,
       logger,
       environment: this.#environment,
       onFailure: error => { this.#failure = error },
+      onPressureRecycle: () => this.#recycle.requestAutomatic(() => this.#recycleOptions()),
       workerData: rootUri => semanticWorkerData(rootUri, this.#environment,
         this.#projectConfiguration, this.#sdkConfiguration),
     })
+    this.#recycle = new SemanticWorkerRecycle(this.#host, this.#environment, logger)
+    this.#mutations = new SemanticWorkerMutationTracker(this.#host, this.#recycle,
+      error => this.#mutationFailed(error))
   }
 
   configureProject(selection: unknown): void {
-    if (this.#recycling) this.#recycleMutationObserved = true
+    this.#recycle.configurationChanged()
     const ownedSelection = structuredClone(selection)
     this.#referenceInputs.configurationChanged()
     this.#referenceResults.clear()
@@ -109,7 +111,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
   }
 
   configureSdk(selection: unknown): void {
-    if (this.#recycling) this.#recycleMutationObserved = true
+    this.#recycle.configurationChanged()
     const ownedSelection = structuredClone(selection)
     this.#referenceInputs.configurationChanged()
     this.#referenceResults.clear()
@@ -122,78 +124,36 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
     this.#host.sendControl({ control: "applyMemoryPressure", value: level })
   }
 
-  async recycleSemanticWorker(): Promise<{
+  recycleSemanticWorker(): Promise<{
     recycled: true; oldThreadId: number; newThreadId: number
   }> {
-    if (this.#environment.ARKTS_BENCHMARK_CONTROL !== "1"
-      || this.#environment.ARKTS_L01_SEMANTIC_WORKER_RECYCLE !== "1") {
-      throw new Error("Semantic Worker recycle is disabled")
-    }
+    return this.#recycle.run(this.#recycleOptions())
+  }
+
+  async semanticReadiness(query: SemanticReadinessQuery): Promise<SemanticReadinessReport> {
     this.#assertAvailable()
-    if (this.#recycling || this.#host.rootCount !== 1 || this.#documents.size === 0
-      || this.#inFlightPreparations !== 0 || this.#inFlightRequests !== 0
-      || this.#pendingMutations.size !== 0) {
-      throw new Error("Semantic Worker recycle requires one quiescent root")
-    }
-    const rootUri = this.#host.singleRootUri as string
-    if ([...this.#documents.values()].some(document => document.workspaceId !== rootUri)) {
-      throw new Error("Semantic Worker recycle requires one quiescent root")
-    }
-    this.#recycling = true
-    this.#recycleMutationObserved = false
-    this.#referenceResults.clear()
-    this.#referenceInputs.configurationChanged()
-    let replacing = false
-    try {
-      const witness = await this.#host.recycleWitness()
-      if (this.#recycleMutationObserved) {
-        throw new Error("Semantic Worker changed during recycle witness")
-      }
-      if (!witness.eligible) throw new Error(`Semantic Worker recycle unavailable: ${witness.reason}`)
-      if (this.#failure) throw this.#failure
-      replacing = true
-      const oldThreadId = await this.#host.replaceWorker()
-      const supervisor = this.#host.supervisor(rootUri)
-      for (const document of this.#documents.values()) {
-        await supervisor.mutate({ kind: "open", uri: document.uri,
-          documentVersion: document.version, text: document.text })
-      }
-      await this.#host.flushMutations(this.#deferredMutations)
-      const newThreadId = this.#host.threadId()
-      if (oldThreadId < 1 || newThreadId < 1 || oldThreadId === newThreadId) {
-        throw new Error("Semantic Worker recycle did not establish a new thread")
-      }
-      if (this.#failure) throw this.#failure
-      replacing = false
-      if (this.#recycleMutationObserved) {
-        throw new Error("Semantic Worker changed during recycle")
-      }
-      return { recycled: true, oldThreadId, newThreadId }
-    } catch (error) {
-      if (replacing) this.#failure = error
-      else await this.#host.flushMutations(this.#deferredMutations)
-        .catch(failure => { this.#failure = failure; throw failure })
-      throw error
-    } finally {
-      this.#recycling = false
+    if (!query.prepare && !this.#host.rootUris.includes(query.rootUri)) return semanticUnprepared(query.rootUri)
+    const value = await this.#request("semanticReadiness", query.rootUri, query.rootUri, null,
+      { prepare: query.prepare }, query.signal)
+    return value as unknown as SemanticReadinessReport
+  }
+
+  #recycleOptions() {
+    return {
+      documents: this.#documents,
+      quiescent: this.#inFlightPreparations === 0 && this.#mutations.pendingCount === 0,
+      checkHealth: () => this.#assertHealthy(),
+      fail: (error: unknown) => { this.#failure = error },
+      invalidate: () => {
+        this.#referenceResults.clear()
+        this.#referenceInputs.configurationChanged()
+      },
     }
   }
 
   isResourceFile(rootUri: string, fileUri: string): boolean {
-    const root = toFilePath(rootUri)
-    const candidate = toFilePath(fileUri)
-    if (!root || !candidate) return false
-    const scope = this.#packageResolver.projectFor(root).scopeFor(candidate)
-    if (scope.status === "unconfigured") return isArkUIStringResourcePath(candidate)
-    if (scope.status !== "ready") return false
-    const physicalCandidate = resourceEventPath(candidate)
-    return scope.resourceRoots.some((resourceRoot) => {
-      const segments = path.relative(resourceEventPath(resourceRoot), physicalCandidate).split(path.sep)
-      return segments.length === 3 && segments[0] !== ".."
-        && segments[1] === "element" && segments[2] === "string.json"
-    })
+    return isProjectResourceFile(this.#packageResolver, rootUri, fileUri)
   }
-
   sync(document: DocumentSnapshot): void {
     if (!document.uri.startsWith("file:")) return
     if (!isSemanticWorkerUriWithinRoot(document.uri, document.workspaceId)) return
@@ -248,7 +208,10 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
         snippets: query.completionOptions?.snippets === true,
         ...(discovery ? { discovery } : {}),
       })
-    } finally { this.#inFlightPreparations -= 1 }
+    } finally {
+      this.#inFlightPreparations -= 1
+      this.#recycle.retryAutomatic()
+    }
   }
 
   resolveCompletion(query: Contract.SemanticCompletionResolveQuery) {
@@ -309,6 +272,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
   }
 
   async references(query: Contract.SemanticReferencesQuery, allowLocalSeed = true): Promise<Contract.VersionedSemanticResult<Contract.SemanticReferencesOutcome>> {
+    if (this.#recycle.active) await this.#recycle.wait(query.signal)
     this.#inFlightPreparations += 1
     try {
       query = Object.freeze({ ...query,
@@ -350,7 +314,10 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
           response.value.status === "complete" ? response.value.references.length : 0)
       }
       return response
-    } finally { this.#inFlightPreparations -= 1 }
+    } finally {
+      this.#inFlightPreparations -= 1
+      this.#recycle.retryAutomatic()
+    }
   }
 
   prepareRename(query: Contract.SemanticQuery) {
@@ -483,6 +450,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
   async dispose(): Promise<void> {
     if (this.#disposed) return
     this.#disposed = true
+    this.#recycle.cancelAutomatic()
     this.#referenceResults.clear()
     this.#referenceInputs.clear()
     await this.#host.dispose()
@@ -545,7 +513,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
     }
   }
 
-  async #request<Method extends SemanticWorkerMethod>(
+  #request<Method extends SemanticWorkerMethod>(
     method: Method,
     rootUri: string,
     uri: string,
@@ -553,45 +521,34 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
     args: SemanticWorkerRequestArgsByMethod[Method],
     signal?: AbortSignal,
   ): Promise<SemanticWorkerJsonValue> {
-    this.#assertAvailable()
-    this.#inFlightRequests += 1
-    try {
-      const handle = this.#host.supervisor(rootUri).request({
-        method, uri, expectedDocumentVersion, args,
-      } as RootSemanticWorkerRequestInput)
-      const abort = () => handle.cancel(abortState(signal))
-      signal?.addEventListener("abort", abort, { once: true })
-      if (signal?.aborted) abort()
-      try { return await handle.result }
-      finally { signal?.removeEventListener("abort", abort) }
-    } finally {
-      this.#inFlightRequests -= 1
-    }
+    return this.#recycle.request(rootUri, {
+      method, uri, expectedDocumentVersion, args,
+    } as RootSemanticWorkerRequestInput, signal, () => this.#assertAvailable())
   }
 
   #mutate(rootUri: string, mutation: RootSemanticWorkerMutationInput): void {
     for (const knownRoot of this.#referenceInputs.changed(rootUri)) {
       this.#referenceResults.invalidateRoot(knownRoot)
     }
-    if (this.#recycling) {
-      this.#recycleMutationObserved = true
-      this.#deferredMutations.push({ rootUri, mutation })
-      return
-    }
-    try {
-      const pending = this.#host.supervisor(rootUri).mutate(mutation)
-      this.#pendingMutations.add(pending)
-      void pending.catch(error => { this.#failure = error })
-        .finally(() => { this.#pendingMutations.delete(pending) })
-    } catch (error) {
-      this.#failure = error
-    }
+    this.#mutations.mutate(rootUri, mutation)
+  }
+
+  #mutationFailed(error: unknown): void {
+    if (!this.#disposed && error instanceof SemanticWorkerSupervisorError
+      && error.code === "restart-required") {
+      this.#mutations.retire()
+      void this.#recycle.recover(this.#recycleOptions()).catch(failure => { this.#failure = failure })
+    } else this.#failure = error
   }
 
   #assertAvailable(): void {
+    this.#assertHealthy()
+    if (this.#recycle.active) throw new Error("Semantic Worker recycle is in progress")
+  }
+
+  #assertHealthy(): void {
     if (this.#disposed) throw new Error("Semantic worker is disposed")
     if (this.#failure) throw this.#failure
-    if (this.#recycling) throw new Error("Semantic Worker recycle is in progress")
   }
 
   #assertReferenceSnapshot(snapshot: ReferenceInputSnapshot): void {
@@ -600,14 +557,4 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
       throw new SemanticWorkerSupervisorError("content-modified")
     }
   }
-}
-function abortState(signal: AbortSignal | undefined) {
-  const kind = signal?.reason && typeof signal.reason === "object"
-    ? (signal.reason as { kind?: unknown }).kind
-    : undefined
-  if (kind === "content-modified" || kind === "superseded") {
-    return SemanticWorkerCancelState.contentModified
-  }
-  if (kind === "shutdown") return SemanticWorkerCancelState.supervisorDisposing
-  return SemanticWorkerCancelState.clientCancelled
 }

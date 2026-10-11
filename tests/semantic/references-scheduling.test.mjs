@@ -8,7 +8,9 @@ import { pathToFileURL } from "node:url"
 import { LspSession } from "../support/lsp-session.mjs"
 import { projectRoot } from "../support/lsp-process.mjs"
 
-test("interactive definition bypasses references and an edit cancels the old snapshot", async (t) => {
+for (const selectedPolicy of [false, true]) {
+test(selectedPolicy ? "L04 selected policy preserves interactive lanes and rejects an edited reference snapshot"
+  : "interactive definition bypasses references and an edit cancels the old snapshot", async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-reference-scheduling-"))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const workspace = path.join(root, "workspace")
@@ -42,6 +44,14 @@ test("interactive definition bypasses references and an edit cancels the old sna
       ARKTS_REFERENCES_BATCH_ROOTS: "2",
       ARKTS_REFERENCES_TRACE: "1",
       ARKTS_TEST_REFERENCE_VERIFIER_DELAY_MS: "1500",
+      ...(selectedPolicy ? {
+        ARKTS_REFERENCES_STRATEGY: "indexed-batched", ARKTS_REFERENCES_RESIDENT_FAST_PATH: "1",
+        ARKTS_BENCHMARK_CONTROL: "1", ARKTS_MEMORY_BUDGET_MB: "1024",
+        ARKTS_REFERENCES_CONTEXT_RETENTION: "budget-aware", ARKTS_L03_COST_AWARE_EVICTION: "1",
+        ARKTS_L01_PRESSURE_ADMISSION: "1", ARKTS_L01_TRANSIENT_DIAGNOSTICS: "1",
+        ARKTS_L02_SAME_CONTENT_PROMOTION: "1", ARKTS_L01_SEMANTIC_WORKER_RECYCLE: "0",
+        ARKTS_L03_PRESSURE_WORKER_RECYCLE: "0",
+      } : {}),
     },
   })
   t.after(() => session.close().catch(() => {}))
@@ -96,6 +106,7 @@ test("interactive definition bypasses references and an edit cancels the old sna
     { method: "textDocument/definition", outcome: "ok" },
   ])
 })
+}
 
 function readEvents(logDirectory) {
   return fs.readFileSync(path.join(logDirectory, "server.log"), "utf8")

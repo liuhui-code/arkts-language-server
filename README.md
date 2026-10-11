@@ -209,11 +209,18 @@ and the full SDK. Set `ARKTS_REFERENCES_STRATEGY=legacy` to use the original
 full-Program path; `ARKTS_REFERENCES_DEPENDENCY_PROFILE=identity` remains an
 experimental opt-in.
 
-`ARKTS_REFERENCES_RESIDENT_FAST_PATH=1` is a separate default-off experiment:
-reuse an already built, unchanged Program only when it covers the complete
-query scope. Missing coverage, changed source/configuration or memory pressure
-keeps the complete fallback. It does not enable persistent verifier Workers or
-promise sub-500 ms cold queries; see the [R-09 evidence](docs/tdd/references-resident-fast-path.md).
+The selected resident optimization policy is enabled by default: budget-aware
+retention, complete resident references, same-content promotion, pressure
+admission, cost-aware eviction, and transient diagnosis under L3. These six
+options do not require benchmark controls. Reuse still requires an unchanged
+Program and complete scope; stale inputs, missing coverage or pressure retain
+complete fallback or an explicit resource error. Active Worker recycling, old
+session reuse, scope narrowing, GC and tracing remain off.
+Set `ARKTS_REFERENCES_RESIDENT_FAST_PATH=0` to disable resident reference reuse;
+the [default policy and full rollback](docs/adr/0015-default-resident-optimization-policy.md)
+list all six settings. This is a maintainer decision, not a passed 550ms or L08
+gate; the [comparison](docs/reports/2026-10-11-resident-effective-combo-comparison.md)
+retains slower edit and warmup results.
 
 `ARKTS_REFERENCES_CONSTRUCTOR_SCOPE=1` is also default-off. After an exact
 constructor search, it may omit proven-safe pending disk roots: exactly empty

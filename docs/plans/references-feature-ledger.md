@@ -1,8 +1,64 @@
 # References / semantic Feature Ledger
 
+2026-10-11 current-device L08 acceptance has reached terminal outcomes, not graduation:
+tool regression23/23 PASS; current whole1579/1580 FAIL; five real sessions220/220 exact,
+100 repeats per capability give rename365.6ms/incoming763.9ms P95 under the550ms ceiling.
+Indexed100-edit exactness passes but P95=5557.8ms, initial constructor budget rejection,
+four unproved pressure recoveries, and post-L3 completion failures at10k/100k remain.
+Eleven frozen identity vectors and every fixture byte/path are unchanged.
+Final seven-report matrix is FAIL/releaseEligible=false; experiments stay default-off,
+L08 IN_PROGRESS and no merge. [Current audit](../reports/2026-10-10-resident-l08-semantic-readiness.md)
+supersedes historical checkpoints without deleting their failures.
+
+
 Current governance: [budgeted resident-session L01–L08 plan](2026-10-06-budgeted-resident-semantic-plan.md),
 [product contract](semantic-ready/product-contract.md), [MoSCoW](references-moscow.md)
 and [ADR collection, including 0014](../adr/README.md). This remains the **only active Ledger**.
+2026-10-08 user-confirmed progression: **final product validation belongs to
+L08; final targets do not block L01–L07 implementation.** Each slice still
+checks complete/exact results, authoritative snapshots, cancellation and
+stoppable/cleanable execution. Latency, final memory, overall readiness,
+long-soak, scale and portability FAIL/BLOCKED/NOT_RUN remain recorded and
+feed later implementation. L02 same-content promotion remains IN_PROGRESS/default-off.
+The 2026-10-09 [L03 completion audit](../reports/2026-10-09-resident-l03-completion-audit.md)
+passes stage implementation and policy calibration; all experiments remain default-off,
+and automatic pressure retirement is not part of the selected configuration.
+The same-day [L04 completion audit](../reports/2026-10-09-resident-l04-completion-audit.md)
+passes A–E: selected-policy controls 10/10, full check:fast 1449/1449 and terminal
+identity verification, plus eight fixed-build real controls with 52 exact requests.
+Both declaration policies witness actual new-symbol resident reuse; R-09 remains
+default-off, and higher peaks/slower setup and recovery remain L08 risks.
+The same-day [L05 completion audit](../reports/2026-10-09-resident-l05-completion-audit.md)
+passes A–E: 23 independent implementation public contracts, focused132/132,
+full check:fast1467/1467 and unchanged terminal source/build/test/tool/project/SDK
+identities. Four current-build real controls are22/22 exact with matching latest
+diagnostics; complete Program reuse and input protection are independent of R-09.
+Experiments remain default-off; >500ms new queries, ~13s recovery and sampled
+peaks are retained L08 risks. The 2026-10-10 [L06 completion audit](../reports/2026-10-10-resident-l06-completion-audit.md)
+passes A–E:19 public interactive cases, focused252, current real62 and fresh full
+check:fast1492/1492 with unchanged terminal identities; complete payloads/latest
+diagnostics match and actual unqueried Program reuse is witnessed. Experiments
+remain default-off; prior whole failures, slow preparation/recovery and sampled
+soft-budget peaks remain recorded, not final product graduation. The current
+[L07 audit](../reports/2026-10-10-resident-l07-completion-audit.md) passes A–E:
+25 public contracts, current real62 complete payload/latest diagnostics
+equal and actual lazy-promotion Program reuse with an OFF rebuild counterfactual.
+Fresh frozen full1511/1511/root exit0 and matching terminal identities prove
+L07 stage DONE/default-off. Historical11/focused88/
+parallel72 and failed real incoming/promotion controls are preserved.
+These stages proceed from measured evidence without final-target admission gates.
+Default promotion and release require all original gates at L08.
+2026-10-10 user-confirmed exception: the formal full-response P95 ceiling is
+550 ms, with 500 ms retained as the optimization target. Only this ceiling
+changes; 100 requests/5 independent sessions per cell, 336 cells and all other
+gates remain. Historical 500 ms failures are not regraded. The
+[current L08 report](../reports/2026-10-10-resident-l08-semantic-readiness.md)
+records focused151/151 but real incoming596.4ms FAIL; L08 is not graduated.
+Earlier narrative conclusions saying L01 resource BLOCKED or L02 unadmitted
+are dated evidence, superseded as stage dependencies by this update.
+
+## Dated L01 and prior-route evidence
+
 2026-10-06 pivot: the previous [S-series plan](2026-09-29-semantic-ready-execution-plan.md)
 is historical. S02 v1–v6 FAIL is retained and research paused (no v7 absent a new
 decision); S03 facts publication stays BLOCKED. The distinct S05 compatible-disk
@@ -437,16 +493,16 @@ whole-fast is **1126/1126 PASS, exit 0**, zero failures/cancellations/skips/todo
 No focused rerun supersedes a whole gate. Dated checkpoints below are historical evidence; their
 old FAILs and counts are not the current baseline. Priority is product priority, not a claim of
 completion. `Implemented` requires applicable public correctness, freshness,
-completeness, cancellation and new-path resource-safety gates; `Graduated` additionally
-requires the linked product latency and memory gates. A failed 500 ms bucket remains
-FAIL without blocking the next safe implementation slice; see the
+completeness, cancellation and execution-protection checks; `Graduated` requires
+the full linked product acceptance at L08. Final latency/memory/readiness gates
+remain recorded without blocking the next implementation slice; see the
 [current L01–L08 execution plan](2026-10-06-budgeted-resident-semantic-plan.md).
 The [preceding plan](2026-09-20-references-latency-execution-plan.md) and dated
 checkpoints below retain their original build evidence and previous priorities.
 Historical cold/didOpen timings are not semantic-ready bucket measurements;
 the new initial-preparation exemption neither graduates nor rewrites them.
 
-## Current 2026-10-06 L-series priority and status
+## Current L-series priority and status
 
 This table supersedes the former R-01–R-29 priorities **for the listed IDs**.
 Unlisted R-IDs retain their former priority and completed public contracts.
@@ -455,27 +511,27 @@ The detailed rows below are dated evidence, not a second active sequencing table
 
 | ID | Current priority | Current state and next gate |
 | --- | --- | --- |
-| R-03 | Must | Budget-aware retention requirement open; S05 compatible-disk candidate REJECTED. L01 tests a different LS mechanism; L03 owns budget graduation |
-| R-09 | Should | Existing full-scope resident path implemented default-off; Settings L3 admission failed. L04 may use it only with exact complete coverage and L03 resource safety |
+| R-03 | Must | Production budget-aware retention requirement open; S05 compatible-disk candidate REJECTED. L01 tests a different LS mechanism; L03 experimental budget/recovery policy and calibration are complete, L08 owns final resource acceptance |
+| R-09 | Should | Existing full-scope resident path implemented default-off; Settings L3 failures retained. L04 may experiment with exact complete coverage, snapshots and execution protection; final memory/latency acceptance at L08 |
 | R-10 | Could | Anchor memo/seeds implemented default-off; no longer critical path to 500 ms. Revisit only if L01 attributes meaningful independent setup cost |
 | R-11 | Could | Worker-shell reuse unimplemented; transient production fallback stays. Do not substitute shell lifetime for LS/Program reuse |
 | R-13 | Must | Conservative edit/overlay validity maps to L02, not S03 facts publication; fine-grained invalidation remains proof-gated |
 | R-14 | Could / paused research | S02 v1–v6 FAIL/NON_BULK/unsupported evidence retained; no v7 or facts schema without new decision. S03 remains BLOCKED |
 | R-20 | Must | Initial preparation availability measured in L01; candidate-index ready is not semantic ready |
-| R-21 | Must | Post-ready full-response P95≤500 ms remains product gate; L01 single new-symbol result is exploratory, not P95 graduation |
+| R-21 | Must | Post-ready full-response P95≤550 ms is the user-approved final L08 gate, with 500 ms retained as a target; earlier failures guide implementation without blocking the next stage |
 | R-22 | Must | Versioned semantic readiness to be proved from valid LS input/coverage in L02–L04; no S03 fact-generation prerequisite |
 | R-23 | Must | Bounded preparation/progress/cancellation maps to L01–L03; budget never waived by initial preparation |
-| R-24 | Must | Definition/typeDefinition L01 probe and L06 route; exact semantics and ready-state bucket still ungraduated |
-| R-25 | Must | Settings `IAboutDevicePageCtrl` implementation oracle now verified by two fresh processes; three pre-opened post-full-scope L01 processes return 1/1 exact at 280.4/255.2/350.9 ms. Other implementation categories, edits, cancellation, readiness/P95/resource gates and L05 production route remain open; no facts projection prerequisite |
-| R-26 | Must | Completion/auto-import/hover/signature L06; no current product graduation |
-| R-27 | Must | PrepareRename/rename L07, complete edit/conflict/freshness proof before route |
-| R-28 | Should | Call hierarchy L07 per-direction proof, no generic references substitute |
-| R-29 | Must | Normal diagnostics in L01/L02/L06 and L08 soak; never silence to improve time |
+| R-24 | Must | **L06 stage DONE/default-off:** complete definition/typeDefinition, current inputs, actual Program reuse and selected-policy recovery verified in [completion audit](../reports/2026-10-10-resident-l06-completion-audit.md); final ready-state/P95/resource graduation remains L08, historical L01 probes unchanged |
+| R-25 | Must | **L05 stage DONE / default-off:** [completion audit](../reports/2026-10-09-resident-l05-completion-audit.md) A–E PASS; independent complete interface/generic/alias/inheritance/member semantics, current overlays/configuration/SDK/package/unknown inputs, compiler-in-flight cancellation, pressure/Worker/multi-root recovery. Public23/focused132 and current full check:fast1467/1467 pass with unchanged terminal identities. Current Settings oracles IService6/About1 each reverified twice; four ON/OFF controls22/22 exact and matching latest diagnostics, actual complete Program reuse independent of references. Final readiness/P95/resource graduation remains L08; original L01 samples remain historical, no facts projection prerequisite |
+| R-26 | Must | **L06 stage DONE/default-off:** [completion audit](../reports/2026-10-10-resident-l06-completion-audit.md) A–E PASS;19 public cases/focused252, current Settings62 full payload/latest diagnostics equal, fresh whole1492 and terminal identities match. Completion/resolve/source/edit/sort/snippet/isIncomplete and current input/cancel/budget/recovery contracts hold; final readiness/P95/resource graduation remains L08 |
+| R-27 | Must | **L07 stage DONE/default-off:** [audit](../reports/2026-10-10-resident-l07-completion-audit.md) A–E PASS; complete versioned WorkspaceEdit/actual application, three alias layers, class/local-alias/same-owner member collision rejection, current input/budget/recycle/cancel and current real full-edit counterfactual. Public25/real62/fresh whole1511 and all terminal identities match; final conflict/dialect/ready/P95/resource matrices remain L08 |
+| R-28 | Should | **L07 stage DONE/default-off:** [audit](../reports/2026-10-10-resident-l07-completion-audit.md) A–E PASS; independent full incoming/outgoing/fromRanges, unopened/whole-module follow-ups, forged item rejection, current input/physical Worker/cancel recovery and normal diagnostics. Real62/whole1511/frozen terminal identities verified; no generic references substitute or readiness graduation |
+| R-29 | Must | Normal diagnostics in L01/L02/L04–L07 and L08 soak; never silence to improve time |
 | R-30 | Must | **L01 resident-LS baseline IN_PROGRESS:** first Settings/API24 control 42/42 exact, new same-file query 286/1,025/267 ms; pre-open control 15/15 exact, new cross-file query 166/156/165 ms. True-declaration A/B/C adds 16/16 exact: default indexed new cross-file 8.061/23.880 s versus legacy same-snapshot 178/225 ms. Current-build unsaved edit adds 12/12 exact, 9→10 refs/v2 diagnostics but edit-warm 1.371–1.597 s. Single real L3 control returns 10/10 exact after confirmed eviction, yet trace-on recovery 13.797 s and later auto evictions. Checker sequences are trace-only post-query and unstable even for one Program. 500 ms stability NOT_MET; three callback-start cancel controls eventually abort after 5.76–6.90 s, while three later `findReferences`-start controls prove TypeScript-call cancellation in 12/2/2 ms with exact recovery. Earlier preparation cancellation and long-term resource gates remain open. [Call-level evidence](../reports/2026-10-06-resident-l01-find-references-cancel.md); production default unchanged |
-| R-31 | Must | **L02 incremental refresh NOT_STARTED:** ordinary edit first, then API/import/create/delete/package/SDK boundaries, exact snapshot and phase-cost evidence. Edited Program may legitimately change identity; trace-only L01 already saw 1495/1496 project and 652/652 SDK SourceFiles reused yet ~1.08 s grouped Program build. AST reuse count alone cannot graduate L02 or 500 ms |
-| R-32 | Must | **NEW — L03 soft-budget/pressure NOT_STARTED:** measured steady RSS/PSS, hysteresis and cost-aware unleased eviction; no blind budget increase |
-| R-33 | Must | **NEW — L04–L07 route/fallback NOT_STARTED:** resident route only on proven coverage/freshness, transient exact path on miss, per-capability public gates |
-| R-34 | Must | **NEW — L08 soak/release NOT_STARTED:** no monotonic growth, exactness, per-bucket P95≤500 ms, original references memory/DevEco/PSS/portability gates |
+| R-31 | Must | **L02 incremental refresh IN_PROGRESS:** default-off same-content promotion preserves compiler version; [initial causal A/B](../reports/2026-10-08-resident-l02-same-content-promotion.md) and [independent invalidation/edit controls](../reports/2026-10-08-resident-l02-invalidation-and-edit.md) prove API/import/create/delete/open-close/SDK/package/target freshness, including a TDD fix for first target-switch definition miss. Six Settings edits are exact and reuse unchanged AST, but no matching promotion occurs in that control, so no edit-speed/resource benefit is attributed. Longer sequences, unknown deltas/aliases and recovery combinations continue; final gates are at L08 |
+| R-32 | Must | **L03 stage DONE / default-off:** [completion audit](../reports/2026-10-09-resident-l03-completion-audit.md) A–E PASS covers same-process RSS, cost-aware reclamation, admission, leases, multi-root/closed-document recovery and latest diagnostics. Current public controls 20/20, runner controls 35/35 and full check:fast 1439/1439 PASS with unchanged source/build/test/input identities. [Fixed-build calibration](../reports/2026-10-09-resident-l03-budget-policy-calibration.md) selected/control 26/26 exact with matching diagnostics; retain 1024 MiB and hysteresis, excluding automatic owner replacement from this selected configuration. Historical automatic-retirement evidence remains; product memory/latency/readiness and long-run acceptance remain at L08, not L04 entry conditions |
+| R-33 | Must | **L04–L07 stages DONE/default-off:** [L04 audit](../reports/2026-10-09-resident-l04-completion-audit.md) retains real52/whole1449; [L05 audit](../reports/2026-10-09-resident-l05-completion-audit.md) public23/focused132/real22/whole1467; [L06 audit](../reports/2026-10-10-resident-l06-completion-audit.md) public19/focused252/real62/whole1492. [Current L07 audit](../reports/2026-10-10-resident-l07-completion-audit.md) A–E PASS:public25/real62/fresh whole1511, complete edit/call payload/latest diagnostics and all frozen terminal identities match; actual11-source lazy promotion/unqueried Program reuse and OFF rebuild counterfactual. Unknown inputs never publish old subsets; normal1024MiB/hysteresis/leases and original owners/capabilities remain. Failed/miss/unpromoted/whole history and slow preparation/recovery/high RSS remain L08 risks, no final-target entry gates or default promotion |
+| R-34 | Must | **L08 soak/release IN_PROGRESS, not graduated:** no monotonic growth, exactness, per-bucket P95≤550 ms (500 ms target), original references memory/DevEco/PSS/portability gates; [current evidence](../reports/2026-10-10-resident-l08-semantic-readiness.md) retains incoming596.4ms FAIL and incomplete final gates |
 
 R-29/R-30 resource follow-up: [two fresh Settings/API24 L3 ownership
 replays](../reports/2026-10-07-resident-l01-post-eviction-ownership.md) each
@@ -485,7 +541,9 @@ Registry disposals reached zero references, yet Node RSS remained about
 1.01–1.02 GB through 30 seconds idle. This is a repeatable RSS platform, not
 proof of live-object leakage or a PSS pass. Preserve versioned diagnostics;
 diagnostic admission during pressure and live-heap/PSS attribution remain
-Must-level L01 safety work. L02 is still unadmitted.
+inputs to L03 budget/recovery and L08 acceptance. The current L03 audit closes
+stage admission/recovery work; final live-heap/PSS and long-run resource claims
+remain open at L08. This dated replay does not block later default-off experiments.
 
 ## Prior R-01–R-29 detailed evidence snapshot
 
@@ -515,14 +573,14 @@ not authorize restarting S02 or graduating the rejected S05 candidate.
 | R-18 | Won't | Multiple full-Program Workers | Rejected | Duplicates SDK/Program memory; global concurrency stays one |
 | R-19 | Won't | File-count-only memory model | Rejected | Use measured RSS/PSS and Program closure, not linear extrapolation |
 | R-20 | Must | Initial preparation availability (reframed) | S04 preparation/progress/semantic readiness planned, NOT_STARTED; preceding opt-in wait/SQL reuse not graduated | Three Settings index-cold runs are exact/one-batch at 537–560 MB but take 39.8–50.5 s and delay diagnostics; legacy takes 8.6–9.6 s at 838–964 MB. Fresh-catalog SQL trace localized activation to reference inserts and commit; a second exact 9/9 three-run trace split median 6.06 s reference work into 3.69 s occurrences, 1.75 s identity work, 0.42 s bindings and 0.10 s aliases, with 3.13 s commit. A one-run stack sample implicates automatic WAL checkpointing but not an end-to-end saving. A 96-row insert A/B regressed activation and was removed. Default wait stays off. Current [recovery/SQL reuse](../reports/2026-09-28-settings-catalog-recovery-identity-sql.md) restores the old-binary real baseline and reduces fixture Rust allocation requests, not proven latency/RSS/CPU. S04 must prove semantic readiness; initial-preparation exemption does not turn historical slow/failing samples into PASS. Exit still requires current full validation, ready-state navigation/diagnostic gate, randomized strategy samples and original >3 GB pressure case; [wait](../reports/2026-09-21-settings-initial-catalog-wait-experiment.md), [rejected A/B](../reports/2026-09-22-settings-sqlite-batch-rejected.md), [SQL stages](../reports/2026-09-22-settings-sqlite-stage-profile.md), [subphases](../reports/2026-09-22-settings-reference-insert-subphases.md) |
-| R-21 | Must | Ready-state full-response 500 ms contract | S01 public suite/control implemented; no product graduation. 56 exact references, 50 repeated cache hits; first-query/body-edit controls slow, READINESS_UNSUPPORTED and missing buckets retained | S00/S01/S12; each capability/bucket P95≤500 ms; preparation separate, normal edit/new symbol/module/eviction waits included; [contract](semantic-ready/product-contract.md), [S01 evidence](../reports/2026-09-29-semantic-ready-s01-baseline.md) |
+| R-21 | Must | Ready-state full-response 500 ms target / 550 ms acceptance | S01 public suite/control implemented; no product graduation. 56 exact references, 50 repeated cache hits; first-query/body-edit controls slow, READINESS_UNSUPPORTED and missing buckets retained | Each capability/bucket P95≤550 ms under the user-approved L08 contract; 500 ms remains the target. Preparation separate, normal edit/new symbol/module/eviction waits included; [contract](semantic-ready/product-contract.md), [historical S01 evidence](../reports/2026-09-29-semantic-ready-s01-baseline.md) |
 | R-22 | Must | Versioned semantic readiness | Planned; NOT_STARTED | S03/S04/S07; semantic owner consumes valid compiler-derived generation/input/coverage; candidate committedGeneration keeps its original meaning |
 | R-23 | Must | Bounded first preparation and progress/cancellation | Planned; NOT_STARTED | S04 after S02/S03; existing supervisor/Coordinator and standard progress; valid capability-ready only; whole lifecycle memory measured |
-| R-24 | Must | Definition/typeDefinition ready-state graduation | Existing capability; new path/graduation NOT_STARTED | S05/S09a/S12; compatible hot LS or proven projection; exact URI/UTF-16 sets and each normal bucket ≤500 ms; no unnecessary cold rebuild after references |
-| R-25 | Must | Implementations ready-state graduation | Existing capability; independent projection NOT_STARTED | S02/S08/S12; interfaces/override/generic/aliases/new implementations exact; references/lexical heritage are not implementation proof |
-| R-26 | Must | Completion/auto-import/hover/signature graduation | Existing capabilities; new reuse/graduation NOT_STARTED | S05/S09b/S12; official hot LS, current overlay, existing completion edit/sort/snippet/isIncomplete contracts; discovery not another whole-workspace Program |
-| R-27 | Must | Safe prepareRename/rename fast path | Existing capability; new path NOT_STARTED | S10a/b after S06/S07/S09; conflict/legality and complete versioned WorkspaceEdit; temporary-copy application validates result; positions alone are insufficient |
-| R-28 | Should | Call hierarchy ready-state routing | Existing capability; new path NOT_STARTED | S11a/b/c after S06/S07/S08; separately proven call projection, direction/fromRanges/item freshness; preserve old capability while ungraduated |
+| R-24 | Must | Definition/typeDefinition ready-state graduation | L06 stage DONE/default-off; final ready-state graduation open | L06 complete compiler semantics/current inputs/reuse/budget/cancel/recovery verified; historical S05/S09a/S12 remain research context. L08 exact URI/UTF-16, readiness and each normal bucket P95≤550ms (500ms target)/resource gates remain |
+| R-25 | Must | Implementations ready-state graduation | L05 stage DONE/default-off; final ready-state graduation open | L05 independent compiler semantics/input/budget/cancel/recovery verified; no failed S02 projection prerequisite. L08 readiness/P95/resource/soak/platform gates remain; references/lexical heritage are not implementation proof |
+| R-26 | Must | Completion/auto-import/hover/signature graduation | L06 stage DONE/default-off; final graduation open | L06 complete payload/current overlay/source/edit/sort/snippet/isIncomplete, stale resolve, selected budget/cancel/recovery verified; no second whole-workspace Program/owner. L08 readiness/P95/resource/soak/platform remain |
+| R-27 | Must | Safe prepareRename/rename fast path | L07 stage DONE/default-off; final graduation open | Current compiler route verifies representative conflicts, complete versioned WorkspaceEdit/actual application/current inputs/budget/recovery; real62/whole1511/terminal identities proven. Old S10 facts route remains historical, no positions-only substitution. Final conflict/dialect/readiness/P95/resource matrices at L08 |
+| R-28 | Should | Call hierarchy ready-state routing | L07 stage DONE/default-off; final graduation open | Independent current compiler directions/full items/fromRanges/freshness/whole-module follow-up/atomic limits; real62/whole1511/terminal identities proven, old S11 projection is not evidence. Existing capability preserved; final readiness/P95/resource/soak/platform at L08 |
 | R-29 | Must | Diagnostics and resource/formatting coexistence | Existing capabilities; new readiness regression NOT_STARTED | S09c/S12; normal diagnostics codes/ranges/versions and background freshness separate from request SLO; optimize only measured gaps, no second linter LS |
 
 R-20's linked full validation and >3 GB pressure checks in the table are product

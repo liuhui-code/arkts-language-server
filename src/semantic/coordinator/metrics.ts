@@ -1,3 +1,6 @@
+import fs from "node:fs"
+import type { TransientSemanticWorkerObserver } from "../transient-worker-lifecycle.js"
+
 export interface SemanticRuntimeMetricsInput {
   readonly memoryUsage: {
     readonly rss: number
@@ -39,4 +42,40 @@ export function semanticRuntimeMetrics(input: SemanticRuntimeMetricsInput): Sema
     openDocuments: input.openDocuments,
     leaseCount: input.leaseCount,
   })
+}
+
+/** Records observations only; pressure decisions remain with the runtime policy. */
+export function createSemanticRuntimeMetricsRecorder(
+  metricsPath: string | undefined,
+  getStats: () => Omit<SemanticRuntimeMetricsInput, "memoryUsage">,
+) {
+  const active = { reference: 0, anchor: 0, diagnostic: 0 }
+  const sample = (
+    memoryUsage = process.memoryUsage(),
+    stats = getStats(),
+  ): void => {
+    if (!metricsPath) return
+    try {
+      const transientVerifierCount = active.reference + active.anchor + active.diagnostic
+      const metrics = {
+        ...semanticRuntimeMetrics({ memoryUsage, ...stats }),
+        epochMs: Date.now(), monotonicNs: process.hrtime.bigint().toString(),
+        processId: process.pid, rssScope: "node-process", heapScope: "semantic-worker-isolate",
+        activeReferenceVerifierCount: active.reference,
+        activeAnchorVerifierCount: active.anchor,
+        activeDiagnosticVerifierCount: active.diagnostic,
+        transientVerifierCount,
+        totalSemanticWorkerCount: stats.semanticWorkerCount + transientVerifierCount,
+      }
+      fs.appendFileSync(metricsPath, `${JSON.stringify(metrics)}\n`)
+    } catch (error) {
+      process.stderr.write(`semantic metrics write failed: ${error instanceof Error ? error.message : String(error)}\n`)
+    }
+  }
+  const onTransientWorker: TransientSemanticWorkerObserver | undefined = metricsPath
+    ? (kind, phase) => {
+        active[kind] += phase === "started" ? 1 : -1
+        sample()
+      } : undefined
+  return { sample, onTransientWorker }
 }

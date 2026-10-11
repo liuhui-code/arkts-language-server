@@ -8,6 +8,7 @@ import { digestSdk } from "../semantic/lock-toolchain.mjs"
 import { applyTextEdits } from "../../tests/support/lsp-edits.mjs"
 import { loadOracle, validPosition } from "./reference-location-oracle.mjs"
 import { gitValue, projectRoot, readSdkMetadata, sha256File, validateInputs } from "./reference-replay-input.mjs"
+import { editCallKinds, editCallSelectionIdentity, isCallFollowup, validCallSelector } from "./prepared-edit-call.mjs"
 
 export const preparedBuckets = ["first-unseen-symbol", "first-unopened-module", "repeated-snapshot",
   "edit-body", "edit-reference", "edit-public-api", "after-eviction", "pressure-recovery-repeat",
@@ -17,8 +18,7 @@ export async function capturePreparedIdentity(options) {
   const assets = { ...options, file: options.file ?? gitFiles(options.workspace)[0],
     oracle: options.oracle ?? options.server, out: path.join(options.workspace, ".prepared-unused-output") }
   validateInputs(assets)
-  const transientDiagnosis = options.runtime?.env?.ARKTS_BENCHMARK_CONTROL === "1"
-    && options.runtime?.env?.ARKTS_L01_TRANSIENT_DIAGNOSTICS === "1"
+  const transientDiagnosis = (options.runtime?.env?.ARKTS_L01_TRANSIENT_DIAGNOSTICS ?? "1") === "1"
   const gcProbe = options.runtime?.env?.ARKTS_BENCHMARK_CONTROL === "1"
     && options.runtime?.env?.ARKTS_L01_POST_EVICTION_GC_PROBE === "1"
   if (transientDiagnosis && !/^[0-9a-f]{64}$/u.test(assets.diagnosticVerifierWorkerSha256 ?? "")) {
@@ -75,7 +75,8 @@ export async function readPreparedSuite(options) {
   for (const target of suite.targets) {
     if (typeof target.id !== "string" || !target.id || ids.has(target.id)) invalid("DUPLICATE_TARGET")
     ids.add(target.id)
-    if (!["references", "implementation", "definition", "typeDefinition"].includes(target.kind)) invalid("QUERY_KIND")
+    if (!["references", "implementation", "definition", "typeDefinition", "hover", "signatureHelp", "completion", "completionResolve", ...editCallKinds].includes(target.kind)) invalid("QUERY_KIND")
+    if (target.kind === "rename" && (typeof target.newName !== "string" || !target.newName)) invalid("RENAME_NAME")
     if (typeof target.moduleId !== "string" || !target.moduleId || typeof target.symbol !== "string") invalid("TARGET_IDENTITY")
     const source = localSource(suite.workspace, target.file)
     const text = fs.readFileSync(source, "utf8")
@@ -86,15 +87,32 @@ export async function readPreparedSuite(options) {
     const after = token.slice(target.position.character).match(/^[$\p{ID_Continue}]*/u)?.[0] ?? ""
     if (before + after !== target.symbol) invalid("SYMBOL_POSITION")
     if (target.kind === "references" && typeof target.includeDeclaration !== "boolean") invalid("DECLARATION_POLICY")
-    const identity = JSON.stringify([target.file, target.symbol, target.position, target.kind, target.includeDeclaration])
+    const identity = JSON.stringify([target.file, target.symbol, target.position, target.kind, target.includeDeclaration,
+      ...completionSelectionIdentity(target)])
     if (identities.has(identity)) invalid("DUPLICATE_TARGET")
     identities.add(identity)
     if (target.oracle?.verified !== true || typeof target.oracle.path !== "string"
       || !/^[0-9a-f]{64}$/u.test(target.oracle.sha256 ?? "")) invalid("ORACLE_PIN")
     target.oracle.path = path.resolve(target.oracle.path)
     if (sha256File(target.oracle.path) !== target.oracle.sha256) invalid("ORACLE_MISMATCH")
-    target.expected = loadOracle(target.oracle.path, suite.workspace)
+    target.expected = loadPreparedOracle(target.oracle.path, target.kind, suite.workspace)
     if (hasDuplicateLocations(target.expected)) invalid("ORACLE_DUPLICATE")
+  }
+  for (const target of suite.targets.filter(item => item.kind === "completionResolve")) {
+    const source = suite.targets.find(item => item.id === target.completionTargetId)
+    const selector = target.completionSelector
+    if (source?.kind !== "completion" || source.file !== target.file
+      || source.position.line !== target.position.line || source.position.character !== target.position.character
+      || !selector || typeof selector.label !== "string" || !selector.label
+      || Object.keys(selector).some(key => !["label", "detail", "kind"].includes(key))
+      || (selector.detail !== undefined && typeof selector.detail !== "string")
+      || (selector.kind !== undefined && !Number.isInteger(selector.kind))) invalid("RESOLVE_SOURCE")
+  }
+  for (const target of suite.targets.filter(item => isCallFollowup(item.kind))) {
+    const source = suite.targets.find(item => item.id === target.callHierarchyTargetId)
+    if (source?.kind !== "prepareCallHierarchy" || source.file !== target.file
+      || source.position.line !== target.position.line || source.position.character !== target.position.character
+      || !validCallSelector(target.callHierarchySelector)) invalid("CALL_SOURCE")
   }
   if (suite.preOpenTargetIds !== undefined) {
     if (!Array.isArray(suite.preOpenTargetIds)) invalid("PREOPEN_TARGET")
@@ -117,12 +135,17 @@ export async function readPreparedSuite(options) {
     if (typeof scenario.id !== "string" || !scenario.id || scenarioIds.has(scenario.id)) invalid("DUPLICATE_SCENARIO")
     scenarioIds.add(scenario.id)
     if (!preparedBuckets.includes(scenario.bucket) || !ids.has(scenario.targetId)) invalid("SCENARIO_TARGET")
+    if (scenario.acceptObservedEviction !== undefined && (typeof scenario.acceptObservedEviction !== "boolean"
+      || !["after-eviction", "pressure-recovery-repeat"].includes(scenario.bucket))) {
+      invalid("OBSERVED_EVICTION_CONTROL")
+    }
     if (scenario.waitForPreOpenDiagnostics !== undefined) {
       if (scenario.waitForPreOpenDiagnostics !== true || !suite.preOpenTargetIds?.length
         || scenarioIndex === 0 || snapshot > 0 || scenario.edit) invalid("PREOPEN_DIAGNOSTIC_BARRIER")
     }
     const target = suite.targets.find(item => item.id === scenario.targetId)
-    const selection = JSON.stringify([target.kind, target.file, target.symbol, target.position])
+    const selection = JSON.stringify([target.kind, target.file, target.symbol, target.position,
+      ...completionSelectionIdentity(target)])
     const queryIdentity = JSON.stringify([selection, target.includeDeclaration])
     if (Boolean(scenario.edit) !== scenario.bucket.startsWith("edit-")) invalid("EDIT_BUCKET_MISMATCH")
     if (scenario.edit) snapshot++
@@ -146,7 +169,7 @@ export async function readPreparedSuite(options) {
       scenario.edit.oracle.path = path.resolve(scenario.edit.oracle.path)
       if (sha256File(scenario.edit.oracle.path) !== scenario.edit.oracle.sha256) invalid("EDIT_ORACLE")
       const overlays = new Map([...editedTexts].map(([file, text]) => [pathToFileURL(file).href, text]))
-      const nextOracle = loadOracle(scenario.edit.oracle.path, suite.workspace, overlays)
+      const nextOracle = loadPreparedOracle(scenario.edit.oracle.path, target.kind, suite.workspace, overlays)
       if (hasDuplicateLocations(nextOracle)) invalid("EDIT_ORACLE_DUPLICATE")
       if (scenario.bucket === "edit-reference" && (target.kind !== "references"
         || sameOracleLocations(nextOracle, editedOracles.get(queryIdentity) ?? target.expected))) {
@@ -179,12 +202,31 @@ export function digestJson(value) {
   return crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex")
 }
 
+export function isPreparedPayloadKind(kind) {
+  return ["hover", "signatureHelp", "completion", "completionResolve", ...editCallKinds].includes(kind)
+}
+
+export function completionSelectionIdentity(target) {
+  return target.kind === "completionResolve" ? [target.completionTargetId,
+    target.completionSelector?.label, target.completionSelector?.detail, target.completionSelector?.kind] : editCallSelectionIdentity(target)
+}
+
+export function loadPreparedOracle(file, kind, workspace, overlays) {
+  if (!isPreparedPayloadKind(kind)) return loadOracle(file, workspace, overlays)
+  const oracle = JSON.parse(fs.readFileSync(file, "utf8"))
+  if (oracle.schemaVersion !== 1 || oracle.kind !== kind || !Object.hasOwn(oracle, "result")) {
+    throw new Error("PREPARED_SUITE_INVALID=PAYLOAD_ORACLE")
+  }
+  return oracle
+}
+
 function locationKeys(oracle) {
   return oracle.locations.map(({ file, range: { start, end } }) =>
     JSON.stringify([file, start.line, start.character, end.line, end.character]))
 }
 
 function hasDuplicateLocations(oracle) {
+  if (isPreparedPayloadKind(oracle.kind)) return false
   const keys = locationKeys(oracle)
   return new Set(keys).size !== keys.length
 }

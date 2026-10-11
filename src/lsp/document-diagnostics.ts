@@ -93,7 +93,14 @@ export function createDocumentDiagnostics({
           diagnostics: result.value.map(toLspDiagnostic),
         })
       } catch (error) {
-        if (!controller.signal.aborted) {
+        const current = documents.get(document.uri)
+        if (!controller.signal.aborted && !disposed && current
+          && pending.get(document.uri)?.controller === controller
+          && error instanceof Error && "code" in error && error.code === "content-modified") {
+          // Workspace mutations can invalidate a diagnosis without changing this document.
+          // Keep the snapshot fence, then schedule a fresh diagnosis through the normal debounce.
+          update(current)
+        } else if (!controller.signal.aborted) {
           connection.console.error(`ArkTS diagnostics failed: ${errorMessage(error)}`)
         }
       } finally {

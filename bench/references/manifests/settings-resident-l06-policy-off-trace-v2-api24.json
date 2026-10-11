@@ -1,0 +1,327 @@
+{
+  "schemaVersion": 1,
+  "benchmarkId": "settings-resident-L06-policy-off-trace-api24-20261009-v2",
+  "seed": 20261009,
+  "workspace": ".bench/real-projects/settings-ecc550",
+  "sdk": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony",
+  "server": "dist/server.cjs",
+  "sidecar": "target/release/arkts-index-sidecar",
+  "pins": {
+    "repoSha": "ecc550dfaed880e04e38a2477eb7235cd50475b9",
+    "workspaceStatus": "",
+    "workspaceFilesSha256": "4becf56cb2ff65cc58bd1ae53b6937b194f9020770ad397e526f3a51b85b0d40",
+    "serverRevision": "1b9101520b0d7d3358e4ce8f27f0bfcc06db902f",
+    "serverInputSha256": "c0200935a9fe93c27082198e53d03adf316529759a716897a03125890f95e440",
+    "serverSha256": "cc226afaf43d12981415c211cec0a548e5777b24a921ba23e4e8a234e60aa1ed",
+    "sidecarSha256": "84597a63c396ceaf2a84a3ded455b5cc29d21b6c4ad3c049f7b3ca820c2fd796",
+    "semanticWorkerSha256": "f22aa8ead53077d50647f73a12bb68f6c96aee588c88f0d67c19a37ffcd57f6e",
+    "referenceVerifierWorkerSha256": "31576a4a855c40faee969b6079b3b0c8eb407ebc570fea764ff7cf349b219edd",
+    "diagnosticVerifierWorkerSha256": "8442b151680f6442489c57e0db20a6b34d05167785118dde4bc5698f284244e2",
+    "standardLibrarySha256": "ea78beea2aa84f93fe66645465c37eb916028b79cd9fe898d469bdf54efbf97d",
+    "nodeVersion": "v26.3.0",
+    "backendVersion": "4.9.5-r10",
+    "backendSha256": "af9e3c4689e3250de1d869b219abb76081c6ea1d3df81bd6b8f6a74c3174b6bc",
+    "lockfileSha256": "ece84ab0afea7a411c453aac7371f0e47381455c5e3cc03f639adff9d2bf1131",
+    "memoryGatesSha256": "ac23114be952a5fe5c030040937d3c97aec1cecdda2ba42e4dbb854f89b37570",
+    "sdkMetadata": {
+      "apiVersion": "24",
+      "displayName": "Ets",
+      "meta": {
+        "metaVersion": "3.0.0"
+      },
+      "path": "ets",
+      "releaseType": "Release",
+      "version": "6.1.1.125"
+    },
+    "sdkDeclarationDigest": "8098b8abbc6b06fce0e7322d6f8f82a5bbce41e847dbd39e9a98811a33d4c6e4"
+  },
+  "runtime": {
+    "timeoutMs": 180000,
+    "diagnosticTimeoutMs": 180000,
+    "env": {
+      "ARKTS_REFERENCES_STRATEGY": "indexed-batched",
+      "ARKTS_REFERENCES_DEPENDENCY_PROFILE": "closure",
+      "ARKTS_REFERENCES_SDK_AMBIENT_PROFILE": "full",
+      "ARKTS_REFERENCES_CONTEXT_RETENTION": "budget-aware",
+      "ARKTS_SEMANTIC_SESSION_REUSE": "off",
+      "ARKTS_REFERENCES_ANCHOR_REUSE": "0",
+      "ARKTS_REFERENCES_RESIDENT_FAST_PATH": "0",
+      "ARKTS_MEMORY_BUDGET_MB": "1024",
+      "ARKTS_REFERENCES_TRACE": "1",
+      "ARKTS_BENCHMARK_CONTROL": "1",
+      "ARKTS_L01_SEMANTIC_WORKER_RECYCLE": "0",
+      "ARKTS_L02_SAME_CONTENT_PROMOTION": "0",
+      "ARKTS_L03_PRESSURE_WORKER_RECYCLE": "0",
+      "ARKTS_L01_PRESSURE_ADMISSION": "1",
+      "ARKTS_L03_COST_AWARE_EVICTION": "1",
+      "ARKTS_L01_TRANSIENT_DIAGNOSTICS": "1",
+      "ARKTS_REFERENCES_BATCH_ROOTS": "64",
+      "ARKTS_REFERENCES_CONSTRUCTOR_SCOPE": "0",
+      "ARKTS_REFERENCES_CONSERVATIVE_SEMANTIC_UNITS": "0",
+      "ARKTS_REFERENCES_LOCAL_EXPORT_ANCHOR": "0",
+      "ARKTS_MEMORY_METRICS_FILE": "/Users/liuhui/Documents/code/arkts-language-server/.bench/l06-policy-off-trace-v2-1.metrics.jsonl"
+    },
+    "sampleIntervalMs": 50,
+    "postIdleMs": 5000
+  },
+  "readiness": {
+    "candidateControl": true
+  },
+  "preOpenTargetIds": [
+    "iservice"
+  ],
+  "targets": [
+    {
+      "id": "iservice",
+      "moduleId": "common",
+      "file": "common/src/main/ets/stub/BaseServiceStub.ts",
+      "sourceSha256": "3baf7faf6c9b711831a22b2e91a06e8942d2c947a2687b29bc3cc435c2066ceb",
+      "kind": "implementation",
+      "symbol": "IService",
+      "position": {
+        "line": 26,
+        "character": 18
+      },
+      "oracle": {
+        "path": "bench/references/oracles/settings-resident-l06-policy-iservice-v2-api24.json",
+        "sha256": "ced4a077dda81e1955a4c7496cf057374329a24a03972132fbdbc96a16455418",
+        "verified": true
+      }
+    },
+    {
+      "id": "definition",
+      "moduleId": "product/phone/aboutdevice",
+      "file": "product/phone/src/main/ets/Setting/AboutDevice/SubHome/view/AboutDeviceSettingsComponent.ets",
+      "sourceSha256": "cf0c565bf22eb94e91e1bbe2b8fba4c752282ae9cfbdccd68234eb6f6261b067",
+      "kind": "definition",
+      "symbol": "setPageModel",
+      "position": {
+        "line": 53,
+        "character": 24
+      },
+      "oracle": {
+        "path": "bench/references/oracles/settings-resident-l06-policy-definition-v2-api24.json",
+        "sha256": "dad85dc36c7f3c89324506bdb091b6185b75c8f5fbb64d8dad81c83f490a8e70",
+        "verified": true
+      }
+    },
+    {
+      "id": "typeDefinition",
+      "moduleId": "product/phone/aboutdevice",
+      "file": "product/phone/src/main/ets/Setting/AboutDevice/SubHome/view/AboutDeviceSettingsComponent.ets",
+      "sourceSha256": "cf0c565bf22eb94e91e1bbe2b8fba4c752282ae9cfbdccd68234eb6f6261b067",
+      "kind": "typeDefinition",
+      "symbol": "controller",
+      "position": {
+        "line": 53,
+        "character": 13
+      },
+      "oracle": {
+        "path": "bench/references/oracles/settings-resident-l06-policy-typeDefinition-v2-api24.json",
+        "sha256": "9e2de317bc7f79a82619764050ac212c6ee044575d1a9f9cdf3d1838a180c9b6",
+        "verified": true
+      }
+    },
+    {
+      "id": "hover",
+      "moduleId": "product/phone/aboutdevice",
+      "file": "product/phone/src/main/ets/Setting/AboutDevice/SubHome/view/AboutDeviceSettingsComponent.ets",
+      "sourceSha256": "cf0c565bf22eb94e91e1bbe2b8fba4c752282ae9cfbdccd68234eb6f6261b067",
+      "kind": "hover",
+      "symbol": "setPageModel",
+      "position": {
+        "line": 53,
+        "character": 24
+      },
+      "oracle": {
+        "path": "bench/references/oracles/settings-resident-l06-policy-hover-v2-api24.json",
+        "sha256": "098939e99cbb0ab4030cca6af558577b8ef535c6386165e867cd88f76ce3f68d",
+        "verified": true
+      }
+    },
+    {
+      "id": "signatureHelp",
+      "moduleId": "product/phone/aboutdevice",
+      "file": "product/phone/src/main/ets/Setting/AboutDevice/SubHome/view/AboutDeviceSettingsComponent.ets",
+      "sourceSha256": "cf0c565bf22eb94e91e1bbe2b8fba4c752282ae9cfbdccd68234eb6f6261b067",
+      "kind": "signatureHelp",
+      "symbol": "pageModel",
+      "position": {
+        "line": 53,
+        "character": 42
+      },
+      "oracle": {
+        "path": "bench/references/oracles/settings-resident-l06-policy-signatureHelp-v2-api24.json",
+        "sha256": "16b47466295399af303e0bfb0afe3c4a353593485062419ee3b95de09f10764e",
+        "verified": true
+      }
+    },
+    {
+      "id": "completion",
+      "moduleId": "product/phone/aboutdevice",
+      "file": "product/phone/src/main/ets/Setting/AboutDevice/SubHome/view/AboutDeviceSettingsComponent.ets",
+      "sourceSha256": "cf0c565bf22eb94e91e1bbe2b8fba4c752282ae9cfbdccd68234eb6f6261b067",
+      "kind": "completion",
+      "symbol": "setPageModel",
+      "position": {
+        "line": 53,
+        "character": 20
+      },
+      "oracle": {
+        "path": "bench/references/oracles/settings-resident-l06-policy-completion-v2-api24.json",
+        "sha256": "17ce0508e4b2db51eec36b98163a88fe5dc8d577eb1a6074ceb9bb4f95dbd691",
+        "verified": true
+      }
+    },
+    {
+      "id": "completionResolve",
+      "moduleId": "product/phone/aboutdevice",
+      "file": "product/phone/src/main/ets/Setting/AboutDevice/SubHome/view/AboutDeviceSettingsComponent.ets",
+      "sourceSha256": "cf0c565bf22eb94e91e1bbe2b8fba4c752282ae9cfbdccd68234eb6f6261b067",
+      "kind": "completionResolve",
+      "symbol": "setPageModel",
+      "position": {
+        "line": 53,
+        "character": 20
+      },
+      "completionSelector": {
+        "label": "setPageModel"
+      },
+      "oracle": {
+        "path": "bench/references/oracles/settings-resident-l06-policy-completionResolve-v2-api24.json",
+        "sha256": "3274e28102c38d7001490b06c419d44172d236d46cbd17b218f7adcd6a005e4d",
+        "verified": true
+      },
+      "completionTargetId": "completion"
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "warm-iservice",
+      "bucket": "first-unseen-symbol",
+      "targetId": "iservice"
+    },
+    {
+      "id": "unseen-definition",
+      "bucket": "first-unseen-symbol",
+      "targetId": "definition"
+    },
+    {
+      "id": "unseen-typeDefinition",
+      "bucket": "first-unseen-symbol",
+      "targetId": "typeDefinition"
+    },
+    {
+      "id": "unseen-hover",
+      "bucket": "first-unseen-symbol",
+      "targetId": "hover"
+    },
+    {
+      "id": "unseen-signatureHelp",
+      "bucket": "first-unseen-symbol",
+      "targetId": "signatureHelp"
+    },
+    {
+      "id": "unseen-completion",
+      "bucket": "first-unseen-symbol",
+      "targetId": "completion"
+    },
+    {
+      "id": "unseen-completionResolve",
+      "bucket": "first-unseen-symbol",
+      "targetId": "completionResolve"
+    },
+    {
+      "id": "steady-definition",
+      "bucket": "repeated-snapshot",
+      "targetId": "definition"
+    },
+    {
+      "id": "steady-typeDefinition",
+      "bucket": "repeated-snapshot",
+      "targetId": "typeDefinition"
+    },
+    {
+      "id": "steady-hover",
+      "bucket": "repeated-snapshot",
+      "targetId": "hover"
+    },
+    {
+      "id": "steady-signatureHelp",
+      "bucket": "repeated-snapshot",
+      "targetId": "signatureHelp"
+    },
+    {
+      "id": "steady-completion",
+      "bucket": "repeated-snapshot",
+      "targetId": "completion"
+    },
+    {
+      "id": "steady-completionResolve",
+      "bucket": "repeated-snapshot",
+      "targetId": "completionResolve"
+    },
+    {
+      "id": "hover-body-edit",
+      "bucket": "edit-body",
+      "targetId": "hover",
+      "edit": {
+        "file": "product/phone/src/main/ets/Setting/AboutDevice/SubHome/view/AboutDeviceSettingsComponent.ets",
+        "changes": [
+          {
+            "range": {
+              "start": {
+                "line": 54,
+                "character": 0
+              },
+              "end": {
+                "line": 54,
+                "character": 0
+              }
+            },
+            "newText": "    // L06 pinned unsaved body overlay 😀\n"
+          }
+        ],
+        "sha256": "6cb0cd811882868db59009e9b0ed600a3d58a0a0685487116427f98190920471",
+        "oracle": {
+          "path": "bench/references/oracles/settings-resident-l06-policy-hover-edited-v2-api24.json",
+          "sha256": "9b8bcba2c6638e939865cc1e42de0e3a5d72c699e2eeda907288cfe16c298b3e",
+          "verified": true
+        }
+      }
+    },
+    {
+      "id": "steady-edited-hover",
+      "bucket": "repeated-snapshot",
+      "targetId": "hover"
+    },
+    {
+      "id": "hover-pressure-recovery",
+      "bucket": "pressure-recovery-repeat",
+      "targetId": "hover",
+      "acceptObservedEviction": true
+    }
+  ],
+  "oracleProvenance": {
+    "kind": "current-two-independent-cold-processes",
+    "reports": [
+      ".bench/l06-policy-definition-cold-v2-1.json",
+      ".bench/l06-policy-definition-cold-v2-2.json",
+      ".bench/l06-policy-typeDefinition-cold-v2-1.json",
+      ".bench/l06-policy-typeDefinition-cold-v2-2.json",
+      ".bench/l06-policy-hover-cold-v2-1.json",
+      ".bench/l06-policy-hover-cold-v2-2.json",
+      ".bench/l06-policy-signatureHelp-cold-v2-1.json",
+      ".bench/l06-policy-signatureHelp-cold-v2-2.json",
+      ".bench/l06-policy-completion-cold-v2-1.json",
+      ".bench/l06-policy-completion-cold-v2-2.json",
+      ".bench/l06-policy-completionResolve-cold-v2-1.json",
+      ".bench/l06-policy-completionResolve-cold-v2-2.json",
+      ".bench/l06-policy-hover-edited-cold-v2-1.json",
+      ".bench/l06-policy-hover-edited-cold-v2-2.json",
+      ".bench/l06-policy-iservice-cold-v2-1.json",
+      ".bench/l06-policy-iservice-cold-v2-2.json"
+    ],
+    "edit": "Pinned v2 unsaved comment inside aboutToAppear after the unchanged target call; independently observed v2 diagnostics and complete hover payload; original disk and SDK unchanged."
+  }
+}

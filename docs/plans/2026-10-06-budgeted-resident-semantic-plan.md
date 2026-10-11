@@ -1,6 +1,10 @@
 # ArkTS 预算约束长驻语义会话：L01–L08 执行计划
 
-日期：2026-10-06。状态：**当前实施主线；L01 IN_PROGRESS（首轮精确控制通过，性能稳定性未达标，100-edit 资源控制未获准入）**。
+2026-10-11 当前默认/交付政策由[ADR 0015](../adr/0015-default-resident-optimization-policy.md)
+更新：维护者授权六项组合默认开启，完整回归通过后通过PR先合入main。
+下方默认关闭和验收后推广记录为历史状态，L08仍IN_PROGRESS。
+
+初始日期：2026-10-06；推进规则更新：2026-10-08；L03–L05完成审计：2026-10-09；L06–L07完成审计：2026-10-10。状态：**当前实施主线；L01基线继续保留；L03–L07阶段DONE／实验默认关闭；L02 IN_PROGRESS；最终产品验收统一在L08**。
 本计划接续 [2026-09-29 semantic-ready 计划](2026-09-29-semantic-ready-execution-plan.md)
 的需求与失败证据，不把旧 S-series 的阶段或 S05 候选重标成功。
 [ADR 0014](../adr/0014-budgeted-long-lived-semantic-session.md) 仅批准可证伪的
@@ -30,17 +34,30 @@ L01 resident-LS 可证伪基线
 | Stage | 当前状态 | 实施资格与结果 |
 | --- | --- | --- |
 | L01 | **IN_PROGRESS；真实符号、单次未保存编辑、单次 L3 恢复及 `findReferences` 进行中取消/恢复精确；500 ms 稳定性 NOT_MET，前置准备取消及时性/长期资源门禁未完成** | [首轮](../reports/2026-10-06-resident-l01-baseline.md)：42/42 exact，同文件未查符号 286/1,025/267 ms；[预打开](../reports/2026-10-06-resident-l01-preopen.md)：15/15 exact，跨文件未查符号 166/156/165 ms；[声明位置 A/B/C](../reports/2026-10-06-resident-l01-declarations-ab.md)：默认 indexed 与 legacy 各 2 个新进程、每进程 4/4 exact，indexed 跨文件未查符号 8.061/23.880 s，legacy 同快照 178/225 ms；[未保存编辑](../reports/2026-10-06-resident-l01-unsaved-reference-edit.md)：三进程 12/12 exact、9→10 引用及 v2 诊断，编辑后首次 1.371–1.597 s；[L3 恢复](../reports/2026-10-06-resident-l01-l3-recovery.md)：显式驱逐后未查符号 10/10 exact，trace-on 13.797 s，后续又见自动驱逐；[取消控制](../reports/2026-10-06-resident-l01-cancel-control.md)：queue-start 后唯一 `-32800`、无部分结果，随后 9/9 refs 与 definition exact；[调用级取消](../reports/2026-10-06-resident-l01-find-references-cancel.md)：三进程在 TypeScript `findReferences` 内 2–12 ms 抛取消，9/9 exact 恢复；首次进入该调用前仍用约 7.9–9.0 s；[跨模块 definition](../reports/2026-10-06-resident-l01-hot-definition.md)：三进程 6/6 exact，未查符号 1,060/858/777 ms。Program/Checker 身份只在有 trace 的查询后观察，definition 本轮无身份探针；不改变生产路由 |
-| L02 | NOT_STARTED／provisional | 仅在 L01 精确性、新鲜度、取消及新路径资源安全通过后研究；L01 性能 FAIL 如实带入 |
-| L03 | NOT_STARTED／provisional | 依据 L01/L02 实测 RSS/PSS 定 soft budget，不先提高上限 |
-| L04 | NOT_STARTED／provisional | 完整 scope 与资源准入后逐能力试 resident references；transient exact fallback 保留 |
-| L05 | NOT_STARTED／provisional | implementations 独立语义与资源门禁 |
-| L06 | NOT_STARTED／provisional | definition/completion/hover 等交互能力逐项门禁 |
-| L07 | NOT_STARTED／provisional | rename/calls 独立合同 |
-| L08 | NOT_STARTED／release-blocked | soak、分桶 P95、原内存与跨平台产品门禁均未通过 |
+| L02 | IN_PROGRESS／默认关闭实验 | 同内容晋升干预 A/B 已实现；API/import/create/delete/open-close/SDK/package/target 公开合同通过，修复 target 首次空定位；三对真实编辑 exact、AST 复用，但 >500 ms 且未证明晋升机制收益；更长序列/未知 delta/恢复组合继续验证，最终指标不作为阶段前置 |
+| L03 | DONE／阶段实施与校准完成；实验默认关闭 | [完成审计](../reports/2026-10-09-resident-l03-completion-audit.md) A～E PASS：同进程 RSS 预算、成本感知回收、压力准入、最新诊断与恢复合同齐备；[当前公开控制](../tdd/l03-cost-aware-pressure-recovery.md) 20/20、回放器 35/35、完整 check:fast 1439/1439 PASS，终态身份一致；[固定构建校准](../reports/2026-10-09-resident-l03-budget-policy-calibration.md) 选定配置/对照 26/26 exact、诊断一致。保留 1024 MiB 与原滞回，自动 Worker 替换不纳入选定配置；无最终内存收益或 readiness 毕业结论，产品门禁交 L08。历史检查点及失败记录见本阶段正文 |
+| L04 | DONE／阶段接线与校准完成；R-09 默认关闭 | [完成审计](../reports/2026-10-09-resident-l04-completion-audit.md) A～E PASS；[选定 L03 政策的公开组合](../tdd/l04-budget-policy-reference-contracts.md) 当前 10/10，完整 check:fast 1449/1449 PASS、终态身份一致。[同构建真实对照](../reports/2026-10-09-resident-l04-budget-policy-integration.md) 两种声明策略 ON/OFF、独立 trace/timing 八进程 52 项 exact，四对集合/诊断一致；首次新符号实际复用完整同一 Program、9/10 refs、零 build/verifier。新引用 timing 915/937 ms，准备更慢、峰值更高，不宣称最终资源收益或 ready；最终指标交 L08。旧 45/48 FAIL、16/16 exact/miss、48/48 及 1.31/1.21 s 热命中检查点保留 |
+| L05 | DONE／独立 implementations 接线与校准完成；实验默认关闭 | [完成审计](../reports/2026-10-09-resident-l05-completion-audit.md) A～E PASS；[选定政策公开合同](../tdd/l05-budget-policy-implementation-contracts.md)23项、联合132/132，完整check:fast1467/1467、终态身份一致；[当前真实控制](../reports/2026-10-09-resident-l05-budget-policy-integration.md)四进程22/22 exact、两对最新诊断一致，R-09 OFF仍独立完整语义与真实Program复用。修复根membership丢失、未知范围partial成功和旧配置结果；未查628/677ms、恢复约13s及峰值风险交L08，不推广默认 |
+| L06 | DONE／阶段交互接线与校准完成；实验默认关闭 | [完成审计](../reports/2026-10-10-resident-l06-completion-audit.md)A～E PASS；19项公开合同、联合252/252、全新完整check:fast1492/1492及终态身份一致。[第五轮真实对照](../reports/2026-10-10-resident-l06-budget-policy-integration-v5.md)16冷基线、62/62、两对完整payload/最新诊断一致，实际Program复用成立；四轮whole失败及容量RED不重写。慢准备/恢复、>500ms及峰值风险交L08，按用户授权立即继续L07 |
+| L07 | DONE／阶段编辑与调用接线、校准和收口完成；实验默认关闭 | [完成审计](../reports/2026-10-10-resident-l07-completion-audit.md)A–E PASS：25生产公开合同、此前157联合/50工具、新caller修复后93联合；[当前真实D](../reports/2026-10-10-resident-l07-budget-policy-integration-v4.md)16同产品冷基线、62/62、两对完整payload/最新诊断/身份一致，实际11源晋升/未查Program复用及OFF重建反事实成立。全新完整check:fast1511/1511、根退出0、无fail/cancel/skip/todo，所有冻结终态身份一致；旧失败/未晋升/88/72历史保留；最终指标在L08 |
+| L08 | IN_PROGRESS／release-blocked | [最终执行记录](2026-10-10-l08-final-validation.md)已启动；冻结完整核心能力/场景/平台矩阵并按TDD建立证据入口。soak、分桶P95、原内存与跨平台产品门禁均未通过 |
 
-L01 正确性/完整性/新鲜度/取消/资源安全失败时停止该新路径并归因；
-实测新符号 >500 ms 时，保留 `PERFORMANCE_FAIL`，仍可继续 L02
-**增量有效性实验**，但不能生产接线、默认推广或声称目标达成。
+## 阶段继续与 L08 最终验收（2026-10-08 更新）
+
+用户明确要求：**最后验证放在 L08，不用最终目标阻塞前面的计划。**
+L01–L07 按各阶段的功能实现、公开 LSP 回归和可重放证据推进；
+500 ms、最终峰值下降、DevEco/PSS、长期 soak、规模与跨平台验收均在
+L08 统一判定。上述指标 FAIL/BLOCKED/NOT_RUN 如实保留，作为后续阶段
+要解决的问题，不作为进入 L02–L07 的前置，也不把本阶段状态重标成功。
+
+正确性、完整结果、overlay/快照新鲜度、协议、取消及可停止/回收的执行
+保护仍逐切片验证。预声明实验停止线、独立进程和默认关闭开关保护运行；
+遇到错误结果、丢失编辑、取消失效、OOM 或不能停止/清理时，停止受影响
+的实验运行并修复或回退，不把其它独立实现切片一并冻结。
+资源超限、驱逐重建和慢 fallback 的原因带入 L02 增量与 L03 预算改进；
+最终内存目标未达到本身不等于禁止继续实验。
+
+L04–L07 可在默认关闭开关下逐能力接线；默认推广与产品发布等待 L08。
 不为了让结果通过而缩小合法工程边界、提高预算、禁用诊断、改超时
 或用已缓存目标替代新符号。后续阶段都是 **provisional**，不是
 已获生产准入。最终产品毕业仍要求全部适用性能和原内存门禁通过。
@@ -63,7 +80,7 @@ L01 正确性/完整性/新鲜度/取消/资源安全失败时停止该新路径
   排队、更新等待、fallback、结果映射及序列化；错误、超时、OOM、
   空结果和部分成功分别记账，不从分母删除。
 
-## L01 — 一个完整 LS 的真实工程基线（当前）
+## L01 — 一个完整 LS 的真实工程基线
 
 目标是验证因果假说：首次 Program/Checker 准备成本若被有效 LS 支付并
 留在同一进程，**另一个此前未查询的真实符号**是否能在预算内完整回答。
@@ -84,15 +101,20 @@ L01 正确性/完整性/新鲜度/取消/资源安全失败时停止该新路径
    用独立实验进程及预声明压力停止线保护本机；达到资源停止线、OOM
    或超时均记录为相应 FAIL，绝不当作完整响应或隐藏样本。
 4. C 的逐位置 exact set、诊断、快照、新鲜度与取消/显式错误必须正确，
-   现有内存/资源门禁不得回归。通过这些**安全门禁**才允许 L02 的
-   增量有效性实验。另记新符号完整响应是否≤500 ms；超出则时延
-   `PERFORMANCE_FAIL`，保存曲线并调查具体重建/等待阶段，但不把
-   L02 错标为禁止研究。不提前实施 L04 生产路由或宣称 L01 毕业。
-   一次 C 成功也不等于分桶 P95 产品毕业。
+   运行须可停止和清理；缺陷按受影响切片修复或回退。保留内存、时延、
+   驱逐/恢复和未测项的实测状态，交给 L02/L03 改进；不要求 L01 先通过
+   最终内存或 500 ms 目标。新符号 >500 ms 仍记 `PERFORMANCE_FAIL`。
+   L01 提供可重放的机制基线和后续假说，L08 才判定整体产品毕业。
 
 L01 交付：一条可重放命令、固定 manifest、原始响应和规范化 oracle、
-时序与 RSS 曲线、Program 身份证据、A/B/C 差分、分开的安全继续判定
-与性能/产品判定；性能 FAIL 不被安全 GO 冲淡。
+时序与 RSS 曲线、Program 身份证据、A/B/C 差分、切片功能与执行保护
+结果，以及带入 L02/L03 的未解问题；产品指标保留原状态，L08 最终验收。
+
+## L01 证据快照与当时判定
+
+以下保留各轮原始事实、失败和当时的准入结论。其中“L01 BLOCKED”、
+“L02 未获准入”及下一安全切片等历史措辞，均不再作为当前阶段依赖；
+当前推进按上面的 2026-10-08 规则执行。原始报告不重写，失败不改标 PASS。
 
 当前声明位置对照进一步隔离了缓存误判：`MenuController` 和
 `HomeInitData` 都使用真实 declaration 光标、`includeDeclaration=true`、
@@ -360,28 +382,171 @@ stale-overlay 缺陷。该结果不是自动回收许可：查询前 RSS 没有�
 回落，100-edit/保守多批/原始 >3 GB/PSS/跨平台与 ready-state 门禁未过；
 L01 资源准入继续 BLOCKED，L02 不进入生产接线。
 
-## L02 — 增量刷新与语义新鲜度（L01 GO 后）
+## L02 — 增量刷新与语义新鲜度（使用 L01 可重放基线）
 
 先对函数体普通编辑做 real-LSP RED/GREEN：未保存 overlay、文件版本和
 compiler snapshots 必须指向同一最新输入；记录 Program 是否换代、
 未变更 SourceFile/SDK AST 的真实复用、重建阶段和 complete answer。
 **Program 换代本身不等于增量失败，也不应要求编辑后保持同一个 Program；**
-L02 要证明的是正确的新代际能避免不必要的全域重做，并在资源预算内
-缩短完整响应。当前 L01 trace 已见编辑后 1495/1496 个 project
+L02 要证明的是正确的新代际能避免不必要的全域重做，并测量完整响应与
+资源成本；未达到最终指标带入 L03/L08，不阻止本阶段实验。
+L01 trace 已见编辑后 1495/1496 个 project
 SourceFile 和 652/652 个 SDK SourceFile 被复用，但分组 Program 构建仍
 约 1.08 s，故仅 AST 复用远不足以判 L02 通过。之后分别验证 public API、import、文件
 创建/删除、package 和 SDK/target 变化，按失效范围重建而非复用旧状态。
 任何未知依赖、版本跳跃或不可验证 delta 均保守重建；若结果滞后，
 停用该快路径。S05 rejected compatible-disk flag 不作为 L02 已通过证据。
 
-## L03 — 统一预算与成本感知回收（L02 安全后）
+当前切片见 [L02 同内容晋升报告](../reports/2026-10-08-resident-l02-same-content-promotion.md)
+与 [公开 LSP TDD](../tdd/l02-same-content-promotion.md)：只在 benchmark 双开关下
+对有界、当前 membership 的同指纹 lazy 读取保留 script version；
+真实内容变更、删除/通知及 membership 变化仍失效。Program 本体、文本
+权威和生产路由不另建；API/import/create/delete/package/SDK 各边界及
+真实编辑资源/时延继续作为 L02 工作，整体产品验收留在 L08。
+
+后续 [独立失效与真实编辑报告](../reports/2026-10-08-resident-l02-invalidation-and-edit.md)
+和 [TDD](../tdd/l02-promotion-invalidation.md) 已覆盖上述七类公开失效合同，
+并修复配置重建后 definition 只含局部依赖、把新全局类误作空结果的问题。
+正常有效定位保留原路径，缺失结果用完整合法范围复核；这不是晋升 flag
+的生产推广。真实 Settings 的六次未保存引用编辑均 exact，Program
+换代时复用 1495/1496 project、652/652 SDK SourceFiles，但完整编辑仍
+556–595 ms；该控制没有发生 matching 晋升，不能归因性能差值。
+新源码独立 `pnpm check:fast` 1338/1338 PASS、退出 0，无失败/取消/跳过；
+前轮 whole timeout 保留历史失败且原因未定，不以新 GREEN 倒改旧账。
+更长序列、未知 delta/根别名与压力恢复继续推进；冷 miss 和编辑成本
+作为 L03 输入，不把最终内存/500 ms 指标重新设为阶段前置。
+
+## L03 — 统一预算与成本感知回收（使用 L01/L02 实测证据）
 
 先实测 initial、steady、编辑、global query 和 recovery RSS/PSS，
 再确定 soft budget、pressure target、hysteresis、lease 与冷上下文
 驱逐顺序；一个进程内 resident LS 和 transient verifier 的内存合算。
 不盲增现有 1024 MiB 策略值，不把它当硬限额。压力下优先停后台/
 低优先任务与回收 unleased 状态；未保存文本和执行中语义状态不能
-因节省内存丢失。20 次切换及更长 soak 无单调增长，L3 恢复精确。
+因节省内存丢失。本阶段验证准入/回收与 L3 恢复的功能，记录切换和
+编辑的资源趋势；长期 soak 与最终资源、时延判定统一交给 L08。
+
+### L03 完成审计
+
+2026-10-09 用户目标为推进 L03 计划完成。以下清单将本阶段原有预算、
+准入、回收、校准和正确性要求收敛为可核验交付，不把已完成的护栏
+替代统一政策，也不把 L08 产品目标提前。全部项目须有固定构建的
+直接证据后才能将 L03 标为完成。当前 [A～E 完成审计](../reports/2026-10-09-resident-l03-completion-audit.md)
+均为 PASS，阶段实施与校准 DONE；不授予生产默认推广或发布资格。
+
+| 编号 | 完成交付与判定 | 完成证据 |
+| --- | --- | --- |
+| L03-A | 同一 Node PID 的 RSS 字节政策涵盖 resident 与 reference/anchor/diagnostic Worker；存活、lease、准备成本和释放分别可观察，不重复相加、不由计数虚构字节 | PASS；RSS owner、物理计数与公开生命周期控制齐备；真实校准记录 resident/reference/diagnostic，anchor 由当前公开矩阵核验 |
+| L03-B | 在同一政策下明确保留、trim、成本感知冷驱逐、重任务准入/拒绝和恢复的决策；以实际 RSS 再判断压力目标，保护 leased 工作和最新诊断，保留全 scope exact 或显式错误 | PASS；[成本与实际压力回收](../tdd/l03-cost-aware-pressure-recovery.md) 实现逐个 RSS 复核、Worker 当前资格与拒绝后缓存保留；校准保留原预算与滞回，不选择自动替换 |
+| L03-C | 代表性公开 LSP 矩阵通过：低/高压力及回落、resident 与单批 verifier/诊断、取消、编辑、两根和全关闭、lease/静默、默认关闭路径；未知输入仍安全回退 | PASS；当前六文件联合控制 20/20，完整 fast 的 164 个入口、1439/1439 通过；不以旧 160/160 或当前 20 例代替完整回归 |
+| L03-D | 最新同构建真实 Settings/API24 对照覆盖 initial、steady、编辑、global query 和 recovery，记录 RSS、重建/冷恢复代价、正常诊断、exact oracle 与输入 pins；据此确定保留或修改 soft budget/target/hysteresis，并记录取舍 | PASS；[当前真实校准](../reports/2026-10-09-resident-l03-budget-policy-calibration.md) 选定配置/对照 26/26 exact、诊断一致；参数、实际成本、自动替换慢样本与回滚已记录；raw readiness 失败仍归 L08 |
+| L03-E | 冻结实现后的 pnpm check:fast GREEN，源码/构建/测试身份可复核；完成报告给出参数、实际决策、回滚边界、剩余风险及 L08 接收项 | PASS；当前完整回归 1439/1439、退出 0、无 skip/todo/cancel；终态后源码、构建、十四个修改文件、测试入口及工程/SDK pins 一致，完成审计与 L08 交接齐备 |
+
+统一字节政策可以用真实全进程 RSS，而不要求猜测每个 Program 的独占
+字节。1024 MiB 是现有策略值，不是分配器硬上限；单个已启动 Program
+的峰值与可取消/清理边界须实测并如实记录，不以新增文件数硬限制冒充
+内存预算。长期 soak、最终内存降幅、500 ms/P95、PSS/DevEco、规模与
+跨平台毕业明确交给 L08；不因此无限追加本阶段配置组合或阻塞 L04–L07。
+
+实施顺序为按实际压力目标接入已有观测成本、完成联合公开合同、冻结
+构建跑真实工程校准、选择并记录政策参数，最后完整代码回归与逐项审计。
+若真实证据反驳候选政策，修改或回退该候选；不得将失败改写为收益。
+
+以下保留各实施检查点，旧 whole、focused 与 NOT_RUN 仅属于当时源码，
+不替代当前固定实现的 1439/1439 完整回归，也不倒改历史失败。
+
+首个 [请求等待切片](../tdd/l03-recycle-request-wait.md) 已完成三个公开
+RED/GREEN 与 v2→v3 characterization，focused 81/81 PASS。只对显式双开关
+回收生效；无回收的正常请求不增加等待，该先行构建尚未接自动压力事件。
+L02 源码固定构建的 1338/1338 whole 保留为上一检查点，本切片仅有
+新源码 focused/类型/构建 GREEN，不冒称当前完整 whole 或资源收益。
+后续 [自动回收切片](../tdd/l03-automatic-pressure-recycle.md) 已用真实 LSP
+RED/GREEN 接入自然 RSS L3 驱逐和 quiescent/lease 见证，独立双开关默认关闭。
+组合回归 86/86 PASS；trace OFF、缺少任一开关、已排队导航、未保存
+v2/v3 的精确结果和正常诊断通过。[真实 Settings 同构建对照](../reports/2026-10-08-resident-l03-natural-worker-recycle.md)
+无显式 L3/GC、无诊断屏障，四轮各 22/22 exact、配对诊断一致；一次
+trace-off 的 Node 峰值 -28.2%，编辑样本 P95 +24.6%，全部编辑仍 >500 ms。
+后续多根切片先用正常诊断及实际 L3 的公开 RED 定位单根资格限制，再
+扩展默认关闭的自动入口：重新注册所有已知 root，按各 root 重放最新
+未保存文本。独立 v2/v3 的精确定位、完整引用和正常诊断通过，当前
+串行组合 117/117 PASS；手动单根资格、零 lease 见证、全局静默及
+并发变更保护保留。全部文档关闭、统一预算和成本感知准入继续作为
+L03 实施工作，不把最终资源/时延目标恢复成前序阶段门槛。
+不把功能 GREEN 改写成资源收益，也不以旧 whole 冒称新源码完整 GREEN。
+多根源码随后独立 `pnpm check:fast` 1380/1380 PASS、退出 0，无失败/
+取消/跳过/todo；新增多根用例再次通过。该完整代码回归不替代 L08 的
+资源、时延、长期 soak 或跨平台验收，先前失败/中断的历史账保留。
+随后 [references 压力准入切片](../tdd/l03-reference-pressure-admission.md)
+以公开 RED 修复 indexed/batched 未携带 legacy 既有 L3 限批资格的缺口。
+默认关闭双开关不变，多批显式资源错误、单批完整响应、关闭路径和
+最新 overlay/导航/诊断恢复通过，该切片串行 focused 50/50 PASS；当时新源码
+whole NOT_RUN，不沿用上面的 1380/1380。本切片不把批数当作实际成本。
+随后 [成本感知容量驱逐](../tdd/l03-cost-aware-capacity-eviction.md) 先通过
+真实 LSP RED/GREEN 把成功 compiler 准备耗时记录到 leased resident 实例，
+再在既有两个 context 容量内，默认关闭地优先驱逐较低观测成本的无 lease 根。
+缺测、同成本和关闭路径保留 LRU；成本不等于字节或未来冷恢复保证，
+不单独开启 L2 rearm，也不豁免 L3 释放。三根最新编辑、完整引用和
+正常诊断通过，该检查点十文件 focused 67/67 PASS，源码 whole NOT_RUN。
+随后 [全部文档关闭后的压力回收](../tdd/l03-closed-document-pressure-recycle.md)
+以真实 LSP RED/GREEN 把非空文档要求限定到手动入口；自动入口在
+已有 registered roots、实际 L3、静默和零 context/lease 见证下允许
+零打开文档。引用在途仍阻止替换，关闭后显式 ContentModified，
+两根重新打开的独立新文本、相同版本号与后续编辑/正常诊断精确。
+两个关闭开关和手动入口资格保留，该检查点十三文件 focused 126/126 PASS，
+源码 whole NOT_RUN，实验及真实工程 1024 MiB 策略均不变。
+随后 [在途压力与 verifier 准入](../tdd/l03-midflight-reference-admission.md)
+以公开 RED/GREEN 补上只在请求开始判断 L3 的缺口：已启动 verifier
+可完成和清理，但请求内遇到 L3 后不再追加验证；尚未证明完整范围时
+显式预算错误，不返回部分 Locations。请求内见证跨扩展/递归 fallback
+保留，新请求重新判断；客户端取消与已证明完整的单批成功不被误拒绝。
+关闭路径、最新编辑和两种声明策略通过，该检查点十一文件 focused
+103/103 PASS，该源码 whole NOT_RUN；无新增开关、预算或生产默认变更。
+随后 [准入前 RSS 刷新](../tdd/l03-reference-pressure-sampling.md) 用公开 RED
+锁定实际 RSS 已高、记录等级仍低时多启动一批 verifier 的缺口；在
+document preparation 后与各 verifier 资格检查前刷新现有 RSS/滞回 owner。
+仍由原双开关控制，不相加 Worker RSS，不调高预算；取消优先、请求内
+L3 见证、单批完整成功和正常诊断保留。三路、tracing 关闭与两个开关
+关闭路径通过，该检查点十四文件 focused 120/120 PASS，源码 whole NOT_RUN。
+运行配置接口先经 characterization 抽取，Legacy 文件减至 1058 行，
+超限迁移债务仍保留。1 MiB 夹具停止线不是产品预算或资源收益。
+随后 [transient Worker 生命周期核算](../tdd/l03-transient-worker-occupancy.md)
+逐项公开 RED/GREEN 补齐 reference、anchor、诊断 verifier 的实际存活
+计数与带时钟快照；真实 `exit` 才释放，RSS 按 Node PID 只计一次，
+heap 字段明确为 owner isolate 观测。沿用指标文件 opt-in，未配置时
+不安装额外 exit listener；边界观测不更新压力政策，不构造 Program。
+取消与同进程恢复、tracing 关闭和正常 v2 诊断通过，该检查点十五文件
+focused 153/153 PASS，源码 whole NOT_RUN；runtime 减至 470 行，
+本切片未修改超限文件。物理计数不是 Program 字节或 RSS 回落证明。
+
+2026-10-09 [真实 Settings 生命周期对照](../reports/2026-10-09-resident-l03-transient-occupancy.md)
+在同一新构建、1024 MiB 与正常诊断下串行比较 dispose/budget-aware，
+两轮各 4/4 exact，逐位置集合与最终诊断一致。保留 context 在首次引用
+与 verifier 重叠，随后自然 L3 驱逐；两轮三次引用仍各新建 Program，
+R-09 固定关闭，不能据此否定其复用机制。trace-on 峰值差异仅 -0.38%，
+单进程归因样本不证明资源收益；移除 context 或 verifier 退出不等于
+RSS 立即归还。产品源码未变，重放器 24/24 PASS，语义 focused 仍属
+上述 153/153 检查点，whole NOT_RUN。下一切片以全进程 RSS、实际重叠
+和成功准备成本校准准入，不按 context 数、文件数或单次 RSS 差造字节。
+
+随后 [高压力 anchor 准入](../tdd/l03-anchor-pressure-admission.md) 的公开
+RED 锁定候选定位在批次准入前多启动一次 compiler anchor 的缺口。
+原双开关开启时，独立准备前先检查取消、刷新同一 RSS/滞回 owner；
+L3 跳过发现优化，交回完整 scope，不向用户发布空引用。完整单批仍
+精确完成，多批仍显式预算错误、无部分结果；关闭路径、低压力、
+trace OFF、取消同进程恢复和最新 v2 普通诊断/导航通过。该检查点十五文件
+串行 focused 160/160 PASS，源码 whole NOT_RUN。没有新增开关、
+字节估算或生产默认；完整 scope 回退可能增加单批成本，新构建真实
+工程 A/B 未测，不把少一个 Worker 改写成内存或时延收益。
+
+当前 [按实际 RSS 与成本回收](../tdd/l03-cost-aware-pressure-recovery.md)
+已完成逐次压力复核、成本排序、准入与恢复组合，联合控制 20/20、
+回放器 35/35 及完整 check:fast 1439/1439 PASS，终态身份一致。
+[固定构建真实校准](../reports/2026-10-09-resident-l03-budget-policy-calibration.md)
+选定配置/对照 26/26 exact、正常诊断一致，保留 1024 MiB 与原滞回；
+自动替换没有峰值优势且增加重复准备，不纳入本序列选定配置。
+[完成审计](../reports/2026-10-09-resident-l03-completion-audit.md) A～E 均通过，
+L03 阶段无剩余必需工作。单批峰值、慢冷恢复、其它规模/平台组合及
+长期压力风险交 L08；不宣称最终资源收益，不阻断默认关闭的 L04–L07。
 
 ## L04–L07 — 逐能力接线，逐能力回退
 
@@ -392,16 +557,117 @@ SourceFile 和 652/652 个 SDK SourceFile 被复用，但分组 Program 构建�
 | L06 | Definition/typeDefinition、completion/auto-import、hover/signature 与正常诊断 | 精确 URI/range、补全 edit/sort/snippet/isIncomplete、当前 overlay 和诊断 code/range/version；references 进行时交互不被阻塞 |
 | L07 | PrepareRename/rename 与 call hierarchy | 完整 WorkspaceEdit/冲突/版本及应用后验证；incoming/outgoing 方向与 `fromRanges` 单独对照 |
 
-每阶段只有独立完成公开 transcript 且通过正确性、快照、取消与新路径
-资源安全后才可试验路由；逐能力 feature flag 可回滚。现行 transient
+每阶段独立完成公开 transcript 并验证正确性、快照、取消与执行保护后
+可试验路由；最终资源/时延未达标带入 L08，逐能力 feature flag 可回滚。
+现行 transient
 verifier 仍为兜底，不能因长驻 LS 存在就推断它的全局 scope 足够。
 超预算/unknown 走完整安全 fallback 或显式错误。逐能力默认切换需
 单独审查，ADR 0003 不被本计划自动 supersede。
 
+### L04 完成审计
+
+2026-10-09 L04 阶段 DONE。以下交付沿用本阶段 references 路由和
+用户确认的阶段验收范围；当前 [完成审计](../reports/2026-10-09-resident-l04-completion-audit.md)
+A～E PASS，完整回归与终态身份复核完成。不把功能合同
+缩为单个热命中，也不把最终内存、500 ms/P95 或 semantic-ready 提前。
+
+| 编号 | 完成交付与判定 | 当前完成证据 |
+| --- | --- | --- |
+| L04-A | 两种声明策略、alias/re-export、未打开/native 调用点、同名排除和完整合法范围，与独立完整 oracle 零差异；未查符号实际命中有完整覆盖及版本见证的 resident LS，不由答案 cache 冒充，命中不重建 Program/启动 verifier | 当前公开与真实控制 PASS；[选定政策组合](../tdd/l04-budget-policy-reference-contracts.md) 和当前两份 ON trace 首次引用队列实际同 Program/完整覆盖、9/10 refs、零 build/verifier |
+| L04-B | overlay 增删、版本变化、配置/磁盘/SDK/package/target 身份失效后不使用旧 proof；返回最新完整结果，正常版本化诊断精确 | PASS：选定政策下 overlay/正常诊断、未通知 package retarget 拒绝旧 proof；原 SDK/options/target/link/source/unknown 独立合同保留并在当前完整 1449/1449 中通过 |
+| L04-C | 共用 L03 字节预算、压力/成本政策，lease 与执行保护不绕过；取消、编辑、驱逐和恢复安全，miss/unknown 为完整 fallback 或显式错误，零 partial-success；默认关闭及 tracing 关闭保持正确 | 当前四文件选定政策 10/10 PASS，含低/高压力、完整/拒绝、物理 verifier 与 resident 请求取消恢复、交互调度和 trace OFF；默认关闭及原完整 fallback 保留 |
+| L04-D | 同一当前固定构建 Settings/API24 的 R-09 ON/OFF 对照，两种 declaration policy 均完整 exact/诊断一致；首次未查、稳态、编辑、global query 和恢复有实际路由及 RSS/准备成本/完整响应记录，trace 与 timing 分开，输入 pins 不变 | [真实阶段控制 PASS](../reports/2026-10-09-resident-l04-budget-policy-integration.md)：八进程 52 项 exact、四对位置/诊断相同，inputs 不变、产品退出 0；热查询、准备/恢复成本与更高峰值如实记录，raw readiness FAIL 仍归 L08 |
+| L04-E | 冻结实现后的完整 pnpm check:fast GREEN，源码/产物/测试及工程/SDK 身份一致；逐项完成审计、实验配置、回滚、失败记录和 L08 风险交接齐备 | PASS；类型/构建/release sidecar 前置通过，根回归 1449/1449、退出 0、无 fail/cancel/skip/todo；五个修改测试/夹具、164 个入口及源码/产物和工程/SDK 等终态身份一致，完成审计与交接齐备；旧 L03 1439/1439 和 focused 不冒充当前 whole |
+
+实施顺序为先完成现有路径 characterization，再逐个补联合公开合同，
+必要修复用 RED/GREEN；冻结构建后串行真实工程对照，最后完整回归与
+逐项审计。不新建公共语义层、cache owner 或 capability，不提高预算、
+缩小合法 scope、静音诊断或改变生产默认；R-09 opt-in 可独立关闭回退。
+
+### L05 完成审计
+
+2026-10-09 目标为完成 L05，沿用 implementations 独立语义及用户确认的
+五项阶段验收；不将 references 的热命中投影为 implementation proof。
+当前阶段 DONE，[完成审计](../reports/2026-10-09-resident-l05-completion-audit.md) A～E PASS；
+[选定政策公开合同](../tdd/l05-budget-policy-implementation-contracts.md)
+已扩展至 23 项，当前十文件联合 132/132 PASS。真实 Settings/API24
+完整 oracle 已由当前构建各两个独立冷进程重新核验；[四轮 ON/OFF 控制](../reports/2026-10-09-resident-l05-budget-policy-integration.md)
+22/22 exact、配对正常诊断一致，冻结后的完整回归1467/1467、终态身份复核通过。
+未以公开 focused、既有五类合同或 L04 whole 代替冻结后的完整回归和完成审计。
+
+| 编号 | 完成交付与判定 | 当前进度 |
+| --- | --- | --- |
+| L05-A | interface/generic/alias、继承/override/成员、未打开实现及同名排除，与独立完整 oracle 零差异；有效完整 LS 对未查目标有实际复用见证，不以缓存或 references 投影冒充 | 当前公开 PASS：277-source 未查目标同 Program、零 createProgram，compiler alias 完整保留；真实当前 oracle 为 IService 6 处/About 1 处 |
+| L05-B | overlay 增删及 UTF-16 变化、配置/磁盘/SDK/package 等代表性输入失效后使用最新完整结果，正常诊断 code/range/version 正确；未知输入不沿用旧 proof | 当前公开 PASS：配置/SDK/package、overlay/UTF-16、未知范围拒绝及恢复、多根 close/reopen；R-09 OFF 同样独立保护，不发布旧子集 |
+| L05-C | 接入选定 L03 RSS/成本/压力政策，保持 1024 MiB、原滞回及 lease/执行保护；实际执行中取消无 partial-success/第二终态，驱逐/Worker 恢复后精确，trace OFF 同样正确，默认与完整安全路径保留 | 当前公开 PASS：compiler-in-flight 唯一取消、完整 4003 处恢复、压力/成本/lease、实际 Worker 替换及 trace OFF；64 MiB Worker 恢复仅功能 qualification，未提高正常预算 |
+| L05-D | 当前固定构建 Settings/API24 实验 ON/OFF 对照；未查目标、稳态、编辑及恢复完整 exact/诊断一致，trace 与 timing 分开；记录实际复用、准备/完整响应/RSS 及不变输入 pins | 当前阶段控制 PASS：四进程 22/22 exact、两对集合/最新诊断相同，输入不变、产品退出 0；两侧实际完整 Program 复用、ON 38 个晋升保持 generation，完整响应/RSS 与慢恢复如实记录，raw ready FAIL 留给 L08 |
+| L05-E | 冻结后完整 pnpm check:fast GREEN、终态源码/产物/测试/工程/SDK 身份一致；逐项审计、配置回滚、失败记录与 L08 风险交接齐备，生产默认不变 | PASS：类型/构建/release sidecar前置通过，根回归1467/1467、退出0、无fail/cancel/skip/todo；13份修改文件、164入口、310测试/脚本和源码/产物/工程/SDK等终态身份一致，清单/oracle未变；审计交接齐备，不以旧1449或focused替代whole |
+
+先保留现有 characterization，再按公开行为逐个补合同，必要修复用
+RED/GREEN；真实工程串行控制完成后运行完整回归。500 ms/P95、最终
+内存下降、semantic-ready、长期 soak、规模及平台毕业均留在 L08，
+失败如实交接，不作为 L05 阶段完成的前置。
+
+### L06 完成清单
+
+2026-10-09目标为完成L06，沿用用户确认的A～E范围；
+[本轮公开合同](../tdd/l06-budget-policy-interactive-contracts.md)接续原八项交互合同。
+当前阶段DONE，[完成审计](../reports/2026-10-10-resident-l06-completion-audit.md)
+A～E PASS；19公开case/联合252、当前多能力真实62和全新whole1492全部通过，
+终态冻结身份一致。旧57/57、definition8/8和四轮whole失败均为历史，
+不替代当前证据，不改变生产默认或宣称L08最终产品毕业。
+
+| 编号 | 完成交付与判定 | 当前进度 |
+| --- | --- | --- |
+| L06-A | definition/typeDefinition、hover/signature及completion/resolve/auto-import完整payload与独立oracle或完整基线一致；保留URI/UTF-16、参数/激活位置、edit/sort/snippet/isIncomplete和来源；新目标实际复用有效LS，不以cache冒充 | 当前19项交互公开case及联合252/252 PASS，原八项及struct坐标合同保留；第五轮真实控制完整多能力payload一致，未查definition ON同Program/零create，OFF独立重建；不由答案缓存推断 |
+| L06-B | overlay/API、配置、SDK/package等代表性变化后使用当前输入，诊断code/range/version正确；旧resolve句柄不能应用，未知输入安全回退/明确错误，合法截断补全如实标记 | 当前252/252含API三配置、六类package/同版本resolve、SDK配置、最新v2诊断及补全配额；新false目录变化可完成、true瞬时读取必须拒绝并通知恢复，owner/target/负路径容量兼容通过；第五轮真实v2完整hover/最新诊断一致 |
+| L06-C | 选定L03 RSS/成本/压力政策、正常1024MiB/原滞回/lease保持；取消无partial-success/重复终态、编辑拒绝旧代、驱逐/Worker恢复精确；references实际在途时交互完成，trace OFF及默认完整路径正确 | 当前252/252含三配置member/resolve/snippet/auto-import及取消、refs实际在途、共享RSS/lease、物理Worker恢复和诊断保护；64MiB仅功能qualification；第五轮真实选定1024MiB政策及trace OFF路径通过，默认不变 |
+| L06-D | 当前固定构建Settings/API24代表性多能力ON/OFF对照，覆盖未查、稳态、编辑和恢复；完整payload及最新诊断相同，trace/timing分开，实际复用/准备/完整响应/RSS和不变pins齐备 | 当前第五轮阶段PASS：[真实对照](../reports/2026-10-10-resident-l06-budget-policy-integration-v5.md)16独立冷基线、四进程62/62、两对完整payload/最新诊断/池/pins一致；实际Program复用、准备/完整响应/RSS齐备，产品退出0/raw readiness FAIL保留给L08；旧四轮身份不重写 |
+| L06-E | 阶段冻结后完整pnpm check:fast GREEN、终态源码/产物/测试/工程/SDK等身份一致；逐项审计、配置回滚、失败记录和L08交接齐备，生产默认不变 | PASS：全新完整1492/1492、退出0、无fail/cancel/skip/todo，2039816.131497ms；316测试/工具、172登记/166 fast入口、100基准输入、42修改文件及全产品/工程/SDK身份一致，四份D初始/postflight pins实际核对相同。完成审计/回滚/失败/L08交接齐备；输出截断和一次观察缺口明确保留，不冒称逐字完整日志 |
+
+先公开characterization，再逐项RED/GREEN或现有组合验证；冻结后串行
+真实工程控制，最后完整回归及身份审计。最终500ms/P95、内存收益、
+semantic-ready、soak/规模/跨平台留在L08，不作为L06阶段完成前置。
+
+用户2026-10-10确认：L06完成后继续推进L07至完成；L07按自身功能、
+公开合同、当前真实对照和冻结审计验收，不等待L08最终产品指标。
+
+以下段落保留2026-10-08历史起点；当前进度以随后L07完成清单为准。
+L07 的 [rename/call hierarchy 合同](../tdd/l07-resident-edit-and-call-contracts.md)
+已取得完整 WorkspaceEdit 应用后验证、三层 alias 边界、双向 fromRanges、
+未打开 follow-up、v2/v3 overlay 与实际 Worker 替换/早期取消的功能证据。
+消费端本地 alias 与同模块 class 的冲突漏检经公开 RED/GREEN 修复；
+未打开 follow-up 的临时 source staging 使 root snapshot 失效后，正常
+诊断不再永久丢失，而经原 debounce 按最新文档重调度。并行 69/71 的
+失败保留，固定时序复现后修复为当前并行 72/72 与 focused 88/88 PASS，
+不靠提高超时。该历史检查点L07仍IN_PROGRESS，不冒称一般成员/嵌套捕获/所有冲突、
+真实工程或 semantic-ready 已完成；后续预算准入与 L08 产品验收继续。
+
+### L07 完成清单（2026-10-10 接续）
+
+当前基线为L06完成后的固定实现及完整1492/1492；L07既有11项公开合同
+在这次whole中也通过，但不能替代L07新组合、当前真实控制和收口审计。
+先保留characterization，按公开stdio逐切片RED/GREEN；不无限追加
+所有冲突/方言/平台矩阵，那是L08最终验收，不改变1024MiB/原滞回/默认。
+
+| 编号 | 完成交付与判定 | 当前进度 |
+| --- | --- | --- |
+| L07-A | prepareRename及完整版本化WorkspaceEdit、实际应用后源码/定位/诊断；alias层次、代表性冲突原子拒绝；prepare/incoming/outgoing完整item/方向/UTF-16 fromRanges；未查目标实际复用有效完整LS，不以references/cache投影冒充 | 当前25生产公开case，完整编辑应用、class/alias/同owner成员冲突、双向调用/整文件module及follow-up/伪造项拒绝通过；当前D实际11源晋升、未查prepare同暖机Program/零create，OFF重建反事实成立；不冒称所有冲突矩阵 |
+| L07-B | overlay及配置/SDK/package等代表性输入变化后使用当前完整结果，诊断code/range/version正确；旧item/旧编辑不得应用，未知输入安全回退或显式错误 | 五类实际package陈旧编辑/item/边RED→加载见证保护和通知后完整冷oracle恢复；SDK project配置五类拒绝/最新v2完整payload及2322诊断通过，旧item/移除caller及版本化编辑保留 |
+| L07-C | 接入选定L03 RSS/成本/压力政策，正常1024MiB/原滞回/lease；取消唯一终态无partial-edit/partial-call，编辑旧代拒绝，驱逐/物理Worker恢复；trace OFF和默认完整安全路径保持 | 四配置rename应用/calls编辑全payload与诊断一致，五类唯一早期取消及完整恢复通过；选定政策物理Worker恢复仅64MiB功能qualification，正常1024MiB不改，不冒称compiler-in-flight或物理RSS下降 |
+| L07-D | 当前固定构建Settings/API24实验ON/OFF，未查/稳态/代表性编辑和恢复完整编辑/调用payload及最新诊断一致；trace/timing分开，实际复用/准备/完整响应/RSS和不可变pins齐备 | [当前D](../reports/2026-10-10-resident-l07-budget-policy-integration-v4.md)PASS：16同产品独立冷进程、四控制62/62、两对完整payload/最新诊断/pins一致，11源真实晋升及未查Program复用有实际反事实；所有慢查询/高RSS/raw readiness FAIL保留至L08 |
+| L07-E | L07冻结后新完整pnpm check:fast GREEN及终态源码/产物/测试/工具/工程/SDK身份一致；逐项审计、配置回滚、失败记录和L08交接齐备，实验默认关闭 | [完成审计](../reports/2026-10-10-resident-l07-completion-audit.md)PASS：全新完整1511/1511、根退出0，无fail/cancel/skip/todo；319测试/工具、207产品输入、173登记/167fast、301benchmark/41tracked修改与新增全向量终态全部相同；四D/16cold前后pins实际一致，失败记录/配置回滚/L08交接齐备，不借用旧whole或focused |
+
 ## L08 — Soak、性能与发布评审
+
+L08 是整体最终验收阶段，统一执行完整能力/场景矩阵、semantic-ready、
+500 ms 优化目标 / 550 ms 验收上限、原内存、长期资源稳定性与跨平台门禁。前面阶段持续记录数据和
+修复切片缺陷；这些最终目标及不足样本不阻塞 L01–L07 的实现顺序。
 
 Settings 真实工程的冷准备、未查询符号、未打开模块、普通编辑、驱逐
 和重启恢复分桶报告完整响应 P95；目标为适用能力各桶≤500 ms，
+2026-10-10 用户明确确认正式验收上限为≤550 ms，仅调整这一时延上限；
+≥100请求/≥5会话、336格及下述其它门槛不变。历史500ms失败保持原判定，
 不能用 cache hits 稀释。保留旧 references >3 GB 复现/50% 目标、
 DevEco 对照 PSS、100k 工作区缩放、post-eviction 与 Windows/macOS/Linux
 可移植性门禁；Node RSS 不代替 Linux PSS。长时 repeated/edit/pressure

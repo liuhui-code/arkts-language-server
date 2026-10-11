@@ -180,6 +180,54 @@ test("a resource directory read failure closes its handle and returns unavailabl
   assert.equal(closedHandles, 1)
 })
 
+test("physical module scope lookup preserves the deepest owner independently of declaration order", (t) => {
+  const fixture = projectFixture(t)
+  const nestedRoot = path.join(fixture.moduleRoot, "src", "main", "nested")
+  const nestedSource = path.join(nestedRoot, "src", "main", "ets", "Nested.ets")
+  fs.mkdirSync(path.dirname(nestedSource), { recursive: true })
+  fs.writeFileSync(nestedSource, "export const nested = 1\n")
+  fs.writeFileSync(path.join(nestedRoot, "build-profile.json5"), "{ targets: [{ name: 'default' }] }")
+  const nested = { name: "nested", srcPath: "./alpha/src/main/nested",
+    targets: [{ name: "default", applyToProducts: ["default"] }] }
+  fixture.profile.modules.push(nested)
+  fs.writeFileSync(fixture.profilePath, JSON.stringify(fixture.profile))
+  const model = new HarmonyProjectModel(fixture.root)
+  assert.equal(model.scopeFor(nestedSource).moduleRoot, nestedRoot)
+  fixture.profile.modules.reverse()
+  fs.writeFileSync(fixture.profilePath, JSON.stringify(fixture.profile))
+  model.invalidate()
+  assert.equal(model.scopeFor(nestedSource).moduleRoot, nestedRoot)
+  assert.deepEqual(model.scopeFor(nestedSource), new HarmonyProjectModel(fixture.root).scopeFor(nestedSource))
+  fs.writeFileSync(path.join(nestedRoot, "build-profile.json5"), "{ targets: [{ name: 'other' }] }")
+  model.invalidate()
+  const unavailable = model.scopeFor(nestedSource)
+  assert.equal(unavailable.status, "unavailable")
+  assert.equal(unavailable.moduleRoot, nestedRoot, "an unavailable deepest owner must not fall back to its ancestor")
+})
+
+test("warm source scope lookup does not compare every unrelated declared module", (t) => {
+  const fixture = projectFixture(t)
+  const unrelated = Array.from({ length: 128 }, (_, index) => {
+    const name = `unrelated-${index}`
+    const moduleRoot = path.join(fixture.root, name)
+    fs.mkdirSync(path.join(moduleRoot, "src", "main", "ets"), { recursive: true })
+    fs.writeFileSync(path.join(moduleRoot, "build-profile.json5"), "{ targets: [{ name: 'default' }] }")
+    return { name, srcPath: `./${name}`, targets: [{ name: "default", applyToProducts: ["default"] }] }
+  })
+  fixture.profile.modules.unshift(...unrelated)
+  fs.writeFileSync(fixture.profilePath, JSON.stringify(fixture.profile))
+  const model = new HarmonyProjectModel(fixture.root)
+  const baseline = model.scopeFor(fixture.source)
+  assert.equal(baseline.status, "ready")
+  assert.equal(baseline.moduleRoot, fixture.moduleRoot)
+  const relative = path.relative
+  let comparisons = 0
+  t.mock.method(path, "relative", (...args) => { comparisons++; return relative(...args) })
+  const current = model.scopeFor(fixture.source)
+  assert.deepEqual(current, baseline)
+  assert.ok(comparisons <= 12, `one unchanged scope lookup compared ${comparisons} physical path pairs`)
+})
+
 function projectFixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-project-budget-"))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))

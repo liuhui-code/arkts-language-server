@@ -21,97 +21,130 @@ interface ResidentObservation {
   readonly configurationCurrent: () => boolean
 }
 
+export interface ResidentReferenceProofFailure {
+  readonly stage: "configuration" | "prepare" | "observe" | "admit"
+  readonly reason: string
+  readonly sourcePath?: string
+  readonly retainedPaths?: number
+}
+
 /** Admission consumes an already observed Program, never asks the compiler to build one. */
 export class TypeScriptResidentReferenceState {
   private prepared: ResidentInputs | undefined
   private observation: ResidentObservation | undefined
+  private observationFailure = "program-unobserved"
 
   constructor(
     private readonly sdkRoots: readonly string[],
     private readonly readSourceFile: (filePath: string) => string | null,
     private readonly checkpoint: () => void,
     private readonly configurationFreshness: () => (() => boolean) | undefined,
+    private readonly onFailure?: (failure: ResidentReferenceProofFailure) => void,
   ) {}
 
   prepare(workspace: SemanticWorkspaceView, generation: number, roots: readonly string[]): void {
     const prepared = inputsFor(workspace, generation, roots, this.sdkRoots)
-    if (prepared?.signature !== this.prepared?.signature) this.observation = undefined
+    if (prepared?.signature !== this.prepared?.signature) {
+      this.observation = undefined
+      this.observationFailure = "inputs-changed"
+    }
     this.prepared = prepared
+    if (!prepared) this.reject("prepare", "inputs-incomplete")
   }
 
   invalidate(): void {
     this.prepared = undefined
     this.observation = undefined
+    this.observationFailure = "program-unobserved"
   }
 
   /** Called only after an existing compiler query has successfully built/synchronized its Program. */
   observe(program: ts.Program | undefined): void {
     const prepared = this.prepared
-    if (!program || !prepared || !covers(program, prepared.requiredPaths)
-      || !samePaths(program.getRootFileNames(), prepared.roots)) {
-      this.observation = undefined
-      return
-    }
+    if (!program) return this.rejectObservation("program-unavailable")
+    if (!prepared) return this.rejectObservation("inputs-incomplete")
+    if (!covers(program, prepared.requiredPaths)) return this.rejectObservation("program-coverage-incomplete")
+    if (!samePaths(program.getRootFileNames(), prepared.roots)) return this.rejectObservation("program-roots-mismatch")
     if (this.observation?.program === program && this.observation.signature === prepared.signature) {
-      if (!this.observation.configurationCurrent()) this.observation = undefined
+      if (!this.observation.configurationCurrent()) this.rejectObservation("configuration-changed")
       return
     }
     const configurationCurrent = this.configurationFreshness()
-    if (!configurationCurrent) { this.observation = undefined; return }
+    if (!configurationCurrent) return this.rejectObservation("configuration-unproven")
     const identities: Array<readonly [string, string]> = []
     for (const source of program.getSourceFiles()) {
       this.checkpoint()
       const filePath = path.resolve(source.fileName)
       const document = prepared.documents.get(filePath)
       if (document && document.fingerprint !== fingerprint(source.text)) {
-        this.observation = undefined
-        return
+        return this.rejectObservation("overlay-content-mismatch", filePath)
       }
       if (document?.overlay) continue
       const before = diskIdentity(filePath)
-      if (!before || (prepared.aliases.has(before.physicalPath)
-        && prepared.aliases.get(before.physicalPath) !== filePath)) {
-        this.observation = undefined
-        return
+      if (!before) return this.rejectObservation("disk-source-unavailable", filePath)
+      if (prepared.aliases.has(before.physicalPath)
+        && prepared.aliases.get(before.physicalPath) !== filePath) {
+        return this.rejectObservation("source-alias-conflict", filePath)
       }
       // A fresh stat cannot certify stale compiler text. Compare the actual
       // loaded Program against the current bounded disk authority first.
       const currentText = this.readSourceFile(filePath)
       this.checkpoint()
-      if (currentText !== source.text || diskIdentity(filePath)?.stamp !== before.stamp) {
-        this.observation = undefined
-        return
-      }
+      if (currentText !== source.text) return this.rejectObservation("disk-content-mismatch", filePath)
+      if (diskIdentity(filePath)?.stamp !== before.stamp) return this.rejectObservation("disk-source-changed", filePath)
       identities.push([filePath, before.stamp])
     }
     this.checkpoint()
-    this.observation = configurationCurrent()
-      ? { program, signature: prepared.signature, diskIdentities: identities, configurationCurrent }
-      : undefined
+    if (!configurationCurrent()) return this.rejectObservation("configuration-changed")
+    this.observation = { program, signature: prepared.signature, diskIdentities: identities, configurationCurrent }
   }
 
   admit(workspace: SemanticWorkspaceView, generation: number, roots: readonly string[]): ts.Program | undefined {
     this.checkpoint()
     const observation = this.observation
-    if (!observation || workspace.resetTypeEngine) return undefined
-    if (!observation.configurationCurrent()) { this.observation = undefined; return undefined }
+    if (!observation) { this.reject("admit", this.observationFailure); return undefined }
+    if (workspace.resetTypeEngine) { this.reject("admit", "reset-required"); return undefined }
+    if (!observation.configurationCurrent()) {
+      this.observation = undefined
+      this.reject("admit", "configuration-changed")
+      return undefined
+    }
     const current = inputsFor(workspace, generation, roots, this.sdkRoots)
-    if (!current || current.signature !== observation.signature
-      || !covers(observation.program, current.requiredPaths)) return undefined
+    if (!current) { this.reject("admit", "inputs-incomplete"); return undefined }
+    if (current.signature !== observation.signature) { this.reject("admit", "inputs-changed"); return undefined }
+    if (!covers(observation.program, current.requiredPaths)) {
+      this.reject("admit", "program-coverage-incomplete")
+      return undefined
+    }
     for (const [filePath, document] of current.documents) {
       this.checkpoint()
       const source = observation.program.getSourceFile(filePath)
-      if (!source || fingerprint(source.text) !== document.fingerprint) return undefined
+      if (!source || fingerprint(source.text) !== document.fingerprint) {
+        this.reject("admit", "overlay-content-mismatch", filePath)
+        return undefined
+      }
     }
     for (const [filePath, stamp] of observation.diskIdentities) {
       this.checkpoint()
       if (diskIdentity(filePath)?.stamp !== stamp) {
         this.observation = undefined
+        this.reject("admit", "disk-source-changed", filePath)
         return undefined
       }
     }
     this.checkpoint()
     return observation.program
+  }
+
+  private rejectObservation(reason: string, sourcePath?: string): void {
+    this.observation = undefined
+    this.reject("observe", reason, sourcePath)
+  }
+
+  private reject(stage: ResidentReferenceProofFailure["stage"], reason: string, sourcePath?: string): void {
+    if (stage !== "admit") this.observationFailure = reason
+    try { this.onFailure?.({ stage, reason, ...(sourcePath ? { sourcePath } : {}) }) }
+    catch { /* Optional evidence cannot change complete fallback or admission. */ }
   }
 }
 

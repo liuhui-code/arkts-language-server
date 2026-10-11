@@ -170,6 +170,149 @@ test("twenty context rebuild and pressure cycles leave no resident context", (t)
   assert.equal(events.filter((event) => event.startsWith("dispose:")).length, 20)
 })
 
+test("equal measured rebuild costs retain the LRU decision and its truthful reason", t => {
+  const { SemanticCoordinator } = buildCoordinatorDriver(t)
+  const evictions = []
+  const coordinator = new SemanticCoordinator({
+    maxResidentContexts: 2, costAwareEviction: true,
+    createContext: contextFactory([], new Map()),
+    onLifecycle: (event, fields) => { if (event === "evict") evictions.push(fields) },
+  })
+  for (const id of ["a", "b"]) {
+    const lease = coordinator.acquire(id)
+    coordinator.recordRebuildCost(id, lease.context, 10)
+    lease.release()
+  }
+  coordinator.acquire("c").release()
+  assert.deepEqual(coordinator.contextIds(), ["b", "c"])
+  assert.equal(evictions[0].reason, "capacity-lru")
+})
+
+test("missing, invalid and stale rebuild costs never fabricate a capacity ranking", t => {
+  const { SemanticCoordinator } = buildCoordinatorDriver(t)
+  const observed = []
+  const coordinator = new SemanticCoordinator({
+    maxResidentContexts: 2, costAwareEviction: true,
+    createContext: contextFactory([], new Map()),
+    onLifecycle: (event, fields) => observed.push({ event, ...fields }),
+  })
+  const a = coordinator.acquire("a")
+  coordinator.recordRebuildCost("a", a.context, 100)
+  a.release()
+  const b = coordinator.acquire("b")
+  for (const value of [0, -1, NaN, Infinity]) coordinator.recordRebuildCost("b", b.context, value)
+  coordinator.recordRebuildCost("b", a.context, 1)
+  b.release()
+  coordinator.acquire("c").release()
+  assert.deepEqual(coordinator.contextIds(), ["b", "c"])
+  assert.equal(observed.find(event => event.event === "evict").reason, "capacity-lru")
+  assert.equal(observed.filter(event => event.event === "cost").length, 1)
+  const fresh = coordinator.acquire("a")
+  coordinator.recordRebuildCost("a", a.context, 1)
+  assert.equal(observed.filter(event => event.event === "cost").length, 1)
+  coordinator.recordRebuildCost("a", fresh.context, 2)
+  const costs = observed.filter(event => event.event === "cost")
+  assert.equal(costs.length, 2)
+  assert.notEqual(costs[0].contextSequence, costs[1].contextSequence)
+  fresh.release()
+})
+
+test("cost selection never evicts leases and does not depend on a telemetry observer", t => {
+  const { SemanticCoordinator } = buildCoordinatorDriver(t)
+  const coordinator = new SemanticCoordinator({
+    maxResidentContexts: 2, costAwareEviction: true,
+    createContext: contextFactory([], new Map()),
+  })
+  const a = coordinator.acquire("a")
+  coordinator.recordRebuildCost("a", a.context, 1)
+  const b = coordinator.acquire("b")
+  coordinator.recordRebuildCost("b", b.context, 100)
+  b.release()
+  const c = coordinator.acquire("c")
+  assert.deepEqual(coordinator.contextIds(), ["a", "c"])
+  assert.throws(() => coordinator.acquire("blocked"), /all semantic contexts are leased/)
+  coordinator.recordRebuildCost("c", c.context, 5)
+  c.release()
+  coordinator.recordRebuildCost("a", a.context, 100)
+  a.release()
+  coordinator.acquire("d").release()
+  assert.deepEqual(coordinator.contextIds(), ["a", "d"])
+  coordinator.applyMemoryPressure("level3")
+  assert.equal(coordinator.stats().residentContextCount, 0, "L3 ignores recovery cost and frees every unleased context")
+})
+
+test("cost-aware pressure disposal rechecks live bytes through the original hysteresis target", t => {
+  const { SemanticCoordinator, SemanticMemoryPolicy } = buildCoordinatorDriver(t)
+  const policy = new SemanticMemoryPolicy({
+    level1Ratio: 0.70, level2Ratio: 0.82, level3Ratio: 0.92, level3TargetRatio: 0.85,
+  })
+  const observations = [900, 850, 849]
+  const events = []
+  const coordinator = new SemanticCoordinator({
+    maxResidentContexts: 4, costAwareEviction: true,
+    createContext: contextFactory(events, new Map()),
+    readMemoryPressure: () => policy.levelFor(observations.shift(), 1000),
+  })
+  for (const [id, cost] of [["expensive", 1000], ["medium", 100], ["cheap", 10], ["cheapest", 1]]) {
+    const lease = coordinator.acquire(id)
+    coordinator.recordRebuildCost(id, lease.context, cost)
+    lease.release()
+  }
+  assert.equal(coordinator.applyMemoryPressure(policy.levelFor(920, 1000)), "level2")
+  assert.deepEqual(events.filter(event => event.startsWith("dispose:")),
+    ["dispose:cheapest", "dispose:cheap", "dispose:medium"])
+  assert.deepEqual(coordinator.contextIds(), ["expensive"])
+  assert.deepEqual(observations, [], "RSS at the target remains L3; only below the target recovers")
+})
+
+test("persistent live pressure cannot be waived by expensive work and never evicts a lease", t => {
+  const { SemanticCoordinator } = buildCoordinatorDriver(t)
+  let reads = 0
+  const coordinator = new SemanticCoordinator({
+    maxResidentContexts: 2, costAwareEviction: true,
+    createContext: contextFactory([], new Map()),
+    readMemoryPressure: () => { reads += 1; return "level3" },
+  })
+  const active = coordinator.acquire("active")
+  coordinator.recordRebuildCost("active", active.context, 1)
+  const cold = coordinator.acquire("expensive")
+  coordinator.recordRebuildCost("expensive", cold.context, 1000)
+  cold.release()
+  assert.equal(coordinator.applyMemoryPressure("level3"), "level3")
+  assert.deepEqual(coordinator.contextIds(), ["active"])
+  assert.equal(coordinator.stats().leaseCount, 1)
+  active.release()
+  assert.equal(coordinator.applyMemoryPressure("level3"), "level3")
+  assert.equal(coordinator.stats().residentContextCount, 0)
+  assert.equal(reads, 2, "disposed objects do not manufacture a low-pressure observation")
+})
+
+for (const [name, enabled, costs] of [
+  ["missing cost", true, [100, undefined]],
+  ["equal cost", true, [10, 10]],
+  ["disabled policy", false, [100, 1]],
+]) {
+  test(`pressure recovery preserves the safe LRU fallback for ${name}`, t => {
+    const { SemanticCoordinator } = buildCoordinatorDriver(t)
+    const events = []
+    let reads = 0
+    const coordinator = new SemanticCoordinator({
+      maxResidentContexts: 2, costAwareEviction: enabled,
+      createContext: contextFactory(events, new Map()),
+      readMemoryPressure: () => { reads += 1; return "level0" },
+    })
+    for (const [index, id] of ["old", "new"].entries()) {
+      const lease = coordinator.acquire(id)
+      if (costs[index] !== undefined) coordinator.recordRebuildCost(id, lease.context, costs[index])
+      lease.release()
+    }
+    assert.equal(coordinator.applyMemoryPressure("level3"), enabled ? "level0" : "level3")
+    assert.deepEqual(coordinator.contextIds(), enabled ? ["new"] : [])
+    assert.equal(events.find(event => event.startsWith("dispose:")), "dispose:old")
+    assert.equal(reads, enabled ? 1 : 0)
+  })
+}
+
 function contextFactory(events, authority) {
   return (contextId) => {
     events.push(`create:${contextId}`)
