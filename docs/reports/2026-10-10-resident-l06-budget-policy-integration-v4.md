@@ -100,4 +100,3 @@ GREEN、身份复核与 A–E 完成审计，不用 focused 或旧 whole 替代�
 capability、语义 owner、取消/版本 fences、正常诊断、预算或超时。
 500 ms/P95、最终内存收益、semantic-ready、长期 soak、PSS/DevEco、
 100k、平台和发布评审统一留给 L08。
-

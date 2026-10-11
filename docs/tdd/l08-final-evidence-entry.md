@@ -135,4 +135,3 @@ releaseEligible=false。retainedCapabilityRegression接口未接whole导入，
 .bench/l08-local-acceptance-v2-matrix.json为实际消费结果。
 临时64行launcher已归档并移除；无生产探针、SDK/工程写入或外部服务启动。
 本机执行批次已收尾，L08仍IN_PROGRESS/FAIL，未合main。
-

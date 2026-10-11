@@ -371,4 +371,3 @@ RSS不认证PSS。默认10k与同选定配置10k/100k均在L3后completion
 恢复仍约3.3–6.0秒、不是550ms性能毕业；新whole NOT_RUN、旧whole
 1580轮FAIL及引用超时保持。其它ready/资源/平台/全矩阵门禁继续，
 L08仍IN_PROGRESS、实验默认和1024MiB政策不变，不因本缺陷修复合main。
-
