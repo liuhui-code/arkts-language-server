@@ -5,6 +5,7 @@ import type { SemanticDefinitionCandidate, SemanticDocumentPosition } from "../.
 import type { SemanticWorkspaceView } from "../../core/workspace/document-store.js"
 import type { ReferenceBatchVerification } from "./reference-search-executor.js"
 import type { ReferenceSdkAmbientProfile } from "./reference-runtime.js"
+import { observeTransientWorkerLifetime, type TransientSemanticWorkerObserver } from "../transient-worker-lifecycle.js"
 
 interface ReferenceBatchWorkerResponse extends ReferenceBatchVerification {
   readonly ok: true
@@ -36,6 +37,7 @@ export interface ReferenceBatchWorkerOptions {
   readonly trace?: boolean
   readonly tolerateUnadmittedProjectDependencies?: boolean
   readonly constructorScope?: boolean
+  readonly onTransientWorker?: TransientSemanticWorkerObserver
 }
 
 export async function verifyReferenceBatchInWorker(
@@ -62,6 +64,7 @@ export async function verifyReferenceBatchInWorker(
       constructorScope: options.constructorScope,
     },
   })
+  observeTransientWorkerLifetime(worker, "reference", options.onTransientWorker)
   let settled = false
   const cancellationTimer = options.isCancellationRequested
     ? setInterval(() => {
@@ -147,6 +150,7 @@ async function runReferenceWorker(
   const started = performance.now()
   let workerStartupMs: number | undefined
   const worker = new Worker(workerPath, { workerData })
+  observeTransientWorkerLifetime(worker, "anchor", options.onTransientWorker)
   let settled = false
   const cancellationTimer = options.isCancellationRequested
     ? setInterval(() => {

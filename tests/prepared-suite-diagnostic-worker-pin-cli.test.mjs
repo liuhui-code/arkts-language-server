@@ -10,7 +10,7 @@ import { sha256File } from "../scripts/bench/reference-replay-input.mjs"
 
 const runner = path.resolve("scripts/bench/replay-references.mjs")
 
-test("prepared suite pins the experimental diagnostic worker only when both flags are enabled", async t => {
+test("prepared suite pins the default diagnostic worker without benchmark opt-in", async t => {
   const fixture = await makeSuite(t)
 
   const ordinary = runSuite(fixture)
@@ -24,7 +24,8 @@ test("prepared suite pins the experimental diagnostic worker only when both flag
   assert.equal("diagnosticVerifierWorkerSha256" in ordinaryReport.inputIdentity, false)
   fs.unlinkSync(fixture.output)
 
-  fixture.suite.runtime.env.ARKTS_L01_TRANSIENT_DIAGNOSTICS = "1"
+  fixture.suite.runtime.env.ARKTS_BENCHMARK_CONTROL = "0"
+  delete fixture.suite.runtime.env.ARKTS_L01_TRANSIENT_DIAGNOSTICS
   saveSuite(fixture)
   const unpinned = runSuite(fixture)
   assert.equal(unpinned.status, 2, `${unpinned.stderr}\n${unpinned.stdout}`)
@@ -74,7 +75,7 @@ async function makeSuite(t) {
     schemaVersion: 1, benchmarkId: "diagnostic-worker-pin", seed: 20261007,
     workspace, sdk, server, sidecar: server,
     runtime: { timeoutMs: 5000, diagnosticTimeoutMs: 5000, sampleIntervalMs: 25,
-      env: { ARKTS_BENCHMARK_CONTROL: "1" } },
+      env: { ARKTS_BENCHMARK_CONTROL: "1", ARKTS_L01_TRANSIENT_DIAGNOSTICS: "0" } },
     readiness: { candidateControl: true },
     targets: [{ id: "thing", moduleId: "fixture", kind: "references", file: "Query.ets",
       symbol: "Thing", position: { line: 0, character: 1 }, includeDeclaration: false,

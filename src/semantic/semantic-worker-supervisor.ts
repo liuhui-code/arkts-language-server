@@ -34,38 +34,8 @@ import { findCoalescingMutation, mergeDocumentMutations } from "./semantic-worke
 
 export { SEMANTIC_WORKER_PROTOCOL_VERSION, SemanticWorkerCancelState } from "./worker-protocol.js"
 
-export type RootSemanticWorkerMutationInput =
-  | {
-      readonly kind: "open" | "change"
-      readonly uri: string
-      readonly documentVersion: number
-      readonly text: string
-    }
-  | {
-      readonly kind: "close"
-      readonly uri: string
-      readonly documentVersion: number
-    }
-  | {
-      readonly kind: "workspaceFilesChanged"
-      readonly rootUri: string
-      readonly rootDirty: boolean
-      readonly resourceDirty: boolean
-      readonly resourceChanged: boolean
-      readonly changes: readonly {
-        readonly uri: string
-        readonly kind: "created" | "changed" | "deleted"
-      }[]
-    }
-
-export type RootSemanticWorkerRequestInput = {
-  readonly [Method in SemanticWorkerMethod]: {
-    readonly method: Method
-    readonly uri: string
-    readonly expectedDocumentVersion: number
-    readonly args: SemanticWorkerRequestArgsByMethod[Method]
-  }
-}[SemanticWorkerMethod]
+import type { RootSemanticWorkerMutationInput, RootSemanticWorkerRequestInput } from "./semantic-worker-command-input.js"
+export type { RootSemanticWorkerMutationInput, RootSemanticWorkerRequestInput } from "./semantic-worker-command-input.js"
 
 export interface RootSemanticWorkerRequestHandle {
   readonly result: Promise<SemanticWorkerJsonValue>
@@ -275,7 +245,8 @@ export class RootSemanticWorkerSupervisor {
     } catch (error) {
       throw new SemanticWorkerSupervisorError("invalid-request", { cause: error })
     }
-    if (!isSemanticWorkerUriWithinRoot(snapshot.uri, this.#rootUri)) {
+    if (!isSemanticWorkerUriWithinRoot(snapshot.uri, this.#rootUri)
+      || (snapshot.method === "semanticReadiness" && (snapshot.uri !== this.#rootUri || snapshot.expectedDocumentVersion !== null))) {
       throw new SemanticWorkerSupervisorError("invalid-request")
     }
     const completion = deferred<SemanticWorkerJsonValue>()
@@ -676,7 +647,7 @@ export class RootSemanticWorkerSupervisor {
 
   #settleRequest(record: RequestRecord, message: unknown, detached: boolean): void {
     if (!record.wire) throw new Error("Missing active semantic worker request")
-    const response = decodeSemanticWorkerResponseForMethod(record.wire.method, message)
+    const response = decodeSemanticWorkerResponseForMethod(record.wire.method, message, record.wire.uri)
     if (response.epoch !== this.#epoch || response.id !== record.wire.id
       || response.appliedRevision !== record.wire.requiredRevision
       || response.documentVersion !== record.wire.expectedDocumentVersion) {

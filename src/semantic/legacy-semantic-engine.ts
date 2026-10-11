@@ -10,6 +10,8 @@ import type {
   WorkspaceDescriptor,
 } from "../contracts/document.js"
 import type { ProjectResolverPort } from "../contracts/project-resolver.js"
+import { isProjectResourceFile } from "./resource-file-identity.js"
+import { semanticUnprepared, type SemanticReadinessQuery } from "../contracts/semantic-readiness.js"
 import type {
   SemanticCallHierarchyItem,
   SemanticCallHierarchyItemQuery,
@@ -68,20 +70,13 @@ import {
 import { LocalPackageResolver } from "../core/sdk/local-package-resolver.js"
 import type { StructuredLogger } from "../observability/logger.js"
 import type { SemanticMemoryLevel } from "./coordinator/semantic-coordinator.js"
-import type { ReferenceSearchRuntimeConfig } from "./references/reference-runtime.js"
+import type { LegacySemanticEngineRuntimeOptions } from "./semantic-engine-runtime-options.js"
 import { prepareReferenceAnchor, prepareReferenceSearchWorkspace } from "./references/reference-anchor-preparation.js"
+import { interactiveWorkspace, prepareInteractiveWorkspace } from "./interactive-workspace.js"
+import { toPublicCompletion, toLegacyCompletion, toPublicCallHierarchyItem,
+  toLegacyCallHierarchyItem, toPublicRange, toLegacyRange, toPublicDocumentSymbol } from "./legacy-result-mappers.js"
 
-export interface LegacySemanticEngineRuntimeOptions {
-  readonly maxResidentContexts?: number
-  readonly hostCancellationToken?: import("typescript").HostCancellationToken
-  readonly references?: ReferenceSearchRuntimeConfig
-  readonly interactiveSdkAmbientProfile?: import("../core/types/typescript-language-service.js").TypeScriptSdkAmbientProfile
-  readonly interactiveProjectRootProfile?: "closure" | "current"
-  readonly memberCompletionProjectRootProfile?: "workspace" | "current"
-  readonly autoImportProjectRootProfile?: "workspace" | "discovery"
-  readonly autoImportBatchRootLimit?: number
-  readonly autoImportTrimBetweenBatches?: boolean
-}
+export type { LegacySemanticEngineRuntimeOptions } from "./semantic-engine-runtime-options.js"
 
 export class LegacySemanticEngine implements SemanticEnginePort {
   private readonly packageResolver = new LocalPackageResolver()
@@ -128,6 +123,18 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     return this.engines.runtimeStats()
   }
 
+  async semanticReadiness(query: SemanticReadinessQuery) {
+    assertActive(query.signal)
+    const rootPath = toFilePath(query.rootUri)
+    if (!rootPath || this.projects.projectFor(query.rootUri).rootUri !== query.rootUri) {
+      return semanticUnprepared(query.rootUri, "workspace-root-unavailable")
+    }
+    const workspace = this.documents.prepareRoot(rootPath)
+    assertActive(query.signal)
+    if (!workspace) return semanticUnprepared(query.rootUri, "workspace-sources-unavailable")
+    return this.engines.semanticReadiness(workspace, query.prepare)
+  }
+
   applyMemoryPressure(level: SemanticMemoryLevel): void {
     this.engines.applyMemoryPressure(level)
   }
@@ -153,20 +160,8 @@ export class LegacySemanticEngine implements SemanticEnginePort {
   }
 
   isResourceFile(rootUri: string, fileUri: string): boolean {
-    const root = toFilePath(rootUri)
-    const candidate = toFilePath(fileUri)
-    if (!root || !candidate) return false
-    const scope = this.packageResolver.projectFor(root).scopeFor(candidate)
-    if (scope.status === "unconfigured") return isArkUIStringResourcePath(candidate)
-    if (scope.status !== "ready") return false
-    const physicalCandidate = resourceEventPath(candidate)
-    return scope.resourceRoots.some((resourceRoot) => {
-      const segments = path.relative(resourceEventPath(resourceRoot), physicalCandidate).split(path.sep)
-      return segments.length === 3 && segments[0] !== ".."
-        && segments[1] === "element" && segments[2] === "string.json"
-    })
+    return isProjectResourceFile(this.packageResolver, rootUri, fileUri)
   }
-
   close(documentUri: string): void {
     if (documentUri.startsWith("file:")) this.documents.close(fileURLToPath(documentUri))
   }
@@ -332,7 +327,13 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     assertActive(query.signal)
     this.sync(query.document)
     const prepared = this.prepare(query.document, query.position)
-    const value = prepared.engine.define(prepared.position).map((target) => ({
+    let definitions = prepared.engine.define(prepared.position)
+    if (definitions.length === 0) {
+      assertActive(query.signal)
+      const complete = this.prepare(query.document, query.position, true)
+      definitions = complete.engine.define(complete.position)
+    }
+    const value = definitions.map((target) => ({
       uri: pathToFileURL(target.path).href,
       range: toPublicRange(target.range),
     }))
@@ -730,10 +731,9 @@ export class LegacySemanticEngine implements SemanticEnginePort {
   ) {
     const workspace = this.projects.projectFor(document.uri)
     const legacyPosition = toLegacyPosition(document, position, workspace)
-    const preparedWorkspace = this.documents.prepare(legacyPosition, includeWorkspaceFiles)
-    const engine = this.engines.prepare(this.interactiveWorkspace(
-      preparedWorkspace,
-      legacyPosition.path,
+    const engine = this.engines.prepare(prepareInteractiveWorkspace(
+      this.documents,
+      legacyPosition,
       includeWorkspaceFiles,
       projectRootProfile,
       additionalSemanticRoots,
@@ -771,30 +771,16 @@ export class LegacySemanticEngine implements SemanticEnginePort {
           includeWorkspaceFiles,
         )
     return {
-      engine: this.engines.prepare(this.interactiveWorkspace(
+      engine: this.engines.prepare(interactiveWorkspace(
         workspace,
         legacyPosition.path,
         includeWorkspaceFiles,
+        this.interactiveProjectRootProfile,
       )),
       position: legacyPosition,
     }
   }
 
-  private interactiveWorkspace(
-    workspace: SemanticWorkspaceView,
-    currentPath: string,
-    includeWorkspaceFiles: boolean,
-    projectRootProfile = this.interactiveProjectRootProfile,
-    additionalSemanticRoots: readonly string[] = [],
-  ): SemanticWorkspaceView {
-    if (includeWorkspaceFiles || projectRootProfile !== "current") return workspace
-    const roots = new Set([path.resolve(currentPath)])
-    for (const document of workspace.documents) {
-      if (document.overlay) roots.add(path.resolve(document.path))
-    }
-    for (const root of additionalSemanticRoots) roots.add(path.resolve(root))
-    return { ...workspace, semanticRootPaths: [...roots].sort() }
-  }
 }
 
 interface CompletionDiscoveryBatch {
@@ -899,141 +885,6 @@ function toLegacyPosition(
   }
 }
 
-function completionKind(kind: string): SemanticCompletionKind {
-  switch (kind) {
-    case "method":
-    case "field":
-    case "function":
-    case "class":
-    case "enum":
-    case "enumMember":
-    case "interface":
-    case "keyword":
-    case "module":
-    case "variable":
-      return kind
-    default:
-      return "property"
-  }
-}
-
-function toPublicCompletion(
-  item: SemanticCompletionItem,
-  documentVersion: number,
-): SemanticCompletion {
-  return {
-    label: item.label,
-    detail: item.detail,
-    kind: completionKind(item.kind),
-    documentation: item.documentation,
-    insertText: item.insertText,
-    filterText: item.filterText,
-    sortText: item.sortText,
-    commitCharacters: item.commitCharacters,
-    isSnippet: item.isSnippet,
-    replacementRange: item.replacementRange
-      ? toPublicRange(item.replacementRange)
-      : undefined,
-    additionalTextEdits: item.additionalTextEdits?.map((edit) => ({
-      uri: pathToFileURL(edit.path).href,
-      range: toPublicRange(edit.range),
-      newText: edit.newText,
-      expectedVersion: edit.expectedVersion ?? documentVersion,
-    })),
-    preResolved: item.preResolved
-      ? {
-          documentVersion: item.preResolved.documentVersion,
-          detail: item.preResolved.detail,
-          documentation: item.preResolved.documentation,
-          additionalTextEdits: item.preResolved.additionalTextEdits?.map((edit) => ({
-            uri: pathToFileURL(edit.path).href,
-            range: toPublicRange(edit.range),
-            newText: edit.newText,
-            expectedVersion: edit.expectedVersion ?? documentVersion,
-          })),
-        }
-      : undefined,
-    data: item.data,
-  }
-}
-
-function toLegacyCompletion(item: SemanticCompletion): SemanticCompletionItem {
-  return {
-    label: item.label,
-    detail: item.detail,
-    kind: item.kind,
-    documentation: item.documentation,
-    insertText: item.insertText,
-    filterText: item.filterText,
-    sortText: item.sortText,
-    commitCharacters: item.commitCharacters,
-    isSnippet: item.isSnippet,
-    replacementRange: item.replacementRange
-      ? toLegacyRange(item.replacementRange)
-      : undefined,
-    data: item.data,
-  }
-}
-
-function toPublicCallHierarchyItem(
-  item: SemanticCallHierarchyItemInfo,
-): SemanticCallHierarchyItem {
-  return {
-    uri: pathToFileURL(item.path).href,
-    name: item.name,
-    kind: item.kind,
-    ...(item.sourceFingerprint ? { sourceFingerprint: item.sourceFingerprint } : {}),
-    range: toPublicRange(item.range),
-    selectionRange: toPublicRange(item.selectionRange),
-    ...(item.detail ? { detail: item.detail } : {}),
-  }
-}
-
-function toLegacyCallHierarchyItem(
-  item: SemanticCallHierarchyItem,
-): SemanticCallHierarchyItemInfo {
-  return {
-    path: fileURLToPath(item.uri),
-    name: item.name,
-    kind: item.kind,
-    ...(item.sourceFingerprint ? { sourceFingerprint: item.sourceFingerprint } : {}),
-    range: toLegacyRange(item.range),
-    selectionRange: toLegacyRange(item.selectionRange),
-    ...(item.detail ? { detail: item.detail } : {}),
-  }
-}
-
-function toLegacyRange(range: TextRange) {
-  return {
-    startLine: range.start.line + 1,
-    startColumn: range.start.character + 1,
-    endLine: range.end.line + 1,
-    endColumn: range.end.character + 1,
-  }
-}
-
-function toPublicRange(range: {
-  startLine: number
-  startColumn: number
-  endLine: number
-  endColumn: number
-}) {
-  return {
-    start: { line: range.startLine - 1, character: range.startColumn - 1 },
-    end: { line: range.endLine - 1, character: range.endColumn - 1 },
-  }
-}
-
-function toPublicDocumentSymbol(symbol: SemanticDocumentSymbolInfo): SemanticDocumentSymbol {
-  return {
-    name: symbol.name,
-    detail: symbol.detail,
-    kind: symbol.kind,
-    range: toPublicRange(symbol.range),
-    selectionRange: toPublicRange(symbol.selectionRange),
-    children: symbol.children?.map(toPublicDocumentSymbol),
-  }
-}
 
 function sourceLineStarts(source: string): number[] {
   const starts = [0]

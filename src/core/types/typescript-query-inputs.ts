@@ -1,0 +1,27 @@
+import type { LocalPackageResolver } from "../sdk/local-package-resolver.js"
+import type { LoadedConfigurationWitness } from "../../project/loaded-configuration-witness.js"
+import { CooperativeWork } from "./cooperative-work.js"
+
+export class SemanticInputUnavailableError extends Error {
+  constructor() {
+    super("Semantic query requires current workspace inputs")
+    this.name = "SemanticInputUnavailableError"
+  }
+}
+
+/** Validate metadata from its actual load, never restamp a cached resolution. */
+export function loadedConfigurationIsCurrent(
+  witness: LoadedConfigurationWitness | undefined,
+  resolver: LocalPackageResolver,
+  rootPath: string,
+  checkpoint: () => void,
+): boolean {
+  const work = new CooperativeWork(checkpoint)
+  work.boundary()
+  if (!witness) return work.finish(true)
+  // Capture all load-owned predicates first, then verify once before returning.
+  // Capture is not a cached validity answer: each predicate scans every witness.
+  const compiler = witness.freshness(() => work.item(), "capture")
+  const packages = resolver.configurationFreshness(rootPath, () => work.item(), "capture")
+  return work.finish(Boolean(compiler?.() && packages?.()))
+}

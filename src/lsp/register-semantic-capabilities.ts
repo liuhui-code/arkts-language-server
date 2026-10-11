@@ -49,6 +49,7 @@ import {
   staleCallHierarchy,
 } from "./call-hierarchy-adapter.js"
 import { registerReferenceCapability } from "./register-reference-capability.js"
+import { registerImplementationCapability } from "./register-implementation-capability.js"
 import type { SemanticRequestRunner } from "./semantic-request-runner.js"
 
 interface SemanticCapabilityDependencies {
@@ -139,20 +140,7 @@ export function registerSemanticCapabilities({
     })
   })
 
-  connection.onImplementation(async (params, token) => {
-    return requests.run({
-      method: "textDocument/implementation",
-      documentUri: params.textDocument.uri,
-      token,
-      fallback: [],
-      scope: "workspace",
-      execute: (document, signal) => semantic.implementations({
-        document,
-        position: params.position,
-        signal,
-      }),
-    })
-  })
+  registerImplementationCapability(connection, semantic, requests)
 
   connection.languages.inlayHint.on(async (params, token) => {
     assertValidInlayHintParams(params)

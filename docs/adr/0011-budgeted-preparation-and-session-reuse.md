@@ -8,6 +8,16 @@
 下文的 `S05 IN_PROGRESS` 是对应检查点当时的历史状态，以末尾的
 2026-10-05 安全决策为当前结论。
 
+2026-10-08 推进规则更新：L03 使用 L01/L02 实测证据实现预算与回收，
+不要求进入 L03 前先通过最终资源指标。L01–L07 保留切片正确性、取消
+与可停止/清理的执行保护；最终内存、时延、长期 soak 和 PSS/DevEco
+统一在 L08 验收。下文 S05 的失败、否决及默认关闭结论保留为历史证据。
+
+2026-10-09 [L03 完成审计](../reports/2026-10-09-resident-l03-completion-audit.md)
+A～E PASS：预算、准入、成本感知回收和恢复实施及校准完成，完整
+check:fast 1439/1439 PASS，终态身份一致。本 ADR 仍 Proposed，实验
+默认关闭；阶段完成不覆盖 ADR 0003 或 S05 否决，不授予生产准入。
+
 ## Context
 
 首次准备可慢，资源仍须有界。现有 per-batch transient verifier 是安全基线。R-09 已实现且默认关闭；固定 Settings A/B 的 enabled 查询均在 L3 驱逐后 miss，仍使用 24 batches，没有真实构建节省或毕业证据。
@@ -27,6 +37,8 @@ L03 只有在 L01 的 steady/peak 和 L02 的编辑资源曲线已得到以后�
 ## Gate and rollback
 
 与当前基线交替测量精确结果、时延、峰值、post-eviction 和 100 次操作趋势。保留 [ADR 0003](0003-reference-verifier-worker-lifecycle.md) 的峰值 RSS ≤1.10 × per-batch、post-eviction 和有效时延收益门禁，且仍须满足最终产品内存门禁。
+这些产品阈值在 L08 最终判定；前序实验的回归记录为待解问题，
+使用预声明停止线保护运行，不因尚未达到最终阈值冻结后续实现。
 
 保留增长、峰值回归或配置错配即恢复 transient 默认。永久保留所有 LS、提高预算/heap 或强制 GC 不能替代工作集方案。单个正确闭包过大时只可研究真实边界或可信构建产物，不能虚构文件数量硬上限。
 
@@ -188,6 +200,103 @@ cancellation and resource gates; it must not relabel this rejected candidate.
 S02 remains FAIL and S03 remains BLOCKED.
 
 ## Relations
+
+2026-10-08 [L03 references 压力准入](../tdd/l03-reference-pressure-admission.md)
+在公开 RED/GREEN 后，将既有默认关闭的 L3 单批实验停止线统一传入
+legacy、batched 与 indexed 路由。多批显式拒绝、单批及关闭路径完整
+结果和最新诊断/导航恢复在 50/50 focused 中通过；生产默认不变。
+这不是按字节成本准入或统一 soft budget 完成，也不是新的项目文件数
+限制。新源码 whole NOT_RUN，前轮 1380/1380 只属于多根回收检查点。
+
+2026-10-08 [L03 成本感知容量驱逐](../tdd/l03-cost-aware-capacity-eviction.md)
+在公开 RED/GREEN 后，增加默认关闭的 benchmark/cost 双开关；既有
+两个 context 容量满时，仅在所有无 lease 候选有正成本且有差异时，
+按最近观测的 grouped compiler 准备耗时优先驱逐低成本对象，LRU
+打破并列。缺测、同成本、单候选和关闭路径保留原 LRU；不提高
+1024 MiB 策略，不让成本豁免 L3，也不单独开启 L2 rearm。
+成本仅是当前实例成功查询的耗时样本，不是字节预算、独占 CPU 或
+下次冷恢复保证；不新增缓存 owner。三根最新 overlay/完整引用与
+lease/旧实例边界在该检查点 67/67 focused 中通过，源码 whole NOT_RUN。
+统一 resident/transient 字节核算和真实工程对照继续，产品默认和
+S05 否决保留；最终资源、时延、soak 与平台结论在 L08。
+
+2026-10-08 [L03 全部文档关闭后的压力回收](../tdd/l03-closed-document-pressure-recycle.md)
+以公开 RED/GREEN 将非空文档资格限定到手动入口。自动入口有已注册
+roots 且通过原实际 L3/静默/零 context/lease 见证时，可在空文档
+状态替换；仍先终止旧 Worker，再恢复 root 注册，不重放已关闭文本。
+在途引用、关闭后的 ContentModified、两根相同版本号的新 overlay、
+正常诊断和两个关闭路径在该检查点 126/126 focused 中通过，whole NOT_RUN。
+没有新增开关或提高预算，不代表统一字节预算或资源收益已经取得。
+
+2026-10-08 [L03 在途压力与 verifier 准入](../tdd/l03-midflight-reference-admission.md)
+在公开 RED/GREEN 后，将已有默认关闭的压力开关延伸到执行期间。
+请求内遇到 L3 后保留正见证，禁止追加 verifier，并与扩展/递归
+fallback 共享资格；已启动验证仍可清理，完整范围已证明时仍可成功。
+取消检查先于预算拒绝；否则未完成范围显式 `-32803`，不返回部分
+位置或写入部分成功缓存。新请求重新判断，不永久冻结后续查询。
+两路在途控制、关闭路径、取消与单批完成在该检查点 103/103 focused
+中通过，whole NOT_RUN。此为执行保护，不是硬 RSS 上限或统一字节
+预算毕业；1024 MiB、现行 RSS/滞回 owner 和生产默认不变，最终验收仍在 L08。
+
+2026-10-08 [L03 准入前 RSS 刷新](../tdd/l03-reference-pressure-sampling.md)
+以公开 RED/GREEN 连接实际进程 RSS 与 references 准入：入口在
+document preparation 之后刷新，后续 verifier 资格检查也刷新同一个
+runtime policy/滞回 owner。沿用原默认关闭双开关，不新增阈值或按批数
+换算字节，不相加 Worker RSS；请求内 L3 见证、取消优先、完整单批
+许可及正常诊断保留。三路、tracing 关闭和两个关闭路径在该检查点
+120/120 focused 中通过，whole NOT_RUN。此为采样与执行保护衔接，
+不是独占 Program 字节核算、硬峰值上限或真实工程内存收益；统一
+字节成本和 soft budget 校准继续，最终资源目标仍在 L08。
+
+2026-10-08 [L03 transient Worker 核算](../tdd/l03-transient-worker-occupancy.md)
+通过四个逐项公开 RED/GREEN 补齐 reference、anchor、诊断 verifier 的
+物理存活计数与快照时钟。沿用已有指标文件 opt-in，真实 `exit` 才
+释放；保留单 semantic owner 字段，另外记录 owner 加 transient 数。
+RSS 按 Node PID 只计一次，heap/Coordinator 状态仍限定 owner isolate；
+计数不是 Program 数或独占字节。边界快照不更新压力、不构造 Program，
+取消恢复与普通诊断在该检查点 153/153 focused 中通过，whole NOT_RUN。
+没有新预算、调度或默认路由；真实工程校准和统一字节成本继续，
+不把计数归零写成 RSS 回落或资源收益，最终资源验收仍在 L08。
+
+2026-10-09 [真实 Settings 生命周期校准](../reports/2026-10-09-resident-l03-transient-occupancy.md)
+在同源码下比较 dispose 与 budget-aware，两轮 8/8 exact、正常诊断一致。
+保留 context 与 transient verifier 重叠后被自然 L3 驱逐；移除 context
+且 verifier 退出时仍有较高 Node RSS，二者不是即时字节归还见证。
+R-09 固定关闭，各次引用均重建 verifier Program；峰值近似的单次
+trace-on 对照不证明资源收益，也不否定尚未参与本控制的 resident 复用。
+预算继续按全进程 RSS 一次计量，结合实际重叠与已观测准备成本校准；
+不得相加同一 PID 的 Worker RSS 或按 context/文件数虚构成本。产品源码
+未变，重放器 24/24 PASS；该检查点 whole NOT_RUN，最终判定仍在 L08。
+
+2026-10-09 [高压力 anchor 准入](../tdd/l03-anchor-pressure-admission.md)
+在真实 LSP RED/GREEN 后，把原压力双开关延伸到独立候选发现准备。
+取消优先，刷新同一全进程 RSS/滞回政策；L3 不另启 compiler anchor，
+但必须交回完整 scope 验证，而不是空结果或未经证明的 index 范围。
+单批完整、多批显式错误、关闭/低压力、取消恢复与正常最新诊断通过，
+该检查点十五文件 focused 160/160 PASS，whole NOT_RUN。已有便宜且已验证
+的 resident/memo 资格保留；没有新增预算、协议或默认推广。回退成本
+与真实工程收益仍需实测，不由 Worker 数量推算字节，最终验收仍在 L08。
+
+2026-10-09 [按实际 RSS 与准备成本回收](../tdd/l03-cost-aware-pressure-recovery.md)
+把既有默认关闭成本政策用于 L3 冷驱逐。每处置一个无 lease context
+就通过原全进程 RSS/滞回重新判断目标，持续 L3 不因高成本而豁免；
+未知/并列成本仍用 LRU。Worker 资格须在静默时复核当前压力，已回落
+则拒绝替换；没有成功资格的事务不提前清引用缓存，显式压力控制的
+原清缓存合同不变。三组公开 RED/GREEN 与当前六文件联合控制
+20/20 PASS；该联合控制检查点尚未执行 whole，后续校准及完整回归见下。
+1024 MiB 与原 92%/85% 阈值不变，功能通过不代表资源收益。
+
+2026-10-09 [统一政策的真实 Settings 校准](../reports/2026-10-09-resident-l03-budget-policy-calibration.md)
+在当前同构建上完成选定配置/对照 26/26 exact、最新诊断配对一致，
+覆盖首次、稳态、编辑、冷定位及驱逐后全局恢复。1024 MiB 与原滞回
+保留；自动替换候选没有显示峰值收益，稳态重复约 4.9 s，故不纳入
+本序列选定配置，但机制和历史证据仍保留为独立实验。trace-off 选定
+峰值 +0.77%，不宣布资源降低；已处置上下文与物理退出后的 RSS 仍
+分别核算，恢复工序不同的样本不冒称构建提速。当前完整 check:fast
+1439/1439 PASS、退出 0、无 skip/todo/cancel，终态后源码/构建、测试
+及工程/SDK 身份一致；[完成审计](../reports/2026-10-09-resident-l03-completion-audit.md)
+A～E 通过，L03 阶段实施与校准完成。六份 raw report 的 readiness
+仍为 FAIL / READINESS_UNSUPPORTED，最终内存、时延及产品验收留在 L08。
 
 继续使用 [ADR 0002](0002-hot-semantic-context-lifecycle.md) 已实现的 default-off retention、L3 hysteresis 和 R-09 准入；[R-09 TDD](../tdd/references-resident-fast-path.md) 与 [Settings 报告](../reports/2026-09-29-settings-resident-fast-path.md) 保留实现与失败毕业的区别。R-10 已有有界 anchor memo 不等于复用 Program；R-11 shell reuse 仍是次级实验。ADR 0014 拥有新 LS 生命周期，当前 ADR 只负责其资源政策；只有未来不同候选通过自身门禁及评审，才可显式讨论对 ADR 0003 的 supersession 范围；S05 否决不产生该范围。
 

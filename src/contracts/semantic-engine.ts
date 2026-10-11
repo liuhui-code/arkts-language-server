@@ -4,6 +4,7 @@ import type {
   TextPosition,
   TextRange,
 } from "./document.js"
+import type { SemanticReadinessQuery, SemanticReadinessReport } from "./semantic-readiness.js"
 
 export type SemanticCompletionKind =
   | "method"
@@ -372,6 +373,7 @@ export interface SemanticWorkspaceFileChangeBatch {
 }
 
 export interface SemanticEnginePort {
+  semanticReadiness?(query: SemanticReadinessQuery): Promise<SemanticReadinessReport>
   configureProject?(selection: unknown): void
   configureSdk?(selection: unknown): void
   applyMemoryPressure?(level: "level2" | "level3"): void

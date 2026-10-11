@@ -193,9 +193,10 @@ async function makeSuite(t, mode = "normal") {
   const suite = {
     schemaVersion: 1, benchmarkId: "preopen-diagnostic-barrier", seed: 20261006,
     workspace, sdk, server, sidecar: server,
-    pins: await capturePreparedIdentity({ workspace, sdk, server, sidecar: server }),
+    pins: await capturePreparedIdentity({ workspace, sdk, server, sidecar: server,
+      runtime: { env: { ARKTS_L01_TRANSIENT_DIAGNOSTICS: "0" } } }),
     runtime: { timeoutMs: 5000, diagnosticTimeoutMs: 500, sampleIntervalMs: 25,
-      env: { ARKTS_TEST_PREOPEN_DIAGNOSTICS: mode } },
+      env: { ARKTS_TEST_PREOPEN_DIAGNOSTICS: mode, ARKTS_L01_TRANSIENT_DIAGNOSTICS: "0" } },
     readiness: { candidateControl: true }, preOpenTargetIds: ["first", "second"],
     targets: [target("first", "references", "First.ets"), target("second", "definition", "Second.ets")],
     scenarios: [

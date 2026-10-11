@@ -17,7 +17,13 @@ const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 test("classifies every executable test entry exactly once in an explicit layer", () => {
   const audit = validateTestLayerManifest({ root: projectRoot, manifest: TEST_LAYER_MANIFEST })
 
-  assert.equal(audit.entryCount, 163)
+  assert.equal(audit.entryCount, 180)
+  assert.equal(audit.assignments["tests/semantic/default-pressure-diagnostics.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/prepared-suite-semantic-readiness.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/semantic-readiness-lifecycle.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic-worker-readiness-protocol.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/semantic/semantic-readiness.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic-release-matrix-cli.test.mjs"], "unit-contract")
   assert.equal(audit.assignments["tests/l01-soak-suite-generator-cli.test.mjs"], "unit-contract")
   assert.equal(audit.assignments["tests/prepared-suite-diagnostic-worker-pin-cli.test.mjs"], "unit-contract")
   assert.equal(audit.assignments["tests/prepared-suite-gc-probe-pin.test.mjs"], "unit-contract")
@@ -26,10 +32,12 @@ test("classifies every executable test entry exactly once in an explicit layer",
   assert.equal(audit.assignments["tests/semantic/references-direct-proof-trace.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/semantic/semantic-context-lifecycle.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/semantic/semantic-l3-reference-admission.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/semantic-reference-pressure-sampling.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/semantic/semantic-post-eviction-gc-probe.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/semantic/semantic-worker-recycle.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/semantic/semantic-l2-rearm-witness.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/semantic/semantic-script-admission-trace.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/semantic-same-content-promotion.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/semantic/semantic-session-reuse.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/semantic-facts-spike.test.mjs"], "unit-contract")
   assert.equal(audit.assignments["tests/semantic-facts-resolved-signature-spike.test.mjs"], "unit-contract")
@@ -41,6 +49,7 @@ test("classifies every executable test entry exactly once in an explicit layer",
   assert.equal(audit.assignments["tests/semantic-facts-origin-hook-builder.test.mjs"], "unit-contract")
   assert.equal(audit.assignments["tests/semantic-facts-worklist-hook-spike.test.mjs"], "unit-contract")
   assert.equal(audit.assignments["tests/prepared-suite-cli.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/prepared-suite-interactive-cli.test.mjs"], "unit-contract")
   assert.equal(audit.assignments["tests/prepared-suite-diagnostic-barrier-cli.test.mjs"], "unit-contract")
   assert.equal(audit.assignments["tests/prepared-suite-l3-cli.test.mjs"], "unit-contract")
   assert.equal(audit.assignments["tests/prepared-suite-worker-recycle-cli.test.mjs"], "unit-contract")
@@ -57,6 +66,13 @@ test("classifies every executable test entry exactly once in an explicit layer",
   assert.equal(audit.assignments["tests/index-class-binding-discovery.test.mjs"], "unit-contract")
   assert.equal(audit.assignments["tests/class-binding-input-snapshot.test.mjs"], "unit-contract")
   assert.equal(audit.assignments["tests/semantic/references-batch-search-coverage.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/resident-session-references.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/resident-session-implementations.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/resident-session-interactive.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/resident-session-interactive-inputs.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/resident-session-rename.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/resident-session-call-hierarchy.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/resident-session-edit-call-inputs.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/semantic/references-constructor-scope-exclusion.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/semantic-worker-anchor-seed.test.mjs"], "unit-contract")
   assert.equal(audit.assignments["tests/semantic/references-anchor-reuse.test.mjs"], "bundle-e2e")
@@ -239,6 +255,7 @@ test("classifies every executable test entry exactly once in an explicit layer",
   )
   assert.equal(audit.assignments["tests/semantic/rename-depth.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/release/real-sdk.acceptance.mjs"], "real-sdk")
+  assert.equal(audit.assignments["tests/release/resident-semantic-latency.acceptance.mjs"], "real-sdk")
   assert.equal(
     audit.assignments["tests/semantic/rename-completeness.test.mjs"],
     "bundle-e2e",
@@ -248,28 +265,29 @@ test("classifies every executable test entry exactly once in an explicit layer",
     "bundle-e2e",
   )
   assert.deepEqual(audit.layerCounts, {
-    "unit-contract": 82,
+    "unit-contract": 85,
     protocol: 8,
-    "bundle-e2e": 67,
+    "bundle-e2e": 80,
     "artifact-e2e": 3,
     "sealed-artifact-e2e": 1,
     large: 1,
-    "real-sdk": 1,
+    "real-sdk": 2,
   })
 })
 
 test("real SDK acceptance has an explicit command and is excluded from fast execution", async () => {
-  const entry = "tests/release/real-sdk.acceptance.mjs"
+  const entries = ["tests/release/real-sdk.acceptance.mjs",
+    "tests/release/resident-semantic-latency.acceptance.mjs"]
   const sdkLayer = TEST_LAYER_MANIFEST.layers.find(({ id }) => id === "real-sdk")
   assert.equal(sdkLayer?.fast, false)
-  assert.deepEqual(sdkLayer.entries, [entry])
+  assert.deepEqual(sdkLayer.entries, entries)
   const output = { value: "", write(value) { this.value += value } }
   const fast = await runNodeTestLayer({ argv: ["--fast", "--list"], stdout: output })
-  assert.equal(fast.entries.includes(entry), false)
+  assert.ok(entries.every(entry => !fast.entries.includes(entry)))
   output.value = ""
   const sdk = await runNodeTestLayer({ argv: ["--layer", "real-sdk", "--list"], stdout: output })
-  assert.deepEqual(sdk.entries, [entry])
-  assert.equal(output.value, `${entry}\n`)
+  assert.deepEqual(sdk.entries, entries)
+  assert.equal(output.value, `${entries.join("\n")}\n`)
   const packageJson = JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf8"))
   assert.equal(packageJson.scripts["test:e2e:real-sdk"],
     "pnpm build && node scripts/run-node-test-layer.mjs --layer real-sdk")

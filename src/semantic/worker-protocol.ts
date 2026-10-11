@@ -1,5 +1,11 @@
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { readOwnDataRecord } from "./semantic-worker-record.js"
+import { jsonStringWireBytes, stringByteMetrics } from "./semantic-worker-string-bytes.js"
+import { assertSemanticReadinessResponse } from "./semantic-readiness-wire.js"
+import { SEMANTIC_WORKER_ERROR_CODES, SEMANTIC_WORKER_ERROR_MESSAGES,
+  type SemanticWorkerError, type SemanticWorkerErrorCode } from "./semantic-worker-error-policy.js"
+export { SEMANTIC_WORKER_ERROR_CODES,
+  type SemanticWorkerError, type SemanticWorkerErrorCode } from "./semantic-worker-error-policy.js"
 
 export const SEMANTIC_WORKER_PROTOCOL_VERSION = 2 as const
 export const MAX_SEMANTIC_WORKER_TEXT_BYTES = 4 * 1024 * 1024
@@ -62,39 +68,10 @@ export const SEMANTIC_WORKER_METHODS = Object.freeze([
   "prepareCallHierarchy",
   "outgoingCalls",
   "incomingCalls",
+  "semanticReadiness",
 ] as const)
 
 export type SemanticWorkerMethod = typeof SEMANTIC_WORKER_METHODS[number]
-
-export const SEMANTIC_WORKER_ERROR_CODES = Object.freeze([
-  "client-cancelled",
-  "content-modified",
-  "invalid-request",
-  "workspace-incomplete",
-  "queue-overflow",
-  "worker-unavailable",
-  "restart-required",
-  "internal-error",
-] as const)
-
-export type SemanticWorkerErrorCode = typeof SEMANTIC_WORKER_ERROR_CODES[number]
-
-const SEMANTIC_WORKER_ERROR_MESSAGES: Readonly<Record<SemanticWorkerErrorCode, string>> =
-  Object.freeze({
-    "client-cancelled": "Semantic request cancelled",
-    "content-modified": "Semantic document changed",
-    "invalid-request": "Invalid semantic worker request",
-    "workspace-incomplete": "Semantic workspace is incomplete",
-    "queue-overflow": "Semantic worker queue is full",
-    "worker-unavailable": "Semantic worker unavailable",
-    "restart-required": "Semantic worker restart required",
-    "internal-error": "Semantic worker request failed",
-  })
-
-export interface SemanticWorkerError {
-  readonly code: SemanticWorkerErrorCode
-  readonly message: string
-}
 
 export type SemanticWorkerJsonValue =
   | null
@@ -329,12 +306,13 @@ export interface SemanticWorkerRequestArgsByMethod {
   readonly prepareCallHierarchy: SemanticWorkerPositionArgs
   readonly outgoingCalls: SemanticWorkerCallHierarchyFollowupArgs
   readonly incomingCalls: SemanticWorkerCallHierarchyFollowupArgs
+  readonly semanticReadiness: { readonly prepare: boolean }
 }
 
-type SemanticWorkerFollowupMethod = "outgoingCalls" | "incomingCalls"
+type SemanticWorkerFollowupMethod = "outgoingCalls" | "incomingCalls" | "semanticReadiness"
 
 export type SemanticWorkerExpectedDocumentVersion<Method extends SemanticWorkerMethod> =
-  Method extends SemanticWorkerFollowupMethod ? number | null : number
+  Method extends "semanticReadiness" ? null : Method extends SemanticWorkerFollowupMethod ? number | null : number
 
 export interface SemanticWorkerRequestEnvelope<
   Method extends SemanticWorkerMethod,
@@ -597,11 +575,11 @@ export function decodeSemanticWorkerRequest(value: unknown): SemanticWorkerReque
     || !isCanonicalSemanticWorkerFileUri(input.uri)
     || !isExpectedDocumentVersion(input.method, input.expectedDocumentVersion)
   ) throw invalidRequest()
-  const strictCallHierarchyArgs = input.method === "prepareCallHierarchy"
+  const strictArgs = input.method === "prepareCallHierarchy"
     ? decodePositionArgs(input.args)
     : input.method === "outgoingCalls" || input.method === "incomingCalls"
       ? decodeCallHierarchyFollowupArgs(input.args)
-      : undefined
+      : input.method === "semanticReadiness" ? decodeRequestArgs(input.method, input.args) : undefined
   const canonicalArgs = canonicalizeJson(
     input.args,
     MAX_SEMANTIC_WORKER_ARGS_BYTES,
@@ -613,7 +591,7 @@ export function decodeSemanticWorkerRequest(value: unknown): SemanticWorkerReque
     || typeof canonicalArgs.value !== "object"
     || Array.isArray(canonicalArgs.value)
   ) throw invalidRequest()
-  const args = strictCallHierarchyArgs ?? decodeRequestArgs(input.method, canonicalArgs.value)
+  const args = strictArgs ?? decodeRequestArgs(input.method, canonicalArgs.value)
   if (
     (input.method === "outgoingCalls" || input.method === "incomingCalls")
     && (args as SemanticWorkerCallHierarchyFollowupArgs).item.uri !== input.uri
@@ -747,15 +725,18 @@ function decodeSemanticWorkerResponseEnvelope(
 export function decodeSemanticWorkerResponseForMethod<Method extends SemanticWorkerMethod>(
   method: Method,
   value: unknown,
+  expectedRootUri?: string,
 ): SemanticWorkerMethodResponse<Method> {
   if (!isSemanticWorkerMethod(method)) throw invalidResponse()
+  if (method === "semanticReadiness") assertSemanticReadinessResponse(value, invalidResponse, expectedRootUri, isCanonicalSemanticWorkerFileUri)
   const callHierarchyValue = isCallHierarchyMethod(method)
     ? decodeRawCallHierarchyResponseValue(method, value)
     : undefined
   const response = decodeSemanticWorkerResponseEnvelope(
     value,
-    method === "outgoingCalls" || method === "incomingCalls",
+    method === "outgoingCalls" || method === "incomingCalls" || method === "semanticReadiness",
   )
+  if (method === "semanticReadiness") assertSemanticReadinessResponse(response, invalidResponse, expectedRootUri, isCanonicalSemanticWorkerFileUri)
   if (!response.ok) {
     return response as SemanticWorkerMethodResponse<Method>
   }
@@ -1166,6 +1147,11 @@ function decodeRequestArgs(
   value: unknown,
 ): SemanticWorkerRequestArgsByMethod[SemanticWorkerMethod] {
   switch (method) {
+    case "semanticReadiness": {
+      const args = ownDataRecord(value, ["prepare"])
+      if (!args || !hasExactKeys(args, ["prepare"]) || typeof args.prepare !== "boolean") throw invalidRequest()
+      return Object.freeze({ prepare: args.prepare })
+    }
     case "complete":
       return decodeCompletionArgs(value)
     case "typeDefinitions":
@@ -1802,68 +1788,6 @@ function addWireBytes(state: CanonicalJsonState, bytes: number): void {
   if (state.wireBytes > state.maxBytes) throw state.onByteLimit()
 }
 
-function jsonStringWireBytes(
-  value: string,
-  maxBytes: number,
-  onByteLimit: () => SemanticWorkerProtocolError,
-): number {
-  return stringByteMetrics(
-    value,
-    Number.MAX_SAFE_INTEGER,
-    maxBytes,
-    onByteLimit,
-    onByteLimit,
-  ).wireBytes
-}
-
-function stringByteMetrics(
-  value: string,
-  maxRawBytes: number,
-  maxWireBytes: number,
-  onRawLimit: () => SemanticWorkerProtocolError,
-  onWireLimit: () => SemanticWorkerProtocolError,
-): { readonly rawBytes: number; readonly wireBytes: number } {
-  let rawBytes = 0
-  let wireBytes = 2
-  if (wireBytes > maxWireBytes) throw onWireLimit()
-  for (let index = 0; index < value.length; index += 1) {
-    const code = value.charCodeAt(index)
-    if (code === 0x22 || code === 0x5c || code === 0x08 || code === 0x09
-      || code === 0x0a || code === 0x0c || code === 0x0d) {
-      rawBytes += 1
-      wireBytes += 2
-    } else if (code < 0x20) {
-      rawBytes += 1
-      wireBytes += 6
-    } else if (code < 0x80) {
-      rawBytes += 1
-      wireBytes += 1
-    } else if (code < 0x800) {
-      rawBytes += 2
-      wireBytes += 2
-    } else if (code >= 0xd800 && code <= 0xdbff) {
-      const next = value.charCodeAt(index + 1)
-      if (next >= 0xdc00 && next <= 0xdfff) {
-        rawBytes += 4
-        wireBytes += 4
-        index += 1
-      } else {
-        rawBytes += 3
-        wireBytes += 6
-      }
-    } else if (code >= 0xdc00 && code <= 0xdfff) {
-      rawBytes += 3
-      wireBytes += 6
-    } else {
-      rawBytes += 3
-      wireBytes += 3
-    }
-    if (rawBytes > maxRawBytes) throw onRawLimit()
-    if (wireBytes > maxWireBytes) throw onWireLimit()
-  }
-  return Object.freeze({ rawBytes, wireBytes })
-}
-
 function cancellationView(cell: unknown): Int32Array {
   let byteLength: unknown
   let maxByteLength: unknown
@@ -1973,6 +1897,7 @@ function isExpectedDocumentVersion(
   method: SemanticWorkerMethod,
   value: unknown,
 ): boolean {
+  if (method === "semanticReadiness") return value === null
   return isNonNegativeSafeInteger(value)
     || ((method === "outgoingCalls" || method === "incomingCalls") && value === null)
 }

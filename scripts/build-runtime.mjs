@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import fs from "node:fs/promises"
+import { createHash } from "node:crypto"
 import { createRequire } from "node:module"
 import path from "node:path"
 
@@ -8,6 +9,12 @@ import { build } from "esbuild"
 
 const require = createRequire(import.meta.url)
 const compilerLib = path.dirname(require.resolve("typescript"))
+const compilerPackage = await fs.readFile(require.resolve("typescript/package.json"))
+const compilerArtifact = {
+  packageVersion: JSON.parse(compilerPackage.toString("utf8")).version,
+  compilerSha256: createHash("sha256").update(await fs.readFile(require.resolve("typescript"))).digest("hex"),
+  packageSha256: createHash("sha256").update(compilerPackage).digest("hex"),
+}
 const libraryFiles = (await fs.readdir(compilerLib, { withFileTypes: true }))
   .filter(entry => entry.isFile() && /^lib(?:\.[a-z0-9]+)*\.d\.ts$/.test(entry.name))
   .map(entry => entry.name)
@@ -24,6 +31,7 @@ await build({
     "diagnostic-verifier-worker": "src/semantic/diagnostics/diagnostic-verifier-worker-runtime.ts",
   },
   bundle: true,
+  define: { ARKTS_COMPILER_ARTIFACT_IDENTITY: JSON.stringify(compilerArtifact) },
   platform: "node",
   target: "node20",
   format: "cjs",

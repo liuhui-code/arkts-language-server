@@ -15,12 +15,15 @@ export interface SemanticManagedContext {
 
 export interface SemanticCoordinatorOptions<Context extends SemanticManagedContext> {
   readonly maxResidentContexts: number
+  readonly costAwareEviction?: boolean
+  readonly readMemoryPressure?: () => SemanticMemoryLevel
   readonly createContext: (contextId: string) => Context
-  readonly onLifecycle?: (event: "create" | "reuse" | "trim" | "evict", fields: {
+  readonly onLifecycle?: (event: "create" | "reuse" | "trim" | "evict" | "cost", fields: {
     readonly contextSequence: number
     readonly reason: string
     readonly leaseCount: number
     readonly residentContextCount: number
+    readonly rebuildCostMs?: number
   }) => void
 }
 
@@ -35,10 +38,13 @@ interface ResidentContext<Context> {
   leaseCount: number
   lastAccess: number
   trimmed: boolean
+  rebuildCostMs?: number
 }
 
 export class SemanticCoordinator<Context extends SemanticManagedContext> {
   readonly #maxResidentContexts: number
+  readonly #costAwareEviction: boolean
+  readonly #readMemoryPressure: SemanticCoordinatorOptions<Context>["readMemoryPressure"]
   readonly #createContext: (contextId: string) => Context
   readonly #onLifecycle: SemanticCoordinatorOptions<Context>["onLifecycle"]
   readonly #contexts = new Map<string, ResidentContext<Context>>()
@@ -50,6 +56,8 @@ export class SemanticCoordinator<Context extends SemanticManagedContext> {
       throw new Error("maxResidentContexts must be a positive integer")
     }
     this.#maxResidentContexts = options.maxResidentContexts
+    this.#costAwareEviction = options.costAwareEviction === true
+    this.#readMemoryPressure = options.readMemoryPressure
     this.#createContext = options.createContext
     this.#onLifecycle = options.onLifecycle
   }
@@ -95,13 +103,22 @@ export class SemanticCoordinator<Context extends SemanticManagedContext> {
     if (resident?.context === context) resident.trimmed = false
   }
 
+  recordRebuildCost(contextId: string, context: Context, rebuildCostMs: number): void {
+    const resident = this.#contexts.get(contextId)
+    if (resident?.context !== context || !Number.isFinite(rebuildCostMs) || rebuildCostMs <= 0) return
+    resident.rebuildCostMs = rebuildCostMs
+    this.#observe("cost", resident, "compiler-build")
+  }
+
   forEachContext(visitor: (context: Context, contextId: string) => void): void {
     for (const [contextId, resident] of this.#contexts) visitor(resident.context, contextId)
   }
 
-  applyMemoryPressure(level: SemanticMemoryLevel): void {
-    if (level === "level0" || level === "level1") return
-    for (const [contextId, resident] of this.#coldUnleasedContexts()) {
+  applyMemoryPressure(level: SemanticMemoryLevel): SemanticMemoryLevel {
+    if (level === "level0" || level === "level1") return level
+    const candidates = this.#coldUnleasedContexts()
+    if (level === "level3") this.#rankByRebuildCost(candidates)
+    for (const [contextId, resident] of candidates) {
       if (level === "level2") {
         if (!resident.trimmed) {
           resident.context.trim()
@@ -111,7 +128,12 @@ export class SemanticCoordinator<Context extends SemanticManagedContext> {
         continue
       }
       this.#evict(contextId, resident, "memory-level3")
+      if (this.#costAwareEviction && this.#readMemoryPressure) {
+        level = this.#readMemoryPressure()
+        if (level !== "level3") break
+      }
     }
+    return level
   }
 
   contextIds(): string[] {
@@ -144,9 +166,11 @@ export class SemanticCoordinator<Context extends SemanticManagedContext> {
 
   #makeRoom(): void {
     while (this.#contexts.size >= this.#maxResidentContexts) {
-      const candidate = this.#coldUnleasedContexts()[0]
+      const candidates = this.#coldUnleasedContexts()
+      const useCost = this.#rankByRebuildCost(candidates)
+      const candidate = candidates[0]
       if (!candidate) throw new Error("all semantic contexts are leased")
-      this.#evict(candidate[0], candidate[1], "capacity-lru")
+      this.#evict(candidate[0], candidate[1], useCost ? "capacity-cost" : "capacity-lru")
     }
   }
 
@@ -154,6 +178,15 @@ export class SemanticCoordinator<Context extends SemanticManagedContext> {
     return [...this.#contexts.entries()]
       .filter(([, resident]) => resident.leaseCount === 0)
       .sort((left, right) => left[1].lastAccess - right[1].lastAccess)
+  }
+
+  #rankByRebuildCost(candidates: Array<[string, ResidentContext<Context>]>): boolean {
+    const useCost = this.#costAwareEviction && candidates.length > 1
+      && candidates.every(([, resident]) => resident.rebuildCostMs !== undefined)
+      && candidates.some(([, resident]) => resident.rebuildCostMs !== candidates[0]![1].rebuildCostMs)
+    if (useCost) candidates.sort((left, right) => left[1].rebuildCostMs! - right[1].rebuildCostMs!
+      || left[1].lastAccess - right[1].lastAccess)
+    return useCost
   }
 
   #evict(contextId: string, resident: ResidentContext<Context>, reason: string): void {
@@ -167,7 +200,8 @@ export class SemanticCoordinator<Context extends SemanticManagedContext> {
     if (!this.#onLifecycle) return
     try {
       this.#onLifecycle(event, { contextSequence: resident.sequence, reason,
-        leaseCount: resident.leaseCount, residentContextCount: this.#contexts.size })
+        leaseCount: resident.leaseCount, residentContextCount: this.#contexts.size,
+        ...(resident.rebuildCostMs === undefined ? {} : { rebuildCostMs: resident.rebuildCostMs }) })
     } catch { /* Optional observation cannot alter context lifetime or query success. */ }
   }
 }

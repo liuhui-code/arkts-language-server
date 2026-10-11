@@ -2,6 +2,50 @@
 
 日期：2026-10-06。状态：**Accepted for experimental implementation；未获生产准入**。
 
+2026-10-11 当前默认策略由[ADR 0015](0015-default-resident-optimization-policy.md)
+更新：维护者授权六项组合默认开启，在新完整回归通过后先通过PR合入main。
+下方default-off及等待L08的措辞保留为历史决定，不改写原失败数据或
+宣称L08最终验收通过。
+
+2026-10-08 用户确认更新：最终产品验证统一放在 L08，最终目标不阻塞
+L01–L07 实现。下方 Context 保留当时观察与准入判定；旧的 L01/L02
+阻塞措辞由本次 Decision 和当前执行计划的阶段继续规则替代。
+
+2026-10-09 [L03 完成审计](../reports/2026-10-09-resident-l03-completion-audit.md)
+A～E PASS，预算/准入/成本回收与恢复阶段实施及校准完成；完整
+check:fast 1439/1439 PASS，终态身份一致。实验仍默认关闭，自动 Worker
+替换不纳入当前选定配置；本 ADR 的实验资格不等于 L08 产品或生产准入。
+
+同日 [L04 完成审计](../reports/2026-10-09-resident-l04-completion-audit.md)
+A～E PASS，选定 L03 政策下的 references 接线与校准完成；当前完整
+check:fast 1449/1449 PASS、终态身份一致。两种声明策略的八轮真实
+ON/OFF 对照共 52 项 exact，正常诊断一致，首次新符号实际复用完整
+同一 Program；更慢准备/冷恢复与更高峰值如实保留。R-09 仍默认关闭，
+L05–L07 自身合同继续，最终性能、内存及 ready 门禁统一留在 L08。
+
+随后同日 [L05 完成审计](../reports/2026-10-09-resident-l05-completion-audit.md)
+A～E PASS、阶段DONE：23项公开implementation合同、联合132/132和完整
+check:fast1467/1467，源码/产物/测试/工具及工程/SDK等终态身份一致。
+四个当前固定构建真实进程22/22 exact、两对最新诊断一致，R-09 OFF下
+独立完整Program复用及配置新鲜度保护成立；ON的38个同内容晋升保持generation。
+正常1024MiB/原滞回/lease保留，实验默认关闭；未查628/677ms、冷恢复约13s
+及更高恢复峰值只作L08风险，不改变实验资格为生产准入。L06–L07继续。
+
+2026-10-10 [L06完成审计](../reports/2026-10-10-resident-l06-completion-audit.md)
+A～E PASS、阶段DONE：19交互公开case、联合252/252、当前完整1492/1492
+及冻结终态身份一致；16冷基线、四真实进程62/62，完整payload/最新诊断
+配对相同，实际未查Program复用。正常1024MiB/原滞回/lease、完整SDK/
+安全路径和默认关闭保持；四轮whole失败及目录容量兼容RED不重写。
+慢准备/恢复、>500ms和trace软预算峰值交L08。按用户授权接续L07至完成，
+不等L08产品毕业、不改变现行生产准入。
+
+当前[L07审计](../reports/2026-10-10-resident-l07-completion-audit.md)A–E
+直接证据通过：25公开编辑/调用case及当前62完整真实请求，输入/诊断/
+完整payload一致，真实11源同内容晋升保持generation/Program，OFF重建。
+319测试/工具及全部输入冻结，全新完整1511/1511、根退出0、终态身份
+全部相同；L07阶段DONE。正常1024MiB/
+原滞回/lease、默认关闭和原完整安全fallback保持，资源/ready发布仍在L08。
+
 ## Context
 
 现行生产 references 使用 `indexed-batched + closure + full SDK` 与逐 batch
@@ -193,8 +237,9 @@ PSS 门禁。故 transient diagnosis 仅保留默认关闭的实验/反例，
   LS 不等于有权回答全局 references；必须证明其 Program 覆盖该请求的完整
   搜索范围，否则继续使用现行 exact transient 路径。
 - 改造顺序是 L01 基线 → L02 增量新鲜度 → L03 预算/滞回/成本感知驱逐 →
-  L04–L07 按能力接线及 exact fallback → L08 soak/release。阶段安全验收与
-  500 ms 产品毕业分开；失败的性能门禁不得被标为通过。
+  L04–L07 按能力接线及 exact fallback → L08 soak/release。L01–L07 验证
+  各切片功能、公开 LSP 合同和执行保护；最终内存、500 ms、长期 soak、
+  PSS/DevEco、规模与跨平台门禁统一在 L08 验收，未达标不阻塞前序实验。
 
 ## L01 falsification gate
 
@@ -206,14 +251,25 @@ references（含两种 `includeDeclaration`）、implementations 与正常诊断
 heap、Program/SourceFile/TypeChecker 身份及 exact URI＋UTF-16 Location 集。
 正常自动诊断、未保存 overlay 和合法工程边界不得为了速度而关闭。
 
-L01 有两个不同判定：**安全继续门禁**要求完整精确性、有效快照、
-取消和新路径资源安全；通过后即使时延仍 >500 ms，也可带着明确的
-`PERFORMANCE_FAIL` 和归因问题继续 L02 增量有效性实验。**产品时延门禁**
-要求准备后先前未查询符号完整响应 ≤500 ms；未达时不得生产接线、
-默认推广或宣称 ready 目标完成。保留曲线并定位重建/等待阶段；
-一次低于 500 ms 也不等于跨能力、编辑和恢复的 P95 毕业。
+L01 提供固定输入、可重放的机制证据和后续假说。L02 可带着未达标的
+时延、内存和恢复问题继续增量实验，L03 负责预算与回收改进；不要求
+L01 先通过最终产品资源门禁。完整精确性、有效快照、取消及可停止/回收
+的执行保护仍逐切片验证，缺陷停止受影响运行并修复或回退。
+产品指标 FAIL/BLOCKED/NOT_RUN 保留原始状态，最终完整矩阵在 L08
+判定。L04–L07 可默认关闭接线，默认推广、发布和 ready 目标毕业等待 L08。
 
 ## Admission, fallback and rollback
+
+2026-10-08 L02 同内容晋升切片已按默认关闭的 benchmark 双开关实施：
+仅当前 membership、有 lazy 读取证据且源码指纹相同的晋升保留版本。
+公开 LSP 与真实 Settings 的干预结果见 [L02 报告](../reports/2026-10-08-resident-l02-same-content-promotion.md)；
+它不豁免真实编辑和配置失效，也不代表 L02 全阶段或 L08 产品验收通过。
+
+随后 [L02 独立失效与编辑控制](../reports/2026-10-08-resident-l02-invalidation-and-edit.md)
+补充了 API/import/create/delete/open-close/SDK/package/target 的公开合同。
+配置切换后的既有 definition 空结果缺口经 TDD 修复为完整合法范围复核，
+已有有效局部结果不改变；不扩大合法工程边界或默认启用晋升。真实编辑
+换代且复用未变 AST，但本控制未发生 matching 晋升，不宣称编辑提速。
 
 L02 要证明函数体普通编辑后正确增量复用，并将 public API/import、
 创建/删除、package 和 SDK 边界分别验证。L03 才在实测 steady RSS 上引入
@@ -229,10 +285,12 @@ exact 结果。L01 未保存编辑 trace 已观察到 1495/1496 个 project 和
 652/652 个 SDK SourceFile 复用，却仍有约 1.08 s 的分组 Program 构建；
 不能以 AST 复用数量代替完整请求时延门禁。
 
-任一 exact diff、stale/partial 响应、取消失效、单调增长或原内存门禁回归，
-关闭新路由，保留 `indexed-batched + closure + full SDK`、transient verifier、
-现有 cache 与诊断。既有 >3 GB 复现、50% references 内存、DevEco/PSS、
-post-eviction、跨平台及分桶 P95≤500 ms 门禁不因本 ADR 放宽。
+任一 exact diff、stale/partial 响应、取消失效或无法停止/清理的运行，
+停止受影响实验并修复或回退，保留现有完整路径、cache 与诊断。
+预声明资源停止线保护实验进程；内存回归和增长趋势记录为 L03/L08
+待解问题，不要求前序阶段先通过最终产品指标。既有 >3 GB 复现、50%
+references 内存、DevEco/PSS、post-eviction、跨平台及分桶 P95≤500 ms
+门禁阈值保留，全部在 L08 最终验收。
 
 L01 的[三对 Settings post-L3 GC 归因](../reports/2026-10-07-resident-l01-post-eviction-gc-attribution.md)
 表明该已淘汰 semantic context 的数百 MB Worker heap 在诊断重新准入前
@@ -251,7 +309,62 @@ L01 整体资源、PSS、所有目标的完整 L3 响应和 500 ms 门禁仍未�
 RED/GREEN 已修为替换前拒绝时冲刷延迟变更，失败则 fail-closed。
 这批准继续**观察** Worker isolate 生命周期，不批准生产自动回收：
 RSS 未在替换时同比即时下降，PSS、长期压力、未知多批范围及原始内存
-门禁未证明。本 ADR 的 L01/L02 状态和默认路由不变。
+门禁未证明。这些问题带入 L02/L03，最终产品验收在 L08；默认路由不变。
+
+2026-10-08 后续 [L03 公开自动回收切片](../tdd/l03-automatic-pressure-recycle.md)
+已将实验扩展到自然 RSS sample 的真实 L3 驱逐后，由 main-thread 在请求/
+preparation/mutation 静止及原 Worker 零 lease/零 context 见证下替换。
+它使用独立 benchmark 双开关、默认关闭，不依赖 trace 或 L01 显式开关；
+组合 86/86 PASS；[真实 Settings 四轮](../reports/2026-10-08-resident-l03-natural-worker-recycle.md)
+88/88 exact，一次 timing 峰值降低但编辑长尾更慢。这是实验接线，
+不是生产自动回收或整体资源/时延毕业的批准，也不阻断 L04 的默认关闭实验。
+后续同一自动入口已通过公开 RED/GREEN 扩展到多根 workspace：替换前
+捕获已注册 roots，替换后先恢复 root 注册、再按所属 root 重放最新
+overlay；独立 v2/v3 定位、完整引用和正常诊断在 117/117 组合中通过。
+手动单根资格及原零 lease/静默/并发变更保护不变，实验仍默认关闭。
+这不完成统一预算、成本感知或全部文档关闭的资格，也不替代 L08 验收。
+
+后续 [L03 全部文档关闭后的压力回收](../tdd/l03-closed-document-pressure-recycle.md)
+已通过公开 RED/GREEN 补上空文档的自动资格：保留已注册 roots，原
+实际 L3/零 context/lease/静默见证通过后替换，不重放已关闭 overlay。
+引用在途仍阻止替换，关闭后 ContentModified，重新打开时两根即使
+沿用原版本号也按各自最新文本精确回答；手动单根/非空文档资格保留。
+该检查点 126/126 focused PASS、源码 whole NOT_RUN，默认关闭和预算不变；
+其后统一政策与代表性关闭/配置控制已完成，当前证据见上述 L03 审计；
+最终资源收益仍待 L08 验收。
+
+后续 [L04 公开组合合同](../tdd/l04-promoted-resident-reference-contracts.md)
+覆盖晋升、两种声明策略、alias/未打开 native caller、编辑、压力与恢复。
+[历史八轮 Settings 对照](../reports/2026-10-08-resident-l04-route-control.md)
+16/16 exact，但两个 trace ON 都在 level1 miss 并完整 fallback；没有
+证明当时的真实热 admission 或性能/资源收益，不绕过输入/覆盖见证强行命中。
+后续配置见证共享解除容量拒绝；当前选定预算政策的
+[独立真实控制](../reports/2026-10-09-resident-l04-budget-policy-integration.md)
+52 项 exact、两种策略实际热命中，完整回归及阶段审计通过。旧 miss/失败
+记录不重标为命中，当前阶段完成也不宣称最终时延或资源毕业。
+[L05 选定政策独立合同](../tdd/l05-budget-policy-implementation-contracts.md)
+及[当前真实控制](../reports/2026-10-09-resident-l05-budget-policy-integration.md)
+已完成阶段A～E审计；早期五项合同保留为历史起点。固定compiler的alias
+implementation链保留，不能按手写class-only假说删结果；输入不明明确失败，
+不发布旧子集。阶段DONE不代表overall ready或L08毕业。
+随后 [L06 八个交互合同](../tdd/l06-resident-interactive-contracts.md) 与相关
+回归 57/57 PASS，覆盖完整导航/hover/signature、completion/auto-import/
+resolve/snippet、API 编辑、真实 Worker 恢复、早期取消和 refs 在途交互。
+继续复用原 owner/lanes，不改变 capability advertisement 或生产默认；
+最终指标仍留在 L08，不阻断 L07 自身合同。
+[当前构建 Settings 四轮](../reports/2026-10-08-resident-l06-interactive-control.md)
+8/8 exact、原 2307/2339 诊断配对一致，13 个同内容晋升实际避免重建；
+单 timing 新 definition 686→165 ms。单对控制不等于整体 ready/P95/
+内存或原 >3 GB 门禁通过，仍不是生产推广批准。
+
+随后 [L07 独立合同](../tdd/l07-resident-edit-and-call-contracts.md) 推进完整
+版本化 rename 编辑及应用、三层 alias 与独立 incoming/outgoing/fromRanges。
+公开 RED/GREEN 修复本地显式 alias 冲突漏检，以及未打开 follow-up 的
+临时 source staging 失效后正常诊断不再发布的问题。最新诊断仍经原
+debounce 和快照保护，不关闭诊断、不取消 revision fence；当前 focused
+88/88、并行 72/72 PASS是2026-10-08历史起点；当前公开组合、真实工程/
+预算政策控制和冻结E进度以上方L07审计为准。全部冲突/方言/平台矩阵与
+整体readiness仍在L08，不改变生产默认。
 
 ## Relation to earlier decisions
 

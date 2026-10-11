@@ -11,6 +11,9 @@ import { resolveWorkspaceRoot, type WorkspaceDocument } from "../sdk/workspace-l
 import { LocalPackageResolver } from "../sdk/local-package-resolver.js"
 import { WorkspaceContentChanges, type WorkspaceContentDelta } from "./workspace-content-changes.js"
 import { appendAuthoritativeOverlays, projectOverlayAuthority, withoutShadowedPaths } from "./overlay-authority.js"
+import { canonicalSourcePath, canonicalWorkspaceRoot, isInside, isWorkspacePhysicalAlias } from "./physical-path-identity.js"
+import { createProjectSourceEligibility, isActiveProjectSource } from "./project-source-eligibility.js"
+import { listWorkspaceSourcePaths, SOURCE_EXTENSIONS, unresolvedSourceEntries } from "./workspace-source-enumerator.js"
 
 const MAX_CACHED_DOCUMENTS = 512
 const MAX_CACHED_BYTES = 16 * 1024 * 1024
@@ -22,7 +25,6 @@ const MAX_PROJECT_FILE_SET_PATHS = 20_000
 const MAX_PROJECT_FILE_SET_PATH_BYTES = 4 * 1024 * 1024
 const MAX_WATCHED_REMOVED_PATHS = 512
 const MAX_WATCHED_CHANGED_PATHS = 512
-const SOURCE_EXTENSIONS = [".ets", ".ts"]
 const MAX_REPLAY_DOCUMENTS = 32
 const MAX_REPLAY_BYTES = 4 * 1024 * 1024
 const MAX_DISK_READ_CHUNK_BYTES = 64 * 1024
@@ -114,31 +116,8 @@ export interface SemanticOperationControl {
   checkpoint(): void
 }
 
-export type SemanticPreparePhase = "current-load" | "overlay-authority" | "dependency-closure"
-  | "project-membership" | "workspace-preload" | "finalize"
-
-export interface SemanticPreparePhaseDetails {
-  cacheHit?: boolean
-  pathCount?: number
-  status?: "complete" | "partial"
-  addedDocuments?: number
-}
-
-export type SemanticPrepareObserver = (
-  phase: SemanticPreparePhase,
-  durationMs: number,
-  details?: SemanticPreparePhaseDetails,
-) => void
-
-function observePreparePhase(observer: SemanticPrepareObserver | undefined,
-  phase: SemanticPreparePhase, started: number, details?: SemanticPreparePhaseDetails): void {
-  if (!observer) return
-  try {
-    observer(phase, Math.max(0, performance.now() - started), details)
-  } catch {
-    // Diagnostics must not affect document authority or project membership.
-  }
-}
+export type { SemanticPreparePhase, SemanticPreparePhaseDetails, SemanticPrepareObserver } from "./semantic-prepare-observer.js"
+import { observePreparePhase, type SemanticPrepareObserver } from "./semantic-prepare-observer.js"
 
 const NOOP_OPERATION_CONTROL: SemanticOperationControl = Object.freeze({
   checkpoint(): void {},
@@ -205,7 +184,7 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
   private readonly dependencyClosures = new Map<string, DependencyClosureCacheEntry>()
   private readonly projectFileSets = new Map<string, ProjectFileSetCacheEntry>()
   private readonly contentChanges: WorkspaceContentChanges
-  private readonly enumerateWorkspaceSources: (rootPath: string) => Iterable<string>
+  private readonly enumerateWorkspaceSources?: (rootPath: string) => Iterable<string>
   private readonly operationControl: SemanticOperationControl
   private readonly maxProjectFileSetRoots: number
   private readonly maxProjectFileSetPaths: number
@@ -228,10 +207,6 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
     this.packageResolver = packageResolver
     this.operationControl = operationControl
     this.enumerateWorkspaceSources = enumerateWorkspaceSources
-      ?? ((rootPath) => listWorkspaceSourcePaths(rootPath, this.operationControl,
-        (sourcePath, directoryTraversal) => this.isActiveProjectSource(
-          rootPath, sourcePath, directoryTraversal,
-        )))
     this.maxProjectFileSetRoots = boundedLimit(
       projectFileSetLimits.maxRoots,
       MAX_PROJECT_FILE_SET_ROOTS,
@@ -931,6 +906,21 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
     }
   }
 
+  /** Selects a store-owned source only to anchor full preparation, never a query target. */
+  prepareRoot(rootPath: string): SemanticWorkspaceView | undefined {
+    this.refreshProjectMembership(rootPath)
+    const canonicalRoot = canonicalWorkspaceRoot(rootPath)
+    let membership = this.projectFileSets.get(canonicalRoot)
+    if (!membership) {
+      membership = this.scanProjectMembership(rootPath)
+      membership.revision = ++this.projectMembershipRevision
+      this.publishProjectMembership(canonicalRoot, membership)
+    }
+    const currentPath = membership.paths[0]
+    return currentPath ? this.prepare({ path: currentPath, workspaceRoot: rootPath,
+      line: 1, column: 1 }, true) : undefined
+  }
+
   prepareDiskSnapshot(
     position: SemanticDocumentPosition,
     content: string,
@@ -1192,38 +1182,15 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
     sourcePath: string,
     directoryTraversal = false,
   ): boolean {
-    const project = this.packageResolver.projectFor(rootPath)
-    const scope = project.scopeFor(sourcePath)
-    if (scope.status === "unconfigured") return true
-    if (!scope.moduleRoot) {
-      return directoryTraversal && project.mayContainDeclaredModule(sourcePath)
-    }
-    const resolvedPath = path.resolve(sourcePath)
-    const sourceParent = path.join(scope.moduleRoot, "src")
-    const physicalPath = canonicalSourcePath(resolvedPath)
-    const physicalParent = canonicalSourcePath(sourceParent)
-    const relative = path.relative(physicalParent, physicalPath)
-    if (!relative) return true
-    if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
-      if (directoryTraversal) return project.mayContainDeclaredModule(sourcePath)
-      const moduleRoot = path.resolve(scope.moduleRoot)
-      return path.dirname(resolvedPath) === moduleRoot
-        && path.dirname(physicalPath) === canonicalSourcePath(moduleRoot)
-    }
-    const activeLexicalSource = scope.status === "ready" && scope.sourceRoots.some((sourceRoot) => (
-      resolvedPath === sourceRoot || isInside(sourceRoot, resolvedPath)
-    ))
-    const activePhysicalSource = scope.status === "ready"
-      && project.physicalSourceRootsFor(scope).some((physicalRoot) => {
-      return physicalPath === physicalRoot || isInside(physicalRoot, physicalPath)
-      })
-    const activeSource = activeLexicalSource && activePhysicalSource
-    return activeSource || (directoryTraversal && project.mayContainDeclaredModule(sourcePath))
+    return isActiveProjectSource(this.packageResolver.projectFor(rootPath), sourcePath, directoryTraversal)
   }
 
   private scanProjectMembership(rootPath: string): ProjectFileSetCacheEntry {
     const resolvedRoot = path.resolve(rootPath)
     const canonicalRoot = canonicalWorkspaceRoot(resolvedRoot)
+    const eligibility = createProjectSourceEligibility(
+      this.packageResolver.projectFor(resolvedRoot), () => this.operationControl.checkpoint(),
+    )
     const overlayPaths = [...this.documents.values()]
       .filter((record) => record.overlay && isInside(canonicalRoot, canonicalSourcePath(record.path)))
       .map((record) => record.path)
@@ -1234,9 +1201,9 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
     let status: ProjectMembershipSnapshot["status"] = "complete"
     let reason: ProjectMembershipSnapshot["reason"]
     const diskIdentities = new Map<string, string>()
-    const accept = (candidate: string, diskIdentity?: string): boolean => {
+    const accept = (candidate: string, diskIdentity?: string, physicalPath?: string): boolean => {
       const sourcePath = path.resolve(candidate)
-      if (!this.isActiveProjectSource(resolvedRoot, sourcePath)) return true
+      if (!eligibility.includes(sourcePath, false, physicalPath)) return true
       if (seen.has(sourcePath)) {
         if (diskIdentity !== undefined) diskIdentities.set(sourcePath, diskIdentity)
         return true
@@ -1263,7 +1230,10 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
     }
     if (status === "complete") {
       try {
-        for (const sourcePath of this.enumerateWorkspaceSources(resolvedRoot)) {
+        const entries = this.enumerateWorkspaceSources
+          ? unresolvedSourceEntries(this.enumerateWorkspaceSources(resolvedRoot))
+          : listWorkspaceSourcePaths(resolvedRoot, this.operationControl, eligibility.includes, canonicalRoot)
+        for (const { path: sourcePath, physicalPath } of entries) {
           this.operationControl.checkpoint()
           const lexicalStat = safeLstat(sourcePath, this.operationControl)
           if (lexicalStat?.isSymbolicLink()) continue
@@ -1273,8 +1243,9 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
             reason = "source-unavailable"
             break
           }
-          if (!accept(sourcePath, sourceStatIdentity(stat))) break
+          if (!accept(sourcePath, sourceStatIdentity(stat), physicalPath)) break
         }
+        eligibility.validate()
       } catch {
         this.operationControl.checkpoint()
         status = "partial"
@@ -1688,48 +1659,6 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
   }
 }
 
-function canonicalWorkspaceRoot(rootPath: string): string {
-  const resolved = path.resolve(rootPath)
-  try {
-    return fs.realpathSync.native(resolved)
-  } catch {
-    return resolved
-  }
-}
-
-function isWorkspacePhysicalAlias(
-  lexicalWorkspaceRoot: string | undefined,
-  canonicalRoot: string | undefined,
-  sourcePath: string,
-  physicalPath: string,
-): boolean {
-  if (!lexicalWorkspaceRoot || !canonicalRoot) return false
-  const lexicalRoot = path.resolve(lexicalWorkspaceRoot)
-  const relative = path.relative(lexicalRoot, sourcePath)
-  if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
-    return false
-  }
-  return path.resolve(canonicalRoot, relative) !== physicalPath
-}
-
-function canonicalSourcePath(filePath: string): string {
-  const resolved = path.resolve(filePath)
-  try {
-    return fs.realpathSync.native(resolved)
-  } catch {
-    try {
-      return path.join(fs.realpathSync.native(path.dirname(resolved)), path.basename(resolved))
-    } catch {
-      return resolved
-    }
-  }
-}
-
-function isInside(rootPath: string, candidatePath: string): boolean {
-  const relative = path.relative(rootPath, candidatePath)
-  return relative.length > 0 && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)
-}
-
 function addPathByRoot(
   pathsByRoot: Map<string, Set<string>>,
   rootPath: string,
@@ -1790,46 +1719,6 @@ function publicProjectMembership(entry: ProjectFileSetCacheEntry): ProjectMember
   })
   entry.publicSnapshot = snapshot
   return snapshot
-}
-
-function* listWorkspaceSourcePaths(
-  rootPath: string,
-  operationControl: SemanticOperationControl,
-  includePath: (sourcePath: string, directoryTraversal: boolean) => boolean,
-): Generator<string> {
-  const pending: Array<{ path: string; directory: fs.Dir }> = []
-  try {
-    pending.push({ path: rootPath, directory: fs.opendirSync(rootPath) })
-    while (pending.length > 0) {
-      const current = pending[pending.length - 1]
-      const entry = current.directory.readSync()
-      if (entry === null) {
-        pending.pop()
-        current.directory.closeSync()
-        continue
-      }
-      operationControl.checkpoint()
-      if (entry.name === ".arkline" || entry.name === ".git" || entry.name === "build"
-        || entry.name === "node_modules" || entry.name === "oh_modules") continue
-      const entryPath = path.resolve(current.path, entry.name)
-      if (entry.isDirectory()) {
-        if (!includePath(entryPath, true)) continue
-        pending.push({ path: entryPath, directory: fs.opendirSync(entryPath) })
-      }
-      else if (entry.isFile() && SOURCE_EXTENSIONS.includes(path.extname(entry.name))
-        && includePath(entryPath, false)) yield entryPath
-    }
-  } finally {
-    let closeError: unknown
-    while (pending.length > 0) {
-      try {
-        pending.pop()?.directory.closeSync()
-      } catch (error) {
-        closeError ??= error
-      }
-    }
-    if (closeError) throw closeError
-  }
 }
 
 function resolveRelativeImports(

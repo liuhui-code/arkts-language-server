@@ -1,6 +1,6 @@
 # References / semantic MoSCoW
 
-## Current priority contract (2026-10-06 budgeted resident LS)
+## Current priority contract (2026-10-10 stage audit update)
 
 This is the only active prioritization view. [Ledger](references-feature-ledger.md)
 owns current feature state; the [L01–L08 plan](2026-10-06-budgeted-resident-semantic-plan.md)
@@ -8,11 +8,66 @@ owns active stage dependencies. The preceding
 [S-series plan](2026-09-29-semantic-ready-execution-plan.md) retains failed-gate
 history. [Product contract](semantic-ready/product-contract.md) and
 [ADR 0014](../adr/0014-budgeted-long-lived-semantic-session.md) distinguish
-the 500 ms requirement from accepted **experimental** LS-lifecycle work.
-Implementation is prioritized before final 500 ms optimization: a measured P95
-failure stays FAIL but does not stop the next safe implementation stage. This
-does not relax semantic exactness, complete results, freshness, cancellation or
-new-path resource safety, and does not permit default promotion or product release.
+the latency requirement from accepted **experimental** LS-lifecycle work.
+2026-10-10 user confirmation sets the L08 formal full-response P95 ceiling to
+550 ms and retains 500 ms as an optimization target. Only that ceiling changes;
+100 requests/5 independent sessions per cell, 336 cells and all other gates
+remain. Historical failures are not regraded; see the
+[current L08 report](../reports/2026-10-10-resident-l08-semantic-readiness.md).
+Final product validation belongs to **L08**. L01–L07 advance through slice-level
+functionality, public LSP regressions and replayable evidence. Final latency,
+memory, overall readiness, long-soak, scale and portability failures remain
+recorded without blocking the next implementation stage. Complete/exact results,
+freshness, cancellation and stoppable/cleanable execution remain slice checks;
+default promotion and product release wait for all original gates at L08.
+L02 same-content promotion and independent invalidation are IN_PROGRESS/default-off;
+the [current edit control](../reports/2026-10-08-resident-l02-invalidation-and-edit.md)
+retains exact real edits but makes no causal edit-speed/resource benefit claim.
+The [current L03 policy calibration](../reports/2026-10-09-resident-l03-budget-policy-calibration.md)
+retains the 1024 MiB soft budget and original hysteresis, with cost-aware reclamation
+and pressure admission. Automatic owner replacement is not selected: it repeats
+preparation without a peak advantage in this workload. The [stage audit](../reports/2026-10-09-resident-l03-completion-audit.md)
+closes implementation/calibration work, not final resource acceptance or default-off restrictions.
+The [L04 stage audit](../reports/2026-10-09-resident-l04-completion-audit.md)
+closes capability integration and fixed-build calibration: selected-policy public
+controls 10/10, full check:fast 1449/1449 and terminal identities pass. The
+[current eight Settings controls](../reports/2026-10-09-resident-l04-budget-policy-integration.md)
+have 52 exact requests and matching diagnostics; both declaration policies witness
+actual complete same-Program reuse for a new symbol. Faster first references
+(915/937 ms) trade against slower setup/recovery and higher peaks, without final
+memory, P95 or readiness acceptance. R-09 remains default-off; the
+[historical 16/16 exact/miss control](../reports/2026-10-08-resident-l04-route-control.md)
+keeps its original verdict. The [L05 stage audit](../reports/2026-10-09-resident-l05-completion-audit.md)
+passes A–E:23 public implementation contracts, focused132 and current whole1467,
+unchanged terminal source/build/test/tool/project/SDK identities. Four current-build
+real controls22/22 are exact with matching diagnostics; complete Program reuse and
+fresh-input protection are independent of R-09. Normal1024MiB/hysteresis/leases
+and default-off remain; >500ms new queries, ~13s recovery and peaks stay L08 risks.
+L06 [independent interactive contracts](../tdd/l06-resident-interactive-contracts.md)
+have 57/57 focused PASS across complete navigation/hover/signatures, member and
+auto-import completion/resolve, snippets, API edits, actual Worker recovery,
+early cancellation and interaction during refs. Existing owners and capability
+advertisements remain; these are not overall semantic-ready or release evidence.
+[The current-build Settings control](../reports/2026-10-08-resident-l06-interactive-control.md)
+has 8/8 exact, matching diagnostics and actual matching promotions; one timing
+definition is 686→165 ms, without an overall P95/memory/readiness claim.
+The 2026-10-10 [L06 stage audit](../reports/2026-10-10-resident-l06-completion-audit.md)
+now passes A–E:19 public cases/focused252, current Settings62 complete payloads
+and latest diagnostics equal, actual unqueried Program reuse, fresh whole1492 and
+unchanged terminal identities. Earlier57/8 controls and four whole failures stay
+historical; soft-budget peaks, slow cold/edit/recovery and raw readiness FAIL remain
+L08 risks. Default-off and existing owners/capabilities remain. Per user instruction,
+continue L07 after L06 completion without final-product entry gates.
+The current [L07 audit](../reports/2026-10-10-resident-l07-completion-audit.md)
+passes A–E:25 applied-edit/call public cases, selected budget/input/
+cancel/recovery contracts, current real62 full payload/latest diagnostics equal,
+actual lazy-promotion Program reuse and an OFF rebuild counterfactual. Fresh
+frozen whole1511/1511/root exit0 and matching terminal identities prove stage DONE.
+Historical11/focused88/parallel72
+remain dated evidence, not current whole or final readiness/resource graduation.
+Earlier evidence
+below retains its historical resource/admission verdicts; those old L01/L02
+blocking statements no longer set current stage dependencies.
 S02 v1–v6 facts research is paused after FAIL, S03 publication is BLOCKED, and
 S05's compatible-disk local-LS candidate is REJECTED, not restarted as L01.
 Current production keeps `indexed-batched + closure + full SDK`, `dispose` and
@@ -191,18 +246,19 @@ final fixed-tree `check:fast` 1222/1222 PASS do not graduate S01.
 
 | Item | Reason and boundary |
 | --- | --- |
-| R-30/R-02/R-21 L01 resident-LS evidence and ready-state 500 ms buckets | One real Settings/API24 complete LS, no dispose after first preparation, then previously unqueried symbols; exact A/B/C, Program identity and RSS. Initial preparation latency separate; a >500 ms new-symbol result stays FAIL but can permit L02 safety research, never default graduation |
+| R-30/R-02/R-21 L01 resident-LS evidence and ready-state 500 ms buckets | One real Settings/API24 complete LS, no dispose after first preparation, then previously unqueried symbols; exact A/B/C, Program identity and RSS. Final latency/memory/readiness failures guide L02/L03 and are accepted/rejected at L08, not stage-entry gates |
 | R-31/R-13/R-22 L02 versioned incremental validity | Function-body edit first; API/import/create/delete/package/SDK independently. Unknown snapshot/coverage conservatively rebuilds, not stale answer |
-| R-32/R-03/R-20/R-23 L03 budgeted preparation and recovery | Measure before soft-budget/pressure/hysteresis/cost-aware eviction; no blind 1 GiB increase or hidden background 5 GB. Preparation has no correctness/resource exemption |
+| R-32/R-03/R-20/R-23 L03 budgeted preparation and recovery | Implement soft-budget/pressure/hysteresis/cost-aware eviction from measured evidence, retaining execution stop lines and full results; final memory acceptance belongs to L08 |
 | R-33/R-07/R-24–R-27 L04–L07 exact routes | Prove scope/identity per capability, retain transient/indexed-batched exact fallback, preserve complete edits and public transcripts before default changes |
-| R-34/R-29 L08 soak and release | No monotonic growth, normal diagnostics, cross-platform, original memory gates, per-capability post-ready P95≤500 ms; safety-only implementation is not product graduation |
+| R-34/R-29 L08 soak and release | No monotonic growth, normal diagnostics, cross-platform, original memory gates, per-capability post-ready P95≤550 ms with a 500 ms target; safety-only implementation is not product graduation |
 | R-01/04/05/06/08/12 maintain existing owners | Reuse tracing/cache/coalescing/references lanes/recovery/hysteresis; do not rebuild or stack equivalent frameworks |
-| Original memory/correctness gates | >3 GB reproducer, final 50%, DevEco/PSS/scaling/post-eviction remain independent; new SLO cannot close them |
+| Original memory/correctness gates | Slice correctness stays mandatory; >3 GB reproducer, final 50%, DevEco/PSS/scaling/post-eviction remain unchanged final L08 gates |
 
 ### Should
 
 - R-09 existing default-off full-scope resident path: L04 may use it only after
-  L01–L03 safety and complete-scope proof; prior Settings L3 misses remain evidence.
+  complete-scope/snapshot and execution-protection proof; prior Settings L3
+  misses feed L03/L08 rather than blocking experimental integration.
 - R-13 finer dependency invalidation only after complete reverse-impact evidence; unknown remains coarse.
 - R-15/R-28 other global routes/call hierarchy in L07: one actual capability/direction at a time;
   this priority does not permit deleting existing capabilities or hiding their failed gates.
@@ -230,15 +286,14 @@ final fixed-tree `check:fast` 1222/1222 PASS do not graduate S01.
 
 ### Current budget and stop lines
 
-L01 safety and product performance are separate decisions. Exactness,
-freshness, cancellation and new-path memory safety must pass before L02
-incremental-validity experiments. A measured >500 ms result remains
-`PERFORMANCE_FAIL` and blocks production/default graduation, but does not
-automatically prohibit L02 research. L03 must use measured steady/peak RSS,
-not raise a budget to force PASS. L04–L07 retain the indexed-batched/transient
-complete fallback until each capability is independently graduated. L08
-keeps original >3 GB/50%, DevEco/PSS, post-eviction, portability and P95
-release gates; no incomplete scope or silent diagnostic suppression is allowed.
+L01–L07 verify each implemented slice's exactness, freshness, cancellation and
+execution protection. Defects stop the affected experiment for repair/fallback;
+predeclared resource stop lines protect the process. Final memory/latency/ready
+failures and missing release samples do not block later stages. L02 incrementality
+and L03 budget/recovery address the recorded costs; do not raise a budget to
+force PASS. L04–L07 retain complete fallback during default-off integration.
+L08 alone performs final overall readiness, >3 GB/50%, DevEco/PSS, long-soak,
+scale, post-eviction, portability and P95 acceptance before default/release changes.
 
 ### Historical S-series stop-line evidence
 
@@ -410,7 +465,7 @@ One fixed-order pair is not randomized multi-session/PSS/P95/500 ms graduation.
 Default-off/per-batch verifiers remain; whole-fast GREEN does not explain old timeout.
 S02 FAIL blocks production facts/schema and preserves the minimal counterexample; it does not block S05.
 One stage/subslice per turn; performance runs are serial. A GREEN harness/document check is not product GREEN.
-Full-response P95≤500 ms uses trace-off real LSP and includes normal waits/fallback.
+Full-response P95≤550 ms acceptance (500 ms target) uses trace-off real LSP and includes normal waits/fallback.
 No stage can bypass applicable correctness and resource-safety gates in the
 [acceptance contract](../benchmarks/semantic-ready-acceptance.md). A latency FAIL
 remains open for S12b; full latency and memory gates still block graduation,

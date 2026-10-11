@@ -1,11 +1,34 @@
 import path from "node:path"
-import type ts from "typescript"
+import ts from "typescript"
 
 const observedPrograms = new WeakMap<ts.Program, number>()
 let nextProgramSequence = 0
 const observedCheckers = new WeakMap<ts.TypeChecker, number>()
 let nextCheckerSequence = 0
 const observedSourceFiles = new WeakSet<ts.SourceFile>()
+
+export function measureOfficialCompilerReadiness(service: ts.LanguageService): {
+  getProgramMs: number
+  createProgramMs: number
+  getTypeCheckerMs: number
+} {
+  ts.PerformanceDotting.setPerformanceSwitch(ts.PerformanceDotting.AnalyzeMode.TRACE)
+  const programStarted = performance.now()
+  let program: ts.Program | undefined
+  let getProgramMs = 0
+  let createProgramMs = 0
+  try {
+    program = service.getProgram()
+    getProgramMs = performance.now() - programStarted
+  } finally {
+    createProgramMs = ts.PerformanceDotting.getEventData()
+      .filter(event => event.name === "createProgram")
+      .reduce((total, event) => total + event.duration / 1_000_000, 0)
+  }
+  const checkerStarted = performance.now()
+  program?.getTypeChecker()
+  return { getProgramMs, createProgramMs, getTypeCheckerMs: performance.now() - checkerStarted }
+}
 
 /** Counts the existing Program only; does not create a second semantic owner. */
 export function typescriptProgramStats(program: ts.Program | undefined, rootPath: string, sdkRoot?: string | null) {

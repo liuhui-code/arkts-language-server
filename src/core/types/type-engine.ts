@@ -1,16 +1,18 @@
 import path from "node:path"
+import { semanticUnprepared } from "../../contracts/semantic-readiness.js"
+import { pathToFileURL } from "node:url"
 
 import type { SemanticDefinitionCandidate, SemanticDocumentPosition } from "../protocol.js"
 import { ArkUIResourceLanguageProvider } from "../arkui/resource-language-provider.js"
 import { LocalPackageResolver } from "../sdk/local-package-resolver.js"
-import type { HarmonyProjectModel } from "../../project/harmony-project-model.js"
 import type { ProjectFileAccessPort, SemanticWorkspaceView } from "../workspace/document-store.js"
 import { arbitrateCompletionLists } from "./completion-arbitrator.js"
 import { mergeDefinitions, mergeDiagnostics } from "./type-result-merge.js"
 import { withProjectFileIdentities } from "./type-project-file-identities.js"
 import { canonicalTypeEngineOwner, typeContextResetReason } from "./type-context-reset.js"
-import { traceCompilerQuery, traceReferenceQuery } from "./compiler-query-timing.js"
+import { traceCompilerQuery, traceImplementationQuery, traceReferenceQuery, traceSemanticQuery } from "./compiler-query-timing.js"
 import { runWithSemanticLease } from "./semantic-query-lease.js"
+import { createWorkspaceEngineEntry, updateWorkspaceEngineEntry, runPreparedSemanticQuery, type WorkspaceEngineEntry } from "./type-workspace-entry.js"
 import {
   TypeScriptLanguageServiceEngine,
   type TypeScriptLanguageServiceEngineOptions,
@@ -18,15 +20,15 @@ import {
 } from "./typescript-language-service.js"
 import {
   SemanticCoordinator,
-  type SemanticManagedContext,
   type SemanticMemoryLevel,
 } from "../../semantic/coordinator/semantic-coordinator.js"
 import { ReferenceSearchExecutor } from "../../semantic/references/reference-search-executor.js"
 import type { ReferenceSearchRuntimeConfig } from "../../semantic/references/reference-runtime.js"
 import { applyReferenceContextRetention, referenceCheckpoint } from "../../semantic/references/reference-context-retention.js"
 import { verifyReferenceBatchInWorker } from "../../semantic/references/reference-batch-worker.js"
-import { ReferenceAnchorMemo, resolveIsolatedReferenceAnchor } from "../../semantic/references/reference-anchor.js"
+import { resolveIsolatedReferenceAnchor } from "../../semantic/references/reference-anchor.js"
 import { isConstructorModuleCurrent } from "../../semantic/references/reference-constructor-scope.js"
+import type { TransientSemanticWorkerObserver } from "../../semantic/transient-worker-lifecycle.js"
 
 export type {
   SemanticTypeStatus,
@@ -47,20 +49,6 @@ import type {
   SemanticTypeQueryContext,
 } from "./type-engine-contract.js"
 
-interface WorkspaceEngineEntry extends SemanticManagedContext {
-  engine: TypeScriptLanguageServiceEngine
-  arkui: ArkUIResourceLanguageProvider
-  project: HarmonyProjectModel
-  resourceScope: string
-  ownerId: string
-  resetEpoch: number
-  appliedContentRevision: number
-  lastAccess: number
-  projectFiles: number
-  openDocuments: number
-  anchorMemo: ReferenceAnchorMemo
-}
-
 export class SemanticTypeEngineRegistry {
   private readonly coordinator: SemanticCoordinator<WorkspaceEngineEntry>
   private readonly referenceSearch: ReferenceSearchExecutor | undefined
@@ -68,6 +56,7 @@ export class SemanticTypeEngineRegistry {
   private sdkConfiguration: unknown
   private projectConfiguration: unknown
   private memoryLevel: SemanticMemoryLevel = "level0"
+  private referencePressureEpoch = 0
 
   private get workspaces(): { get(rootPath: string): WorkspaceEngineEntry | undefined } {
     return { get: rootPath => this.coordinator.peek(rootPath) }
@@ -94,11 +83,23 @@ export class SemanticTypeEngineRegistry {
       const definitions = memo?.lookup(workspace, position, this.options.onReferenceTrace)
       if (definitions) return definitions
     }
+    if (this.options.references?.l01PressureAdmission) {
+      referenceCheckpoint(this.options.hostCancellationToken)?.()
+      this.options.refreshMemoryPressure?.()
+      if (this.memoryLevel === "level3") {
+        this.referenceTrace("references.pressure.anchor-skipped", {
+          memoryLevel: this.memoryLevel, reason: "resource-budget-exceeded",
+        })
+        // No discovery anchor: retain the complete-scope verifier fallback.
+        return []
+      }
+    }
     return resolveIsolatedReferenceAnchor(isolatedWorkspace, position, {
       projectConfiguration: this.projectConfiguration,
       sdkConfiguration: this.sdkConfiguration,
       sdkAmbientProfile: this.options.references?.sdkAmbientProfile,
       trace: this.options.references?.trace,
+      onTransientWorker: this.options.onTransientWorker,
       isCancellationRequested: this.options.hostCancellationToken
         ? () => this.options.hostCancellationToken?.isCancellationRequested() === true
         : undefined,
@@ -112,6 +113,9 @@ export class SemanticTypeEngineRegistry {
       maxResidentContexts?: number
       hostCancellationToken?: TypeScriptLanguageServiceEngineOptions["hostCancellationToken"]
       references?: ReferenceSearchRuntimeConfig
+      refreshMemoryPressure?: () => void
+      readMemoryPressure?: () => SemanticMemoryLevel
+      onTransientWorker?: TransientSemanticWorkerObserver
       interactiveSdkAmbientProfile?: TypeScriptSdkAmbientProfile
       onReferenceTrace?: (
         event: string,
@@ -119,9 +123,11 @@ export class SemanticTypeEngineRegistry {
       ) => void
     } = {},
   ) {
-    if (options.references?.residentFastPath) this.packageResolver.enableConfigurationWitness()
+    this.packageResolver.enableConfigurationWitness()
     this.coordinator = new SemanticCoordinator({
       maxResidentContexts: options.maxResidentContexts ?? 2,
+      costAwareEviction: options.references?.l03CostAwareEviction,
+      readMemoryPressure: options.readMemoryPressure,
       createContext: rootPath => this.createContext(rootPath),
       onLifecycle: options.references?.trace ? (event, fields) => this.referenceTrace(
         `semantic.context.${event}`, { ...fields, monotonicNs: process.hrtime.bigint().toString() },
@@ -139,6 +145,7 @@ export class SemanticTypeEngineRegistry {
             trace: options.references?.trace,
             tolerateUnadmittedProjectDependencies: dependencyProfile === "identity",
             constructorScope: options.references?.constructorScope,
+            onTransientWorker: options.onTransientWorker,
             isCancellationRequested: options.hostCancellationToken
               ? () => options.hostCancellationToken?.isCancellationRequested() === true
               : undefined,
@@ -179,12 +186,10 @@ export class SemanticTypeEngineRegistry {
 
   prepare(workspace: SemanticWorkspaceView): SemanticTypeQueryContext {
     const rootPath = path.resolve(workspace.rootPath)
-    const ownerId = workspace.canonicalRootId ?? rootPath
-    const resetEpoch = workspace.typeEngineResetEpoch ?? 0
-    const contentRevision = workspace.contentRevision ?? 0
     const previous = this.coordinator.peek(rootPath)
     const resetReason = typeContextResetReason(workspace, previous, this.options.references?.sessionReuse === "experimental")
     if (resetReason) {
+      if (resetReason === "canonical-owner-change") this.packageResolver.projectFor(rootPath).invalidate()
       this.coordinator.remove(rootPath, resetReason)
     }
     const lease = this.coordinator.acquire(rootPath)
@@ -202,27 +207,16 @@ export class SemanticTypeEngineRegistry {
       if (newEntry) this.coordinator.remove(rootPath, "prepare-failed")
       throw error
     }
-    entry.ownerId = ownerId
-    entry.resetEpoch = resetEpoch
-    entry.appliedContentRevision = contentRevision
-    entry.lastAccess = ++this.accessClock
-    entry.projectFiles = workspace.projectMembership?.paths.length ?? workspace.documents.length
-    entry.openDocuments = workspace.documents.filter(document => document.overlay).length
     const activeEntry = entry
-    const scope = activeEntry.project.scopeFor(workspace.state.path)
-    const resourceScope = JSON.stringify([scope.moduleRoot ?? rootPath, scope.resourceRoots])
-    if (resourceScope !== activeEntry.resourceScope) {
-      activeEntry.arkui.dispose()
-      activeEntry.arkui = new ArkUIResourceLanguageProvider(scope.moduleRoot ?? rootPath, {
-        ...(scope.status === "unconfigured" ? {} : { resourceRoots: scope.resourceRoots }),
-      })
-      activeEntry.resourceScope = resourceScope
-    }
+    const scope = updateWorkspaceEngineEntry(activeEntry, workspace, ++this.accessClock)
     const sourceContent = workspace.documents.find(document => document.path === workspace.state.path)?.content
     lease.release()
-    const withLease = <Result>(run: (current: WorkspaceEngineEntry) => Result, semanticWork = true): Result => (
-      runWithSemanticLease(this.coordinator, rootPath, run, semanticWork && this.options.references?.l01RearmTrim === true)
+    const withLease = <Result>(run: (current: WorkspaceEngineEntry) => Result, semanticWork = true, certifyReadiness = semanticWork): Result => (
+      runWithSemanticLease(this.coordinator, rootPath, current => runPreparedSemanticQuery(current, workspace, run, certifyReadiness), semanticWork && this.options.references?.l01RearmTrim === true,
+        semanticWork && this.options.references?.l03CostAwareEviction === true)
     )
+    const traced = <Result extends { readonly status: string }>(current: WorkspaceEngineEntry, kind: string, query: () => Result): Result =>
+      traceSemanticQuery(kind, query, () => current.engine.programFileStats(), this.options.references?.trace ? this.options.onReferenceTrace : undefined)
     return {
       state,
       complete: (position, traceContext) => withLease((current) => {
@@ -281,11 +275,13 @@ export class SemanticTypeEngineRegistry {
           ? current.arkui.define(position, sourceContent) : [], definitions)
       }),
       typeDefinitions: (position) => withLease(current => current.engine.typeDefinitions(position)),
-      implementations: (position) => withLease(current => current.engine.implementations(position)),
+      implementations: (position) => withLease(current => traceImplementationQuery(
+        () => current.engine.implementations(position), () => current.engine.programFileStats(),
+        this.options.references?.trace ? this.options.onReferenceTrace : undefined)),
       references: (position, includeDeclaration) => withLease(current => traceReferenceQuery(
         () => current.engine.references(position, includeDeclaration), () => current.engine.programFileStats(),
         this.options.references?.trace ? this.options.onReferenceTrace : undefined)),
-      prepareRename: (position) => withLease(current => current.engine.prepareRename(position)),
+      prepareRename: (position) => withLease(current => traced(current, "prepareRename", () => current.engine.prepareRename(position))),
       usages: (position) => withLease(current => current.engine.usages(position)),
       diagnostics: (position) => withLease((current) => {
         const diagnostics = mergeDiagnostics(
@@ -309,19 +305,19 @@ export class SemanticTypeEngineRegistry {
           })
         }
         return diagnostics
-      }),
+      }, true, false),
       codeActions: (position, range) => withLease(current => current.engine.codeActions(position, range)),
       resolveCodeAction: (position, range, fingerprint) => (
         withLease(current => current.engine.resolveCodeAction(position, range, fingerprint))
       ),
       documentHighlights: (position) => withLease(current => current.engine.documentHighlights(position)),
       inlayHints: (position, range) => withLease(current => current.engine.inlayHints(position, range)),
-      prepareCallHierarchy: (position) => withLease(current => current.engine.prepareCallHierarchy(position)),
-      outgoingCalls: (position, item) => withLease(current => current.engine.outgoingCalls(position, item)),
-      incomingCalls: (position, item) => withLease(current => current.engine.incomingCalls(position, item)),
+      prepareCallHierarchy: (position) => withLease(current => traced(current, "prepareCallHierarchy", () => current.engine.prepareCallHierarchy(position))),
+      outgoingCalls: (position, item) => withLease(current => traced(current, "outgoingCalls", () => current.engine.outgoingCalls(position, item))),
+      incomingCalls: (position, item) => withLease(current => traced(current, "incomingCalls", () => current.engine.incomingCalls(position, item))),
       documentSymbols: (position) => withLease(current => current.engine.documentSymbols(position)),
       hover: (position) => withLease(current => current.engine.hover(position)),
-      rename: (position, newName) => withLease(current => current.engine.rename(position, newName)),
+      rename: (position, newName) => withLease(current => traced(current, "rename", () => current.engine.rename(position, newName))),
       signatureHelp: (position, triggerReason) => (
         withLease(current => current.engine.signatureHelp(position, triggerReason))
       ),
@@ -338,8 +334,13 @@ export class SemanticTypeEngineRegistry {
     candidateSupportPaths?: readonly string[],
     forceLegacy = false,
   ): Promise<SemanticReferenceQueryResult> {
+    if (this.options.references?.l01PressureAdmission) {
+      referenceCheckpoint(this.options.hostCancellationToken)?.()
+      this.options.refreshMemoryPressure?.()
+    }
     const indexedRoute = this.options.references?.strategy !== "legacy" && !forceLegacy
-    const pressureFallback = !indexedRoute && this.memoryLevel === "level3" && this.options.references?.l01PressureAdmission
+    const pressureAdmission = this.memoryLevel === "level3" && this.options.references?.l01PressureAdmission === true
+    const pressureFallback = !indexedRoute && pressureAdmission
     if (this.referenceSearch && indexedRoute) {
       const started = performance.now()
       const resident = this.withResidentReferenceContext(workspace, engine => (
@@ -359,6 +360,14 @@ export class SemanticTypeEngineRegistry {
     if (this.referenceSearch && (indexedRoute || pressureFallback)) {
       const isolatedWorkspace = this.withProjectFileIdentities(workspace)
       if (!isolatedWorkspace) return Promise.resolve({ status: "incomplete", reason: "source-unavailable" })
+      const pressureEpoch = this.referencePressureEpoch
+      let verifierStarted = false
+      const admitVerifier = this.options.references?.l01PressureAdmission ? () => {
+        this.options.refreshMemoryPressure?.()
+        if (verifierStarted && (this.memoryLevel === "level3" || this.referencePressureEpoch !== pressureEpoch)) return false
+        verifierStarted = true
+        return true
+      } : undefined
       const selectedPaths = pressureFallback ? undefined : candidatePaths
       if (pressureFallback) this.referenceTrace("references.pressure.fallback", { memoryLevel: this.memoryLevel })
       return this.referenceSearch.execute(
@@ -372,7 +381,7 @@ export class SemanticTypeEngineRegistry {
         !pressureFallback && (selectedPaths || this.options.references?.conservativeSemanticUnits)
           ? this.packageResolver.projectFor(workspace.rootPath).semanticGraph()
           : undefined,
-        true, pressureFallback ? 1 : undefined,
+        true, pressureAdmission ? 1 : undefined, admitVerifier,
       )
     }
     const rootPath = path.resolve(workspace.rootPath)
@@ -392,13 +401,30 @@ export class SemanticTypeEngineRegistry {
     return this.coordinator.stats().residentContextCount
   }
 
+  semanticReadiness(workspace: SemanticWorkspaceView, prepare: boolean) {
+    const rootPath = path.resolve(workspace.rootPath)
+    this.options.refreshMemoryPressure?.()
+    const unavailable = () => semanticUnprepared(pathToFileURL(rootPath).href, "resource-budget-exceeded")
+    if (this.memoryLevel === "level2" || this.memoryLevel === "level3") return unavailable()
+    if (prepare) this.prepare(workspace)
+    const entry = this.coordinator.peek(rootPath)
+    if (!entry) return semanticUnprepared(pathToFileURL(rootPath).href)
+    const result = runWithSemanticLease(this.coordinator, rootPath,
+      current => current.engine.semanticReadiness(workspace, prepare, this.options.references?.trace ? this.options.onReferenceTrace : undefined), false)
+    this.options.refreshMemoryPressure?.()
+    return this.coordinator.peek(rootPath) === entry && !["level2", "level3"].includes(this.memoryLevel)
+      ? result : unavailable()
+  }
+
   runtimeStats() {
     return this.coordinator.stats()
   }
 
   applyMemoryPressure(level: SemanticMemoryLevel): void {
-    this.memoryLevel = level
-    this.coordinator.applyMemoryPressure(level)
+    if (this.options.references?.l01PressureAdmission && level === "level3" && this.memoryLevel !== "level3") {
+      this.referencePressureEpoch += 1
+    }
+    this.memoryLevel = this.coordinator.applyMemoryPressure(level)
   }
 
   invalidateArkUIResources(rootPath: string): void {
@@ -414,31 +440,7 @@ export class SemanticTypeEngineRegistry {
   }
 
   private createContext(rootPath: string): WorkspaceEngineEntry {
-    const engine = this.createTypeScriptEngine(rootPath)
-    return {
-      engine,
-      arkui: new ArkUIResourceLanguageProvider(rootPath),
-      project: this.packageResolver.projectFor(rootPath),
-      resourceScope: "",
-      ownerId: rootPath,
-      resetEpoch: -1,
-      appliedContentRevision: -1,
-      lastAccess: 0,
-      projectFiles: 0,
-      openDocuments: 0,
-      anchorMemo: new ReferenceAnchorMemo(),
-      trim() {
-        this.engine.trim()
-        this.anchorMemo.clear()
-      },
-      dispose() {
-        this.engine.dispose()
-        this.arkui.dispose()
-      },
-      stats() {
-        return { projectFiles: this.projectFiles, openDocuments: this.openDocuments }
-      },
-    }
+    return createWorkspaceEngineEntry(rootPath, this.createTypeScriptEngine(rootPath), this.packageResolver)
   }
 
   private createTypeScriptEngine(rootPath: string): TypeScriptLanguageServiceEngine {
@@ -446,6 +448,8 @@ export class SemanticTypeEngineRegistry {
       packageResolver: this.packageResolver,
       onSdkSelected: this.onSdkSelected,
       onScriptAdmission: this.options.references?.trace ? fields => this.referenceTrace("semantic.prepare.script-admission", fields) : undefined,
+      onResidentReferenceProofFailure: this.options.references?.trace
+        ? fields => this.referenceTrace("references.resident.proof.rejected", { ...fields }) : undefined,
       projectFileAccess: this.projectFileAccess,
       sdkConfiguration: this.sdkConfiguration,
       hostCancellationToken: this.options.hostCancellationToken,

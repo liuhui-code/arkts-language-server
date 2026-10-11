@@ -7,6 +7,10 @@ is the **active** L01–L08 implementation sequence. The preceding
 and [references latency plan](../plans/2026-09-20-references-latency-execution-plan.md)
 retain implementation and failed-gate history. Acceptance for experimental
 implementation is not production graduation or a passed product benchmark.
+2026-10-08 progression update: final product validation is at L08. Final memory,
+latency, overall readiness, long-soak, scale and portability targets do not block
+L01–L07 implementation; each slice retains public correctness and execution
+protection checks. Earlier L01/L02 resource-admission verdicts are historical.
 
 | ADR | Status | Decision |
 | --- | --- | --- |
@@ -21,9 +25,10 @@ implementation is not production graduation or a passed product benchmark.
 | [0009](0009-semantic-generation-and-publication.md) | Proposed; S03 BLOCKED | Facts publication still requires a proven producer |
 | [0010](0010-incremental-invalidation-and-overlays.md) | Proposed; scoped S07 gate | Conservative incremental invalidation with authoritative overlays |
 | [0011](0011-budgeted-preparation-and-session-reuse.md) | Proposed memory policy; S05 candidate REJECTED | Budget, pressure and eviction; LS lifecycle is owned by 0014 |
-| [0012](0012-query-routing-and-fallback.md) | Proposed; L04–L07 per-capability graduation | Reuse existing routing with complete fallback |
+| [0012](0012-query-routing-and-fallback.md) | Proposed; L04–L07 stages verified, final promotion at L08 | Reuse existing routing with complete fallback; experiments default-off |
 | [0013](0013-evidence-and-release-gates.md) | Proposed; acceptance work remains | Separate evidence tiers and retain all original release gates |
 | [0014](0014-budgeted-long-lived-semantic-session.md) | Accepted for experiment; production NOT graduated | L01–L08 budgeted long-lived official LS, with existing exact fallback |
+| [0015](0015-default-resident-optimization-policy.md) | Accepted by explicit maintainer decision; L08 gates open | Six optimizations default ON with rollback; merge via PR after full regression |
 
 Invariant for every decision: **global semantic scope remains complete while
 compiler residency is bounded**. Reducing a compiler working set must never
@@ -38,7 +43,7 @@ supersede them by implication:
 | --- | --- |
 | 0001 default strategy | 0014/0012 may change only graduated capability routes through explicit supersession; current `indexed-batched + closure + full SDK`, `dispose` and transient defaults remain |
 | 0002 retention and R-09 | 0011 owns memory pressure; R-09 remains implemented default-off, and Settings L3 admission failed |
-| 0003 transient verifier | 0014 L01–L03 do not change its default; L04 must retain it as exact fallback until correctness, resource and latency review |
+| 0003 transient verifier | 0014 L01–L03 do not change its default; L04–L07 retain exact fallback during default-off integration; final resource/latency acceptance is at L08 |
 | 0004 complete-result cache | Keep bounded complete-answer cache/coalescing and conservative invalidation; paused S02 facts are not a substitute |
 | 0005 compiler proof/index recovery | 0014 keeps official compiler authority; lexical candidates and candidate-ready generations remain insufficient for final semantics |
 | 0006 references lanes | 0012 reuses lanes, cancellation and revision fences; extend only through a second real capability transcript |

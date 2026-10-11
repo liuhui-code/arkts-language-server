@@ -7,6 +7,7 @@ import { pathToFileURL } from "node:url"
 
 import { LspSession } from "../support/lsp-session.mjs"
 import { projectRoot } from "../support/lsp-process.mjs"
+import { completeLogEvents } from "../support/complete-log-events.mjs"
 
 test("opt-in post-L3 probe measures GC in the semantic Worker without changing exact LSP results",
   { timeout: 60_000 }, async t => {
@@ -107,6 +108,8 @@ async function replayL3(t, { exposeGc, probeFlag, benchmarkControl = true, press
         ARKTS_REFERENCES_STRATEGY: "legacy",
         ARKTS_REFERENCES_TRACE: "1",
         ARKTS_MEMORY_BUDGET_MB: pressure === "automatic" ? "1" : "1024",
+        // Characterize GC after resident diagnosis, not the default no-resident L3 path.
+        ARKTS_L01_TRANSIENT_DIAGNOSTICS: pressure === "automatic" ? "0" : undefined,
         ARKTS_BENCHMARK_CONTROL: benchmarkControl ? "1" : "0",
         NODE_OPTIONS: "",
         ARKTS_L01_POST_EVICTION_GC_PROBE: probeFlag ? "1" : "0",
@@ -143,7 +146,7 @@ async function replayL3(t, { exposeGc, probeFlag, benchmarkControl = true, press
 function loggedEvents(logDirectory) {
   const logFile = path.join(logDirectory, "server.log")
   return fs.existsSync(logFile)
-    ? fs.readFileSync(logFile, "utf8").split("\n").filter(Boolean).map(JSON.parse) : []
+    ? completeLogEvents(logFile) : []
 }
 
 async function waitForEvent(logDirectory, predicate) {

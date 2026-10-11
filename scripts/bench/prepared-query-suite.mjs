@@ -7,11 +7,12 @@ import { pathToFileURL } from "node:url"
 
 import { LspSession } from "../../tests/support/lsp-session.mjs"
 import { applyTextEdits } from "../../tests/support/lsp-edits.mjs"
-import { loadOracle } from "./reference-location-oracle.mjs"
 import { gitValue, projectRoot } from "./reference-replay-input.mjs"
 import { attachNearestRss, childExit, delay, readJsonLines, readStructuredLogs, waitForCatalog, waitForSample } from "./reference-replay-evidence.mjs"
-import { capturePreparedIdentity, readPreparedSuite } from "./prepared-suite-input.mjs"
-import { checkPreparedLocations, preparedMemory, summarizePreparedBuckets, writePreparedReport } from "./prepared-query-report.mjs"
+import { capturePreparedIdentity, completionSelectionIdentity, isPreparedPayloadKind, loadPreparedOracle, readPreparedSuite } from "./prepared-suite-input.mjs"
+import { checkPreparedLocations, checkPreparedPayload, preparedMemory, summarizePreparedBuckets, writePreparedReport } from "./prepared-query-report.mjs"
+import { editCallKinds, isCallFollowup, preparedRequestMethod, selectCallItem } from "./prepared-edit-call.mjs"
+import { observeSemanticReadiness, preparedOverlayDigest, queryReadySnapshotMatches, sameReadySnapshot } from "./prepared-semantic-readiness.mjs"
 
 export async function runPreparedSuite(options) {
   const suite = await readPreparedSuite(options)
@@ -36,7 +37,11 @@ async function captureSuite(options, suite, temporary) {
   const session = new LspSession({ command: process.execPath, args: [suite.server, "--stdio"],
     cwd: projectRoot, env, rootUri: pathToFileURL(suite.workspace).href,
     capabilities: { general: { positionEncodings: ["utf-16"] }, window: { workDoneProgress: true },
-      textDocument: { publishDiagnostics: { versionSupport: true } } } })
+      ...(suite.targets.some(target => editCallKinds.includes(target.kind))
+        ? { workspace: { workspaceEdit: { documentChanges: true, failureHandling: "transactional" } } } : {}),
+      textDocument: { publishDiagnostics: { versionSupport: true },
+        ...(suite.targets.some(target => editCallKinds.includes(target.kind))
+          ? { rename: { prepareSupport: true }, callHierarchy: {} } : {}) } } })
   const targetPid = session.transport.child.pid
   const sampler = spawn(process.execPath, [path.join(projectRoot, "scripts/bench/sample-process-tree-rss.mjs"),
     String(targetPid), samplesPath, String(suite.runtime.sampleIntervalMs)], { stdio: ["ignore", "ignore", "pipe"] })
@@ -51,11 +56,18 @@ async function captureSuite(options, suite, temporary) {
   const completedQueries = new Map()
   const attemptedQueries = new Set()
   const queryOracles = new Map()
+  const completionResults = new Map()
+  const callHierarchyResults = new Map()
   let snapshot = 0
   const blockedScenarios = []
   let initialize = null
   let candidate = { state: "unobserved", source: "workspace-index-progress" }
   let preparationMs = null
+  let semantic = { status: "READINESS_UNSUPPORTED", reason: "NO_GENERATION_BOUND_PUBLIC_CONTRACT", observed: null }
+  let semanticPreparationMs = null
+  let timeToSemanticReadyMs = null
+  let readyMode = false
+  let readinessValidation = null
   let failure = null
   let closeResult = null
   try {
@@ -77,11 +89,19 @@ async function captureSuite(options, suite, temporary) {
     candidate = { state, source: terminal ? "index.catalog.terminal" : "workspace-index-progress", message }
     preparationMs = performance.now() - started
     mark("candidate-readiness-observed", candidate)
-    // No current server-owned generation/input/capability readiness contract exists.
-    // Unknown experimental capabilities, timers and catalog progress are never trusted.
-    mark("semantic-readiness-unsupported", { reason: "NO_GENERATION_BOUND_PUBLIC_CONTRACT" })
-    if (suite.readiness.candidateControl && candidate.state === "ready") {
-      for (const targetId of suite.preOpenTargetIds ?? []) {
+    if (!suite.readiness.candidateControl) {
+      for (const targetId of suite.preOpenTargetIds ?? []) openTargetDocument(suite.targets.find(target => target.id === targetId), true)
+    }
+    mark("semantic-readiness-request-start", { rootUri: session.rootUri, prepare: true })
+    const observation = await observeSemanticReadiness(session, suite)
+    semantic = observation.semantic
+    semanticPreparationMs = observation.elapsedMs
+    if (semantic.status === "READY") timeToSemanticReadyMs = performance.now() - started
+    mark("semantic-readiness-response-complete", { status: semantic.status,
+      semanticGeneration: semantic.observed?.semanticGeneration ?? null, elapsedMs: semanticPreparationMs })
+    readyMode = !suite.readiness.candidateControl && semantic.status === "READY"
+    if (readyMode || (suite.readiness.candidateControl && candidate.state === "ready")) {
+      for (const targetId of suite.readiness.candidateControl ? suite.preOpenTargetIds ?? [] : []) {
         openTargetDocument(suite.targets.find(target => target.id === targetId), true)
       }
       for (const scenario of suite.scenarios) {
@@ -102,7 +122,7 @@ async function captureSuite(options, suite, temporary) {
           mark("pre-open-diagnostics-barrier-complete", { scenarioId: scenario.id,
             targetIds: suite.preOpenTargetIds, version: 1 })
         }
-        if (["first-unopened-module", "restart-after-validated-ready"].includes(scenario.bucket)) {
+        if (scenario.bucket === "restart-after-validated-ready" || (!readyMode && scenario.bucket === "first-unopened-module")) {
           blockedScenarios.push({ id: scenario.id, reason: scenario.bucket === "first-unopened-module"
             ? "UNOPENED_QUERY_PATH_NOT_VERIFIED" : "LIFECYCLE_CONTROL_UNAVAILABLE" })
           continue
@@ -113,8 +133,13 @@ async function captureSuite(options, suite, temporary) {
           blockedScenarios.push({ id: scenario.id, reason: "MODULE_ALREADY_OPENED" })
           continue
         }
-        openTargetDocument(target)
-        const queryIdentity = JSON.stringify([target.kind, target.file, target.position, target.includeDeclaration])
+        if (readyMode && scenario.bucket !== "first-unopened-module" && !session.documentVersions.has(uri)) {
+          blockedScenarios.push({ id: scenario.id, reason: "TARGET_NOT_OPENED_BEFORE_READY" })
+          continue
+        }
+        if (!readyMode || scenario.bucket !== "first-unopened-module") openTargetDocument(target)
+        const queryIdentity = JSON.stringify([target.kind, target.file, target.position, target.includeDeclaration,
+          ...completionSelectionIdentity(target)])
         if (["after-eviction", "pressure-recovery-repeat"].includes(scenario.bucket)) {
           if (scenario.bucket === "after-eviction"
             && (attemptedQueries.size === 0 || attemptedQueries.has(queryIdentity))) {
@@ -132,6 +157,7 @@ async function captureSuite(options, suite, temporary) {
             continue
           }
           const evictionsBefore = pressureEvictions().length
+          const alreadyObserved = scenario.acceptObservedEviction === true ? observedEmptyContext() : null
           mark("memory-pressure-request-start", { scenarioId: scenario.id, level: "level3" })
           let pressure
           try {
@@ -146,13 +172,14 @@ async function captureSuite(options, suite, temporary) {
             blockedScenarios.push({ id: scenario.id, reason: "LIFECYCLE_CONTROL_UNAVAILABLE" })
             continue
           }
-          const eviction = await waitForPressureEviction(evictionsBefore)
+          const eviction = alreadyObserved ?? await waitForPressureEviction(evictionsBefore)
           if (!eviction) {
             blockedScenarios.push({ id: scenario.id, reason: "EVICTION_NOT_OBSERVED" })
             continue
           }
           mark("memory-pressure-eviction-observed", { scenarioId: scenario.id,
-            reason: eviction.reason, contextSequence: eviction.contextSequence })
+            reason: eviction.reason, contextSequence: eviction.contextSequence,
+            origin: alreadyObserved ? "already-observed" : "after-control", evictionTimestamp: eviction.ts })
           const observationStart = performance.now()
           if (suite.runtime.afterEvictionObservationMs > 0) {
             mark("post-eviction-observation-start", { scenarioId: scenario.id,
@@ -192,6 +219,8 @@ async function captureSuite(options, suite, temporary) {
         if (scenario.edit) {
           snapshot++
           queryOracles.clear()
+          completionResults.clear()
+          callHierarchyResults.clear()
           const editedUri = pathToFileURL(path.join(suite.workspace, scenario.edit.file)).href
           const version = (session.documentVersions.get(editedUri) ?? 0) + 1
           const text = applyTextEdits(overlays.get(editedUri)
@@ -206,38 +235,104 @@ async function captureSuite(options, suite, temporary) {
           observeDiagnostics(editedUri, nextVersion)
           session.changeDocument({ uri: editedUri, version: nextVersion, text })
           mark("didChange-sent", { scenarioId: scenario.id, version: nextVersion })
-          expected = loadOracle(scenario.edit.oracle.path, suite.workspace, overlays)
+          expected = loadPreparedOracle(scenario.edit.oracle.path, target.kind, suite.workspace, overlays)
         }
         queryOracles.set(queryIdentity, expected)
         const priorCompleteSnapshot = completedQueries.get(queryIdentity) === snapshot
         const begin = performance.now()
         const requestId = session.nextRequestId
-        mark("request-start", { scenarioId: scenario.id, method: `textDocument/${target.kind}` })
+        const method = preparedRequestMethod(target.kind)
+        mark("request-start", { scenarioId: scenario.id, method })
         attemptedQueries.add(queryIdentity)
         let response
+        let sourceItem
         let status = "COMPLETE"
         try {
-          response = await session.request(`textDocument/${target.kind}`, {
+          let params = {
             textDocument: { uri }, position: target.position,
             ...(target.kind === "references" ? { context: { includeDeclaration: target.includeDeclaration } } : {}),
-          }, { timeoutMs: suite.runtime.timeoutMs })
+            ...(target.kind === "rename" ? { newName: target.newName } : {}),
+          }
+          if (target.kind === "completionResolve") {
+            const source = completionResults.get(target.completionTargetId)
+            if (!source || source.snapshot !== snapshot || source.documentVersion !== session.documentVersions.get(uri)) {
+              throw new Error("PREPARED_RESOLVE_BLOCKED=NO_CURRENT_VALIDATED_COMPLETION")
+            }
+            const matches = source.items.filter(item => Object.entries(target.completionSelector)
+              .every(([key, value]) => item[key] === value))
+            if (matches.length !== 1) throw new Error("PREPARED_RESOLVE_BLOCKED=AMBIGUOUS_OR_MISSING_ITEM")
+            sourceItem = matches[0]
+            params = sourceItem
+          }
+          if (isCallFollowup(target.kind)) {
+            const source = callHierarchyResults.get(target.callHierarchyTargetId)
+            if (!source || source.snapshot !== snapshot || source.documentVersion !== session.documentVersions.get(uri)) {
+              throw new Error("PREPARED_CALL_BLOCKED=NO_CURRENT_VALIDATED_PREPARE")
+            }
+            sourceItem = selectCallItem(source.items, target.callHierarchySelector)
+            params = { item: sourceItem }
+          }
+          response = await session.request(method, params, { timeoutMs: suite.runtime.timeoutMs })
           if (response.error) status = "ERROR"
         } catch (error) {
           status = /Timed out waiting/u.test(error.message) ? "TIMEOUT" : "ERROR"
           response = { error: { message: error.message } }
-          session.transport.send({ jsonrpc: "2.0", method: "$/cancelRequest", params: { id: requestId } })
+          if (status === "TIMEOUT") session.transport.send({ jsonrpc: "2.0", method: "$/cancelRequest", params: { id: requestId } })
         }
         const elapsedMs = performance.now() - begin
-        const correctness = checkPreparedLocations(response.result, expected, suite.workspace, overlays)
-        requests.push({ scenarioId: scenario.id, targetId: target.id, kind: target.kind,
-          bucket: scenario.bucket, measurementState: "candidate-ready-control", elapsedMs,
+        const correctness = isPreparedPayloadKind(target.kind) ? checkPreparedPayload(response.result, expected, sourceItem,
+          { workspace: suite.workspace, overlays, versions: session.documentVersions, sourceUri: uri })
+          : checkPreparedLocations(response.result, expected, suite.workspace, overlays)
+        requests.push({ scenarioId: scenario.id, targetId: target.id, kind: target.kind, method,
+          ...(target.kind === "completionResolve" ? { completionSourceTargetId: target.completionTargetId } : {}),
+          ...(isCallFollowup(target.kind) ? { callHierarchySourceTargetId: target.callHierarchyTargetId } : {}),
+          bucket: scenario.bucket, measurementState: readyMode ? "post-semantic-ready-unverified" : "candidate-ready-control", elapsedMs,
+          ...(readyMode ? { readiness: { originGeneration: semantic.observed.semanticGeneration,
+            originInputSha256: semantic.observed.inputIdentity.sha256, snapshot, verified: false } } : {}),
           priorCompleteSnapshot, cacheEvidence: "unproven",
           elapsedLowerBound: status === "TIMEOUT", status, error: response.error ?? null,
           documentVersion: session.documentVersions.get(uri), correctness })
         if (status === "COMPLETE" && correctness.equal) {
           completedQueries.set(queryIdentity, snapshot)
+          if (target.kind === "completion") completionResults.set(target.id, {
+            items: response.result.items, snapshot, documentVersion: session.documentVersions.get(uri),
+          })
+          if (target.kind === "prepareCallHierarchy") callHierarchyResults.set(target.id, {
+            items: response.result, snapshot, documentVersion: session.documentVersions.get(uri),
+          })
         }
         mark("request-complete", { scenarioId: scenario.id, elapsedMs, status, exact: correctness.equal })
+        if (readyMode) {
+          mark("semantic-readiness-query-validation-start", { scenarioId: scenario.id, prepare: false })
+          const receipt = await observeSemanticReadiness(session, suite, false)
+          const request = requests.at(-1)
+          request.readiness.expectedOverlaysSha256 = preparedOverlayDigest(overlays, session.documentVersions)
+          request.readiness.observed = receipt.semantic.observed
+          request.readiness.verified = queryReadySnapshotMatches(semantic.observed, receipt.semantic,
+            snapshot, overlays, session.documentVersions)
+          if (request.readiness.verified) request.measurementState = "semantic-ready-snapshot"
+          mark("semantic-readiness-query-validation-complete", { scenarioId: scenario.id,
+            status: receipt.semantic.status, current: request.readiness.verified, elapsedMs: receipt.elapsedMs })
+        }
+      }
+      if (readyMode) {
+        mark("semantic-readiness-validation-start", { prepare: false })
+        readinessValidation = (await observeSemanticReadiness(session, suite, false)).semantic
+        const current = readinessValidation.status === "READY"
+          && requests.at(-1)?.readiness?.verified === true
+          && sameReadySnapshot(requests.at(-1)?.readiness?.observed, readinessValidation.observed)
+        if (!current || requests.some(request => ["after-eviction", "pressure-recovery-repeat"].includes(request.bucket))) {
+          for (const request of requests) {
+            request.readiness.verified = false
+            request.measurementState = "post-semantic-ready-unverified"
+          }
+        }
+        mark("semantic-readiness-validation-complete", { status: readinessValidation.status, current })
+        // Observe normal diagnostics only after every unopened measurement and
+        // its non-preparing snapshot validation; never prewarm a target query.
+        for (const request of requests.filter(request => request.bucket === "first-unopened-module")) {
+          openTargetDocument(suite.targets.find(target => target.id === request.targetId))
+        }
       }
       await Promise.all([...diagnosticObservers.values()].map(observer => observer.promise))
       if (suite.runtime.postIdleMs > 0) {
@@ -274,19 +369,22 @@ async function captureSuite(options, suite, temporary) {
         nodeOptions: process.env.NODE_OPTIONS ?? null },
       effectiveArktsFlags: suite.runtime.env,
       parentArktsFlagsCleared: Object.keys(process.env).filter(key => key.startsWith("ARKTS_")) },
-    readiness: { candidate, semantic: { status: "READINESS_UNSUPPORTED",
-      reason: "NO_GENERATION_BOUND_PUBLIC_CONTRACT", observed: null } },
+    readiness: { candidate, semantic, ...(readyMode ? { validation: readinessValidation } : {}) },
     preparation: { measurementState: "candidate-preparation-only", elapsedMs: preparationMs,
-      timeToSemanticReadyMs: null, targetQueries: 0 },
+      timeToSemanticReadyMs, semanticPreparationMs, targetQueries: 0 },
     targetPool: suite.targets.map(({ expected, ...target }) => target),
-    requests, blockedScenarios, bucketSummaries: summarizePreparedBuckets(suite, requests), diagnostics,
+    requests, blockedScenarios, bucketSummaries: summarizePreparedBuckets(suite, requests, semantic.status), diagnostics,
     memory: { ...preparedMemory(samples, targetPid, suite.runtime.sampleIntervalMs, samplerStderr),
       peakHarnessEventRssBytes: Math.max(...timeline.map(event => event.harnessRssBytes)) },
     correctness: { plannedRequests: suite.scenarios.length, executedRequests: requests.length,
       status: requests.length && !failure && requests.length === suite.scenarios.length && inputUnchanged
         && requests.every(request => request.status === "COMPLETE" && request.correctness.equal)
         && diagnosticsStatus === "PASS" ? "PASS" : failure || requests.length ? "FAIL" : "NOT_RUN" },
-    gateStatus: { ready: "FAIL", latency: "BLOCKED", memory: "BLOCKED", portability: "NOT_RUN",
+    gateStatus: { ready: semantic.status !== "READY" || readyMode && requests.some(request =>
+      request.status !== "COMPLETE" || !request.correctness.equal) ? "FAIL" : readyMode && inputUnchanged && !failure
+      && requests.length === suite.scenarios.length && requests.length > 0
+      && requests.every(request => request.readiness?.verified && request.status === "COMPLETE" && request.correctness.equal)
+      ? "PASS" : "BLOCKED", latency: "BLOCKED", memory: "BLOCKED", portability: "NOT_RUN",
       lifecycle: "NOT_RUN", diagnostics: diagnosticsStatus },
     timeline: attachNearestRss(timeline, samples), serverEvents: readStructuredLogs(logDir),
     transcript: session.transport.diagnosticSnapshot(), initializeCapabilities: initialize?.result?.capabilities,
@@ -335,6 +433,18 @@ async function captureSuite(options, suite, temporary) {
   function pressureEvictions() {
     return readStructuredLogs(logDir).filter(event => event.event === "semantic.context.evict"
       && event.reason === "memory-level3")
+  }
+
+  function observedEmptyContext() {
+    const start = timeline.find(event => event.phase === "request-start")?.timestamp
+    if (start === undefined) return null
+    const events = readStructuredLogs(logDir)
+    const index = events.findLastIndex(event => event.event === "semantic.context.evict"
+      && event.reason === "memory-level3" && event.residentContextCount === 0
+      && Date.parse(event.ts) >= start)
+    if (index < 0 || events.slice(index + 1).some(event => event.event === "semantic.context.create"
+      || event.event === "semantic.worker.started")) return null
+    return events[index]
   }
 
   async function waitForPressureEviction(previousCount) {

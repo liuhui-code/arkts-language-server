@@ -1,4 +1,4 @@
-# Semantic-Ready：正确性、就绪、500 ms 与内存验收
+# Semantic-Ready：正确性、就绪、500 ms 目标 / 550 ms 验收与内存
 
 状态：后续执行的规范性契约；当前实施主线为预算约束的长驻官方 LS
 [L01–L08 计划](../plans/2026-10-06-budgeted-resident-semantic-plan.md)，
@@ -14,14 +14,34 @@ L01 首轮 Settings/API24 是 42/42 exact，但同文件未查询符号三次为
 保留历史失败及门禁；产品边界见[产品契约](../plans/semantic-ready/product-contract.md)，
 新实验决策见[ADR 0014](../adr/0014-budgeted-long-lived-semantic-session.md)。
 
+2026-10-10 用户确认“550”：500 ms 保留为优化目标，L08 正式完整响应
+P95 上限调整为 550 ms。仅此项授权变更；100 请求/5 会话、336 格、
+完整正确性/真实 ready/内存/soak/平台等要求不变。下文历史 500 ms
+失败保持原判定，新口径必须使用独立冻结的当前证据，不能自动重标旧报告。
+
 所有支持范围、阈值、场景分类、目标池和采样规则在变更／取样前冻结。
 门禁结果只使用 `PASS`、`FAIL`、`BLOCKED`、`NOT_RUN`；功能实现状态与性能毕业状态分别记录。
 `Implemented`、候选索引 ready、单次快速响应或已有 ADR 均不等于本契约 PASS。
-阶段实施可在精确性、完整性、新鲜度、取消与新路径资源安全通过后继续，即使
-G-LATENCY 的 500 ms 仍为 FAIL；该 FAIL 必须保留原始证据并在 L01–L08
-继续归因和验证，不许重标 PASS。最终毕业、默认推广、发布及 #85 关闭仍要求全套门禁通过。
+2026-10-08 用户确认：**最终产品验证统一在 L08，最终目标不阻塞 L01–L07。**
+前序阶段按切片功能、真实 LSP 回归和可重放证据推进，保留完整性、快照
+新鲜度、取消及可停止/回收的执行保护；缺陷停止受影响运行并修复或回退。
+G-LATENCY、最终 G-MEMORY、整体 G-READY、长期 soak、规模和跨平台指标
+FAIL/BLOCKED/NOT_RUN 均如实带入后续实现与 L08，不要求提前 PASS。
+阶段采样继续用于归因；最终毕业、默认推广、发布及 #85 关闭须在 L08
+通过全套门禁，所有阈值及历史失败记录保留。
 S02 v1–v6 投影语义不等价及 S05 候选资源回归仍是独立的历史失败证据，
 不能改名为长驻 LS 的成功，也不是新路线的实施前置。
+
+2026-10-10 [L06阶段完成审计](../reports/2026-10-10-resident-l06-completion-audit.md)
+A～E PASS：19公开case/252联合、当前62真实控制及全新whole1492，
+终态冻结身份相同。阶段完成不替代下列最终门禁；raw readiness FAIL、
+>500ms、慢准备/恢复和采样软预算峰值继续记录，L07不等待L08毕业。
+
+[当前L07审计](../reports/2026-10-10-resident-l07-completion-audit.md)A–E
+直接证据通过：25公开编辑/调用case、当前真实62/62完整结果与最新诊断
+配对一致，实际lazy晋升/Program反事实成立。冻结完整1511/1511、根退出0
+及终态身份一致，阶段DONE；不将
+raw readiness FAIL/CLI1或单对RSS/时延重标为下列最终门禁成功。
 
 ## G-CORRECT：完整语义与精确差分
 
@@ -73,7 +93,7 @@ mtime／文件大小不是内容身份的充分证明；监听丢失或身份未
 
 单调时钟计时：`客户端开始写请求 → 收到并解析完整终态响应`。
 包含排队、增量追赶、anchor、索引／compiler、合并、fallback、重试、编码和等待；不以首条结果或内部 CPU 时间代替。
-以下每个 capability × bucket 的正常请求均要求 P95 ≤500 ms：
+以下每个 capability × bucket 的正常请求以 500 ms 为优化目标，正式验收要求 P95 ≤550 ms：
 
 | bucket | 冻结的初始状态 |
 | --- | --- |
@@ -88,12 +108,12 @@ mtime／文件大小不是内容身份的充分证明；监听丢失或身份未
 
 ready 后普通编辑产生的 updating／等待完整计入，不是新初始化；公开签名影响面大时记该桶失败。
 首次准备和重启恢复分别报告 initialize、time-to-semantic-ready、CPU、总时长、峰值内存、Program／SourceFile 范围及必要磁盘量；恢复验证／重建成本不能藏为零。
-首次准备只豁免 500 ms 交互门禁，不豁免正确性、内存、可取消和可观测失败。
+首次准备只豁免交互时延门禁，不豁免正确性、内存、可取消和可观测失败。
 SDK／target／大型分支切换可单列重新准备，事件阈值与分类须预先冻结，不事后把普通编辑改名。
 
 PR smoke 每桶至少 10 个终态样本用于回归，不能据此宣称稳定 P95 毕业。
 release 每 capability × bucket 至少 100 个请求、跨至少 5 个独立会话；未见符号须足够多且分层均衡，不复制一个符号冒充样本。
-使用 nearest-rank `ceil(.95*n)`；报告原始分布、P50／P95／P99／max、>500 ms 比例、error／timeout、fallback 原因／命中率及 coverage。
+使用 nearest-rank `ceil(.95*n)`；报告原始分布、P50／P95／P99／max、>500 ms 目标和 >550 ms 上限的比例、error／timeout、fallback 原因／命中率及 coverage。
 样本不足为 `BLOCKED`，未运行为 `NOT_RUN`；bootstrap 区间可追加，不能代替原始分布。
 
 正常请求的 error、内部 timeout 和最终失败均为失败样本，留在分母；超时记录下界／未完成标识，不能记 0 或删掉。
@@ -104,11 +124,13 @@ release 每 capability × bucket 至少 100 个请求、跨至少 5 个独立会
 
 ## 固定 Settings/API 24 compatibility track
 
-Settings revision `ecc550dfaed880e04e38a2477eb7235cd50475b9` 声明 compile SDK 23，本机选择 API 24。
-该固定配置已获授权继续同 SDK 的策略、时延与内存 A/B/C；缺少 API 23 不阻塞此 compatibility track，也不重复争论其准入。
+Settings revision `ecc550dfaed880e04e38a2477eb7235cd50475b9` 固定使用本机 API24。
+用户再次明确确认其兼容性，当前验收不另设版本匹配门禁；按这一固定 SDK
+完成策略、时延与内存 A/B/C，以及当前设备可执行的验收。
 冻结 checkout／dirty state、server／sealed artifact、Node／toolchain、backend、selected SDK／标准库／Worker digest、项目选择、index generation／LS 输入身份、查询文件／符号／UTF-16 位置及所有 `ARKTS_*` overrides。
 独立进程比较 legacy、batched、indexed-batched，保留各自精确 oracle、正常 diagnostics 和退出状态。
-API-23-matched、跨版本等价及 DevEco 对照为独立门禁；API 24 compatibility 结果不得声称它们通过。
+SDK字节、必要分析输入、完整正确性与真实ready仍需验证；兼容授权不是
+这些要求的豁免。DevEco/PSS及其它平台实测保持独立，不拿本机RSS替代。
 历史 Settings `LogUtil` 的不完整 legacy 结果不能成为 golden；class 与 constructor、两个 declaration policy 始终分开。
 
 以下依赖／S02 事实记录是历史 oracle 边界，不能作为 L01 长驻 LS 的
@@ -134,6 +156,8 @@ API-23-matched、跨版本等价及 DevEco 对照为独立门禁；API 24 compat
 ## G-MEMORY：原门禁与全生命周期
 
 [原 release gates](../../config/memory-release-gates.json) 与[原产品流程](product-gate.md) 继续生效；各阶段保存配置 digest，不能放宽阈值。
+本节最终阈值、完整生命周期与长期稳定性由 L08 统一验收；L01–L07
+持续测量，使用预声明停止线和可清理的实验进程，未达最终目标不阻塞阶段推进。
 
 | 原门禁 | 阈值 |
 | --- | ---: |
@@ -144,7 +168,7 @@ API-23-matched、跨版本等价及 DevEco 对照为独立门禁；API 24 compat
 | allowedContractFailures | 0 |
 | warm P95／baseline ratio | ≤1.25 |
 
-新 500 ms 与旧 warm 回归比同时适用。原 >3 GB 复现及最终 50% peak reduction 目标保持 open，本契约不能关闭它们。
+新 550 ms 验收上限与旧 warm 回归比同时适用，500 ms 优化目标保留。原 >3 GB 复现及最终 50% peak reduction 目标保持 open，本契约不能关闭它们。
 准备、正常交互、编辑追赶、淘汰、重启恢复均记录 Zed + server + sidecar product tree 与 compiler context 数量；harness 单列。
 按 PID 计量：worker thread RSS 已包含在 Node PID，不能重复相加；heapUsed／external／arrayBuffers 不能简单相加当 RSS。
 Linux PSS、macOS footprint／RSS、Windows private working set 分别命名，Mac RSS 不能称 PSS 或替代 DevEco/PSS gate。
@@ -183,14 +207,14 @@ catalog ready 返回结果。若未来另行批准持久化语义事实，stage�
 全局 verifier 默认并发一；resident LS 与 transient Worker 同时运行时计入
 统一进程预算。scope/身份/内存准入失败时保持现行完整 exact fallback
 或显式错误，不以空或部分响应降低内存。
-Windows／macOS／Linux 分别验证空格／非 ASCII 路径、SDK 定位、native sidecar、迁移和旧数据库处理；单平台 GREEN 不推断其他平台 500 ms。
+Windows／macOS／Linux 分别验证空格／非 ASCII 路径、SDK 定位、native sidecar、迁移和旧数据库处理；单平台 GREEN 不推断其他平台达到 550 ms 验收或 500 ms 优化目标。
 原有已支持能力不能因实验静默删除；仅真实 child-stdio transcript GREEN 后宣告标准 LSP capability。
 
 最终矩阵按 capability × bucket × platform／环境列出 correctness、ready、latency、memory、lifecycle、portability 状态、样本数与证据链接。
 任何关键未跑、覆盖无法证明或不足样本的门禁保持 `BLOCKED`／`NOT_RUN`；实现完成不能替代性能毕业。
-L01 完整精确性、新鲜度、取消或新路径资源安全失败时停止该路径；
-500 ms 性能未达标可在明确 `PERFORMANCE_FAIL` 下继续 L02 增量有效性
-研究，但不得生产接线或默认推广。L03 的预算策略由实测压力决定，
-L04–L07 按 capability 保留当前 exact transient fallback；L08 不得在
+L01–L07 的错误/部分/陈旧结果、取消或执行保护缺陷停止受影响运行；
+最终时延、内存或完整验收未通过不阻止其它切片及后续实现，问题带入
+L02 增量、L03 预算和 L08 最终验证。L04–L07 可默认关闭逐能力接线，
+保留当前 exact transient fallback；默认推广等待 L08。L08 不得在
 任一产品门禁 FAIL/BLOCKED/NOT_RUN 时宣称毕业。旧 S05 已 REJECTED，
 S02 v1–v6 FAIL／S03 BLOCKED 只作为历史证据保留。

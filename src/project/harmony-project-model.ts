@@ -3,7 +3,8 @@ import path from "node:path"
 
 import { buildSemanticGraph } from "./harmony-semantic-graph.js"
 import { readHarmonyProfile } from "./harmony-profile-reader.js"
-import { LoadedConfigurationWitness } from "./loaded-configuration-witness.js"
+import { LoadedConfigurationWitness, type ConfigurationFreshnessMode } from "./loaded-configuration-witness.js"
+import { containsResolvedPath } from "./resolved-path-containment.js"
 
 const MAX_MODULES = 256
 
@@ -54,7 +55,8 @@ interface ProjectSelection {
 }
 
 type ProjectSnapshot =
-  | { readonly status: "ready"; readonly physicalRoot: string; readonly modules: readonly ModuleScope[] }
+  | { readonly status: "ready"; readonly physicalRoot: string; readonly modules: readonly ModuleScope[];
+      readonly scopesByPhysicalRoot: ReadonlyMap<string, HarmonyProjectScope> }
   | { readonly status: "unconfigured" | "unavailable"; readonly scope: HarmonyProjectScope }
 
 export class HarmonyProjectModel {
@@ -75,19 +77,32 @@ export class HarmonyProjectModel {
     if (this.snapshot || this.graph) this.configurationWitness.markUnprovable()
   }
 
-  configurationFreshness(checkpoint: () => void): (() => boolean) | undefined {
-    return this.configurationWitness?.freshness(checkpoint)
+  configurationFreshness(checkpoint: () => void, mode: ConfigurationFreshnessMode = "validate"): (() => boolean) | undefined {
+    return this.configurationWitness?.freshness(checkpoint, mode)
   }
 
   scopeFor(sourcePath: string): HarmonyProjectScope {
+    return this.resolveSourceScope(sourcePath).scope
+  }
+
+  resolveSourceScope(sourcePath: string, resolvedPhysicalPath?: string): { scope: HarmonyProjectScope; physicalPath?: string } {
     const snapshot = this.snapshot ??= this.load()
-    if (snapshot.status !== "ready") return snapshot.scope
-    const physicalSource = physicalPath(sourcePath)
+    if (snapshot.status !== "ready") return { scope: snapshot.scope }
+    const physicalSource = resolvedPhysicalPath ?? physicalPath(sourcePath)
     if (!physicalSource || !inside(snapshot.physicalRoot, physicalSource)) {
-      return unavailable("source-outside-project")
+      return { scope: unavailable("source-outside-project"), physicalPath: physicalSource }
     }
-    return snapshot.modules.find((module) => inside(module.physicalRoot, physicalSource))?.scope
-      ?? unavailable("source-outside-declared-modules")
+    const rootKey = physicalScopeKey(snapshot.physicalRoot)
+    let ancestor = physicalSource
+    while (true) {
+      const key = physicalScopeKey(ancestor)
+      const scope = snapshot.scopesByPhysicalRoot.get(key)
+      if (scope) return { scope, physicalPath: physicalSource }
+      const parent = path.dirname(ancestor)
+      if (key === rootKey || parent === ancestor) break
+      ancestor = parent
+    }
+    return { scope: unavailable("source-outside-declared-modules"), physicalPath: physicalSource }
   }
 
   mayContainDeclaredModule(directoryPath: string): boolean {
@@ -191,7 +206,12 @@ export class HarmonyProjectModel {
       return invalid("selected-module-unavailable")
     }
     modules.sort((left, right) => right.physicalRoot.length - left.physicalRoot.length)
-    return Object.freeze({ status: "ready", physicalRoot, modules: Object.freeze(modules) })
+    const scopesByPhysicalRoot = new Map<string, HarmonyProjectScope>()
+    for (const module of modules) {
+      const key = physicalScopeKey(module.physicalRoot)
+      if (!scopesByPhysicalRoot.has(key)) scopesByPhysicalRoot.set(key, module.scope)
+    }
+    return Object.freeze({ status: "ready", physicalRoot, modules: Object.freeze(modules), scopesByPhysicalRoot })
   }
 }
 
@@ -365,7 +385,7 @@ function object(value: unknown): Record<string, unknown> | undefined {
 }
 
 function physicalPath(filePath: string, witness?: LoadedConfigurationWitness): string | undefined {
-  if (witness) return witness.observe(filePath, () => physicalPath(filePath))
+  if (witness) return witness.observePath(filePath, () => physicalPath(filePath))
   const resolved = path.resolve(filePath)
   try { return fs.realpathSync.native(resolved) }
   catch {
@@ -376,8 +396,10 @@ function physicalPath(filePath: string, witness?: LoadedConfigurationWitness): s
   }
 }
 
+function physicalScopeKey(physicalPath: string): string {
+  return process.platform === "win32" ? physicalPath.toLowerCase() : physicalPath
+}
+
 function inside(rootPath: string, candidate: string): boolean {
-  const relative = path.relative(rootPath, candidate)
-  return relative === "" || (!path.isAbsolute(relative) && relative !== ".."
-    && !relative.startsWith(`..${path.sep}`))
+  return containsResolvedPath(rootPath, candidate)
 }

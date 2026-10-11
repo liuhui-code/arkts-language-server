@@ -1,8 +1,12 @@
 import fs from "node:fs"
 import path from "node:path"
+import { isDeepStrictEqual } from "node:util"
 
 import { comparableLocations, normalizeReferences, validateLocations } from "./reference-location-oracle.mjs"
 import { maxNullable } from "./reference-replay-evidence.mjs"
+import { editCallKinds, validateEditCallPayload } from "./prepared-edit-call.mjs"
+
+const latencyContract = JSON.parse(fs.readFileSync(new URL("../../config/semantic-release-matrix.json", import.meta.url))).latency
 
 export function checkPreparedLocations(result, expected, workspace, overlays) {
   const invalid = []
@@ -27,7 +31,40 @@ export function checkPreparedLocations(result, expected, workspace, overlays) {
     missing, extra, duplicates, invalid, locations: actual }
 }
 
-export function summarizePreparedBuckets(suite, requests) {
+export function checkPreparedPayload(result, expected, sourceItem, context) {
+  const invalid = result === undefined ? ["terminal result is missing"] : []
+  let payload = result
+  try {
+    if (expected.kind === "completion") {
+      if (typeof result?.isIncomplete !== "boolean" || !Array.isArray(result.items)) {
+        throw new Error("terminal result is not a complete CompletionList payload")
+      }
+      payload = { ...result, items: result.items.map(canonicalPreparedCompletion) }
+    } else if (expected.kind === "completionResolve") {
+      if (!isDeepStrictEqual(result?.data, sourceItem?.data)) {
+        throw new Error("completion resolve changed the source session handle")
+      }
+      payload = canonicalPreparedCompletion(result)
+    }
+    if (editCallKinds.includes(expected.kind)) validateEditCallPayload(expected.kind, payload, { ...context, sourceItem })
+  } catch (error) { invalid.push(error.message) }
+  return { equal: invalid.length === 0 && isDeepStrictEqual(payload, expected.result),
+    payload: payload ?? null, expectedPayload: expected.result, invalid }
+}
+
+export function canonicalPreparedCompletion(item) {
+  const data = item?.data
+  if (!data || Object.keys(data).length !== 1 || typeof data.arktsCompletionId !== "string"
+    || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/u.test(data.arktsCompletionId)) {
+    throw new Error("completion handle is not the validated opaque session UUID")
+  }
+  const { data: _sessionHandle, ...payload } = item
+  return payload
+}
+
+export function summarizePreparedBuckets(suite, requests, readinessStatus = "READINESS_UNSUPPORTED") {
+  const reason = { READY: "REQUEST_GENERATION_NOT_VERIFIED", DEGRADED: "SEMANTIC_INPUTS_UNAVAILABLE",
+    UNPREPARED: "PROGRAM_NOT_PREPARED" }[readinessStatus] ?? readinessStatus
   const groups = new Map()
   for (const scenario of suite.scenarios) {
     const kind = suite.targets.find(target => target.id === scenario.targetId).kind
@@ -41,14 +78,25 @@ export function summarizePreparedBuckets(suite, requests) {
     const latencies = samples.map(request => request.elapsedMs).sort((a, b) => a - b)
     const failures = samples.filter(request => request.status !== "COMPLETE" || !request.correctness.equal).length
     const above500Ms = samples.filter(request => request.elapsedMs > 500 || request.status !== "COMPLETE").length
-    return { ...group, measurementState: "candidate-ready-control", samples: samples.length,
+    const aboveAcceptanceMs = samples.filter(request => request.elapsedMs > latencyContract.p95MsMax
+      || request.status !== "COMPLETE").length
+    const p95 = percentile(latencies, .95)
+    const ready = samples.length > 0 && samples.every(request => request.measurementState === "semantic-ready-snapshot"
+      && request.readiness?.verified === true)
+    const postReady = samples.some(request => request.readiness !== undefined)
+    return { ...group, measurementState: ready ? "semantic-ready-snapshot"
+      : postReady ? "post-semantic-ready-unverified" : "candidate-ready-control", samples: samples.length,
+      readyStatus: postReady && failures ? "FAIL" : ready ? "PASS" : "BLOCKED",
       unexecutedSamples: group.plannedSamples - samples.length, failures,
       timeoutCount: samples.filter(request => request.status === "TIMEOUT").length,
       above500Ms, above500Ratio: samples.length ? above500Ms / samples.length : null,
-      latencyMs: { p50: percentile(latencies, .5), p95: percentile(latencies, .95),
+      aboveAcceptanceMs, aboveAcceptanceRatio: samples.length ? aboveAcceptanceMs / samples.length : null,
+      latencyTargetMs: latencyContract.targetMs, latencyCeilingMs: latencyContract.p95MsMax,
+      latencyMs: { p50: percentile(latencies, .5), p95,
         p99: percentile(latencies, .99), max: latencies.at(-1) ?? null },
-      gateStatus: "BLOCKED", reason: "READINESS_UNSUPPORTED",
-      controlStatus: failures || above500Ms ? "FAIL"
+      gateStatus: "BLOCKED", reason: postReady && failures ? "EXACT_QUERY_FAILED" : ready ? suite.runtime.env.ARKTS_REFERENCES_TRACE === "1"
+        ? "ATTRIBUTION_ONLY" : samples.length < 100 ? "INSUFFICIENT_RELEASE_REQUESTS" : "INSUFFICIENT_RELEASE_SESSIONS" : reason,
+      controlStatus: failures || p95 > latencyContract.p95MsMax ? "FAIL"
         : samples.length !== group.plannedSamples || samples.length < 10 ? "BLOCKED" : "PASS",
     }
   })

@@ -142,6 +142,11 @@ export class SemanticRequestRunner {
         outcome = "stale"
         return request.fallback
       }
+      // The implementation adapter retains its existing capability-specific wording.
+      if (request.method !== "textDocument/implementation" && error instanceof Error
+        && "code" in error && error.code === "workspace-incomplete") {
+        throw new ResponseError(LSPErrorCodes.RequestFailed, "Semantic query requires current workspace inputs")
+      }
       throw error
     } finally {
       freshRequest?.finish()
@@ -227,6 +232,9 @@ export class SemanticRequestRunner {
       if (freshRequest?.signal.aborted) {
         outcome = "superseded"
         return request.fallback
+      }
+      if (error instanceof Error && "code" in error && error.code === "workspace-incomplete") {
+        throw new ResponseError(LSPErrorCodes.RequestFailed, "Semantic query requires current workspace inputs")
       }
       throw error
     } finally {
@@ -319,6 +327,9 @@ export class SemanticRequestRunner {
       if (freshRequest?.signal.aborted) {
         outcome = "superseded"
         return request.fallback
+      }
+      if (error instanceof Error && "code" in error && error.code === "workspace-incomplete") {
+        throw new ResponseError(LSPErrorCodes.RequestFailed, "Semantic query requires current workspace inputs")
       }
       throw error
     } finally {

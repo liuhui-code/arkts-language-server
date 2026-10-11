@@ -1,0 +1,218 @@
+{
+  "schemaVersion": 1,
+  "benchmarkId": "settings-resident-L03-policy-selected-trace-api24-20261009",
+  "seed": 20261009,
+  "workspace": ".bench/real-projects/settings-ecc550",
+  "sdk": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony",
+  "server": "dist/server.cjs",
+  "sidecar": "target/release/arkts-index-sidecar",
+  "pins": {
+    "repoSha": "ecc550dfaed880e04e38a2477eb7235cd50475b9",
+    "workspaceStatus": "",
+    "workspaceFilesSha256": "4becf56cb2ff65cc58bd1ae53b6937b194f9020770ad397e526f3a51b85b0d40",
+    "serverRevision": "1b9101520b0d7d3358e4ce8f27f0bfcc06db902f",
+    "serverInputSha256": "dfa8f9e17decc768fb761a5335cc7457abfaeefcc4af6609cbfb3a752719a1ab",
+    "serverSha256": "7d2b9d6705eff75d5b1e7ef16858d3bba2d2906f17b98321dfc6c67a83fc0884",
+    "sidecarSha256": "84597a63c396ceaf2a84a3ded455b5cc29d21b6c4ad3c049f7b3ca820c2fd796",
+    "semanticWorkerSha256": "34b717cae4e462073a0db867556ac51c61560547119a359df0f47e47210d7ea3",
+    "referenceVerifierWorkerSha256": "eecbc18b45eef4b41525581006d00b82d68facf17af02251dae203aa7a61808c",
+    "diagnosticVerifierWorkerSha256": "d84a40eb5dcf02b56d466f115fe2fc3135180b29125673bad9ba82afae5774ae",
+    "standardLibrarySha256": "ea78beea2aa84f93fe66645465c37eb916028b79cd9fe898d469bdf54efbf97d",
+    "nodeVersion": "v26.3.0",
+    "backendVersion": "4.9.5-r10",
+    "backendSha256": "af9e3c4689e3250de1d869b219abb76081c6ea1d3df81bd6b8f6a74c3174b6bc",
+    "lockfileSha256": "ece84ab0afea7a411c453aac7371f0e47381455c5e3cc03f639adff9d2bf1131",
+    "memoryGatesSha256": "ac23114be952a5fe5c030040937d3c97aec1cecdda2ba42e4dbb854f89b37570",
+    "sdkMetadata": {
+      "apiVersion": "24",
+      "displayName": "Ets",
+      "meta": {
+        "metaVersion": "3.0.0"
+      },
+      "path": "ets",
+      "releaseType": "Release",
+      "version": "6.1.1.125"
+    },
+    "sdkDeclarationDigest": "8098b8abbc6b06fce0e7322d6f8f82a5bbce41e847dbd39e9a98811a33d4c6e4"
+  },
+  "runtime": {
+    "timeoutMs": 180000,
+    "diagnosticTimeoutMs": 180000,
+    "sampleIntervalMs": 50,
+    "env": {
+      "ARKTS_REFERENCES_STRATEGY": "indexed-batched",
+      "ARKTS_REFERENCES_BATCH_ROOTS": "64",
+      "ARKTS_REFERENCES_DEPENDENCY_PROFILE": "closure",
+      "ARKTS_REFERENCES_SDK_AMBIENT_PROFILE": "full",
+      "ARKTS_REFERENCES_CONTEXT_RETENTION": "budget-aware",
+      "ARKTS_SEMANTIC_SESSION_REUSE": "off",
+      "ARKTS_REFERENCES_ANCHOR_REUSE": "0",
+      "ARKTS_REFERENCES_RESIDENT_FAST_PATH": "0",
+      "ARKTS_REFERENCES_CONSTRUCTOR_SCOPE": "0",
+      "ARKTS_REFERENCES_CONSERVATIVE_SEMANTIC_UNITS": "0",
+      "ARKTS_REFERENCES_LOCAL_EXPORT_ANCHOR": "0",
+      "ARKTS_MEMORY_BUDGET_MB": "1024",
+      "ARKTS_REFERENCES_TRACE": "1",
+      "ARKTS_BENCHMARK_CONTROL": "1",
+      "ARKTS_L01_SEMANTIC_WORKER_RECYCLE": "0",
+      "ARKTS_L02_SAME_CONTENT_PROMOTION": "0",
+      "ARKTS_L03_PRESSURE_WORKER_RECYCLE": "0",
+      "ARKTS_L01_PRESSURE_ADMISSION": "1",
+      "ARKTS_L03_COST_AWARE_EVICTION": "1",
+      "ARKTS_L01_TRANSIENT_DIAGNOSTICS": "1",
+      "ARKTS_MEMORY_METRICS_FILE": "/Users/liuhui/Documents/code/arkts-language-server/.bench/l03-policy-selected-trace-1.metrics.jsonl"
+    },
+    "postIdleMs": 5000
+  },
+  "readiness": {
+    "candidateControl": true
+  },
+  "preOpenTargetIds": [
+    "about-interface-implementation",
+    "home-class"
+  ],
+  "targets": [
+    {
+      "id": "about-interface-implementation",
+      "moduleId": "feature/aboutdevice",
+      "kind": "implementation",
+      "file": "feature/aboutdevice/src/main/ets/controller/IAboutDevicePageCtrl.ets",
+      "symbol": "IAboutDevicePageCtrl",
+      "position": {
+        "line": 17,
+        "character": 20
+      },
+      "sourceSha256": "87c4921d252254f0db311b03793256c6074e83dac60962935500761de4f4eac4",
+      "oracle": {
+        "path": "bench/references/oracles/settings-iaboutdevicepagectrl-implementation-api24.json",
+        "sha256": "69f75e6dd4a0f09710c99e4b84301a7ef799edc7f5c8da97ef7911af99e9d274",
+        "verified": true
+      }
+    },
+    {
+      "id": "home-class",
+      "moduleId": "common",
+      "kind": "references",
+      "file": "common/src/main/ets/sendable/HomeInitData.ets",
+      "symbol": "HomeInitData",
+      "position": {
+        "line": 16,
+        "character": 13
+      },
+      "includeDeclaration": false,
+      "sourceSha256": "8159f9be58985d71e76cb7507fb1bf421a47cacb6aaf99cbddb9e6efc703774f",
+      "oracle": {
+        "path": "bench/references/oracles/settings-homeinitdata-api24-no-declaration.json",
+        "sha256": "58908aa4ee2554864cd4467ccf7a51b3aa8e6dd570fc0f66decc6500bf7f937b",
+        "verified": true
+      }
+    },
+    {
+      "id": "home-definition",
+      "moduleId": "common",
+      "kind": "definition",
+      "file": "common/src/main/ets/sendable/HomeInitData.ets",
+      "symbol": "HomeInitData",
+      "position": {
+        "line": 16,
+        "character": 13
+      },
+      "sourceSha256": "8159f9be58985d71e76cb7507fb1bf421a47cacb6aaf99cbddb9e6efc703774f",
+      "oracle": {
+        "path": "bench/references/oracles/settings-homeinitdata-definition-api24.json",
+        "sha256": "fecba615ba40067e80b421369ad670f226364b5426243c6db789cb9a499a7a35",
+        "verified": true
+      }
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "prepare-about-implementation",
+      "bucket": "first-unseen-symbol",
+      "targetId": "about-interface-implementation"
+    },
+    {
+      "id": "unseen-home-class",
+      "bucket": "first-unseen-symbol",
+      "targetId": "home-class"
+    },
+    {
+      "id": "steady-home-class",
+      "bucket": "repeated-snapshot",
+      "targetId": "home-class"
+    },
+    {
+      "id": "prepare-recovery-definition",
+      "bucket": "first-unseen-symbol",
+      "targetId": "home-definition"
+    },
+    {
+      "id": "cold-recovery-definition",
+      "bucket": "pressure-recovery-repeat",
+      "targetId": "home-definition"
+    },
+    {
+      "id": "global-after-pressure",
+      "bucket": "pressure-recovery-repeat",
+      "targetId": "home-class"
+    },
+    {
+      "id": "home-add-unsaved-reference",
+      "bucket": "edit-reference",
+      "targetId": "home-class",
+      "edit": {
+        "file": "common/src/main/ets/sendable/HomeInitData.ets",
+        "changes": [
+          {
+            "range": {
+              "start": {
+                "line": 28,
+                "character": 45
+              },
+              "end": {
+                "line": 28,
+                "character": 45
+              }
+            },
+            "newText": "\nhomeInitData = new HomeInitData();"
+          }
+        ],
+        "sha256": "bb42d34d79f5f8b527460a91c26c8214ef78435d1a1b8181651638795c40a4b0",
+        "oracle": {
+          "path": "bench/references/oracles/settings-homeinitdata-edit-reference-api24-no-declaration.json",
+          "sha256": "b6e6f6058e780c1be14e6fc8fb7668c6afb95b1e85ea3e900bb77f6096d3b99f",
+          "verified": true
+        }
+      }
+    },
+    {
+      "id": "home-remove-unsaved-reference",
+      "bucket": "edit-reference",
+      "targetId": "home-class",
+      "edit": {
+        "file": "common/src/main/ets/sendable/HomeInitData.ets",
+        "changes": [
+          {
+            "range": {
+              "start": {
+                "line": 28,
+                "character": 45
+              },
+              "end": {
+                "line": 29,
+                "character": 34
+              }
+            },
+            "newText": ""
+          }
+        ],
+        "sha256": "d69f70b9398aad93e914153487a1f409f0507b3d5b48e5de07035f9106cd8f26",
+        "oracle": {
+          "path": "bench/references/oracles/settings-homeinitdata-api24-no-declaration.json",
+          "sha256": "58908aa4ee2554864cd4467ccf7a51b3aa8e6dd570fc0f66decc6500bf7f937b",
+          "verified": true
+        }
+      }
+    }
+  ]
+}

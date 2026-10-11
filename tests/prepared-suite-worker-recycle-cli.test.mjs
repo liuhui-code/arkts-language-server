@@ -50,6 +50,8 @@ test("prepared suite observes an opt-in semantic Worker recycle before post-L3 r
       runtime: { timeoutMs: 30_000, diagnosticTimeoutMs: 30_000, sampleIntervalMs: 25,
         afterEvictionObservationMs: 120,
         env: { ARKTS_REFERENCES_STRATEGY: "legacy", ARKTS_REFERENCES_TRACE: "1",
+          // Force-recycle control, independent of the default live-RSS eligibility guard.
+          ARKTS_L03_COST_AWARE_EVICTION: "0",
           ARKTS_BENCHMARK_CONTROL: "1", ARKTS_L01_SEMANTIC_WORKER_RECYCLE: "1",
           ARKTS_MEMORY_BUDGET_MB: "1024" } },
       readiness: { candidateControl: true }, preOpenTargetIds: ["warm", "cold"],
@@ -75,7 +77,10 @@ test("prepared suite observes an opt-in semantic Worker recycle before post-L3 r
       { encoding: "utf8", timeout: 60_000 })
     assert.equal(run.status, 1, `${run.stderr}\n${run.stdout}`)
     const report = JSON.parse(fs.readFileSync(output, "utf8"))
-    assert.equal(report.readiness.semantic.status, "READINESS_UNSUPPORTED")
+    assert.equal(report.readiness.semantic.status, "DEGRADED", JSON.stringify(report.readiness))
+    assert.equal(report.readiness.semantic.observed.semanticGeneration, null)
+    assert.deepEqual(report.readiness.semantic.observed.readyCapabilities, [])
+    assert.deepEqual(report.readiness.semantic.observed.unavailableReasons, ["sdk-coverage-unproven"])
     assert.equal(report.correctness.status, "PASS", JSON.stringify(report.failure))
     assert.equal(report.gateStatus.diagnostics, "PASS")
     assert.ok(report.requests.every(request => request.status === "COMPLETE" && request.correctness.equal))

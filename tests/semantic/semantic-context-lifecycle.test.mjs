@@ -10,6 +10,7 @@ import { transformSync } from "esbuild"
 
 import { LspSession } from "../support/lsp-session.mjs"
 import { projectRoot } from "../support/lsp-process.mjs"
+import { completeLogEvents } from "../support/complete-log-events.mjs"
 
 test("compiler trace collector failure preserves a completed semantic result", () => {
   const sourcePath = path.join(projectRoot, "src/core/types/compiler-query-timing.ts")
@@ -254,7 +255,7 @@ test("an undelivered compiler dependency must reset rather than reuse a stale so
       message => message.params.uri === queryUri && message.params.version === version, 20_000)
   }
   function events() {
-    return fs.readFileSync(path.join(logs, "server.log"), "utf8").split("\n").filter(Boolean).map(JSON.parse)
+    return completeLogEvents(path.join(logs, "server.log"))
   }
 })
 
@@ -348,7 +349,7 @@ async function replayUnknownDeletion(t, sessionReuse, order) {
       message => message.params.uri === queryUri && message.params.version === version, 20_000)
   }
   function events() {
-    return fs.readFileSync(path.join(logs, "server.log"), "utf8").split("\n").filter(Boolean).map(JSON.parse)
+    return completeLogEvents(path.join(logs, "server.log"))
   }
 }
 
@@ -410,7 +411,7 @@ async function replay(t, { trace, global = false, referenceTraceProbe = false,
     checkpoints.push({ step, events: events().slice(before) })
   }
   function events() {
-    return fs.readFileSync(path.join(logs, "server.log"), "utf8").split("\n").filter(Boolean).map(JSON.parse)
+    return completeLogEvents(path.join(logs, "server.log"))
   }
   function diagnostic(version) {
     return session.transport.notification("textDocument/publishDiagnostics",

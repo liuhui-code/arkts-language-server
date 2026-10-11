@@ -45,3 +45,8 @@ export function requireParentPort(candidate: MessagePort | null): MessagePort {
   if (!candidate) throw new Error("semantic worker requires a parent port")
   return candidate
 }
+
+export function pressureWorkerRecycleEnabled(environment: NodeJS.ProcessEnv): boolean {
+  return environment.ARKTS_BENCHMARK_CONTROL === "1"
+    && environment.ARKTS_L03_PRESSURE_WORKER_RECYCLE === "1"
+}

@@ -3,7 +3,7 @@ import path from "node:path"
 
 import { HarmonyProjectModel } from "../../project/harmony-project-model.js"
 import { readHarmonyProfile } from "../../project/harmony-profile-reader.js"
-import { LoadedConfigurationWitness } from "../../project/loaded-configuration-witness.js"
+import { LoadedConfigurationWitness, type ConfigurationFreshnessMode } from "../../project/loaded-configuration-witness.js"
 import { clientWorkspaceRoot, findInstalledPackage } from "./local-package-installation.js"
 const MAX_CACHED_MANIFESTS = 128
 const MAX_CACHED_DIRECTORY_OWNERS = 256
@@ -31,6 +31,8 @@ export class LocalPackageResolver {
   private projectSelection: unknown
   private configurationWitness?: LoadedConfigurationWitness
 
+  witnessesConfiguration(): boolean { return this.configurationWitness !== undefined }
+
   enableConfigurationWitness(): void {
     if (this.configurationWitness) return
     this.configurationWitness = new LoadedConfigurationWitness()
@@ -40,9 +42,9 @@ export class LocalPackageResolver {
     for (const model of this.projectModels.values()) model.enableConfigurationWitness()
   }
 
-  configurationFreshness(rootPath: string, checkpoint: () => void): (() => boolean) | undefined {
-    const resolver = this.configurationWitness?.freshness(checkpoint)
-    const model = this.projectModels.get(path.resolve(rootPath))?.configurationFreshness(checkpoint)
+  configurationFreshness(rootPath: string, checkpoint: () => void, mode: ConfigurationFreshnessMode = "validate"): (() => boolean) | undefined {
+    const resolver = this.configurationWitness?.freshness(checkpoint, mode)
+    const model = this.projectModels.get(path.resolve(rootPath))?.configurationFreshness(checkpoint, mode)
     if (!resolver || !model) return undefined
     return () => resolver() && model()
   }
@@ -365,7 +367,9 @@ export class LocalPackageResolver {
       return cached
     }
     let physicalRoot: string
-    try { physicalRoot = this.observed(root, () => fs.realpathSync.native(root)) }
+    try { physicalRoot = this.configurationWitness
+      ? this.configurationWitness.observePath(root, () => fs.realpathSync.native(root))
+      : fs.realpathSync.native(root) }
     catch { return undefined }
     this.canonicalRoots.set(root, physicalRoot)
     while (this.canonicalRoots.size > MAX_CACHED_ROOTS) {

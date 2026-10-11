@@ -6,6 +6,7 @@ import type { DocumentSnapshot } from "../../contracts/document.js"
 import type { SemanticDiagnostic, VersionedSemanticResult } from "../../contracts/semantic-engine.js"
 import { createStructuredLogger, type StructuredLogger } from "../../observability/logger.js"
 import type { LegacySemanticEngineRuntimeOptions } from "../legacy-semantic-engine.js"
+import { observeTransientWorkerLifetime, type TransientSemanticWorkerObserver } from "../transient-worker-lifecycle.js"
 
 export interface TransientDiagnosisInput {
   readonly rootUri: string
@@ -46,16 +47,18 @@ export function traceTransientDiagnosis(phase: string, documentVersion: number, 
 export async function runTransientDiagnosis(
   input: TransientDiagnosisInput,
   signal: AbortSignal,
+  onTransientWorker?: TransientSemanticWorkerObserver,
 ): Promise<VersionedSemanticResult<SemanticDiagnostic[]>> {
   if (signal.aborted) throw new Error("Semantic request cancelled")
   const traceId = process.env.ARKTS_BENCHMARK_CONTROL === "1"
-    && process.env.ARKTS_L01_TRANSIENT_DIAGNOSTICS === "1"
+    && (process.env.ARKTS_L01_TRANSIENT_DIAGNOSTICS ?? "1") === "1"
     && process.env.ARKTS_L01_TRANSIENT_DIAGNOSTICS_TRACE === "1"
     ? randomUUID() : undefined
   traceTransientDiagnosis("spawn.before", input.document.version, traceId)
   const worker = new Worker(path.join(__dirname, "diagnostic-verifier-worker.cjs"), {
     workerData: { ...input, traceId } satisfies TransientDiagnosisWorkerData,
   })
+  observeTransientWorkerLifetime(worker, "diagnostic", onTransientWorker)
   traceTransientDiagnosis("spawn.after", input.document.version, traceId)
   let settled = false
   const cancellationTimer = setInterval(() => {

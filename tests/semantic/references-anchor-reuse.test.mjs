@@ -9,9 +9,12 @@ import { LspSession } from "../support/lsp-session.mjs"
 import { projectRoot } from "../support/lsp-process.mjs"
 
 test("usage-site anchor keeps transient isolation by default after a definition", async (t) => {
-  const result = await replay(t)
+  const result = await replay(t, { recordMetrics: true })
   assert.equal(result.anchor.verifierIsolation, "transient-worker")
   assert.ok(result.anchor.preparedProgramSourceFiles > 0)
+  assert.ok(result.metrics.some(sample => sample.activeAnchorVerifierCount === 1
+    && sample.transientVerifierCount === 1), "physical anchor occupancy must be recorded")
+  assert.equal(result.metrics.at(-1).transientVerifierCount, 0)
 })
 
 test("cold usage-site anchor trace separates compiler preparation from definition lookup", async (t) => {
@@ -331,7 +334,8 @@ test("opt-in references include the moved declaration after an unwatched disk ed
 test("cancelling references after anchor reuse returns no partial result and permits exact recovery", async (t) => {
   const result = await replay(t, { reuse: true, interrupt: "cancel" })
   assert.equal(result.anchor.verifierIsolation, "validated-definition")
-  assert.equal(result.recoveryAnchor.verifierIsolation, "transient-worker")
+  // Cancellation does not change inputs; budget-aware retention keeps the valid anchor.
+  assert.equal(result.recoveryAnchor.verifierIsolation, "validated-definition")
 })
 
 test("editing during reused-anchor verification rejects the old snapshot and finds the new reference", async (t) => {
@@ -345,7 +349,7 @@ async function replay(t, { reuse = false, edit = false, warm = true,
   reopenDependency = false, editDiskDependency = false, moveDiskDeclaration = false,
   interrupt, trace = true, localExport = false, localSeed = false, shadow = false,
   batchRoots, includeDeclaration = false, unclassifiedOccurrence = false,
-  interruptAfterRejection = false } = {}) {
+  interruptAfterRejection = false, recordMetrics = false } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-anchor-reuse-"))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const workspace = path.join(root, "workspace")
@@ -382,6 +386,7 @@ async function replay(t, { reuse = false, edit = false, warm = true,
         ? path.join(projectRoot, "target", "release", "arkts-index-sidecar")
         : path.join(projectRoot, "tests", "fixtures", "index", "scripted-catalog-sidecar.mjs"),
       ARKTS_LSP_LOG_DIR: logDirectory,
+      ARKTS_MEMORY_METRICS_FILE: recordMetrics ? path.join(root, "memory.jsonl") : undefined,
       ARKTS_REFERENCES_STRATEGY: "indexed-batched",
       ARKTS_REFERENCES_BATCH_ROOTS: batchRoots?.toString(),
       ARKTS_REFERENCES_TRACE: trace ? "1" : undefined,
@@ -474,7 +479,9 @@ async function replay(t, { reuse = false, edit = false, warm = true,
   } else assert.equal(events.find(event => event.event === "references.index.accepted")?.anchorMode,
     localSeed ? "indexed-local-export-seed" : "compiler-definition-identity")
   const recoveryAnchor = events.filter(event => event.event === "references.anchor.complete")[1]
-  return { anchor, recoveryAnchor, events }
+  const metrics = recordMetrics ? fs.readFileSync(path.join(root, "memory.jsonl"), "utf8")
+    .split("\n").filter(Boolean).map(JSON.parse) : undefined
+  return { anchor, recoveryAnchor, events, metrics }
 }
 
 async function waitForBatch(logDirectory, eventName = "references.batch.start") {
