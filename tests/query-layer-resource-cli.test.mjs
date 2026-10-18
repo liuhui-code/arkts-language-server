@@ -163,7 +163,8 @@ for (const [layer, mode] of [["official", "watchdog"], ["official", "abrupt exit
     assert.equal(observed.pid, report.pid)
     assert.equal(observed.completed, 1)
     assert.equal(observed.scenarioId, "repeat")
-    assert.equal(report.failure, mode === "watchdog" ? "QUERY_LAYER_TIMEOUT:query-start" : "QUERY_LAYER_PROBE_EXIT:SIGKILL")
+    assert.equal(report.failure, mode === "watchdog" ? "QUERY_LAYER_TIMEOUT:query-start" : "QUERY_LAYER_PROBE_EXIT:SIGKILL",
+      JSON.stringify({ failure: report.failure, probeStderr: report.probeStderr, samplerStderr: report.resources?.samplerStderr, closeResult: report.closeResult }))
     assert.equal(report.closeResult.signal, mode === "watchdog" ? "SIGTERM" : "SIGKILL")
     assert.equal(report.requests.length, 2, "do not discard the first result or pretend the second was never issued")
     assert.equal(report.requests[0].scenarioId, "first")

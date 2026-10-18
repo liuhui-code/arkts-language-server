@@ -74,6 +74,7 @@ export function parseLinuxProcStat(output) {
 
   const pid = unsignedInteger(match[1], "Linux proc stat pid")
   const parentPid = unsignedInteger(fields[0], "Linux proc stat parent pid")
+  const flags = unsignedInteger(fields[5], "Linux proc stat flags")
   const userTicks = unsignedInteger(fields[10], "Linux proc stat user CPU ticks")
   const systemTicks = unsignedInteger(fields[11], "Linux proc stat system CPU ticks")
   const startTimeTicks = unsignedInteger(fields[18], "Linux proc stat start time")
@@ -91,6 +92,7 @@ export function parseLinuxProcStat(output) {
     parentPid,
     command: match[2],
     state: match[3],
+    flags,
     totalCpuTicks,
     startTimeTicks,
     rssPages,
@@ -215,7 +217,7 @@ function createLinuxProbe({
         if (current.startTimeTicks !== before.startTimeTicks) {
           throw probeError("EPROCESS_IDENTITY_CHANGED", `process ${pid} start identity changed`)
         }
-        if (current.state === "Z" || current.state === "X") {
+        if (linuxProcessExited(current)) {
           throw probeError("EPROCESS_NOT_FOUND", `process ${pid} has exited`)
         }
       }
@@ -258,7 +260,7 @@ function createLinuxProbe({
         let childPids
         try {
           stat = await readStat(pid)
-          if (stat.state === "Z" || stat.state === "X") {
+          if (linuxProcessExited(stat)) {
             throw probeError("EPROCESS_NOT_FOUND", `process ${pid} has exited`)
           }
           rssBytes = await readRss(pid, stat)
@@ -277,6 +279,11 @@ function createLinuxProbe({
           cpuPercent: lifetimeCpuPercent(stat, uptimeSeconds, clockTicksPerSecond),
         }
         if (expectedParentPid !== undefined && stat.parentPid !== expectedParentPid) {
+          const rootNow = await readStat(serverPid)
+          assertExpectedIdentity({ pid: serverPid, startIdentity: `linux:${rootNow.startTimeTicks}` }, identity)
+          if (linuxProcessExited(rootNow)) {
+            throw probeError("EPROCESS_NOT_FOUND", `process ${serverPid} has exited`)
+          }
           throw probeError(
             "EPROCESS_TREE_CHANGED",
             `process ${pid} no longer belonged to parent ${expectedParentPid}`,
@@ -302,6 +309,11 @@ function createLinuxProbe({
       })
     },
   })
+}
+
+function linuxProcessExited(stat) {
+  // PF_EXITING is set before exit_mm clears VmRSS, while state can still be R/S.
+  return stat.state === "Z" || stat.state === "X" || (stat.flags & 0x00000004) !== 0
 }
 
 function parseLinuxProcUptime(output) {

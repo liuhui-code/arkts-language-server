@@ -136,3 +136,12 @@
 - 复用仓库已有 `completeLogEvents()`，仅观察以换行提交的记录，不吞掉完整坏记录；原取消进入点、取消响应、精确恢复和能力声明断言均保留。`log-observation-green.log` **34/34**、exit 0，包含全部 readiness、初始化和 local-delivery 配置合同。
 - 完整 Linux fast 实测 **1630586ms（约 27.2 分钟）**；整个 release driver 还须运行 Rust、WASM、安装产物和大工程检查。将 validate job 总时限从 30 调为 60 分钟，以容纳完整检查；查询的 500ms 目标、实测断言和业务超时逻辑均未改动。
 - 当前两轮真实 SDK 的 producer、原始 oracle、transport helper 与全部运行期二进制输入 hash 仍一致，208 次精确响应的测量无需因测试日志 reader 与 CI 总时限调整而重做。最终完整检查以 PR #96 当前提交的 CI 结果为准。
+
+
+## Linux RSS 采样的退出前窗口
+
+- `c05079d` 的完整 Linux [39149941391](https://github.com/liuhui-code/arkts-language-server/actions/runs/39149941391) 实际 **1891/1892**、exit 1；唯一失败为 owner 在强制 SIGKILL 后把采样退出窗口误报为 RSS sampler failure，Windows 安装检查通过。不能将此轮记为完整通过。
+- 保留原完整结果、未完成请求、SIGKILL 与未执行尾部断言；只补充失败时的原始 sampler stderr。真实 Linux 20 次重复 [39152560979](https://github.com/liuhui-code/arkts-language-server/actions/runs/39152560979) 再现缺失 VmRSS，进一步插桩 [39153054660](https://github.com/liuhui-code/arkts-language-server/actions/runs/39153054660) 捕获 `state=R, flags=4195340`，其 PF_EXITING 位已置位，不能仅凭 R/S 判断仍存活。
+- 内核顺序可核验：[do_exit](https://github.com/torvalds/linux/blob/v6.8/kernel/exit.c#L830) 先设置 PF_EXITING，再由 exit_mm 清除地址空间，最后 exit_notify 设置 EXIT_ZOMBIE；[proc_pid_status](https://github.com/torvalds/linux/blob/v6.8/fs/proc/array.c#L442) 仅在地址空间存在时输出内存统计。该窗口是正常退出，不是有效零 RSS。
+- 父版本 `2f2357b8bda2db2060d915a85169a42bb8e92bd9`；公开 probe 的 R/S+PF_EXITING root/child、无关 flags、PID 复用和父进程退出后的 reparent 合同先 RED（`pf-exiting-red.log` 25/30；独立 `reparent-red.log`），随后最小识别 PF_EXITING 并在 reparent 时核对根身份/退出状态。仍存活但没有 VmRSS 必须报 parse error，复用 PID 必须报 identity changed，不补零或虚构采样。
+- `pf-exiting-green.log` **30/30**；主工作区原生采样与完整 resource CLI `rss-shutdown-focused-green.log` **37/37**、exit 0。临时原始 stat 插桩与诊断 workflow 只存在独立诊断分支，产品 PR 不包含它们。最终 Linux 重复与完整 release gate 结果以 PR #96 的当前提交检查为准。
