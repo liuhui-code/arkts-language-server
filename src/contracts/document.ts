@@ -16,6 +16,8 @@ export interface DocumentSnapshot {
   version: number
   text: string
   workspaceId: WorkspaceId
+  /** Server-owned disk authority; never a client didOpen or an overlay. */
+  source?: { readonly kind: "disk"; readonly rootUri: DocumentUri }
 }
 
 export interface WorkspaceDescriptor {

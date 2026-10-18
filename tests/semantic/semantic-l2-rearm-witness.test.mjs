@@ -174,12 +174,12 @@ test("observed compiler rebuild costs stay attached to the leased context withou
   })
 
 for (const [name, benchmarkControl, costFlag, rearmFlag] of [
-  ["opt-in capacity eviction preserves the more expensive observed context and every latest root overlay", "1", "1", "1"],
+  ["capacity eviction stays LRU with cost observation and preserves every latest overlay", "1", "1", "1"],
   ["capacity eviction stays LRU without cost opt-in", "1", "0", "1"],
-  ["cost-aware capacity eviction defaults on without benchmark control", "0", undefined, "1"],
-  ["cost-aware capacity eviction observes builds without enabling L2 rearm", "1", "1", "0"],
+  ["default capacity eviction stays LRU without benchmark control", "0", undefined, "1"],
+  ["capacity LRU observes builds without enabling L2 rearm", "1", "1", "0"],
 ]) {
-  const enabled = (costFlag ?? "1") === "1"
+  const observesCost = (costFlag ?? "1") === "1"
   test(name,
     { timeout: 60_000 }, async t => {
       const directory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-cost-eviction-"))
@@ -221,6 +221,10 @@ for (const [name, benchmarkControl, costFlag, rearmFlag] of [
       assert.equal(initialized.error, undefined, JSON.stringify(initialized.error))
       session.transport.send({ jsonrpc: "2.0", method: "initialized", params: {} })
       session.initialized = true
+      for (const root of roots) await session.transport.notification("arkts/semanticPreparation",
+        message => message.params.rootUri === root.rootUri && message.params.phase === "complete", 20_000)
+      const initialEvents = readEvents(logs).length
+      const events = () => readEvents(logs).slice(initialEvents)
       const open = async root => {
         session.openDocument({ uri: root.uri, version: 1, text: root.text })
         const diagnostic = await session.transport.notification("textDocument/publishDiagnostics",
@@ -233,33 +237,32 @@ for (const [name, benchmarkControl, costFlag, rearmFlag] of [
         }, { timeoutMs: 20_000 })
         assert.equal(response.error, undefined, JSON.stringify(response.error))
         assert.deepEqual(response.result, [registryLocation(root, 0)])
+        root.sequence = events().filter(event => event.event === "semantic.context.reuse").at(-1)?.contextSequence
       }
       await open(roots[0])
       await open(roots[1])
-      const costs = readEvents(logs).filter(event => event.event === "semantic.context.cost")
-      const measured = enabled || (benchmarkControl === "1" && rearmFlag === "1")
+      const costs = [...new Map(events().filter(event => event.event === "semantic.context.cost")
+        .map(event => [event.contextSequence, event])).values()].slice(-2)
+      const measured = observesCost || (benchmarkControl === "1" && rearmFlag === "1")
       assert.equal(costs.length, measured ? 2 : 0)
       assert.ok(costs.every(event => Number.isFinite(event.rebuildCostMs) && event.rebuildCostMs > 0))
       if (measured) assert.notEqual(costs[0].rebuildCostMs, costs[1].rebuildCostMs,
         "choose by the measurements actually obtained, not an assumed project-size ranking")
-      const sequences = measured ? costs.map(event => event.contextSequence)
-        : readEvents(logs).filter(event => event.event === "semantic.context.create")
-          .map(event => event.contextSequence)
       const expensiveIndex = measured ? (costs[0].rebuildCostMs > costs[1].rebuildCostMs ? 0 : 1) : 0
       const cheapIndex = 1 - expensiveIndex
       await define(roots[expensiveIndex])
       await define(roots[cheapIndex]) // Make the expensive context older than the cheap one.
-      assert.equal(readEvents(logs).filter(event => event.event === "semantic.context.cost").length, measured ? 2 : 0)
+      const capacityFence = events().length
       await open(roots[2])
-      const evicted = readEvents(logs).find(event => event.event === "semantic.context.evict"
+      const evicted = events().slice(capacityFence).find(event => event.event === "semantic.context.evict"
         && event.reason.startsWith("capacity-"))
       assert.ok(evicted)
-      assert.equal(evicted.contextSequence, sequences[enabled ? cheapIndex : expensiveIndex],
-        "cost opt-in chooses measured work; both closed paths preserve the original LRU decision")
-      assert.equal(evicted.reason, enabled ? "capacity-cost" : "capacity-lru")
-      const before = readEvents(logs).filter(event => event.event === "semantic.context.create").length
-      await define(roots[enabled ? expensiveIndex : cheapIndex])
-      assert.equal(readEvents(logs).filter(event => event.event === "semantic.context.create").length, before,
+      assert.equal(evicted.contextSequence, roots[expensiveIndex].sequence,
+        "recency determines the victim regardless of observed rebuild cost")
+      assert.equal(evicted.reason, "capacity-lru")
+      const before = events().filter(event => event.event === "semantic.context.create").length
+      await define(roots[cheapIndex])
+      assert.equal(events().filter(event => event.event === "semantic.context.create").length, before,
         "the retained context is reused rather than rebuilt")
       const edited = roots[cheapIndex]
       edited.text += "export const latest = new RegistryThing()\n"
@@ -276,9 +279,9 @@ for (const [name, benchmarkControl, costFlag, rearmFlag] of [
         assert.deepEqual(response.result.toSorted((a, b) => a.range.start.line - b.range.start.line),
           (root === edited ? [0, 1, 2, 3] : [0, 1, 2]).map(line => registryLocation(root, line)))
       }
-      assert.ok(readEvents(logs).filter(event => event.event === "semantic.context.create")
+      assert.ok(events().filter(event => event.event === "semantic.context.create")
         .every(event => event.residentContextCount <= 2))
-      if (enabled && rearmFlag === "0") {
+      if (observesCost && rearmFlag === "0") {
         await define(roots[2])
         const pressure = async () => {
           const response = await session.request("arkts/benchmark/applyMemoryPressure", { level: "level2" })
@@ -299,8 +302,8 @@ for (const [name, benchmarkControl, costFlag, rearmFlag] of [
 }
 
 for (const [name, costFlag, rearmFlag] of [
-  ["opt-in L3 pressure recovery preserves expensive work once live RSS reaches the target", "1", "0"],
-  ["L3 pressure recovery without cost opt-in keeps the original complete cold eviction", "0", "1"],
+  ["L3 pressure recovery uses LRU and stops once live RSS reaches the target", "1", "0"],
+  ["L3 pressure recovery resamples live RSS without cost observation", "0", "1"],
 ]) {
 test(name,
   { timeout: 60_000 }, async t => {
@@ -345,13 +348,16 @@ test(name,
     assert.equal(initialized.error, undefined, JSON.stringify(initialized.error))
     session.transport.send({ jsonrpc: "2.0", method: "initialized", params: {} })
     session.initialized = true
+    for (const root of roots) await session.transport.notification("arkts/semanticPreparation",
+      message => message.params.rootUri === root.rootUri && message.params.phase === "complete", 20_000)
     for (const root of roots) {
       session.openDocument({ uri: root.uri, version: 1, text: root.text })
       const diagnostic = await session.transport.notification("textDocument/publishDiagnostics",
         message => message.params.uri === root.uri && message.params.version === 1, 20_000)
       assert.deepEqual(diagnostic.params.diagnostics, [])
     }
-    const costs = readEvents(logs).filter(event => event.event === "semantic.context.cost")
+    const costs = [...new Map(readEvents(logs).filter(event => event.event === "semantic.context.cost")
+      .map(event => [event.contextSequence, event])).values()].slice(-2)
     assert.equal(costs.length, 2)
     assert.ok(costs.every(event => Number.isFinite(event.rebuildCostMs) && event.rebuildCostMs > 0))
     assert.notEqual(costs[0].rebuildCostMs, costs[1].rebuildCostMs)
@@ -372,11 +378,11 @@ test(name,
     await define(roots[expensive]) // Public query fences asynchronous pressure application.
     const evictions = readEvents(logs).filter(event => event.event === "semantic.context.evict"
       && event.reason === "memory-level3")
-    assert.equal(evictions.length, costFlag === "1" ? 1 : 2,
-      "only the opt-in stops when measured RSS reaches the target")
-    assert.equal(evictions[0].contextSequence, costs[costFlag === "1" ? cheap : expensive].contextSequence)
+    assert.equal(evictions.length, 1,
+      "runtime pressure stops when the fresh RSS sample reaches the target")
+    assert.equal(evictions[0].contextSequence, costs[expensive].contextSequence)
     assert.equal(readEvents(logs).filter(event => event.event === "semantic.context.create").length,
-      before + (costFlag === "1" ? 0 : 1), "only the opt-in retains the expensive context")
+      before + 1, "the older context must rebuild after LRU eviction")
     const samples = fs.readFileSync(metrics, "utf8").trim().split("\n").map(JSON.parse)
     assert.ok(samples.length > 0 && samples.every(sample => sample.rss < 1024 * 1024 * 1024 * 0.85),
       "this functional intervention uses genuinely low process RSS, not invented reclaimed bytes")

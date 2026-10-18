@@ -86,7 +86,9 @@ test("a declared file dependency alias resolves a package subpath for definition
       if (nativeSidecar) {
         assert.equal(catalogEvents.some((entry) => entry.phase === "ready"), true,
           "native catalog must be ready before the indexed differential")
-        assert.equal(acceptedCount, 2, "both declaration policies must accept the native index")
+        assert.equal(acceptedCount, 1, "the first policy must accept the native index")
+        assert.equal(logs.filter((entry) => entry.event === "references.cache.hit").length, 1,
+          "the other declaration policy must reuse that complete indexed search")
         assert.equal(fallbackCount, 0, "the indexed differential must not silently use fallback")
       }
       t.diagnostic(`default index: ${JSON.stringify({

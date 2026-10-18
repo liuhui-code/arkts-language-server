@@ -2,7 +2,9 @@
 
 状态：后续执行的规范性契约；当前实施主线为预算约束的长驻官方 LS
 [L01–L08 计划](../plans/2026-10-06-budgeted-resident-semantic-plan.md)，
-生产默认仍是 `indexed-batched + closure + full SDK` 与 exact transient verifier。
+生产采用 `indexed-batched + closure + full SDK` 与 budget-aware resident 复用，
+miss/unknown 保留 exact transient verifier；六项默认见
+[ADR 0015](../adr/0015-default-resident-optimization-policy.md)。
 L01 首轮 Settings/API24 是 42/42 exact，但同文件未查询符号三次为
 286/1,025/267 ms，**500 ms 稳定性 NOT_MET、产品 ready/memory BLOCKED**；见
 [L01 原始证据报告](../reports/2026-10-06-resident-l01-baseline.md)。
@@ -27,8 +29,10 @@ P95 上限调整为 550 ms。仅此项授权变更；100 请求/5 会话、336 �
 新鲜度、取消及可停止/回收的执行保护；缺陷停止受影响运行并修复或回退。
 G-LATENCY、最终 G-MEMORY、整体 G-READY、长期 soak、规模和跨平台指标
 FAIL/BLOCKED/NOT_RUN 均如实带入后续实现与 L08，不要求提前 PASS。
-阶段采样继续用于归因；最终毕业、默认推广、发布及 #85 关闭须在 L08
-通过全套门禁，所有阈值及历史失败记录保留。
+阶段采样继续用于归因；最终毕业、发布及 #85 关闭须在 L08 通过全套门禁。
+当前六项默认已按 ADR 0015 推广并经 PR #95 合入；新增优化依
+[OP-00–OP-06 后续计划](../plans/2026-10-11-query-performance-follow-up-plan.md)
+逐切片推进，最终门槛和历史失败记录保留。
 S02 v1–v6 投影语义不等价及 S05 候选资源回归仍是独立的历史失败证据，
 不能改名为长驻 LS 的成功，也不是新路线的实施前置。
 
@@ -214,7 +218,7 @@ Windows／macOS／Linux 分别验证空格／非 ASCII 路径、SDK 定位、nat
 任何关键未跑、覆盖无法证明或不足样本的门禁保持 `BLOCKED`／`NOT_RUN`；实现完成不能替代性能毕业。
 L01–L07 的错误/部分/陈旧结果、取消或执行保护缺陷停止受影响运行；
 最终时延、内存或完整验收未通过不阻止其它切片及后续实现，问题带入
-L02 增量、L03 预算和 L08 最终验证。L04–L07 可默认关闭逐能力接线，
-保留当前 exact transient fallback；默认推广等待 L08。L08 不得在
+L02 增量、L03 预算和 L08 最终验证。L04–L07 阶段接线已完成；
+既有六项默认遵循 ADR 0015，保留 exact transient fallback。L08 不得在
 任一产品门禁 FAIL/BLOCKED/NOT_RUN 时宣称毕业。旧 S05 已 REJECTED，
 S02 v1–v6 FAIL／S03 BLOCKED 只作为历史证据保留。

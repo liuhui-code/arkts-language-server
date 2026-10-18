@@ -110,14 +110,20 @@ async function exerciseRegistryTrim(t, rearm) {
     const afterTrim = probes.find(probe => probe.phase === "after-trim"
       && probe.sampleId === trim.sampleId && probe.serviceId === trim.serviceId)
     assert.ok(afterTrim, "L2 must report registry ownership after cleanup")
-    assert.equal(afterTrim.totalRefCount, 0,
-      `L2 retained ${afterTrim.totalRefCount} sampled SourceFile references after trim`)
+    assertOnlySharedPins(afterTrim)
   }
   const disposal = probes.filter(probe => probe.phase === "after-dispose"
     && probe.sampledSourceFiles > 0).at(-1)
   assert.ok(disposal, "L3 must dispose the rebuilt LS")
-  assert.equal(disposal.totalRefCount, 0,
-    `registry retained ${disposal.totalRefCount} sampled SourceFile references after final disposal`)
+  assertOnlySharedPins(disposal)
+}
+
+function assertOnlySharedPins(probe) {
+  assert.equal(probe.projectRefCount, 0, "trim/disposal releases every project document lease")
+  assert.equal(probe.nonSdkRefCount, probe.libraryRefCount)
+  assert.equal(probe.totalRefCount, probe.sdkRefCount + probe.libraryRefCount,
+    "only the explicitly retained SDK and standard-library pins remain")
+  assert.ok(probe.sdkRefCount > 0 && probe.libraryRefCount > 0)
 }
 
 async function waitForEvent(logDirectory, predicate) {

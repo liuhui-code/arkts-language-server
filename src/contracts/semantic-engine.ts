@@ -89,7 +89,9 @@ export type SemanticGlobalQueryFailureReason =
   | "source-unmappable"
 
 export type SemanticReferencesOutcome =
-  | { status: "complete"; references: SemanticReference[] }
+  | { status: "complete"; references: SemanticReference[];
+      /** Internal search reuse metadata; LSP publishes only references. */
+      otherReferences?: SemanticReference[] }
   | { status: "incomplete"; reason: SemanticGlobalQueryFailureReason }
 
 export type SemanticPrepareRenameOutcome =
@@ -373,6 +375,7 @@ export interface SemanticWorkspaceFileChangeBatch {
 }
 
 export interface SemanticEnginePort {
+  initializeProject?(query: Omit<SemanticReadinessQuery, "prepare">): Promise<SemanticReadinessReport>
   semanticReadiness?(query: SemanticReadinessQuery): Promise<SemanticReadinessReport>
   configureProject?(selection: unknown): void
   configureSdk?(selection: unknown): void
@@ -393,6 +396,7 @@ export interface SemanticEnginePort {
   cachedReferences?(
     query: SemanticReferencesQuery,
   ): VersionedSemanticResult<SemanticReferencesOutcome> | undefined
+    | Promise<VersionedSemanticResult<SemanticReferencesOutcome> | undefined>
   references(
     query: SemanticReferencesQuery,
   ): Promise<VersionedSemanticResult<SemanticReferencesOutcome>>

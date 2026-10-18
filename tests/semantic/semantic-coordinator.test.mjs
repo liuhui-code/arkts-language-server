@@ -24,6 +24,15 @@ test("the committed semantic runtime configuration fixes one worker and two cont
   assert.ok(config.level3TargetRatio < config.level3Ratio)
 })
 
+test("runtime pressure defaults to four GiB and accepts an explicit MiB override", t => {
+  const { semanticRuntimeConfig } = buildCoordinatorDriver(t)
+  assert.equal(semanticRuntimeConfig({}).memoryBudgetBytes, 4096 * 1024 * 1024)
+  assert.equal(semanticRuntimeConfig({ ARKTS_MEMORY_BUDGET_MB: "768" }).memoryBudgetBytes, 768 * 1024 * 1024)
+  for (const value of ["0", "-1", "NaN", "Infinity"]) {
+    assert.throws(() => semanticRuntimeConfig({ ARKTS_MEMORY_BUDGET_MB: value }), /must be.*positive/)
+  }
+})
+
 test("an active lease pins its context through level 3 pressure", (t) => {
   const { SemanticCoordinator } = buildCoordinatorDriver(t)
   const events = []
@@ -103,6 +112,50 @@ test("a disposed context rebuilds from the latest document authority overlay", (
     "dispose:project-a",
     "create:project-a",
   ])
+})
+
+test("LRU pressure eviction stops when live memory leaves level three", t => {
+  const { SemanticCoordinator } = buildCoordinatorDriver(t)
+  const events = []
+  const coordinator = new SemanticCoordinator({ maxResidentContexts: 2,
+    createContext: contextFactory(events, new Map()), readMemoryPressure: () => "level1" })
+  coordinator.acquire("a").release()
+  coordinator.acquire("b").release()
+  assert.equal(coordinator.applyMemoryPressure("level3"), "level1")
+  assert.deepEqual(events.filter(event => event.startsWith("dispose:")), ["dispose:a"])
+  assert.deepEqual(coordinator.contextIds(), ["b"])
+})
+
+test("one retained scan slot cannot evict the two recent interaction groups", t => {
+  const { SemanticCoordinator } = buildCoordinatorDriver(t)
+  const events = []
+  const coordinator = new SemanticCoordinator({
+    maxResidentContexts: 2, isScanContext: id => id.startsWith("scan:"),
+    createContext: contextFactory(events, new Map()),
+  })
+  coordinator.acquire("a").release()
+  coordinator.acquire("b").release()
+  coordinator.acquire("scan:one").release()
+  coordinator.acquire("scan:two").release()
+  assert.deepEqual(coordinator.contextIds(), ["a", "b", "scan:two"])
+  assert.deepEqual(events.filter(event => event.startsWith("dispose:")), ["dispose:scan:one"])
+  const active = coordinator.acquire("a")
+  coordinator.acquire("c").release()
+  assert.equal(coordinator.peek("b"), undefined)
+  assert.ok(coordinator.peek("a"))
+  coordinator.applyMemoryPressure("level3")
+  assert.deepEqual(coordinator.contextIds(), ["a"])
+  active.release()
+})
+
+test("background leases protect execution without promoting interaction recency", t => {
+  const { SemanticCoordinator } = buildCoordinatorDriver(t)
+  const coordinator = new SemanticCoordinator({ maxResidentContexts: 2,
+    createContext: contextFactory([], new Map()) })
+  for (const id of ["a", "b", "a"]) coordinator.acquire(id).release()
+  coordinator.acquire("b", false).release()
+  coordinator.acquire("c").release()
+  assert.deepEqual(coordinator.contextIds(), ["a", "c"])
 })
 
 test("memory policy maps the configured ratios to levels without double-counting workers", (t) => {
@@ -306,10 +359,10 @@ for (const [name, enabled, costs] of [
       if (costs[index] !== undefined) coordinator.recordRebuildCost(id, lease.context, costs[index])
       lease.release()
     }
-    assert.equal(coordinator.applyMemoryPressure("level3"), enabled ? "level0" : "level3")
-    assert.deepEqual(coordinator.contextIds(), enabled ? ["new"] : [])
+    assert.equal(coordinator.applyMemoryPressure("level3"), "level0")
+    assert.deepEqual(coordinator.contextIds(), ["new"])
     assert.equal(events.find(event => event.startsWith("dispose:")), "dispose:old")
-    assert.equal(reads, enabled ? 1 : 0)
+    assert.equal(reads, 1, "pressure recovery does not depend on cost ranking")
   })
 }
 
@@ -334,6 +387,7 @@ function buildCoordinatorDriver(t) {
       contents: [
         'export { SemanticCoordinator } from "./src/semantic/coordinator/semantic-coordinator.ts"',
         'export { SemanticMemoryPolicy } from "./src/semantic/coordinator/memory-policy.ts"',
+        'export { semanticRuntimeConfig } from "./src/semantic/coordinator/runtime-config.ts"',
         'export { semanticRuntimeMetrics } from "./src/semantic/coordinator/metrics.ts"',
       ].join("\n"),
       resolveDir: projectRoot,

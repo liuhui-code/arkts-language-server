@@ -45,13 +45,14 @@ test(selectedPolicy ? "L04 selected policy preserves interactive lanes and rejec
       ARKTS_REFERENCES_TRACE: "1",
       ARKTS_TEST_REFERENCE_VERIFIER_DELAY_MS: "1500",
       ...(selectedPolicy ? {
-        ARKTS_REFERENCES_STRATEGY: "indexed-batched", ARKTS_REFERENCES_RESIDENT_FAST_PATH: "1",
+        ARKTS_REFERENCES_STRATEGY: "indexed-batched", ARKTS_REFERENCES_RESIDENT_FAST_PATH: "0",
         ARKTS_BENCHMARK_CONTROL: "1", ARKTS_MEMORY_BUDGET_MB: "1024",
         ARKTS_REFERENCES_CONTEXT_RETENTION: "budget-aware", ARKTS_L03_COST_AWARE_EVICTION: "1",
         ARKTS_L01_PRESSURE_ADMISSION: "1", ARKTS_L01_TRANSIENT_DIAGNOSTICS: "1",
         ARKTS_L02_SAME_CONTENT_PROMOTION: "1", ARKTS_L01_SEMANTIC_WORKER_RECYCLE: "0",
         ARKTS_L03_PRESSURE_WORKER_RECYCLE: "0",
       } : {}),
+      ARKTS_REFERENCES_RESIDENT_FAST_PATH: "0",
     },
   })
   t.after(() => session.close().catch(() => {}))

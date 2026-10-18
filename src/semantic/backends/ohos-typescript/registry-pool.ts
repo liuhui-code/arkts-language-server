@@ -7,8 +7,21 @@ import ts from "typescript"
 import type { ProjectSdkSelection } from "../../../core/sdk/project-sdk.js"
 import { OHOS_TYPESCRIPT_BACKEND_IDENTITY } from "./identity.js"
 
+import { isCompilerLibrary, retainSdkDocuments, prepareRetainedSdkDocuments } from "./sdk-registry-cache.js"
+import { enableVerifierSdkLookups } from "../../../core/types/verifier-sdk-lookups.js"
+
+let retainVerifierSdk = false
+export function enableVerifierSdkRetention(): void {
+  enableVerifierSdkLookups()
+  enableSharedSdkRetention()
+}
+export function enableSharedSdkRetention(): void {
+  retainVerifierSdk = true
+  for (const registry of registries.values()) prepareRetainedSdkDocuments(registry)
+}
+
 const registries = new Map<string, ts.DocumentRegistry>()
-type RegistryKey = { readonly resolvedPath: ts.Path; readonly scriptKind: ts.ScriptKind }
+type RegistryKey = { readonly resolvedPath: ts.Path; readonly scriptKind: ts.ScriptKind; readonly sdk: boolean; readonly library: boolean }
 type RefCountRegistry = ts.DocumentRegistry & {
   getLanguageServiceRefCounts?: (resolvedPath: ts.Path, scriptKind: ts.ScriptKind) =>
     readonly (readonly [string, number | undefined])[]
@@ -35,6 +48,10 @@ export function officialDocumentRegistryFor(sdk: ProjectSdkSelection): ts.Docume
   let registry = registries.get(key)
   if (!registry) {
     registry = ts.createDocumentRegistry(ts.sys.useCaseSensitiveFileNames)
+    if (retainVerifierSdk) {
+      registries.clear()
+      if (sdk.path) registry = retainSdkDocuments(registry, sdk.path)
+    }
     registries.set(key, registry)
   }
   return registry
@@ -95,7 +112,10 @@ function captureRegistryProbe(
     for (const file of files) {
       const internal = file as ts.SourceFile & { resolvedPath?: ts.Path; scriptKind?: ts.ScriptKind }
       if (internal.resolvedPath && internal.scriptKind !== undefined) {
-        keys.push({ resolvedPath: internal.resolvedPath, scriptKind: internal.scriptKind })
+        const relative = sdk.path ? path.relative(path.resolve(sdk.path), path.resolve(file.fileName)) : ".."
+        keys.push({ resolvedPath: internal.resolvedPath, scriptKind: internal.scriptKind,
+          sdk: !!relative && relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative),
+          library: isCompilerLibrary(file.fileName) })
       }
     }
     return { registry: officialDocumentRegistryFor(sdk) as RefCountRegistry, keys,
@@ -116,12 +136,20 @@ function writeRegistryProbe(
     const refCounts = snapshot.registry.getLanguageServiceRefCounts
     let totalRefCount = 0
     let retainedSourceFiles = 0
+    let sdkRefCount = 0
+    let nonSdkRefCount = 0
+    let libraryRefCount = 0
+    let projectRefCount = 0
     if (refCounts) {
       for (const key of snapshot.keys) {
         let countForFile = 0
         for (const [, count] of refCounts(key.resolvedPath, key.scriptKind)) {
           countForFile += count ?? 0
         }
+        if (key.sdk) sdkRefCount += countForFile
+        else nonSdkRefCount += countForFile
+        if (key.library) libraryRefCount += countForFile
+        else if (!key.sdk) projectRefCount += countForFile
         totalRefCount += countForFile
         if (countForFile > 0) retainedSourceFiles++
       }
@@ -130,6 +158,7 @@ function writeRegistryProbe(
       epochMs: Date.now(), pid: process.pid, threadId,
       sampleId, serviceId: snapshot.serviceId, captureOrigin: snapshot.captureOrigin,
       sampledSourceFiles: snapshot.keys.length, retainedSourceFiles,
+      sdkRefCount, nonSdkRefCount, libraryRefCount, projectRefCount,
       totalRefCount: refCounts ? totalRefCount : null,
       captureProgramMs: snapshot.captureProgramMs })}\n`)
   } catch { /* Diagnostic observation must not change semantic results or disposal. */ }

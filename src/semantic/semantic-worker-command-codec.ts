@@ -45,6 +45,7 @@ export function canonicalRequestInput(
     uri: request.uri,
     expectedDocumentVersion: request.expectedDocumentVersion,
     args: request.args,
+    ...(request.diskSource ? { diskSource: request.diskSource } : {}),
   }) as RootSemanticWorkerRequestInput
 }
 
@@ -93,6 +94,7 @@ export function wireRequest(
     uri: input.uri,
     expectedDocumentVersion: input.expectedDocumentVersion,
     args: input.args,
+    ...(Object.hasOwn(input, "diskSource") ? { diskSource: input.diskSource } : {}),
     cancelCell,
   })
 }
@@ -127,6 +129,7 @@ export function readPlainRequestInput(value: unknown): RootSemanticWorkerRequest
     "uri",
     "expectedDocumentVersion",
     "args",
+    ...(input && Object.hasOwn(input, "diskSource") ? ["diskSource"] : []),
   ])) throw new Error("Invalid semantic worker request input")
   return input as unknown as RootSemanticWorkerRequestInput
 }

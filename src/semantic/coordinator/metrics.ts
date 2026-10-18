@@ -49,7 +49,7 @@ export function createSemanticRuntimeMetricsRecorder(
   metricsPath: string | undefined,
   getStats: () => Omit<SemanticRuntimeMetricsInput, "memoryUsage">,
 ) {
-  const active = { reference: 0, anchor: 0, diagnostic: 0 }
+  const active = { reference: 0, anchor: 0, diagnostic: 0, "reference-cache": 0, "reference-job": 0, "anchor-job": 0 }
   const sample = (
     memoryUsage = process.memoryUsage(),
     stats = getStats(),
@@ -65,7 +65,11 @@ export function createSemanticRuntimeMetricsRecorder(
         activeAnchorVerifierCount: active.anchor,
         activeDiagnosticVerifierCount: active.diagnostic,
         transientVerifierCount,
-        totalSemanticWorkerCount: stats.semanticWorkerCount + transientVerifierCount,
+        activeReferenceJobCount: active["reference-job"],
+        activeAnchorJobCount: active["anchor-job"],
+        activeVerifierJobCount: active["reference-job"] + active["anchor-job"],
+        referenceSdkCacheWorkerCount: active["reference-cache"],
+        totalSemanticWorkerCount: stats.semanticWorkerCount + transientVerifierCount + active["reference-cache"],
       }
       fs.appendFileSync(metricsPath, `${JSON.stringify(metrics)}\n`)
     } catch (error) {

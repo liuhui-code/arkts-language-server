@@ -9,6 +9,8 @@ export interface CompletionResolutionRecord {
   documentVersion: number
   position: { line: number; character: number }
   completion: SemanticCompletion
+  /** A closed-source handle binds exact bytes, not the internal numeric version zero. */
+  diskSourceSha256?: string
 }
 
 export interface CompletionResolutionData {

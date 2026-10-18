@@ -7,6 +7,8 @@ import test from "node:test"
 
 import { capturePreparedIdentity, digestJson } from "../scripts/bench/prepared-suite-input.mjs"
 import { sha256File } from "../scripts/bench/reference-replay-input.mjs"
+import { makeSuite as makeEditSuite, runSuite as runEditSuite,
+  saveSuite as saveEditSuite } from "./support/prepared-suite-fixture.mjs"
 
 const runner = path.resolve("scripts/bench/replay-references.mjs")
 const serverSource = String.raw`
@@ -161,6 +163,88 @@ test("diagnostic barrier requires pre-open targets and an unedited prior scenari
   assert.match(run.stderr, /PREPARED_SUITE_INVALID=PREOPEN_DIAGNOSTIC_BARRIER/u)
   assert.equal(fs.existsSync(fixture.output), false)
 })
+
+test("edit diagnostic barriers keep every current version without prewarming its measured query", async t => {
+  const fixture = await makeAlternatingEditSuite(t, "delayed-edit-diagnostics")
+  const run = runEditSuite(fixture)
+  assert.equal(run.status, 1, `${run.stderr}\n${run.stdout}`)
+  const report = readReport(fixture)
+  assert.equal(report.failure, null)
+  assert.equal(report.correctness.status, "PASS")
+  assert.deepEqual(report.diagnostics.filter(item => item.version > 1).map(item => item.version), [2, 3])
+  for (const version of [2, 3]) {
+    const query = report.timeline.findIndex(event => event.phase === "request-complete"
+      && event.scenarioId === `edit-${version}`)
+    const diagnostic = report.timeline.findIndex(event => event.phase === "publishDiagnostics" && event.version === version)
+    const barrier = report.timeline.findIndex(event => event.phase === "edit-diagnostics-barrier-complete"
+      && event.version === version)
+    assert.ok(query >= 0 && diagnostic > query && barrier > diagnostic)
+    assert.ok(report.requests.find(request => request.scenarioId === `edit-${version}`).correctness.equal)
+    if (version === 2) assert.ok(report.timeline.findIndex(event => event.phase === "didChange-sent"
+      && event.version === 3) > barrier)
+  }
+})
+
+test("missing current edit diagnostics stop the barrier and retain unexecuted planned requests", async t => {
+  const fixture = await makeAlternatingEditSuite(t, "no-edit-diagnostics")
+  const run = runEditSuite(fixture)
+  assert.equal(run.status, 1, `${run.stderr}\n${run.stdout}`)
+  const report = readReport(fixture)
+  assert.match(report.failure.message, /EDIT_DIAGNOSTIC_BARRIER_FAILED=edit-2/u)
+  assert.equal(report.gateStatus.diagnostics, "FAIL")
+  assert.equal(report.correctness.status, "FAIL")
+  assert.equal(report.correctness.plannedRequests, 4)
+  assert.equal(report.correctness.executedRequests, 3)
+  assert.equal(report.requests.some(request => request.scenarioId === "edit-3"), false)
+  const bucket = report.bucketSummaries.find(item => item.bucket === "edit-body")
+  assert.equal(bucket.unexecutedSamples, 1)
+  assert.notEqual(bucket.controlStatus, "PASS")
+  assert.equal(report.timeline.some(event => event.phase === "edit-diagnostics-barrier-complete"), false)
+})
+
+test("without edit diagnostic barriers the default fast query path is not serialized", async t => {
+  const fixture = await makeAlternatingEditSuite(t, "delayed-edit-diagnostics")
+  for (const scenario of fixture.suite.scenarios) delete scenario.waitForEditDiagnostics
+  saveEditSuite(fixture)
+  const run = runEditSuite(fixture)
+  assert.equal(run.status, 1, `${run.stderr}\n${run.stdout}`)
+  const report = readReport(fixture)
+  assert.equal(report.correctness.status, "PASS")
+  assert.deepEqual(report.diagnostics.filter(item => item.version > 1).map(item => item.version), [3])
+  assert.equal(report.timeline.some(event => event.phase.startsWith("edit-diagnostics-barrier-")), false)
+})
+
+test("an edit diagnostic barrier accepts only true on an actual edit scenario", async t => {
+  const fixture = await makeAlternatingEditSuite(t, "normal")
+  for (const invalid of [false, "true"]) {
+    fixture.suite.scenarios[2].waitForEditDiagnostics = invalid
+    saveEditSuite(fixture)
+    const run = runEditSuite(fixture)
+    assert.equal(run.status, 2, run.stderr)
+    assert.match(run.stderr, /PREPARED_SUITE_INVALID=EDIT_DIAGNOSTIC_BARRIER/u)
+    assert.equal(fs.existsSync(fixture.output), false)
+  }
+  fixture.suite.scenarios[2].waitForEditDiagnostics = true
+  fixture.suite.scenarios[0].waitForEditDiagnostics = true
+  saveEditSuite(fixture)
+  const run = runEditSuite(fixture)
+  assert.equal(run.status, 2, run.stderr)
+  assert.match(run.stderr, /PREPARED_SUITE_INVALID=EDIT_DIAGNOSTIC_BARRIER/u)
+  assert.equal(fs.existsSync(fixture.output), false)
+})
+
+async function makeAlternatingEditSuite(t, mode) {
+  const fixture = await makeEditSuite(t, mode)
+  fixture.suite.runtime.diagnosticTimeoutMs = 500
+  fixture.suite.scenarios.push(...[2, 3].map(version => {
+    const changes = [{ range: { start: { line: 1, character: 0 }, end: { line: version === 2 ? 1 : 2, character: 0 } },
+      newText: `// version ${version}\n` }]
+    return { id: `edit-${version}`, bucket: "edit-body", targetId: "thing", waitForEditDiagnostics: true,
+      edit: { file: "Query.ets", changes, sha256: digestJson(changes), oracle: fixture.suite.targets[0].oracle } }
+  }))
+  saveEditSuite(fixture)
+  return fixture
+}
 
 async function makeSuite(t, mode = "normal") {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-preopen-barrier-"))

@@ -1,24 +1,38 @@
 # Architecture and ownership
 
+The 2026-10-18 [initial preparation and semantic-group decision](adr/0018-semantic-groups-and-initial-preparation.md)
+sets a configurable 4GiB runtime pressure default and exempts first project initialization from pressure admission/eviction.
+Shared SDK prewarming and stable retained groups are being implemented in TDD slices; migration and validation status remain in that ADR's evidence record.
+
 The 2026-10-11 [maintainer default-policy decision](adr/0015-default-resident-optimization-policy.md)
 enables six selected resident optimizations with explicit opt-out. Earlier
 default-off stage statements below are historical; normal ownership, budgets,
 exact fallback and unfinished L08 gates are unchanged.
 
+The 2026-10-18 [SDK cache decision](adr/0016-reference-verifier-sdk-cache.md)
+retains current SDK syntax in one serial reference verifier Worker. Each job
+still disposes its project LS before publication; full scope and freshness
+guards remain required. [Implementation evidence](tdd/op00-reference-sdk-cache.md)
+records public correctness, the original 403-file deadline and retained memory.
+
 References and semantic latency decisions are indexed in
-[the ADR collection](adr/README.md); the active implementation sequence is in
+[the ADR collection](adr/README.md); stage ownership remains in
 [the L01–L08 budgeted resident-session plan](plans/2026-10-06-budgeted-resident-semantic-plan.md).
+The [research-reviewed OP-00–OP-06 follow-up](plans/2026-10-11-query-performance-follow-up-plan.md)
+owns the remaining optimization slices and final validation inside L08, while
+OP-04 carries the remaining L02 incremental contracts.
 The [preceding semantic-ready S-series plan](plans/2026-09-29-semantic-ready-execution-plan.md)
 and [references latency plan](plans/2026-09-20-references-latency-execution-plan.md)
 retain implementation and failed-gate history. S02 compiler-derived facts
 research is paused after FAIL and S03 remains BLOCKED. [ADR 0014](adr/0014-budgeted-long-lived-semantic-session.md)
-accepts a different long-lived official-LS experiment, **not** a production
-default change. The [product contract](plans/semantic-ready/product-contract.md)
+records the original long-lived official-LS experiment; current selected
+defaults are governed by ADR 0015. The [product contract](plans/semantic-ready/product-contract.md)
 does not equate candidate-ready with semantic-ready.
 Final product validation belongs to L08. L01–L07 continue through slice-level
 functionality, public LSP regressions and execution protection; final memory,
 latency, overall readiness and soak/portability targets guide later implementation
-without blocking its sequence. Default promotion and release wait for L08.
+without blocking its sequence. The six selected defaults follow ADR 0015;
+product graduation and release wait for L08.
 
 The 2026-10-10 [L06 stage audit](reports/2026-10-10-resident-l06-completion-audit.md)
 passes A–E: 19 public interactive cases, focused252, real62 and fresh whole1492,
@@ -40,7 +54,7 @@ that contract; it does not depend on server internals.
 ## Invariants
 
 - Contract positions are zero-based UTF-16. The extracted ArkLine core's
-  one-based positions are confined to `LegacySemanticEngine`.
+  one-based positions are confined to the semantic adapter and its source-position helper.
 - An open `DocumentSnapshot` is authoritative over disk and persisted index
   content.
 - Current-document semantic queries never wait for workspace indexing.
@@ -49,6 +63,43 @@ that contract; it does not depend on server internals.
   GREEN.
 - Workspace index state is one of `warming`, `ready`, or `degraded`; status is
   never rendered as a search result.
+
+### Unopened source authority
+
+The OP03a disk-source path admits the core definition, typeDefinition, hover,
+signatureHelp, completion/resolve, references (both declaration policies),
+implementation, prepareRename/rename and call-hierarchy preparation without a
+preceding `didOpen`. The existing source authority resolves
+canonical/physical workspace ownership and bounded current disk bytes inside the
+request interval; freshness, cancellation and physical source identity are checked
+again before publication. An actual open buffer remains authoritative. A
+server-owned `DocumentSnapshot.source` discriminator and explicit bounded Worker
+query payload carry disk text, not a synthetic open/close mutation, overlay-map
+entry or input-revision advance. Client document version zero is an ordinary
+open version, never a disk discriminator. Incoming/outgoing follow-ups use the
+same explicit transport and retain complete source/result validation. Disk
+completion handles retain one exact source SHA per bounded record, not source
+text; one source hash per list is computed inside the response. Resolve rereads
+the source and rejects changed bytes, even at the same size/mtime, or competing
+open authority. Client-supplied item fields never replace the server-owned item.
+Compiler preparation remains in the original
+semantic owner with the original budgets; no second LS or retained batch owner.
+Disk reference result-cache hits require the existing owner's current complete
+READY generation/input proof, including the requested declaration policy. Storage
+requires the same proof before and after the query; readonly status never prepares
+an owner. No proof or a changed proof falls back to the original complete query,
+not an empty result. Proof metadata counts toward the original128-entry/8MiB cache
+bounds; no compiler objects cross the Worker boundary. The original open-buffer
+cache path still avoids diagnostic quiescence without extra owner requests.
+Identical overlapping disk references share the existing coalescer's bounded
+operation, including source resolution. Each client retains its own cancellation
+and freshness scope; the shared operation is not owned by the first client token.
+A workspace mutation revokes every old participant, and physical source identity
+is still checked before publication. Rename returns transactional edits with null
+closed-file versions, preserves local-import aliases, and never writes the files.
+Each additional direct capability requires its own complete public transcript;
+basic core entry transcripts do not qualify every workload bucket or L08.
+Evidence: [OP03a RED/GREEN and current related regression](tdd/op03a-completion-diagnostic-priority.md).
 
 ## Module boundaries
 

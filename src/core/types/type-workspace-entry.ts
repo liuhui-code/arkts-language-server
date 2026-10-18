@@ -5,6 +5,14 @@ import type { HarmonyProjectModel } from "../../project/harmony-project-model.js
 import type { SemanticManagedContext } from "../../semantic/coordinator/semantic-coordinator.js"
 import { ReferenceAnchorMemo } from "../../semantic/references/reference-anchor.js"
 import type { TypeScriptLanguageServiceEngine } from "./typescript-language-service.js"
+import { pathToFileURL } from "node:url"
+import type { ReadinessTrace } from "./typescript-semantic-readiness.js"
+import type { SemanticReadinessReport } from "../../contracts/semantic-readiness.js"
+import { semanticUnprepared } from "../../contracts/semantic-readiness.js"
+import path from "node:path"
+import type { SemanticCoordinator, SemanticMemoryLevel } from "../../semantic/coordinator/semantic-coordinator.js"
+import { runWithSemanticLease } from "./semantic-query-lease.js"
+import { assertCurrentWorkspaceSources } from "./typescript-workspace-source-fence.js"
 
 export interface WorkspaceEngineEntry extends SemanticManagedContext {
   engine: TypeScriptLanguageServiceEngine
@@ -20,12 +28,78 @@ export interface WorkspaceEngineEntry extends SemanticManagedContext {
   anchorMemo: ReferenceAnchorMemo
 }
 
+/** Existing-owner query intent is not a READY certificate or permission to ignore pressure. */
+export function queryWorkspaceReadiness(coordinator: SemanticCoordinator<WorkspaceEngineEntry>,
+  workspace: SemanticWorkspaceView, mode: boolean | "query", hooks: {
+    readonly refreshPressure?: () => void
+    readonly pressure: () => SemanticMemoryLevel
+    readonly prepare: () => void
+    readonly trace?: ReadinessTrace
+  }): SemanticReadinessReport {
+  const rootPath = path.resolve(workspace.rootPath)
+  const rootUri = pathToFileURL(rootPath).href
+  const allowed = () => !["level2", "level3"].includes(hooks.pressure())
+  const unavailable = () => semanticUnprepared(rootUri, "resource-budget-exceeded")
+  hooks.refreshPressure?.()
+  if (!allowed()) return unavailable()
+  const query = (prepared: boolean | "query-prepare") => {
+    const entry = coordinator.peek(rootPath)
+    if (!entry) return semanticUnprepared(rootUri)
+    const result = runWithSemanticLease(coordinator, rootPath,
+      current => current.engine.withRequestModuleResolution(() =>
+        current.engine.semanticReadiness(workspace, prepared, hooks.trace)), false)
+    hooks.refreshPressure?.()
+    return coordinator.peek(rootPath) === entry && allowed() ? result : unavailable()
+  }
+  if (mode === "query") {
+    if (!coordinator.peek(rootPath)?.engine.hasReadinessRefreshIntent()) return semanticUnprepared(rootUri)
+    const current = query(false)
+    if (current.semanticState === "ready" || !allowed()) return current
+  }
+  if (mode !== false) hooks.prepare()
+  return query(mode === "query" ? "query-prepare" : mode)
+}
+
 /** Certification remains inside the caller's query lease and response interval. */
 export function runPreparedSemanticQuery<Result>(entry: WorkspaceEngineEntry,
-  workspace: SemanticWorkspaceView, run: (entry: WorkspaceEngineEntry) => Result, certifyReadiness: boolean): Result {
-  const result = run(entry)
-  if (certifyReadiness) entry.engine.semanticReadiness(workspace, "query")
-  return result
+  workspace: SemanticWorkspaceView, run: (entry: WorkspaceEngineEntry) => Result,
+  certifyReadiness: boolean, trace?: ReadinessTrace, checkpoint: () => void = () => {}): Result {
+  return entry.engine.withRequestModuleResolution(() => {
+    const result = run(entry)
+    if (certifyReadiness) certifyPreparedQuery(entry, workspace, trace)
+    assertCurrentWorkspaceSources(workspace, checkpoint)
+    entry.engine.assertCurrentInputs(checkpoint)
+    return result
+  })
+}
+
+/** Includes readiness input construction, afterQuery and final current-proof admission. */
+function certifyPreparedQuery(entry: WorkspaceEngineEntry, workspace: SemanticWorkspaceView, trace?: ReadinessTrace): void {
+  if (process.env.ARKTS_SEMANTIC_QUEUE_TRACE !== "1" || !trace) {
+    entry.engine.semanticReadiness(workspace, "query")
+    return
+  }
+  const startedMonotonicMs = performance.now()
+  let outcome = "error"
+  let queryScopeReport: SemanticReadinessReport | undefined
+  const record: ReadinessTrace = (event, fields) => {
+    try { trace(event, fields) } catch { /* Unavailable observation cannot alter the real query. */ }
+  }
+  try {
+    queryScopeReport = entry.engine.semanticReadiness(workspace, "query", record)
+    outcome = "complete"
+  } finally {
+    const finishedMonotonicMs = performance.now()
+    record("semantic.readiness.query.certification.complete", {
+      rootUri: pathToFileURL(workspace.rootPath).href, uri: pathToFileURL(workspace.state.path).href,
+      documentVersion: workspace.state.documentVersion, contentRevision: workspace.contentRevision,
+      typeGeneration: workspace.state.typeGeneration, outcome, queryScopeSemanticState: queryScopeReport?.semanticState,
+      queryScopeMembershipRevision: queryScopeReport?.inputIdentity?.membershipRevision,
+      queryScopeProjectSources: queryScopeReport?.coverage?.projectSources,
+      startedMonotonicMs, finishedMonotonicMs,
+      certificationDurationMs: finishedMonotonicMs - startedMonotonicMs,
+    })
+  }
 }
 
 /** Updates provider ownership and resource scope after the existing engine prepare. */

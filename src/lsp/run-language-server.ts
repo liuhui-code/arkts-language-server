@@ -1,9 +1,8 @@
+import { createHash } from "node:crypto"
 import { pathToFileURL } from "node:url"
 
 import {
   CodeActionKind,
-  CompletionItemKind,
-  InsertTextFormat,
   createConnection,
   DiagnosticSeverity,
   DidChangeWatchedFilesNotification,
@@ -30,7 +29,6 @@ import type {
 } from "../contracts/semantic-engine.js"
 import type { ProjectResolverPort } from "../contracts/project-resolver.js"
 import type {
-  WorkspaceIndexProgress,
   WorkspaceSymbolServicePort,
 } from "../contracts/workspace-symbol-service.js"
 import { ARKUI_STRING_RESOURCE_GLOB, ARKUI_CONFIGURED_STRING_RESOURCE_GLOB } from "../core/arkui/resource-path.js"
@@ -41,17 +39,22 @@ import { createDocumentDiagnostics } from "./document-diagnostics.js"
 import {
   CompletionResolutionStore,
   type CompletionResolutionData,
-  type CompletionResolutionRecord,
 } from "./completion-resolution-store.js"
 import {
   CodeActionResolutionStore,
   type CodeActionResolutionData,
 } from "./code-action-resolution-store.js"
 import { CallHierarchySourceAuthority } from "./call-hierarchy-source-authority.js"
+import {
+  invalidCompletionResolution, toLspCompletionItem, toLspResolvedCompletionItem,
+  type CompletionClientProfile,
+} from "./completion-mapper.js"
 import { toLspDiagnostic } from "./diagnostic-mapper.js"
 import { RequestFreshness } from "./request-freshness.js"
 import { registerBenchmarkControls } from "./register-benchmark-controls.js"
 import { registerSemanticReadiness } from "./register-semantic-readiness.js"
+import { prepareInitialSemantics } from "./initial-semantic-preparation.js"
+import { startWorkspaceIndex } from "./workspace-index-initialization.js"
 import {
   negotiatedSymbolKind,
   registerSemanticCapabilities,
@@ -60,12 +63,6 @@ import { requestCancelled, SemanticRequestRunner } from "./semantic-request-runn
 import { WorkspaceFileChangeCoordinator } from "./workspace-file-change-coordinator.js"
 
 const MAX_COMPLETION_ITEMS = 256
-
-interface CompletionClientProfile {
-  commitCharacters: boolean
-  insertReplaceEdits: boolean
-  snippets: boolean
-}
 
 const DEFAULT_COMPLETION_CLIENT_PROFILE: CompletionClientProfile = Object.freeze({
   commitCharacters: false,
@@ -99,12 +96,14 @@ export function runLanguageServer(services?: LanguageServerServices): void {
   let supportsWatchedFileRegistration = false
   let workspaceSymbolKindValueSet: readonly SymbolKind[] | undefined
   let workspaceIndexAbort: AbortController | undefined
+  const initialPreparation = new AbortController()
   let completionClientProfile: CompletionClientProfile = DEFAULT_COMPLETION_CLIENT_PROFILE
 
   const disposeOnce = (reason: "shutdown" | "exit") => {
     if (disposed) return disposal
     disposed = true
     workspaceIndexAbort?.abort(new Error("Language server stopped"))
+    initialPreparation.abort(new Error("Language server stopped"))
     completionResolutions.clear()
     codeActionResolutions.clear()
     disposal = Promise.resolve(semantic.dispose()).then(() => workspaceSymbols?.dispose()).then(() => {
@@ -199,6 +198,7 @@ export function runLanguageServer(services?: LanguageServerServices): void {
 
   connection.onInitialized(async () => {
     if (shuttingDown) return
+    void prepareInitialSemantics(connection, semantic, workspaceRoots, logger, initialPreparation.signal)
     if (supportsWatchedFileRegistration) {
       void connection.client.register(DidChangeWatchedFilesNotification.type, {
         watchers: [
@@ -215,64 +215,8 @@ export function runLanguageServer(services?: LanguageServerServices): void {
         logger.error("workspace.watch.registration.failed", { outcome: "disabled" })
       })
     }
-    if (!workspaceSymbols || shuttingDown) return
-    const progress = await connection.window.createWorkDoneProgress()
-    if (shuttingDown) return
-    workspaceIndexAbort = new AbortController()
-    const cancellation = progress.token.onCancellationRequested(() => {
-      workspaceIndexAbort?.abort(new Error("Workspace indexing cancelled by client"))
-    })
-    let finished = false
-    let lastPercentage = 0
-    progress.begin("ArkTS workspace index", undefined, "Discovering project files", true)
-    const report = (status: WorkspaceIndexProgress) => {
-      if (finished) return
-      if (status.phase === "discovering") {
-        if (status.discoveredFiles > 0) {
-          progress.report(discoveryMessage(status))
-        }
-        return
-      }
-      if (status.phase === "indexing") {
-        const percentage = indexPercentage(status)
-        const message = indexingMessage(status)
-        if (percentage === undefined) {
-          progress.report(message)
-        } else {
-          lastPercentage = Math.max(lastPercentage, percentage)
-          progress.report(lastPercentage, message)
-        }
-        return
-      }
-      if (status.phase === "ready") {
-        progress.report(100, readyMessage(status))
-      } else if (status.phase === "degraded") {
-        progress.report(degradedMessage(status))
-      } else {
-        progress.report(cancelledMessage(status))
-      }
-      logger.info("index.catalog.terminal", {
-        phase: status.phase,
-        workspaceCount: workspaceRoots.length,
-        discoveredFiles: status.discoveredFiles,
-        indexedFiles: status.indexedFiles,
-        skippedEntries: status.skippedEntries,
-        totalFiles: status.totalFiles,
-      })
-      finished = true
-      cancellation.dispose()
-      progress.done()
-    }
-    try {
-      workspaceSymbols.start(workspaceRoots, report, workspaceIndexAbort.signal)
-    } catch {
-      logger.error("index.start.failed", { outcome: "degraded" })
-      report({
-        phase: "degraded",
-        discoveredFiles: 0,
-        indexedFiles: 0,
-        skippedEntries: 0,
-      })
+    if (workspaceSymbols && !shuttingDown) {
+      workspaceIndexAbort = await startWorkspaceIndex(connection, workspaceSymbols, workspaceRoots, logger, () => shuttingDown)
     }
   })
 
@@ -361,20 +305,22 @@ export function runLanguageServer(services?: LanguageServerServices): void {
     diagnostics.close(document.uri)
   })
   connection.onCompletion(async (params, token) => {
+    let completionDocument: DocumentSnapshot | undefined
     const result = await requests.run({
       method: "textDocument/completion",
       documentUri: params.textDocument.uri,
       token,
       fallback: { items: [], isIncomplete: false } as SemanticCompletionList,
-      execute: (document, signal) => semantic.complete({
-        document,
-        position: params.position,
-        completionOptions: { snippets: completionClientProfile.snippets },
-        signal,
-      }),
+      execute: (document, signal) => {
+        completionDocument = document
+        return semantic.complete({ document, position: params.position,
+          completionOptions: { snippets: completionClientProfile.snippets }, signal })
+      },
     })
-    const document = documents.get(params.textDocument.uri)
+    const document = documents.get(params.textDocument.uri) ?? completionDocument
     if (!document) return { isIncomplete: false, items: [] }
+    const diskSourceSha256 = completionDocument?.source?.kind === "disk"
+      ? createHash("sha256").update(completionDocument.text).digest("hex") : undefined
     const bounded = result.items.slice(0, MAX_COMPLETION_ITEMS)
     const items = bounded.map((completion) => toLspCompletionItem(
       completion,
@@ -383,6 +329,7 @@ export function runLanguageServer(services?: LanguageServerServices): void {
         documentVersion: document.version,
         position: { ...params.position },
         completion,
+        ...(diskSourceSha256 ? { diskSourceSha256 } : {}),
       }),
       completionClientProfile,
       params.position,
@@ -397,7 +344,9 @@ export function runLanguageServer(services?: LanguageServerServices): void {
     assertRunning()
     const record = completionResolutions.find(clientItem.data)
     const currentDocument = record ? documents.get(record.documentUri) : undefined
-    if (!record || !currentDocument || currentDocument.version !== record.documentVersion) {
+    if (!record || (record.diskSourceSha256 === undefined
+      ? !currentDocument || currentDocument.version !== record.documentVersion
+      : currentDocument !== undefined)) {
       throw invalidCompletionResolution()
     }
     const resolved = await requests.run<SemanticCompletion | null>({
@@ -405,13 +354,14 @@ export function runLanguageServer(services?: LanguageServerServices): void {
       documentUri: record.documentUri,
       token,
       fallback: null,
-      execute: (document, signal) => semantic.resolveCompletion({
-        document,
-        position: record.position,
-        completionOptions: { snippets: completionClientProfile.snippets },
-        completion: record.completion,
-        signal,
-      }),
+      execute: (document, signal) => {
+        if (record.diskSourceSha256 !== undefined && (document.source?.kind !== "disk"
+          || createHash("sha256").update(document.text).digest("hex") !== record.diskSourceSha256)) {
+          throw invalidCompletionResolution()
+        }
+        return semantic.resolveCompletion({ document, position: record.position,
+          completionOptions: { snippets: completionClientProfile.snippets }, completion: record.completion, signal })
+      },
     })
     if (!resolved) throw invalidCompletionResolution()
     return toLspResolvedCompletionItem(
@@ -631,107 +581,6 @@ function snapshot(document: TextDocument, projects: ProjectResolverPort): Docume
   }
 }
 
-function toLspCompletionItem(
-  item: SemanticCompletion,
-  data: CompletionResolutionData,
-  profile: CompletionClientProfile,
-  position?: { line: number; character: number },
-) {
-  const insertText = clientInsertText(item, profile)
-  const textEdit = item.replacementRange
-    ? toLspCompletionTextEdit(item.replacementRange, insertText, profile, position)
-    : undefined
-  return {
-    label: item.label,
-    detail: item.detail,
-    kind: completionKind(item.kind),
-    insertText,
-    filterText: item.filterText,
-    sortText: item.sortText,
-    ...(profile.commitCharacters && item.commitCharacters !== undefined
-      ? { commitCharacters: item.commitCharacters }
-      : {}),
-    ...(profile.snippets && item.isSnippet === true
-      ? { insertTextFormat: InsertTextFormat.Snippet }
-      : {}),
-    textEdit,
-    data,
-  }
-}
-
-function clientInsertText(item: SemanticCompletion, profile: CompletionClientProfile): string {
-  const insertText = item.insertText ?? item.label
-  return profile.snippets && item.isSnippet === true
-    ? insertText
-    : stripSnippetPlaceholders(insertText)
-}
-
-function stripSnippetPlaceholders(text: string): string {
-  return text
-    .replace(/\$\{\d+:([^}]*)\}/g, "$1")
-    .replace(/\$\{\d+\}/g, "")
-    .replace(/\$\d+/g, "")
-}
-
-function toLspResolvedCompletionItem(
-  item: SemanticCompletion,
-  data: CompletionResolutionData,
-  record: CompletionResolutionRecord,
-  profile: CompletionClientProfile,
-) {
-  const additionalTextEdits = item.additionalTextEdits?.map((edit) => {
-    if (
-      edit.uri !== record.documentUri
-      || edit.expectedVersion !== record.documentVersion
-    ) throw invalidCompletionResolution()
-    return { range: edit.range, newText: edit.newText }
-  })
-  return {
-    ...toLspCompletionItem(item, data, profile, record.position),
-    documentation: item.documentation,
-    additionalTextEdits,
-  }
-}
-
-function toLspCompletionTextEdit(
-  replacementRange: { start: { line: number; character: number }; end: { line: number; character: number } },
-  newText: string,
-  profile: CompletionClientProfile,
-  position: { line: number; character: number } | undefined,
-) {
-  if (
-    profile.insertReplaceEdits
-    && position
-    && replacementRange
-    && replacementRange.start.line === replacementRange.end.line
-    && replacementRange.start.line === position.line
-    && comparePositions(replacementRange.start, position) <= 0
-    && comparePositions(position, replacementRange.end) <= 0
-  ) {
-    return {
-      insert: { start: replacementRange.start, end: position },
-      replace: replacementRange,
-      newText,
-    }
-  }
-  return { range: replacementRange, newText }
-}
-
-function comparePositions(
-  left: { line: number; character: number },
-  right: { line: number; character: number },
-): number {
-  if (left.line !== right.line) return left.line - right.line
-  return left.character - right.character
-}
-
-function invalidCompletionResolution(): ResponseError<void> {
-  return new ResponseError(
-    ErrorCodes.InvalidParams,
-    "Completion item is unknown or stale",
-  )
-}
-
 function invalidCodeActionResolution(status: "stale" | "unknown"): ResponseError<void> {
   return new ResponseError(
     status === "stale" ? LSPErrorCodes.ContentModified : ErrorCodes.InvalidParams,
@@ -739,54 +588,9 @@ function invalidCodeActionResolution(status: "stale" | "unknown"): ResponseError
   )
 }
 
-function completionKind(kind: SemanticCompletion["kind"]): CompletionItemKind {
-  switch (kind) {
-    case "method": return CompletionItemKind.Method
-    case "field": return CompletionItemKind.Field
-    case "function": return CompletionItemKind.Function
-    case "class": return CompletionItemKind.Class
-    case "enum": return CompletionItemKind.Enum
-    case "enumMember": return CompletionItemKind.EnumMember
-    case "interface": return CompletionItemKind.Interface
-    case "keyword": return CompletionItemKind.Keyword
-    case "module": return CompletionItemKind.Module
-    case "variable": return CompletionItemKind.Variable
-    default: return CompletionItemKind.Property
-  }
-}
-
 function includesQuickFix(only: readonly string[] | undefined): boolean {
   if (!only || only.length === 0) return true
   return only.some((kind) => (
     kind === "" || kind === CodeActionKind.QuickFix || CodeActionKind.QuickFix.startsWith(`${kind}.`)
   ))
-}
-
-function indexPercentage(status: WorkspaceIndexProgress): number | undefined {
-  if (!status.totalFiles || status.indexedFiles <= 0) return undefined
-  return Math.min(99, Math.max(1, Math.floor(status.indexedFiles * 100 / status.totalFiles)))
-}
-
-function discoveryMessage(status: WorkspaceIndexProgress): string {
-  return `Discovered ${status.discoveredFiles} files; skipped ${status.skippedEntries} entries`
-}
-
-function indexingMessage(status: WorkspaceIndexProgress): string {
-  const total = status.totalFiles === undefined ? "?" : String(status.totalFiles)
-  return `Indexing ${status.indexedFiles}/${total} files; skipped ${status.skippedEntries} entries`
-}
-
-function readyMessage(status: WorkspaceIndexProgress): string {
-  const total = status.totalFiles ?? status.discoveredFiles
-  return total === 0
-    ? `No ArkTS files found; skipped ${status.skippedEntries} entries`
-    : `Indexed ${status.indexedFiles}/${total} files; skipped ${status.skippedEntries} entries`
-}
-
-function degradedMessage(status: WorkspaceIndexProgress): string {
-  return `Indexing degraded after ${status.indexedFiles} files; skipped ${status.skippedEntries} entries`
-}
-
-function cancelledMessage(status: WorkspaceIndexProgress): string {
-  return `Indexing cancelled after ${status.indexedFiles} files; skipped ${status.skippedEntries} entries`
 }

@@ -3,6 +3,7 @@ import path from "node:path"
 
 import type { SemanticDefinitionCandidate, SemanticDocumentPosition } from "../../core/protocol.js"
 import type { SemanticReferenceQueryResult } from "../../core/types/type-engine.js"
+import { projectFileIdentitiesCurrent } from "../../core/types/type-project-file-identities.js"
 import type { SemanticWorkspaceView } from "../../core/workspace/document-store.js"
 import type { HarmonySemanticGraph } from "../../project/harmony-project-model.js"
 import type { ReferenceDependencyProfile } from "./reference-runtime.js"
@@ -26,8 +27,9 @@ export interface ReferenceBatchVerification {
   readonly result: SemanticReferenceQueryResult
   readonly unavailableProjectPaths?: readonly string[]
   readonly timings: {
-    /** Parent-observed spawn-to-runtime-ready wall time; trace only. */
+    /** Parent-observed dispatch-to-runtime-ready wall time, including cold loading; trace only. */
     readonly workerStartupMs?: number
+    readonly workerReused?: boolean
     readonly prepareHostMs: number
     readonly programReadyMs: number
     readonly queryMs: number
@@ -86,6 +88,14 @@ export class ReferenceSearchExecutor {
     admitVerifier?: () => boolean,
   ): Promise<SemanticReferenceQueryResult> {
     const sessionStarted = performance.now()
+    if (candidatePaths && !projectFileIdentitiesCurrent(workspace, this.options.checkpoint)) {
+      this.options.trace?.("references.index.fallback", { reason: "source-snapshot-changed", strategy: "complete-scope" })
+      candidatePaths = undefined
+      candidateIdentityComplete = false
+      candidateAnchorPath = candidateSupportPaths = undefined
+      const { expectedReferenceAnchor: _changedAnchor, ...originalPosition } = position
+      position = originalPosition
+    }
     const plan = planConservativeReferenceBatches(
       workspace,
       this.options.batchRootLimit,
@@ -137,6 +147,8 @@ export class ReferenceSearchExecutor {
     }
     this.options.disposeResidentContext(rootPath)
     const collected: SemanticDefinitionCandidate[] = []
+    const otherCollected: SemanticDefinitionCandidate[] = []
+    let otherComplete = true
     const consumedExclusions = new Map<string, { readonly path: string; readonly token: string }>()
     let batches = plan.batches
     let rootsReplanned = false
@@ -183,7 +195,7 @@ export class ReferenceSearchExecutor {
         if (verification.anchorVerified === false) {
           this.options.trace?.("references.anchor.seed.rejected", {
             referenceSession, batchIndex: batch.index, elapsedMs: elapsedMs(),
-            verifierIsolation: "transient-worker", reason: "compiler-anchor-mismatch",
+            verifierIsolation: "sdk-cache-worker", reason: "compiler-anchor-mismatch",
             ...verificationTraceFields(verification),
             durationMs: Math.round((performance.now() - started) * 100) / 100,
           })
@@ -257,11 +269,13 @@ export class ReferenceSearchExecutor {
       }
       const { result } = verification
       collected.push(...result.references)
+      if (result.otherReferences) otherCollected.push(...result.otherReferences)
+      else otherComplete = false
       this.options.trace?.("references.batch.complete", {
         ...(verification.anchorVerified === undefined ? {} : { anchorVerified: verification.anchorVerified }),
         referenceSession,
         elapsedMs: elapsedMs(),
-        verifierIsolation: "transient-worker",
+        verifierIsolation: "sdk-cache-worker",
         batchIndex: batch.index,
         batchCount: batches.length,
         batchRootFiles: rootPaths.length,
@@ -347,7 +361,9 @@ export class ReferenceSearchExecutor {
       rawLocations: collected.length,
       locations: references.length,
     })
-    return { status: "complete", references }
+    return candidatePaths && !projectFileIdentitiesCurrent(workspace, this.options.checkpoint)
+      ? { status: "incomplete", reason: "source-unavailable" } : { status: "complete", references,
+          ...(otherComplete ? { otherReferences: uniqueSortedReferences(otherCollected) } : {}) }
   }
 }
 
@@ -382,6 +398,7 @@ function verificationTraceFields(verification: ReferenceBatchVerification): Reco
     queryHeapUsedDelta: verification.memory.heapUsed - verification.prepared.memory.heapUsed,
     workerPrepareHostMs: verification.timings.prepareHostMs,
     workerStartupMs: verification.timings.workerStartupMs,
+    workerReused: verification.timings.workerReused,
     workerProgramReadyMs: verification.timings.programReadyMs,
     workerGetProgramMs: verification.timings.getProgramMs,
     workerCreateProgramMs: verification.timings.createProgramMs,

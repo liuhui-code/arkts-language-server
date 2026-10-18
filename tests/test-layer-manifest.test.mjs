@@ -17,19 +17,56 @@ const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 test("classifies every executable test entry exactly once in an explicit layer", () => {
   const audit = validateTestLayerManifest({ root: projectRoot, manifest: TEST_LAYER_MANIFEST })
 
-  assert.equal(audit.entryCount, 180)
+  assert.equal(audit.entryCount, 222)
+  assert.equal(audit.assignments["tests/semantic-worker-disk-source-protocol.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/semantic/semantic-readiness-admission.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/disk-dependency-freshness.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/unopened-source-query.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/unopened-workspace-query.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/semantic-queue-trace.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/package-json-presence-guard.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/transient-verifier-release-order.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/sdk-relative-input-guard.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/request-directory-proof-reuse.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic-release-product-memory-cli.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/semantic-release-pss-statistics-cli.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/semantic-release-pss-workflow-cli.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/semantic-release-pss-sampling-cli.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/macos-workflow-module-visits-cli.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/prepared-resource-artifact-cli.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/semantic-release-resource-artifact-cli.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/retained-regression-collector-cli.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/resource-sampler-boundary-cli.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/test-layer-failure-diagnostics.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/semantic-release-regression-cli.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/semantic/auto-import-completeness.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/query-layer-probe-cli.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/query-layer-input-observer-cli.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/query-layer-resource-cli.test.mjs"], "unit-contract")
   assert.equal(audit.assignments["tests/semantic/default-pressure-diagnostics.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/prepared-suite-semantic-readiness.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/prepared-suite-restart-cli.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/prepared-suite-restart-followup-cli.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/semantic/semantic-readiness-lifecycle.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/semantic-worker-readiness-protocol.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/semantic-worker-reference-mode.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/semantic/resident-first-miss.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/resident-first-edit-admission.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/resident-input-proof-reuse.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/resident-input-proof-boundaries.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/versioned-overlay-snapshot.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/versioned-overlay-disk.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/duplicate-disk-notification.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/semantic/semantic-readiness.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/semantic-release-matrix-cli.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/semantic-release-resource-cli.test.mjs"], "unit-contract")
   assert.equal(audit.assignments["tests/l01-soak-suite-generator-cli.test.mjs"], "unit-contract")
   assert.equal(audit.assignments["tests/prepared-suite-diagnostic-worker-pin-cli.test.mjs"], "unit-contract")
   assert.equal(audit.assignments["tests/prepared-suite-gc-probe-pin.test.mjs"], "unit-contract")
   assert.equal(audit.assignments["tests/semantic/local-file-dependency-alias.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/semantic/definition-alias-barrel.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/semantic/references-direct-proof-trace.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/references-batch-transcript.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/semantic/semantic-context-lifecycle.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/semantic/semantic-l3-reference-admission.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/semantic/semantic-reference-pressure-sampling.test.mjs"], "bundle-e2e")
@@ -265,9 +302,9 @@ test("classifies every executable test entry exactly once in an explicit layer",
     "bundle-e2e",
   )
   assert.deepEqual(audit.layerCounts, {
-    "unit-contract": 85,
-    protocol: 8,
-    "bundle-e2e": 80,
+    "unit-contract": 102,
+    protocol: 9,
+    "bundle-e2e": 104,
     "artifact-e2e": 3,
     "sealed-artifact-e2e": 1,
     large: 1,

@@ -7,8 +7,7 @@ import { pathToFileURL } from "node:url"
 
 import { capturePreparedIdentity, digestJson } from "../scripts/bench/prepared-suite-input.mjs"
 import { sha256File } from "../scripts/bench/reference-replay-input.mjs"
-import { makeSuite, saveSuite } from "./support/prepared-suite-fixture.mjs"
-import { selectedL03Policy } from "./support/resident-interactive-lsp.mjs"
+import { makeSuite, productionSuite, reportedProof, saveSuite } from "./support/prepared-suite-fixture.mjs"
 
 test("prepared benchmark observes a real root Program before target queries without certifying unbound samples",
   { timeout: 40_000 }, async t => {
@@ -313,7 +312,7 @@ test("prepared benchmark certifies immediate body edits against new query-bound 
     assert.equal(JSON.parse(fs.readFileSync(staleOut)).cells.find(cell => cell.bucket === "edit-body" && cell.requests).gates.ready, "BLOCKED")
   })
 
-test("prepared benchmark fails exactness for an empty unopened query despite an unchanged actual ready proof",
+test("prepared benchmark verifies a genuine unopened query against its unchanged actual ready proof",
   { timeout: 40_000 }, async t => {
     const fixture = await productionSuite(t)
     fixture.suite.readiness.candidateControl = false
@@ -328,15 +327,14 @@ test("prepared benchmark fails exactness for an empty unopened query despite an 
     assert.equal(request.measurementState, "semantic-ready-snapshot")
     assert.equal(request.readiness.verified, true)
     assert.equal(request.status, "COMPLETE")
-    assert.equal(request.correctness.equal, false)
-    assert.deepEqual(request.correctness.locations, [])
-    assert.deepEqual(request.correctness.missing, [{ file: "Query.ets", range: {
+    assert.equal(request.correctness.equal, true)
+    assert.deepEqual(request.correctness.locations, [{ file: "Query.ets", range: {
       start: { line: 0, character: 13 }, end: { line: 0, character: 18 },
     } }])
-    assert.equal(report.gateStatus.ready, "FAIL")
-    assert.equal(report.correctness.status, "FAIL")
-    assert.equal(report.bucketSummaries[0].readyStatus, "FAIL")
-    assert.equal(report.bucketSummaries[0].reason, "EXACT_QUERY_FAILED")
+    assert.deepEqual(request.correctness.missing, [])
+    assert.equal(report.gateStatus.ready, "PASS")
+    assert.equal(report.correctness.status, "PASS")
+    assert.equal(report.bucketSummaries[0].readyStatus, "PASS")
     assert.equal(report.gateStatus.diagnostics, "PASS")
     const phases = report.timeline.map(event => event.phase)
     assert.ok(phases.indexOf("didOpen-sent") > phases.indexOf("request-complete"))
@@ -349,6 +347,37 @@ test("prepared benchmark fails exactness for an empty unopened query despite an 
     assert.deepEqual(report.readiness.validation.observed, report.readiness.semantic.observed)
     assert.deepEqual(report.closeResult.exit, { code: 0, signal: null })
   })
+
+test("prepared benchmark rejects an injected empty unopened reply despite an unchanged reported proof", async t => {
+  const fixture = await makeSuite(t, "reported-readiness")
+  const proof = reportedProof(fixture)
+  fixture.suite.readiness.candidateControl = false
+  fixture.suite.scenarios = [{ id: "closed-empty", bucket: "first-unopened-module", targetId: "thing" }]
+  fixture.suite.runtime.env.ARKTS_TEST_PREPARED_READINESS = JSON.stringify(proof)
+  fixture.suite.runtime.env.ARKTS_TEST_PREPARED_EMPTY_UNOPENED = "1"
+  saveSuite(fixture)
+  const run = execute(fixture)
+  assert.equal(run.status, 1, `${run.stderr}\n${run.stdout}`)
+  const report = JSON.parse(fs.readFileSync(fixture.output, "utf8"))
+  assert.equal(report.requests.length, 1)
+  const request = report.requests[0]
+  assert.equal(request.readiness.verified, true)
+  assert.equal(request.status, "COMPLETE")
+  assert.deepEqual(request.correctness.locations, [])
+  assert.equal(request.correctness.equal, false)
+  assert.deepEqual(request.correctness.missing, request.correctness.expectedLocations)
+  assert.equal(request.correctness.missing.length, 1)
+  assert.equal(report.gateStatus.ready, "FAIL")
+  assert.equal(report.correctness.status, "FAIL")
+  assert.equal(report.bucketSummaries[0].reason, "EXACT_QUERY_FAILED")
+  assert.deepEqual(report.readiness.semantic.observed, proof)
+  assert.deepEqual(report.readiness.validation.observed, proof)
+  const phases = report.timeline.map(event => event.phase)
+  assert.ok(phases.indexOf("didOpen-sent") > phases.indexOf("semantic-readiness-validation-complete"))
+  assert.equal(report.preparation.targetQueries, 0)
+  assert.equal(report.gateStatus.diagnostics, "PASS")
+  assert.deepEqual(report.closeResult.exit, { code: 0, signal: null })
+})
 
 test("final release matrix consumes actual query-bound ready proof without graduating insufficient samples",
   { timeout: 40_000 }, async t => {
@@ -429,54 +458,17 @@ test("final matrix classifies 100 actual repeat requests across five real fixtur
     assert.equal(cell.sessions, 5)
     assert.equal(cell.gates.ready, "PASS")
     assert.equal(cell.gates.latency, cell.observedLatencyMs.p95 <= 550 ? "PASS" : "FAIL")
+    assert.equal(cell.gates.memory, "BLOCKED", "real RSS is not the independent PSS release contract")
+    const memories = cell.inputGroups[0].memoryEvidence
+    assert.equal(memories.length, 5)
+    assert.ok(memories.every(item => item.status === "PASS" && item.intervalClock === "sampler-monotonic-ms" && item.sampleCount > 0
+      && item.peakNodeRssBytes > 0 && item.peakProductRssBytes >= item.peakNodeRssBytes
+      && item.reasons.includes("RSS_NOT_PSS_RELEASE_EVIDENCE")), JSON.stringify(memories))
     assert.equal(report.cells.find(cell => cell.platform !== process.platform && cell.capability === "definition").gates.latency, "NOT_RUN")
     assert.equal(report.releaseEligible, false, "fixture proof classification is not a Settings product release")
   })
 
-async function productionSuite(t) {
-  const fixture = await makeSuite(t)
-  const { suite } = fixture
-  const source = "export class Thing {}\nexport const selected = new Thing()\n"
-  fs.writeFileSync(path.join(suite.workspace, "Query.ets"), source)
-  const commit = spawnSync("git", ["-c", "user.name=Test", "-c", "user.email=test@example.invalid",
-    "commit", "-am", "production readiness fixture", "-q"], { cwd: suite.workspace, encoding: "utf8" })
-  assert.equal(commit.status, 0, commit.stderr)
-  fs.mkdirSync(path.join(suite.sdk, "ets", "component"))
-  fs.writeFileSync(path.join(suite.sdk, "ets", "component", "common.d.ts"), "interface FixtureAmbient {}\n")
-  fs.writeFileSync(path.join(suite.sdk, "ets", "oh-uni-package.json"),
-    JSON.stringify({ path: "ets", apiVersion: "24", version: "test" }))
-  const oracle = suite.targets[0].oracle.path
-  fs.writeFileSync(oracle, JSON.stringify({ schemaVersion: 1, locations: [{ file: "Query.ets",
-    range: { start: { line: 0, character: 13 }, end: { line: 0, character: 18 } } }] }))
-  suite.server = path.resolve("dist/server.cjs")
-  suite.sidecar = path.resolve("target/release/arkts-index-sidecar")
-  suite.runtime = { timeoutMs: 10_000, diagnosticTimeoutMs: 10_000, sampleIntervalMs: 25,
-    env: { ARKTS_REFERENCES_STRATEGY: "indexed-batched", ARKTS_REFERENCES_SDK_AMBIENT_PROFILE: "full",
-      ARKTS_L02_SAME_CONTENT_PROMOTION: "1", ARKTS_MEMORY_BUDGET_MB: "1024",
-      ARKTS_REFERENCES_TRACE: "1", ...selectedL03Policy } }
-  suite.targets[0] = { ...suite.targets[0], kind: "definition", includeDeclaration: undefined,
-    position: { line: 1, character: source.split("\n")[1].indexOf("Thing") + 1 },
-    sourceSha256: sha256File(path.join(suite.workspace, "Query.ets")),
-    oracle: { path: oracle, sha256: sha256File(oracle), verified: true } }
-  suite.pins = await capturePreparedIdentity(suite)
-  saveSuite(fixture)
-  return fixture
-}
-
 function execute(fixture) {
   return spawnSync(process.execPath, [path.resolve("scripts/bench/replay-references.mjs"),
     "--prepared-suite", fixture.input, "--out", fixture.output], { encoding: "utf8", timeout: 30_000 })
-}
-
-function reportedProof(fixture) {
-  const input = { canonicalRoot: fs.realpathSync(fixture.suite.workspace), engineGeneration: 1, membershipRevision: 0,
-    sourcesSha256: "a".repeat(64), overlaysSha256: "b".repeat(64), optionsSha256: "c".repeat(64),
-    projectGraphSha256: "d".repeat(64), sdkSha256: "e".repeat(64), standardLibrarySha256: "f".repeat(64),
-    backend: { packageVersion: fixture.suite.pins.backendVersion, compilerSha256: fixture.suite.pins.backendSha256,
-      packageSha256: sha256File(path.resolve("node_modules/typescript/package.json")) }, sha256: "a".repeat(64) }
-  return { rootUri: pathToFileURL(fixture.suite.workspace).href, semanticState: "ready",
-    semanticGeneration: `1:0:12345678-1234-4123-8123-123456789abc:${input.sha256}`,
-    readyCapabilities: JSON.parse(fs.readFileSync("config/semantic-release-matrix.json", "utf8")).capabilities,
-    unavailableReasons: [], unavailableInput: null, inputIdentity: input,
-    coverage: { projectSources: 1, sdkSources: 1, standardLibrarySources: 1, programSources: 3, dependenciesComplete: true } }
 }

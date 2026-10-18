@@ -31,6 +31,7 @@ test("budget-aware references retain the warm interactive context", async (t) =>
     cwd: projectRoot,
     rootUri: pathToFileURL(workspace).href,
     env: {
+      ARKTS_REFERENCES_RESIDENT_FAST_PATH: "0",
       ARKLINE_HARMONY_SDK_PATH: path.join(root, "missing-sdk"),
       DEVECO_SDK_HOME: path.join(root, "missing-deveco"),
       ARKTS_LSP_LOG_DIR: logDirectory,

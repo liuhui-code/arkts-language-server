@@ -1,9 +1,10 @@
+import { createHash } from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 import { isDeepStrictEqual } from "node:util"
 
 import { comparableLocations, normalizeReferences, validateLocations } from "./reference-location-oracle.mjs"
-import { maxNullable } from "./reference-replay-evidence.mjs"
+import { maxNullable, semanticAttributionEnabled } from "./reference-replay-evidence.mjs"
 import { editCallKinds, validateEditCallPayload } from "./prepared-edit-call.mjs"
 
 const latencyContract = JSON.parse(fs.readFileSync(new URL("../../config/semantic-release-matrix.json", import.meta.url))).latency
@@ -28,7 +29,7 @@ export function checkPreparedLocations(result, expected, workspace, overlays) {
   const missing = expected.locations.filter(location => !actualKeys.has(key(location)))
   const extra = actual.filter(location => !expectedKeys.has(key(location)))
   return { equal: invalid.length === 0 && missing.length === 0 && extra.length === 0 && duplicates.length === 0,
-    missing, extra, duplicates, invalid, locations: actual }
+    missing, extra, duplicates, invalid, locations: actual, expectedLocations: expected.locations }
 }
 
 export function checkPreparedPayload(result, expected, sourceItem, context) {
@@ -94,7 +95,7 @@ export function summarizePreparedBuckets(suite, requests, readinessStatus = "REA
       latencyTargetMs: latencyContract.targetMs, latencyCeilingMs: latencyContract.p95MsMax,
       latencyMs: { p50: percentile(latencies, .5), p95,
         p99: percentile(latencies, .99), max: latencies.at(-1) ?? null },
-      gateStatus: "BLOCKED", reason: postReady && failures ? "EXACT_QUERY_FAILED" : ready ? suite.runtime.env.ARKTS_REFERENCES_TRACE === "1"
+      gateStatus: "BLOCKED", reason: postReady && failures ? "EXACT_QUERY_FAILED" : ready ? semanticAttributionEnabled(suite.runtime.env)
         ? "ATTRIBUTION_ONLY" : samples.length < 100 ? "INSUFFICIENT_RELEASE_REQUESTS" : "INSUFFICIENT_RELEASE_SESSIONS" : reason,
       controlStatus: failures || p95 > latencyContract.p95MsMax ? "FAIL"
         : samples.length !== group.plannedSamples || samples.length < 10 ? "BLOCKED" : "PASS",
@@ -103,8 +104,11 @@ export function summarizePreparedBuckets(suite, requests, readinessStatus = "REA
 }
 
 export function preparedMemory(samples, targetPid, sampleIntervalMs, samplerStderr) {
-  const gaps = samples.slice(1).map((sample, index) => sample.timestamp - samples[index].timestamp).sort((a, b) => a - b)
+  const monotonic = samples.some(sample => Object.hasOwn(sample, "monotonicMs"))
+  const clock = monotonic ? "monotonicMs" : "timestamp"
+  const gaps = samples.slice(1).map((sample, index) => sample[clock] - samples[index][clock]).sort((a, b) => a - b)
   return { measurementKind: "external-process-tree-rss", platform: process.platform,
+    ...(monotonic ? { intervalClock: "sampler-monotonic-ms" } : {}),
     requestedIntervalMs: sampleIntervalMs, actualIntervalMs: { p50: percentile(gaps, .5),
       p95: percentile(gaps, .95), max: gaps.at(-1) ?? null },
     sampleCount: samples.length, targetPid,
@@ -119,6 +123,16 @@ export function preparedMemory(samples, targetPid, sampleIntervalMs, samplerStde
 export function writePreparedReport(file, report) {
   fs.mkdirSync(path.dirname(file), { recursive: true })
   fs.writeFileSync(file, `${JSON.stringify(report, null, 2)}\n`, { flag: "wx" })
+}
+
+export function archivePreparedSamples(reportFile, samplesFile) {
+  if (!fs.existsSync(samplesFile)) return undefined
+  const bytes = fs.readFileSync(samplesFile)
+  const file = `${reportFile}.rss.jsonl`
+  fs.mkdirSync(path.dirname(file), { recursive: true })
+  fs.writeFileSync(file, bytes, { flag: "wx" })
+  return { file: path.basename(file), sha256: createHash("sha256").update(bytes).digest("hex"),
+    byteLength: bytes.byteLength }
 }
 
 function percentile(sorted, ratio) {

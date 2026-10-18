@@ -32,6 +32,7 @@ test("a newer watched edit cannot recover references from an older committed cat
     cwd: projectRoot,
     rootUri: pathToFileURL(workspace).href,
     env: {
+      ARKTS_REFERENCES_RESIDENT_FAST_PATH: "0",
       ARKLINE_HARMONY_SDK_PATH: path.join(root, "missing-sdk"),
       DEVECO_SDK_HOME: path.join(root, "missing-deveco"),
       ARKTS_INDEX_CACHE_DIR: path.join(root, "cache"),
@@ -75,7 +76,9 @@ test("a newer watched edit cannot recover references from an older committed cat
 
   const references = async includeDeclaration => {
     const response = await session.request("textDocument/references", {
-      textDocument: { uri: queryUri }, position, context: { includeDeclaration },
+      textDocument: { uri: queryUri },
+      position: { ...position, character: position.character + Number(includeDeclaration) },
+      context: { includeDeclaration },
     }, { timeoutMs: 20_000 })
     assert.equal(response.error, undefined, JSON.stringify(response.error))
     return sortedLocations(response.result)

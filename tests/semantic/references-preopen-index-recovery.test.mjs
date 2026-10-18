@@ -74,7 +74,8 @@ test("pre-open edits reject stale candidates and recover after their catalog com
 
   const references = (includeDeclaration) => session.request("textDocument/references", {
     textDocument: { uri: queryUri },
-    position: positionAt(query, query.lastIndexOf("Thing") + 1),
+    // Exercise planning for both policies, bypassing the complete result for the first cursor.
+    position: positionAt(query, query.lastIndexOf("Thing") + 1 + Number(includeDeclaration)),
     context: { includeDeclaration },
   }, { timeoutMs: 20_000 })
   const fallback = await references(false)

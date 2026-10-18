@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url"
 
 import { LspSession } from "../support/lsp-session.mjs"
 import { projectRoot } from "../support/lsp-process.mjs"
+import { releasePreparedOwner } from "../support/semantic-preparation-state.mjs"
 
 for (const sessionReuse of ["off", "experimental"]) {
   test("session reuse " + sessionReuse + ": a consumed disk delta cannot certify the other root alias",
@@ -98,8 +99,8 @@ async function replay(t, sessionReuse) {
     assert.deepEqual((await diagnostic(document)).params.diagnostics, [])
     const events = fixture.events().slice(before)
     const sequence = lastReuse(events)
-    assert.ok(events.some(event => event.event === "semantic.context.create"
-      && event.contextSequence === sequence))
+    assert.ok(fixture.events().some(event => event.event === "semantic.context.create"
+      && event.contextSequence === sequence), "the query must use a real owner, including one prepared at initialization")
     return sequence
   }
 
@@ -167,6 +168,7 @@ async function openFixture(t, sessionReuse) {
       ARKTS_REFERENCES_CONTEXT_RETENTION: "dispose", ARKTS_REFERENCES_RESIDENT_FAST_PATH: "0",
       ARKTS_REFERENCES_ANCHOR_REUSE: "0", ARKTS_SEMANTIC_SESSION_REUSE: sessionReuse,
       ARKTS_AUTO_IMPORT_PROJECT_ROOT_PROFILE: "workspace",
+      ARKTS_BENCHMARK_CONTROL: "1",
     },
   })
   t.after(async () => {
@@ -185,6 +187,9 @@ async function openFixture(t, sessionReuse) {
   assert.equal(initialized.error, undefined, JSON.stringify(initialized.error))
   session.initialized = true
   session.transport.send({ jsonrpc: "2.0", method: "initialized", params: {} })
+  await session.transport.notification("arkts/semanticPreparation",
+    message => message.params.rootUri === pathToFileURL(roots[1]).href && message.params.phase === "complete", 20_000)
+  await releasePreparedOwner(session, pathToFileURL(roots[0]).href)
   return {
     session, roots, targetPath, otherPath,
     events() {

@@ -36,6 +36,7 @@ export async function runNodeTestLayer({
   manifest = TEST_LAYER_MANIFEST,
   spawn = spawnChild,
   stdout = process.stdout,
+  stderr = process.stderr,
   cwd = projectRoot,
   nodePath = process.execPath,
   evidenceRoot = process.env.ARKTS_TEST_EVIDENCE_ROOT,
@@ -65,7 +66,7 @@ export async function runNodeTestLayer({
       if (!(await fs.stat(artifact)).isFile()) throw new Error("release sidecar is not a file")
       await fs.access(artifact, fsConstants.X_OK)
     }
-    return runTestChild({ spawn, nodePath, entries, cwd, target })
+    return runTestChild({ spawn, nodePath, entries, cwd, target, stderr })
   }
   const { code, signal } = evidenceRoot
     ? await terminationWithEvidence({ runChild, evidenceRoot, target })
@@ -73,7 +74,7 @@ export async function runNodeTestLayer({
   return { entries, code, signal }
 }
 
-async function runTestChild({ spawn, nodePath, entries, cwd, target }) {
+async function runTestChild({ spawn, nodePath, entries, cwd, target, stderr }) {
   const reportDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "arkts-node-test-runtime-"))
   const reportPath = path.join(reportDirectory, "summary.json")
   try {
@@ -90,9 +91,12 @@ async function runTestChild({ spawn, nodePath, entries, cwd, target }) {
       ],
       { cwd, stdio: "inherit" },
     ))
-    if (termination.code !== 0 || termination.signal !== null) return termination
+    if (termination.code !== 0 || termination.signal !== null) {
+      stderr.write(`[node-test-layer] child-exit code=${termination.code} signal=${termination.signal}\n`)
+      return termination
+    }
 
-    const runtimeSummary = await readRuntimeSummary(reportPath)
+    const runtimeSummary = await readRuntimeSummary(reportPath, stderr)
     return runtimePolicyAllows(target, runtimeSummary)
       ? termination
       : { code: 1, signal: null }
@@ -101,22 +105,28 @@ async function runTestChild({ spawn, nodePath, entries, cwd, target }) {
   }
 }
 
-async function readRuntimeSummary(reportPath) {
+async function readRuntimeSummary(reportPath, stderr) {
+  const unavailable = reason => {
+    stderr.write(`[node-test-layer] runtime-summary-unavailable reason=${reason} child-code=0\n`)
+    return null
+  }
   let handle
   try {
     handle = await fs.open(reportPath, "r")
     const bytes = Buffer.alloc(MAX_RUNTIME_REPORT_BYTES + 1)
     const { bytesRead } = await handle.read(bytes, 0, bytes.length, 0)
-    if (bytesRead > MAX_RUNTIME_REPORT_BYTES) return null
+    if (bytesRead > MAX_RUNTIME_REPORT_BYTES) return unavailable("OVERSIZED")
     const summary = JSON.parse(bytes.subarray(0, bytesRead).toString("utf8"))
     if (summary?.schema !== "arkts-language-server.node-test-runtime"
       || summary.schemaVersion !== 1
       || !validRuntimeCounts(summary.counts)) {
-      return null
+      return unavailable("INVALID_SCHEMA")
     }
     return summary
-  } catch {
-    return null
+  } catch (error) {
+    const reason = typeof error?.code === "string" && /^[A-Z0-9_]{1,32}$/u.test(error.code)
+      ? error.code : error instanceof SyntaxError ? "INVALID_JSON" : "READ_ERROR"
+    return unavailable(reason)
   } finally {
     await handle?.close()
   }

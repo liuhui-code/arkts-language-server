@@ -17,6 +17,7 @@ import { processMemoryFields, type StructuredLogger } from "../observability/log
 import type { CallHierarchySourceAuthority } from "./call-hierarchy-source-authority.js"
 import { InFlightRequestCoalescer } from "./in-flight-request-coalescer.js"
 import { RequestFreshness, type FreshRequest } from "./request-freshness.js"
+import { runDiskSourceRequest } from "./disk-source-request.js"
 
 interface SemanticRequestRunnerDependencies {
   documents: TextDocuments<TextDocument>
@@ -63,8 +64,35 @@ interface CallHierarchyPrepareRequest<T> {
 
 export class SemanticRequestRunner {
   readonly #coalescer = new InFlightRequestCoalescer()
+  #nextDiagnosticWaitId = 1
 
   constructor(private readonly dependencies: SemanticRequestRunnerDependencies) {}
+
+  /** Observes the original cache-miss wait inside the complete response interval. */
+  waitForReferenceDiagnostics(document: DocumentSnapshot, suspend: () => Promise<() => void>): Promise<() => void> {
+    if (process.env.ARKTS_SEMANTIC_QUEUE_TRACE !== "1") return suspend()
+    const diagnosticWaitId = this.#nextDiagnosticWaitId++
+    const startedAt = performance.now()
+    const record = (event: string, fields: Readonly<Record<string, string | number>>) => {
+      try {
+        this.dependencies.logger.info(event, { diagnosticWaitId, uri: document.uri,
+          workspaceId: document.workspaceId, documentVersion: document.version, ...fields })
+      } catch { /* Missing observation must not change diagnostic ownership or request results. */ }
+    }
+    record("references.diagnostics.wait.started", { monotonicMs: startedAt })
+    return (async () => {
+      let outcome = "error"
+      try {
+        const resume = await suspend()
+        outcome = "settled"
+        return resume
+      } finally {
+        const monotonicMs = performance.now()
+        record("references.diagnostics.wait.settled", { outcome, monotonicMs,
+          diagnosticQuiescenceWaitMs: monotonicMs - startedAt })
+      }
+    })()
+  }
 
   async run<T>(request: SemanticRequest<T>): Promise<T> {
     const startedAt = performance.now()
@@ -74,8 +102,9 @@ export class SemanticRequestRunner {
       this.dependencies.assertRunning()
       const document = this.dependencies.documents.get(request.documentUri)
       if (!document || !document.uri.startsWith("file:")) {
-        outcome = "document-unavailable"
-        return request.fallback
+        outcome = "disk-source"
+        return await runDiskSourceRequest(request, this.dependencies.callHierarchySources, this.dependencies.freshness,
+          this.#coalescer, () => this.dependencies.logger.info("references.coalesced", { method: request.method, sourceKind: "disk" }))
       }
 
       const requestedDocument = this.dependencies.snapshot(document)
@@ -192,13 +221,13 @@ export class SemanticRequestRunner {
         outcome = resolution.reason
         return request.incomplete(resolution.reason)
       }
-      if (resolution.source.kind !== "open") {
-        outcome = "source-unavailable"
-        return request.incomplete("source-unavailable")
-      }
-      const result = await request.execute(resolution.source.document, freshRequest.signal)
+      const document: DocumentSnapshot = resolution.source.kind === "open" ? resolution.source.document
+        : Object.freeze({ uri: resolution.source.uri, version: 0, text: resolution.source.text,
+          workspaceId: resolution.source.workspaceId,
+          source: Object.freeze({ kind: "disk" as const, rootUri: request.rootUri }) })
+      const result = await request.execute(document, freshRequest.signal)
       if (freshRequest.clientCancelled()) throw requestCancelled()
-      if (!freshRequest.isCurrent() || result.documentVersion !== resolution.source.document.version) {
+      if (!freshRequest.isCurrent() || result.documentVersion !== document.version) {
         outcome = "stale"
         return request.fallback
       }

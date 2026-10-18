@@ -14,6 +14,11 @@ export const preparedBuckets = ["first-unseen-symbol", "first-unopened-module", 
   "edit-body", "edit-reference", "edit-public-api", "after-eviction", "pressure-recovery-repeat",
   "restart-after-validated-ready"]
 
+export function beginsPreparedRestart(scenarios, index) {
+  return scenarios[index].bucket === "restart-after-validated-ready"
+    && (index === 0 || scenarios[index - 1].bucket !== "restart-after-validated-ready")
+}
+
 export async function capturePreparedIdentity(options) {
   const assets = { ...options, file: options.file ?? gitFiles(options.workspace)[0],
     oracle: options.oracle ?? options.server, out: path.join(options.workspace, ".prepared-unused-output") }
@@ -132,6 +137,10 @@ export async function readPreparedSuite(options) {
   const editedTexts = new Map()
   let snapshot = 0
   for (const [scenarioIndex, scenario] of suite.scenarios.entries()) {
+    if (!suite.readiness.candidateControl && beginsPreparedRestart(suite.scenarios, scenarioIndex)) {
+      seen.clear()
+      queriedSnapshots.clear()
+    }
     if (typeof scenario.id !== "string" || !scenario.id || scenarioIds.has(scenario.id)) invalid("DUPLICATE_SCENARIO")
     scenarioIds.add(scenario.id)
     if (!preparedBuckets.includes(scenario.bucket) || !ids.has(scenario.targetId)) invalid("SCENARIO_TARGET")
@@ -148,9 +157,12 @@ export async function readPreparedSuite(options) {
       ...completionSelectionIdentity(target)])
     const queryIdentity = JSON.stringify([selection, target.includeDeclaration])
     if (Boolean(scenario.edit) !== scenario.bucket.startsWith("edit-")) invalid("EDIT_BUCKET_MISMATCH")
+    if (scenario.waitForEditDiagnostics !== undefined
+      && (scenario.waitForEditDiagnostics !== true || !scenario.edit)) invalid("EDIT_DIAGNOSTIC_BARRIER")
     if (scenario.edit) snapshot++
     else if (snapshot > 0 && oracleSnapshots.get(queryIdentity) !== snapshot) invalid("POST_EDIT_ORACLE_REQUIRED")
-    if (scenario.bucket === "first-unseen-symbol" && seen.has(selection)) invalid("DUPLICATE_UNSEEN_TARGET")
+    if ((scenario.bucket === "first-unseen-symbol" || !suite.readiness.candidateControl
+      && scenario.bucket === "restart-after-validated-ready") && seen.has(selection)) invalid("DUPLICATE_UNSEEN_TARGET")
     if (scenario.bucket === "repeated-snapshot" && queriedSnapshots.get(queryIdentity) !== snapshot) {
       invalid("REPEAT_WITHOUT_IDENTICAL_SNAPSHOT")
     }

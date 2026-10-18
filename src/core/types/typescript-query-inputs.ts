@@ -25,3 +25,11 @@ export function loadedConfigurationIsCurrent(
   const packages = resolver.configurationFreshness(rootPath, () => work.item(), "capture")
   return work.finish(Boolean(compiler?.() && packages?.()))
 }
+
+/** Same full scan and error as existing query fences; no cached validity answer. */
+export function assertCurrentQueryInputs(witness: LoadedConfigurationWitness | undefined,
+  resolver: LocalPackageResolver, rootPath: string, checkpoint: () => void): void {
+  if (!loadedConfigurationIsCurrent(witness, resolver, rootPath, checkpoint)) {
+    throw new SemanticInputUnavailableError()
+  }
+}

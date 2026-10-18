@@ -260,7 +260,8 @@ test("all interactive queries finish during detached verification and edits fenc
       assert.deepEqual((await diagnostic(session, fixture.uri("ZConsumer.ets"), 2)).params.diagnostics, [])
       for (const includeDeclaration of [false, true]) {
         const response = await session.request("textDocument/references", {
-          ...params, context: { includeDeclaration },
+          ...params, position: { ...params.position, character: params.position.character + Number(includeDeclaration) },
+          context: { includeDeclaration },
         }, { timeoutMs: 20_000 })
         assert.equal(response.error, undefined, JSON.stringify(response.error))
         const expected = includeDeclaration

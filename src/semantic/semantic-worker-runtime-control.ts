@@ -21,11 +21,12 @@ interface RecycleWitnessControl {
 }
 
 export type WorkerControl = RegisterRootControl | ConfigurationControl
-  | MemoryPressureControl | RecycleWitnessControl
+  | MemoryPressureControl | RecycleWitnessControl | { readonly control: "shutdown" }
 
 export function isWorkerControl(value: unknown): value is WorkerControl {
   if (!value || typeof value !== "object") return false
   const control = (value as { control?: unknown }).control
+  if (control === "shutdown") return true
   if (control === "registerRoot") {
     const candidate = value as Partial<RegisterRootControl>
     return Number.isSafeInteger(candidate.epoch)

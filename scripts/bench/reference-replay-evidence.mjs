@@ -1,6 +1,7 @@
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import { performance } from "node:perf_hooks"
 
 import { ordinalCompare } from "./reference-location-oracle.mjs"
 import {
@@ -146,4 +147,17 @@ export function maxNullable(values) {
 
 export function delay(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds))
+}
+
+export async function delayUntil(deadlineMs) {
+  let remaining = deadlineMs - performance.now()
+  while (remaining > 0) {
+    await delay(Math.ceil(remaining))
+    remaining = deadlineMs - performance.now()
+  }
+}
+
+/** Observer-enabled wall time is attribution, never normal product timing. */
+export function semanticAttributionEnabled(flags = {}) {
+  return flags.ARKTS_REFERENCES_TRACE === "1" || flags.ARKTS_SEMANTIC_QUEUE_TRACE === "1"
 }

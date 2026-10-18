@@ -1,10 +1,10 @@
 import fs from "node:fs"
-import { createHash, randomUUID } from "node:crypto"
+import { randomUUID } from "node:crypto"
 import path from "node:path"
 
 import type { DocumentSnapshot } from "../contracts/document.js"
 import type { ProjectResolverPort } from "../contracts/project-resolver.js"
-import { semanticUnprepared, type SemanticReadinessQuery, type SemanticReadinessReport } from "../contracts/semantic-readiness.js"
+import { type SemanticReadinessQuery, type SemanticReadinessReport } from "../contracts/semantic-readiness.js"
 import { isProjectResourceFile } from "./resource-file-identity.js"
 import type {
   WorkspaceExportIndexPort,
@@ -16,28 +16,29 @@ import type { StructuredLogger } from "../observability/logger.js"
 import { OHOS_TYPESCRIPT_BACKEND_IDENTITY } from "./backends/ohos-typescript/identity.js"
 import type { SemanticBackend } from "./backends/semantic-backend.js"
 import { referenceSearchRuntimeConfig } from "./references/reference-runtime.js"
-import { logReferenceCandidateSelection } from "./references/reference-index-telemetry.js"
+import { routeReferenceQuery } from "./references/reference-query-router.js"
 import { selectReferenceCandidates, type ReferenceCandidateSelection } from "./references/reference-candidate-selection.js"
 import { interactiveSemanticRuntimeConfig } from "./interactive-runtime.js"
 import { discoverCompletionCandidates } from "./completion-discovery.js"
 import { resourceEventPath, toFilePath } from "./semantic-worker-file-identity.js"
 import { SemanticWorkerHost, semanticWorkerData } from "./semantic-worker-host.js"
-import { SemanticWorkerRecycle, workerAbortState as abortState } from "./semantic-worker-recycle.js"
+import { SemanticWorkerRecycle } from "./semantic-worker-recycle.js"
 import { SemanticWorkerMutationTracker } from "./semantic-worker-mutation-tracker.js"
+import { workerDocumentRequest } from "./semantic-worker-document-request.js"
+import { workerCallHierarchyRequest } from "./semantic-worker-source-request.js"
+import { WorkerProjectPreparation } from "./worker-project-preparation.js"
 import { ReferenceIndexFreshness } from "./references/reference-index-freshness.js"
 import { ReferenceInputState, type ReferenceInputSnapshot } from "./references/reference-input-snapshot.js"
 import { ReferenceResultCache } from "./references/reference-result-cache.js"
+import { cachedReferenceResult, referenceCacheAdmission } from "./references/reference-cache-admission.js"
 import { logReferenceCache } from "./references/reference-cache-telemetry.js"
 import {
-  SemanticWorkerCancelState,
   SemanticWorkerSupervisorError,
   isSemanticWorkerUriWithinRoot,
   type RootSemanticWorkerMutationInput,
-  type RootSemanticWorkerRequestInput,
 } from "./semantic-worker-supervisor.js"
 import type {
   SemanticWorkerJsonObject,
-  SemanticWorkerJsonValue,
   SemanticWorkerMethod,
   SemanticWorkerRequestArgsByMethod,
 } from "./worker-protocol.js"
@@ -64,8 +65,10 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
   readonly #host: SemanticWorkerHost
   readonly #referenceResults = new ReferenceResultCache()
   readonly #referenceInputs = new ReferenceInputState()
+  readonly #queriedRoots = new Set<string>()
   readonly #mutations: SemanticWorkerMutationTracker
   readonly #recycle: SemanticWorkerRecycle
+  readonly #preparation: WorkerProjectPreparation
   #inFlightPreparations = 0
   #projectConfiguration: unknown
   #sdkConfiguration: unknown
@@ -98,9 +101,15 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
     this.#recycle = new SemanticWorkerRecycle(this.#host, this.#environment, logger)
     this.#mutations = new SemanticWorkerMutationTracker(this.#host, this.#recycle,
       error => this.#mutationFailed(error))
+    this.#preparation = new WorkerProjectPreparation({
+      assertAvailable: () => this.#assertAvailable(), hasRoot: rootUri => this.#host.rootUris.includes(rootUri),
+      queriedRoots: this.#queriedRoots,
+      request: (rootUri, input, signal) => this.#recycle.request(rootUri, input, signal, () => this.#assertAvailable()),
+    })
   }
 
   configureProject(selection: unknown): void {
+    this.#preparation.configurationChanged()
     this.#recycle.configurationChanged()
     const ownedSelection = structuredClone(selection)
     this.#referenceInputs.configurationChanged()
@@ -111,6 +120,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
   }
 
   configureSdk(selection: unknown): void {
+    this.#preparation.configurationChanged()
     this.#recycle.configurationChanged()
     const ownedSelection = structuredClone(selection)
     this.#referenceInputs.configurationChanged()
@@ -130,22 +140,20 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
     return this.#recycle.run(this.#recycleOptions())
   }
 
-  async semanticReadiness(query: SemanticReadinessQuery): Promise<SemanticReadinessReport> {
-    this.#assertAvailable()
-    if (!query.prepare && !this.#host.rootUris.includes(query.rootUri)) return semanticUnprepared(query.rootUri)
-    const value = await this.#request("semanticReadiness", query.rootUri, query.rootUri, null,
-      { prepare: query.prepare }, query.signal)
-    return value as unknown as SemanticReadinessReport
+  semanticReadiness(query: SemanticReadinessQuery): Promise<SemanticReadinessReport> { return this.#preparation.read(query) }
+  initializeProject(query: Omit<SemanticReadinessQuery, "prepare">): Promise<SemanticReadinessReport> {
+    return this.#preparation.initialize(query)
   }
 
   #recycleOptions() {
     return {
       documents: this.#documents,
-      quiescent: this.#inFlightPreparations === 0 && this.#mutations.pendingCount === 0,
+      quiescent: !this.#preparation.active && this.#inFlightPreparations === 0 && this.#mutations.pendingCount === 0,
       checkHealth: () => this.#assertHealthy(),
       fail: (error: unknown) => { this.#failure = error },
       invalidate: () => {
         this.#referenceResults.clear()
+        this.#queriedRoots.clear()
         this.#referenceInputs.configurationChanged()
       },
     }
@@ -215,10 +223,10 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
   }
 
   resolveCompletion(query: Contract.SemanticCompletionResolveQuery) {
-    this.sync(query.document)
+    if (query.document.source?.kind !== "disk") this.sync(query.document)
     const { preResolved, ...completion } = query.completion
     if (
-      interactiveSemanticRuntimeConfig(this.#environment).autoImportProjectRootProfile
+      query.document.source?.kind !== "disk" && interactiveSemanticRuntimeConfig(this.#environment).autoImportProjectRootProfile
         === "discovery"
       && preResolved?.documentVersion === query.document.version
       && (preResolved.additionalTextEdits ?? []).every((edit) => (
@@ -263,12 +271,10 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
 
   cachedReferences(query: Contract.SemanticReferencesQuery, traceId?: string) {
     if (query.signal?.aborted) return undefined
-    this.sync(query.document)
-    const cached = query.signal?.aborted ? undefined : this.#referenceResults.get(query)
-    if (!cached) return undefined
-    logReferenceCache(this.#logger, this.#referenceResults, "references.cache.hit",
-      traceId ?? (this.#environment.ARKTS_REFERENCES_TRACE === "1" ? randomUUID() : undefined))
-    return { documentVersion: query.document.version, value: cached }
+    if (query.document.source?.kind !== "disk") this.sync(query.document)
+    return cachedReferenceResult(query, this.#referenceResults, input => this.semanticReadiness(input), () =>
+      logReferenceCache(this.#logger, this.#referenceResults, "references.cache.hit",
+        traceId ?? (this.#environment.ARKTS_REFERENCES_TRACE === "1" ? randomUUID() : undefined)))
   }
 
   async references(query: Contract.SemanticReferencesQuery, allowLocalSeed = true): Promise<Contract.VersionedSemanticResult<Contract.SemanticReferencesOutcome>> {
@@ -280,40 +286,24 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
         position: Object.freeze({ ...query.position }),
       })
       const traceId = this.#environment.ARKTS_REFERENCES_TRACE === "1" ? randomUUID() : undefined
-      const cached = this.cachedReferences(query, traceId)
+      const cached = await this.cachedReferences(query, traceId)
       if (cached) return cached
+      const cacheAdmission = query.document.source ? await referenceCacheAdmission(query, input => this.semanticReadiness(input)) : undefined
       const snapshot = this.#referenceInputs.capture(query.document.workspaceId,
         this.#documents.values(), this.#projectConfiguration, this.#sdkConfiguration)
       logReferenceCache(this.#logger, this.#referenceResults, "references.cache.miss", traceId)
-      const selectionStarted = performance.now()
-      const candidates = await this.#referenceCandidates(query, snapshot, traceId, allowLocalSeed)
-      this.#assertReferenceSnapshot(snapshot)
-      logReferenceCandidateSelection(this.#logger,
-        referenceSearchRuntimeConfig(this.#environment).strategy, traceId, selectionStarted, candidates)
-      const response = await this.#documentRequest<Contract.SemanticReferencesOutcome>("references", query, {
-        position: query.position,
-        includeDeclaration: query.includeDeclaration,
-        ...(traceId ? { traceId } : {}),
-        ...(this.#referenceIndexFreshness.isDirty(query.document.workspaceId)
-          ? { forceLegacy: true } : {}),
-        ...(candidates ? {
-          candidateUris: candidates.uris,
-          candidateIdentityComplete: candidates.identityComplete,
-          ...(candidates.anchorUri ? { candidateAnchorUri: candidates.anchorUri } : {}),
-          ...(candidates.anchorPosition ? { candidateAnchorPosition: candidates.anchorPosition } : {}),
-          ...(candidates.supportUris ? { candidateSupportUris: candidates.supportUris } : {}),
-        } : {}),
+      const runtime = referenceSearchRuntimeConfig(this.#environment)
+      return await routeReferenceQuery(query, {
+        traceId, logger: this.#logger, cache: this.#referenceResults, cacheAdmission,
+        strategy: runtime.strategy,
+        preferResident: this.#queriedRoots.has(query.document.workspaceId) && runtime.residentFastPath
+          && (this.#environment.ARKTS_REFERENCES_RESIDENT_FIRST ?? "1") === "1",
+        assertCurrent: () => this.#assertReferenceSnapshot(snapshot),
+        selectCandidates: () => this.#referenceCandidates(query, snapshot, traceId, allowLocalSeed),
+        forceLegacy: () => this.#referenceIndexFreshness.isDirty(query.document.workspaceId),
+        dispatch: args => this.#documentRequest<Contract.SemanticReferencesOutcome | null>("references", query, args),
+        retryWithoutSeed: () => this.references(query, false),
       })
-      this.#assertReferenceSnapshot(snapshot)
-      if (candidates?.anchorPosition && response.value.status === "incomplete" && response.value.reason !== "resource-budget-exceeded") {
-        this.#logger?.info("references.anchor.seed.fallback", { traceId, reason: response.value.reason })
-        return this.references(query, false)
-      }
-      if (!query.signal?.aborted && this.#referenceResults.set(query, response.value)) {
-        logReferenceCache(this.#logger, this.#referenceResults, "references.cache.store", traceId,
-          response.value.status === "complete" ? response.value.references.length : 0)
-      }
-      return response
     } finally {
       this.#inFlightPreparations -= 1
       this.#recycle.retryAutomatic()
@@ -453,6 +443,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
     this.#recycle.cancelAutomatic()
     this.#referenceResults.clear()
     this.#referenceInputs.clear()
+    this.#queriedRoots.clear()
     await this.#host.dispose()
   }
 
@@ -461,69 +452,18 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
     query: Contract.SemanticDocumentQuery,
     args: SemanticWorkerRequestArgsByMethod[Method],
   ): Promise<Contract.VersionedSemanticResult<Value>> {
-    if (query.signal?.aborted) throw new SemanticWorkerSupervisorError(
-      abortState(query.signal) === SemanticWorkerCancelState.contentModified
-        ? "content-modified" : "client-cancelled",
-    )
-    this.sync(query.document)
-    const value = await this.#request(method, query.document.workspaceId, query.document.uri,
-      query.document.version, args, query.signal)
-    return { documentVersion: query.document.version, value: value as unknown as Value }
+    return workerDocumentRequest(method, query, args,
+      { sync: document => this.sync(document), preparation: this.#preparation })
   }
 
   async #callHierarchyRequest<Value>(
     method: "outgoingCalls" | "incomingCalls",
     query: Contract.SemanticCallHierarchyItemQuery,
   ): Promise<Value> {
-    const rootUri = query.source.workspaceRootUri
-    const document = query.source.kind === "open"
-      ? query.source.document
-      : {
-          uri: query.source.uri,
-          version: 0,
-          text: query.source.text,
-          workspaceId: query.source.workspaceId,
-        }
-    const tracked = this.#documents.has(document.uri)
-    if (query.source.kind === "open") this.sync(document)
-    else this.#mutate(rootUri, {
-      kind: "open",
-      uri: document.uri,
-      documentVersion: document.version,
-      text: document.text,
+    return workerCallHierarchyRequest(method, query, {
+      sync: document => this.sync(document),
+      request: (operation, rootUri, uri, version, args, signal, diskSource) => this.#preparation.request(operation, rootUri, uri, version, args, signal, diskSource),
     })
-    const { sourceFingerprint: itemFingerprint, ...item } = query.item
-    const sourceFingerprint = itemFingerprint ?? createHash("sha256")
-      .update(document.text)
-      .digest("hex")
-    try {
-      const value = await this.#request(method, rootUri, document.uri, null, {
-        item,
-        sourceFingerprint,
-      }, query.signal)
-      return value as unknown as Value
-    } finally {
-      if (query.source.kind === "disk" && !tracked) {
-        this.#mutate(rootUri, {
-          kind: "close",
-          uri: document.uri,
-          documentVersion: document.version,
-        })
-      }
-    }
-  }
-
-  #request<Method extends SemanticWorkerMethod>(
-    method: Method,
-    rootUri: string,
-    uri: string,
-    expectedDocumentVersion: number | null,
-    args: SemanticWorkerRequestArgsByMethod[Method],
-    signal?: AbortSignal,
-  ): Promise<SemanticWorkerJsonValue> {
-    return this.#recycle.request(rootUri, {
-      method, uri, expectedDocumentVersion, args,
-    } as RootSemanticWorkerRequestInput, signal, () => this.#assertAvailable())
   }
 
   #mutate(rootUri: string, mutation: RootSemanticWorkerMutationInput): void {

@@ -98,7 +98,7 @@ test("experimental L3 admission verifies uncached references without rebuilding 
       .filter(event => event.event === "semantic.context.create").length
     for (const includeDeclaration of [false, true]) {
       const response = await session.request("textDocument/references", {
-        textDocument: { uri }, position: { line: 0, character: 14 },
+        textDocument: { uri }, position: { line: 0, character: 14 + Number(includeDeclaration) },
         context: { includeDeclaration },
       }, { timeoutMs: 20_000 })
       assert.equal(response.error, undefined, JSON.stringify(response.error))
@@ -378,6 +378,7 @@ for (const [strategy, pressureAdmission = "1", cancelFirst = false, batchRoots =
           ARKTS_INDEX_CACHE_DIR: path.join(directory, "cache"), ARKTS_LSP_LOG_DIR: logs,
           ARKTS_REFERENCES_STRATEGY: strategy, ARKTS_REFERENCES_TRACE: "1",
           ARKTS_REFERENCES_BATCH_ROOTS: batchRoots, ARKTS_MEMORY_BUDGET_MB: "1024",
+          ARKTS_REFERENCES_RESIDENT_FAST_PATH: "0",
           ARKTS_BENCHMARK_CONTROL: "1", ARKTS_L01_PRESSURE_ADMISSION: pressureAdmission,
           ARKTS_TEST_REFERENCE_VERIFIER_DELAY_MS: "1500",
           ARKTS_L03_COST_AWARE_EVICTION: jointPolicy ? "1" : "0",

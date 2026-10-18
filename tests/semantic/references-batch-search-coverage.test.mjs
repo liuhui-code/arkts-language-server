@@ -3,6 +3,8 @@ import fs from "node:fs"
 import path from "node:path"
 import test from "node:test"
 
+import { assertColdOwnerRecovery } from "../support/semantic-preparation-state.mjs"
+
 import { assertKnownReferences, createFixture, createTestSdk, positionAt, replay, waitForEvent } from "../support/reference-coverage-replay.mjs"
 
 test("an unchanged complete resident Program answers exact references without verifier batches", async (t) => {
@@ -27,7 +29,7 @@ test("indexed constructor queries reuse the original cursor instead of trusting 
     assert.equal(resident.events.filter(event => event.event === "references.resident.hit").length, 2)
     assert.ok(!resident.events.some(event => event.event === "references.batch.start"))
     assert.ok(!resident.events.some(event => event.event === "references.anchor.complete"
-      && event.verifierIsolation === "transient-worker"))
+      && event.verifierIsolation === "sdk-cache-worker"))
     assert.equal(resident.events.filter(event => event.event === "references.cache.miss").length, 2)
     assert.ok(!resident.events.some(event => event.event === "references.cache.hit"))
   }
@@ -221,19 +223,31 @@ test("an unnotified source edit rejects the old resident text and preserves new 
 })
 
 test("an unprovable loaded lookup exposes its configuration failure without guessing resident input", async (t) => {
-  const fixture = createFixture(t)
-  fixture.sources["Target.ets"] = 'import "./Poison"\n' + fixture.sources["Target.ets"]
-  fs.writeFileSync(path.join(fixture.root, "Target.ets"), fixture.sources["Target.ets"])
-  fs.symlinkSync(path.join(fixture.root, "does-not-exist.ts"), path.join(fixture.root, "Poison.ts"), "file")
-  const resident = await replay(t, fixture, "batched", { warm: "incomplete-implementation", resident: true })
-  const fresh = await replay(t, fixture, "legacy")
-  assert.deepEqual(resident.results, fresh.results)
-  assert.ok(!resident.events.some(event => event.event === "references.resident.hit"))
-  assert.ok(resident.events.some(event => event.event === "references.batch.start"))
-  assert.ok(resident.events.some(event => event.event === "references.resident.proof.rejected"
-    && event.stage === "configuration" && event.reason === "configuration-identity-unavailable"
-    && event.sourcePath === path.join(fixture.root, "Poison.ts")),
-  "the actual unprovable compiler lookup must identify its cause and source")
+  for (const strategy of ["legacy", "batched"]) {
+    const fixture = createFixture(t)
+    fixture.sources["Target.ets"] = 'import "./Poison"\n' + fixture.sources["Target.ets"]
+    fs.writeFileSync(path.join(fixture.root, "Target.ets"), fixture.sources["Target.ets"])
+    fs.symlinkSync(path.join(fixture.root, "does-not-exist.ts"), path.join(fixture.root, "Poison.ts"), "file")
+    const recovered = await replay(t, fixture, strategy, {
+      warm: "incomplete-implementation", resident: strategy === "batched", expectedReferencesError: -32803,
+      afterRejectedReferences: async session => {
+        fs.writeFileSync(path.join(fixture.root, "does-not-exist.ts"), "export const restored = 1\n")
+        session.transport.send({ jsonrpc: "2.0", method: "workspace/didChangeWatchedFiles",
+          params: { changes: [{ uri: fixture.uri("does-not-exist.ts"), type: 1 },
+            { uri: fixture.uri("Poison.ts"), type: 2 }] } })
+        fixture.sources["Target.ets"] = "// recovered 👩‍💻\n" + fixture.sources["Target.ets"]
+        session.changeDocument({ uri: fixture.uri("Target.ets"), version: 2, text: fixture.sources["Target.ets"] })
+        const latest = await session.transport.notification("textDocument/publishDiagnostics",
+          message => message.params.uri === fixture.uri("Target.ets") && message.params.version === 2, 10_000)
+        assert.deepEqual(latest.params.diagnostics, [])
+      },
+    })
+    assert.deepEqual(recovered.results, (await replay(t, fixture, "legacy")).results)
+    assert.ok(recovered.events.some(event => event.event === "references.resident.proof.rejected"
+      && event.stage === "configuration" && event.reason === "configuration-identity-unavailable"
+      && event.sourcePath === path.join(fixture.root, "Poison.ts")),
+    "the actual unprovable compiler lookup must identify its cause and source")
+  }
 })
 
 test("negative descendants share their loaded absent ancestor without exhausting resident admission", async (t) => {
@@ -246,7 +260,8 @@ test("negative descendants share their loaded absent ancestor without exhausting
   assert.deepEqual(resident.results, fresh.results)
   assert.ok(!resident.events.some(event => event.reason === "configuration-witness-capacity"),
     "one actually observed absent ancestor must not occupy thousands of witness paths")
-  assert.equal(resident.events.filter(event => event.event === "references.resident.hit").length, 2)
+  assert.equal(resident.events.filter(event => event.event === "references.resident.hit").length, 2,
+    JSON.stringify(resident.events.filter(event => /resident|semantic.prepare.complete/u.test(event.event))))
   assert.ok(!resident.events.some(event => event.event === "references.batch.start"))
   const created = await replay(t, fixture, "batched", { warm: true, resident: true,
     afterWarm: () => fs.mkdirSync(path.join(fixture.root, "Absent")) })
@@ -304,8 +319,10 @@ test("level3 disposal invalidates resident reuse and the complete fallback recov
   })
   assert.deepEqual(disposed.results, legacy.results)
   assertKnownReferences(fixture, disposed.results)
-  assert.ok(!disposed.events.some(event => event.event === "references.resident.hit"))
-  assert.ok(disposed.events.some(event => event.event === "references.batch.start"))
+  const evicted = disposed.events.findLastIndex(event => event.event === "semantic.context.evict"
+    && event.reason === "memory-level3")
+  assert.ok(evicted >= 0)
+  assertColdOwnerRecovery(disposed.events.slice(evicted + 1))
 })
 
 for (const selectedPolicy of [false, true]) {

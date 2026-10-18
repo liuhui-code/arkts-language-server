@@ -1,3 +1,4 @@
+import { stopReferenceVerifierWorkers } from "./references/reference-verifier-client.js"
 import { AsyncLocalStorage } from "node:async_hooks"
 import { parentPort, threadId, workerData } from "node:worker_threads"
 
@@ -8,6 +9,7 @@ import { SemanticInputUnavailableError } from "../core/types/typescript-query-in
 import type { StructuredLogger } from "../observability/logger.js"
 import { SingleRootProjectResolver } from "../project/single-root-project-resolver.js"
 import { OhosTypeScriptSemanticEngine } from "./backends/ohos-typescript/engine.js"
+import { enableSharedSdkRetention } from "./backends/ohos-typescript/registry-pool.js"
 import { createSemanticRuntimeMetricsRecorder } from "./coordinator/metrics.js"
 import { SemanticMemoryPolicy } from "./coordinator/memory-policy.js"
 import { createPostEvictionGcProbe } from "./coordinator/post-eviction-gc-probe.js"
@@ -16,8 +18,10 @@ import type { SemanticRuntimeConfig } from "./coordinator/runtime-config.js"
 import { runTransientDiagnosis } from "./diagnostics/transient-diagnosis.js"
 import type { ReferenceSearchRuntimeConfig } from "./references/reference-runtime.js"
 import type { InteractiveSemanticRuntimeConfig } from "./interactive-runtime.js"
-import { SemanticCancellationScope } from "./semantic-cancellation-scope.js"
+import { SemanticCancellationScope, cancellationSignal } from "./semantic-cancellation-scope.js"
 import { isInteractiveSemanticWorkerMethod } from "./semantic-request-lanes.js"
+import { traceSemanticWorkerDispatch } from "./semantic-worker-queue-trace.js"
+import { workerRequestDocument } from "./semantic-worker-disk-source.js"
 import { isWorkerControl, pressureWorkerRecycleEnabled, requireParentPort,
   type WorkerControl } from "./semantic-worker-runtime-control.js"
 import {
@@ -58,12 +62,13 @@ const logger: StructuredLogger = {
   info: (event, fields) => postLog("info", event, referenceFields(event, fields)),
   error: (event, fields) => postLog("error", event, referenceFields(event, fields)),
 }
+enableSharedSdkRetention()
 const engine = new OhosTypeScriptSemanticEngine(projects, logger, {
   maxResidentContexts: data.runtimeConfig.maxResidentContexts,
   hostCancellationToken: cancellation.hostToken,
   references: data.references,
   refreshMemoryPressure: data.references?.l01PressureAdmission ? sampleMemory : undefined,
-  readMemoryPressure: data.references?.l03CostAwareEviction ? readMemoryPressure : undefined,
+  readMemoryPressure,
   onTransientWorker: data.metricsPath ? (kind, phase) => runtimeMetrics.onTransientWorker?.(kind, phase) : undefined,
   interactiveSdkAmbientProfile: data.interactive?.sdkAmbientProfile,
   interactiveProjectRootProfile: data.interactive?.projectRootProfile,
@@ -105,7 +110,11 @@ port.on("close", dispose)
 
 async function dispatch(message: unknown, receivedAt: number): Promise<void> {
   if (isWorkerControl(message)) {
-    applyControl(message)
+    if (message.control === "shutdown") {
+      dispose()
+      await stopReferenceVerifierWorkers()
+      port.postMessage({ workerEvent: "shutdownComplete" })
+    } else applyControl(message)
     return
   }
   if (isMutationLike(message)) {
@@ -114,6 +123,9 @@ async function dispatch(message: unknown, receivedAt: number): Promise<void> {
     return
   }
   const request = decodeSemanticWorkerRequest(message)
+  if (process.env.ARKTS_SEMANTIC_QUEUE_TRACE === "1") {
+    traceSemanticWorkerDispatch(logger, roots.get(request.epoch), request, receivedAt)
+  }
   const traceId = request.method === "references" || request.method === "define"
     ? request.args.traceId : undefined
   if (request.method === "references" && data.references?.trace) {
@@ -162,7 +174,7 @@ function failRuntime(error: unknown): void {
   dispose()
 }
 
-function applyControl(control: WorkerControl): void {
+function applyControl(control: Exclude<WorkerControl, { readonly control: "shutdown" }>): void {
   if (control.control === "registerRoot") {
     roots.set(control.epoch, control.rootUri)
     configuredRoots.add(control.rootUri)
@@ -212,9 +224,8 @@ function applyMutation(mutation: SemanticWorkerMutation): void {
       changes: [...mutation.changes],
     }])
   } else if (mutation.kind === "close") {
-    const previous = documents.get(mutation.uri)
     documents.delete(mutation.uri)
-    if (previous?.version !== 0) engine.close(mutation.uri)
+    engine.close(mutation.uri)
   } else {
     const snapshot = Object.freeze({
       uri: mutation.uri,
@@ -223,7 +234,7 @@ function applyMutation(mutation: SemanticWorkerMutation): void {
       workspaceId: rootUri,
     })
     documents.set(mutation.uri, snapshot)
-    if (snapshot.version !== 0) engine.sync(snapshot)
+    engine.sync(snapshot)
   }
   appliedRevisions.set(mutation.epoch, mutation.revision)
   port.postMessage({
@@ -240,7 +251,7 @@ async function answerRequest(request: SemanticWorkerRequest): Promise<void> {
     postError(request, "restart-required")
     return
   }
-  const document = documents.get(request.uri)
+  const document = workerRequestDocument(request, rootUri, documents.get(request.uri))
   if (request.method === "semanticReadiness" ? request.uri !== rootUri || request.expectedDocumentVersion !== null : !document || (
     request.expectedDocumentVersion !== null
     && document.version !== request.expectedDocumentVersion
@@ -303,7 +314,9 @@ function invoke(
       : engine.define({ document, position: request.args.position, signal }))
     case "typeDefinitions": return valueOf(engine.typeDefinitions({ document, position: request.args.position, signal }))
     case "implementations": return valueOf(engine.implementations({ document, position: request.args.position, signal }))
-    case "references": return valueOf(engine.referencesWithCandidates({
+    case "references": return request.args.residentOnly === true ? valueOf(engine.residentReferences({
+      document, position: request.args.position, includeDeclaration: request.args.includeDeclaration, signal,
+    })) : valueOf(engine.referencesWithCandidates({
       document,
       position: request.args.position,
       includeDeclaration: request.args.includeDeclaration,
@@ -407,7 +420,7 @@ function callHierarchySource(
   document: DocumentSnapshot,
   workspaceRootUri: string,
 ): Contract.SemanticCallHierarchySource {
-  return document.version === 0
+  return document.source?.kind === "disk"
     ? {
         kind: "disk",
         uri: document.uri,
@@ -428,16 +441,6 @@ function postError(request: SemanticWorkerRequest, code: SemanticWorkerErrorCode
     ok: false,
     error: createSemanticWorkerError(code),
   })
-}
-
-function cancellationSignal(cell: SharedArrayBuffer): AbortSignal {
-  const reason = new Error("Semantic worker request cancelled")
-  return {
-    get aborted() {
-      return readSemanticWorkerCancellationState(cell) !== SemanticWorkerCancelState.active
-    },
-    get reason() { return reason },
-  } as AbortSignal
 }
 
 function readMemoryPressure(): SemanticMemoryLevel {

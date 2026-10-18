@@ -1,6 +1,18 @@
 # ADR 0003: Reference verifier lifecycle
 
-Status: **Accepted**.
+Status: **Accepted**; physical Worker lifetime superseded by ADR 0016.
+
+2026-10-18 applicability: [ADR 0016](0016-reference-verifier-sdk-cache.md) replaces
+per-batch physical Worker termination with one reusable serial Worker retaining
+current SDK syntax trees. Per-job project LS disposal before publication, full
+scope, freshness, cancellation and serial verification remain required. Earlier
+measurements and dated applicability statements below remain historical evidence.
+
+2026-10-11 applicability: [ADR 0015](0015-default-resident-optimization-policy.md)
+enables complete resident-reference reuse by default. This ADR's per-batch Worker
+lifetime applies to transient fallback for misses or unproved scope. The dated
+default-off and admission statements below describe the earlier configuration;
+product graduation still requires L08, separately from the selected defaults.
 
 2026-10-06 decision boundary: [ADR 0014](0014-budgeted-long-lived-semantic-session.md)
 and its L01–L08 plan authorize a **different, default-off** resident-LS experiment.
@@ -33,6 +45,14 @@ compiler-verified result or failure. Do not make the verifier Language Service
 permanently resident. The [R1 evidence](../reports/2026-09-11-bounded-references-r1.md)
 found retention growth with a same-isolate prototype; cold profiling attributes
 most time to Program/Checker preparation, not `findReferences` itself.
+
+2026-10-15 [public release-order RED→GREEN](../tdd/op00-transient-verifier-release-order.md)
+requires synchronous native LS disposal before the verifier publishes its result
+or input failure: the parent may terminate immediately on receipt. Eight-file40/40
+and three real Settings sessions15/15 retain full results; six actual verifiers
+release676 Registry leases each before publication. This strengthens orderly
+completion, not shell/LS reuse, cancelled-path disposal or physical-memory proof.
+Per-batch termination, concurrency and the remaining graduation gates stay intact.
 
 Request-scoped Worker-shell reuse may be measured behind an experimental flag
 only after phase tracing exists. It may reuse the shell, not silently retain a

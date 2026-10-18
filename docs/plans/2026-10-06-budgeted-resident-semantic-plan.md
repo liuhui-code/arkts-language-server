@@ -1,15 +1,20 @@
 # ArkTS 预算约束长驻语义会话：L01–L08 执行计划
 
 2026-10-11 当前默认/交付政策由[ADR 0015](../adr/0015-default-resident-optimization-policy.md)
-更新：维护者授权六项组合默认开启，完整回归通过后通过PR先合入main。
-下方默认关闭和验收后推广记录为历史状态，L08仍IN_PROGRESS。
+更新：六项组合默认开启，PR #95 已合入 main `a111235b`，合入时完整
+check:fast 1585/1585 及 GitHub CI 通过；L08 仍 IN_PROGRESS。
+研究报告审核后的下一执行队列为
+[OP-00–OP-06 查询性能后续计划](2026-10-11-query-performance-follow-up-plan.md)，
+作为本计划 L08 的优化与验收切片；旧阶段证据中的默认关闭及验收后合入措辞
+仅描述当时状态，不决定当前默认或实施资格。
 
-初始日期：2026-10-06；推进规则更新：2026-10-08；L03–L05完成审计：2026-10-09；L06–L07完成审计：2026-10-10。状态：**当前实施主线；L01基线继续保留；L03–L07阶段DONE／实验默认关闭；L02 IN_PROGRESS；最终产品验收统一在L08**。
+初始日期：2026-10-06；推进规则更新：2026-10-08；L03–L05完成审计：2026-10-09；L06–L07完成审计：2026-10-10。状态：**当前实施主线；L01基线继续保留；L03–L07阶段DONE；六项组合默认开启；L02 IN_PROGRESS；最终产品验收统一在L08**。
 本计划接续 [2026-09-29 semantic-ready 计划](2026-09-29-semantic-ready-execution-plan.md)
 的需求与失败证据，不把旧 S-series 的阶段或 S05 候选重标成功。
-[ADR 0014](../adr/0014-budgeted-long-lived-semantic-session.md) 仅批准可证伪的
-实验实施；生产默认仍是 `indexed-batched + closure + full SDK`、
-`dispose` 策略、逐 batch transient verifier。达到 500 ms 尚未证明。
+[ADR 0014](../adr/0014-budgeted-long-lived-semantic-session.md) 保留最初实验决策；
+当前生产为 `indexed-batched + closure + full SDK`、`budget-aware` retention
+及已证明完整覆盖的 resident 优先路径，miss/unknown 保留 exact transient fallback。
+550 ms 正式验收尚未通过，500 ms 为优化目标。
 
 ## 路线决策和停止线
 
@@ -31,43 +36,45 @@ L01 resident-LS 可证伪基线
   → L08 soak、跨平台与 release 评审
 ```
 
+结果列保留各阶段当时的冻结构建与统计；当前默认和下一切片以本页开头与 OP 后续计划为准。
+
 | Stage | 当前状态 | 实施资格与结果 |
 | --- | --- | --- |
 | L01 | **IN_PROGRESS；真实符号、单次未保存编辑、单次 L3 恢复及 `findReferences` 进行中取消/恢复精确；500 ms 稳定性 NOT_MET，前置准备取消及时性/长期资源门禁未完成** | [首轮](../reports/2026-10-06-resident-l01-baseline.md)：42/42 exact，同文件未查符号 286/1,025/267 ms；[预打开](../reports/2026-10-06-resident-l01-preopen.md)：15/15 exact，跨文件未查符号 166/156/165 ms；[声明位置 A/B/C](../reports/2026-10-06-resident-l01-declarations-ab.md)：默认 indexed 与 legacy 各 2 个新进程、每进程 4/4 exact，indexed 跨文件未查符号 8.061/23.880 s，legacy 同快照 178/225 ms；[未保存编辑](../reports/2026-10-06-resident-l01-unsaved-reference-edit.md)：三进程 12/12 exact、9→10 引用及 v2 诊断，编辑后首次 1.371–1.597 s；[L3 恢复](../reports/2026-10-06-resident-l01-l3-recovery.md)：显式驱逐后未查符号 10/10 exact，trace-on 13.797 s，后续又见自动驱逐；[取消控制](../reports/2026-10-06-resident-l01-cancel-control.md)：queue-start 后唯一 `-32800`、无部分结果，随后 9/9 refs 与 definition exact；[调用级取消](../reports/2026-10-06-resident-l01-find-references-cancel.md)：三进程在 TypeScript `findReferences` 内 2–12 ms 抛取消，9/9 exact 恢复；首次进入该调用前仍用约 7.9–9.0 s；[跨模块 definition](../reports/2026-10-06-resident-l01-hot-definition.md)：三进程 6/6 exact，未查符号 1,060/858/777 ms。Program/Checker 身份只在有 trace 的查询后观察，definition 本轮无身份探针；不改变生产路由 |
-| L02 | IN_PROGRESS／默认关闭实验 | 同内容晋升干预 A/B 已实现；API/import/create/delete/open-close/SDK/package/target 公开合同通过，修复 target 首次空定位；三对真实编辑 exact、AST 复用，但 >500 ms 且未证明晋升机制收益；更长序列/未知 delta/恢复组合继续验证，最终指标不作为阶段前置 |
-| L03 | DONE／阶段实施与校准完成；实验默认关闭 | [完成审计](../reports/2026-10-09-resident-l03-completion-audit.md) A～E PASS：同进程 RSS 预算、成本感知回收、压力准入、最新诊断与恢复合同齐备；[当前公开控制](../tdd/l03-cost-aware-pressure-recovery.md) 20/20、回放器 35/35、完整 check:fast 1439/1439 PASS，终态身份一致；[固定构建校准](../reports/2026-10-09-resident-l03-budget-policy-calibration.md) 选定配置/对照 26/26 exact、诊断一致。保留 1024 MiB 与原滞回，自动 Worker 替换不纳入选定配置；无最终内存收益或 readiness 毕业结论，产品门禁交 L08。历史检查点及失败记录见本阶段正文 |
-| L04 | DONE／阶段接线与校准完成；R-09 默认关闭 | [完成审计](../reports/2026-10-09-resident-l04-completion-audit.md) A～E PASS；[选定 L03 政策的公开组合](../tdd/l04-budget-policy-reference-contracts.md) 当前 10/10，完整 check:fast 1449/1449 PASS、终态身份一致。[同构建真实对照](../reports/2026-10-09-resident-l04-budget-policy-integration.md) 两种声明策略 ON/OFF、独立 trace/timing 八进程 52 项 exact，四对集合/诊断一致；首次新符号实际复用完整同一 Program、9/10 refs、零 build/verifier。新引用 timing 915/937 ms，准备更慢、峰值更高，不宣称最终资源收益或 ready；最终指标交 L08。旧 45/48 FAIL、16/16 exact/miss、48/48 及 1.31/1.21 s 热命中检查点保留 |
-| L05 | DONE／独立 implementations 接线与校准完成；实验默认关闭 | [完成审计](../reports/2026-10-09-resident-l05-completion-audit.md) A～E PASS；[选定政策公开合同](../tdd/l05-budget-policy-implementation-contracts.md)23项、联合132/132，完整check:fast1467/1467、终态身份一致；[当前真实控制](../reports/2026-10-09-resident-l05-budget-policy-integration.md)四进程22/22 exact、两对最新诊断一致，R-09 OFF仍独立完整语义与真实Program复用。修复根membership丢失、未知范围partial成功和旧配置结果；未查628/677ms、恢复约13s及峰值风险交L08，不推广默认 |
-| L06 | DONE／阶段交互接线与校准完成；实验默认关闭 | [完成审计](../reports/2026-10-10-resident-l06-completion-audit.md)A～E PASS；19项公开合同、联合252/252、全新完整check:fast1492/1492及终态身份一致。[第五轮真实对照](../reports/2026-10-10-resident-l06-budget-policy-integration-v5.md)16冷基线、62/62、两对完整payload/最新诊断一致，实际Program复用成立；四轮whole失败及容量RED不重写。慢准备/恢复、>500ms及峰值风险交L08，按用户授权立即继续L07 |
-| L07 | DONE／阶段编辑与调用接线、校准和收口完成；实验默认关闭 | [完成审计](../reports/2026-10-10-resident-l07-completion-audit.md)A–E PASS：25生产公开合同、此前157联合/50工具、新caller修复后93联合；[当前真实D](../reports/2026-10-10-resident-l07-budget-policy-integration-v4.md)16同产品冷基线、62/62、两对完整payload/最新诊断/身份一致，实际11源晋升/未查Program复用及OFF重建反事实成立。全新完整check:fast1511/1511、根退出0、无fail/cancel/skip/todo，所有冻结终态身份一致；旧失败/未晋升/88/72历史保留；最终指标在L08 |
+| L02 | IN_PROGRESS／同内容晋升默认开启；剩余合同由 OP-04 承接 | 同内容晋升干预 A/B 已实现；API/import/create/delete/open-close/SDK/package/target 公开合同通过，修复 target 首次空定位；三对真实编辑 exact、AST 复用，但 >500 ms 且未证明晋升机制收益；更长序列/未知 delta/恢复组合继续验证，最终指标不作为阶段前置 |
+| L03 | DONE／阶段实施与校准完成；选定政策默认开启 | [完成审计](../reports/2026-10-09-resident-l03-completion-audit.md) A～E PASS：同进程 RSS 预算、成本感知回收、压力准入、最新诊断与恢复合同齐备；[当前公开控制](../tdd/l03-cost-aware-pressure-recovery.md) 20/20、回放器 35/35、完整 check:fast 1439/1439 PASS，终态身份一致；[固定构建校准](../reports/2026-10-09-resident-l03-budget-policy-calibration.md) 选定配置/对照 26/26 exact、诊断一致。保留 1024 MiB 与原滞回，自动 Worker 替换不纳入选定配置；无最终内存收益或 readiness 毕业结论，产品门禁交 L08。历史检查点及失败记录见本阶段正文 |
+| L04 | DONE／阶段接线与校准完成；R-09 默认开启 | [完成审计](../reports/2026-10-09-resident-l04-completion-audit.md) A～E PASS；[选定 L03 政策的公开组合](../tdd/l04-budget-policy-reference-contracts.md) 当前 10/10，完整 check:fast 1449/1449 PASS、终态身份一致。[同构建真实对照](../reports/2026-10-09-resident-l04-budget-policy-integration.md) 两种声明策略 ON/OFF、独立 trace/timing 八进程 52 项 exact，四对集合/诊断一致；首次新符号实际复用完整同一 Program、9/10 refs、零 build/verifier。新引用 timing 915/937 ms，准备更慢、峰值更高，不宣称最终资源收益或 ready；最终指标交 L08。旧 45/48 FAIL、16/16 exact/miss、48/48 及 1.31/1.21 s 热命中检查点保留 |
+| L05 | DONE／独立 implementations 接线与校准完成；使用默认组合 | [完成审计](../reports/2026-10-09-resident-l05-completion-audit.md) A～E PASS；[选定政策公开合同](../tdd/l05-budget-policy-implementation-contracts.md)23项、联合132/132，完整check:fast1467/1467、终态身份一致；[当前真实控制](../reports/2026-10-09-resident-l05-budget-policy-integration.md)四进程22/22 exact、两对最新诊断一致，R-09 OFF仍独立完整语义与真实Program复用。修复根membership丢失、未知范围partial成功和旧配置结果；未查628/677ms、恢复约13s及峰值风险交L08，默认由ADR 0015管理 |
+| L06 | DONE／阶段交互接线与校准完成；使用默认组合 | [完成审计](../reports/2026-10-10-resident-l06-completion-audit.md)A～E PASS；19项公开合同、联合252/252、全新完整check:fast1492/1492及终态身份一致。[第五轮真实对照](../reports/2026-10-10-resident-l06-budget-policy-integration-v5.md)16冷基线、62/62、两对完整payload/最新诊断一致，实际Program复用成立；四轮whole失败及容量RED不重写。慢准备/恢复、>500ms及峰值风险交L08，按用户授权立即继续L07 |
+| L07 | DONE／阶段编辑与调用接线、校准和收口完成；使用默认组合 | [完成审计](../reports/2026-10-10-resident-l07-completion-audit.md)A–E PASS：25生产公开合同、此前157联合/50工具、新caller修复后93联合；[当前真实D](../reports/2026-10-10-resident-l07-budget-policy-integration-v4.md)16同产品冷基线、62/62、两对完整payload/最新诊断/身份一致，实际11源晋升/未查Program复用及OFF重建反事实成立。全新完整check:fast1511/1511、根退出0、无fail/cancel/skip/todo，所有冻结终态身份一致；旧失败/未晋升/88/72历史保留；最终指标在L08 |
 | L08 | IN_PROGRESS／release-blocked | [最终执行记录](2026-10-10-l08-final-validation.md)已启动；冻结完整核心能力/场景/平台矩阵并按TDD建立证据入口。soak、分桶P95、原内存与跨平台产品门禁均未通过 |
 
 ## 阶段继续与 L08 最终验收（2026-10-08 更新）
 
 用户明确要求：**最后验证放在 L08，不用最终目标阻塞前面的计划。**
 L01–L07 按各阶段的功能实现、公开 LSP 回归和可重放证据推进；
-500 ms、最终峰值下降、DevEco/PSS、长期 soak、规模与跨平台验收均在
+550 ms 正式上限（500 ms 优化目标）、最终峰值下降、DevEco/PSS、长期 soak、规模与跨平台验收均在
 L08 统一判定。上述指标 FAIL/BLOCKED/NOT_RUN 如实保留，作为后续阶段
 要解决的问题，不作为进入 L02–L07 的前置，也不把本阶段状态重标成功。
 
 正确性、完整结果、overlay/快照新鲜度、协议、取消及可停止/回收的执行
-保护仍逐切片验证。预声明实验停止线、独立进程和默认关闭开关保护运行；
+保护仍逐切片验证。预声明实验停止线、独立进程和逐候选回滚保护运行；
 遇到错误结果、丢失编辑、取消失效、OOM 或不能停止/清理时，停止受影响
 的实验运行并修复或回退，不把其它独立实现切片一并冻结。
 资源超限、驱逐重建和慢 fallback 的原因带入 L02 增量与 L03 预算改进；
 最终内存目标未达到本身不等于禁止继续实验。
 
-L04–L07 可在默认关闭开关下逐能力接线；默认推广与产品发布等待 L08。
+L04–L07 阶段接线已完成；当前六项默认由 ADR 0015 管理，产品毕业与发布等待 L08。
 不为了让结果通过而缩小合法工程边界、提高预算、禁用诊断、改超时
-或用已缓存目标替代新符号。后续阶段都是 **provisional**，不是
-已获生产准入。最终产品毕业仍要求全部适用性能和原内存门禁通过。
+或用已缓存目标替代新符号。新增优化按后续计划逐切片验证和回退，
+最终产品毕业仍要求全部适用性能和原内存门禁通过。
 
 ## 固定输入、共同合同
 
 - 使用真实 `applications_settings` checkout，记录精确 commit、dirty 状态、
   已声明依赖与实际安装状态；API24 是已授权兼容测试轨，记录其 SDK
-  绝对路径、声明 digest 和 compiler revision。不得把它写成 API23
-  matched-DevEco 结论，不改工程边界或复制文件造规模。
+  绝对路径、声明 digest 和 compiler revision。沿用该兼容轨，不增设版本匹配
+  门禁；DevEco/PSS 仍单独实测，不改工程边界或复制文件造规模。
 - 每次记录 server HEAD/build/flags、Node、macOS 硬件与内存、实际 LSP
   request/response、UTF-16 光标、oracle 的 URI＋range、诊断时间线。
   使用现有 LspSession、Content-Length stdio、外部 Node PID RSS sampler；
@@ -561,8 +568,8 @@ L03 阶段无剩余必需工作。单批峰值、慢冷恢复、其它规模/平
 可试验路由；最终资源/时延未达标带入 L08，逐能力 feature flag 可回滚。
 现行 transient
 verifier 仍为兜底，不能因长驻 LS 存在就推断它的全局 scope 足够。
-超预算/unknown 走完整安全 fallback 或显式错误。逐能力默认切换需
-单独审查，ADR 0003 不被本计划自动 supersede。
+超预算/unknown 走完整安全 fallback 或显式错误。当前默认按 ADR 0015，
+新增候选的默认切换随各 PR 审查，ADR 0003 的 transient 兜底合同保留。
 
 ### L04 完成审计
 
@@ -660,6 +667,11 @@ L07 的 [rename/call hierarchy 合同](../tdd/l07-resident-edit-and-call-contrac
 
 ## L08 — Soak、性能与发布评审
 
+下一步按[研究审核后的 OP-00–OP-06](2026-10-11-query-performance-follow-up-plan.md)
+执行分层归因、proxy resident 优先、请求内核验复用、诊断/ready、增量 Snapshot、
+资源校准和最终证据判定。OP-00–OP-05 使用阶段合同推进；OP-06 统一执行下列
+最终门禁，L03–L07 不重开，L02 的剩余增量合同由 OP-04 承接。
+
 L08 是整体最终验收阶段，统一执行完整能力/场景矩阵、semantic-ready、
 500 ms 优化目标 / 550 ms 验收上限、原内存、长期资源稳定性与跨平台门禁。前面阶段持续记录数据和
 修复切片缺陷；这些最终目标及不足样本不阻塞 L01–L07 的实现顺序。
@@ -673,6 +685,6 @@ DevEco 对照 PSS、100k 工作区缩放、post-eviction 与 Windows/macOS/Linux
 可移植性门禁；Node RSS 不代替 Linux PSS。长时 repeated/edit/pressure
 soak 不得单调增长，0 exact diff、0 partial-success、0 OOM。
 
-任一发布必需门禁 FAIL/BLOCKED/NOT_RUN，则当前实验能力保持 default-off，
-不宣称项目计划或 500 ms 产品目标完成。只有明确验证的 release review
-才可逐能力毕业；旧 S02/S03/S05 失败记录永久保留。
+任一发布必需门禁 FAIL/BLOCKED/NOT_RUN，L08 保持未毕业；既有六项默认
+遵循 ADR 0015，新增候选按其 PR 的验证与回退规则管理。只有明确验证的
+release review 才可逐能力毕业；旧 S02/S03/S05 失败记录永久保留。

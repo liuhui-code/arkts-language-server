@@ -2,13 +2,57 @@
 
 状态：IN_PROGRESS；用户目标为完成 L08。2026-10-10 用户明确确认正式
 P95 上限为 550 ms，500 ms 保留为优化目标；其余原门槛均不变。
-父 HEAD：`1b9101520b0d7d3358e4ce8f27f0bfcc06db902f`；继承 dirty 工作树保留。
+初始父 HEAD：`1b9101520b0d7d3358e4ce8f27f0bfcc06db902f`；下方实施记录
+各自绑定当时构建。当前 main 为 `a111235bc4bfcb55b126752f95b3ba095f2996af`。
 
-2026-10-11 维护者更新交付要求：六项有效组合默认开启，先通过分支和PR
-合入main并push GitHub，不等待本阶段全部验收PASS，见
-[ADR 0015](../adr/0015-default-resident-optimization-policy.md)。本授权替代
-下方旧的验收后合入/默认推广限制；新完整check:fast仍须GREEN。
+2026-10-11 六项有效组合默认开启，已通过 PR #95 合入 GitHub main，见
+[ADR 0015](../adr/0015-default-resident-optimization-policy.md)。合入时完整
+check:fast 1585/1585 和 GitHub CI 通过；本交付不等待全部产品验收 PASS。
+后续代码修改仍须新完整 check:fast GREEN 并通过分支／PR。
 L08 IN_PROGRESS及性能、资源、ready、平台失败结论保持。
+
+2026-10-17最新：默认transient统计候选机制4→0及受控相关39/39通过，完整SDK
+固定8会话32引用／8 READY／12诊断一致，但时延无一致净收益，正序磁盘两项
+慢约19–20%，已REJECTED／逐字回退。原睡眠干扰FAIL及全部数据保留，恢复审计
+435453a9核对1748仓库文件／82产物均本轮前字节。productionac4c136b、217总／
+210-fast及原whole1864/1865 FAIL／403首次引用20s超时不变，不借39项或历史
+1862授予新GREEN。继续冷Program／完整SDK／复杂closure和L08全部原合同，
+详见[OP00候选结论](../tdd/op00-transient-statistics.md)。
+
+前一检查点：productionac4c136b修复磁盘依赖真实在途变化后仍发布旧定义。
+打开调用方与从未打开磁盘源两入口、显式READY拒绝／恢复均经公开保护，十四
+完整文件96/96、exit0；源1747份／7a04271a，联合审计6c0812bb。固定8正常完整
+SDK会话48语义／32当前READY／12诊断／8退出一致，但一对采样RSS1.2566，资源
+假说FAIL。局部保留必要正确性修复，不称净内存收益或产品达标。原完整check:fast
+1861/1865、4FAIL、exit1及身份／退出经独立审计daf7fc3c；四项缺失磁盘夹具
+RED→真实文件GREEN22/22，提取后六完整文件49/49，生产不变。旧测试1213→1120
+仍迁移债。随后新完整check:fast已1864/1865、1FAIL、exit1、零注解；当前217总／
+210-fast、1748源码／SDK／构建和真实退出审计0ab1d0e0。四项夹具在整轮通过，
+唯一为历史403文件首次引用id2的20s超时，原oracle／期限不变、不追加有利复测，
+不称whole GREEN；继续冷Program／完整SDK及复杂closure。原FAIL保留，旧1862
+只属于旧72358623。六默认／预算／
+owner不变，L08仍IN_PROGRESS，550ms及PSS不前置；详见
+[OP04输入修正](../tdd/op04-versioned-overlay-snapshot.md#在途磁盘依赖的发布前输入修正)。
+
+前一检查点：production72358623补上READY准备的既有有界解析作用域，
+两入口默认目录探测60→1、显式0仍60，相关64/64；原完整check:fast现已
+1862/1862、exit0、零注解，209入口／1744源码／SDK／产物和实际退出审计8c5cc269。
+完整安装SDK固定8会话的真实编辑中位约3.42→2.97s，但一对RSS1.1595，
+资源≤1.10假说未通过；保留全部样本及旧FAIL，不当P95/PSS／L08 DONE。
+六默认／1024MiB／owner不变；详见[OP04终态](../tdd/op04-versioned-overlay-snapshot.md#当前72358623完整回归终态)。
+下一项区分存活owner驻留／自然GC／实际驱逐回落，并继续原完整产品余项。
+
+前一局部检查点：OP04重复磁盘通知实际RED→GREEN，production5e7bffc4，
+12完整文件93/93；完整安装SDK新34源／32依赖hop固定8会话96精确／当前READY、
+诊断及退出一致。两入口重复通知definition中位3.50/3.43s→79/77ms，真实修改
+仍3.27–3.48s、RSS四对含一对上升。沿用同内容缺省1／显式0，真实写入及原
+新鲜度／取消fence保持，无新LS/AST缓存或预算。原工具误判FAIL保留，audit
+a20ba24f，详见[OP04](../tdd/op04-versioned-overlay-snapshot.md#2026-10-16重复磁盘通知的独立输入切片)。
+不是403修复、一般编辑收益、Settings/P95/PSS／soak／物理释放；216总入口／
+209-fast，当前原完整check:fast1858/1858、exit0、零注解；1744源码／SDK／产物／
+启动器及实际退出审计47ad6dda，原403本轮四份oracle／原期限通过，不称以前超时
+修复。旧1837/1839 FAIL保留。全部产品余项继续，550ms不前置阻塞局部切片；
+代码回归GREEN不是L08 DONE，后续执行改动仍须新回归及获授权的分支／PR交付。
 
 权威要求：[主计划](2026-10-06-budgeted-resident-semantic-plan.md)、
 [最终验收协议](../benchmarks/semantic-ready-acceptance.md)、
@@ -24,22 +68,82 @@ L08 IN_PROGRESS及性能、资源、ready、平台失败结论保持。
 
 1. 建立 fail-closed 最终证据入口，保留每格样本、状态与证据路径；
    不以已有 candidate-control、手写 PASS 或仅单次快速响应代替验收。
-2. 在既有 semantic owner 内完成输入/Program/覆盖绑定的真实 ready 合同；
-   准备不预跑目标池。公开 stdio 反例先 RED，再最小实现。
-3. 固定真实 Settings/API24 输入，定位编辑/压力恢复重建长尾；优化不提高
+2. 在既有 semantic owner 内继续核验输入/Program/覆盖绑定的真实 ready 合同；
+   保留已有公开保护，补真实输入缺口，准备不预跑目标池。
+3. 按[OP-00–OP-05 后续计划](2026-10-11-query-performance-follow-up-plan.md)
+   固定真实 Settings/API24 输入，定位候选/重复核验/编辑/恢复长尾；优化不提高
    1024 MiB 政策值、不关闭诊断、不缩小合法 scope、不截断结果。
 4. 冻结构建/目标池/分类后，执行 ≥100 请求/能力×桶、≥5 独立会话与
    ≥100 交替任务/编辑循环；记录完整响应、原始资源采样和生命周期。
 5. 运行原规模/DevEco/PSS及三平台发布矩阵，冻结完整回归并逐门禁审计。
 
-用户追加交付要求：L08完成后将相关代码合入main。仅在全部验收门禁
-PASS后，通过实现分支和PR执行合并并验证远端main与PR终态；不直接
-push/merge到main，不在L08仍FAIL/BLOCKED/NOT_RUN时提前合并。
+PR #95 已完成默认策略交付。后续小切片按阶段正确性与回归要求通过 PR
+合入；产品发布与 L08 DONE 仍要求全部最终门禁 PASS。
 
-所有发布必需门禁 PASS 才可 DONE；FAIL/BLOCKED/NOT_RUN 保持实验默认
-关闭。以上顺序不缩减完整目标；缺失环境只影响对应实测，不停止其它安全工作。
+所有发布必需门禁 PASS 才可 DONE；当前六项默认继续按 ADR 0015。
+以上顺序不缩减完整目标；缺失环境只影响对应实测，不停止其它安全工作。
 
-## 起点证据与环境
+## 当前基线与剩余执行队列
+
+研究报告已经对照当前 main 审核，结论和逐切片验收见
+[查询性能后续计划](2026-10-11-query-performance-follow-up-plan.md)。
+下一步 OP-00 用六项默认开启配置做 A/B/C 分层归因，Zed 独立测量；
+OP-01–OP-05 根据真实成本改善路由、核验、诊断/ready、编辑和资源恢复。
+OP-06 补齐目前固定拒绝的最终 evaluator，再执行 336 格原产品门禁。
+2026-10-12 [逐请求证据消费首切片](../tdd/op06-release-sample-evidence.md)
+已公开RED→GREEN，工具20/20、七文件相关81/81及独立终态身份审计通过；
+重复尝试、计划未执行、混构建、完整payload／位置差异和缺oracle均fail-closed。
+真实compiler五进程100次repeat正例通过对应三项判定，但资源／生命周期／平台／
+完整回归／DevEco/PSS接线与全证据发布正例仍未完成；OP-06／L08不标DONE。
+
+当前推进见后续计划的[下一执行批次](2026-10-11-query-performance-follow-up-plan.md#下一执行批次)：
+OP-00 已有分层实测，OP-01及OP-02选定切片已按自身合同收口，仍未合入；
+继续OP-03等待／ready归因、OP-04编辑准备及OP-05/06剩余合同。
+Snapshot默认推广已按无稳定净收益拒绝，显式1实验保留；最终门禁不提前阻塞。
+
+main 在 PR #95 合入时的代码回归1585/1585通过；旧OP-02 whole1608/1610
+及后续5cf9d618 whole1757/1757均保留为各自身份的历史证据。前一production
+1ab95acd首次whole1794/1795、exit1，源码／产物／SDK前后一致；唯一失败是
+私有GC结果JSON发布竞态，不是语义payload不一致。真实分段写入公开RED后，
+仅测试fixture改为原子独占发布，十三完整相关文件79/79及strict通过。
+修复后的原完整check:fast已1795/1795、exit0、零注解，2671965.974116ms；
+全部202个fast入口、源码／产物／SDK／启动器身份及真实根PID退出审计PASS
+（b38d39c4）。只标该构建代码回归GREEN，原1794/1795 FAIL与旧生命周期缺口保留，
+不授予时延、PSS、客户端或跨平台毕业。
+最新OP03a readiness冗余admission切片已公开RED→十二完整相关文件70/70，
+真实最终输入guard仍在完整report构造之后；production eabe24ef，旧1795不覆盖。
+四固定路径规范化受控variant共36exact／36当前公开READY／24编辑／28诊断，
+audit125adc35；编辑中位两个方向改善约8.6–8.7%、采样RSS更低，只支持局部
+采纳。四原CLI1／FAIL及其它门禁BLOCKED保留，不当直接生产／Settings／PSS／
+550ms验收。新203-fast入口完整check:fast终态1779/1797、18FAIL、exit1、零注解，
+完整身份／真实退出审计d16e6667通过，仍是FAIL。定向原两文件11/11、另五文件
+90/91；403源20s超时稳定复现，trace确认反复冷Program与无效anchor成本，其余
+复测通过不称修复。用户已确认两种未打开入口均支持；definition／typeDefinition／
+hover随后各自公开RED→GREEN，真正请求级磁盘source且无合成overlay。真实
+client version0的close残留缺陷也已修复，原调用层级disk follow-up迁移到显式
+source传输。随后signatureHelp／completion／completion resolve／prepareCallHierarchy
+分别RED→GREEN，完整入向／出向链路也相同；磁盘补全句柄绑定exact source SHA，
+不缓存源文本，同size／mtime变化仍拒绝旧句柄。其后implementation、references
+两声明策略、prepareRename／rename也分别公开RED→GREEN；核心14项两种入口
+已有基本完整oracle，磁盘事务编辑为version null，origin／local alias语义另证。
+跨文件磁盘引用旧结果经完整当前READY证明绑定修复且仍有真实cache hit；相同
+请求合并、独立取消、工作区变化撤销全组和完整恢复也通过。当前production
+bd4010b6，二十八完整相关文件313/313、exit0、零注解，源码／构建／SDK／真实
+退出独立审计b36e8173，strict／build通过。新增源测试的私有SDK full profile不是
+安装SDK产品计时，600ms verifier窗口只作机制保护。当前213总入口／206-fast
+新whole NOT_RUN，旧1779/1797 FAIL保留；更多输入／压力／真实成本、403冷准备
+及完整产品性能／资源／平台验收均不由这些基本入口正例通过。L08与其余OP范围不变。
+[组合真实对照](../reports/2026-10-11-resident-effective-combo-comparison.md)
+仍是原冻结构建的短样本，保留秒级编辑、无明显 RSS 收益及 DEGRADED。
+[压力后通用请求恢复](../tdd/l08-pressure-recovery.md) 的功能缺陷已修复，
+恢复时延仍约 3.3–6.0 秒，不能重列为“尚未实现 Worker 恢复”。
+完整 ready、未打开入口的全部场景、incoming/编辑长尾、原内存/PSS/DevEco、soak 与平台
+继续验收；550 ms 未通过不阻止前面各优化切片按自身合同完成。
+
+## 历史实施证据与当时环境
+
+以下按发生顺序保留当时构建、失败与检查点。旧“未合 main”“默认关闭”及
+“新 whole 未运行”等措辞不代表当前状态，也不改写各旧样本的原判定。
 
 [L07 审计](../reports/2026-10-10-resident-l07-completion-audit.md)保留 1511/1511
 功能回归及真实 62/62，但 semantic-ready 未实现、秒级编辑/恢复及高 RSS
@@ -371,3 +475,156 @@ RSS不认证PSS。默认10k与同选定配置10k/100k均在L3后completion
 恢复仍约3.3–6.0秒、不是550ms性能毕业；新whole NOT_RUN、旧whole
 1580轮FAIL及引用超时保持。其它ready/资源/平台/全矩阵门禁继续，
 L08仍IN_PROGRESS、实验默认和1024MiB政策不变，不因本缺陷修复合main。
+
+## 2026-10-13 当前代码回归检查点
+
+[后续OP计划](2026-10-11-query-performance-follow-up-plan.md)的source-root模型重载
+修复及OP-00超时/异常退出证据切片完成公开RED→GREEN。当前生产source输入
+c2a50003完整check:fast已1648/1648、exit0、零skip/cancel/todo，真实根退出及
+source/产物/SDK/repo前后身份全等；日志与完整digest见
+[OP-02记录](../tdd/op02-resident-input-proof-reuse.md)。原403文件和source-root
+创建合同通过，期限未变；历史whole失败仍保留，不推断唯一设备或优化原因。
+
+这是当前代码回归GREEN，不是550ms、内存/长期生命周期、真实ready或全336格
+最终验收。各候选直接保护、成本/采纳、OP-03/04/05/06剩余工作继续，六项
+生产默认和1024MiB政策不变，L08仍IN_PROGRESS，本检查点不授权合main。
+
+## 2026-10-16 冷批次成本检查点（非最终验收）
+
+当前bd4010b6的核心14项两种入口基本完整oracle及28文件313/313见
+[OP03a记录](../tdd/op03a-completion-diagnostic-priority.md)。当前206-fast仍须
+新完整终态；旧1779/1797 FAIL、403原20s及其它未定位失败不改写。
+
+[OP00有限对照](../tdd/op00-query-layer-attribution.md)在原403文件公开case、
+同完整SDK/closure/预算/原期限下，固定64/128/128/64全部16响应exact：
+整套观察耗时约36/22/22/36s，两对下降39.12%/38.20%，采样tree RSS最大值
+未上升。独立trace确认7→4批/miss、SDK255/全部403覆盖与每批约2s Program
+准备。128仅候选，默认64/六默认/1024MiB/原瞬态生命周期不变。
+
+此单语料不认证真实复杂closure、direct-source/proof成本、编辑/取消/压力、
+READY后336格、最终P95≤550ms（目标500ms）、PSS/DevEco、长期资源或平台。
+新旧FAIL与collector启动失败原样保留；本机继续能做的合同，不以最终门槛
+阻塞前序，也不以本检查点授权合main或默认推广。L08仍IN_PROGRESS。
+
+## 2026-10-16 完整回归与两入口安装SDK成本
+
+原完整206-fast真实1822/1824、2FAIL、exit1、零skip/cancel/todo，
+3043887.808356ms、身份审计5e4670c8；不是新whole GREEN。原403通过原期限，
+历史失败不抹去。旧未打开空结果前提已改真实成功正例＋显式空响应负例，
+相关26文件207/207；构造器seed路径原整轮失败尚未定位，单例/完整30通过不算修复。
+只改四个测试文件，生产bd4010b6与六默认/64batch/1024MiB保持；新head须fresh whole。
+
+安装完整SDK的受控1000workspace/500active工程（不是Settings）18独立进程，
+每入口/能力3会话、每进程一目标、准备单列、不预查询：完整数组/READY/诊断/关闭
+核对通过，definition中位511/448ms，引用仍3.9–4.2s。原18CLI/report继续FAIL，
+latency/memory BLOCKED，不能拿单值小于550或RSS样本最大值充当最终验收。
+另两trace均在resident证明inputs-changed后启动单批fullSDK255/project501验证，
+Program约3.20–3.34s、query72–73ms；下一局部合同先区分缺少观察与真实签名变化，
+原输入/完整scope/config/最终物理fence不删。证据与完整SHA见
+[OP03a记录](../tdd/op03a-completion-diagnostic-priority.md)。
+最终336格、≥100请求/≥5会话、P95≤550ms/目标500、PSS/DevEco、物理释放、
+soak、规模、真实客户端和平台门禁全部保留，L08不据此DONE或合main。
+
+## 2026-10-16 READY证明交接局部合同完成
+
+新生产81d6e876已用公开RED→GREEN修复“根已READY但普通resident proof未观察”
+的重复Program构建；仅原owner交接只读元数据及既有Program，未减输入／scope／
+最终物理fence，未增加LS/默认开关。完整9文件75/75（ac7407c4）覆盖两入口、
+SDK／磁盘／版本变更、取消、压力回收和Worker替换；主引擎3256→3253仍记超限债。
+新构建同完整SDK/语料/oracle/预算/默认64batch的18个独立首次查询，完整结果、
+同一READY、诊断／关闭均通过；打开调用方引用中位229–230ms，未打开源464–470ms。
+root准备仍4.14–5.52s；两独立trace均同Program、0 transient verifier/额外owner。
+正常audit69d6dac6／trace4f77a846；详细SHA及原始证据见
+[OP03a记录](../tdd/op03a-completion-diagnostic-priority.md)。
+这是新构建的局部正确性和成本观察，不是最终P95/PSS、物理释放或产品毕业；
+18份原CLI/report仍FAIL，旧1822/1824及未定位构造器失败不改写。
+当前head仍须fresh完整check:fast＋分支PR；先继续可执行的复杂真实closure／
+冷准备、OP04输入和压力资源，不以L08最终指标阻塞前序。全336格及上述所有
+最终门禁保持，L08 IN_PROGRESS、未合main。
+
+## 2026-10-16 完整回归终态及下一公开RED
+
+生产81d6e876冻结原完整check:fast现已1826/1826、exit0、零skip/cancel/todo，
+3093552.887731ms，206入口／全部源码／构建／SDK／原启动器及PID退出审计1de2bf76。
+正式评估器真实消费该receipt＋18份安装SDK查询，macOS回归PASS、最终BLOCKED，
+audit70eca240；旧1822/1824及未定位构造器失败原因保留，不追认修复或产品毕业。
+随后一个新公开反例RED：watched磁盘依赖编辑后3处当前引用全部正确、正常退出，
+但根仍DEGRADED/旧输入证明失效。该时点生产未改；新增测试head不属于此前1826 GREEN。
+有效RED及完整原始证据审计83952896，下一步在原owner/预算/取消/最终fence内
+最小承接引用查询的显式READY刷新，不以手动重prepare或隐式overlay掩盖缺口。
+证据见[OP03a记录](../tdd/op03a-completion-diagnostic-priority.md)。全部最终门禁、
+旧失败和原OP00–06范围不变，L08仍IN_PROGRESS、未合main。
+
+## 2026-10-16 引用刷新局部完成及真实编辑后成本
+
+上述公开RED现已最小GREEN：当前production88ad7e9b，9个完整相关文件81/81、
+exit0、零注解，源码／构建／SDK身份与实际退出独立审计987689db。两入口×
+两声明策略、缺输入修复、普通引用中真实compiler取消／无迟到READY均保护；
+status与bounded resident-only不隐式编译，原输入／预算／最终fence不放宽。
+安装完整SDK受控1000/500副本4独立编辑会话结果／当前READY／诊断／退出一致，
+auditb5c51a6b；RPC仍3.51–4.00s，采样RSS最大约508–566MiB，非Settings／PSS／
+连续峰值／P95或A/B收益。独立两trace auditffa33bbd确认一次磁盘revision context
+替换后完整检查869输入，无额外owner／transient批次；不声称磁盘增量已实现。
+旧1826 whole及正式评估器BLOCKED保留，不能覆盖当前生产；当前fresh whole
+NOT_RUN，合入前仍须原完整check:fast＋分支PR。下一切片先验证其它ordinary
+能力在磁盘编辑重建后的动态READY，再继续冷Program／OP04／压力资源与全336格。
+这里只关闭局部引用刷新合同；全部最终门禁不变、550ms不前置，L08仍IN_PROGRESS。
+
+## 2026-10-16 普通查询与诊断先完成／follow-up动态保护
+
+当前a6ae3b97已逐项修复definition、诊断先完成时的原意图丢失和两入口outgoing
+follow-up的完整scope缺口。原两条未知输入负例不改；首轮宽根触发86/88 FAIL
+保留（audit07112a09），选择性准备后9完整相关文件88/88、exit0、audit e4c7eaa1。
+诊断不认证根，实际L2/L3清除意图、普通定义真实compiler取消和最终物理fence保护。
+当前安装完整SDK两独立定义会话exact/current READY／诊断／正常退出，首次
+220/228ms、编辑后3.69/3.84s，离散采样RSS最大559/557MiB（audit7becc0ca）。
+它们不是P95、PSS、A/B或正式发布report，冷重建与完整最终门禁仍待。当前原
+完整collector`.bench/op03a-ordinary-ready-refresh-current-whole-v1/whole*`实际
+FAIL／exit1；原ENOSPC使fixture与Node harness输出失败，没有根摘要，counts=null。
+独立审计23bd83d0确认206入口／1734源码归档／SDK／构建／启动器与实际退出一致；
+证据完整性通过不授予whole GREEN，也不据中断作语义根因结论。原失败证据保留，
+先处理本任务重复派生存储，再新前缀原完整命令重跑。旧81d6e876 whole1826不授予
+当前GREEN。继续原完整队列，
+合入须fresh whole＋分支PR，L08仍IN_PROGRESS、未合main。
+
+## 2026-10-16 存储恢复后的完整终态与观察资格修正
+
+原storage-recovery-v2完整check:fast已1837/1839、2FAIL、exit1、零注解，
+3303432.414356ms；206入口／1734源码归档／SDK／构建／启动器与实际PID退出
+独立审计4ab388e2。本轮无ENOSPC，原v1中断／counts=null与全部历史失败保留。
+失败分别为verifier观察旧前提和原403引用id4的20s超时，不称整轮GREEN。
+原样RED与两个真实公开CLI对照确认默认合法resident路径不启动verifier；
+专用fallback两个verifier均有正哈希、native dispose／Registry清零／原生退出，
+auditd9ea6d3d。只修该测试资格并增强默认编辑／cache完整保护，三个完整相关
+文件30/30、exit0、auditacf11315；494行，生产a6ae3b97／默认策略不变。
+不据非终态owner记录推断LS dispose／物理释放或泄漏，也不把私有SDK诊断当
+安装SDK、PSS或正常性能资格。当前新测试head whole NOT_RUN，403仍待，合入须
+fresh whole＋分支PR。全部原最终门禁和OP00–06余项保持，L08仍IN_PROGRESS。
+
+## 2026-10-16 真实restart两入口机制与逐进程证据
+
+原403同输入／原期限仅一次有限复测1 PASS／2未选、exit0，完整oracle到达，
+auditc67ed6b0；不是修复，原whole1837/1839 FAIL不改。独立OP06实际restart首切片
+随后公开RED→GREEN：两source入口、新进程先UNPREPARED再READY、当前未保存目标
+编辑／版本重放、混合／两次重启、逐进程canonical／raw消费及异常前缀／尾项保护。
+19完整相关文件171/171、exit0、零注解，224972.646174ms；1739源码／SDK／构建
+身份、原日志与PID退出独立audit SHA
+`0b95855d209819f7216688dbf245936a88ee4dbca7e8b44134a78debe9b596cf`。
+两私有SDK原生入口共4服务进程正常退出；原CLI/report仍FAIL，正式消费BLOCKED。
+不是安装SDK性能、P95／PSS、native LS dispose或物理释放证明。只推进definition／
+typeDefinition机制，不代替14能力restart、resolve/call旧句柄、配置／取消／压力资格。
+全证据releaseEligible=true正例、336格／每格100请求／5会话、P95≤550ms／目标500、
+100循环和原全部资源／平台门禁保留。生产a6ae3b97／六默认／1024MiB／batch64／
+ADR0003不变，工具head whole NOT_RUN；合入仍须fresh whole＋分支PR。
+L08 IN_PROGRESS、不阻塞前序切片；原命令／剩余项见[OP06](../tdd/op06-release-sample-evidence.md)。
+
+### 后续补全／调用层级实际来源保护
+
+两入口完整completion/resolve、prepare/incoming/outgoing、新旧补全UUID隔离及
+本进程更早／同快照／版本的实际来源绑定已验证；call item按现有root／位置与
+当前源语义处理，不另加会话UUID。20完整文件176/176、零注解；四个私有SDK原生
+案例12精确请求／8服务PID正常退出，独立audit SHA
+`6d359df322546edfad5efc573c60d2d52d822a6618ce1c952b7ea303c48b2383`。
+原报告FAIL／正式消费BLOCKED，不是安装SDK性能、P95/PSS或物理释放；其它restart
+能力／异常／真实工程、全证据PASS路径、336格与全部最终门禁仍保留。生产a6ae3b97／
+六默认／预算不变；本工具head whole NOT_RUN，合入仍须fresh whole＋分支PR。

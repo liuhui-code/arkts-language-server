@@ -22,7 +22,13 @@ test("prepared suite pins the default diagnostic worker without benchmark opt-in
     diagnostics: ordinaryReport.diagnostics,
   }))
   assert.equal("diagnosticVerifierWorkerSha256" in ordinaryReport.inputIdentity, false)
-  fs.unlinkSync(fixture.output)
+  const ordinaryOutput = fixture.output
+  const ordinaryBytes = fs.readFileSync(ordinaryOutput)
+  const ordinaryRaw = `${ordinaryOutput}.rss.jsonl`
+  const ordinaryRawBytes = fs.readFileSync(ordinaryRaw)
+  assert.ok(ordinaryRawBytes.length > 0)
+  assert.equal(sha256File(ordinaryRaw), ordinaryReport.memory.rawSamples.sha256)
+  fixture.output = path.join(path.dirname(ordinaryOutput), "default-diagnostic-worker-report.json")
 
   fixture.suite.runtime.env.ARKTS_BENCHMARK_CONTROL = "0"
   delete fixture.suite.runtime.env.ARKTS_L01_TRANSIENT_DIAGNOSTICS
@@ -44,6 +50,12 @@ test("prepared suite pins the default diagnostic worker without benchmark opt-in
     fixture.suite.pins.diagnosticVerifierWorkerSha256)
   assert.equal(report.correctness.status, "PASS")
   assert.equal(report.readiness.semantic.status, "READINESS_UNSUPPORTED")
+  assert.deepEqual(fs.readFileSync(ordinaryOutput), ordinaryBytes,
+    "independent pin checks must preserve the earlier complete report")
+  assert.deepEqual(fs.readFileSync(ordinaryRaw), ordinaryRawBytes,
+    "independent pin checks must preserve the earlier original RSS bytes")
+  assert.equal(sha256File(`${fixture.output}.rss.jsonl`), report.memory.rawSamples.sha256)
+  assert.notEqual(report.memory.rawSamples.file, ordinaryReport.memory.rawSamples.file)
 })
 
 async function makeSuite(t) {

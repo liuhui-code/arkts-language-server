@@ -16,7 +16,7 @@ protection checks. Earlier L01/L02 resource-admission verdicts are historical.
 | --- | --- | --- |
 | [0001](0001-reference-search-default.md) | Accepted, release-gated | Indexed batching with closure remains the default |
 | [0002](0002-hot-semantic-context-lifecycle.md) | Retention/R-09 implemented default-off; hysteresis implemented; graduation open | Budget-aware retention and resident admission remain opt-in |
-| [0003](0003-reference-verifier-worker-lifecycle.md) | Accepted; current production default/fallback | Keep transient per-batch verifiers until an explicit graduated route supersedes a capability |
+| [0003](0003-reference-verifier-worker-lifecycle.md) | Accepted; Worker lifetime superseded by 0016 | Keep serial per-job project verifiers; retain current SDK syntax in one Worker |
 | [0004](0004-reference-result-cache-validity.md) | Accepted and implemented | Cache only complete compiler-verified results |
 | [0005](0005-index-proof-trust-boundary.md) | Accepted | Index plans; compiler proves |
 | [0006](0006-semantic-request-scheduling.md) | Accepted and implemented for references | Separate interactive and global work without weakening freshness |
@@ -29,6 +29,9 @@ protection checks. Earlier L01/L02 resource-admission verdicts are historical.
 | [0013](0013-evidence-and-release-gates.md) | Proposed; acceptance work remains | Separate evidence tiers and retain all original release gates |
 | [0014](0014-budgeted-long-lived-semantic-session.md) | Accepted for experiment; production NOT graduated | L01–L08 budgeted long-lived official LS, with existing exact fallback |
 | [0015](0015-default-resident-optimization-policy.md) | Accepted by explicit maintainer decision; L08 gates open | Six optimizations default ON with rollback; merge via PR after full regression |
+| [0016](0016-reference-verifier-sdk-cache.md) | Accepted and implemented; full fast 1,869/1,869 PASS | One serial verifier Worker retains current SDK ASTs; each job disposes project LS/Program |
+| [0017](0017-reference-shared-inputs-and-search.md) | Accepted and implemented; full fast 1,872/1,872 PASS; 500ms FAIL | Reuse standard-library syntax, witnessed SDK lookups and classified complete reference searches |
+| [0018](0018-semantic-groups-and-initial-preparation.md) | Accepted; implementation in progress | 4GiB configurable runtime pressure; initial preparation exempt; shared SDK initialization, stable semantic groups and delayed release |
 
 Invariant for every decision: **global semantic scope remains complete while
 compiler residency is bounded**. Reducing a compiler working set must never
@@ -41,9 +44,10 @@ supersede them by implication:
 
 | Existing decision | Relation to semantic-ready proposals |
 | --- | --- |
-| 0001 default strategy | 0014/0012 may change only graduated capability routes through explicit supersession; current `indexed-batched + closure + full SDK`, `dispose` and transient defaults remain |
+| 0001 default strategy | 0014/0012 may change only graduated capability routes through explicit supersession; current `indexed-batched + closure + full SDK` and per-job project disposal remain; 0016 owns verifier Worker retention |
 | 0002 retention and R-09 | 0011 owns memory pressure; R-09 remains implemented default-off, and Settings L3 admission failed |
-| 0003 transient verifier | 0014 L01–L03 do not change its default; L04–L07 retain exact fallback during default-off integration; final resource/latency acceptance is at L08 |
+| 0003 transient verifier | 0016 explicitly supersedes per-batch physical Worker termination and SDK AST disposal; all other guards remain. |
+| 0003 historical integration | 0014 L01–L03 do not change its default; L04–L07 retain exact fallback during default-off integration; final resource/latency acceptance is at L08 |
 | 0004 complete-result cache | Keep bounded complete-answer cache/coalescing and conservative invalidation; paused S02 facts are not a substitute |
 | 0005 compiler proof/index recovery | 0014 keeps official compiler authority; lexical candidates and candidate-ready generations remain insufficient for final semantics |
 | 0006 references lanes | 0012 reuses lanes, cancellation and revision fences; extend only through a second real capability transcript |

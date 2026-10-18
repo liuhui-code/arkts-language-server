@@ -5,15 +5,18 @@ import { parentPort, workerData } from "node:worker_threads"
 import type { SemanticDocumentPosition } from "../../core/protocol.js"
 import { LocalPackageResolver } from "../../core/sdk/local-package-resolver.js"
 import { TypeScriptLanguageServiceEngine } from "../../core/types/typescript-language-service.js"
+import { SemanticInputUnavailableError } from "../../core/types/typescript-query-inputs.js"
 import {
   MAX_DISK_SNAPSHOT_BYTES,
   type ProjectFileAccessPort,
   type SemanticWorkspaceView,
 } from "../../core/workspace/document-store.js"
 import type { ReferenceSdkAmbientProfile } from "./reference-runtime.js"
+import { enableVerifierSdkRetention } from "../backends/ohos-typescript/registry-pool.js"
 import { constructorModuleExclusions } from "./reference-constructor-scope.js"
 
 interface ReferenceVerifierWorkerData {
+  readonly persistent?: boolean
   readonly operation: "references" | "definition"
   readonly workspace: SemanticWorkspaceView
   readonly position: SemanticDocumentPosition
@@ -28,83 +31,104 @@ interface ReferenceVerifierWorkerData {
 
 const port = parentPort
 if (!port) throw new Error("Reference verifier requires a parent port")
-const data = workerData as ReferenceVerifierWorkerData
-// Trace-only protocol marker after module loading, before semantic preparation.
-if (data.trace) port.postMessage({ phase: "runtime-ready" })
-applyTestDelay()
-const packageResolver = new LocalPackageResolver()
-packageResolver.configureProject(data.projectConfiguration)
-const projectAccess = data.workspace.projectFileIdentities
-  ? snapshotProjectFileAccess(data.workspace)
-  : undefined
-const projectFileAccess = projectAccess?.port
-const engine = new TypeScriptLanguageServiceEngine(data.workspace.rootPath, {
-  packageResolver,
-  projectFileAccess,
-  sdkConfiguration: data.sdkConfiguration,
-  sdkAmbientProfile: data.sdkAmbientProfile,
-  tolerateUnadmittedProjectDependencies: data.tolerateUnadmittedProjectDependencies,
+if (workerData.persistent) enableVerifierSdkRetention()
+if (workerData.persistent) port.on("message", (input: ReferenceVerifierWorkerData) => {
+  // Private observations read this same workerData object at each actual job boundary.
+  Object.assign(workerData, input)
+  runJob(input)
 })
+runJob(workerData as ReferenceVerifierWorkerData)
 
-try {
-  const prepareStarted = performance.now()
-  engine.prepare(data.workspace)
-  const prepareHostMs = performance.now() - prepareStarted
-  const programStarted = performance.now()
-  const compilerTimings = data.trace ? engine.measureCompilerReadiness() : undefined
-  const prepared = {
-    stats: engine.programFileStats(),
-    memory: process.memoryUsage(),
-  }
-  const programReadyMs = performance.now() - programStarted
-  if (data.operation === "definition") {
-    const queryStarted = performance.now()
-    const definitions = engine.define(data.position)
-    const queryMs = performance.now() - queryStarted
-    port.postMessage({
-      ok: true,
-      definitions,
-      timings: { prepareHostMs, programReadyMs, queryMs, ...compilerTimings },
-      prepared,
-      stats: engine.programFileStats(),
-      memory: process.memoryUsage(),
-    })
-  } else {
-    const queryStarted = performance.now()
-    const expected = data.position.expectedReferenceAnchor
-    const definitions = expected ? engine.define(data.position) : undefined
-    const anchorVerified = expected ? definitions?.length === 1
-      && path.resolve(definitions[0].path) === path.resolve(expected.path)
-      && definitions[0].range.startLine === expected.line
-      && definitions[0].range.startColumn === expected.column : undefined
-    const result = anchorVerified === false
-      ? { status: "incomplete" as const, reason: "source-unavailable" as const }
-      : engine.references(data.position, data.includeDeclaration === true,
-          data.tolerateUnadmittedProjectDependencies !== true)
-    if (data.constructorScope && result.status === "complete") {
-      const exclusions = constructorModuleExclusions(data.workspace, data.position.path, result, projectFileAccess)
-      if (exclusions) result.constructorExcludedSources = exclusions
-    }
-    const queryMs = performance.now() - queryStarted
-    port.postMessage({
-      ok: true,
-      result,
-      anchorVerified,
-      timings: { prepareHostMs, programReadyMs, queryMs, ...compilerTimings },
-      unavailableProjectPaths: projectAccess?.unavailablePaths,
-      prepared,
-      stats: engine.programFileStats(),
-      memory: process.memoryUsage(),
-    })
-  }
-} catch (error) {
-  port.postMessage({
-    ok: false,
-    message: error instanceof Error ? error.message : String(error),
+function runJob(data: ReferenceVerifierWorkerData): void {
+  // Trace-only protocol marker after module loading, before semantic preparation.
+  if (data.trace) port!.postMessage({ phase: "runtime-ready" })
+  applyTestDelay()
+  const packageResolver = new LocalPackageResolver()
+  packageResolver.enableConfigurationWitness()
+  packageResolver.configureProject(data.projectConfiguration)
+  const projectAccess = data.workspace.projectFileIdentities
+    ? snapshotProjectFileAccess(data.workspace)
+    : undefined
+  const projectFileAccess = projectAccess?.port
+  const engine = new TypeScriptLanguageServiceEngine(data.workspace.rootPath, {
+    packageResolver,
+    projectFileAccess,
+    sdkConfiguration: data.sdkConfiguration,
+    sdkAmbientProfile: data.sdkAmbientProfile,
+    tolerateUnadmittedProjectDependencies: data.tolerateUnadmittedProjectDependencies,
   })
-} finally {
-  engine.dispose()
-  port.close()
+
+  let response: unknown
+  try {
+    response = engine.withRequestModuleResolution(() => {
+      const prepareStarted = performance.now()
+      engine.prepare(data.workspace)
+      const prepareHostMs = performance.now() - prepareStarted
+      const programStarted = performance.now()
+      const compilerTimings = data.trace ? engine.measureCompilerReadiness() : undefined
+      const prepared = {
+        stats: engine.programFileStats(),
+        memory: process.memoryUsage(),
+      }
+      const programReadyMs = performance.now() - programStarted
+      if (data.operation === "definition") {
+        const queryStarted = performance.now()
+        const definitions = engine.define(data.position)
+        const queryMs = performance.now() - queryStarted
+        return {
+          ok: true,
+          definitions,
+          timings: { prepareHostMs, programReadyMs, queryMs, ...compilerTimings },
+          prepared,
+          stats: engine.programFileStats(),
+          memory: process.memoryUsage(),
+        }
+      } else {
+        const queryStarted = performance.now()
+        const expected = data.position.expectedReferenceAnchor
+        const definitions = expected ? engine.define(data.position) : undefined
+        const anchorVerified = expected ? definitions?.length === 1
+          && path.resolve(definitions[0].path) === path.resolve(expected.path)
+          && definitions[0].range.startLine === expected.line
+          && definitions[0].range.startColumn === expected.column : undefined
+        const result = anchorVerified === false
+          ? { status: "incomplete" as const, reason: "source-unavailable" as const }
+          : engine.references(data.position, data.includeDeclaration === true,
+              data.tolerateUnadmittedProjectDependencies !== true)
+        if (data.constructorScope && result.status === "complete") {
+          const exclusions = constructorModuleExclusions(data.workspace, data.position.path, result, projectFileAccess)
+          if (exclusions) result.constructorExcludedSources = exclusions
+        }
+        const queryMs = performance.now() - queryStarted
+        return {
+          ok: true,
+          result,
+          anchorVerified,
+          timings: { prepareHostMs, programReadyMs, queryMs, ...compilerTimings },
+          unavailableProjectPaths: projectAccess?.unavailablePaths,
+          prepared,
+          stats: engine.programFileStats(),
+          memory: process.memoryUsage(),
+        }
+      }
+    })
+    engine.assertCurrentInputs()
+  } catch (error) {
+    response = {
+      ok: false,
+      inputUnavailable: error instanceof SemanticInputUnavailableError,
+      message: error instanceof Error ? error.message : String(error),
+    }
+  }
+  try {
+    // The parent may terminate immediately on receipt. Finish native ownership
+    // release before publishing either a result or failure, never after it.
+    engine.dispose()
+    port!.postMessage(response)
+  } finally {
+    if (!workerData.persistent) port!.close()
+  }
+
 }
 
 function snapshotProjectFileAccess(workspace: SemanticWorkspaceView): {
