@@ -127,3 +127,12 @@
 - 新增 probe 条目先让 manifest audit RED，再登记到 unit-contract；完整登记为 223 个入口。修复集在主工作区的类型检查与 **85/85** 不使用 name filter 的定向回归通过（`merge-linux-fixes-focused.log`）。最终 Linux 完整结果及当前提交 403 文件真实 SDK 复测结果以 [PR #96](https://github.com/liuhui-code/arkts-language-server/pull/96) 的验证记录为准。
 
 - 第二次真实 Linux 定向执行 [39146890436](https://github.com/liuhui-code/arkts-language-server/actions/runs/39146890436) **SUCCESS**，SDK/归档/真实 RSS/重启/中断/全部 anchor 合同通过；固定代码下仅收缩该诊断输出即越过原停滞点。Linux 控制分支仍独立，产品 PR 的完整 release driver 与原 job 上限均保持原配置，随后在最终提交上重跑。
+
+
+## 完整 Linux 检查的 JSONL 观察竞态
+
+- `d731c65` 的完整 Linux [39147329809](https://github.com/liuhui-code/arkts-language-server/actions/runs/39147329809) 执行到结束：**1890/1891**，唯一失败为 readiness 取消用例在实时读 server.log 时解析到了未写完的 JSONL 尾行。业务查询未报错，测试在发送取消前的事件轮询中触发 SyntaxError；此轮仍是 exit 1，不能作为通过。
+- 父版本 `d731c65c365a4d60b1052473799bf2246b6548a3`。通过公开 readiness fixture 的 events()，先写一个完整事件和第二个事件的半行，复现原 reader 的 Unterminated string（`log-observation-red.log` exit 1）。补齐行后必须观察到两条事件，完整但损坏的行仍必须抛出。
+- 复用仓库已有 `completeLogEvents()`，仅观察以换行提交的记录，不吞掉完整坏记录；原取消进入点、取消响应、精确恢复和能力声明断言均保留。`log-observation-green.log` **34/34**、exit 0，包含全部 readiness、初始化和 local-delivery 配置合同。
+- 完整 Linux fast 实测 **1630586ms（约 27.2 分钟）**；整个 release driver 还须运行 Rust、WASM、安装产物和大工程检查。将 validate job 总时限从 30 调为 60 分钟，以容纳完整检查；查询的 500ms 目标、实测断言和业务超时逻辑均未改动。
+- 当前两轮真实 SDK 的 producer、原始 oracle、transport helper 与全部运行期二进制输入 hash 仍一致，208 次精确响应的测量无需因测试日志 reader 与 CI 总时限调整而重做。最终完整检查以 PR #96 当前提交的 CI 结果为准。

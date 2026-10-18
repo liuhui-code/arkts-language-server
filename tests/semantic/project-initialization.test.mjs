@@ -154,3 +154,18 @@ test("a first references request joins initialization and uses the prepared comp
     assert.equal(new Set(rows.map(row => row.threadId)).size, 1)
     assert.deepEqual((await session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })
   })
+
+
+test("readiness observations wait for a complete JSONL record and reject complete corrupt records", async t => {
+  const { session, directory, events } = createReadinessFixture(t)
+  await session.close()
+  const logs = path.join(directory, "logs")
+  fs.mkdirSync(logs, { recursive: true })
+  const file = path.join(logs, "server.log")
+  fs.writeFileSync(file, '{"event":"first"}\n{"event":"sec')
+  assert.deepEqual(events(), [{ event: "first" }])
+  fs.appendFileSync(file, 'ond"}\n')
+  assert.deepEqual(events(), [{ event: "first" }, { event: "second" }])
+  fs.appendFileSync(file, '{"event":\n')
+  assert.throws(events, SyntaxError, "a completed corrupt record must remain an error")
+})

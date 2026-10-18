@@ -7,6 +7,7 @@ import { pathToFileURL } from "node:url"
 import { LspSession } from "./lsp-session.mjs"
 import { projectRoot } from "./lsp-process.mjs"
 import { selectedL03Policy } from "./resident-interactive-lsp.mjs"
+import { completeLogEvents } from "./complete-log-events.mjs"
 
 export async function startReadinessFixture(t, env = {}) {
   const fixture = createReadinessFixture(t, env)
@@ -64,7 +65,7 @@ export function createReadinessFixture(t, env = {}) {
     for (const live of [...sessions].reverse()) await live.close().catch(() => {})
     fs.rmSync(directory, { recursive: true, force: true })
   })
-  const events = () => fs.readFileSync(logFile, "utf8").trim().split("\n").map(JSON.parse)
+  const events = () => completeLogEvents(logFile)
   return { directory, workspace, sdk, rootUri, session, events, sources,
     startSession: () => { const live = new LspSession(sessionOptions); sessions.push(live); return live },
     uri: name => pathToFileURL(path.join(workspace, name)).href }
