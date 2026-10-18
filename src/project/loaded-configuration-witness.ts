@@ -25,16 +25,20 @@ export class LoadedConfigurationWitness {
   observe<T>(filePath: string, load: () => T): T {
     const resolved = path.resolve(filePath)
     const before = lookupIdentity(resolved)
-    try { return load() }
+    let result: T | undefined
+    try { result = load(); return result }
     finally {
       const after = lookupIdentity(resolved)
       if (!before || !after) this.markUnprovable("identity-unavailable", resolved)
       else if (after.loadGuard !== before.loadGuard) this.markUnprovable("changed-during-load", resolved)
       else {
         const owner = before.absenceOwner
-        // A directly loaded directory's unchanged full stamp already fences
-        // every actual negative child lookup. Never restamp a cached owner.
-        const coveredOwner = owner && this.identities.get(owner[0]) === owner[1] ? owner : undefined
+        // A native false leaf lookup also observes its actual parent's full
+        // stamp on both sides. Retain that load-owned namespace epoch, not an
+        // invented listing. Missing ancestor facts still use their own path.
+        const negativeLeaf = result === false && before.witnessPath === resolved
+        const coveredOwner = owner && (this.identities.get(owner[0]) === owner[1] || negativeLeaf)
+          ? owner : undefined
         const witnessPath = coveredOwner?.[0] ?? before.witnessPath
         const identity = coveredOwner?.[1] ?? before.identity
         const previous = this.identities.get(witnessPath)

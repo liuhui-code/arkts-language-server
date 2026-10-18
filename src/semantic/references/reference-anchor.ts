@@ -87,9 +87,10 @@ export async function resolveIsolatedReferenceAnchor(
     )),
   }, position, options)
   trace?.("references.anchor.complete", {
-    verifierIsolation: "transient-worker",
+    verifierIsolation: "sdk-cache-worker",
     definitions: verification.definitions.length,
     workerStartupMs: verification.timings.workerStartupMs,
+    workerReused: verification.timings.workerReused,
     workerPrepareHostMs: verification.timings.prepareHostMs,
     workerProgramReadyMs: verification.timings.programReadyMs,
     workerGetProgramMs: verification.timings.getProgramMs,

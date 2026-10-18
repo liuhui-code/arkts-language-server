@@ -31,6 +31,7 @@ test("identical references share verification while each client owns cancellatio
     cwd: projectRoot,
     rootUri: pathToFileURL(workspace).href,
     env: {
+      ARKTS_REFERENCES_RESIDENT_FAST_PATH: "0",
       ARKLINE_HARMONY_SDK_PATH: path.join(root, "missing-sdk"),
       DEVECO_SDK_HOME: path.join(root, "missing-deveco"),
       ARKTS_LSP_LOG_DIR: logDirectory,
@@ -56,9 +57,11 @@ test("identical references share verification while each client owns cancellatio
   assert.equal(second.error, undefined, JSON.stringify(second.error))
   assert.deepEqual(sortedLocations(second.result), sortedLocations(first.result))
 
-  sendReferences(session, 12, queryUri, position, false)
+  // A distinct cursor on the same symbol forces real work for the cancellation pair.
+  const cancellationPosition = { ...position, character: position.character + 1 }
+  sendReferences(session, 12, queryUri, cancellationPosition, false)
   await waitForEventCount(logDirectory, "references.batch.start", 2)
-  sendReferences(session, 13, queryUri, position, false)
+  sendReferences(session, 13, queryUri, cancellationPosition, false)
   await waitForEventCount(logDirectory, "references.coalesced", 2)
   session.transport.send({ jsonrpc: "2.0", method: "$/cancelRequest", params: { id: 12 } })
   const [cancelled, survivor] = await Promise.all([

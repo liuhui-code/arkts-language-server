@@ -1,6 +1,6 @@
 import type { Worker } from "node:worker_threads"
 
-export type TransientSemanticWorkerKind = "reference" | "anchor" | "diagnostic"
+export type TransientSemanticWorkerKind = "reference" | "anchor" | "diagnostic" | "reference-cache" | "reference-job" | "anchor-job"
 export type TransientSemanticWorkerObserver = (
   kind: TransientSemanticWorkerKind, phase: "started" | "exited",
 ) => void

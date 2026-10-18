@@ -210,12 +210,12 @@ for (const [name, budget, benchmark, pressureFlag, batchRoots, trace, cancel = f
       const id = session.nextRequestId++
       session.transport.send({ jsonrpc: "2.0", id, method: "textDocument/references", params })
       const pending = session.transport.response(id, 20_000)
-      const started = await waitForMetric(metricsPath, sample => sample.activeReferenceVerifierCount === 1)
+      const started = await waitForMetric(metricsPath, sample => sample.activeReferenceJobCount === 1)
       session.transport.send({ jsonrpc: "2.0", method: "$/cancelRequest", params: { id } })
       const cancelled = await pending
       assert.equal(cancelled.result, undefined)
       assert.equal(cancelled.error?.code, -32800)
-      await waitForMetric(metricsPath, sample => sample.transientVerifierCount === 0
+      await waitForMetric(metricsPath, sample => sample.activeVerifierJobCount === 0
         && BigInt(sample.monotonicNs) > BigInt(started.monotonicNs))
     }
     const response = await session.request("textDocument/references", params, { timeoutMs: 20_000 })
@@ -232,9 +232,9 @@ for (const [name, budget, benchmark, pressureFlag, batchRoots, trace, cancel = f
       assert.equal(response.error, undefined, JSON.stringify(response.error))
       assertLocations(response.result, expected)
     }
-    assert.equal(metrics(metricsPath).some(sample => sample.activeAnchorVerifierCount > 0), !skipAnchor,
+    assert.equal(metrics(metricsPath).some(sample => sample.activeAnchorJobCount > 0), !skipAnchor,
       "only high RSS with both opt-ins skips discovery preparation; exact verification remains required")
-    assert.equal(metrics(metricsPath).some(sample => sample.activeReferenceVerifierCount === 1), !reject)
+    assert.equal(metrics(metricsPath).some(sample => sample.activeReferenceJobCount === 1), !reject)
     assert.equal(metrics(metricsPath).at(-1).transientVerifierCount, 0)
     if (trace === "1") {
       assert.equal(events(logs).some(entry => entry.event === "references.pressure.anchor-skipped"), skipAnchor)

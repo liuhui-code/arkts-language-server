@@ -8,6 +8,7 @@ import test from "node:test"
 import { projectRoot } from "./support/lsp-process.mjs"
 import { summarizePreparedBuckets } from "../scripts/bench/prepared-query-report.mjs"
 import { preparedRequestReady } from "../scripts/bench/prepared-release-readiness.mjs"
+import { candidateReport, readyReport } from "./support/semantic-release-evidence-fixture.mjs"
 
 const cli = path.join(projectRoot, "scripts/bench/assert-semantic-release.mjs")
 const matrix = path.join(projectRoot, "config/semantic-release-matrix.json")
@@ -103,24 +104,6 @@ test("L08 keeps candidate-only references evidence separate by declaration polic
   assert.equal(report.releaseEligible, false)
 })
 
-function candidateReport() {
-  const pins = { serverInputSha256: "a".repeat(64), serverSha256: "b".repeat(64),
-    sdkDeclarationDigest: "c".repeat(64), workspaceFilesSha256: "d".repeat(64) }
-  return {
-    schema: "arkts-language-server.prepared-query-report", schemaVersion: 1,
-    inputIdentity: { ...pins, postflightPins: pins, inputUnchanged: true },
-    environment: { platform: "Darwin 25.6.0 x64", traceMode: "trace-off", effectiveArktsFlags: {} },
-    readiness: { semantic: { status: "READINESS_UNSUPPORTED" } },
-    targetPool: [{ id: "ref", kind: "references", includeDeclaration: true }],
-    requests: [{ scenarioId: "new", targetId: "ref", kind: "references", bucket: "first-unseen-symbol",
-      status: "COMPLETE", elapsedMs: 42, measurementState: "candidate-ready-control",
-      correctness: { equal: true, missing: [], extra: [], duplicates: [], invalid: [] } }],
-    correctness: { plannedRequests: 1, executedRequests: 1, status: "PASS" },
-    memory: { targetPid: 321 }, timeline: [{ phase: "server-process-started", timestamp: 12345 }],
-    closeResult: { exit: { code: 0, signal: null } },
-  }
-}
-
 test("L08 separates requests above the 500 ms target from requests above the approved 550 ms ceiling", (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-l08-latency-counters-"))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
@@ -174,14 +157,15 @@ test("the 550 ms control boundary still rejects slower, incorrect and incomplete
   assert.equal(evaluate(1, 10, requests => { requests[0].status = "TIMEOUT" }).controlStatus, "FAIL")
 })
 
-test("L08 retains trace-on attribution without treating its timing as product evidence", (t) => {
+for (const flag of ["ARKTS_REFERENCES_TRACE", "ARKTS_SEMANTIC_QUEUE_TRACE"]) {
+test(`L08 retains trace-on attribution without treating its timing as product evidence (${flag})`, (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-l08-trace-"))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const source = path.join(root, "trace.json")
   const out = path.join(root, "report.json")
   const input = candidateReport()
-  input.environment.traceMode = "attribution-only"
-  input.environment.effectiveArktsFlags.ARKTS_REFERENCES_TRACE = "1"
+  input.environment.traceMode = flag === "ARKTS_REFERENCES_TRACE" ? "attribution-only" : "trace-off"
+  input.environment.effectiveArktsFlags[flag] = "1"
   fs.writeFileSync(source, JSON.stringify(input))
   const result = spawnSync(process.execPath, [cli, "--matrix", matrix,
     "--prepared-report", source, "--out", out], { cwd: projectRoot, encoding: "utf8" })
@@ -196,7 +180,13 @@ test("L08 retains trace-on attribution without treating its timing as product ev
   assert.equal(cell.inputGroups[0].observedLatencyMs.p95, 42)
   assert.equal(cell.gates.latency, "BLOCKED")
   assert.equal(report.releaseEligible, false)
+  const samples = readyReport(0).requests
+  const summaries = summarizePreparedBuckets({ targets: readyReport(0).targetPool,
+    scenarios: samples.map(request => ({ id: request.scenarioId, targetId: request.targetId, bucket: request.bucket })),
+    runtime: { env: { [flag]: "1" } } }, samples)
+  assert.ok(summaries.every(summary => summary.reason === "ATTRIBUTION_ONLY"))
 })
+}
 
 test("L08 rejects a claimed equal result with a nonempty exact-difference list", (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-l08-diff-"))
@@ -271,4 +261,218 @@ test("archived proof parsing uses the recorded Windows path convention, not the 
   delete proof.inputIdentity.backend.packageVersion
   assert.equal(preparedRequestReady(input, request, capabilities), false,
     "missing backend identities cannot bind each other by undefined equality")
+})
+
+test("L08 rejects overlapping attempts re-exported under different report bytes", t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-l08-overlapping-attempts-"))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const files = Array.from({ length: 5 }, (_, index) => {
+    const file = path.join(root, `session-${index}.json`)
+    fs.writeFileSync(file, JSON.stringify(readyReport(index)))
+    return file
+  })
+  const run = (inputs, out) => spawnSync(process.execPath, [cli, "--matrix", matrix,
+    ...inputs.flatMap(file => ["--prepared-report", file]), "--out", out],
+  { cwd: projectRoot, encoding: "utf8" })
+  const original = path.join(root, "original.json")
+  const baseline = run(files, original)
+  assert.equal(baseline.status, 1, baseline.stderr)
+  const cell = JSON.parse(fs.readFileSync(original)).cells.find(cell => cell.requests)
+  assert.equal(cell.requests, 100)
+  assert.equal(cell.sessions, 5)
+  assert.equal(cell.gates.latency, "PASS", "independent, generation-bound samples qualify")
+
+  const copy = path.join(root, "reexport.json")
+  fs.writeFileSync(copy, JSON.stringify(readyReport(0), null, 2))
+  const out = path.join(root, "overlap.json")
+  const result = run([...files, copy], out)
+  assert.equal(result.status, 2, result.stderr)
+  assert.match(result.stderr, /L08_DUPLICATE_REQUEST_ATTEMPT/u)
+  assert.equal(fs.existsSync(out), false, "invalid evidence cannot produce an acceptance report")
+})
+
+test("L08 fails a claimed PASS when planned attempts were never executed", t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-l08-incomplete-plan-"))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const files = Array.from({ length: 5 }, (_, index) => {
+    const file = path.join(root, `session-${index}.json`)
+    const input = readyReport(index)
+    if (index === 0) input.correctness.plannedRequests++
+    fs.writeFileSync(file, JSON.stringify(input))
+    return file
+  })
+  const out = path.join(root, "report.json")
+  const result = spawnSync(process.execPath, [cli, "--matrix", matrix,
+    ...files.flatMap(file => ["--prepared-report", file]), "--out", out],
+  { cwd: projectRoot, encoding: "utf8" })
+  assert.equal(result.status, 1, result.stderr)
+  const report = JSON.parse(fs.readFileSync(out))
+  const cell = report.cells.find(cell => cell.requests)
+  assert.equal(cell.requests, 100, "retain the actually observed requests")
+  assert.equal(cell.sessions, 5)
+  assert.equal(cell.gates.correctness, "FAIL")
+  assert.equal(cell.gates.latency, "FAIL")
+  assert.equal(report.status, "FAIL")
+  assert.equal(report.releaseEligible, false)
+})
+
+test("L08 cannot qualify one cell using two different frozen builds", t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-l08-mixed-builds-"))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const files = Array.from({ length: 10 }, (_, index) => {
+    const input = readyReport(index)
+    if (index >= 5) {
+      input.inputIdentity.serverSha256 = "e".repeat(64)
+      input.inputIdentity.postflightPins.serverSha256 = "e".repeat(64)
+    }
+    const file = path.join(root, `session-${index}.json`)
+    fs.writeFileSync(file, JSON.stringify(input))
+    return file
+  })
+  const out = path.join(root, "report.json")
+  const result = spawnSync(process.execPath, [cli, "--matrix", matrix,
+    ...files.flatMap(file => ["--prepared-report", file]), "--out", out],
+  { cwd: projectRoot, encoding: "utf8" })
+  assert.equal(result.status, 1, result.stderr)
+  const report = JSON.parse(fs.readFileSync(out))
+  const cell = report.cells.find(cell => cell.requests)
+  assert.equal(cell.requests, 200, "retain both builds instead of selecting the faster one")
+  assert.equal(cell.inputGroups.length, 2)
+  assert.equal(cell.gates.latency, "BLOCKED")
+  assert.deepEqual(cell.reasons, ["MIXED_INPUT_IDENTITIES"])
+  assert.equal(report.releaseEligible, false)
+})
+
+test("L08 refuses to reclassify a request whose declared target has another capability", t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-l08-target-binding-"))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const input = readyReport(0)
+  input.requests[0].kind = "hover"
+  const file = path.join(root, "mismatched.json")
+  const out = path.join(root, "report.json")
+  fs.writeFileSync(file, JSON.stringify(input))
+  const result = spawnSync(process.execPath, [cli, "--matrix", matrix,
+    "--prepared-report", file, "--out", out], { cwd: projectRoot, encoding: "utf8" })
+  assert.equal(result.status, 2, result.stderr)
+  assert.match(result.stderr, /L08_REQUEST_TARGET_MISMATCH/u)
+  assert.equal(fs.existsSync(out), false)
+})
+
+test("L08 rechecks complete payloads instead of trusting a contradictory equal label", t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-l08-payload-diff-"))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const input = readyReport(0)
+  for (const target of input.targetPool) target.kind = "hover"
+  for (const request of input.requests) {
+    request.kind = "hover"
+    request.correctness = { equal: true, invalid: [],
+      payload: { contents: { kind: "markdown", value: "number" } },
+      expectedPayload: { contents: { kind: "markdown", value: "number" } } }
+  }
+  input.requests[0].correctness.payload.contents.value = "string"
+  const file = path.join(root, "mismatched.json")
+  const out = path.join(root, "report.json")
+  fs.writeFileSync(file, JSON.stringify(input))
+  const result = spawnSync(process.execPath, [cli, "--matrix", matrix,
+    "--prepared-report", file, "--out", out], { cwd: projectRoot, encoding: "utf8" })
+  assert.equal(result.status, 1, result.stderr)
+  const report = JSON.parse(fs.readFileSync(out))
+  const cell = report.cells.find(cell => cell.requests)
+  assert.equal(cell.requests, 20)
+  assert.equal(cell.inputGroups[0].failures, 1)
+  assert.equal(cell.gates.correctness, "FAIL")
+  assert.equal(report.status, "FAIL")
+})
+
+test("L08 rechecks every reference range even when counts and equal labels agree", t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-l08-reference-range-"))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const input = readyReport(0)
+  input.requests[0].correctness.locations[0].range.start.character++
+  const file = path.join(root, "mismatched.json")
+  const out = path.join(root, "report.json")
+  fs.writeFileSync(file, JSON.stringify(input))
+  const result = spawnSync(process.execPath, [cli, "--matrix", matrix,
+    "--prepared-report", file, "--out", out], { cwd: projectRoot, encoding: "utf8" })
+  assert.equal(result.status, 1, result.stderr)
+  const report = JSON.parse(fs.readFileSync(out))
+  const cell = report.cells.find(cell => cell.requests)
+  assert.equal(cell.requests, 20)
+  assert.equal(cell.inputGroups[0].failures, 1)
+  assert.equal(cell.gates.correctness, "FAIL")
+  assert.equal(report.status, "FAIL")
+})
+
+test("L08 keeps missing complete oracle evidence BLOCKED despite sufficient ready samples", t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-l08-missing-oracle-"))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const files = Array.from({ length: 5 }, (_, index) => {
+    const input = readyReport(index)
+    if (index === 0) delete input.requests[0].correctness.expectedLocations
+    const file = path.join(root, `session-${index}.json`)
+    fs.writeFileSync(file, JSON.stringify(input))
+    return file
+  })
+  const out = path.join(root, "report.json")
+  const result = spawnSync(process.execPath, [cli, "--matrix", matrix,
+    ...files.flatMap(file => ["--prepared-report", file]), "--out", out],
+  { cwd: projectRoot, encoding: "utf8" })
+  assert.equal(result.status, 1, result.stderr)
+  const report = JSON.parse(fs.readFileSync(out))
+  const cell = report.cells.find(cell => cell.requests)
+  assert.equal(cell.requests, 100)
+  assert.equal(cell.sessions, 5)
+  assert.equal(cell.gates.ready, "PASS", "query readiness is a separate proof")
+  assert.equal(cell.gates.correctness, "BLOCKED")
+  assert.equal(cell.gates.latency, "BLOCKED")
+  assert.deepEqual(cell.reasons, ["FULL_RESULT_ORACLE_MISSING"])
+  assert.equal(report.releaseEligible, false)
+})
+
+test("L08 rejects duplicate or malformed raw locations even when both arrays and labels agree", t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-l08-invalid-locations-"))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  for (const [name, mutate] of [
+    ["duplicate", locations => { locations.push(structuredClone(locations[0])) }],
+    ["negative", locations => { locations[0].range.start.character = -1 }],
+    ["reverse", locations => { locations[0].range.end.line = -1 }],
+    ["outside", locations => { locations[0].file = "../Outside.ets" }],
+  ]) {
+    const input = readyReport(0)
+    const correctness = input.requests[0].correctness
+    mutate(correctness.locations)
+    correctness.expectedLocations = structuredClone(correctness.locations)
+    const file = path.join(root, `${name}.json`)
+    const out = path.join(root, `${name}-out.json`)
+    fs.writeFileSync(file, JSON.stringify(input))
+    const result = spawnSync(process.execPath, [cli, "--matrix", matrix,
+      "--prepared-report", file, "--out", out], { cwd: projectRoot, encoding: "utf8" })
+    assert.equal(result.status, 1, result.stderr)
+    const report = JSON.parse(fs.readFileSync(out))
+    const cell = report.cells.find(cell => cell.requests)
+    assert.equal(cell.inputGroups[0].failures, 1, name)
+    assert.equal(cell.gates.correctness, "FAIL", name)
+    assert.equal(report.status, "FAIL", name)
+  }
+})
+
+test("L08 compares reference sets without changing capability payload ordering", t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-l08-location-order-"))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const input = readyReport(0)
+  const correctness = input.requests[0].correctness
+  const second = { ...structuredClone(correctness.locations[0]), file: "Other.ets" }
+  correctness.locations.push(second)
+  correctness.expectedLocations = structuredClone(correctness.locations).reverse()
+  const file = path.join(root, "reordered.json")
+  const out = path.join(root, "report.json")
+  fs.writeFileSync(file, JSON.stringify(input))
+  const result = spawnSync(process.execPath, [cli, "--matrix", matrix,
+    "--prepared-report", file, "--out", out], { cwd: projectRoot, encoding: "utf8" })
+  assert.equal(result.status, 1, result.stderr)
+  const report = JSON.parse(fs.readFileSync(out))
+  const cell = report.cells.find(cell => cell.requests)
+  assert.equal(cell.inputGroups[0].failures, 0)
+  assert.equal(cell.gates.correctness, "PASS")
+  assert.equal(report.status, "BLOCKED", "all remaining release gates still apply")
 })

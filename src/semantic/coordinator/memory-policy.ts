@@ -1,4 +1,5 @@
 import type { SemanticMemoryLevel } from "./semantic-coordinator.js"
+import { initialPreparationActive } from "./initial-preparation.js"
 
 export interface SemanticMemoryPolicyConfig {
   readonly level1Ratio: number
@@ -23,6 +24,7 @@ export class SemanticMemoryPolicy {
     if (!Number.isFinite(budgetBytes) || budgetBytes <= 0) {
       throw new Error("budgetBytes must be positive")
     }
+    if (initialPreparationActive()) return "level0"
     const ratio = rssBytes / budgetBytes
     if (ratio >= this.config.level3Ratio) this.#level3Active = true
     if (this.#level3Active) {

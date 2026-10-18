@@ -5,15 +5,21 @@ import type {
   SemanticDocumentSync,
   SemanticDocumentPosition,
   SemanticReplayDocument,
-  SemanticResponseState,
 } from "../protocol.js"
 import { resolveWorkspaceRoot, type WorkspaceDocument } from "../sdk/workspace-loader.js"
 import { LocalPackageResolver } from "../sdk/local-package-resolver.js"
-import { WorkspaceContentChanges, type WorkspaceContentDelta } from "./workspace-content-changes.js"
+import { WorkspaceContentChanges } from "./workspace-content-changes.js"
 import { appendAuthoritativeOverlays, projectOverlayAuthority, withoutShadowedPaths } from "./overlay-authority.js"
 import { canonicalSourcePath, canonicalWorkspaceRoot, isInside, isWorkspacePhysicalAlias } from "./physical-path-identity.js"
 import { createProjectSourceEligibility, isActiveProjectSource } from "./project-source-eligibility.js"
 import { listWorkspaceSourcePaths, SOURCE_EXTENSIONS, unresolvedSourceEntries } from "./workspace-source-enumerator.js"
+import { MAX_DISK_SNAPSHOT_BYTES, readDiskSource as safeRead, sourceStatIdentity } from "./workspace-disk-source.js"
+import { classifyWatchedSourceChanges } from "./watched-source-notifications.js"
+
+import type { ProjectMembershipSnapshot, ProjectFileAdmissionToken, ProjectFileAccessPort, SemanticWorkspaceView } from "./semantic-workspace-view.js"
+export type { ProjectMembershipSnapshot, ProjectFileAdmissionToken, ProjectFileAccessPort, SemanticWorkspaceView } from "./semantic-workspace-view.js"
+
+export { MAX_DISK_SNAPSHOT_BYTES } from "./workspace-disk-source.js"
 
 const MAX_CACHED_DOCUMENTS = 512
 const MAX_CACHED_BYTES = 16 * 1024 * 1024
@@ -27,8 +33,6 @@ const MAX_WATCHED_REMOVED_PATHS = 512
 const MAX_WATCHED_CHANGED_PATHS = 512
 const MAX_REPLAY_DOCUMENTS = 32
 const MAX_REPLAY_BYTES = 4 * 1024 * 1024
-const MAX_DISK_READ_CHUNK_BYTES = 64 * 1024
-export const MAX_DISK_SNAPSHOT_BYTES = 4 * 1024 * 1024
 const CASE_FOLDED_PATH_IDENTITY_PREFIX = "\0case-folded:"
 
 interface DocumentRecord extends WorkspaceDocument {
@@ -69,40 +73,12 @@ type BudgetedDiskLoadResult =
   | { status: "loaded"; record: DocumentRecord }
   | { status: "budget-exceeded" }
 
-type DiskReadResult =
-  | { status: "loaded"; content: string }
-  | { status: "unavailable" }
-  | { status: "budget-exceeded" }
-
 interface DocumentCacheTransaction {
   records: Map<string, DocumentRecord | undefined>
   closures: Map<string, DependencyClosureCacheEntry | undefined>
   cachedBytes: number
   accessClock: number
   committed: boolean
-}
-
-export interface ProjectMembershipSnapshot {
-  readonly paths: readonly string[]
-  status: "complete" | "partial"
-  reason?: "path-count-limit" | "path-byte-limit" | "enumeration-error" | "source-unavailable"
-  revision: number
-}
-
-export type ProjectFileAdmissionToken = string
-
-export interface ProjectFileAccessPort {
-  tokenFor(
-    canonicalRootId: string,
-    catalogRevision: number,
-    filePath: string,
-  ): ProjectFileAdmissionToken | undefined
-  read(
-    canonicalRootId: string,
-    catalogRevision: number,
-    filePath: string,
-    token: ProjectFileAdmissionToken,
-  ): string | null
 }
 
 interface ProjectFileSetCacheEntry extends Omit<ProjectMembershipSnapshot, "paths"> {
@@ -136,32 +112,6 @@ export interface SemanticDocumentStoreOptions {
     maxRemovedPaths?: number
     maxChangedPaths?: number
   }
-}
-
-export interface SemanticWorkspaceView {
-  rootPath: string
-  canonicalRootId: string
-  typeEngineResetEpoch: number
-  overlayPaths?: ReadonlyMap<string, string>
-  documents: Array<WorkspaceDocument & {
-    documentVersion?: number
-    overlay: boolean
-  }>
-  projectMembership?: ProjectMembershipSnapshot
-  /** Immutable disk identities used by an isolated verifier to preserve membership admission. */
-  projectFileIdentities?: readonly (readonly [string, ProjectFileAdmissionToken])[]
-  /**
-   * Optional compiler root subset for an operation-scoped semantic query.
-   * Project membership remains the authority for file admission and result mapping.
-   */
-  semanticRootPaths?: readonly string[]
-  removedPaths?: string[]
-  changedPaths?: string[]
-  /** One-shot store-owned evidence that every intervening revision is a compatible disk delta. */
-  contentDelta?: WorkspaceContentDelta
-  contentRevision: number
-  resetTypeEngine?: boolean
-  state: SemanticResponseState
 }
 
 export interface WorkspaceFileChangeBatch {
@@ -533,35 +483,9 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
     }
     const entry = this.projectFileSets.get(canonicalRoot)
     const paths = entry?.paths
-    const rejectedSourceChanges: DiskInvalidationInput[] = []
-    const sourceChanges = batch.changes.flatMap((change) => {
-      const sourcePath = path.resolve(change.path)
-      if (!SOURCE_EXTENSIONS.includes(path.extname(sourcePath))) return []
-      const physicalPath = canonicalSourcePath(sourcePath)
-      if (!isInside(canonicalRoot, physicalPath)) {
-        if (isInside(lexicalRoot, sourcePath)) {
-          rejectedSourceChanges.push({ path: sourcePath, physicalPath })
-        }
-        return []
-      }
-      let stat: fs.Stats | undefined
-      let membershipEligible = false
-      if (change.kind !== "deleted") {
-        membershipEligible = safeLstat(sourcePath, this.operationControl)?.isFile() === true
-        stat = safeStat(sourcePath, this.operationControl) ?? undefined
-        if (!stat?.isFile() || stat.size > MAX_DISK_SNAPSHOT_BYTES) {
-          rejectedSourceChanges.push({ path: sourcePath, physicalPath })
-          return []
-        }
-      }
-      return [{
-        sourcePath,
-        physicalPath,
-        kind: change.kind,
-        overlay: this.documents.get(sourcePath)?.overlay === true,
-        membershipEligible,
-        stat,
-      }]
+    const { sourceChanges, rejectedSourceChanges } = classifyWatchedSourceChanges(batch.changes, {
+      canonicalRoot, lexicalRoot, documents: this.documents,
+      operationControl: this.operationControl, maxReadBytes: MAX_CACHED_BYTES,
     })
     const knownPathsBeforeInvalidation = new Set(sourceChanges.flatMap(({ sourcePath, overlay }) => (
       !overlay && (this.documents.has(sourcePath) || Boolean(paths?.includes(sourcePath))) ? [sourcePath] : []
@@ -905,6 +829,9 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
       throw error
     }
   }
+
+  /** Reuse the current authoritative catalog without preloading unrelated source text. */
+  membershipFor(rootPath: string): ProjectMembershipSnapshot { return this.projectMembership(rootPath) }
 
   /** Selects a store-owned source only to anchor full preparation, never a query target. */
   prepareRoot(rootPath: string): SemanticWorkspaceView | undefined {
@@ -1408,7 +1335,7 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
     const physicalPath = canonicalSourcePath(filePath)
     const physicallyAdmitted = workspaceRoot === undefined || isInside(workspaceRoot, physicalPath)
     const stat = physicallyAdmitted ? safeStat(filePath, this.operationControl) : null
-    const fingerprint = stat ? `${stat.mtimeMs}:${stat.size}` : null
+    const fingerprint = stat ? sourceStatIdentity(stat) : null
     if (
       cached
       && cached.physicalPath === physicalPath
@@ -1835,83 +1762,6 @@ function toggleAsciiCase(value: string): string {
   return `${value.slice(0, index)}${toggled}${value.slice(index + 1)}`
 }
 
-function safeRead(
-  filePath: string,
-  remainingBytes: number,
-  operationControl: SemanticOperationControl,
-  expectedPhysicalPath?: string,
-  expectedDiskIdentity?: ProjectFileAdmissionToken,
-): DiskReadResult {
-  let descriptor: number | undefined
-  try {
-    operationControl.checkpoint()
-    const initial = fs.lstatSync(filePath)
-    if (!initial.isFile() && !initial.isSymbolicLink()) return { status: "unavailable" }
-    descriptor = fs.openSync(
-      filePath,
-      fs.constants.O_RDONLY | (fs.constants.O_NONBLOCK ?? 0),
-    )
-    const before = fs.fstatSync(descriptor)
-    if (!before.isFile() || before.size > MAX_DISK_SNAPSHOT_BYTES) return { status: "unavailable" }
-    if (before.size > remainingBytes) return { status: "budget-exceeded" }
-    if (expectedDiskIdentity !== undefined && sourceStatIdentity(before) !== expectedDiskIdentity) {
-      return { status: "unavailable" }
-    }
-    if (expectedPhysicalPath !== undefined) {
-      const currentPhysicalPath = fs.realpathSync.native(filePath)
-      const expectedEntry = fs.lstatSync(expectedPhysicalPath)
-      const expectedStat = fs.statSync(expectedPhysicalPath)
-      if (
-        currentPhysicalPath !== expectedPhysicalPath
-        || !expectedEntry.isFile()
-        || before.dev !== expectedStat.dev
-        || before.ino !== expectedStat.ino
-      ) return { status: "unavailable" }
-    }
-    operationControl.checkpoint()
-    const bytes = Buffer.allocUnsafe(before.size + 1)
-    let offset = 0
-    while (offset < bytes.length) {
-      operationControl.checkpoint()
-      const bytesRead = fs.readSync(
-        descriptor,
-        bytes,
-        offset,
-        Math.min(bytes.length - offset, MAX_DISK_READ_CHUNK_BYTES),
-        null,
-      )
-      if (bytesRead === 0) break
-      offset += bytesRead
-      operationControl.checkpoint()
-    }
-    const after = fs.fstatSync(descriptor)
-    if (
-      offset !== before.size
-      || before.dev !== after.dev
-      || before.ino !== after.ino
-      || before.size !== after.size
-      || before.mtimeMs !== after.mtimeMs
-      || before.ctimeMs !== after.ctimeMs
-    ) return { status: "unavailable" }
-    return {
-      status: "loaded",
-      content: new TextDecoder("utf-8", { fatal: true, ignoreBOM: true })
-        .decode(bytes.subarray(0, offset)),
-    }
-  } catch {
-    operationControl.checkpoint()
-    return { status: "unavailable" }
-  } finally {
-    if (descriptor !== undefined) {
-      try {
-        fs.closeSync(descriptor)
-      } catch {
-        // The read already failed closed.
-      }
-    }
-  }
-}
-
 function safeStat(
   filePath: string,
   operationControl: SemanticOperationControl = NOOP_OPERATION_CONTROL,
@@ -1938,8 +1788,4 @@ function safeLstat(
     operationControl.checkpoint()
     return null
   }
-}
-
-function sourceStatIdentity(stat: fs.Stats): string {
-  return [stat.dev, stat.ino, stat.size, stat.mtimeMs, stat.ctimeMs].join(":")
 }

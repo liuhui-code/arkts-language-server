@@ -260,7 +260,7 @@ async function replay(t, fixture, strategy, {
   const results = []
   for (const includeDeclaration of policies) {
     const params = referenceParams(fixture, includeDeclaration)
-    if (classQuery) params.position = { line: 3, character: 14 }
+    if (classQuery) params.position = { line: 3, character: 14 + Number(includeDeclaration) }
     const response = await session.request("textDocument/references", params, { timeoutMs: 30_000 })
     assert.equal(response.error, undefined, JSON.stringify(response.error))
     results.push(response.result.map(location => JSON.stringify(location)).sort())
@@ -303,7 +303,9 @@ async function openFixture(t, fixture, strategy, { exclusion = false, trace = tr
 }
 
 function referenceParams(fixture, includeDeclaration) {
-  return { textDocument: { uri: fixture.uri("Target.ets") }, position: { line: 7, character: 27 },
+  // Use distinct cursors on the same symbol so both policies exercise the exclusion proof.
+  return { textDocument: { uri: fixture.uri("Target.ets") },
+    position: { line: 7, character: 27 + Number(includeDeclaration) },
     context: { includeDeclaration } }
 }
 

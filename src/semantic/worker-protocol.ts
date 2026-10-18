@@ -1,5 +1,7 @@
-import { fileURLToPath, pathToFileURL } from "node:url"
+import { canonicalWorkerFileUri, workerUriWithinRoot as isUriWithinRoot } from "./semantic-worker-uri.js"
+import { admitsWorkerDiskSource, decodeWorkerDiskSource, type SemanticWorkerDiskSource } from "./semantic-worker-disk-source.js"
 import { readOwnDataRecord } from "./semantic-worker-record.js"
+import { decodeReferencesArgs } from "./semantic-worker-reference-args.js"
 import { jsonStringWireBytes, stringByteMetrics } from "./semantic-worker-string-bytes.js"
 import { assertSemanticReadinessResponse } from "./semantic-readiness-wire.js"
 import { SEMANTIC_WORKER_ERROR_CODES, SEMANTIC_WORKER_ERROR_MESSAGES,
@@ -244,6 +246,7 @@ export interface SemanticWorkerCompletionDiscovery {
 export interface SemanticWorkerReferencesArgs {
   readonly position: SemanticWorkerPosition
   readonly includeDeclaration: boolean
+  readonly residentOnly?: boolean
   readonly traceId?: string
   readonly forceLegacy?: boolean
   readonly candidateUris?: readonly string[]
@@ -327,6 +330,7 @@ export interface SemanticWorkerRequestEnvelope<
   readonly expectedDocumentVersion: SemanticWorkerExpectedDocumentVersion<Method>
   readonly args: Args
   readonly cancelCell: SharedArrayBuffer
+  readonly diskSource?: SemanticWorkerDiskSource
 }
 
 export type SemanticWorkerRequest = {
@@ -553,7 +557,7 @@ export function decodeSemanticWorkerRequest(value: unknown): SemanticWorkerReque
     "expectedDocumentVersion",
     "args",
     "cancelCell",
-  ])
+  ], ["diskSource"])
   if (
     !input
     || !hasExactKeys(input, [
@@ -566,6 +570,7 @@ export function decodeSemanticWorkerRequest(value: unknown): SemanticWorkerReque
       "expectedDocumentVersion",
       "args",
       "cancelCell",
+      ...(input && Object.hasOwn(input, "diskSource") ? ["diskSource"] : []),
     ])
     || input.protocol !== SEMANTIC_WORKER_PROTOCOL_VERSION
     || !isPositiveSafeInteger(input.epoch)
@@ -575,6 +580,9 @@ export function decodeSemanticWorkerRequest(value: unknown): SemanticWorkerReque
     || !isCanonicalSemanticWorkerFileUri(input.uri)
     || !isExpectedDocumentVersion(input.method, input.expectedDocumentVersion)
   ) throw invalidRequest()
+  if (Object.hasOwn(input, "diskSource") && !admitsWorkerDiskSource(input.method, input.expectedDocumentVersion)) throw invalidRequest()
+  const diskSource = Object.hasOwn(input, "diskSource") ? decodeWorkerDiskSource(input.diskSource,
+    MAX_SEMANTIC_WORKER_TEXT_BYTES, MAX_SEMANTIC_WORKER_MESSAGE_BYTES, invalidRequest, documentTextTooLarge, messageTooLarge) : undefined
   const strictArgs = input.method === "prepareCallHierarchy"
     ? decodePositionArgs(input.args)
     : input.method === "outgoingCalls" || input.method === "incomingCalls"
@@ -608,6 +616,7 @@ export function decodeSemanticWorkerRequest(value: unknown): SemanticWorkerReque
     expectedDocumentVersion: input.expectedDocumentVersion,
     args,
     cancelCell: input.cancelCell as SharedArrayBuffer,
+    ...(diskSource ? { diskSource: diskSource.value } : {}),
   }
   assertMessageEnvelope([
     ["protocol", numberWireBytes(SEMANTIC_WORKER_PROTOCOL_VERSION)],
@@ -619,6 +628,8 @@ export function decodeSemanticWorkerRequest(value: unknown): SemanticWorkerReque
     ["expectedDocumentVersion", nullableNumberWireBytes(request.expectedDocumentVersion)],
     ["args", canonicalArgs.wireBytes],
     ["cancelCell", Int32Array.BYTES_PER_ELEMENT],
+    ...(diskSource ? [["diskSource", jsonObjectWireBytes([["text", diskSource.textWireBytes]],
+      MAX_SEMANTIC_WORKER_MESSAGE_BYTES, messageTooLarge)] as const] : []),
   ])
   return Object.freeze(request) as SemanticWorkerRequest
 }
@@ -1166,7 +1177,11 @@ function decodeRequestArgs(
     case "resolveCompletion":
       return decodeResolveCompletionArgs(value)
     case "references":
-      return decodeReferencesArgs(value)
+      return decodeReferencesArgs(value, {
+        record: ownDataRecord, position: decodePosition, uri: isCanonicalSemanticWorkerFileUri,
+        files: input => readBoundedDenseArray(input, MAX_SEMANTIC_WORKER_REFERENCE_CANDIDATES, invalidRequest),
+        invalid: invalidRequest,
+      })
     case "rename":
       return decodeRenameArgs(value)
     case "inlayHints":
@@ -1341,83 +1356,6 @@ function decodeJsonFieldArgs(
   )
 }
 
-function decodeReferencesArgs(value: unknown): SemanticWorkerReferencesArgs {
-  const args = ownDataRecord(
-    value,
-    ["position", "includeDeclaration"],
-    ["candidateUris", "candidateIdentityComplete", "candidateAnchorUri", "candidateAnchorPosition", "candidateSupportUris", "forceLegacy", "traceId"],
-  )
-  if (!args || !hasRequiredAndOnlyKeys(
-    args,
-    ["position", "includeDeclaration"],
-    ["candidateUris", "candidateIdentityComplete", "candidateAnchorUri", "candidateAnchorPosition", "candidateSupportUris", "forceLegacy", "traceId"],
-  )) {
-    throw invalidRequest()
-  }
-  const position = decodePosition(args.position)
-  if (typeof args.includeDeclaration !== "boolean") throw invalidRequest()
-  if (Object.hasOwn(args, "traceId")
-    && (typeof args.traceId !== "string" || !/^[0-9a-f-]{36}$/.test(args.traceId))) {
-    throw invalidRequest()
-  }
-  if (Object.hasOwn(args, "forceLegacy") && typeof args.forceLegacy !== "boolean") {
-    throw invalidRequest()
-  }
-  let candidateUris: readonly string[] | undefined
-  if (Object.hasOwn(args, "candidateUris")) {
-    candidateUris = Object.freeze(readBoundedDenseArray(
-      args.candidateUris,
-      MAX_SEMANTIC_WORKER_REFERENCE_CANDIDATES,
-      invalidRequest,
-    ).map((uri) => {
-      if (!isCanonicalSemanticWorkerFileUri(uri)) throw invalidRequest()
-      return uri
-    }))
-  }
-  let candidateIdentityComplete: boolean | undefined
-  if (Object.hasOwn(args, "candidateIdentityComplete")) {
-    if (typeof args.candidateIdentityComplete !== "boolean" || !candidateUris) {
-      throw invalidRequest()
-    }
-    candidateIdentityComplete = args.candidateIdentityComplete
-  }
-  let candidateAnchorUri: string | undefined
-  if (Object.hasOwn(args, "candidateAnchorUri")) {
-    if (!isCanonicalSemanticWorkerFileUri(args.candidateAnchorUri)
-      || candidateIdentityComplete !== true
-      || !candidateUris?.includes(args.candidateAnchorUri)) throw invalidRequest()
-    candidateAnchorUri = args.candidateAnchorUri
-  }
-  let candidateSupportUris: readonly string[] | undefined
-  const candidateAnchorPosition = Object.hasOwn(args, "candidateAnchorPosition")
-    ? decodePosition(args.candidateAnchorPosition) : undefined
-  if (candidateAnchorPosition && !candidateAnchorUri) throw invalidRequest()
-  if (Object.hasOwn(args, "candidateSupportUris")) {
-    candidateSupportUris = Object.freeze(readBoundedDenseArray(
-      args.candidateSupportUris,
-      MAX_SEMANTIC_WORKER_REFERENCE_CANDIDATES,
-      invalidRequest,
-    ).map((uri) => {
-      if (!isCanonicalSemanticWorkerFileUri(uri) || !candidateUris?.includes(uri)) {
-        throw invalidRequest()
-      }
-      return uri
-    }))
-    if (candidateIdentityComplete !== true || !candidateAnchorUri
-      || !candidateSupportUris.includes(candidateAnchorUri)) throw invalidRequest()
-  }
-  return Object.freeze({
-    position,
-    includeDeclaration: args.includeDeclaration,
-    ...(Object.hasOwn(args, "traceId") ? { traceId: args.traceId as string } : {}),
-    ...(Object.hasOwn(args, "forceLegacy") ? { forceLegacy: args.forceLegacy as boolean } : {}),
-    ...(candidateUris ? { candidateUris } : {}),
-    ...(candidateIdentityComplete === undefined ? {} : { candidateIdentityComplete }),
-    ...(candidateAnchorUri ? { candidateAnchorUri } : {}),
-    ...(candidateAnchorPosition ? { candidateAnchorPosition } : {}),
-    ...(candidateSupportUris ? { candidateSupportUris } : {}),
-  })
-}
 
 function decodeDefinitionArgs(
   value: unknown,
@@ -1921,42 +1859,7 @@ function isSourceFingerprint(value: unknown): value is string {
 }
 
 export function isCanonicalSemanticWorkerFileUri(value: unknown): value is string {
-  if (typeof value !== "string" || /%(?:2f|5c)/i.test(value)) return false
-  try {
-    stringByteMetrics(
-      value,
-      MAX_SEMANTIC_WORKER_URI_BYTES,
-      MAX_SEMANTIC_WORKER_MESSAGE_BYTES,
-      invalidUri,
-      invalidUri,
-    )
-    const uri = new URL(value)
-    const filePath = fileURLToPath(uri)
-    return uri.protocol === "file:"
-      && uri.host === ""
-      && uri.username === ""
-      && uri.password === ""
-      && uri.search === ""
-      && uri.hash === ""
-      && uri.pathname.length > 0
-      && !filePath.includes("\0")
-      && uri.href === value
-      && pathToFileURL(filePath).href === value
-  } catch {
-    return false
-  }
-}
-
-function invalidUri(): SemanticWorkerProtocolError {
-  return new SemanticWorkerProtocolError("Invalid semantic worker URI")
-}
-
-function isUriWithinRoot(uriValue: string, rootValue: string): boolean {
-  const uri = new URL(uriValue)
-  const root = new URL(rootValue)
-  const rootPath = root.pathname.endsWith("/") ? root.pathname : `${root.pathname}/`
-  return uri.host === root.host
-    && (uri.pathname === root.pathname || uri.pathname.startsWith(rootPath))
+  return canonicalWorkerFileUri(value, MAX_SEMANTIC_WORKER_URI_BYTES, MAX_SEMANTIC_WORKER_MESSAGE_BYTES)
 }
 
 type JsonWireField = readonly [name: string, valueBytes: number]

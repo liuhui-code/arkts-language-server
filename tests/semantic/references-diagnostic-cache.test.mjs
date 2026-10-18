@@ -8,7 +8,8 @@ import { pathToFileURL } from "node:url"
 import { LspSession } from "../support/lsp-session.mjs"
 import { projectRoot } from "../support/lsp-process.mjs"
 
-test("a complete references cache hit returns while automatic diagnostics continue", async (t) => {
+for (const trace of [undefined, "0", "1"]) {
+test(`a complete references cache hit returns while automatic diagnostics continue (queue trace ${trace ?? "default"})`, async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-reference-diagnostic-hit-"))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const workspace = path.join(root, "workspace")
@@ -32,6 +33,7 @@ test("a complete references cache hit returns while automatic diagnostics contin
       ARKTS_LSP_LOG_DIR: path.join(root, "logs"),
       ARKTS_REFERENCES_STRATEGY: "indexed-batched",
       ARKTS_REFERENCES_BATCH_ROOTS: "2",
+      ARKTS_SEMANTIC_QUEUE_TRACE: trace,
       ARKTS_TEST_DIAGNOSTIC_DELAY_MS: "1200",
     },
   })
@@ -73,5 +75,26 @@ test("a complete references cache hit returns while automatic diagnostics contin
   assert.equal(settledAtResponse, false, "cached references waited for diagnostic quiescence")
   assert.ok(elapsedMs < 500, `cached references took ${elapsedMs.toFixed(1)} ms`)
   assert.equal(published.params.version, 1)
-  await session.close({ timeoutMs: 5_000 })
+  assert.deepEqual((await session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })
+  const events = fs.readFileSync(path.join(root, "logs", "server.log"), "utf8").trim().split("\n").map(JSON.parse)
+  const waits = events.filter(entry => entry.event === "references.diagnostics.wait.started")
+  const settledWaits = events.filter(entry => entry.event === "references.diagnostics.wait.settled")
+  if (trace !== "1") {
+    assert.deepEqual([waits, settledWaits], [[], []], "default and explicit0 must not observe diagnostic waiting")
+    return
+  }
+  assert.equal(waits.length, 1, "only the uncached request must enter original diagnostic quiescence")
+  assert.equal(settledWaits.length, 1, "cache hit must not acquire another wait receipt")
+  assert.equal(waits[0].uri, queryUri)
+  assert.equal(waits[0].documentVersion, 1)
+  assert.equal(settledWaits[0].diagnosticWaitId, waits[0].diagnosticWaitId)
+  assert.equal(settledWaits[0].uri, queryUri)
+  assert.equal(settledWaits[0].outcome, "settled")
+  assert.ok(Number.isFinite(waits[0].monotonicMs) && waits[0].monotonicMs >= 0)
+  assert.ok(settledWaits[0].monotonicMs >= waits[0].monotonicMs)
+  assert.equal(settledWaits[0].diagnosticQuiescenceWaitMs, settledWaits[0].monotonicMs - waits[0].monotonicMs)
+  assert.ok(settledWaits[0].diagnosticQuiescenceWaitMs > 0)
+  t.diagnostic(JSON.stringify({ qualification: "PRIVATE_DELAY_DIAGNOSTIC_WAIT_BOUNDARY_NOT_NORMAL_COMPILER_COST",
+    waits, settledWaits, firstResult: first.result, cachedResult: second.result, latestDiagnostics: published.params }))
 })
+}

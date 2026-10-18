@@ -261,6 +261,7 @@ for (const [name, trace, cancel, jointPolicy = false] of [
           ARKTS_MEMORY_METRICS_FILE: metricsPath, ARKTS_MEMORY_BUDGET_MB: "1024",
           ARKTS_REFERENCES_STRATEGY: "batched", ARKTS_REFERENCES_BATCH_ROOTS: "64",
           ARKTS_REFERENCES_CONTEXT_RETENTION: "budget-aware", ARKTS_REFERENCES_TRACE: trace,
+          ARKTS_REFERENCES_RESIDENT_FAST_PATH: "0",
           ARKTS_TEST_REFERENCE_VERIFIER_DELAY_MS: "1500",
           ARKTS_BENCHMARK_CONTROL: jointPolicy ? "1" : "0",
           ARKTS_L03_COST_AWARE_EVICTION: jointPolicy ? "1" : "0",
@@ -281,12 +282,12 @@ for (const [name, trace, cancel, jointPolicy = false] of [
         const id = session.nextRequestId++
         session.transport.send({ jsonrpc: "2.0", id, method: "textDocument/references", params })
         const pending = session.transport.response(id, 20_000)
-        const started = await waitForRuntimeMetric(metricsPath, sample => sample.activeReferenceVerifierCount === 1)
+        const started = await waitForRuntimeMetric(metricsPath, sample => sample.activeReferenceJobCount === 1)
         session.transport.send({ jsonrpc: "2.0", method: "$/cancelRequest", params: { id } })
         const cancelled = await pending
         assert.equal(cancelled.result, undefined)
         assert.equal(cancelled.error?.code, -32800)
-        await waitForRuntimeMetric(metricsPath, sample => sample.transientVerifierCount === 0
+        await waitForRuntimeMetric(metricsPath, sample => sample.referenceSdkCacheWorkerCount === 0
           && BigInt(sample.monotonicNs) > BigInt(started.monotonicNs))
       }
       const response = await session.request("textDocument/references", params, { timeoutMs: 20_000 })
@@ -299,21 +300,22 @@ for (const [name, trace, cancel, jointPolicy = false] of [
       assert.deepEqual(response.result.map(JSON.stringify).sort(), expected.map(JSON.stringify).sort())
       if (trace === "1") await waitForEvent(logs, entry => entry.event === "references.batch.complete")
       const samples = readRuntimeMetrics(metricsPath)
-      assert.ok(samples.some(sample => sample.activeReferenceVerifierCount === 1
+      assert.equal(samples.at(-1).activeVerifierJobCount, 0)
+      assert.ok(samples.some(sample => sample.referenceSdkCacheWorkerCount === 1
         && sample.residentContextCount === 1 && sample.totalSemanticWorkerCount === 2),
       "a live resident LS and a physical verifier share one Node PID RSS, not one Worker lifetime")
       assert.equal(samples.at(-1).transientVerifierCount, 0,
-        "the physical Worker exit is recorded before publishing the complete response")
+        "the cached physical Worker is counted separately from transient verifiers")
       assert.ok(samples.every(sample => sample.transientVerifierCount === sample.activeReferenceVerifierCount
         + sample.activeAnchorVerifierCount + sample.activeDiagnosticVerifierCount
-        && sample.totalSemanticWorkerCount === 1 + sample.transientVerifierCount
+        && sample.totalSemanticWorkerCount === 1 + sample.transientVerifierCount + sample.referenceSdkCacheWorkerCount
         && sample.transientVerifierCount >= 0))
       const transitions = []
       for (const sample of samples) {
-        if (transitions.length === 0 && sample.transientVerifierCount === 0) continue
-        if (transitions.at(-1) !== sample.transientVerifierCount) transitions.push(sample.transientVerifierCount)
+        if (transitions.length === 0 && sample.referenceSdkCacheWorkerCount === 0) continue
+        if (transitions.at(-1) !== sample.referenceSdkCacheWorkerCount) transitions.push(sample.referenceSdkCacheWorkerCount)
       }
-      assert.deepEqual(transitions, cancel ? [1, 0, 1, 0] : [1, 0])
+      assert.deepEqual(transitions, cancel ? [1, 0, 1] : [1])
       assert.ok(samples.every(sample => sample.processId === session.transport.child.pid
         && sample.rssScope === "node-process" && sample.heapScope === "semantic-worker-isolate"
         && Number.isFinite(sample.rss) && sample.rss > 0

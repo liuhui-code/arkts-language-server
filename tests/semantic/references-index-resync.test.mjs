@@ -47,6 +47,7 @@ async function exerciseIndexResync(t, pressureAdmission) {
     cwd: projectRoot,
     rootUri: pathToFileURL(workspace).href,
     env: {
+      ARKTS_REFERENCES_RESIDENT_FAST_PATH: "0",
       ARKLINE_HARMONY_SDK_PATH: path.join(root, "missing-sdk"),
       DEVECO_SDK_HOME: path.join(root, "missing-deveco"),
       ARKTS_INDEX_CACHE_DIR: path.join(root, "cache"),
@@ -94,7 +95,9 @@ async function exerciseIndexResync(t, pressureAdmission) {
   }
 
   const references = (includeDeclaration) => session.request("textDocument/references", {
-    textDocument: { uri: queryUri }, position, context: { includeDeclaration },
+    textDocument: { uri: queryUri },
+    position: { ...position, character: position.character + Number(includeDeclaration) },
+    context: { includeDeclaration },
   }, { timeoutMs: 20_000 })
   const indexed = await references(true)
   assert.equal(indexed.error, undefined, JSON.stringify(indexed.error))

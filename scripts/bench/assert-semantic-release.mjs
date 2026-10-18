@@ -3,7 +3,13 @@
 import { createHash } from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
+import { isDeepStrictEqual } from "node:util"
 import { preparedRequestReady } from "./prepared-release-readiness.mjs"
+import { preparedMemoryEvidence } from "./prepared-release-memory.mjs"
+import { preparedProcessEvidence, preparedRequestSession } from "./prepared-release-segments.mjs"
+import { retainedRegressionEvidence } from "./prepared-release-regression.mjs"
+import { productMemoryComparisonEvidence } from "./prepared-release-product-memory.mjs"
+import { semanticAttributionEnabled } from "./reference-replay-evidence.mjs"
 
 try {
   const options = parseOptions(process.argv.slice(2))
@@ -21,14 +27,32 @@ try {
   const cells = matrix.platforms.flatMap(platform => matrix.capabilities.flatMap(capability =>
     matrix.buckets.map(bucket => ({ platform, capability, bucket,
       requests: 0, sessions: 0, evidence: [], gates: { ...gates } }))))
-  const evidence = options.preparedReports.map(file => readPreparedEvidence(file))
+  const evidence = options.preparedReports.map(file => readPreparedEvidence(file, matrix.capabilities))
   if (new Set(evidence.map(item => item.sha256)).size !== evidence.length) {
     throw new Error("L08_DUPLICATE_EVIDENCE")
   }
+  const attempts = new Set()
+  for (const item of evidence) {
+    for (const request of item.report.requests) {
+      if (typeof request.scenarioId !== "string" || !request.scenarioId) {
+        throw new Error("L08_REQUEST_IDENTITY_MISSING")
+      }
+      const target = item.report.targetPool.find(target => target.id === request.targetId)
+      if (!target || request.kind !== target.kind
+        || request.kind === "references" && typeof target.includeDeclaration !== "boolean") {
+        throw new Error("L08_REQUEST_TARGET_MISMATCH")
+      }
+      const key = JSON.stringify([item.platform, preparedRequestSession(item, request), request.scenarioId])
+      if (attempts.has(key)) throw new Error("L08_DUPLICATE_REQUEST_ATTEMPT")
+      attempts.add(key)
+    }
+  }
   for (const cell of cells) summarizeCell(cell, evidence, matrix)
-  const statuses = cells.flatMap(cell => Object.values(cell.gates))
+  const regression = retainedRegressionEvidence(options.regressionStates, evidence, matrix)
+  const memoryComparison = productMemoryComparisonEvidence(options.memoryComparisons, evidence)
+  const statuses = [...cells.flatMap(cell => Object.values(cell.gates)), regression.status, memoryComparison.status]
   const status = statuses.includes("FAIL") ? "FAIL"
-    : evidence.length ? "BLOCKED" : "NOT_RUN"
+    : evidence.length || options.regressionStates.length || options.memoryComparisons.length ? "BLOCKED" : "NOT_RUN"
   const report = {
     schema: "arkts-language-server.semantic-release-report", schemaVersion: 1,
     capturedAt: new Date().toISOString(), stage: "L08", status,
@@ -36,8 +60,11 @@ try {
     matrix: { path: path.resolve(options.matrix),
       sha256: createHash("sha256").update(matrixBytes).digest("hex"), contract: matrix },
     independentEnvironmentGates: Object.fromEntries(
-      matrix.independentEnvironmentGates.map(gate => [gate, "NOT_RUN"])),
-    retainedCapabilityRegression: "NOT_RUN",
+      matrix.independentEnvironmentGates.map(gate => [gate,
+        gate === "deveco-pss-comparison" ? memoryComparison.status : "NOT_RUN"])),
+    ...(options.memoryComparisons.length ? { productMemoryComparisonEvidence: memoryComparison } : {}),
+    retainedCapabilityRegression: regression.status,
+    ...(options.regressionStates.length ? { retainedCapabilityRegressionEvidence: regression } : {}),
     evidence: evidence.map(({ file, sha256, identity }) => ({ file, sha256, identity })), cells,
   }
   fs.mkdirSync(path.dirname(options.out), { recursive: true })
@@ -52,6 +79,8 @@ try {
 function parseOptions(args) {
   const values = new Map()
   const preparedReports = []
+  const regressionStates = []
+  const memoryComparisons = []
   for (let index = 0; index < args.length; index += 2) {
     const flag = args[index]
     const value = args[index + 1]
@@ -59,13 +88,21 @@ function parseOptions(args) {
       preparedReports.push(path.resolve(value))
       continue
     }
+    if (flag === "--regression-state" && value) {
+      regressionStates.push(path.resolve(value))
+      continue
+    }
+    if (flag === "--memory-comparison" && value) {
+      memoryComparisons.push(path.resolve(value))
+      continue
+    }
     if (!["--matrix", "--out"].includes(flag) || !value || values.has(flag)) {
-      throw new Error("usage: assert-semantic-release.mjs --matrix FILE [--prepared-report FILE ...] --out FILE")
+      throw new Error("usage: assert-semantic-release.mjs --matrix FILE [--prepared-report FILE ...] [--regression-state FILE ...] [--memory-comparison FILE ...] --out FILE")
     }
     values.set(flag, value)
   }
   if (values.size !== 2) throw new Error("L08_RELEASE_OPTIONS_REQUIRED")
-  return { matrix: values.get("--matrix"), out: values.get("--out"), preparedReports }
+  return { matrix: values.get("--matrix"), out: values.get("--out"), preparedReports, regressionStates, memoryComparisons }
 }
 
 function requireOriginalContract(matrix) {
@@ -91,7 +128,7 @@ function requireOriginalContract(matrix) {
   }
 }
 
-function readPreparedEvidence(file) {
+function readPreparedEvidence(file, capabilities) {
   const bytes = fs.readFileSync(file)
   const report = JSON.parse(bytes)
   if (report.schema !== "arkts-language-server.prepared-query-report" || report.schemaVersion !== 1
@@ -115,8 +152,10 @@ function readPreparedEvidence(file) {
   if (!Number.isSafeInteger(report.memory?.targetPid) || !Number.isFinite(firstStart)) {
     throw new Error(`L08_SESSION_IDENTITY_MISSING=${file}`)
   }
-  return { file, sha256: createHash("sha256").update(bytes).digest("hex"),
-    report, identity, identityKey: JSON.stringify(identity), session, platform }
+  const processEvidence = preparedProcessEvidence(report, file, capabilities)
+  return { file, sha256: createHash("sha256").update(bytes).digest("hex"), processEvidence,
+    report, identity, identityKey: JSON.stringify(identity), session, platform,
+    memoryEvidence: preparedMemoryEvidence(report, platform, file, processEvidence) }
 }
 
 function summarizeCell(cell, evidence, matrix) {
@@ -130,19 +169,27 @@ function summarizeCell(cell, evidence, matrix) {
     })
     if (!samples.length) continue
     const group = groups.get(item.identityKey) ?? { identity: item.identity,
-      samples: [], sessions: new Set(), evidence: [], trustworthy: true, ready: true,
+      samples: [], sessions: new Set(), evidence: [], memoryEvidence: [], trustworthy: true, ready: true,
       attributionOnly: item.report.environment.traceMode !== "trace-off"
-        || item.report.environment.effectiveArktsFlags?.ARKTS_REFERENCES_TRACE === "1" }
+        || semanticAttributionEnabled(item.report.environment.effectiveArktsFlags) }
     group.samples.push(...samples)
-    group.sessions.add(item.session)
+    for (const sample of samples) group.sessions.add(preparedRequestSession(item, sample))
     group.evidence.push(item.file)
-    group.ready &&= samples.every(sample => preparedRequestReady(item.report, sample, matrix.capabilities))
+    group.memoryEvidence.push({ file: item.file, sha256: item.sha256, ...item.memoryEvidence })
+    group.ready &&= samples.every(sample => preparedRequestReady(item.report, sample, matrix.capabilities, item.processEvidence))
     group.trustworthy &&= item.report.inputIdentity.inputUnchanged === true
       && item.report.closeResult?.exit?.code === 0 && item.report.correctness?.status === "PASS"
+      && Number.isSafeInteger(item.report.correctness.plannedRequests)
+      && item.report.correctness.plannedRequests === item.report.requests.length
+      && item.report.correctness.executedRequests === item.report.requests.length
+      && (item.report.blockedScenarios === undefined
+        || Array.isArray(item.report.blockedScenarios) && item.report.blockedScenarios.length === 0)
+      && item.report.failure == null
     groups.set(item.identityKey, group)
   }
   if (!groups.size) return
   cell.inputGroups = [...groups.values()].map(group => {
+    const fullResultEvidence = group.samples.every(hasFullResultEvidence)
     const elapsed = group.samples.map(sample => sample.elapsedMs)
     if (elapsed.some(value => typeof value !== "number" || !Number.isFinite(value) || value < 0)) {
       throw new Error("L08_INVALID_REQUEST_LATENCY")
@@ -151,11 +198,18 @@ function summarizeCell(cell, evidence, matrix) {
     const percentile = fraction => elapsed[Math.ceil(elapsed.length * fraction) - 1]
     const failures = group.samples.filter(sample => sample.status !== "COMPLETE"
       || sample.correctness?.equal !== true
+      || Object.hasOwn(sample.correctness, "payload")
+        && (!Object.hasOwn(sample.correctness, "expectedPayload")
+          || !isDeepStrictEqual(sample.correctness.payload, sample.correctness.expectedPayload))
+      || Array.isArray(sample.correctness.locations) && Array.isArray(sample.correctness.expectedLocations)
+        && !sameLocations(sample.correctness.locations, sample.correctness.expectedLocations)
       || ["missing", "extra", "duplicates", "invalid"].some(key =>
         sample.correctness[key] !== undefined && (!Array.isArray(sample.correctness[key])
           || sample.correctness[key].length > 0))).length
     return { identity: group.identity, requests: group.samples.length, sessions: group.sessions.size,
-      evidence: group.evidence, failures, trustworthy: group.trustworthy, verifiedReady: group.ready,
+      evidence: group.evidence, memoryEvidence: group.memoryEvidence,
+      failures, trustworthy: group.trustworthy, verifiedReady: group.ready,
+      fullResultEvidence,
       above500Ms: group.samples.filter(sample => sample.elapsedMs > matrix.latency.targetMs
         || sample.status !== "COMPLETE").length,
       aboveAcceptanceMs: group.samples.filter(sample => sample.elapsedMs > matrix.latency.p95MsMax
@@ -164,6 +218,7 @@ function summarizeCell(cell, evidence, matrix) {
         p99: percentile(.99), max: elapsed.at(-1) },
       measurementState: group.attributionOnly ? "attribution-only" : group.ready ? "semantic-ready-snapshot" : "candidate-ready-control",
       reasons: [...(group.ready ? [] : ["GENERATION_BOUND_READY_NOT_VERIFIED"]),
+        ...(fullResultEvidence ? [] : ["FULL_RESULT_ORACLE_MISSING"]),
         ...(group.attributionOnly ? ["ATTRIBUTION_ONLY"] : []),
         ...(group.samples.length < matrix.latency.minimumRequests ? ["INSUFFICIENT_REQUESTS"] : []),
         ...(group.sessions.size < matrix.latency.minimumSessions ? ["INSUFFICIENT_SESSIONS"] : [])],
@@ -175,15 +230,50 @@ function summarizeCell(cell, evidence, matrix) {
   cell.attributionRequests = cell.requests - cell.productRequests
   cell.sessions = new Set([...groups.values()].flatMap(group => [...group.sessions])).size
   cell.evidence = cell.inputGroups.flatMap(group => group.evidence)
-  const ready = cell.inputGroups.every(group => group.verifiedReady && group.trustworthy)
+  const fullResultEvidence = cell.inputGroups.every(group => group.fullResultEvidence)
+  cell.reasons = [...(cell.inputGroups.length > 1 ? ["MIXED_INPUT_IDENTITIES"] : []),
+    ...(fullResultEvidence ? [] : ["FULL_RESULT_ORACLE_MISSING"]),
+    ...new Set(cell.inputGroups.flatMap(group => group.memoryEvidence.flatMap(item => item.reasons)))]
+  const memories = cell.inputGroups.flatMap(group => group.memoryEvidence)
+  cell.gates.memory = memories.some(item => item.status === "FAIL") ? "FAIL"
+    : memories.some(item => item.status === "PASS") ? "BLOCKED" : "NOT_RUN"
+  const ready = cell.inputGroups.every(group => group.verifiedReady)
   const failed = cell.inputGroups.some(group => group.failures || !group.trustworthy)
   cell.measurementState = !cell.productRequests ? "attribution-only" : ready ? "semantic-ready-snapshot" : "candidate-ready-control"
-  cell.gates.correctness = failed ? "FAIL" : ready ? "PASS" : "BLOCKED"
+  cell.gates.correctness = failed ? "FAIL" : ready && fullResultEvidence ? "PASS" : "BLOCKED"
   cell.gates.ready = failed && ready ? "FAIL" : ready ? "PASS" : "BLOCKED"
-  cell.gates.latency = !ready || cell.inputGroups.some(group => group.measurementState === "attribution-only"
+  cell.gates.latency = !ready || !fullResultEvidence || cell.inputGroups.length !== 1
+    || cell.inputGroups.some(group => group.measurementState === "attribution-only"
     || group.requests < matrix.latency.minimumRequests || group.sessions < matrix.latency.minimumSessions)
     ? "BLOCKED" : failed || cell.inputGroups.some(group => group.observedLatencyMs.p95 > matrix.latency.p95MsMax) ? "FAIL" : "PASS"
   if (cell.inputGroups.length === 1 && cell.productRequests) {
     cell.observedLatencyMs = cell.inputGroups[0].observedLatencyMs
   }
+}
+
+function hasFullResultEvidence(sample) {
+  const result = sample.correctness
+  return ["references", "implementation", "definition", "typeDefinition"].includes(sample.kind)
+    ? Array.isArray(result?.locations) && Array.isArray(result.expectedLocations)
+    : result != null && Object.hasOwn(result, "payload") && Object.hasOwn(result, "expectedPayload")
+}
+
+function sameLocations(actual, expected) {
+  const actualKeys = locationKeys(actual)
+  const expectedKeys = locationKeys(expected)
+  return actualKeys !== null && expectedKeys !== null
+    && isDeepStrictEqual(actualKeys.sort(), expectedKeys.sort())
+}
+
+function locationKeys(locations) {
+  const keys = locations.map(location => {
+    const { start, end } = location?.range ?? {}
+    if (typeof location?.file !== "string" || !location.file
+      || /^\/|\\|^[a-z]:\//iu.test(location.file) || location.file.split("/").includes("..")
+      || ![start?.line, start?.character, end?.line, end?.character]
+        .every(value => Number.isSafeInteger(value) && value >= 0)
+      || end.line < start.line || end.line === start.line && end.character < start.character) return null
+    return JSON.stringify([location.file, start.line, start.character, end.line, end.character])
+  })
+  return !keys.includes(null) && new Set(keys).size === keys.length ? keys : null
 }

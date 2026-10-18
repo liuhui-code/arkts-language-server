@@ -83,7 +83,7 @@ test("the reference dispose profile has its own observable reason without changi
   assert.ok(run.events.some(entry => entry.event === "semantic.context.evict"
     && entry.reason === "reference-dispose" && entry.leaseCount === 0))
   assert.ok(run.events.some(entry => entry.event === "references.batch.complete"
-    && entry.verifierIsolation === "transient-worker"))
+    && entry.verifierIsolation === "sdk-cache-worker"))
 })
 
 test("disabled lifecycle tracing preserves exact navigation without lifecycle observations", async t => {

@@ -1,5 +1,4 @@
 import assert from "node:assert/strict"
-import { createHash } from "node:crypto"
 import { spawnSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
@@ -7,6 +6,8 @@ import path from "node:path"
 import test from "node:test"
 
 import { projectRoot } from "./support/lsp-process.mjs"
+import { treeDigest } from "./support/macos-workflow-fixture.mjs"
+import { registerMacosWorkflowCases } from "./support/macos-workflow-cases.mjs"
 
 const generator = path.join(projectRoot, "scripts", "bench", "generate-large-fixture.mjs")
 const processMemory = path.join(projectRoot, "scripts", "bench", "process-memory.sh")
@@ -95,6 +96,8 @@ test("exposes one strict macOS end-to-end benchmark command", () => {
   assert.match(result.stdout, /--out FILE/u)
   assert.match(result.stdout, /cold=3, warm=10, stress=5/u)
 })
+
+registerMacosWorkflowCases()
 
 test("locks both growth series, workflow actions, and process accounting", () => {
   const workflow = JSON.parse(fs.readFileSync(workflowConfig, "utf8"))
@@ -297,17 +300,4 @@ function reachableDependencies(root, entryFile) {
   }
   visit(entryFile)
   return visited
-}
-
-function treeDigest(root) {
-  const hash = createHash("sha256")
-  for (const relativePath of fs.readdirSync(root, { recursive: true }).sort()) {
-    const absolutePath = path.join(root, relativePath)
-    if (!fs.statSync(absolutePath).isFile()) continue
-    hash.update(relativePath)
-    hash.update("\0")
-    hash.update(fs.readFileSync(absolutePath))
-    hash.update("\0")
-  }
-  return hash.digest("hex")
 }

@@ -31,9 +31,9 @@ export function registerReferenceCapability(
           includeDeclaration: params.context.includeDeclaration,
           signal,
         }
-        const cached = semantic.cachedReferences?.(query)
+        const cached = await semantic.cachedReferences?.(query)
         if (cached) return cached
-        const resumeDiagnostics = await suspendDiagnostics()
+        const resumeDiagnostics = await requests.waitForReferenceDiagnostics(document, suspendDiagnostics)
         try {
           if (signal.aborted) throw new Error("References changed before semantic dispatch")
           return await semantic.references(query)

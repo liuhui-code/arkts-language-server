@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url"
 
 import { LspSession } from "./lsp-session.mjs"
 import { projectRoot } from "./lsp-process.mjs"
+import { releasePreparedOwner } from "./semantic-preparation-state.mjs"
 
 export function createFixture(t, { disconnected = false, namedPackage = false, installedPackage = false } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-reference-coverage-"))
@@ -54,7 +55,7 @@ export function createFixture(t, { disconnected = false, namedPackage = false, i
 
 export async function replay(t, fixture, strategy, {
   noAnchor = false, localSeed = false, trace = true, warm = false, resident = false, afterWarm,
-  benchmarkControl = false, runtimeEnv = {},
+  benchmarkControl = false, runtimeEnv = {}, expectedReferencesError, afterRejectedReferences,
 } = {}) {
   const { root, sources, uri } = fixture
   fixture.replayCount = (fixture.replayCount ?? 0) + 1
@@ -63,7 +64,8 @@ export async function replay(t, fixture, strategy, {
   const session = new LspSession({
     command: process.execPath, args: [path.join(projectRoot, "dist/server.cjs"), "--stdio"],
     cwd: projectRoot, rootUri: pathToFileURL(root).href,
-    capabilities: { window: { workDoneProgress: true } },
+    capabilities: { window: { workDoneProgress: true },
+      ...(expectedReferencesError === undefined ? {} : { textDocument: { publishDiagnostics: { versionSupport: true } } }) },
     env: {
       ARKLINE_HARMONY_SDK_PATH: path.join(root, "missing-sdk"),
       DEVECO_SDK_HOME: path.join(root, "missing-deveco"),
@@ -74,7 +76,7 @@ export async function replay(t, fixture, strategy, {
       ARKTS_REFERENCES_LOCAL_EXPORT_ANCHOR: localSeed ? "1" : "0", ARKTS_REFERENCES_ANCHOR_REUSE: "0",
       ARKTS_REFERENCES_CONSERVATIVE_SEMANTIC_UNITS: "0",
       ARKTS_REFERENCES_RESIDENT_FAST_PATH: resident ? "1" : "0",
-      ARKTS_BENCHMARK_CONTROL: benchmarkControl ? "1" : "0",
+      ARKTS_BENCHMARK_CONTROL: benchmarkControl || warm === "selective" ? "1" : "0",
       ...runtimeEnv,
     },
   })
@@ -83,6 +85,7 @@ export async function replay(t, fixture, strategy, {
   const create = await session.transport.serverRequest("window/workDoneProgress/create", () => true, 10_000)
   session.transport.send({ jsonrpc: "2.0", id: create.id, result: null })
   await session.transport.progress(create.params.token, message => message.params.value.kind === "end", 10_000)
+  if (warm === "selective") await releasePreparedOwner(session, pathToFileURL(root).href)
   session.openDocument({ uri: uri("Target.ets"), version: 1, text: sources["Target.ets"] })
   const overlay = fixture.overlay ?? sources["Consumer.ets"] + "export const unsaved = new Maker()\n"
   session.openDocument({ uri: uri("Consumer.ets"), version: 1, text: overlay })
@@ -98,14 +101,24 @@ export async function replay(t, fixture, strategy, {
     } else assert.equal(response.error, undefined, JSON.stringify(response.error))
   }
   await afterWarm?.(session, logs)
-  const results = []
-  for (const includeDeclaration of [false, true]) {
-    const response = await session.request("textDocument/references", {
+  // Both policies must exercise resident/batch admission rather than the first cursor's result cache.
+  const ask = includeDeclaration => session.request("textDocument/references", {
       textDocument: { uri: uri("Target.ets") },
       position: positionAt(sources["Target.ets"], noAnchor ? sources["Target.ets"].length
-        : sources["Target.ets"].lastIndexOf("Thing") + 1),
+        : sources["Target.ets"].lastIndexOf("Thing") + 1 + Number(includeDeclaration)),
       context: { includeDeclaration },
     }, { timeoutMs: 30_000 })
+  if (expectedReferencesError !== undefined) {
+    for (const includeDeclaration of [false, true]) {
+      const response = await ask(includeDeclaration)
+      assert.equal(response.error?.code, expectedReferencesError, JSON.stringify(response))
+      assert.equal(response.result, undefined, "unproved inputs cannot publish successful partial references")
+    }
+    await afterRejectedReferences?.(session, logs)
+  }
+  const results = []
+  for (const includeDeclaration of [false, true]) {
+    const response = await ask(includeDeclaration)
     assert.equal(response.error, undefined, JSON.stringify(response.error))
     results.push(response.result.map(location => JSON.stringify(location)).sort())
   }

@@ -89,10 +89,11 @@ test("independent workspace roots keep separate ready proofs and an edit cannot 
     assert.equal(first.coverage.projectSources, 2)
     assert.equal(first.inputIdentity.canonicalRoot, fs.realpathSync(workspace))
     const untouched = await readiness(session, otherRootUri, false)
-    assert.equal(untouched.semanticState, "unprepared", JSON.stringify(untouched))
-    assert.equal(untouched.semanticGeneration, null)
+    assert.equal(untouched.semanticState, "ready", JSON.stringify(untouched))
+    assert.equal(untouched.inputIdentity.canonicalRoot, fs.realpathSync(other))
     const second = await readiness(session, otherRootUri, true)
     assert.equal(second.semanticState, "ready", JSON.stringify(second))
+    assert.deepEqual(second, untouched, "explicit preparation reuses this root's automatically prepared Program")
     assert.equal(second.coverage.projectSources, 2)
     assert.equal(second.inputIdentity.canonicalRoot, fs.realpathSync(other))
     assert.notEqual(second.semanticGeneration, first.semanticGeneration)
@@ -356,7 +357,8 @@ test("unknown unnotified membership and dependency deletion cannot retain an old
 
 test("ordinary query recertification cannot hide an unnotified missing-input module outside its old loaded membership",
   { timeout: 30_000 }, async t => {
-    const { session, rootUri, workspace, sources, uri } = await startReadinessFixture(t)
+    const { session, rootUri, workspace, sources, uri, events } = await startReadinessFixture(t,
+      { ARKTS_SEMANTIC_QUEUE_TRACE: "1" })
     session.openDocument({ uri: uri("Main.ets"), version: 1, text: sources["Main.ets"] })
     const initial = await readiness(session, rootUri, true)
     assert.equal(initial.semanticState, "ready", JSON.stringify(initial))
@@ -372,12 +374,22 @@ test("ordinary query recertification cannot hide an unnotified missing-input mod
     } }])
     const current = await readiness(session, rootUri, false)
     assert.notEqual(current.semanticState, "ready", JSON.stringify(current))
+    const certifications = events().filter(entry => entry.event === "semantic.readiness.query.certification.complete")
+    if (!response.error) assert.equal(certifications.length, 1)
+    assert.ok(certifications.every(receipt => receipt.documentVersion === 2
+      && Object.hasOwn(receipt, "semanticState") === false
+      && ["ready", "degraded", "unprepared"].includes(receipt.queryScopeSemanticState)),
+    "internal query-snapshot state must not masquerade as the public root-readiness result")
+    assert.ok(certifications.every(receipt => Number.isSafeInteger(receipt.queryScopeMembershipRevision)
+      && receipt.queryScopeProjectSources === 2), "retain the original two-source query snapshot, not a relabelled current root")
     assert.equal(current.semanticGeneration, null)
     assert.deepEqual(current.readyCapabilities, [])
     const actualMissing = await readiness(session, rootUri, true)
     assert.equal(actualMissing.semanticState, "degraded", JSON.stringify(actualMissing))
     assert.equal(actualMissing.unavailableInput?.code, 2307)
     assert.equal(actualMissing.unavailableInput?.uri, uri("Disconnected.ets"))
+    t.diagnostic(JSON.stringify({ qualification: "UNNOTIFIED_MISSING_INPUT_REMAINS_UNREADY_WITH_CERTIFICATION_OBSERVATION",
+      certifications, currentReadiness: current, actualMissing }))
     assert.deepEqual((await session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })
   })
 

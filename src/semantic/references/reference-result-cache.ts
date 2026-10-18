@@ -10,6 +10,7 @@ interface CacheEntry {
   readonly rootId: string
   readonly bytes: number
   readonly references: readonly SemanticReference[]
+  readonly inputProof?: string
 }
 
 export interface ReferenceResultCacheStats {
@@ -35,25 +36,32 @@ export class ReferenceResultCache {
   }
 
   get(query: SemanticReferencesQuery): SemanticReferencesOutcome | undefined {
+    return this.getWithProof(query)?.result
+  }
+
+  getWithProof(query: SemanticReferencesQuery): { result: SemanticReferencesOutcome; inputProof?: string } | undefined {
     const key = this.#key(query)
     const entry = this.#entries.get(key)
     if (!entry) return undefined
     this.#entries.delete(key)
     this.#entries.set(key, entry)
-    return { status: "complete", references: cloneReferences(entry.references) }
+    return { result: { status: "complete", references: cloneReferences(entry.references) },
+      ...(entry.inputProof === undefined ? {} : { inputProof: entry.inputProof }) }
   }
 
-  set(query: SemanticReferencesQuery, result: SemanticReferencesOutcome): boolean {
+  set(query: SemanticReferencesQuery, result: SemanticReferencesOutcome, inputProof?: string): boolean {
     if (result.status !== "complete") return false
     const rootId = query.document.workspaceId
     const key = this.#key(query)
     const references = cloneReferences(result.references)
-    const bytes = Buffer.byteLength(JSON.stringify(references))
+    const bytes = Buffer.byteLength(JSON.stringify(references)) + (inputProof === undefined ? 0 : Buffer.byteLength(inputProof))
     if (bytes > this.maxBytes) return false
     this.#delete(key)
-    this.#entries.set(key, { rootId, bytes, references })
+    this.#entries.set(key, { rootId, bytes, references, ...(inputProof === undefined ? {} : { inputProof }) })
     this.#bytes += bytes
     this.#evict()
+    if (result.otherReferences) this.set({ ...query, includeDeclaration: !query.includeDeclaration },
+      { status: "complete", references: result.otherReferences }, inputProof)
     return true
   }
 

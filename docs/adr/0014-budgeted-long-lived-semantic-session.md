@@ -1,5 +1,7 @@
 # ADR 0014: 预算约束下的长驻 ArkTS Language Service
 
+> 2026-10-18 修订：[ADR 0018](0018-semantic-groups-and-initial-preparation.md) 将默认运行期压力预算改为可配置的 4096MiB，首次项目初始化免于压力准入/trim/驱逐；稳定组按活动保护后的 LRU 保留。下文历史预算与成本优先规则不再代表当前决定。
+
 日期：2026-10-06。状态：**Accepted for experimental implementation；未获生产准入**。
 
 2026-10-11 当前默认策略由[ADR 0015](0015-default-resident-optimization-policy.md)

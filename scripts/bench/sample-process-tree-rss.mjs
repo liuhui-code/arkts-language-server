@@ -3,6 +3,7 @@
 import { execFile } from "node:child_process"
 import fs from "node:fs"
 import { promisify } from "node:util"
+import { performance } from "node:perf_hooks"
 
 import { createProcessResourceProbe } from "../../tests/support/process-resource-probe.mjs"
 
@@ -25,18 +26,24 @@ try {
   try {
     while (!stopped) {
       let sample
+      const monotonicMs = performance.now()
       try {
         sample = await probe.sample(identity)
       } catch (error) {
         if (error?.code === "EPROCESS_NOT_FOUND") break
         throw error
       }
+      const completedTimestamp = Date.now()
+      const completedMonotonicMs = performance.now()
       const totalRssBytes = sample.processes.reduce(
         (total, current) => total + current.rssBytes,
         0,
       )
       output.write(`${JSON.stringify({
         timestamp: sample.timestamp,
+        monotonicMs,
+        completedTimestamp,
+        completedMonotonicMs,
         totalRssBytes,
         samplerRssBytes: process.memoryUsage().rss,
         processes: sample.processes.map(({ role, pid: processId, rssBytes }) => ({

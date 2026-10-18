@@ -4,16 +4,16 @@ import os from "node:os"
 import path from "node:path"
 import test from "node:test"
 import { pathToFileURL } from "node:url"
-
 import { LspSession } from "../support/lsp-session.mjs"
 import { projectRoot } from "../support/lsp-process.mjs"
-
+import { releasePreparedOwner } from "../support/semantic-preparation-state.mjs"
+import { assertAnchorSelection } from "../support/reference-anchor-evidence.mjs"
 test("usage-site anchor keeps transient isolation by default after a definition", async (t) => {
   const result = await replay(t, { recordMetrics: true })
-  assert.equal(result.anchor.verifierIsolation, "transient-worker")
+  assert.equal(result.anchor.verifierIsolation, "sdk-cache-worker")
   assert.ok(result.anchor.preparedProgramSourceFiles > 0)
-  assert.ok(result.metrics.some(sample => sample.activeAnchorVerifierCount === 1
-    && sample.transientVerifierCount === 1), "physical anchor occupancy must be recorded")
+  assert.ok(result.metrics.some(sample => sample.referenceSdkCacheWorkerCount === 1
+    && sample.transientVerifierCount === 0), "physical SDK cache Worker occupancy must be recorded")
   assert.equal(result.metrics.at(-1).transientVerifierCount, 0)
 })
 
@@ -37,7 +37,7 @@ test("cold usage-site anchor keeps exact references without enabling compiler tr
   for (const field of ["workerStartupMs", "workerGetProgramMs", "workerCreateProgramMs", "workerGetTypeCheckerMs"]) {
     assert.equal(anchor[field], undefined)
   }
-  assert.equal(anchor.verifierIsolation, "transient-worker")
+  assert.equal(anchor.verifierIsolation, "sdk-cache-worker")
   assert.ok(!events.some(event => ["references.anchor.document-prepare.complete",
     "references.anchor.resolve.complete"].includes(event.event)))
   assert.ok(!events.some(event => event.event === "references.candidate-phase.complete"))
@@ -78,7 +78,7 @@ test("opt-in cold local-export references validate the seed in the final compile
 
 test("local-export anchor seeding stays disabled by default", async (t) => {
   const result = await replay(t, { warm: false, localExport: true })
-  assert.equal(result.anchor.verifierIsolation, "transient-worker")
+  assert.equal(result.anchor.verifierIsolation, "sdk-cache-worker")
   assert.ok(!result.events.some(event => event.event === "references.anchor.seed.accepted"))
 })
 
@@ -148,7 +148,8 @@ test("explicit constructor references preserve their own identity across aliases
       command: process.execPath, args: [path.join(projectRoot, "dist", "server.cjs"), "--stdio"],
       cwd: projectRoot, rootUri: pathToFileURL(root).href,
       capabilities: { window: { workDoneProgress: true } },
-      env: {
+      env: { ARKTS_BENCHMARK_CONTROL: "1",
+        ARKTS_REFERENCES_RESIDENT_FAST_PATH: "0",
         ARKLINE_HARMONY_SDK_PATH: path.join(root, "missing-sdk"),
         DEVECO_SDK_HOME: path.join(root, "missing-deveco"),
         ARKTS_INDEX_CACHE_DIR: path.join(root, `${profile}-cache`),
@@ -161,6 +162,7 @@ test("explicit constructor references preserve their own identity across aliases
     })
     t.after(() => session.close().catch(() => {}))
     await session.initialize({ timeoutMs: 10_000 })
+    await releasePreparedOwner(session, pathToFileURL(root).href)
     const create = await session.transport.serverRequest("window/workDoneProgress/create", () => true, 10_000)
     session.transport.send({ jsonrpc: "2.0", id: create.id, result: null })
     await session.transport.progress(create.params.token, message => message.params.value.kind === "end", 10_000)
@@ -208,6 +210,8 @@ test("explicit constructor references preserve their own identity across aliases
     await session.close({ timeoutMs: 5_000 })
     if (profile === "indexed-batched") {
       const events = fs.readFileSync(path.join(logs, "server.log"), "utf8").split("\n").filter(Boolean).map(JSON.parse)
+      t.diagnostic(JSON.stringify({ tag: "OP03A_CONSTRUCTOR_ROUTE_V1", profile,
+        queries: results.length, locations: results.map(locations => locations.length), events: events.length }))
       assert.ok(events.some(event => event.event === "references.anchor.seed.rejected"),
         "compiler must reject class-export proof at a direct-import construction")
       assert.ok(events.some(event => event.event === "references.anchor.seed.fallback"))
@@ -251,7 +255,7 @@ test("local-export seed cannot confuse a same-name parameter with the exported c
       `rejected verifier must retain its actual ${field} observation`)
   }
   assert.ok(rejected.workerCreateProgramMs > 0)
-  assert.equal(rejected.verifierIsolation, "transient-worker")
+  assert.equal(rejected.verifierIsolation, "sdk-cache-worker")
   assert.ok(!result.events.some(event => event.event === "references.batch.complete"
     && event.referenceSession === rejected.referenceSession && event.batchIndex === rejected.batchIndex),
     "a rejected attempt must not be counted as a successful batch")
@@ -288,47 +292,47 @@ test("opt-in usage-site anchor reuses a compiler-validated definition at the sam
   assert.equal(result.anchor.anchorWorkerStarts, 0)
   assert.equal(result.anchor.anchorProgramBuilds, 0)
   assert.ok(result.events.filter(event => event.event === "references.batch.complete")
-    .every(event => event.verifierIsolation === "transient-worker"))
+    .every(event => event.verifierIsolation === "sdk-cache-worker"))
 })
 
 test("opt-in anchor falls back after an unsaved overlay edit", async (t) => {
   const result = await replay(t, { reuse: true, edit: true })
-  assert.equal(result.anchor.verifierIsolation, "transient-worker")
+  assert.equal(result.anchor.verifierIsolation, "sdk-cache-worker")
 })
 
 test("opt-in anchor falls back without a compiler-validated definition", async (t) => {
   const result = await replay(t, { reuse: true, warm: false })
-  assert.equal(result.anchor.verifierIsolation, "transient-worker")
+  assert.equal(result.anchor.verifierIsolation, "sdk-cache-worker")
 })
 
 test("opt-in anchor cannot reuse a definition from a different SDK ambient profile", async (t) => {
   const result = await replay(t, { reuse: true, interactiveSdkProfile: "core" })
-  assert.equal(result.anchor.verifierIsolation, "transient-worker")
+  assert.equal(result.anchor.verifierIsolation, "sdk-cache-worker")
 })
 
 test("opt-in anchor falls back when another open document changes the root snapshot", async (t) => {
   const result = await replay(t, { reuse: true, editDependency: true })
-  assert.equal(result.anchor.verifierIsolation, "transient-worker")
+  assert.equal(result.anchor.verifierIsolation, "sdk-cache-worker")
 })
 
 test("opt-in anchor cannot reuse a definition from another position", async (t) => {
   const result = await replay(t, { reuse: true, warmImport: true })
-  assert.equal(result.anchor.verifierIsolation, "transient-worker")
+  assert.equal(result.anchor.verifierIsolation, "sdk-cache-worker")
 })
 
 test("opt-in anchor falls back when an open dependency is reopened at the same version", async (t) => {
   const result = await replay(t, { reuse: true, reopenDependency: true })
-  assert.equal(result.anchor.verifierIsolation, "transient-worker")
+  assert.equal(result.anchor.verifierIsolation, "sdk-cache-worker")
 })
 
 test("opt-in anchor falls back when an unopened dependency changes on disk", async (t) => {
   const result = await replay(t, { reuse: true, editDiskDependency: true })
-  assert.equal(result.anchor.verifierIsolation, "transient-worker")
+  assert.equal(result.anchor.verifierIsolation, "sdk-cache-worker")
 })
 
 test("opt-in references include the moved declaration after an unwatched disk edit", async (t) => {
   const result = await replay(t, { reuse: true, moveDiskDeclaration: true })
-  assert.equal(result.anchor.verifierIsolation, "transient-worker")
+  assert.equal(result.anchor.verifierIsolation, "sdk-cache-worker")
 })
 
 test("cancelling references after anchor reuse returns no partial result and permits exact recovery", async (t) => {
@@ -341,7 +345,7 @@ test("cancelling references after anchor reuse returns no partial result and per
 test("editing during reused-anchor verification rejects the old snapshot and finds the new reference", async (t) => {
   const result = await replay(t, { reuse: true, interrupt: "edit" })
   assert.equal(result.anchor.verifierIsolation, "validated-definition")
-  assert.equal(result.recoveryAnchor.verifierIsolation, "transient-worker")
+  assert.equal(result.recoveryAnchor.verifierIsolation, "sdk-cache-worker")
 })
 
 async function replay(t, { reuse = false, edit = false, warm = true,
@@ -378,7 +382,8 @@ async function replay(t, { reuse = false, edit = false, warm = true,
     args: [path.join(projectRoot, "dist", "server.cjs"), "--stdio"],
     cwd: projectRoot,
     rootUri: pathToFileURL(workspace).href,
-    env: {
+    env: { ARKTS_BENCHMARK_CONTROL: "1",
+      ARKTS_REFERENCES_RESIDENT_FAST_PATH: "0",
       ARKLINE_HARMONY_SDK_PATH: path.join(root, "missing-sdk"),
       DEVECO_SDK_HOME: path.join(root, "missing-deveco"),
       ARKTS_INDEX_CACHE_DIR: path.join(root, "cache"),
@@ -399,6 +404,7 @@ async function replay(t, { reuse = false, edit = false, warm = true,
   })
   t.after(() => session.close().catch(() => {}))
   await session.initialize({ timeoutMs: 10_000 })
+  await releasePreparedOwner(session, pathToFileURL(workspace).href)
   const create = await session.transport.serverRequest("window/workDoneProgress/create",
     () => true, 10_000)
   session.transport.send({ jsonrpc: "2.0", id: create.id, result: null })
@@ -473,11 +479,7 @@ async function replay(t, { reuse = false, edit = false, warm = true,
   const anchor = events.find(event => event.event === "references.anchor.complete")
     ?? events.find(event => event.event === "references.anchor.seed.accepted")
   assert.ok(anchor, "usage-site lookup must exercise the compiler anchor path")
-  if (unclassifiedOccurrence) {
-    assert.notEqual(events.find(event => event.event === "references.index.accepted")?.anchorMode,
-      "indexed-local-export-seed")
-  } else assert.equal(events.find(event => event.event === "references.index.accepted")?.anchorMode,
-    localSeed ? "indexed-local-export-seed" : "compiler-definition-identity")
+  assertAnchorSelection(events, { unclassifiedOccurrence, localSeed, editDiskDependency, moveDiskDeclaration })
   const recoveryAnchor = events.filter(event => event.event === "references.anchor.complete")[1]
   const metrics = recordMetrics ? fs.readFileSync(path.join(root, "memory.jsonl"), "utf8")
     .split("\n").filter(Boolean).map(JSON.parse) : undefined

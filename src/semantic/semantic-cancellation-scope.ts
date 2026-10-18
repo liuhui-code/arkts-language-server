@@ -7,6 +7,16 @@ import {
   SemanticWorkerCancelState,
 } from "./worker-protocol.js"
 
+export function cancellationSignal(cell: SharedArrayBuffer): AbortSignal {
+  const reason = new Error("Semantic worker request cancelled")
+  return {
+    get aborted() {
+      return readSemanticWorkerCancellationState(cell) !== SemanticWorkerCancelState.active
+    },
+    get reason() { return reason },
+  } as AbortSignal
+}
+
 export class SemanticCancellationScope {
   readonly hostToken: ts.HostCancellationToken
   private readonly cells = new AsyncLocalStorage<SharedArrayBuffer>()

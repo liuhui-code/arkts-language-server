@@ -54,6 +54,8 @@ export type SemanticReferenceQueryResult =
   | {
       status: "complete"
       references: SemanticDefinitionCandidate[]
+      /** Other declaration policy, only when independently mappable and complete. */
+      otherReferences?: SemanticDefinitionCandidate[]
       /** Internal, operation-scoped proof from one completed compiler search. */
       searchedProjectPaths?: readonly string[]
       /** Unique raw compiler constructor definition from that same search. */

@@ -1,4 +1,5 @@
 import type { SemanticWorkerMethod, SemanticWorkerRequestArgsByMethod, SemanticWorkerExpectedDocumentVersion } from "./worker-protocol.js"
+import type { SemanticWorkerDiskSource } from "./semantic-worker-disk-source.js"
 
 export type RootSemanticWorkerMutationInput =
   | {
@@ -30,5 +31,6 @@ export type RootSemanticWorkerRequestInput = {
     readonly uri: string
     readonly expectedDocumentVersion: SemanticWorkerExpectedDocumentVersion<Method>
     readonly args: SemanticWorkerRequestArgsByMethod[Method]
+    readonly diskSource?: SemanticWorkerDiskSource
   }
 }[SemanticWorkerMethod]

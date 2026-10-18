@@ -7,11 +7,46 @@ import test from "node:test"
 
 import { capturePreparedIdentity } from "../scripts/bench/prepared-suite-input.mjs"
 import { sha256File } from "../scripts/bench/reference-replay-input.mjs"
+import { makeSuite, saveSuite } from "./support/prepared-suite-fixture.mjs"
 
 const runner = path.resolve("scripts/bench/replay-references.mjs")
 
-for (const recoveredBeforeControl of [false, true]) {
-test(recoveredBeforeControl ? "prepared suite verifies recovery when natural L3 already disposed the context"
+test("prepared suite completes its real minimum idle observation after an early timer callback", async t => {
+  const fixture = await makeSuite(t)
+  fixture.suite.runtime.postIdleMs = 200
+  saveSuite(fixture)
+  const receiptPath = path.join(fixture.directory, "early-timer.json")
+  const run = spawnSync(process.execPath,
+    [runner, "--prepared-suite", fixture.input, "--out", fixture.output], {
+      encoding: "utf8", timeout: 15_000, env: { ...process.env,
+        NODE_OPTIONS: `--require=${JSON.stringify(path.resolve("tests/fixtures/prepared-observation-early-timer.cjs"))}`,
+        ARKTS_TEST_OBSERVATION_TIMER_MS: "200", ARKTS_TEST_OBSERVATION_TIMER_RECEIPT: receiptPath },
+    })
+  assert.equal(run.status, 1, `${run.stderr}\n${run.stdout}`)
+  const report = JSON.parse(fs.readFileSync(fixture.output, "utf8"))
+  const receipt = JSON.parse(fs.readFileSync(receiptPath, "utf8"))
+  const idleStart = report.timeline.find(event => event.phase === "post-query-idle-start")
+  const idleEnd = report.timeline.find(event => event.phase === "post-query-idle-complete")
+  const elapsedMs = idleStart && idleEnd && idleEnd.monotonicMs - idleStart.monotonicMs
+  t.diagnostic(JSON.stringify({ idleStart, idleEnd, elapsedMs, receipt }))
+  assert.equal(report.correctness.status, "PASS")
+  assert.equal(report.requests.length, 2)
+  assert.ok(report.requests.every(request => request.status === "COMPLETE" && request.correctness.equal))
+  assert.equal(report.gateStatus.ready, "FAIL")
+  assert.equal(report.gateStatus.latency, "BLOCKED")
+  assert.ok(receipt.callbackElapsedMs < 200, "the timer control must really complete before the observation deadline")
+  assert.equal(idleStart?.durationMs, 200)
+  assert.ok(idleStart && idleEnd && elapsedMs >= 200,
+    `real idle observation must reach its configured minimum: ${JSON.stringify({ elapsedMs, receipt })}`)
+})
+
+for (const { recoveredBeforeControl, earlyObservationTimer } of [
+  { recoveredBeforeControl: false },
+  { recoveredBeforeControl: true },
+  { recoveredBeforeControl: false, earlyObservationTimer: true },
+]) {
+test(earlyObservationTimer ? "prepared suite completes its real minimum post-eviction observation after an early timer callback"
+  : recoveredBeforeControl ? "prepared suite verifies recovery when natural L3 already disposed the context"
   : "prepared suite recovers an exact unseen reference after observed L3 eviction", async t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-prepared-l3-"))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
@@ -85,23 +120,30 @@ test(recoveredBeforeControl ? "prepared suite verifies recovery when natural L3 
   const input = path.join(directory, "suite.json")
   const output = path.join(directory, "report.json")
   const registryProbe = path.join(directory, "registry-probe.jsonl")
+  const timerReceipt = path.join(directory, "post-eviction-early-timer.json")
   suite.runtime.env.ARKTS_L01_REGISTRY_PROBE_FILE = registryProbe
   fs.writeFileSync(input, JSON.stringify(suite))
   const run = spawnSync(process.execPath, [runner, "--prepared-suite", input, "--out", output],
-    { encoding: "utf8", timeout: 60_000 })
+    { encoding: "utf8", timeout: 60_000, ...(earlyObservationTimer ? { env: { ...process.env,
+      NODE_OPTIONS: `--require=${JSON.stringify(path.resolve("tests/fixtures/prepared-observation-early-timer.cjs"))}`,
+      ARKTS_TEST_OBSERVATION_TIMER_MS: "120", ARKTS_TEST_OBSERVATION_TIMER_RECEIPT: timerReceipt,
+    } } : {}) })
   assert.equal(run.status, 1, `${run.stderr}\n${run.stdout}`)
   const report = JSON.parse(fs.readFileSync(output, "utf8"))
   assert.equal(report.readiness.semantic.status, "DEGRADED", JSON.stringify(report.readiness))
   assert.equal(report.readiness.semantic.observed.semanticGeneration, null)
   assert.deepEqual(report.readiness.semantic.observed.readyCapabilities, [])
-  assert.deepEqual(report.readiness.semantic.observed.unavailableReasons, ["sdk-coverage-unproven"])
+  assert.deepEqual(report.readiness.semantic.observed.unavailableReasons,
+    [recoveredBeforeControl ? "resource-budget-exceeded" : "sdk-coverage-unproven"])
   assert.equal(report.gateStatus.ready, "FAIL")
   assert.equal(report.gateStatus.latency, "BLOCKED")
   if (recoveredBeforeControl) {
-    const started = report.timeline.find(event => event.phase === "request-start").timestamp
+    const initialized = report.serverEvents.find(event => event.event === "semantic.initialization.started")
+    const control = report.timeline.find(event => event.phase === "memory-pressure-request-start").timestamp
     assert.ok(report.serverEvents.some(event => event.event === "semantic.context.evict"
       && event.reason === "memory-level3" && event.residentContextCount === 0
-      && Date.parse(event.ts) >= started), "natural disposal must be observed during the preceding query")
+      && Date.parse(event.ts) >= Date.parse(initialized.ts) && Date.parse(event.ts) <= control),
+    "natural disposal after initialization must already be observed before the recovery control")
   }
   assert.equal(report.correctness.status, "PASS", JSON.stringify({
     failure: report.failure, blocked: report.blockedScenarios, unchanged: report.inputIdentity.inputUnchanged,
@@ -138,12 +180,21 @@ test(recoveredBeforeControl ? "prepared suite verifies recovery when natural L3 
     assert.ok(observed && waitStart && waitEnd && query)
     assert.ok(observed.monotonicMs <= waitStart.monotonicMs)
     assert.equal(waitStart.durationMs, 120)
+    if (earlyObservationTimer && scenarioId === "recover-cold") {
+      const receipt = JSON.parse(fs.readFileSync(timerReceipt, "utf8"))
+      const elapsedMs = waitEnd.monotonicMs - waitStart.monotonicMs
+      t.diagnostic(JSON.stringify({ scenarioId, waitStart, waitEnd, elapsedMs, receipt }))
+      assert.ok(receipt.callbackElapsedMs < 120, "the timer control must really complete before the observation deadline")
+      assert.ok(elapsedMs >= waitStart.durationMs,
+        `real post-eviction observation must reach its configured minimum: ${JSON.stringify({ elapsedMs, receipt })}`)
+    }
     assert.ok(waitEnd.monotonicMs - waitStart.monotonicMs >= 100)
     assert.ok(waitEnd.monotonicMs <= query.monotonicMs)
   }
   const idleStart = report.timeline.find(event => event.phase === "post-query-idle-start")
   const idleEnd = report.timeline.find(event => event.phase === "post-query-idle-complete")
-  assert.ok(idleStart && idleEnd && idleEnd.monotonicMs - idleStart.monotonicMs >= 200)
+  assert.ok(idleStart && idleEnd && idleEnd.monotonicMs - idleStart.monotonicMs >= 200,
+    JSON.stringify({ idleStart, idleEnd }))
   const probes = fs.readFileSync(registryProbe, "utf8").trim().split("\n").map(JSON.parse)
   const disposal = probes.filter(probe => probe.phase === "before-dispose" || probe.phase === "after-dispose")
   assert.ok(disposal.length >= (recoveredBeforeControl ? 2 : 4),
@@ -154,7 +205,15 @@ test(recoveredBeforeControl ? "prepared suite verifies recovery when natural L3 
     assert.equal(disposal[index].sampleId, disposal[index + 1].sampleId)
     assert.ok(disposal[index].sampledSourceFiles > 0)
     assert.ok(disposal[index].totalRefCount > 0)
-    assert.equal(disposal[index + 1].totalRefCount, 0)
+    const released = disposal[index + 1]
+    assert.equal(released.projectRefCount, 0, "project leases are released")
+    assert.equal(released.nonSdkRefCount, released.libraryRefCount)
+    assert.equal(released.totalRefCount, released.sdkRefCount + released.libraryRefCount, "only SDK and compiler-library cache pins may remain")
+    if (released.sdkRefCount > 0) {
+      assert.equal(disposal[index].sdkRefCount, 2 * released.sdkRefCount,
+        "the job releases its SDK leases and retains one cache lease per SDK file")
+      assert.equal(released.retainedSourceFiles, released.sdkRefCount + released.libraryRefCount)
+    }
   }
   if (!recoveredBeforeControl) {
     for (const [scenarioIndex, value] of [[1, "yes"], [0, true]]) {

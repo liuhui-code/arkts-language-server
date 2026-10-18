@@ -64,21 +64,33 @@ test("opt-in unaliased re-export seed avoids the separate anchor only after fina
   assert.ok(control.events.some(event => event.event === "references.anchor.complete"))
   assert.ok(seeded.events.some(event => event.event === "references.anchor.seed.accepted"),
     "a unique export may be used only as a seed, pending final compiler verification")
-  const preparation = seeded.events.find(event =>
+  const preparations = seeded.events.filter(event =>
     event.event === "references.search.document-prepare.complete")
-  assert.ok(preparation, "the seeded path must expose workspace preparation separately")
-  assert.ok(preparation.durationMs >= 0 && preparation.preparedDocuments >= 1)
-  const phases = seeded.events.filter(event =>
-    event.event === "references.search.document-prepare.phase")
-  assert.deepEqual(phases.map(event => event.phase), [
-    "current-load", "overlay-authority", "dependency-closure",
-    "project-membership", "workspace-preload", "finalize",
-  ], "the traced public request must attribute the complete preparation sequence")
-  assert.ok(phases.every(event => Number.isFinite(event.durationMs) && event.durationMs >= 0))
+  assert.ok(preparations.every(event => Number.isFinite(event.durationMs)
+    && event.durationMs >= 0 && event.preparedDocuments >= 1))
+  const queues = seeded.events.filter(event => event.event === "references.queue.start")
+  assert.ok(queues.length >= 1 && queues.length <= 2,
+    "a cold root skips the impossible trial; an existing owner may be tried once")
+  assert.equal(preparations.length, queues.length, "each dispatched RPC prepares current metadata once")
+  assert.equal(new Set(queues.map(event => event.traceId)).size, 1,
+    "both physical RPCs belong to the same public request")
+  for (const [index, queue] of queues.entries()) {
+    assert.ok(queue.traceId)
+    const interval = seeded.events.slice(seeded.events.indexOf(queue),
+      index + 1 < queues.length ? seeded.events.indexOf(queues[index + 1]) : undefined)
+    const phases = interval.filter(event => event.event === "references.search.document-prepare.phase")
+    assert.deepEqual(phases.map(event => event.phase), [
+      "current-load", "overlay-authority", "dependency-closure",
+      "project-membership", "workspace-preload", "finalize",
+    ], "each physical RPC must attribute its complete preparation sequence")
+    assert.equal(interval.filter(event => event.event === "references.search.document-prepare.complete").length, 1)
+    assert.ok(phases.every(event => Number.isFinite(event.durationMs)
+      && event.durationMs >= 0 && event.traceId === queue.traceId))
+  }
   assert.ok(!seeded.events.some(event => event.event === "references.anchor.complete"),
     "the accepted seed should avoid a separate cold anchor Program")
-  assert.ok(seeded.events.filter(event => event.event === "references.batch.complete")
-    .every(event => event.anchorVerified === true),
+  const batches = seeded.events.filter(event => event.event === "references.batch.complete")
+  assert.ok(batches.length > 0 && batches.every(event => event.anchorVerified === true),
   "every final batch must resolve the original cursor to the seeded declaration")
 })
 
@@ -175,6 +187,7 @@ async function replay(root, sources, trace,
     rootUri: pathToFileURL(root).href,
     capabilities: { window: { workDoneProgress: true } },
     env: {
+      ARKTS_REFERENCES_RESIDENT_FAST_PATH: "0",
       ARKLINE_HARMONY_SDK_PATH: path.join(root, "missing-sdk"),
       DEVECO_SDK_HOME: path.join(root, "missing-deveco"),
       ARKTS_INDEX_CACHE_DIR: path.join(root, `${name}-cache`),

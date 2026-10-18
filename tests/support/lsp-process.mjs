@@ -1,48 +1,10 @@
 import { spawn } from "node:child_process"
 import fs from "node:fs/promises"
 import path from "node:path"
+import { hasOwn, isResponse, isServerRequest, isNotification, messageKind, protocolFailure, contentLengthFromHeader } from "./lsp-message-shape.mjs"
 import { fileURLToPath } from "node:url"
 
 export const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
-
-function hasOwn(message, key) {
-  return message !== null
-    && typeof message === "object"
-    && Object.prototype.hasOwnProperty.call(message, key)
-}
-
-function isResponse(message) {
-  return hasOwn(message, "id") && !hasOwn(message, "method")
-}
-
-function isServerRequest(message) {
-  return hasOwn(message, "id") && typeof message.method === "string"
-}
-
-function isNotification(message) {
-  return !hasOwn(message, "id") && typeof message?.method === "string"
-}
-
-function messageKind(message) {
-  if (isResponse(message)) return "response"
-  if (isServerRequest(message)) return "request"
-  if (isNotification(message)) return "notification"
-  return "unknown"
-}
-
-function protocolFailure(code, message, details = {}) {
-  return Object.assign(new Error(`LSP protocol failure: ${message}`), { code, ...details })
-}
-
-function contentLengthFromHeader(header) {
-  const contentLengthLines = header.split("\r\n")
-    .filter((line) => /^Content-Length:/i.test(line))
-  const contentLength = contentLengthLines.length === 1
-    ? /^Content-Length:\s*(\d+)\s*$/i.exec(contentLengthLines[0])
-    : null
-  const length = Number(contentLength?.[1])
-  return contentLength && Number.isSafeInteger(length) ? length : undefined
-}
 
 function utf8Prefix(value, maxBytes) {
   let result = ""
@@ -103,7 +65,9 @@ export class LspProcess {
   } = {}) {
     this.child = spawn(command, args, {
       cwd,
-      env: env ? { ...process.env, ...env } : undefined,
+      env: { ...process.env,
+        ARKLINE_HARMONY_SDK_PATH: path.join(projectRoot, "fixtures/conformance/v1/sdk/openharmony"),
+        ...env },
       stdio: ["pipe", "pipe", "pipe"],
     })
     this.buffer = Buffer.alloc(0)

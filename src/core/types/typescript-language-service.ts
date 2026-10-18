@@ -32,7 +32,6 @@ import type {
   SemanticTextRange,
   SemanticUsageResult,
 } from "../protocol.js"
-import { resolveHarmonySdkModule } from "../sdk/module-resolver.js"
 import { officialDocumentRegistryFor, recycleOfficialSemanticService, disposeOfficialSemanticService } from "../../semantic/backends/ohos-typescript/registry-pool.js"
 import type {
   ProjectFileAccessPort,
@@ -45,16 +44,23 @@ import { typescriptProgramStats, measureOfficialCompilerReadiness } from "./type
 import { OfficialReadinessState, withLoadedReadinessMembership, type ReadinessTrace } from "./typescript-semantic-readiness.js"
 import { TypeScriptContentVersions } from "./typescript-content-versions.js"
 import { TypeScriptScriptAdmission } from "./typescript-script-admission.js"
+import { createScriptRecord, type ScriptRecord } from "./typescript-script-record.js"
 import { queryTypeScriptRename } from "./typescript-rename-query.js"
 import { exactSourceRange, queryTypeScriptReferences, semanticLocationKey } from "./typescript-reference-query.js"
 import { currentWholeFileCallHierarchyItem, exactCallHierarchySelectionRange, exactSourceBoundaryRange } from "./typescript-call-hierarchy-range.js"
 import { IncompleteImplementationError, queryTypeScriptImplementations } from "./typescript-implementation-query.js"
-import { loadedConfigurationIsCurrent, SemanticInputUnavailableError } from "./typescript-query-inputs.js"
+import { loadedConfigurationIsCurrent, assertCurrentQueryInputs, SemanticInputUnavailableError } from "./typescript-query-inputs.js"
+import { queryAdmittedDefinition, queryAdmittedReferences } from "./typescript-resident-reference-query.js"
 import { normalizedDefinitionSpan } from "./typescript-definition-span.js"
 import { TypeScriptResidentReferenceState, type ResidentReferenceProofFailure } from "./typescript-resident-reference-state.js"
+import { compilerHostFileNames } from "./typescript-host-file-names.js"
 import { LoadedConfigurationWitness } from "../../project/loaded-configuration-witness.js"
 import { discoverSdkAmbientDeclarations } from "./typescript-sdk-ambient.js"
-import { witnessedDirectoryExists, witnessedModuleResolutionHost } from "./typescript-resolution-witness.js"
+import { witnessedDirectoryExists, witnessedFileExists, witnessedFilesystemLookup } from "./typescript-resolution-witness.js"
+import { relativeModuleBoundary, isWithinRoot, canonicalExistingPath, callHierarchyPathFailure } from "./typescript-source-boundary.js"
+import { QueryModuleResolution } from "./typescript-query-module-resolution.js"
+import { resolveTypeScriptModule } from "./typescript-module-resolution.js"
+import { assertVerifierSdkLookupsCurrent } from "./verifier-sdk-lookups.js"
 import { arktsLanguageServiceOptions } from "./arkts-language-service-options.js"
 import { createSourceDocument, type SourceDocument } from "./source-document.js"
 import { isRegularBoundedFile, safeRead } from "./typescript-safe-source-read.js"
@@ -73,7 +79,7 @@ import {
   typescriptTypeDetail,
   typescriptTypeStatus,
 } from "./typescript-language-helpers.js"
-import { lineColumnToOffset, offsetToLineColumn, spanToRange } from "./text-position.js"
+import { exactSourceOffset, lineColumnToOffset, offsetToLineColumn, spanToRange } from "./text-position.js"
 import { cacheLimit, MAX_SCRIPTS, MAX_SCRIPT_BYTES, MAX_LAZY_SNAPSHOTS, MAX_LAZY_SNAPSHOT_BYTES } from "./typescript-cache-limits.js"
 
 const MAX_COMPLETIONS = 128
@@ -85,20 +91,6 @@ const MAX_CALL_HIERARCHY_RANGES_PER_EDGE = 64
 const MAX_CALL_HIERARCHY_TOTAL_RANGES = 2_048
 const MIN_MODULE_EXPORT_PREFIX_LENGTH = 2
 const ENGINE_VERSION = `typescript-${ts.version}-arkts-v2`
-
-interface ScriptRecord {
-  path: string
-  content: string
-  sourceContent: string
-  virtualDocument: SourceDocument
-  version: number
-  compilerVersion?: string
-  documentVersion?: number
-  overlay: boolean
-  sourceFingerprint: string
-  bytes: number
-  lastAccess: number
-}
 
 interface LazySnapshotRecord {
   path: string
@@ -187,9 +179,11 @@ export class TypeScriptLanguageServiceEngine {
   private readonly host: ts.LanguageServiceHost
   private service: ts.LanguageService
   private readonly residentReferencesState: TypeScriptResidentReferenceState | undefined
+  private readonly residentProofOwner = {}
   private readonly sdkAmbientProfile: TypeScriptSdkAmbientProfile
-  private readonly readiness = new OfficialReadinessState()
+  private readonly readiness = new OfficialReadinessState(proof => this.residentReferencesState?.adoptValidatedProof(proof))
   private readonly configurationWitness: LoadedConfigurationWitness | undefined
+  private readonly moduleResolution: QueryModuleResolution
   private readonly checkpoint: (() => void) | undefined
   private readonly readSourceFile: (filePath: string) => string | null
   private readonly projectFileAccess: ProjectFileAccessPort | undefined
@@ -266,6 +260,7 @@ export class TypeScriptLanguageServiceEngine {
       this.configurationWitness,
     )
     this.options = arktsLanguageServiceOptions(sdk.path, this.configurationWitness)
+    this.moduleResolution = new QueryModuleResolution(rootPath, this.options)
     this.sdkSelection = sdk
     this.sdkRoot = sdk.path
     this.sdkPhysicalRoot = this.sdkRoot ? canonicalExistingPath(this.sdkRoot) : undefined
@@ -284,8 +279,17 @@ export class TypeScriptLanguageServiceEngine {
           const compiler = this.configurationWitness?.freshness(residentCheckpoint)
           const resolver = this.packageResolver.configurationFreshness(rootPath, residentCheckpoint)
           return compiler && resolver ? () => compiler() && resolver() : undefined
-        }, onResidentReferenceProofFailure)
+        }, onResidentReferenceProofFailure, this.residentProofOwner)
       : undefined
+  }
+
+  withRequestModuleResolution<Result>(run: () => Result): Result {
+    return this.moduleResolution.query(run)
+  }
+
+  assertCurrentInputs(checkpoint = () => this.checkpoint?.()): void {
+    assertCurrentQueryInputs(this.configurationWitness, this.packageResolver, this.rootPath, checkpoint)
+    assertVerifierSdkLookupsCurrent(this.configurationWitness)
   }
 
   prepare(workspace: SemanticWorkspaceView): SemanticTypeEngineState {
@@ -349,7 +353,11 @@ export class TypeScriptLanguageServiceEngine {
     return measureOfficialCompilerReadiness(this.service)
   }
 
-  semanticReadiness(workspace: SemanticWorkspaceView, mode: boolean | "query", trace?: ReadinessTrace) {
+  hasReadinessRefreshIntent(): boolean { return this.readiness.refreshRequested }
+
+  restoreReadinessRefreshIntent(): void { this.readiness.restoreQueryRefresh() }
+
+  semanticReadiness(workspace: SemanticWorkspaceView, mode: boolean | "query" | "query-prepare", trace?: ReadinessTrace) {
     return this.readiness.status(this.readinessInput(workspace, trace), mode)
   }
 
@@ -359,7 +367,7 @@ export class TypeScriptLanguageServiceEngine {
       roots: this.scriptFileNames(), service: this.service, compilerOptions: this.options,
       sdk: this.sdkSelection, sdkRoots: this.sdkDeclarationPaths, sdkAmbientProfile: this.sdkAmbientProfile,
       witness: this.configurationWitness, resolver: this.packageResolver, readSourceFile: this.readSourceFile,
-      cancellation: this.host.getCancellationToken?.(), trace }
+      cancellation: this.host.getCancellationToken?.(), residentProofOwner: this.residentProofOwner, trace }
   }
 
   programFileStats(): ReturnType<typeof typescriptProgramStats> {
@@ -368,14 +376,10 @@ export class TypeScriptLanguageServiceEngine {
 
   scriptFileNames(): string[] {
     if (this.combinedFileNames) return this.combinedFileNames
-    if (this.semanticRootPaths) return this.membershipFileNames
-    const extras = [...this.scripts.keys()].filter((filePath) => (
-      !this.projectMembershipPaths.has(filePath)
-      && !this.sdkDeclarationPaths.includes(filePath)
-    ))
-    if (extras.length === 0) return this.membershipFileNames
-    this.combinedFileNames = [...extras, ...this.membershipFileNames]
-    return this.combinedFileNames
+    const names = compilerHostFileNames(this.membershipFileNames, this.semanticRootPaths !== undefined,
+      this.scripts.keys(), this.projectMembershipPaths, this.sdkDeclarationPaths)
+    if (names !== this.membershipFileNames) this.combinedFileNames = names
+    return names
   }
 
   complete(position: SemanticDocumentPosition): SemanticCompletionItemList {
@@ -407,10 +411,9 @@ export class TypeScriptLanguageServiceEngine {
         : {}),
     }) as CompletionInfoCompat | undefined
     work.boundary()
-    if (!loadedConfigurationIsCurrent(this.configurationWitness, this.packageResolver,
-      this.rootPath, () => work.boundary())) throw new SemanticInputUnavailableError()
+    this.assertCurrentInputs(() => work.boundary())
     if (!info) return work.finish({ items: [], isIncomplete: false })
-    this.captureResidentProgram()
+    this.residentReferencesState?.captureCurrentProgram(this.service)
     const completionEntries = arktsStructThisCompletionEntries(
       this.service,
       filePath,
@@ -702,8 +705,7 @@ export class TypeScriptLanguageServiceEngine {
       data.entryData as ts.CompletionEntryData | undefined,
     )
     work.boundary()
-    if (!loadedConfigurationIsCurrent(this.configurationWitness, this.packageResolver,
-      this.rootPath, () => work.boundary())) throw new SemanticInputUnavailableError()
+    this.assertCurrentInputs(() => work.boundary())
     if (!details) return work.finish(item)
     const detail = completionDisplayPartsText(details.displayParts ?? [], work) || item.detail
     const documentation = completionOptionalDisplayParts(
@@ -732,8 +734,7 @@ export class TypeScriptLanguageServiceEngine {
       (filePath, offset) => this.service.getDefinitionAtPosition(filePath, offset),
       work,
     )
-    if (!loadedConfigurationIsCurrent(this.configurationWitness, this.packageResolver,
-      this.rootPath, () => work.boundary())) throw new SemanticInputUnavailableError()
+    this.assertCurrentInputs(() => work.boundary())
     return candidates
   }
 
@@ -744,8 +745,7 @@ export class TypeScriptLanguageServiceEngine {
       (filePath, offset) => this.service.getTypeDefinitionAtPosition(filePath, offset),
       work,
     )
-    if (!loadedConfigurationIsCurrent(this.configurationWitness, this.packageResolver,
-      this.rootPath, () => work.boundary())) throw new SemanticInputUnavailableError()
+    this.assertCurrentInputs(() => work.boundary())
     return candidates
   }
 
@@ -768,8 +768,7 @@ export class TypeScriptLanguageServiceEngine {
     position: SemanticDocumentPosition,
   ): SemanticCallHierarchyPrepareQueryResult {
     const prepared = this.prepareCallHierarchyAt(position)
-    if (!loadedConfigurationIsCurrent(this.configurationWitness, this.packageResolver,
-      this.rootPath, () => this.checkpoint?.())) throw new SemanticInputUnavailableError()
+    this.assertCurrentInputs()
     return prepared
   }
 
@@ -844,8 +843,7 @@ export class TypeScriptLanguageServiceEngine {
     ))
     const resolutionFailure = this.rejectedOutgoingCallFailure(filePath, generatedOffset)
     if (resolutionFailure) return { status: "incomplete", reason: resolutionFailure }
-    if (!loadedConfigurationIsCurrent(this.configurationWitness, this.packageResolver,
-      this.rootPath, () => this.checkpoint?.())) throw new SemanticInputUnavailableError()
+    this.assertCurrentInputs()
     return { status: "complete", calls: normalized }
   }
 
@@ -985,8 +983,7 @@ export class TypeScriptLanguageServiceEngine {
     ))
     const finalMembershipFailure = this.projectMembershipFailure()
     if (finalMembershipFailure) return finalMembershipFailure
-    if (!loadedConfigurationIsCurrent(this.configurationWitness, this.packageResolver,
-      this.rootPath, () => this.checkpoint?.())) throw new SemanticInputUnavailableError()
+    this.assertCurrentInputs()
     return { status: "complete", calls: normalized }
   }
 
@@ -1280,7 +1277,7 @@ export class TypeScriptLanguageServiceEngine {
       work.item()
     }
     const result = work.finish(candidates)
-    this.captureResidentProgram()
+    this.residentReferencesState?.captureCurrentProgram(this.service)
     return result
   }
 
@@ -1331,7 +1328,7 @@ export class TypeScriptLanguageServiceEngine {
     captureSearchScope = false,
   ): SemanticReferenceQueryResult {
     const result = this.queryReferences(position, includeDeclaration, captureSearchScope)
-    if (result.status === "complete") this.captureResidentProgram()
+    if (result.status === "complete") this.residentReferencesState?.captureCurrentProgram(this.service)
     return result
   }
 
@@ -1339,42 +1336,23 @@ export class TypeScriptLanguageServiceEngine {
     workspace: SemanticWorkspaceView, position: SemanticDocumentPosition, includeDeclaration: boolean,
   ): SemanticReferenceQueryResult | undefined {
     if (this.projectMembershipFailure()) return undefined
-    const program = this.residentReferencesState?.admit(workspace, this.generation, this.scriptFileNames())
-    if (!program) return undefined
-    const result = this.queryReferences(position, includeDeclaration, true, program)
-    if (result.status !== "complete" || !result.searchedProjectPaths
-      || this.residentReferencesState?.admit(workspace, this.generation, this.scriptFileNames()) !== program) return undefined
-    const searched = new Set(result.searchedProjectPaths.map(filePath => path.resolve(filePath)))
-    return searched.has(path.resolve(position.path))
-      && workspace.projectMembership!.paths.every(filePath => searched.has(path.resolve(filePath)))
-      && workspace.documents.filter(document => document.overlay).every(document => searched.has(path.resolve(document.path)))
-      ? result : undefined
+    return queryAdmittedReferences(this.residentReferencesState, workspace,
+      () => ({ generation: this.generation, roots: this.scriptFileNames() }),
+      program => this.queryReferences(position, includeDeclaration, true, program), position.path, () => { this.prepare(workspace); this.residentReferencesState?.captureCurrentProgram(this.service) })
   }
 
   residentDefinition(
     workspace: SemanticWorkspaceView, position: SemanticDocumentPosition,
   ): SemanticDefinitionCandidate[] | undefined {
     if (this.projectMembershipFailure()) return undefined
-    const program = this.residentReferencesState?.admit(workspace, this.generation, this.scriptFileNames())
-    if (!program) return undefined
-    let rawDefinitions = 0
-    const result = this.definitionCandidates(position, (filePath, offset) => {
-      const definitions = this.service.getDefinitionAtPosition(filePath, offset)
-      rawDefinitions = definitions?.length ?? 0
-      return definitions
-    }, new CooperativeWork(this.checkpoint))
-    return rawDefinitions === 1 && result.length === 1 && this.service.getProgram() === program
-      && this.residentReferencesState?.admit(workspace, this.generation, this.scriptFileNames()) === program
-      ? result : undefined
+    return queryAdmittedDefinition(this.residentReferencesState, workspace,
+      () => ({ generation: this.generation, roots: this.scriptFileNames() }), () => this.service,
+      lookup => this.definitionCandidates(position, lookup, new CooperativeWork(this.checkpoint)))
   }
 
   invalidateResidentReferences(): void {
     this.readiness.clear()
     this.residentReferencesState?.invalidate()
-  }
-
-  private captureResidentProgram(): void {
-    if (this.residentReferencesState) this.residentReferencesState.observe(this.service.getProgram())
   }
 
   private queryReferences(
@@ -1404,15 +1382,14 @@ export class TypeScriptLanguageServiceEngine {
     work.boundary()
     const semanticDiagnostics = this.service.getSemanticDiagnostics(filePath)
     work.boundary()
-    this.captureResidentProgram()
+    this.residentReferencesState?.captureCurrentProgram(this.service)
     const diagnostics: SemanticDiagnostic[] = mapTypescriptDiagnosticGroups(
       filePath,
       script.virtualDocument,
       [syntacticDiagnostics, semanticDiagnostics],
       work,
     )
-    if (!loadedConfigurationIsCurrent(this.configurationWitness, this.packageResolver,
-      this.rootPath, () => work.boundary())) throw new SemanticInputUnavailableError()
+    this.assertCurrentInputs(() => work.boundary())
     if (this.sdkSelection.source === "configuration" && !this.sdkSelection.ready) {
       diagnostics.unshift({
         source: "language",
@@ -1561,8 +1538,7 @@ export class TypeScriptLanguageServiceEngine {
     const sourceOffset = lineColumnToOffset(script.sourceContent, position.line, position.column)
     const offset = script.virtualDocument.toGeneratedOffset(sourceOffset)
     const info = this.service.getQuickInfoAtPosition(filePath, offset)
-    if (!loadedConfigurationIsCurrent(this.configurationWitness, this.packageResolver,
-      this.rootPath, () => this.checkpoint?.())) throw new SemanticInputUnavailableError()
+    this.assertCurrentInputs()
     if (!info) return null
 
     return {
@@ -1584,8 +1560,7 @@ export class TypeScriptLanguageServiceEngine {
     const sourceOffset = lineColumnToOffset(script.sourceContent, position.line, position.column)
     const offset = script.virtualDocument.toGeneratedOffset(sourceOffset)
     const info = this.service.getRenameInfo(filePath, offset, { allowRenameOfImportPath: false })
-    if (!loadedConfigurationIsCurrent(this.configurationWitness, this.packageResolver,
-      this.rootPath, () => this.checkpoint?.())) throw new SemanticInputUnavailableError()
+    this.assertCurrentInputs()
     const renameInfoMembershipFailure = this.projectMembershipFailure()
     if (renameInfoMembershipFailure) return renameInfoMembershipFailure
     if (!info.canRename) return { status: "unavailable" }
@@ -1629,8 +1604,7 @@ export class TypeScriptLanguageServiceEngine {
     const info = this.service.getSignatureHelpItems(filePath, offset, {
       triggerReason,
     })
-    if (!loadedConfigurationIsCurrent(this.configurationWitness, this.packageResolver,
-      this.rootPath, () => this.checkpoint?.())) throw new SemanticInputUnavailableError()
+    this.assertCurrentInputs()
     if (!info) return null
 
     return {
@@ -1695,7 +1669,7 @@ export class TypeScriptLanguageServiceEngine {
       getScriptSnapshot: (fileName) => {
         const filePath = path.resolve(fileName)
         const resident = this.scripts.get(filePath)
-        if (resident) return ts.ScriptSnapshot.fromString(resident.content)
+        if (resident) return resident.snapshot
         const lazy = this.loadLazySnapshot(filePath)
         if (lazy) return lazy.snapshot
         if (this.projectMembershipPaths.has(filePath)) return undefined
@@ -1719,13 +1693,13 @@ export class TypeScriptLanguageServiceEngine {
                 this.projectMembershipRevision,
                 filePath,
               ) !== undefined
-            : this.filesystemLookup(filePath, () => isRegularBoundedFile(filePath))
+            : witnessedFileExists(filePath, this.configurationWitness)
         }
-        return this.filesystemLookup(filePath, () => isRegularBoundedFile(filePath))
+        return witnessedFileExists(filePath, this.configurationWitness)
       },
-      getDirectories: directory => this.filesystemLookup(directory, () => ts.sys.getDirectories(directory)),
-      readDirectory: (directory, extensions, exclude, include, depth) => this.filesystemLookup(directory,
-        () => ts.sys.readDirectory(directory, extensions, exclude, include, depth)),
+      getDirectories: directory => witnessedFilesystemLookup(directory, () => ts.sys.getDirectories(directory), this.configurationWitness),
+      readDirectory: (directory, extensions, exclude, include, depth) => witnessedFilesystemLookup(directory,
+        () => ts.sys.readDirectory(directory, extensions, exclude, include, depth), this.configurationWitness),
       readFile: (fileName) => {
         const filePath = path.resolve(fileName)
         const resident = this.scripts.get(filePath)?.content
@@ -1733,13 +1707,16 @@ export class TypeScriptLanguageServiceEngine {
         const lazy = this.loadLazySnapshot(filePath)?.content
         if (lazy !== undefined) return lazy
         if (this.projectMembershipPaths.has(filePath)) return undefined
-        return this.filesystemLookup(filePath, () => safeRead(filePath)) ?? undefined
+        return witnessedFilesystemLookup(filePath, () => safeRead(filePath), this.configurationWitness) ?? undefined
       },
       resolveModuleNames: (names, containingFile) => {
         const resolvedContainingFile = path.resolve(containingFile)
         this.relativeResolutionFailures.delete(resolvedContainingFile)
         const boundaryRoot = names.some((name) => name.startsWith("."))
-          ? this.relativeModuleBoundary(resolvedContainingFile)
+          ? relativeModuleBoundary(resolvedContainingFile, this.scripts.has(resolvedContainingFile), {
+              rootPath: this.rootPath, workspacePhysicalRoot: this.workspacePhysicalRoot,
+              sdkRoot: this.sdkRoot, sdkPhysicalRoot: this.sdkPhysicalRoot,
+            })
           : undefined
         return names.map((name) => this.resolveModule(
           name,
@@ -1750,117 +1727,12 @@ export class TypeScriptLanguageServiceEngine {
     }
   }
 
-  private filesystemLookup<T>(filePath: string, lookup: () => T): T {
-    return this.configurationWitness ? this.configurationWitness.observe(filePath, lookup) : lookup()
-  }
-
-  private resolveModule(
-    name: string,
-    containingFile: string,
-    relativeBoundaryRoot?: string,
-  ): ts.ResolvedModule | undefined {
-    if (!name.startsWith(".")) {
-      const local = this.packageResolver.resolve(this.rootPath, containingFile, name, {
-        checkpoint: this.checkpoint,
-        hasOverlay: (filePath) => this.scripts.get(filePath)?.overlay === true,
-        overlayPath: (physicalPath) => this.overlayPaths?.get(physicalPath),
-      })
-      if (local !== undefined) {
-        return local.path
-          ? ({ resolvedFileName: local.path, extension: moduleExtension(local.path) } as ts.ResolvedModule)
-          : undefined
-      }
-      const sdkModule = this.sdkRoot ? resolveHarmonySdkModule(this.sdkRoot, name, this.configurationWitness) : null
-      if (sdkModule) {
-        return ({
-          resolvedFileName: sdkModule,
-          extension: moduleExtension(sdkModule),
-          isExternalLibraryImport: true,
-        } as ts.ResolvedModule)
-      }
-      return ts.resolveModuleName(name, containingFile, this.options,
-        witnessedModuleResolutionHost(this.configurationWitness)).resolvedModule
-    }
-    const base = path.resolve(path.dirname(containingFile), name)
-    const candidates = /(?:\.d\.(?:ets|ts)|\.ets|\.tsx?)$/u.test(base)
-      ? [base]
-      : [
-          base + ".ets",
-          base + ".ts",
-          base + ".tsx",
-          base + ".d.ets",
-          base + ".d.ts",
-          path.join(base, "index.ets"),
-          path.join(base, "index.ts"),
-          path.join(base, "index.tsx"),
-          path.join(base, "index.d.ets"),
-          path.join(base, "index.d.ts"),
-        ]
-    const resolved = candidates.find((candidate) =>
-      this.scripts.has(path.resolve(candidate)) || (this.configurationWitness
-        ? this.configurationWitness.observe(candidate, () => isRegularBoundedFile(candidate))
-        : isRegularBoundedFile(candidate)))
-    const resolvedPath = resolved && path.resolve(resolved)
-    const sourcePath = resolvedPath && relativeBoundaryRoot
-      ? this.packageResolver.installedSourcePath(
-        relativeBoundaryRoot,
-        containingFile,
-        resolvedPath,
-        (physicalPath) => this.overlayPaths?.get(physicalPath)
-          ?? (this.scripts.has(resolvedPath) ? resolvedPath : undefined),
-        this.relativeResolutionCheckpoint,
-      )
-      : undefined
-    if (!resolvedPath || !relativeBoundaryRoot) this.relativeResolutionCheckpoint()
-    if (resolvedPath && !sourcePath) {
-      const failure = callHierarchyPathFailure(
-        relativeBoundaryRoot ?? this.rootPath,
-        resolvedPath,
-        this.scripts.get(resolvedPath)?.overlay === true,
-      ) ?? "source-unavailable"
-      if (this.scripts.has(containingFile)) {
-        let failures = this.relativeResolutionFailures.get(containingFile)
-        if (!failures) {
-          failures = new Map()
-          this.relativeResolutionFailures.set(containingFile, failures)
-        }
-        const previous = failures.get(name)
-        if (previous !== "source-outside-workspace" || failure === "source-outside-workspace") {
-          failures.set(name, failure)
-        }
-      }
-    }
-    return sourcePath
-      ? ({ resolvedFileName: sourcePath, extension: moduleExtension(sourcePath) } as ts.ResolvedModule)
-      : undefined
-  }
-
-  private relativeModuleBoundary(containingFile: string): string | undefined {
-    let physicalContainingFile: string
-    try {
-      physicalContainingFile = this.scripts.has(containingFile)
-        ? prospectiveRealPathSync(containingFile)
-        : fs.realpathSync.native(containingFile)
-    } catch {
-      return undefined
-    }
-    if (isWithinRoot(this.rootPath, containingFile)) {
-      return this.workspacePhysicalRoot
-        && isWithinRoot(this.workspacePhysicalRoot, physicalContainingFile)
-        ? this.rootPath
-        : undefined
-    }
-    if (
-      this.workspacePhysicalRoot
-      && isWithinRoot(this.workspacePhysicalRoot, physicalContainingFile)
-    ) return this.rootPath
-    if (
-      this.sdkRoot
-      && this.sdkPhysicalRoot
-      && isWithinRoot(this.sdkRoot, containingFile)
-      && isWithinRoot(this.sdkPhysicalRoot, physicalContainingFile)
-    ) return this.sdkRoot
-    return undefined
+  private resolveModule(name: string, containingFile: string, relativeBoundaryRoot?: string): ts.ResolvedModule | undefined {
+    return resolveTypeScriptModule({ rootPath: this.rootPath, sdkRoot: this.sdkRoot,
+      packageResolver: this.packageResolver, scripts: this.scripts, overlayPaths: this.overlayPaths,
+      configurationWitness: this.configurationWitness, moduleResolution: this.moduleResolution,
+      checkpoint: this.checkpoint, relativeResolutionCheckpoint: this.relativeResolutionCheckpoint,
+      relativeResolutionFailures: this.relativeResolutionFailures }, name, containingFile, relativeBoundaryRoot)
   }
 
   private updateScript(
@@ -1882,23 +1754,18 @@ export class TypeScriptLanguageServiceEngine {
     const compilerVersion = !previous && this.projectMembershipPaths.has(filePath)
       ? this.scriptAdmission.promotionVersion(filePath, sourceFingerprint) : undefined
     if (previous) this.scriptAdmission.forget(filePath)
-    const virtualDocument = createSourceDocument(content)
-    const bytes = Buffer.byteLength(content) + Buffer.byteLength(virtualDocument.generatedContent)
-    this.scripts.set(filePath, {
+    const record = createScriptRecord({
       path: filePath,
-      content: virtualDocument.generatedContent,
       sourceContent: content,
-      virtualDocument,
-      version: (previous?.version ?? 0) + 1,
       compilerVersion,
       documentVersion,
       overlay,
       sourceFingerprint,
-      bytes,
       lastAccess: ++this.accessClock,
-    })
+    }, previous)
+    this.scripts.set(filePath, record)
     if (!previous && !this.projectMembershipPaths.has(filePath)) this.combinedFileNames = undefined
-    this.scriptBytes += bytes
+    this.scriptBytes += record.bytes
     this.relativeResolutionFailures.clear()
     if (compilerVersion === undefined) this.generation += 1
   }
@@ -2168,12 +2035,6 @@ export class TypeScriptLanguageServiceEngine {
   }
 }
 
-function moduleExtension(filePath: string): ts.Extension {
-  if (filePath.endsWith(".d.ets")) return ts.Extension.Dets
-  if (filePath.endsWith(".ets")) return ts.Extension.Ets
-  if (filePath.endsWith(".d.ts")) return ts.Extension.Dts
-  return ts.Extension.Ts
-}
 
 export function isMemberAccessCompletion(
   content: string,
@@ -2874,36 +2735,6 @@ function sameCallHierarchyItem(
     && sameTextRange(left.selectionRange, right.selectionRange)
 }
 
-function isWithinRoot(rootPath: string, filePath: string) {
-  const relative = path.relative(path.resolve(rootPath), path.resolve(filePath))
-  return relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)
-}
-
-function canonicalExistingPath(filePath: string): string | undefined {
-  try {
-    return fs.realpathSync.native(filePath)
-  } catch {
-    return undefined
-  }
-}
-
-function callHierarchyPathFailure(
-  rootPath: string,
-  filePath: string,
-  allowMissingSource: boolean,
-): SemanticCallHierarchyFailureReason | undefined {
-  if (!isWithinRoot(rootPath, filePath)) return "source-outside-workspace"
-  try {
-    const realRoot = fs.realpathSync(rootPath)
-    const realSource = allowMissingSource
-      ? prospectiveRealPathSync(filePath)
-      : fs.realpathSync(filePath)
-    return isWithinRoot(realRoot, realSource) ? undefined : "source-outside-workspace"
-  } catch {
-    return "source-unavailable"
-  }
-}
-
 function strongestCallHierarchyFailure(
   failures: Iterable<SemanticCallHierarchyFailureReason>,
 ): SemanticCallHierarchyFailureReason | undefined {
@@ -3322,34 +3153,6 @@ function leftmostCallIdentifier(expression: ts.Expression): ts.Identifier | unde
     }
     return undefined
   }
-}
-
-function prospectiveRealPathSync(filePath: string): string {
-  let cursor = filePath
-  const suffix: string[] = []
-  while (true) {
-    try {
-      return path.join(fs.realpathSync(cursor), ...suffix)
-    } catch {
-      const parent = path.dirname(cursor)
-      if (parent === cursor) throw new Error(`No existing ancestor for ${filePath}`)
-      suffix.unshift(path.basename(cursor))
-      cursor = parent
-    }
-  }
-}
-
-function exactSourceOffset(
-  content: string,
-  line: number,
-  column: number,
-): number | undefined {
-  if (!Number.isSafeInteger(line) || !Number.isSafeInteger(column) || line < 1 || column < 1) {
-    return undefined
-  }
-  const offset = lineColumnToOffset(content, line, column)
-  const resolved = offsetToLineColumn(content, offset)
-  return resolved.line === line && resolved.column === column ? offset : undefined
 }
 
 function exactSourcePosition(

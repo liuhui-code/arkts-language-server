@@ -23,6 +23,16 @@ export function lineColumnToOffset(content: string, line: number, column: number
   return Math.min(offset + Math.max(0, column - 1), content.length)
 }
 
+/** Reject clamped one-based UTF-16 positions rather than accepting their nearest offset. */
+export function exactSourceOffset(content: string, line: number, column: number): number | undefined {
+  if (!Number.isSafeInteger(line) || !Number.isSafeInteger(column) || line < 1 || column < 1) {
+    return undefined
+  }
+  const offset = lineColumnToOffset(content, line, column)
+  const resolved = offsetToLineColumn(content, offset)
+  return resolved.line === line && resolved.column === column ? offset : undefined
+}
+
 export function offsetToLineColumn(
   content: string,
   offset: number,

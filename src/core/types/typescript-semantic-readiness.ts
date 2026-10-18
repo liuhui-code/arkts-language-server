@@ -31,6 +31,7 @@ interface ReadinessPreparation {
   readonly resolver: LocalPackageResolver
   readonly readSourceFile: (filePath: string) => string | null
   readonly cancellation: ts.HostCancellationToken | undefined
+  readonly residentProofOwner?: object
   readonly trace?: ReadinessTrace
 }
 
@@ -45,12 +46,25 @@ export class OfficialReadinessState {
   private observation: OfficialReadinessObservation | SemanticReadinessReport | undefined
   private queryRefreshEnabled = false
 
-  clear(): void { this.observation = undefined; this.queryRefreshEnabled = false }
+  constructor(private readonly onPreparedProof?: (proof: TypeScriptResidentReferenceState | undefined) => void) {}
 
-  prepare(input: ReadinessPreparation): void {
+  get refreshRequested(): boolean { return this.queryRefreshEnabled }
+
+  /** Transfers intent only; replacement owners still have no prepared observation. */
+  restoreQueryRefresh(): void { this.queryRefreshEnabled = true }
+
+  clear(): void {
+    this.observation = undefined
+    this.queryRefreshEnabled = false
+    this.onPreparedProof?.(undefined)
+  }
+
+  prepare(input: ReadinessPreparation): SemanticReadinessReport {
     this.clear()
     this.observation = prepareOfficialReadiness(input)
     this.queryRefreshEnabled = "proof" in this.observation
+    if ("proof" in this.observation) this.onPreparedProof?.(this.observation.proof)
+    return "proof" in this.observation ? this.observation.report : this.observation
   }
 
   current(input: ReadinessPreparation, prepared = false): SemanticReadinessReport {
@@ -58,22 +72,31 @@ export class OfficialReadinessState {
       prepared ? { ...input.workspace, resetTypeEngine: false } : input.workspace, input.generation, input.roots)
   }
 
-  status(input: ReadinessPreparation, mode: boolean | "query"): SemanticReadinessReport {
-    if (mode === true) this.prepare(input)
-    else if (mode === "query") this.afterQuery(input)
+  status(input: ReadinessPreparation, mode: boolean | "query" | "query-prepare"): SemanticReadinessReport {
+    if (mode === true) return this.prepare(input)
+    if (mode === "query-prepare") return this.prepareQuery(input)
+    if (mode === "query") {
+      const refreshed = this.afterQuery(input)
+      if (refreshed) return refreshed
+    }
     return this.current(input, mode !== false)
   }
 
   /** Runs only inside an ordinary semantic query, never in status or background diagnostics. */
-  afterQuery(input: ReadinessPreparation): void {
+  afterQuery(input: ReadinessPreparation): SemanticReadinessReport | undefined {
     if (!this.queryRefreshEnabled) return
     const applied = { ...input, workspace: { ...input.workspace, resetTypeEngine: false } }
     if (this.current(applied).semanticState !== "ready") {
-      this.prepare(applied)
-      // Retain the explicit ready session's intent through a completed degraded update.
-      // A thrown/cancelled update or lifecycle clear must not retain it.
-      this.queryRefreshEnabled = true
+      return this.prepareQuery(applied)
     }
+  }
+
+  private prepareQuery(input: ReadinessPreparation): SemanticReadinessReport {
+    const refreshed = this.prepare(input)
+    // Only an already authorized query session uses this mode, including a
+    // replacement context. A thrown/cancelled preparation retains no intent.
+    this.queryRefreshEnabled = true
+    return refreshed
   }
 }
 
@@ -135,7 +158,7 @@ export function prepareOfficialReadiness(input: ReadinessPreparation): OfficialR
     const compiler = input.witness?.freshness(checkpoint, "capture")
     const packages = input.resolver.configurationFreshness(workspace.rootPath, checkpoint, "capture")
     return compiler && packages ? () => compiler() && packages() : undefined
-  })
+  }, undefined, input.residentProofOwner)
   proof.prepare(workspace, input.generation, input.roots)
   proof.observe(program)
   if (proof.admit({ ...workspace, resetTypeEngine: false }, input.generation, input.roots) !== program) {
@@ -159,20 +182,23 @@ export function prepareOfficialReadiness(input: ReadinessPreparation): OfficialR
     sdkSha256: digest([input.sdk, manifest(sources.filter(source => inside(input.sdk.path!, source.fileName)))]),
     standardLibrarySha256: digest(manifest(standardLibrary)), backend: compilerArtifactIdentity,
   }
-  checkpoint()
-  if (proof.admit({ ...workspace, resetTypeEngine: false }, input.generation, input.roots) !== program) {
-    return unavailable("inputs-changed-during-preparation")
-  }
   const programId = programIds.get(program) ?? randomUUID()
-  programIds.set(program, programId)
-  return { proof, report: {
+  const report: SemanticReadinessReport = {
     rootUri, semanticState: "ready", semanticGeneration: programId,
     readyCapabilities: SEMANTIC_READY_CAPABILITIES, unavailableReasons: [], unavailableInput: null,
     inputIdentity: { ...identity, sha256: digest(identity) },
     coverage: { projectSources: workspace.projectMembership.paths.length,
       sdkSources: sources.filter(source => inside(input.sdk.path!, source.fileName)).length,
       standardLibrarySources: standardLibrary.length, programSources: sources.length, dependenciesComplete: true },
-  } }
+  }
+  // Construct every returned field first; this is the real final input fence,
+  // not a cached validity answer or a check moved before identity construction.
+  checkpoint()
+  if (proof.admit({ ...workspace, resetTypeEngine: false }, input.generation, input.roots) !== program) {
+    return unavailable("inputs-changed-during-preparation")
+  }
+  programIds.set(program, programId)
+  return { proof, report }
 }
 
 /** Observe actual dependency checking, never position/symbol answer prequeries. */

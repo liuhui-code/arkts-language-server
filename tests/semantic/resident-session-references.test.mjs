@@ -7,6 +7,7 @@ import { pathToFileURL } from "node:url"
 
 import { LspSession } from "../support/lsp-session.mjs"
 import { projectRoot } from "../support/lsp-process.mjs"
+import { assertColdOwnerRecovery } from "../support/semantic-preparation-state.mjs"
 
 const selectedL03Policy = {
   ARKTS_REFERENCES_CONTEXT_RETENTION: "budget-aware",
@@ -16,6 +17,34 @@ const selectedL03Policy = {
   ARKTS_L01_SEMANTIC_WORKER_RECYCLE: "0",
   ARKTS_L03_PRESSURE_WORKER_RECYCLE: "0",
 }
+
+test("resident-first references bypass candidate planning and retain the original-order opt-out",
+  { timeout: 60_000 }, async t => {
+    for (const residentFirst of [undefined, "0"]) {
+      const fixture = createFixture(t)
+      const session = await startSession(t, fixture, {
+        ARKTS_BENCHMARK_CONTROL: "0",
+        ARKTS_REFERENCES_RESIDENT_FAST_PATH: undefined,
+        ARKTS_REFERENCES_RESIDENT_FIRST: residentFirst,
+      })
+      await warmAndPromote(session, fixture)
+      const before = readEvents(fixture).length
+      await assertReferences(session, fixture, fixture.sources["Use.ets"])
+      const events = readEvents(fixture).slice(before)
+      assert.equal(events.filter(event => event.event === "references.resident.hit").length, 2)
+      assert.equal(events.filter(event => event.event === "references.candidate-selection.complete").length,
+        residentFirst === "0" ? 2 : 0, "complete resident queries must not plan candidates before dispatch")
+      assert.ok(!events.some(event => event.event === "references.batch.start"
+        || event.event === "references.cache.hit"))
+      const repeatedAt = readEvents(fixture).length
+      await assertReferences(session, fixture, fixture.sources["Use.ets"])
+      const repeated = readEvents(fixture).slice(repeatedAt)
+      assert.equal(repeated.filter(event => event.event === "references.cache.hit").length, 2)
+      assert.ok(!repeated.some(event => event.event === "references.candidate-selection.complete"
+        || event.event === "references.resident.hit"))
+      assert.deepEqual((await session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })
+    }
+  })
 
 test("default optimization policy reuses complete references without benchmark opt-in",
   { timeout: 60_000 }, async t => {
@@ -98,7 +127,7 @@ test("L04 selected L03 policy keeps new references, edits and eviction fallback 
     await assertReferences(session, fixture, `// removed 😀\n${fixture.sources["Use.ets"]}`)
     const recovery = readEvents(fixture).slice(before)
     assert.ok(recovery.some(event => event.event === "references.resident.miss"))
-    assert.ok(recovery.some(event => event.event === "references.batch.start"))
+    assertColdOwnerRecovery(recovery)
     assert.ok(!recovery.some(event => event.event === "references.cache.hit"
       || event.event === "semantic.worker.pressure-recycle.complete"))
     assert.deepEqual((await session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })
@@ -213,7 +242,7 @@ test("pressure invalidates a promoted resident proof and complete fallback prese
     await assertReferences(session, fixture, fixture.sources["Use.ets"])
     const after = readEvents(fixture).slice(before)
     assert.ok(after.some(event => event.event === "references.resident.miss"))
-    assert.ok(after.some(event => event.event === "references.batch.start"))
+    assertColdOwnerRecovery(after)
     assert.ok(!after.some(event => event.event === "references.cache.hit"))
     assert.ok(!after.some(event => event.event === "semantic.worker.pressure-recycle.complete"),
       "explicit pressure alone must not activate the natural-pressure entry")
@@ -394,7 +423,7 @@ async function assertReferences(session, fixture, useText) {
   for (const includeDeclaration of [false, true]) {
     const response = await session.request("textDocument/references", {
       textDocument: { uri: fixture.uri("Target.ets") },
-      position: positionAt(target, target.indexOf("TargetThing") + 1),
+      position: positionAt(target, target.indexOf("TargetThing") + 1 + Number(includeDeclaration)),
       context: { includeDeclaration },
     }, { timeoutMs: 20_000 })
     assert.equal(response.error, undefined, JSON.stringify(response.error))
@@ -416,7 +445,7 @@ async function referenceResults(session, fixture) {
   for (const includeDeclaration of [false, true]) {
     const response = await session.request("textDocument/references", {
       textDocument: { uri: fixture.uri("Target.ets") },
-      position: positionAt(source, source.indexOf("TargetThing") + 1),
+      position: positionAt(source, source.indexOf("TargetThing") + 1 + Number(includeDeclaration)),
       context: { includeDeclaration },
     }, { timeoutMs: 20_000 })
     assert.equal(response.error, undefined, JSON.stringify(response.error))

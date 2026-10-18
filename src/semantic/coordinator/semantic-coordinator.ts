@@ -17,6 +17,8 @@ export interface SemanticCoordinatorOptions<Context extends SemanticManagedConte
   readonly maxResidentContexts: number
   readonly costAwareEviction?: boolean
   readonly readMemoryPressure?: () => SemanticMemoryLevel
+  /** A separate serial slot shares pressure accounting but cannot flush interaction recency. */
+  readonly isScanContext?: (contextId: string) => boolean
   readonly createContext: (contextId: string) => Context
   readonly onLifecycle?: (event: "create" | "reuse" | "trim" | "evict" | "cost", fields: {
     readonly contextSequence: number
@@ -47,6 +49,7 @@ export class SemanticCoordinator<Context extends SemanticManagedContext> {
   readonly #readMemoryPressure: SemanticCoordinatorOptions<Context>["readMemoryPressure"]
   readonly #createContext: (contextId: string) => Context
   readonly #onLifecycle: SemanticCoordinatorOptions<Context>["onLifecycle"]
+  readonly #isScanContext: (contextId: string) => boolean
   readonly #contexts = new Map<string, ResidentContext<Context>>()
   #accessClock = 0
   #creationClock = 0
@@ -60,14 +63,15 @@ export class SemanticCoordinator<Context extends SemanticManagedContext> {
     this.#readMemoryPressure = options.readMemoryPressure
     this.#createContext = options.createContext
     this.#onLifecycle = options.onLifecycle
+    this.#isScanContext = options.isScanContext ?? (() => false)
   }
 
-  acquire(contextId: string): SemanticContextLease<Context> {
+  acquire(contextId: string, promoteRecency = true): SemanticContextLease<Context> {
     if (!contextId) throw new Error("contextId is required")
     let resident = this.#contexts.get(contextId)
     const reused = resident !== undefined
     if (!resident) {
-      this.#makeRoom()
+      this.#makeRoom(contextId)
       resident = {
         context: this.#createContext(contextId),
         sequence: ++this.#creationClock,
@@ -78,7 +82,7 @@ export class SemanticCoordinator<Context extends SemanticManagedContext> {
       this.#contexts.set(contextId, resident)
     }
     resident.leaseCount += 1
-    resident.lastAccess = ++this.#accessClock
+    if (promoteRecency) resident.lastAccess = ++this.#accessClock
     this.#observe(reused ? "reuse" : "create", resident, reused ? "acquire" : "missing")
     return createContextLease(contextId, resident.context, () => {
       const current = this.#contexts.get(contextId)
@@ -128,7 +132,7 @@ export class SemanticCoordinator<Context extends SemanticManagedContext> {
         continue
       }
       this.#evict(contextId, resident, "memory-level3")
-      if (this.#costAwareEviction && this.#readMemoryPressure) {
+      if (this.#readMemoryPressure) {
         level = this.#readMemoryPressure()
         if (level !== "level3") break
       }
@@ -164,9 +168,12 @@ export class SemanticCoordinator<Context extends SemanticManagedContext> {
     for (const [contextId, resident] of this.#contexts) this.#evict(contextId, resident, reason)
   }
 
-  #makeRoom(): void {
-    while (this.#contexts.size >= this.#maxResidentContexts) {
-      const candidates = this.#coldUnleasedContexts()
+  #makeRoom(contextId: string): void {
+    const scan = this.#isScanContext(contextId)
+    const inPool = (id: string) => this.#isScanContext(id) === scan
+    const limit = scan ? 1 : this.#maxResidentContexts
+    while ([...this.#contexts.keys()].filter(inPool).length >= limit) {
+      const candidates = this.#coldUnleasedContexts().filter(([id]) => inPool(id))
       const useCost = this.#rankByRebuildCost(candidates)
       const candidate = candidates[0]
       if (!candidate) throw new Error("all semantic contexts are leased")
@@ -177,7 +184,8 @@ export class SemanticCoordinator<Context extends SemanticManagedContext> {
   #coldUnleasedContexts(): Array<[string, ResidentContext<Context>]> {
     return [...this.#contexts.entries()]
       .filter(([, resident]) => resident.leaseCount === 0)
-      .sort((left, right) => left[1].lastAccess - right[1].lastAccess)
+      .sort((left, right) => Number(this.#isScanContext(right[0])) - Number(this.#isScanContext(left[0]))
+        || left[1].lastAccess - right[1].lastAccess)
   }
 
   #rankByRebuildCost(candidates: Array<[string, ResidentContext<Context>]>): boolean {

@@ -8,7 +8,7 @@ import { pathToFileURL } from "node:url"
 import { LspSession } from "../support/lsp-session.mjs"
 import { projectRoot } from "../support/lsp-process.mjs"
 
-test("a full legacy references query restores the bounded local definition scope", async t => {
+test("automatic full-root preparation stays reusable across local definitions and legacy references", async t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-global-scope-restoration-"))
   const workspace = path.join(root, "workspace")
   const sdk = path.join(root, "sdk")
@@ -61,8 +61,8 @@ test("a full legacy references query restores the bounded local definition scope
   const before = await definition()
   assert.deepEqual(before, expectedDefinition)
   const preReferenceStats = lastDefinitionStats()
-  assert.equal(preReferenceStats.programProjectRootFiles, 2,
-    "the first local definition should admit only Query and its imported Target")
+  assert.equal(preReferenceStats.programProjectRootFiles, 3,
+    "initial preparation includes every project root before the first query")
 
   const references = await session.request("textDocument/references", {
     textDocument: { uri: queryUri }, position, context: { includeDeclaration: true },
@@ -81,8 +81,8 @@ test("a full legacy references query restores the bounded local definition scope
   const postReferenceStats = lastDefinitionStats()
   assert.equal(postReferenceStats.programProjectRootFiles, preReferenceStats.programProjectRootFiles,
     `local definition Program roots grew after full references: ${preReferenceStats.programProjectRootFiles} -> ${postReferenceStats.programProjectRootFiles}`)
-  assert.ok(events().some(entry => entry.event === "semantic.context.evict"
-    && entry.reason === "reference-global-scope" && entry.leaseCount === 0))
+  assert.ok(!events().some(entry => entry.event === "semantic.context.evict"
+    && entry.reason === "reference-global-scope"), "a full root prepared at startup must remain reusable")
   const closed = await session.close({ timeoutMs: 5_000 })
   assert.deepEqual(closed.exit, { code: 0, signal: null })
 

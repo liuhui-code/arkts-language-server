@@ -37,6 +37,7 @@ test("repeated complete references reuse the result and an overlay edit invalida
     cwd: projectRoot,
     rootUri: pathToFileURL(workspace).href,
     env: {
+      ARKTS_REFERENCES_RESIDENT_FAST_PATH: "0",
       ARKLINE_HARMONY_SDK_PATH: path.join(root, "missing-sdk"),
       DEVECO_SDK_HOME: path.join(root, "missing-deveco"),
       ARKTS_LSP_LOG_DIR: logDirectory,

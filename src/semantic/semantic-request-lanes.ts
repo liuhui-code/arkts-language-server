@@ -40,7 +40,8 @@ export function takeNextSemanticWorkerRequest<T extends { readonly input: { read
     let index = 1
     while (pending[index]?.input.method === "diagnose") index += 1
     const next = pending[index]
-    if (next?.input.method === "define" || next?.input.method === "hover") {
+    if (next?.input.method === "define" || next?.input.method === "hover"
+      || next?.input.method === "complete") {
       return { request: pending.splice(index, 1)[0], bypassedDiagnostic: oldest }
     }
   }

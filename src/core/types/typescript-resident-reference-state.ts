@@ -7,10 +7,11 @@ import type { SemanticWorkspaceView } from "../workspace/document-store.js"
 
 interface ResidentInputs {
   readonly signature: string
+  readonly owner: string
   readonly requiredPaths: readonly string[]
   readonly roots: readonly string[]
   readonly aliases: ReadonlyMap<string, string>
-  readonly documents: ReadonlyMap<string, { readonly fingerprint: string; readonly overlay: boolean }>
+  readonly documents: ReadonlyMap<string, { readonly fingerprint: string; readonly overlay: boolean; readonly version?: number }>
 }
 
 interface ResidentObservation {
@@ -40,6 +41,7 @@ export class TypeScriptResidentReferenceState {
     private readonly checkpoint: () => void,
     private readonly configurationFreshness: () => (() => boolean) | undefined,
     private readonly onFailure?: (failure: ResidentReferenceProofFailure) => void,
+    private readonly owner?: object,
   ) {}
 
   prepare(workspace: SemanticWorkspaceView, generation: number, roots: readonly string[]): void {
@@ -56,6 +58,58 @@ export class TypeScriptResidentReferenceState {
     this.prepared = undefined
     this.observation = undefined
     this.observationFailure = "program-unobserved"
+  }
+
+  captureCurrentProgram(service: Pick<ts.LanguageService, "getProgram">): void {
+    this.observe(service.getProgram())
+  }
+
+  /** Copy immutable proof metadata only; admission and invalidation stay independent. */
+  adoptValidatedProof(proof: TypeScriptResidentReferenceState | undefined): void {
+    this.observation = undefined
+    this.observationFailure = "program-unobserved"
+    if (!proof || !this.owner || proof.owner !== this.owner || proof.sdkRoots !== this.sdkRoots
+      || !this.prepared || !proof.prepared || this.prepared.owner !== proof.prepared.owner
+      || !proof.observation || proof.observation.signature !== proof.prepared.signature) return
+    this.prepared = proof.prepared
+    this.observation = proof.observation
+  }
+
+  /** An optimization opportunity, never a proof that the edited Program is current. */
+  canSynchronizeOverlay(workspace: SemanticWorkspaceView, generation: number, roots: readonly string[],
+    fingerprintText: (content: string) => string = fingerprint): boolean {
+    this.checkpoint()
+    const prepared = this.prepared
+    const observation = this.observation
+    if (!prepared || !observation || observation.signature !== prepared.signature || workspace.resetTypeEngine) return false
+    const rejected = (reason: string): false => { this.reject("admit", `overlay-sync-${reason}`); return false }
+    const current = inputsFor(workspace, generation, roots, this.sdkRoots, fingerprintText)
+    if (!current) return rejected("inputs-incomplete")
+    if (current.signature === prepared.signature) return false
+    if (current.owner !== prepared.owner) return rejected("owner-changed")
+    if (!samePaths(current.requiredPaths, prepared.requiredPaths)) return rejected("required-paths-changed")
+    if (!samePaths(current.roots, prepared.roots)) return rejected("roots-changed")
+    if (current.aliases.size !== prepared.aliases.size
+      || [...current.aliases].some(([physical, lexical]) => prepared.aliases.get(physical) !== lexical)) return rejected("aliases-changed")
+    const overlayCount = (documents: ResidentInputs["documents"]) => [...documents.values()].filter(document => document.overlay).length
+    if (overlayCount(current.documents) !== overlayCount(prepared.documents)) return rejected("overlays-changed")
+    let changed = false
+    for (const [filePath, document] of current.documents) {
+      this.checkpoint()
+      const previous = prepared.documents.get(filePath)
+      if (!document.overlay) {
+        const source = observation.program.getSourceFile(filePath)
+        if (previous?.overlay || !source || fingerprintText(source.text) !== document.fingerprint) return rejected("disk-document-changed")
+        continue
+      }
+      if (!previous?.overlay) return rejected("authority-changed")
+      if (previous.fingerprint !== document.fingerprint) {
+        if (!document.overlay || !Number.isSafeInteger(previous.version) || previous.version! < 0
+          || document.version !== previous.version! + 1) return rejected("version-unproven")
+        changed = true
+      } else if (previous.version !== document.version) return rejected("promotion-changed")
+    }
+    return changed && observation.configurationCurrent()
   }
 
   /** Called only after an existing compiler query has successfully built/synchronized its Program. */
@@ -99,7 +153,8 @@ export class TypeScriptResidentReferenceState {
     this.observation = { program, signature: prepared.signature, diskIdentities: identities, configurationCurrent }
   }
 
-  admit(workspace: SemanticWorkspaceView, generation: number, roots: readonly string[]): ts.Program | undefined {
+  admit(workspace: SemanticWorkspaceView, generation: number, roots: readonly string[],
+    fingerprintText: (content: string) => string = fingerprint): ts.Program | undefined {
     this.checkpoint()
     const observation = this.observation
     if (!observation) { this.reject("admit", this.observationFailure); return undefined }
@@ -109,9 +164,16 @@ export class TypeScriptResidentReferenceState {
       this.reject("admit", "configuration-changed")
       return undefined
     }
-    const current = inputsFor(workspace, generation, roots, this.sdkRoots)
+    const current = inputsFor(workspace, generation, roots, this.sdkRoots, fingerprintText)
     if (!current) { this.reject("admit", "inputs-incomplete"); return undefined }
-    if (current.signature !== observation.signature) { this.reject("admit", "inputs-changed"); return undefined }
+    if (current.signature !== observation.signature) {
+      this.reject("admit", "inputs-changed")
+      // A disproved observation cannot certify this input again on the fallback RPC.
+      // A later successful compiler query must observe the current Program afresh.
+      this.observation = undefined
+      this.observationFailure = "inputs-changed"
+      return undefined
+    }
     if (!covers(observation.program, current.requiredPaths)) {
       this.reject("admit", "program-coverage-incomplete")
       return undefined
@@ -119,7 +181,7 @@ export class TypeScriptResidentReferenceState {
     for (const [filePath, document] of current.documents) {
       this.checkpoint()
       const source = observation.program.getSourceFile(filePath)
-      if (!source || fingerprint(source.text) !== document.fingerprint) {
+      if (!source || fingerprintText(source.text) !== document.fingerprint) {
         this.reject("admit", "overlay-content-mismatch", filePath)
         return undefined
       }
@@ -153,6 +215,7 @@ function inputsFor(
   generation: number,
   roots: readonly string[],
   sdkRoots: readonly string[],
+  fingerprintText: (content: string) => string = fingerprint,
 ): ResidentInputs | undefined {
   const membership = workspace.projectMembership
   if (!membership || membership.status !== "complete") return undefined
@@ -160,21 +223,22 @@ function inputsFor(
   const rootPaths = normalizedPaths(roots)
   const sdkPaths = normalizedPaths(sdkRoots)
   const documents = new Map(workspace.documents.map(document => [path.resolve(document.path), {
-    fingerprint: fingerprint(document.content), overlay: document.overlay,
+    fingerprint: fingerprintText(document.content), overlay: document.overlay, version: document.documentVersion,
   }]))
   const overlays = workspace.documents.filter(document => document.overlay).map(document => [
-    path.resolve(document.path), document.documentVersion ?? null, fingerprint(document.content),
+    path.resolve(document.path), document.documentVersion ?? null, fingerprintText(document.content),
   ]).sort((left, right) => String(left[0]).localeCompare(String(right[0])))
   const aliases = new Map([...(workspace.overlayPaths ?? [])].map(([physical, lexical]) => (
     [path.resolve(physical), path.resolve(lexical)] as const
   )))
-  const signature = fingerprint(JSON.stringify([
+  const signature = fingerprintText(JSON.stringify([
     path.resolve(workspace.rootPath), workspace.canonicalRootId, workspace.typeEngineResetEpoch,
     workspace.contentRevision, generation, membership.revision, memberPaths, overlays,
     [...aliases].sort((left, right) => left[0].localeCompare(right[0])), rootPaths, sdkPaths,
   ]))
   return {
-    signature, roots: rootPaths, aliases, documents,
+    signature, owner: JSON.stringify([path.resolve(workspace.rootPath), workspace.canonicalRootId,
+      workspace.typeEngineResetEpoch, workspace.contentRevision]), roots: rootPaths, aliases, documents,
     requiredPaths: normalizedPaths([...memberPaths, ...overlays.map(overlay => String(overlay[0])),
       workspace.state.path, ...sdkPaths]),
   }

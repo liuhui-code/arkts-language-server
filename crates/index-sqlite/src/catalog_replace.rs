@@ -16,6 +16,8 @@ use crate::{
     read_rejected_documents, sqlite_generation, validate_replacement,
 };
 
+#[path = "catalog_reset.rs"]
+mod catalog_reset;
 #[path = "catalog_stage_trace.rs"]
 mod stage_trace;
 #[path = "catalog_storage_trace.rs"]
@@ -92,9 +94,7 @@ pub(super) fn replace_all(
     trace.drop_index_ms = elapsed_ms(started);
 
     let started = Instant::now();
-    transaction
-        .execute("DELETE FROM documents", [])
-        .map_err(map_sqlite_error)?;
+    catalog_reset::clear_documents(&transaction)?;
     trace.delete_documents_ms = elapsed_ms(started);
 
     let started = Instant::now();

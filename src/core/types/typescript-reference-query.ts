@@ -49,7 +49,7 @@ export function queryTypeScriptReferences(
   work.boundary()
   const definitionMembershipFailure = port.membershipFailure()
   if (definitionMembershipFailure) return work.finish(definitionMembershipFailure)
-  if (definitions.length === 0) return work.finish({ status: "complete", references: [] })
+  if (definitions.length === 0) return work.finish({ status: "complete", references: [], otherReferences: [] })
 
   const canonicalDefinitionKeys = new Set<string>()
   for (const definition of definitions) {
@@ -58,6 +58,9 @@ export function queryTypeScriptReferences(
   }
   const sourceViews = new Map<string, ReferenceSourceView>()
   const references: SemanticDefinitionCandidate[] = []
+  const otherReferences: SemanticDefinitionCandidate[] = []
+  const otherSeen = new Set<string>()
+  let otherComplete = true
   const seen = new Set<string>()
   let returnedSymbols = false
   for (const definition of definitions) {
@@ -74,22 +77,39 @@ export function queryTypeScriptReferences(
         work.item()
         const isCanonicalDefinition = reference.isDefinition === true
           || canonicalDefinitionKeys.has(typescriptSpanKey(targetPath, reference.textSpan))
-        if (!includeDeclaration && isCanonicalDefinition) continue
+        const primary = includeDeclaration || !isCanonicalDefinition
+        const other = !includeDeclaration || !isCanonicalDefinition
+        if (!primary && !otherComplete) continue
         if (!within(port.rootPath, targetPath)) {
-          return work.finish({ status: "incomplete", reason: "source-outside-workspace" })
+          if (primary) return work.finish({ status: "incomplete", reason: "source-outside-workspace" })
+          otherComplete = false
+          continue
         }
         let sourceView = sourceViews.get(targetPath)
         if (!sourceView) {
           sourceView = port.sourceView(targetPath)
-          if (!sourceView) return work.finish({ status: "incomplete", reason: "source-unavailable" })
+          if (!sourceView) {
+            if (primary) return work.finish({ status: "incomplete", reason: "source-unavailable" })
+            otherComplete = false
+            continue
+          }
           sourceViews.set(targetPath, sourceView)
         }
         const range = exactSourceRange(sourceView, reference.textSpan)
-        if (!range) return work.finish({ status: "incomplete", reason: "source-unmappable" })
+        if (!range) {
+          if (primary) return work.finish({ status: "incomplete", reason: "source-unmappable" })
+          otherComplete = false
+          continue
+        }
         const key = semanticLocationKey(targetPath, range)
-        if (seen.has(key)) continue
-        seen.add(key)
-        references.push({ path: targetPath, range })
+        if (primary && !seen.has(key)) {
+          seen.add(key)
+          references.push({ path: targetPath, range })
+        }
+        if (other && !otherSeen.has(key)) {
+          otherSeen.add(key)
+          otherReferences.push({ path: targetPath, range })
+        }
       }
     }
   }
@@ -101,12 +121,14 @@ export function queryTypeScriptReferences(
   const finalMembershipFailure = port.membershipFailure()
   if (finalMembershipFailure) return work.finish(finalMembershipFailure)
   references.sort(work.comparator(compareSemanticLocations))
+  if (otherComplete) otherReferences.sort(work.comparator(compareSemanticLocations))
   const definition = definitions[0]
   const constructorTarget = searchedProjectPaths
     && definition.kind === "constructor"
     ? { path: path.resolve(definition.fileName), start: definition.textSpan.start,
         length: definition.textSpan.length } : undefined
   return work.finish({ status: "complete", references,
+    ...(otherComplete ? { otherReferences } : {}),
     ...(searchedProjectPaths ? { searchedProjectPaths } : {}),
     ...(constructorTarget ? { constructorTarget } : {}) })
 }

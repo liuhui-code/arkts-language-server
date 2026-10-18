@@ -5,7 +5,15 @@ import { isDeepStrictEqual } from "node:util"
 import { sameReadySnapshot } from "./prepared-semantic-readiness.mjs"
 
 /** Recheck archived public proofs; never promote a standalone verified/PASS label. */
-export function preparedRequestReady(report, request, capabilities) {
+export function preparedRequestReady(report, request, capabilities, processes) {
+  if (report.processSegments !== undefined || request.processSegmentId !== undefined) {
+    if (processes?.status !== "PASS") return false
+    const segment = processes.segments.find(segment => segment.id === request.processSegmentId)
+    const canonical = segment?.report.requests.find(item => item.scenarioId === request.scenarioId)
+    const { processSegmentId: _segment, ...measured } = request
+    return canonical !== undefined && isDeepStrictEqual(measured, canonical)
+      && preparedRequestReady(segment.report, canonical, capabilities)
+  }
   const initial = report.readiness?.semantic
   const final = report.readiness?.validation
   const receipt = request.readiness
@@ -19,14 +27,34 @@ export function preparedRequestReady(report, request, capabilities) {
     || !Number.isSafeInteger(receipt.snapshot) || receipt.snapshot < 0
     || receipt.originGeneration !== initial.observed?.semanticGeneration
     || receipt.originInputSha256 !== initial.observed?.inputIdentity?.sha256
-    || !validProof(initial.observed, report, capabilities)
-    || !validProof(receipt.observed, report, capabilities)
-    || !validProof(final.observed, report, capabilities)
+    || !validPreparedReadyProof(initial.observed, report, capabilities)
+    || !validPreparedReadyProof(receipt.observed, report, capabilities)
+    || !validPreparedReadyProof(final.observed, report, capabilities)
+    || !currentFollowupSource(report, request, capabilities)
     || !matchesQuerySnapshot(initial.observed, receipt)
     || !sameReadySnapshot(report.requests.at(-1)?.readiness?.observed, final.observed)) return false
   const validations = report.timeline.filter(event => event.scenarioId === request.scenarioId
     && event.phase === "semantic-readiness-query-validation-complete")
   return validations.length === 1 && validations[0].status === "READY" && validations[0].current === true
+}
+
+function currentFollowupSource(report, request, capabilities) {
+  const completion = request.kind === "completionResolve"
+  if (!completion && !["incomingCalls", "outgoingCalls"].includes(request.kind)) return true
+  const target = report.targetPool.find(target => target.id === request.targetId)
+  const targetId = completion ? target?.completionTargetId : target?.callHierarchyTargetId
+  const declared = completion ? request.completionSourceTargetId : request.callHierarchySourceTargetId
+  const index = report.requests.findIndex(item => item.scenarioId === request.scenarioId)
+  const candidates = report.requests.slice(0, Math.max(0, index))
+    .filter(item => item.scenarioId === request.sourceScenarioId)
+  const source = candidates.length === 1 ? candidates[0] : undefined
+  return typeof targetId === "string" && declared === targetId && source?.targetId === targetId
+    && source.kind === (completion ? "completion" : "prepareCallHierarchy")
+    && source.status === "COMPLETE" && source.correctness?.equal === true
+    && source.correctness.payload != null && source.correctness.expectedPayload != null
+    && isDeepStrictEqual(source.correctness.payload, source.correctness.expectedPayload)
+    && source.documentVersion === request.documentVersion && source.readiness?.snapshot === request.readiness?.snapshot
+    && preparedRequestReady(report, source, capabilities)
 }
 
 function matchesQuerySnapshot(initial, receipt) {
@@ -39,7 +67,7 @@ function matchesQuerySnapshot(initial, receipt) {
       && current.inputIdentity.sha256 !== initial.inputIdentity.sha256)
 }
 
-function validProof(proof, report, capabilities) {
+export function validPreparedReadyProof(proof, report, capabilities) {
   const input = proof?.inputIdentity
   const coverage = proof?.coverage
   const workspace = report.environment.workspace

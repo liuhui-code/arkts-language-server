@@ -38,10 +38,13 @@ function send(message) {
 
 function diagnose(uri, version) {
   if (mode === "no-diagnostics") return
+  if (mode === "no-edit-diagnostics" && version > 1) return
   if (["edit-reference-superseded-diagnostic", "late-v2-diagnostics"].includes(mode) && version === 1) return
-  send({ method: "textDocument/publishDiagnostics", params: {
+  const publish = () => send({ method: "textDocument/publishDiagnostics", params: {
     uri, version, diagnostics: [],
   } })
+  if (mode === "delayed-edit-diagnostics" && version > 1) setTimeout(publish, 150)
+  else publish()
 }
 
 function offsetAt(text, position) {
@@ -130,6 +133,11 @@ function receive(message) {
       }
     }
     const uri = message.params.textDocument.uri
+    if (mode === "reported-readiness" && process.env.ARKTS_TEST_PREPARED_EMPTY_UNOPENED === "1"
+      && !documents.has(uri)) {
+      send({ id: message.id, result: [] })
+      return
+    }
     const lines = (documents.get(uri) ?? "").split(/\r?\n/u)
     const firstLine = lines[0]
     const locations = [{ uri, range: {

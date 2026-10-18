@@ -23,11 +23,17 @@ test("prepared suite rejects an empty target pool before launching a server", (t
   assert.equal(fs.existsSync(output), false)
 })
 
-test("candidate catalog readiness never certifies semantic-ready or cached SLO", async (t) => {
+for (const queueTrace of ["0", "1"]) {
+test(`candidate catalog readiness never certifies semantic-ready or cached SLO (queue trace ${queueTrace})`, async (t) => {
   const fixture = await makeSuite(t)
+  fixture.suite.runtime.env.ARKTS_REFERENCES_TRACE = "0"
+  fixture.suite.runtime.env.ARKTS_SEMANTIC_QUEUE_TRACE = queueTrace
+  saveSuite(fixture)
   const result = runSuite(fixture)
   assert.equal(result.status, 1, `${result.stderr}\n${result.stdout}`)
   const report = JSON.parse(fs.readFileSync(fixture.output, "utf8"))
+  assert.equal(report.environment.traceMode, queueTrace === "1" ? "attribution-only" : "trace-off",
+    "the new queue observer must never masquerade as normal product timing")
   assert.equal(report.readiness.semantic.status, "READINESS_UNSUPPORTED")
   assert.equal(report.readiness.candidate.state, "ready")
   assert.equal(report.gateStatus.ready, "FAIL")
@@ -35,11 +41,40 @@ test("candidate catalog readiness never certifies semantic-ready or cached SLO",
   assert.equal(report.requests.length, 2)
   assert.ok(report.requests.every(request => request.measurementState === "candidate-ready-control"))
   assert.ok(report.requests.every(request => request.correctness.equal))
+  for (const request of report.requests) {
+    assert.deepEqual(request.correctness.expectedLocations, request.correctness.locations,
+      "archive the complete pinned oracle, not only a boolean or expected count")
+  }
   assert.equal(report.bucketSummaries.length, 2)
   assert.ok(report.bucketSummaries.every(bucket => bucket.gateStatus === "BLOCKED"))
   assert.ok(report.memory.samples.length > 0)
   assert.ok(report.memory.actualIntervalMs.p95 > 0)
   assert.equal(report.preparation.targetQueries, 0)
+})
+}
+
+test("prepared collector preserves raw RSS wall-clock rollback and aggregates captured monotonic intervals", async t => {
+  const fixture = await makeSuite(t)
+  const result = spawnSync(process.execPath, [runner, "--prepared-suite", fixture.input, "--out", fixture.output], {
+    encoding: "utf8", timeout: 15_000, env: { ...process.env, ARKTS_TEST_RSS_CLOCK_ROLLBACK: "1",
+      NODE_OPTIONS: `--require=${JSON.stringify(path.resolve("tests/fixtures/rss-clock-rollback.cjs"))}` },
+  })
+  assert.equal(result.status, 1, `${result.stderr}\n${result.stdout}`)
+  const report = JSON.parse(fs.readFileSync(fixture.output, "utf8"))
+  const { memory } = report
+  assert.equal(report.correctness.status, "PASS")
+  assert.equal(report.requests.length, 2)
+  assert.equal(memory.samplerStderr, "")
+  assert.equal(memory.intervalClock, "sampler-monotonic-ms")
+  assert.ok(memory.samples.length >= 2)
+  assert.ok(memory.samples[1].timestamp < memory.samples[0].timestamp)
+  const gaps = memory.samples.slice(1).map((sample, index) => sample.monotonicMs - memory.samples[index].monotonicMs)
+    .sort((left, right) => left - right)
+  assert.ok(gaps.every(gap => Number.isFinite(gap) && gap > 0))
+  assert.deepEqual(memory.actualIntervalMs, { p50: gaps[Math.ceil(gaps.length * .5) - 1],
+    p95: gaps[Math.ceil(gaps.length * .95) - 1], max: gaps.at(-1) })
+  assert.equal(report.gateStatus.ready, "FAIL", "clock integrity does not certify semantic readiness")
+  assert.equal(report.gateStatus.latency, "BLOCKED")
 })
 
 test("prepared suite pre-opens pinned target documents before the first semantic request", async (t) => {

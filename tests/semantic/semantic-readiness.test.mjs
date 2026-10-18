@@ -4,9 +4,9 @@ import fs from "node:fs"
 import { createRequire } from "node:module"
 import path from "node:path"
 import test from "node:test"
-import { fileURLToPath } from "node:url"
+import { fileURLToPath, pathToFileURL } from "node:url"
 
-import { createReadinessFixture, startReadinessFixture } from "../support/semantic-readiness-lsp.mjs"
+import { createReadinessFixture, startReadinessFixture, initializeReadinessFixture } from "../support/semantic-readiness-lsp.mjs"
 import { projectRoot } from "../support/lsp-process.mjs"
 import { positionAt } from "../support/resident-interactive-lsp.mjs"
 
@@ -14,7 +14,8 @@ const require = createRequire(import.meta.url)
 
 test("an immediate ordinary body edit query certifies its new overlay without another preparation",
   { timeout: 30_000 }, async t => {
-    const { session, rootUri, workspace, sources, uri } = await startReadinessFixture(t)
+    const { session, rootUri, workspace, sources, uri, events } = await startReadinessFixture(t,
+      { ARKTS_SEMANTIC_QUEUE_TRACE: "1" })
     const original = sources["Main.ets"] + "export function count(): number { return 1 }\n"
     fs.writeFileSync(path.join(workspace, "Main.ets"), original)
     session.openDocument({ uri: uri("Main.ets"), version: 1, text: original })
@@ -30,6 +31,20 @@ test("an immediate ordinary body edit query certifies its new overlay without an
     assert.deepEqual(definition.result, [{ uri: uri("Unopened.ets"), range: {
       start: { line: 0, character: 16 }, end: { line: 0, character: 28 },
     } }])
+    const certifications = () => events().filter(entry => entry.event === "semantic.readiness.query.certification.complete")
+    const queryCertifications = certifications()
+    assert.equal(queryCertifications.length, 1, "the original ordinary query must retain its complete certification cost")
+    const receipt = queryCertifications[0]
+    assert.equal(receipt.uri, uri("Main.ets"))
+    assert.equal(receipt.documentVersion, 2)
+    assert.equal(receipt.rootUri, rootUri)
+    assert.equal(receipt.outcome, "complete")
+    assert.equal(receipt.queryScopeSemanticState, "ready")
+    assert.equal(Object.hasOwn(receipt, "semanticState"), false, "trace is not the public root-readiness result")
+    assert.ok(Number.isFinite(receipt.startedMonotonicMs) && receipt.startedMonotonicMs >= 0)
+    assert.ok(receipt.finishedMonotonicMs >= receipt.startedMonotonicMs)
+    assert.equal(receipt.certificationDurationMs, receipt.finishedMonotonicMs - receipt.startedMonotonicMs)
+    assert.ok(receipt.certificationDurationMs > 0)
     const current = await session.request("arkts/semanticReadiness", { rootUri, prepare: false })
     assert.equal(current.result?.semanticState, "ready", JSON.stringify(current))
     assert.notEqual(current.result.semanticGeneration, initial.result.semanticGeneration)
@@ -42,6 +57,9 @@ test("an immediate ordinary body edit query certifies its new overlay without an
       message => message.params.uri === uri("Main.ets") && message.params.version === 2, 10_000)
     assert.deepEqual(diagnostics.params.diagnostics, [])
     assert.equal(fs.readFileSync(path.join(workspace, "Main.ets"), "utf8"), original)
+    assert.equal(certifications().length, 1, "status and normal diagnostics must not start another query certification")
+    t.diagnostic(JSON.stringify({ qualification: "PRIVATE_SDK_ORDINARY_QUERY_FULL_CERTIFICATION_NOT_PRODUCT_SLO",
+      receipt, currentReadiness: current.result, definition: definition.result, latestDiagnostics: diagnostics.params }))
     assert.deepEqual((await session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })
   })
 
@@ -166,6 +184,7 @@ test("the exact missing Settings SDK module resolves when its declaration is act
 test("malformed, foreign-root and target-bearing readiness requests cannot force preparation and shutdown rejects status",
   { timeout: 20_000 }, async t => {
     const { session, rootUri, events } = await startReadinessFixture(t)
+    const preparations = events().filter(e => e.event === "semantic.readiness.input-check.start").length
     for (const params of [null, [], {}, { rootUri, prepare: "true" },
       { rootUri: "file:///unconfigured-workspace", prepare: true },
       { rootUri, prepare: true, symbol: "neverQueried" },
@@ -175,7 +194,8 @@ test("malformed, foreign-root and target-bearing readiness requests cannot force
       assert.equal(response.error?.code, -32602, JSON.stringify(response))
       assert.equal(response.result, undefined)
     }
-    assert.ok(!events().some(e => e.event === "semantic.worker.started"))
+    assert.equal(events().filter(e => e.event === "semantic.readiness.input-check.start").length, preparations,
+      "malformed requests cannot trigger additional preparation")
     assert.equal((await session.request("shutdown", null)).error, undefined)
     const stopped = await session.request("arkts/semanticReadiness", { rootUri, prepare: false })
     assert.equal(stopped.error?.code, -32600, JSON.stringify(stopped))
@@ -260,6 +280,8 @@ test("cancelling an entered preparation input check interrupts the compiler and 
       `export function checked${i}(value: number): number { return value + ${i} }`).join("\n")
     assert.ok(Buffer.byteLength(heavy) < 2 * 1024 * 1024)
     fs.writeFileSync(heavyPath, heavy)
+    session.transport.send({ jsonrpc: "2.0", method: "workspace/didChangeWatchedFiles",
+      params: { changes: [{ uri: pathToFileURL(heavyPath).href, type: 1 }] } })
     const id = session.nextRequestId++
     session.transport.send({ jsonrpc: "2.0", id, method: "arkts/semanticReadiness", params: { rootUri, prepare: true } })
     const deadline = Date.now() + 20_000
@@ -333,17 +355,18 @@ test("missing dependency input cannot become ready while ordinary source diagnos
     } }])
   })
 
-test("catalog completion without a prepared Program remains publicly semantic-unprepared",
+test("catalog completion cannot certify semantic readiness when actual SDK inputs are unavailable",
   { timeout: 20_000 }, async t => {
-    const { session, rootUri, events } = await startReadinessFixture(t)
-    // No didOpen, semantic target query, preparation timer or fake ready payload.
+    const fixture = createReadinessFixture(t)
+    fs.rmSync(path.join(fixture.sdk, "ets", "oh-uni-package.json"))
+    const { session, rootUri, events } = await initializeReadinessFixture(fixture)
     const response = await session.request("arkts/semanticReadiness", { rootUri, prepare: false })
     assert.equal(response.error, undefined, JSON.stringify(response.error))
-    assert.equal(response.result.semanticState, "unprepared")
+    assert.equal(response.result.semanticState, "degraded")
     assert.equal(response.result.semanticGeneration, null)
     assert.deepEqual(response.result.readyCapabilities, [])
-    assert.ok(!events().some(e => e.event === "semantic.worker.started"),
-      "status must not start semantic preparation")
+    assert.ok(events().some(e => e.event === "index.catalog.terminal" && e.phase === "ready"))
+    assert.deepEqual(response.result.unavailableReasons, ["sdk-coverage-unproven"])
     assert.deepEqual((await session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })
   })
 
@@ -359,14 +382,13 @@ test("a process restart with the same validated-ready cache must prepare a new a
     const create = await restarted.transport.serverRequest("window/workDoneProgress/create", () => true, 10_000)
     restarted.transport.send({ jsonrpc: "2.0", id: create.id, result: null })
     await restarted.transport.progress(create.params.token, message => message.params.value.kind === "end", 10_000)
+    const automatic = await restarted.transport.notification("arkts/semanticPreparation",
+      message => message.params.rootUri === rootUri && message.params.phase === "complete", 20_000)
     const status = await restarted.request("arkts/semanticReadiness", { rootUri, prepare: false })
-    assert.equal(status.result?.semanticState, "unprepared", JSON.stringify(status))
-    assert.equal(status.result.semanticGeneration, null)
-    assert.equal(status.result.inputIdentity, null)
-    assert.equal(status.result.coverage, null)
-    assert.deepEqual(status.result.readyCapabilities, [])
-    assert.ok(!events().some(e => e.pid === restarted.transport.child.pid && e.event === "semantic.worker.started"),
-      "catalog/cache restoration cannot create a ready semantic Worker")
+    assert.equal(status.result?.semanticState, "ready", JSON.stringify(status))
+    assert.deepEqual(status.result, automatic.params.report)
+    assert.ok(events().some(e => e.pid === restarted.transport.child.pid && e.event === "semantic.readiness.input-check.complete"),
+      "the restarted process must actually check compiler inputs, not restore a fake ready proof")
     const restored = await restarted.request("arkts/semanticReadiness", { rootUri, prepare: true }, { timeoutMs: 20_000 })
     assert.equal(restored.result?.semanticState, "ready", JSON.stringify(restored))
     assert.notEqual(restored.result.semanticGeneration, before.result.semanticGeneration)
@@ -417,6 +439,7 @@ test("an ordinary overlay edit invalidates the old ready proof and refresh binds
 test("target-independent preparation binds a complete current official Program before unseen-module navigation",
   { timeout: 30_000 }, async t => {
     const { session, rootUri, events, sources, uri } = await startReadinessFixture(t)
+    const beforePrepare = events().length
     const response = await session.request("arkts/semanticReadiness", { rootUri, prepare: true }, { timeoutMs: 20_000 })
     assert.equal(response.error, undefined, JSON.stringify(response.error))
     const ready = response.result
@@ -432,10 +455,10 @@ test("target-independent preparation binds a complete current official Program b
     assert.equal(ready.coverage.sdkSources, 1)
     assert.ok(ready.coverage.standardLibrarySources > 0)
     assert.equal(ready.coverage.dependenciesComplete, true)
-    const checks = events().filter(e => e.event === "semantic.readiness.input-check.start")
+    const checks = events().slice(beforePrepare).filter(e => e.event === "semantic.readiness.input-check.start")
     assert.equal(checks.length, ready.coverage.programSources,
       "every actual Program input must enter dependency checking before readiness")
-    assert.deepEqual(events().filter(e => e.event === "semantic.readiness.input-check.complete")
+    assert.deepEqual(events().slice(beforePrepare).filter(e => e.event === "semantic.readiness.input-check.complete")
       .map(e => e.sourcePath), checks.map(e => e.sourcePath))
     assert.ok(checks.some(e => e.sourcePath === path.join(fileURLToPath(rootUri), "Unopened.ets")))
     assert.ok(!events().some(e => e.event.endsWith("compiler-query.start")),

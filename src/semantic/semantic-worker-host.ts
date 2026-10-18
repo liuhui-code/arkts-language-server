@@ -1,4 +1,5 @@
 import { Worker } from "node:worker_threads"
+import { shutdownSemanticWorker } from "./semantic-worker-shutdown.js"
 
 import type { StructuredLogger } from "../observability/logger.js"
 import { semanticRuntimeConfig } from "./coordinator/runtime-config.js"
@@ -6,6 +7,7 @@ import { interactiveSemanticRuntimeConfig } from "./interactive-runtime.js"
 import { referenceSearchRuntimeConfig } from "./references/reference-runtime.js"
 import { messageEpoch, workerLogMessage } from "./semantic-worker-message-routing.js"
 import { pressureWorkerRecycleEnabled } from "./semantic-worker-runtime-control.js"
+import { SemanticWorkerQueueTrace } from "./semantic-worker-queue-trace.js"
 import {
   RootSemanticWorkerSupervisor,
   type RootSemanticWorkerEndpoint,
@@ -79,6 +81,8 @@ export class SemanticWorkerHost {
     const supervisor = new RootSemanticWorkerSupervisor({
       rootUri, epoch, endpoint,
       waitForDisposeDeadline: () => new Promise(resolve => setTimeout(resolve, 100)),
+      queueTrace: this.#options.environment.ARKTS_SEMANTIC_QUEUE_TRACE === "1" && this.#options.logger
+        ? new SemanticWorkerQueueTrace(this.#options.logger, rootUri, epoch) : undefined,
     })
     this.#supervisors.set(rootUri, supervisor)
     return supervisor
@@ -142,7 +146,7 @@ export class SemanticWorkerHost {
     await Promise.all([...this.#supervisors.values()].map(supervisor => supervisor.dispose()))
     this.#supervisors.clear()
     this.#handlers.clear()
-    await oldWorker.terminate()
+    await shutdownSemanticWorker(oldWorker)
     return oldThreadId
   }
 
@@ -158,7 +162,7 @@ export class SemanticWorkerHost {
     await Promise.all([...this.#supervisors.values()].map(supervisor => supervisor.dispose()))
     this.#supervisors.clear()
     this.#handlers.clear()
-    await worker?.terminate()
+    await shutdownSemanticWorker(worker)
   }
 
   #ensureWorker(rootUri: string): Worker {
