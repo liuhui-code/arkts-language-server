@@ -29,6 +29,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/performance-evidence.test.mjs",
       "tests/portable-artifact-builder.test.mjs",
       "tests/process-resource-probe.test.mjs",
+      "tests/process-resource-probe-race.test.mjs",
       "tests/prepared-suite-cli.test.mjs",
       "tests/prepared-resource-artifact-cli.test.mjs",
       "tests/prepared-suite-interactive-cli.test.mjs",

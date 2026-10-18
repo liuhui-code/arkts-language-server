@@ -210,7 +210,8 @@ test("explicit constructor references preserve their own identity across aliases
     await session.close({ timeoutMs: 5_000 })
     if (profile === "indexed-batched") {
       const events = fs.readFileSync(path.join(logs, "server.log"), "utf8").split("\n").filter(Boolean).map(JSON.parse)
-      t.diagnostic(JSON.stringify({ tag: "OP03A_CONSTRUCTOR_ROUTE_V1", profile, baseline: snapshots[0], results, events }))
+      t.diagnostic(JSON.stringify({ tag: "OP03A_CONSTRUCTOR_ROUTE_V1", profile,
+        queries: results.length, locations: results.map(locations => locations.length), events: events.length }))
       assert.ok(events.some(event => event.event === "references.anchor.seed.rejected"),
         "compiler must reject class-export proof at a direct-import construction")
       assert.ok(events.some(event => event.event === "references.anchor.seed.fallback"))

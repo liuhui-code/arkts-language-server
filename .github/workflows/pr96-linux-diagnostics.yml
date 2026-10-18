@@ -27,6 +27,8 @@ jobs:
           cargo build --locked --release -p arkts-index-sidecar
       - run: >-
           node --test --test-reporter=spec --test-concurrency=1 --test-timeout=90000
+          tests/process-resource-probe.test.mjs
+          tests/process-resource-probe-race.test.mjs
           tests/prepared-suite-restart-cli.test.mjs
           tests/query-layer-resource-cli.test.mjs
           tests/retained-regression-collector-cli.test.mjs
