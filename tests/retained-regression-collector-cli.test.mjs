@@ -48,6 +48,20 @@ test("the public regression collector retains native exit raw log source archive
   assert.equal(state.releaseEligible, false)
 })
 
+test("downloaded fixture caches are excluded from the regression source archive", async t => {
+  const caches = path.resolve(".fixtures")
+  fs.mkdirSync(caches, { recursive: true })
+  const cache = fs.mkdtempSync(path.join(caches, "regression-cache-"))
+  t.after(() => fs.rmSync(cache, { recursive: true, force: true }))
+  fs.writeFileSync(path.join(cache, "Input.ets"), "export class CachedFixture {}\n")
+  const fixture = await collectorFixture(t)
+  const result = runCollector(fixture)
+  assert.equal(result.status, 0, result.stderr)
+  const rows = fs.readFileSync(`${fixture.prefix}-sources.jsonl`, "utf8").trim().split("\n").map(JSON.parse)
+  assert.ok(!rows.some(row => row.file.startsWith(".fixtures/")),
+    "downloaded upstream fixtures have their own pins and are not server execution source")
+})
+
 test("the collector cannot promote an earlier summary when the actual regression has no final summary", async t => {
   const fixture = await collectorFixture(t)
   fs.appendFileSync(fixture.pnpm, '\nprocess.stdout.write("UNFINISHED_REAL_REGRESSION\\n");\n')

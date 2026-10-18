@@ -10,3 +10,5 @@ editors/zed/grammars/.arkts-source
 *.log
 .cache/upstream/
 .bench/
+
+/.fixtures/

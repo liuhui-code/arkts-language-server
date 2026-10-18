@@ -91,7 +91,7 @@ test("L08 retains verified RSS as a lower-bound observation not a PSS pass or a 
   const samples = input.memory.samples.map(sample => ({ ...sample, totalRssBytes: sample.totalRssBytes + 2 ** 31,
     processes: sample.processes.map(process => ({ ...process,
       rssBytes: process.rssBytes + (process.pid === input.memory.targetPid ? 2 ** 31 : 0) })).reverse() }))
-  input.memory = { ...input.memory, ...preparedMemory(samples, input.memory.targetPid, 10, "") }
+  input.memory = { ...input.memory, ...preparedMemory(samples, input.memory.targetPid, 10, ""), platform: "darwin" }
   const report = evaluate(t, input)
   const cell = report.cells.find(cell => cell.requests)
   const observed = cell.inputGroups[0].memoryEvidence[0]

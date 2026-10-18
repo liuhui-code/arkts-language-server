@@ -11,6 +11,8 @@ type Acquisition = Parameters<ts.DocumentRegistry["acquireDocumentWithKey"]>
 /** Preparse the supported SDK declaration catalog; never add these files as Program roots. */
 export function prepareSdkDeclarations(root: string, actual: Acquisition, registry: ts.DocumentRegistry): void {
   const physicalRoot = fs.realpathSync.native(root)
+  // LanguageService defaults an omitted host case-sensitivity method to false, even on Linux.
+  const caseSensitive = (actual[2] as ts.LanguageServiceHost).useCaseSensitiveFileNames?.() ?? false
   const pending = ["ets/component", "ets/api", "ets/kits", "ets/arkts", "js/api"]
     .map(directory => path.join(root, directory))
   while (pending.length) {
@@ -31,7 +33,7 @@ export function prepareSdkDeclarations(root: string, actual: Acquisition, regist
       const content = safeRead(file)
       if (content === null) throw new SemanticInputUnavailableError()
       const normalized = path.resolve(file).split(path.sep).join("/")
-      const resolved = (ts.sys.useCaseSensitiveFileNames ? normalized : normalized.toLowerCase()) as ts.Path
+      const resolved = (caseSensitive ? normalized : normalized.toLowerCase()) as ts.Path
       const kind = file.endsWith(".ets") ? ts.ScriptKind.ETS : ts.ScriptKind.TS
       const source = registry.acquireDocumentWithKey(file, resolved, actual[2], actual[3],
         ts.ScriptSnapshot.fromString(content), actual[5], kind, actual[7])

@@ -33,9 +33,12 @@ test("project initialization prepares real semantics automatically despite a one
     assert.deepEqual((await session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })
   })
 
-test("initialization parses supported SDK declarations without adding unused APIs to the Program",
+for (const caseSensitive of [undefined, "1"]) {
+test("initialization parses supported SDK declarations without adding unused APIs to the Program"
+  + (caseSensitive ? " with a case-sensitive compiler filesystem" : ""),
   { timeout: 30_000 }, async t => {
     const fixture = createReadinessFixture(t, { ARKTS_BENCHMARK_CONTROL: "0", ARKTS_MEMORY_BUDGET_MB: "4096",
+      ARKTS_TEST_CASE_SENSITIVE_FS: caseSensitive,
       NODE_OPTIONS: `--require=${JSON.stringify(path.resolve("tests/fixtures/initial-preparation-parses.cjs"))}` })
     const { session, sdk, rootUri, directory } = fixture
     const api = path.join(sdk, "ets", "api", "@ohos.unused.d.ts")
@@ -72,6 +75,8 @@ test("initialization parses supported SDK declarations without adding unused API
     assert.equal(readParses().filter(row => row.file === api).length, 2, "new SDK bytes must replace a prefetched syntax pin")
     assert.deepEqual((await session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })
   })
+
+}
 
 test("automatic initialization catches up with documents opened and edited immediately after initialize",
   { timeout: 30_000 }, async t => {

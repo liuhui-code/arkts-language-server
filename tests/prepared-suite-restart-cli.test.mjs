@@ -154,7 +154,7 @@ test("prepared restart preserves unsaved destination edits across mixed queries 
     for (const cell of cells) {
       assert.equal(cell.gates.ready, "PASS", JSON.stringify({ bucket: cell.bucket, reasons: cell.reasons }))
       assert.equal(cell.gates.correctness, "PASS")
-      assert.equal(cell.gates.memory, "BLOCKED", "valid per-process RSS must not be mislabeled invalid or PSS")
+      assert.equal(cell.gates.memory, "BLOCKED", JSON.stringify({ reasons: cell.reasons, memory: cell.inputGroups.map(group => group.memoryEvidence) }))
       assert.equal(cell.gates.latency, "BLOCKED", "small N cannot satisfy the release SLO")
     }
     assert.equal(release.releaseEligible, false)

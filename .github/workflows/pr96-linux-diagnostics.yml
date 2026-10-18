@@ -1,0 +1,36 @@
+name: PR96 Linux diagnostics
+on:
+  push:
+    branches: [codex/pr96-linux-diagnostics]
+permissions:
+  contents: read
+jobs:
+  linux-regressions:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: netease-kit/nim-uikit-harmony
+          ref: 585feb45114a128a0d2a23947c83faf338e758f7
+          path: .fixtures/nim-uikit-harmony
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: .node-version
+      - run: |
+          corepack enable
+          corepack prepare pnpm@8.15.9 --activate
+          pnpm install --frozen-lockfile
+          pnpm build
+          cargo build --locked --release -p arkts-index-sidecar
+      - run: >-
+          node --test --test-reporter=spec --test-concurrency=1 --test-timeout=90000
+          tests/prepared-suite-restart-cli.test.mjs
+          tests/query-layer-resource-cli.test.mjs
+          tests/retained-regression-collector-cli.test.mjs
+          tests/semantic-release-regression-cli.test.mjs
+          tests/semantic-release-resource-cli.test.mjs
+          tests/semantic/project-initialization.test.mjs
+          tests/semantic/references-anchor-reuse.test.mjs
