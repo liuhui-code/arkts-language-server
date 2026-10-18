@@ -25,14 +25,9 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm build
           cargo build --locked --release -p arkts-index-sidecar
-      - run: >-
-          node --test --test-reporter=spec --test-concurrency=1 --test-timeout=90000
-          tests/process-resource-probe.test.mjs
-          tests/process-resource-probe-race.test.mjs
-          tests/prepared-suite-restart-cli.test.mjs
-          tests/query-layer-resource-cli.test.mjs
-          tests/retained-regression-collector-cli.test.mjs
-          tests/semantic-release-regression-cli.test.mjs
-          tests/semantic-release-resource-cli.test.mjs
-          tests/semantic/project-initialization.test.mjs
-          tests/semantic/references-anchor-reuse.test.mjs
+      - run: |
+          status=0
+          for attempt in $(seq 1 20); do
+            node --test --test-reporter=spec --test-concurrency=1 --test-timeout=30000 --test-name-pattern='resource abrupt exit.*owner' tests/query-layer-resource-cli.test.mjs || status=1
+          done
+          exit "$status"
