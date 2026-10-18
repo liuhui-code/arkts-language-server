@@ -74,6 +74,7 @@ export function parseLinuxProcStat(output) {
 
   const pid = unsignedInteger(match[1], "Linux proc stat pid")
   const parentPid = unsignedInteger(fields[0], "Linux proc stat parent pid")
+  const flags = unsignedInteger(fields[5], "Linux proc stat flags")
   const userTicks = unsignedInteger(fields[10], "Linux proc stat user CPU ticks")
   const systemTicks = unsignedInteger(fields[11], "Linux proc stat system CPU ticks")
   const startTimeTicks = unsignedInteger(fields[18], "Linux proc stat start time")
@@ -91,6 +92,7 @@ export function parseLinuxProcStat(output) {
     parentPid,
     command: match[2],
     state: match[3],
+    flags,
     totalCpuTicks,
     startTimeTicks,
     rssPages,
@@ -219,6 +221,10 @@ function createLinuxProbe({
           throw probeError("EPROCESS_NOT_FOUND", `process ${pid} has exited`)
         }
       }
+      if (error?.code === "EPROBE_PARSE") {
+        const stat = await readStat(pid)
+        error.message += ` (state=${stat.state}, flags=${stat.flags}, pid=${pid})`
+      }
       throw error
     }
   }
@@ -277,6 +283,11 @@ function createLinuxProbe({
           cpuPercent: lifetimeCpuPercent(stat, uptimeSeconds, clockTicksPerSecond),
         }
         if (expectedParentPid !== undefined && stat.parentPid !== expectedParentPid) {
+          const rootNow = await readStat(serverPid)
+          assertExpectedIdentity({ pid: serverPid, startIdentity: `linux:${rootNow.startTimeTicks}` }, identity)
+          if (rootNow.state === "Z" || rootNow.state === "X") {
+            throw probeError("EPROCESS_NOT_FOUND", `process ${serverPid} has exited`)
+          }
           throw probeError(
             "EPROCESS_TREE_CHANGED",
             `process ${pid} no longer belonged to parent ${expectedParentPid}`,
