@@ -217,13 +217,9 @@ function createLinuxProbe({
         if (current.startTimeTicks !== before.startTimeTicks) {
           throw probeError("EPROCESS_IDENTITY_CHANGED", `process ${pid} start identity changed`)
         }
-        if (current.state === "Z" || current.state === "X") {
+        if (linuxProcessExited(current)) {
           throw probeError("EPROCESS_NOT_FOUND", `process ${pid} has exited`)
         }
-      }
-      if (error?.code === "EPROBE_PARSE") {
-        const stat = await readStat(pid)
-        error.message += ` (state=${stat.state}, flags=${stat.flags}, pid=${pid})`
       }
       throw error
     }
@@ -264,7 +260,7 @@ function createLinuxProbe({
         let childPids
         try {
           stat = await readStat(pid)
-          if (stat.state === "Z" || stat.state === "X") {
+          if (linuxProcessExited(stat)) {
             throw probeError("EPROCESS_NOT_FOUND", `process ${pid} has exited`)
           }
           rssBytes = await readRss(pid, stat)
@@ -285,7 +281,7 @@ function createLinuxProbe({
         if (expectedParentPid !== undefined && stat.parentPid !== expectedParentPid) {
           const rootNow = await readStat(serverPid)
           assertExpectedIdentity({ pid: serverPid, startIdentity: `linux:${rootNow.startTimeTicks}` }, identity)
-          if (rootNow.state === "Z" || rootNow.state === "X") {
+          if (linuxProcessExited(rootNow)) {
             throw probeError("EPROCESS_NOT_FOUND", `process ${serverPid} has exited`)
           }
           throw probeError(
@@ -313,6 +309,11 @@ function createLinuxProbe({
       })
     },
   })
+}
+
+function linuxProcessExited(stat) {
+  // PF_EXITING is set before exit_mm clears VmRSS, while state can still be R/S.
+  return stat.state === "Z" || stat.state === "X" || (stat.flags & 0x00000004) !== 0
 }
 
 function parseLinuxProcUptime(output) {
