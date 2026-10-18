@@ -158,6 +158,7 @@ for (const [layer, mode] of [["official", "watchdog"], ["official", "abrupt exit
       assert.equal(report.resources.sampleCount, 0)
       return
     }
+    assert.ok(fs.existsSync(marker), JSON.stringify({ failure: report.failure, closeResult: report.closeResult, stderr: result.stderr }))
     const observed = JSON.parse(fs.readFileSync(marker, "utf8"))
     assert.equal(observed.pid, report.pid)
     assert.equal(observed.completed, 1)

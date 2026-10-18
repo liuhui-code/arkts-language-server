@@ -113,3 +113,17 @@
 - 合入前继续运行无 name filter 的回归与新的完整 fast；此前中止或失败轮次不能替代最终结果。
 
 - 最后一组不使用 name filter 的输入/成员/驻留/LRU/压力/别名公开回归 `merge-focused-final-7.log` **42/42**、exit 0；类型检查 `merge-typecheck-final.log`、`cargo fmt --all --check`、`cargo clippy --locked --workspace --all-targets -- -D warnings` 全部 exit 0。此前 `merge-final-focused.log` 的 9 项失败均有上述后续合同及 `merge-recovery-6.log` 覆盖，不借用失败轮次作最终证据。
+
+
+## PR #96 的本地完整检查与 Linux 差异
+
+- 提交 `70baf45c44c92e06ac390a15def80af87372469d` 的第六轮完整 `pnpm check:fast` **1885/1885**、exit 0（`check-fast-6.log`）。运行期产品源码、脚本、配置、Rust 与原始引用完整性 oracle 的 hash 全程未变；两处测试 fixture 在其测试执行后增加可选大小写复现，差异列于 `whole-6.end-audit.json`。该结果只归属于本轮源码，不替代下面新增 Linux 修复的验证。
+- 首次 Linux release CI [39142722562](https://github.com/liuhui-code/arkts-language-server/actions/runs/39142722562) 因 30 分钟 job 上限取消，同时已暴露实际回归，不能归类为全部通过。Windows 安装 CI 通过。
+- Linux SDK 解析计数 RED：预解析使用 `ts.sys` 的操作系统大小写规则，实际 LanguageService host 省略该方法时按不区分大小写生成 registry path，导致 cache key 不同。新公开 framed-stdio fixture 在 Mac 强制 compiler 的 case-sensitive system probe，复现 **2 次解析而非 1 次**；`linux-sdk-canonical-red.log` exit 1。预解析改从实际 acquisition host 读取规则，保持与同一 LS 一致；独立工作区 6/6 通过，第一次 Linux 定向 CI 的 6 项初始化用例也全部通过。
+- CI 下载的 `.fixtures/nim-uikit-harmony` 是嵌套 Git 仓库，默认源归档将其目录当作文件读取，产生 EISDIR，并连带使多项证据用例无法启动。将下载夹具缓存加入 ignore；原生 producer/source archive 仍完整记录仓库执行源，夹具继续使用独立 pins。新增公开 collector RED 与 24/24 GREEN；隔离工作区的 node_modules/target 临时 symlink 用独立 Git excludes 排除，不改变产品验证。
+- 合成 Darwin RSS consumer 用例重新调用 `preparedMemory()` 时被宿主 Linux 平台覆盖，修正合成 fixture 的平台标签；真实 RSS 采样不改写平台。
+- 第一次 Linux 定向 CI [39145860059](https://github.com/liuhui-code/arkts-language-server/actions/runs/39145860059) 仍发现 `stat` 活进程 → `status` 退出进程无 VmRSS 的真实竞态。新增公开 probe 注入文件系统合同，root/child 退出与 PID 复用为 RED，仍存活但缺失 VmRSS 必须拒绝。parse 失败时仅做一次身份/退出状态复查；只对证实已退出的进程返回 not-found/跳过，不能补零 RSS。22/22 GREEN。
+- 两次 Linux 执行均停在构造函数合同之后、162091 字符的单条 OP03A 诊断输出之前；改成查询/Location/事件数量摘要，保留所有原始完整结果与路由断言，并使用独立 Linux 分支复查。临时诊断 workflow 不合入产品 PR。
+- 新增 probe 条目先让 manifest audit RED，再登记到 unit-contract；完整登记为 223 个入口。修复集在主工作区的类型检查与 **85/85** 不使用 name filter 的定向回归通过（`merge-linux-fixes-focused.log`）。最终 Linux 完整结果及当前提交 403 文件真实 SDK 复测结果以 [PR #96](https://github.com/liuhui-code/arkts-language-server/pull/96) 的验证记录为准。
+
+- 第二次真实 Linux 定向执行 [39146890436](https://github.com/liuhui-code/arkts-language-server/actions/runs/39146890436) **SUCCESS**，SDK/归档/真实 RSS/重启/中断/全部 anchor 合同通过；固定代码下仅收缩该诊断输出即越过原停滞点。Linux 控制分支仍独立，产品 PR 的完整 release driver 与原 job 上限均保持原配置，随后在最终提交上重跑。

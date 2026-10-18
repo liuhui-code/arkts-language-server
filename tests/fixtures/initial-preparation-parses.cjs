@@ -11,6 +11,11 @@ if (!isMainThread && process.env.ARKTS_LSP_LOG_DIR) {
   const compile = Module.prototype._compile
   Module.prototype._compile = function (source, file) {
     if (["semantic-worker.cjs", "reference-verifier-worker.cjs"].includes(path.basename(file))) {
+      if (process.env.ARKTS_TEST_CASE_SENSITIVE_FS === "1") {
+        const probe = "const useCaseSensitiveFileNames = isFileSystemCaseSensitive();"
+        if (!source.includes(probe)) throw new Error("case sensitivity probe not found")
+        source = source.replace(probe, "const useCaseSensitiveFileNames = true;")
+      }
       let count = 0
       source = source.replace(/(function createLanguageServiceSourceFile\(fileName[^\n]*\) \{)/g,
         match => { count++; return match + "\nglobalThis.__observeInitialParse(fileName);" })

@@ -207,6 +207,22 @@ function createLinuxProbe({
     return stat
   }
 
+  async function readRss(pid, before) {
+    try { return parseLinuxProcStatus(await readProcessFile(pid, "status")) }
+    catch (error) {
+      if (error?.code === "EPROBE_PARSE") {
+        const current = await readStat(pid)
+        if (current.startTimeTicks !== before.startTimeTicks) {
+          throw probeError("EPROCESS_IDENTITY_CHANGED", `process ${pid} start identity changed`)
+        }
+        if (current.state === "Z" || current.state === "X") {
+          throw probeError("EPROCESS_NOT_FOUND", `process ${pid} has exited`)
+        }
+      }
+      throw error
+    }
+  }
+
   async function readProcessFile(pid, relativePath) {
     try {
       return await readProc(`${pid}/${relativePath}`)
@@ -245,7 +261,7 @@ function createLinuxProbe({
           if (stat.state === "Z" || stat.state === "X") {
             throw probeError("EPROCESS_NOT_FOUND", `process ${pid} has exited`)
           }
-          rssBytes = parseLinuxProcStatus(await readProcessFile(pid, "status"))
+          rssBytes = await readRss(pid, stat)
           childPids = parseLinuxProcChildren(
             await readProcessFile(pid, `task/${pid}/children`),
           )
