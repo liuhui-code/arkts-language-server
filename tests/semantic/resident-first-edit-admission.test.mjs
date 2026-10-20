@@ -69,16 +69,17 @@ test("an edited resident-first miss revokes the failed observation before comple
     assert.ok(rejected, "the actual edited input must reject its old observation")
     const attempt = allEvents.filter(event => event.traceId === rejected.traceId)
     const misses = attempt.filter(event => event.event === "references.resident.miss")
-    const batch = attempt.find(event => event.event === "references.batch.start")
-    assert.ok(misses.length >= 2 && batch, "the trial miss must retain the normal complete fallback")
+    assert.ok(misses.length >= 1, "the changed input must miss its original proof")
+    const fresh = assertFreshOwnerRecovery(allEvents.slice(allEvents.indexOf(rejected)), 3)
     const io = fs.readFileSync(path.join(fixture.directory, "resident-admission-io.jsonl"), "utf8")
       .trim().split("\n").map(JSON.parse)
-    const ownerThread = Math.min(...io.map(item => item.threadId))
-    const repeatedSdkReads = io.filter(item => item.threadId === ownerThread
-      && item.timestamp > Date.parse(misses[0].ts) && item.timestamp < Date.parse(batch.ts))
-    t.diagnostic(`SDK leaf observations after first miss, before fallback: ${repeatedSdkReads.length}`)
-    assert.equal(repeatedSdkReads.length, 0,
-      "the same failed resident observation must not scan SDK inputs again before fallback")
+    const byInput = new Map()
+    for (const item of io) byInput.set(`${item.threadId}:${item.path}`, (byInput.get(`${item.threadId}:${item.path}`) ?? 0) + 1)
+    assert.equal(new Set(io.map(item => item.threadId)).size, 1, "recovery uses the original semantic worker")
+    assert.equal(byInput.size, fresh.sdkSourceFiles, "only actually loaded SDK leaves are admitted")
+    assert.ok([...byInput.values()].every(count => count <= 8),
+      `fresh observation and final admission stay bounded per SDK leaf: ${JSON.stringify([...byInput])}`)
+    t.diagnostic(JSON.stringify({ sdkInputs: byInput.size, leafObservations: [...byInput.values()] }))
     const diagnostic = await session.transport.notification("textDocument/publishDiagnostics",
       message => message.params.uri === uri("Use.ets") && message.params.version === 2, 10_000)
     assert.deepEqual(diagnostic.params.diagnostics, [])
@@ -197,8 +198,7 @@ test("overlay synchronization rejects an unproved version jump and returns the c
     const actual = events().slice(first)
     assert.ok(actual.some(event => event.event === "references.resident.proof.rejected"
       && event.reason === "overlay-sync-version-unproven"))
-    assert.ok(actual.some(event => event.event === "references.batch.start"))
-    assert.ok(!actual.some(event => event.event === "references.resident.hit"))
+    assertFreshOwnerRecovery(actual, 3)
     const diagnostic = await session.transport.notification("textDocument/publishDiagnostics",
       message => message.params.uri === uri("Use.ets") && message.params.version === 4, 10_000)
     assert.deepEqual(diagnostic.params.diagnostics, [])
@@ -253,8 +253,7 @@ test("overlay synchronization cannot certify a reopened buffer as the old versio
       assert.deepEqual(response.result, includeDeclaration ? [declaration, ...changed] : changed)
     }
     const actual = events().slice(first)
-    assert.ok(actual.some(event => event.event === "references.batch.start"))
-    assert.ok(!actual.some(event => event.event === "references.resident.hit"))
+    assertFreshOwnerRecovery(actual, 3)
     const diagnostic = await session.transport.notification("textDocument/publishDiagnostics",
       message => message.params.uri === uri("Use.ets") && message.params.version === 1, 10_000)
     assert.deepEqual(diagnostic.params.diagnostics.map(item => item.code), [2322])
@@ -288,15 +287,25 @@ test("overlay synchronization cannot hide an unwatched same-size disk edit behin
         assert.deepEqual(response.result.map(JSON.stringify).sort(), expected.map(JSON.stringify).sort(), overlaySync)
       }
       const actual = events().slice(first)
-      assert.ok(actual.some(event => event.event === "references.index.fallback" && event.reason === "source-snapshot-changed"))
-      assert.ok(actual.some(event => event.event === "references.plan.complete" && event.candidateFiles === event.membershipFiles))
-      assert.ok(!actual.some(event => event.event === "references.resident.hit"))
+      assertFreshOwnerRecovery(actual, 4)
       const diagnostic = await session.transport.notification("textDocument/publishDiagnostics",
         message => message.params.uri === uri("Use.ets") && message.params.version === 2, 10_000)
       assert.deepEqual(diagnostic.params.diagnostics, [])
       assert.deepEqual((await session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })
     }
   })
+
+function assertFreshOwnerRecovery(actual, projectFiles) {
+  const queryAt = actual.findIndex(event => event.event === "semantic.references.complete")
+  assert.ok(queryAt >= 0, "a real full compiler query must establish a new observation")
+  assert.equal(actual[queryAt].programProjectFiles, projectFiles)
+  assert.ok(actual[queryAt].sdkSourceFiles > 0, "the new proof retains loaded SDK coverage")
+  assert.ok(!actual.slice(0, queryAt).some(event => event.event === "references.resident.hit"),
+    "the disproved old observation cannot produce a hit before current compiler work")
+  assert.ok(!actual.some(event => event.event === "references.batch.start"
+    || event.event === "references.candidate-selection.complete"), "complete owner recovery needs no cold verifier or index")
+  return actual[queryAt]
+}
 
 async function startOverlayFixture(t, { warm = false, benchmark = false, files = {}, overlaySync = "1" } = {}) {
   const source = "export class TargetThing {}\n"

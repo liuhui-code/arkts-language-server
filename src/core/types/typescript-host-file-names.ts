@@ -12,3 +12,10 @@ export function compilerHostFileNames(
   ))
   return extras.length === 0 ? membershipFiles : [...extras, ...membershipFiles]
 }
+
+/** Semantic groups and complete inferred projects retain their own legal root list. */
+export function membershipHostFileNames(semanticRoots: ReadonlySet<string> | undefined,
+  membershipComplete: boolean, membershipPaths: ReadonlySet<string>, sdkPaths: readonly string[]): string[] {
+  const roots = semanticRoots ?? (membershipComplete ? membershipPaths : new Set<string>())
+  return [...roots, ...sdkPaths.filter(filePath => !roots.has(filePath))]
+}

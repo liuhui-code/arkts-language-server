@@ -1,4 +1,18 @@
-import type { SemanticWorkerPosition, SemanticWorkerReferencesArgs } from "./worker-protocol.js"
+import type { SemanticWorkerPosition } from "./worker-protocol.js"
+
+export interface SemanticWorkerReferencesArgs {
+  readonly position: SemanticWorkerPosition
+  readonly includeDeclaration: boolean
+  readonly residentOnly?: boolean
+  readonly retainedOnly?: boolean
+  readonly traceId?: string
+  readonly forceLegacy?: boolean
+  readonly candidateUris?: readonly string[]
+  readonly candidateIdentityComplete?: boolean
+  readonly candidateAnchorUri?: string
+  readonly candidateAnchorPosition?: SemanticWorkerPosition
+  readonly candidateSupportUris?: readonly string[]
+}
 
 interface ReferenceArgsValidation {
   record(value: unknown, required: readonly string[], optional: readonly string[]): Record<string, unknown> | undefined
@@ -13,20 +27,21 @@ export function decodeReferencesArgs(value: unknown, validation: ReferenceArgsVa
   const args = ownDataRecord(
     value,
     ["position", "includeDeclaration"],
-    ["candidateUris", "candidateIdentityComplete", "candidateAnchorUri", "candidateAnchorPosition", "candidateSupportUris", "forceLegacy", "traceId", "residentOnly"],
+    ["candidateUris", "candidateIdentityComplete", "candidateAnchorUri", "candidateAnchorPosition", "candidateSupportUris", "forceLegacy", "traceId", "residentOnly", "retainedOnly"],
   )
   if (!args || !hasRequiredAndOnlyKeys(
     args,
     ["position", "includeDeclaration"],
-    ["candidateUris", "candidateIdentityComplete", "candidateAnchorUri", "candidateAnchorPosition", "candidateSupportUris", "forceLegacy", "traceId", "residentOnly"],
+    ["candidateUris", "candidateIdentityComplete", "candidateAnchorUri", "candidateAnchorPosition", "candidateSupportUris", "forceLegacy", "traceId", "residentOnly", "retainedOnly"],
   )) {
     throw invalidRequest()
   }
   const position = decodePosition(args.position)
   if (typeof args.includeDeclaration !== "boolean") throw invalidRequest()
   if (Object.hasOwn(args, "residentOnly") && typeof args.residentOnly !== "boolean") throw invalidRequest()
-  if (args.residentOnly === true && Object.keys(args).some(key =>
-    !["position", "includeDeclaration", "residentOnly", "traceId"].includes(key))) throw invalidRequest()
+  if (Object.hasOwn(args, "retainedOnly") && typeof args.retainedOnly !== "boolean") throw invalidRequest()
+  if ((args.residentOnly === true || args.retainedOnly === true) && Object.keys(args).some(key =>
+    !["position", "includeDeclaration", args.retainedOnly === true ? "retainedOnly" : "residentOnly", "traceId"].includes(key))) throw invalidRequest()
   if (Object.hasOwn(args, "traceId")
     && (typeof args.traceId !== "string" || !/^[0-9a-f-]{36}$/.test(args.traceId))) {
     throw invalidRequest()
@@ -73,6 +88,7 @@ export function decodeReferencesArgs(value: unknown, validation: ReferenceArgsVa
     position,
     includeDeclaration: args.includeDeclaration,
     ...(Object.hasOwn(args, "residentOnly") ? { residentOnly: args.residentOnly as boolean } : {}),
+    ...(Object.hasOwn(args, "retainedOnly") ? { retainedOnly: args.retainedOnly as boolean } : {}),
     ...(Object.hasOwn(args, "traceId") ? { traceId: args.traceId as string } : {}),
     ...(Object.hasOwn(args, "forceLegacy") ? { forceLegacy: args.forceLegacy as boolean } : {}),
     ...(candidateUris ? { candidateUris } : {}),

@@ -3,7 +3,7 @@ import type { TypeScriptSdkAmbientProfile } from "../core/types/typescript-langu
 export interface InteractiveSemanticRuntimeConfig {
   readonly sdkAmbientProfile: Extract<TypeScriptSdkAmbientProfile, "full" | "core">
   readonly projectRootProfile: "closure" | "current"
-  readonly memberCompletionProjectRootProfile: "workspace" | "current"
+  readonly memberCompletionProjectRootProfile: "group" | "workspace" | "current"
   readonly autoImportProjectRootProfile: "workspace" | "discovery"
   readonly autoImportBatchRootLimit: number
   readonly autoImportTrimBetweenBatches: boolean
@@ -24,13 +24,14 @@ export function interactiveSemanticRuntimeConfig(
     throw new Error("ARKTS_INTERACTIVE_PROJECT_ROOT_PROFILE must be closure or current")
   }
   const memberCompletionProjectRootProfile = environment.ARKTS_MEMBER_COMPLETION_PROJECT_ROOT_PROFILE
-    ?? "workspace"
+    ?? "group"
   if (
-    memberCompletionProjectRootProfile !== "workspace"
+    memberCompletionProjectRootProfile !== "group"
+    && memberCompletionProjectRootProfile !== "workspace"
     && memberCompletionProjectRootProfile !== "current"
   ) {
     throw new Error(
-      "ARKTS_MEMBER_COMPLETION_PROJECT_ROOT_PROFILE must be workspace or current",
+      "ARKTS_MEMBER_COMPLETION_PROJECT_ROOT_PROFILE must be group, workspace or current",
     )
   }
   const autoImportProjectRootProfile = environment.ARKTS_AUTO_IMPORT_PROJECT_ROOT_PROFILE

@@ -13,9 +13,13 @@ interface RootChanges {
   removed: Set<string>
   span?: Omit<WorkspaceContentDelta, "changedPaths">
   spanBlocked?: boolean
+  history: readonly WorkspaceContentDelta[]
 }
 
-/** Owns the store's bounded one-shot deltas and durable revision/reset fences. */
+const EMPTY_HISTORY: readonly WorkspaceContentDelta[] = Object.freeze([])
+const MAX_DELTA_HISTORY = 32
+
+/** One-shot notifications and bounded immutable metadata for independent retained consumers. */
 export class WorkspaceContentChanges {
   private readonly roots = new Map<string, RootChanges>()
 
@@ -28,6 +32,7 @@ export class WorkspaceContentChanges {
       || (changes.span && changes.span.rootPath !== compatibleLexicalRoot)) {
       changes.span = undefined
       changes.spanBlocked = true
+      changes.history = EMPTY_HISTORY
       return
     }
     changes.span = { rootPath: compatibleLexicalRoot,
@@ -43,6 +48,7 @@ export class WorkspaceContentChanges {
     if (changes.resetRequested) return
     changes.resetRequested = true
     changes.resetEpoch += 1
+    changes.history = EMPTY_HISTORY
   }
 
   markRemoved(root: string, filePath: string): void {
@@ -66,6 +72,17 @@ export class WorkspaceContentChanges {
         : undefined,
     }
     if (changes) {
+      if (result.contentDelta) {
+        const previous = changes.history.at(-1)
+        const history = previous && (previous.toRevision !== result.contentDelta.fromRevision
+          || previous.rootPath !== result.contentDelta.rootPath) ? [] : [...changes.history]
+        history.push(result.contentDelta)
+        let paths = history.reduce((total, delta) => total + delta.changedPaths.length, 0)
+        while (history.length > MAX_DELTA_HISTORY || paths > this.maxChanged) {
+          paths -= history.shift()!.changedPaths.length
+        }
+        changes.history = Object.freeze(history)
+      }
       changes.changed.clear()
       changes.removed.clear()
       changes.resetRequested = false
@@ -73,6 +90,10 @@ export class WorkspaceContentChanges {
       changes.spanBlocked = false
     }
     return result
+  }
+
+  history(root: string): readonly WorkspaceContentDelta[] {
+    return this.roots.get(root)?.history ?? EMPTY_HISTORY
   }
 
   clear(): void {
@@ -95,7 +116,7 @@ export class WorkspaceContentChanges {
     let changes = this.roots.get(root)
     if (!changes) {
       changes = { revision: 0, resetEpoch: 0, resetRequested: false,
-        changed: new Set(), removed: new Set() }
+        changed: new Set(), removed: new Set(), history: EMPTY_HISTORY }
       this.roots.set(root, changes)
     }
     return changes

@@ -314,9 +314,9 @@ function invoke(
       : engine.define({ document, position: request.args.position, signal }))
     case "typeDefinitions": return valueOf(engine.typeDefinitions({ document, position: request.args.position, signal }))
     case "implementations": return valueOf(engine.implementations({ document, position: request.args.position, signal }))
-    case "references": return request.args.residentOnly === true ? valueOf(engine.residentReferences({
+    case "references": return request.args.residentOnly === true || request.args.retainedOnly === true ? valueOf(engine.residentReferences({
       document, position: request.args.position, includeDeclaration: request.args.includeDeclaration, signal,
-    })) : valueOf(engine.referencesWithCandidates({
+    }, request.args.retainedOnly === true)) : valueOf(engine.referencesWithCandidates({
       document,
       position: request.args.position,
       includeDeclaration: request.args.includeDeclaration,

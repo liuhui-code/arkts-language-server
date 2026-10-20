@@ -243,7 +243,8 @@ test("owner layer probe keeps the real indexed Worker path, full scope and snaps
       position: { line: 0, character: 14 }, oracle: { path: oracle, sha256: sha256File(oracle), verified: true } }
     fixture.suite.server = path.resolve("dist/server.cjs")
     fixture.suite.sidecar = sidecar
-    fixture.suite.runtime = { ...fixture.suite.runtime, env: {}, timeoutMs: 10_000 }
+    fixture.suite.runtime = { ...fixture.suite.runtime,
+      env: { ARKTS_REFERENCES_RESIDENT_FIRST: "0" }, timeoutMs: 10_000 }
     fixture.suite.pins = await capturePreparedIdentity(fixture.suite)
     saveSuite(fixture)
     const result = spawnSync(process.execPath, [runner, "--layer", "owner",

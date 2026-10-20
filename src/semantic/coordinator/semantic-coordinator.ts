@@ -14,7 +14,7 @@ export interface SemanticManagedContext {
 }
 
 export interface SemanticCoordinatorOptions<Context extends SemanticManagedContext> {
-  readonly maxResidentContexts: number
+  readonly maxResidentContexts?: number | null
   readonly costAwareEviction?: boolean
   readonly readMemoryPressure?: () => SemanticMemoryLevel
   /** A separate serial slot shares pressure accounting but cannot flush interaction recency. */
@@ -44,7 +44,7 @@ interface ResidentContext<Context> {
 }
 
 export class SemanticCoordinator<Context extends SemanticManagedContext> {
-  readonly #maxResidentContexts: number
+  readonly #maxResidentContexts: number | null
   readonly #costAwareEviction: boolean
   readonly #readMemoryPressure: SemanticCoordinatorOptions<Context>["readMemoryPressure"]
   readonly #createContext: (contextId: string) => Context
@@ -55,10 +55,11 @@ export class SemanticCoordinator<Context extends SemanticManagedContext> {
   #creationClock = 0
 
   constructor(options: SemanticCoordinatorOptions<Context>) {
-    if (!Number.isSafeInteger(options.maxResidentContexts) || options.maxResidentContexts < 1) {
+    if (options.maxResidentContexts != null
+      && (!Number.isSafeInteger(options.maxResidentContexts) || options.maxResidentContexts < 1)) {
       throw new Error("maxResidentContexts must be a positive integer")
     }
-    this.#maxResidentContexts = options.maxResidentContexts
+    this.#maxResidentContexts = options.maxResidentContexts ?? null
     this.#costAwareEviction = options.costAwareEviction === true
     this.#readMemoryPressure = options.readMemoryPressure
     this.#createContext = options.createContext
@@ -120,6 +121,7 @@ export class SemanticCoordinator<Context extends SemanticManagedContext> {
 
   applyMemoryPressure(level: SemanticMemoryLevel): SemanticMemoryLevel {
     if (level === "level0" || level === "level1") return level
+    const requestedLevel = level
     const candidates = this.#coldUnleasedContexts()
     if (level === "level3") this.#rankByRebuildCost(candidates)
     for (const [contextId, resident] of candidates) {
@@ -129,12 +131,10 @@ export class SemanticCoordinator<Context extends SemanticManagedContext> {
           resident.trimmed = true
           this.#observe("trim", resident, "memory-level2")
         }
-        continue
-      }
-      this.#evict(contextId, resident, "memory-level3")
+      } else this.#evict(contextId, resident, "memory-level3")
       if (this.#readMemoryPressure) {
         level = this.#readMemoryPressure()
-        if (level !== "level3") break
+        if (level !== requestedLevel) break
       }
     }
     return level
@@ -169,6 +169,7 @@ export class SemanticCoordinator<Context extends SemanticManagedContext> {
   }
 
   #makeRoom(contextId: string): void {
+    if (this.#maxResidentContexts === null) return
     const scan = this.#isScanContext(contextId)
     const inPool = (id: string) => this.#isScanContext(id) === scan
     const limit = scan ? 1 : this.#maxResidentContexts

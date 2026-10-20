@@ -25,9 +25,9 @@ interface ReferenceQueryRoute {
 export async function routeReferenceQuery(query: SemanticReferencesQuery, route: ReferenceQueryRoute) {
   const base = { position: query.position, includeDeclaration: query.includeDeclaration,
     ...(route.traceId ? { traceId: route.traceId } : {}) }
-  if (route.preferResident && route.strategy !== "legacy" && !route.forceLegacy()) {
+  if (route.preferResident && route.strategy !== "legacy") {
     route.assertCurrent()
-    const resident = await route.dispatch({ ...base, residentOnly: true })
+    const resident = await route.dispatch({ ...base, retainedOnly: true })
     route.assertCurrent()
     if (resident.value !== null) return publishReferenceResult(query,
       { documentVersion: resident.documentVersion, value: resident.value }, route)

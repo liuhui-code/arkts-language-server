@@ -3,7 +3,8 @@ import committedConfig from "../../../config/semantic-runtime.json" assert { typ
 export interface SemanticRuntimeConfig {
   readonly schemaVersion: 1
   readonly semanticWorkers: 1
-  readonly maxResidentContexts: number
+  /** null selects pressure-managed retention; finite limits remain for isolated controls. */
+  readonly maxResidentContexts: number | null
   readonly defaultMemoryBudgetMiB: number
   readonly sampleIntervalMs: number
   readonly level1Ratio: number
@@ -22,7 +23,8 @@ export function semanticRuntimeConfig(
   if (!Number.isFinite(budgetMiB) || budgetMiB <= 0) {
     throw new Error("ARKTS_MEMORY_BUDGET_MB must be a positive number")
   }
-  if (committedConfig.semanticWorkers !== 1 || committedConfig.maxResidentContexts > 2) {
+  if (committedConfig.semanticWorkers !== 1 || (committedConfig.maxResidentContexts !== null
+    && (!Number.isSafeInteger(committedConfig.maxResidentContexts) || committedConfig.maxResidentContexts < 1))) {
     throw new Error("semantic runtime configuration exceeds the production ownership bounds")
   }
   return Object.freeze({

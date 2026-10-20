@@ -174,10 +174,10 @@ test("observed compiler rebuild costs stay attached to the leased context withou
   })
 
 for (const [name, benchmarkControl, costFlag, rearmFlag] of [
-  ["capacity eviction stays LRU with cost observation and preserves every latest overlay", "1", "1", "1"],
-  ["capacity eviction stays LRU without cost opt-in", "1", "0", "1"],
-  ["default capacity eviction stays LRU without benchmark control", "0", undefined, "1"],
-  ["capacity LRU observes builds without enabling L2 rearm", "1", "1", "0"],
+  ["normal pressure retains all owners with cost observation and preserves every latest overlay", "1", "1", "1"],
+  ["normal pressure retains all owners without cost opt-in", "1", "0", "1"],
+  ["default normal pressure retains all owners without benchmark control", "0", undefined, "1"],
+  ["normal retention observes builds without enabling L2 rearm", "1", "1", "0"],
 ]) {
   const observesCost = (costFlag ?? "1") === "1"
   test(name,
@@ -256,10 +256,7 @@ for (const [name, benchmarkControl, costFlag, rearmFlag] of [
       await open(roots[2])
       const evicted = events().slice(capacityFence).find(event => event.event === "semantic.context.evict"
         && event.reason.startsWith("capacity-"))
-      assert.ok(evicted)
-      assert.equal(evicted.contextSequence, roots[expensiveIndex].sequence,
-        "recency determines the victim regardless of observed rebuild cost")
-      assert.equal(evicted.reason, "capacity-lru")
+      assert.equal(evicted, undefined, "normal pressure must not impose a two-owner capacity")
       const before = events().filter(event => event.event === "semantic.context.create").length
       await define(roots[cheapIndex])
       assert.equal(events().filter(event => event.event === "semantic.context.create").length, before,
@@ -280,7 +277,7 @@ for (const [name, benchmarkControl, costFlag, rearmFlag] of [
           (root === edited ? [0, 1, 2, 3] : [0, 1, 2]).map(line => registryLocation(root, line)))
       }
       assert.ok(events().filter(event => event.event === "semantic.context.create")
-        .every(event => event.residentContextCount <= 2))
+        .every(event => event.residentContextCount <= roots.length))
       if (observesCost && rearmFlag === "0") {
         await define(roots[2])
         const pressure = async () => {

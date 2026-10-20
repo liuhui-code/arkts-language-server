@@ -11,6 +11,7 @@ import type { ProjectSdkSelection } from "../sdk/project-sdk.js"
 import type { ProjectMembershipSnapshot, SemanticWorkspaceView } from "../workspace/document-store.js"
 import { compilerArtifactIdentity } from "./typescript-compiler-artifact.js"
 import { TypeScriptResidentReferenceState } from "./typescript-resident-reference-state.js"
+import { initialPreparationActive } from "../../semantic/coordinator/initial-preparation.js"
 
 const programIds = new WeakMap<ts.Program, string>()
 const MISSING_INPUT_DIAGNOSTICS = new Set([2307, 2318, 2688, 2792, 6053, 5083])
@@ -33,6 +34,7 @@ interface ReadinessPreparation {
   readonly cancellation: ts.HostCancellationToken | undefined
   readonly residentProofOwner?: object
   readonly trace?: ReadinessTrace
+  readonly onProgramPrepared?: () => void
 }
 
 /** A witness of the owner's existing Program; no LS, source cache or scheduler. */
@@ -45,10 +47,16 @@ export interface OfficialReadinessObservation {
 export class OfficialReadinessState {
   private observation: OfficialReadinessObservation | SemanticReadinessReport | undefined
   private queryRefreshEnabled = false
+  private programPrepared = false
 
   constructor(private readonly onPreparedProof?: (proof: TypeScriptResidentReferenceState | undefined) => void) {}
 
   get refreshRequested(): boolean { return this.queryRefreshEnabled }
+  get hasPreparedProgram(): boolean { return this.programPrepared }
+  get preparedGeneration(): number | undefined {
+    return this.observation && "proof" in this.observation
+      ? this.observation.report.inputIdentity?.engineGeneration : undefined
+  }
 
   /** Transfers intent only; replacement owners still have no prepared observation. */
   restoreQueryRefresh(): void { this.queryRefreshEnabled = true }
@@ -56,12 +64,15 @@ export class OfficialReadinessState {
   clear(): void {
     this.observation = undefined
     this.queryRefreshEnabled = false
+    this.programPrepared = false
     this.onPreparedProof?.(undefined)
   }
 
   prepare(input: ReadinessPreparation): SemanticReadinessReport {
     this.clear()
-    this.observation = prepareOfficialReadiness(input)
+    let observed = false
+    this.observation = prepareOfficialReadiness({ ...input, onProgramPrepared: () => { observed = true } })
+    this.programPrepared = observed
     this.queryRefreshEnabled = "proof" in this.observation
     if ("proof" in this.observation) this.onPreparedProof?.(this.observation.proof)
     return "proof" in this.observation ? this.observation.report : this.observation
@@ -140,6 +151,10 @@ export function prepareOfficialReadiness(input: ReadinessPreparation): OfficialR
   checkpoint()
   if (!program) return unavailable("program-unavailable")
   program.getTypeChecker()
+  input.onProgramPrepared?.()
+  // Initial preparation owns loaded-byte validation even if a missing input
+  // later prevents READY. This seeds facts only, never a readiness certificate.
+  if (initialPreparationActive()) observePreparedInputs(input, program, checkpoint)
   const sources = program.getSourceFiles()
   const firstMissingInput = (diagnostics: readonly ts.Diagnostic[]) =>
     diagnostics.find(diagnostic => MISSING_INPUT_DIAGNOSTICS.has(diagnostic.code))
@@ -154,13 +169,7 @@ export function prepareOfficialReadiness(input: ReadinessPreparation): OfficialR
     const missing = firstMissingInput(checkInput(program, source, cancellation, input.trace))
     if (missing) return unavailable("dependency-inputs-incomplete", missing)
   }
-  const proof = new TypeScriptResidentReferenceState(input.sdkRoots, input.readSourceFile, checkpoint, () => {
-    const compiler = input.witness?.freshness(checkpoint, "capture")
-    const packages = input.resolver.configurationFreshness(workspace.rootPath, checkpoint, "capture")
-    return compiler && packages ? () => compiler() && packages() : undefined
-  }, undefined, input.residentProofOwner)
-  proof.prepare(workspace, input.generation, input.roots)
-  proof.observe(program)
+  const proof = observePreparedInputs(input, program, checkpoint)
   if (proof.admit({ ...workspace, resetTypeEngine: false }, input.generation, input.roots) !== program) {
     return unavailable("current-program-inputs-unproven")
   }
@@ -199,6 +208,17 @@ export function prepareOfficialReadiness(input: ReadinessPreparation): OfficialR
   }
   programIds.set(program, programId)
   return { proof, report }
+}
+
+function observePreparedInputs(input: ReadinessPreparation, program: ts.Program, checkpoint: () => void) {
+  const proof = new TypeScriptResidentReferenceState(input.sdkRoots, input.readSourceFile, checkpoint, () => {
+    const compiler = input.witness?.freshness(checkpoint, "capture")
+    const packages = input.resolver.configurationFreshness(input.workspace.rootPath, checkpoint, "capture")
+    return compiler && packages ? () => compiler() && packages() : undefined
+  }, undefined, input.residentProofOwner)
+  proof.prepare(input.workspace, input.generation, input.roots)
+  proof.observe(program)
+  return proof
 }
 
 /** Observe actual dependency checking, never position/symbol answer prequeries. */

@@ -6,6 +6,43 @@ import { pathToFileURL } from "node:url"
 import { createReadinessFixture, startReadinessFixture } from "../support/semantic-readiness-lsp.mjs"
 import { positionAt } from "../support/resident-interactive-lsp.mjs"
 
+test("initial preparation covers every selected semantic group before a first query of the last module",
+  { timeout: 30_000 }, async t => {
+    const { session, workspace, rootUri, sdk, events, uri } = createReadinessFixture(t, {
+      ARKTS_MEMORY_BUDGET_MB: "4096", ARKTS_BENCHMARK_CONTROL: "0" })
+    const modules = Array.from({ length: 5 }, (_, index) => `module${index}`)
+    fs.writeFileSync(path.join(workspace, "build-profile.json5"), JSON.stringify({
+      app: { products: [{ name: "default" }] }, modules: modules.map(name => ({
+        name, srcPath: `./${name}`, targets: [{ name: "default", applyToProducts: ["default"] }] })) }))
+    for (const [index, module] of modules.entries()) {
+      const directory = path.join(workspace, module)
+      fs.mkdirSync(path.join(directory, "src/main/ets"), { recursive: true })
+      fs.writeFileSync(path.join(directory, "build-profile.json5"), "{targets:[{name:'default'}]}")
+      fs.writeFileSync(path.join(directory, "oh-package.json5"), JSON.stringify({
+        name: module, main: "./src/main/ets/Local.ets", dependencies: {} }))
+      fs.writeFileSync(path.join(directory, "src/main/ets/Local.ets"), `export class Local${index} { value: number = ${index} }\n`)
+      fs.writeFileSync(path.join(directory, "src/main/ets/Query.ets"),
+        `import { Local${index} } from './Local'\nexport const selected = new Local${index}()\n`)
+    }
+    await session.initialize({ initializationOptions: { sdk: { path: sdk } }, timeoutMs: 10_000 })
+    const prepared = await session.transport.notification("arkts/semanticPreparation",
+      message => message.params.rootUri === rootUri && message.params.phase === "complete", 10_000)
+    assert.equal(prepared.params.report.semanticState, "ready", JSON.stringify(prepared.params))
+    const created = events().filter(row => row.event === "semantic.context.create").length
+    assert.equal(created, 6, "all five configured groups and the complete owner are initialized, without an arbitrary two-group limit")
+    assert.ok(!events().some(row => row.event.endsWith("compiler-query.start")), "initialization does not prequery a target")
+    const file = "module4/src/main/ets/Query.ets", text = fs.readFileSync(path.join(workspace, file), "utf8")
+    session.openDocument({ uri: uri(file), version: 1, text })
+    const response = await session.request("textDocument/definition", { textDocument: { uri: uri(file) },
+      position: positionAt(text, text.lastIndexOf("Local4") + 1) })
+    assert.equal(response.error, undefined, JSON.stringify(response))
+    assert.deepEqual(response.result, [{ uri: uri("module4/src/main/ets/Local.ets"), range: {
+      start: { line: 0, character: 13 }, end: { line: 0, character: 19 } } }])
+    assert.equal(events().filter(row => row.event === "semantic.context.create").length, created,
+      "the first random query of the last module synchronizes its initialized language service")
+    assert.deepEqual((await session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })
+  })
+
 test("project initialization prepares real semantics automatically despite a one MiB pressure setting",
   { timeout: 30_000 }, async t => {
     const fixture = createReadinessFixture(t, { ARKTS_MEMORY_BUDGET_MB: "1", ARKTS_BENCHMARK_CONTROL: "0" })
@@ -30,6 +67,25 @@ test("project initialization prepares real semantics automatically despite a one
     assert.deepEqual(status.result.unavailableReasons, ["resource-budget-exceeded"])
     const later = await session.request("arkts/semanticReadiness", { rootUri, prepare: true })
     assert.equal(later.result.semanticState, "degraded", "ordinary recovery does not renew the initialization exemption")
+    assert.deepEqual((await session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })
+  })
+
+test("a degraded first preparation consumes its pressure exemption before a recovery request",
+  { timeout: 30_000 }, async t => {
+    const { session, rootUri, sdk, workspace } = createReadinessFixture(t, {
+      ARKTS_MEMORY_BUDGET_MB: "1", ARKTS_BENCHMARK_CONTROL: "0" })
+    fs.writeFileSync(path.join(workspace, "Missing.ets"), 'import value from "@ohos.missing"\nexport { value }\n')
+    await session.initialize({ initializationOptions: { sdk: { path: sdk } }, timeoutMs: 10_000 })
+    const complete = await session.transport.notification("arkts/semanticPreparation",
+      message => message.params.rootUri === rootUri && message.params.phase === "complete", 10_000)
+    assert.equal(complete.params.report.semanticState, "degraded")
+    assert.deepEqual(complete.params.report.unavailableReasons, ["dependency-inputs-incomplete"],
+      "the first attempt must finish the real compiler preparation above the pressure budget")
+    const recovery = await session.request("arkts/semanticReadiness", { rootUri, prepare: true })
+    assert.equal(recovery.error, undefined, JSON.stringify(recovery))
+    assert.equal(recovery.result.semanticState, "degraded")
+    assert.deepEqual(recovery.result.unavailableReasons, ["resource-budget-exceeded"],
+      "missing inputs must not grant every recovery another pressure-exempt initialization")
     assert.deepEqual((await session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })
   })
 

@@ -1,7 +1,7 @@
 import type { SemanticDefinitionCandidate, SemanticDocumentPosition } from "../../core/protocol.js"
 import type { SemanticWorkspaceView } from "../../core/workspace/document-store.js"
 import type { ReferenceBatchVerification } from "./reference-search-executor.js"
-import type { ReferenceSdkAmbientProfile } from "./reference-runtime.js"
+import type { ReferenceSdkAmbientProfile, ReferenceSearchRuntimeConfig } from "./reference-runtime.js"
 import type { TransientSemanticWorkerObserver } from "../transient-worker-lifecycle.js"
 import { ReferenceVerifierClient } from "./reference-verifier-client.js"
 
@@ -24,6 +24,20 @@ export interface ReferenceBatchWorkerOptions {
   readonly tolerateUnadmittedProjectDependencies?: boolean
   readonly constructorScope?: boolean
   readonly onTransientWorker?: TransientSemanticWorkerObserver
+}
+
+/** Keep the fallback's configuration and cancellation ownership in one adapter. */
+export function referenceWorkerOptions(client: ReferenceVerifierClient,
+  projectConfiguration: unknown, sdkConfiguration: unknown, options: {
+    readonly references?: Pick<ReferenceSearchRuntimeConfig, "sdkAmbientProfile" | "trace">
+    readonly onTransientWorker?: TransientSemanticWorkerObserver
+    readonly hostCancellationToken?: { isCancellationRequested(): boolean }
+  }): ReferenceBatchWorkerOptions {
+  return { client, projectConfiguration, sdkConfiguration,
+    sdkAmbientProfile: options.references?.sdkAmbientProfile,
+    trace: options.references?.trace, onTransientWorker: options.onTransientWorker,
+    isCancellationRequested: options.hostCancellationToken
+      ? () => options.hostCancellationToken?.isCancellationRequested() === true : undefined }
 }
 
 export async function verifyReferenceBatchInWorker(
