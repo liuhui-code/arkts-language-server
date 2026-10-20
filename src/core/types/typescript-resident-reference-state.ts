@@ -1,9 +1,11 @@
 import { createHash } from "node:crypto"
-import fs from "node:fs"
 import path from "node:path"
 import type ts from "typescript"
 
 import type { SemanticWorkspaceView } from "../workspace/document-store.js"
+import { diskIdentity } from "../../project/source-file-identity.js"
+import { compilerSourceReadFacts, type CompilerSourceReadFacts, type SourceTextEvidence } from "./compiler-source-snapshots.js"
+import { requestFileIdentity, validateRequestInput } from "../../project/request-input-validation.js"
 
 interface ResidentInputs {
   readonly signature: string
@@ -34,6 +36,10 @@ export class TypeScriptResidentReferenceState {
   private prepared: ResidentInputs | undefined
   private observation: ResidentObservation | undefined
   private observationFailure = "program-unobserved"
+  private readonly sourceEvidence: WeakMap<ts.SourceFile, SourceTextEvidence>
+  private readonly readFacts: CompilerSourceReadFacts
+
+  get hasObservedProgram(): boolean { return this.observation !== undefined }
 
   constructor(
     private readonly sdkRoots: readonly string[],
@@ -42,7 +48,10 @@ export class TypeScriptResidentReferenceState {
     private readonly configurationFreshness: () => (() => boolean) | undefined,
     private readonly onFailure?: (failure: ResidentReferenceProofFailure) => void,
     private readonly owner?: object,
-  ) {}
+  ) {
+    this.readFacts = compilerSourceReadFacts(readSourceFile)
+    this.sourceEvidence = this.readFacts.text
+  }
 
   prepare(workspace: SemanticWorkspaceView, generation: number, roots: readonly string[]): void {
     const prepared = inputsFor(workspace, generation, roots, this.sdkRoots)
@@ -60,8 +69,13 @@ export class TypeScriptResidentReferenceState {
     this.observationFailure = "program-unobserved"
   }
 
-  captureCurrentProgram(service: Pick<ts.LanguageService, "getProgram">): void {
-    this.observe(service.getProgram())
+  captureCurrentProgram(service: Pick<ts.LanguageService, "getProgram">, requireAdmission = false): ts.Program | undefined {
+    const program = service.getProgram()
+    this.observe(program)
+    if (this.observation?.program !== program) return undefined
+    if (!requireAdmission) return program
+    const observation = this.currentObservation()
+    return observation && this.prepared ? this.admitInputs(observation, this.prepared, fingerprint) : undefined
   }
 
   /** Copy immutable proof metadata only; admission and invalidation stay independent. */
@@ -134,18 +148,24 @@ export class TypeScriptResidentReferenceState {
         return this.rejectObservation("overlay-content-mismatch", filePath)
       }
       if (document?.overlay) continue
-      const before = diskIdentity(filePath)
+      const before = requestFileIdentity(filePath, () => diskIdentity(filePath))
       if (!before) return this.rejectObservation("disk-source-unavailable", filePath)
       if (prepared.aliases.has(before.physicalPath)
         && prepared.aliases.get(before.physicalPath) !== filePath) {
         return this.rejectObservation("source-alias-conflict", filePath)
       }
-      // A fresh stat cannot certify stale compiler text. Compare the actual
-      // loaded Program against the current bounded disk authority first.
-      const currentText = this.readSourceFile(filePath)
-      this.checkpoint()
-      if (currentText !== source.text) return this.rejectObservation("disk-content-mismatch", filePath)
-      if (diskIdentity(filePath)?.stamp !== before.stamp) return this.rejectObservation("disk-source-changed", filePath)
+      // Only the exact SourceFile/text previously read between matching disk
+      // identities can reuse that evidence. A current stat alone proves nothing.
+      const known = this.sourceEvidence.get(source)
+      if (!known || known.stamp !== before.stamp || known.text !== source.text) {
+        const currentText = this.readSourceFile(filePath)
+        this.checkpoint()
+        if (currentText !== source.text) return this.rejectObservation("disk-content-mismatch", filePath)
+        if (diskIdentity(filePath)?.stamp !== before.stamp) return this.rejectObservation("disk-source-changed", filePath)
+      }
+      // A reused read fact has no intervening read to bracket. Current admission
+      // and the independent final union still recheck every observed disk input.
+      this.readFacts.remember(source, before)
       identities.push([filePath, before.stamp])
     }
     this.checkpoint()
@@ -159,13 +179,25 @@ export class TypeScriptResidentReferenceState {
     const observation = this.observation
     if (!observation) { this.reject("admit", this.observationFailure); return undefined }
     if (workspace.resetTypeEngine) { this.reject("admit", "reset-required"); return undefined }
+    if (!this.currentObservation()) return undefined
+    const current = inputsFor(workspace, generation, roots, this.sdkRoots, fingerprintText)
+    if (!current) { this.reject("admit", "inputs-incomplete"); return undefined }
+    return this.admitInputs(observation, current, fingerprintText)
+  }
+
+  private currentObservation(): ResidentObservation | undefined {
+    const observation = this.observation
+    if (!observation) { this.reject("admit", this.observationFailure); return undefined }
     if (!observation.configurationCurrent()) {
       this.observation = undefined
       this.reject("admit", "configuration-changed")
       return undefined
     }
-    const current = inputsFor(workspace, generation, roots, this.sdkRoots, fingerprintText)
-    if (!current) { this.reject("admit", "inputs-incomplete"); return undefined }
+    return observation
+  }
+
+  private admitInputs(observation: ResidentObservation, current: ResidentInputs,
+    fingerprintText: (content: string) => string): ts.Program | undefined {
     if (current.signature !== observation.signature) {
       this.reject("admit", "inputs-changed")
       // A disproved observation cannot certify this input again on the fallback RPC.
@@ -186,16 +218,23 @@ export class TypeScriptResidentReferenceState {
         return undefined
       }
     }
+    if (!validateRequestInput(observation, 0, 0, () => this.diskInputsCurrent(observation))) return undefined
+    this.checkpoint()
+    return observation.program
+  }
+
+  /** Immutable observed inputs join the same uncached final fence as configuration witnesses. */
+  private diskInputsCurrent(observation: ResidentObservation): boolean {
     for (const [filePath, stamp] of observation.diskIdentities) {
       this.checkpoint()
-      if (diskIdentity(filePath)?.stamp !== stamp) {
+      if (requestFileIdentity(filePath, () => diskIdentity(filePath))?.stamp !== stamp) {
         this.observation = undefined
         this.reject("admit", "disk-source-changed", filePath)
-        return undefined
+        return false
       }
     }
     this.checkpoint()
-    return observation.program
+    return true
   }
 
   private rejectObservation(reason: string, sourcePath?: string): void {
@@ -260,17 +299,4 @@ function normalizedPaths(paths: readonly string[]): string[] {
 
 function fingerprint(content: string): string {
   return createHash("sha256").update(content).digest("hex")
-}
-
-function diskIdentity(filePath: string): { readonly physicalPath: string; readonly stamp: string } | undefined {
-  try {
-    if (!fs.lstatSync(filePath).isFile()) return undefined
-    const physicalPath = fs.realpathSync.native(filePath)
-    const stat = fs.statSync(filePath)
-    if (!stat.isFile()) return undefined
-    return { physicalPath,
-      stamp: JSON.stringify([physicalPath, stat.dev, stat.ino, stat.size, stat.mtimeMs, stat.ctimeMs]) }
-  } catch {
-    return undefined
-  }
 }

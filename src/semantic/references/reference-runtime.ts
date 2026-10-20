@@ -22,8 +22,8 @@ export interface ReferenceSearchRuntimeConfig {
   readonly l03CostAwareEviction?: boolean
 }
 
-const DEFAULT_BATCH_ROOT_LIMIT = 64
-const MAX_BATCH_ROOT_LIMIT = 512
+const DEFAULT_BATCH_ROOT_LIMIT = 1024
+const MAX_BATCH_ROOT_LIMIT = 2048
 
 export function referenceSearchRuntimeConfig(
   environment: NodeJS.ProcessEnv = process.env,

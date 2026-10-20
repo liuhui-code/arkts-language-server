@@ -1,7 +1,8 @@
 import { canonicalWorkerFileUri, workerUriWithinRoot as isUriWithinRoot } from "./semantic-worker-uri.js"
 import { admitsWorkerDiskSource, decodeWorkerDiskSource, type SemanticWorkerDiskSource } from "./semantic-worker-disk-source.js"
 import { readOwnDataRecord } from "./semantic-worker-record.js"
-import { decodeReferencesArgs } from "./semantic-worker-reference-args.js"
+import { decodeReferencesArgs, type SemanticWorkerReferencesArgs } from "./semantic-worker-reference-args.js"
+export type { SemanticWorkerReferencesArgs } from "./semantic-worker-reference-args.js"
 import { jsonStringWireBytes, stringByteMetrics } from "./semantic-worker-string-bytes.js"
 import { assertSemanticReadinessResponse } from "./semantic-readiness-wire.js"
 import { SEMANTIC_WORKER_ERROR_CODES, SEMANTIC_WORKER_ERROR_MESSAGES,
@@ -242,20 +243,6 @@ export interface SemanticWorkerCompletionDiscovery {
   readonly incomplete: boolean
   readonly candidates: readonly SemanticWorkerCompletionDiscoveryCandidate[]
 }
-
-export interface SemanticWorkerReferencesArgs {
-  readonly position: SemanticWorkerPosition
-  readonly includeDeclaration: boolean
-  readonly residentOnly?: boolean
-  readonly traceId?: string
-  readonly forceLegacy?: boolean
-  readonly candidateUris?: readonly string[]
-  readonly candidateIdentityComplete?: boolean
-  readonly candidateAnchorUri?: string
-  readonly candidateAnchorPosition?: SemanticWorkerPosition
-  readonly candidateSupportUris?: readonly string[]
-}
-
 export interface SemanticWorkerRequestArgsByMethod {
   readonly complete: SemanticWorkerPositionArgs & {
     readonly snippets?: boolean

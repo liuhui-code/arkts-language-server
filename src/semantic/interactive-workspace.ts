@@ -30,7 +30,8 @@ export function prepareInteractiveContext(documents: SemanticDocumentStore, engi
       text: document.text, workspaceId: document.workspaceId, workspaceRootUri: document.source.rootUri }, position, includeWorkspaceFiles)
     const workspace = interactiveWorkspace(prepared.workspace, prepared.position.path,
       includeWorkspaceFiles, projectRootProfile, additionalSemanticRoots)
-    if (certifyReadiness) refreshInteractiveReadiness(documents, engines, workspace)
+    if (certifyReadiness && (includeWorkspaceFiles || projectRootProfile === "current"
+      || !engines.hasSemanticGroups(workspace.rootPath))) refreshInteractiveReadiness(documents, engines, workspace)
     return { engine: includeWorkspaceFiles || projectRootProfile === "current" ? engines.prepare(workspace)
       : engines.prepareInteractive(workspace, () => documents.membershipFor(workspace.rootPath), certifyReadiness), position: prepared.position }
   }
@@ -38,7 +39,8 @@ export function prepareInteractiveContext(documents: SemanticDocumentStore, engi
   const legacyPosition = toLegacyPosition(document, position, workspace)
   const prepared = prepareInteractiveWorkspace(documents, legacyPosition,
     includeWorkspaceFiles, projectRootProfile, additionalSemanticRoots)
-  if (certifyReadiness) refreshInteractiveReadiness(documents, engines, prepared)
+  if (certifyReadiness && (includeWorkspaceFiles || projectRootProfile === "current"
+    || !engines.hasSemanticGroups(prepared.rootPath))) refreshInteractiveReadiness(documents, engines, prepared)
   const engine = includeWorkspaceFiles || projectRootProfile === "current" ? engines.prepare(prepared)
     : engines.prepareInteractive(prepared, () => documents.membershipFor(prepared.rootPath), certifyReadiness)
   return { engine, position: legacyPosition }

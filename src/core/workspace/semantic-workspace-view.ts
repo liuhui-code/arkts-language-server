@@ -2,6 +2,12 @@ import type { WorkspaceDocument } from "../sdk/workspace-loader.js"
 import type { SemanticResponseState } from "../protocol.js"
 import type { WorkspaceContentDelta } from "./workspace-content-changes.js"
 
+/** Raw source delivery budget; this does not bound a Program's dependency closure. */
+export const SEMANTIC_SOURCE_SNAPSHOT_LIMITS = Object.freeze({
+  maxDocuments: 256,
+  maxBytes: 8 * 1024 * 1024,
+})
+
 export interface ProjectMembershipSnapshot {
   readonly paths: readonly string[]
   status: "complete" | "partial"
@@ -44,8 +50,13 @@ export interface SemanticWorkspaceView {
   semanticRootPaths?: readonly string[]
   removedPaths?: string[]
   changedPaths?: string[]
-  /** One-shot store-owned evidence that every intervening revision is a compatible disk delta. */
+  /** Changed closed inputs read through the authority port when raw delivery is full. */
+  changedDiskInputs?: readonly { readonly path: string; readonly physicalPath: string;
+    readonly token: ProjectFileAdmissionToken; readonly sourceSha256: string }[]
+  /** One-shot store-owned evidence of compatible disk/overlay authority transitions. */
   contentDelta?: WorkspaceContentDelta
+  /** Bounded immutable compatible spans; each retained context applies its own revision cursor. */
+  contentDeltas?: readonly WorkspaceContentDelta[]
   contentRevision: number
   resetTypeEngine?: boolean
   state: SemanticResponseState

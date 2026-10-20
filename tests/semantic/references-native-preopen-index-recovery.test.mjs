@@ -139,6 +139,7 @@ function createSession(root, workspace, logs) {
       ARKTS_INDEX_CATALOG_TRACE: "1",
       ARKTS_LSP_LOG_DIR: logs,
       ARKTS_REFERENCES_STRATEGY: "indexed-batched",
+      ARKTS_REFERENCES_RESIDENT_FAST_PATH: "0",
       ARKTS_REFERENCES_TRACE: "1",
     },
     capabilities: { window: { workDoneProgress: true },

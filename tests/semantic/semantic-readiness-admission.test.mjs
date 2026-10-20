@@ -72,7 +72,8 @@ test("a diagnostic after a disk edit preserves explicit READY intent for the nex
     const current = await session.request("arkts/semanticReadiness", { rootUri, prepare: false })
     assert.equal(session.documentVersions.has(uri("Unopened.ets")), false)
     assert.deepEqual((await session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })
-    t.diagnostic(JSON.stringify({ updating: updating.result, after: current, completeLocations: response.result }))
+    t.diagnostic(JSON.stringify({ updating: updating.result, after: current, completeLocations: response.result,
+      lifecycle: events().slice(before).filter(row => row.event === "semantic.prepare.complete" || row.event === "semantic.context.evict") }))
     assert.equal(current.result?.semanticState, "ready", "diagnostics may not erase the explicit session's future query refresh")
     assert.notEqual(current.result.inputIdentity.sourcesSha256, prepared.result.inputIdentity.sourcesSha256)
     assert.deepEqual(current.result.readyCapabilities, prepared.result.readyCapabilities)

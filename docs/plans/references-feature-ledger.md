@@ -1,5 +1,192 @@
 # References / semantic Feature Ledger
 
+Current authorized work (2026-10-19, parent `3add6970`):
+[ADR 0019](../adr/0019-stable-programs-and-request-inputs.md) adopts stable semantic
+groups with retained LS/Programs, pressure-managed residency, shared request
+inputs and a 1024-root conservative-fallback soft target. This explicitly revises
+ADR0018's fixed two-interaction/one-scan retention capacity. Implementation,
+freshness/cancellation/pressure qualification and frozen Mac Photos/scale A/B are
+**IN_PROGRESS**, latest completed checkpoint-16 whole fast **FAIL** (1918/1921),
+per-operation500ms **NOT_PROVEN**.
+[Current requirements and RED/GREEN evidence](../tdd/stable-program-optimization.md)
+track R-03/R-09/R-20–22/R-29–34 within the existing OP00–06/L08 scope. The original
+Mac/Windows reports and failed gates remain, no push/release or graduation claim.
+All dated entries below describe their own historical inputs and policies.
+
+Local progress (2026-10-20): completed public RED/GREEN for degraded initialization
+consumption, pressure-managed capacity, default module member completion and
+reopen, retained full-owner edited references/anchor, and bounded multi-consumer
+input deltas. Latest witness-sharing combination23/23 PASS; whole fast NOT_RUN.
+Frozen Photos pilots improve first edited references9059→4544→980ms while keeping
+all13 exact operations; checkpoint-4's rename regression2029ms is preserved and
+checkpoint-6 recovers316ms. These are single-process pilots, **not** final A/B or
+500ms qualification. Cross-group coverage aggregation, complete request/text
+sharing, runtime pressure actions/accounting,2048 fallback qualification and broader scale/
+random-file comparison remain open in the current implementation record.
+
+Further local2026-10-20 slice: default conservative fallback1042 files17→2 batches,
+exact3 Locations (2/2 related public tests). Retained-first reference routing now
+synchronizes an actually prepared compatible owner before index/anchor selection;
+new degraded renamed-field RED2 Worker requests→GREEN1, no candidate selection.
+SDK input mutation revokes reuse before fresh complete fallback. Original broad
+qualification50/55 and checkpoint-8 control4/9 preserve the same5 failures; focused
+recovery/current combination16/16, original protocol23/23 and new mode guard1/1
+PASS. One old miss-count expectation2→at-least1 reflects skipping a cold probe;
+its full fallback/exact answers/diagnostics/no-repeat-SDK guards remain. Frozen
+checkpoint-9 paired3+3 Photos comparison is78/78 exact: first edited references
+median7676→439ms, but one524ms keeps500ms FAIL. Sampled tree peak median
+1178042368→787161088B, scoped to this workflow; open-definition/rename regressions
+remain in the [full report](../reports/2026-10-20-stable-program-checkpoint-9.md).
+Earlier pilot RSS is
+UNMEASURED (ps denied), not memory evidence. Whole fast and all remaining scope
+above remain open; see the implementation record for exact logs and revisions.
+
+Checkpoint-10 prepares all five known groups in the public initialization case,
+instead of the first two (16/16 related checks); active-file priority remains open.
+Its whole fast completed1894/1909,15 failures, no skip/cancel; diagnosis keeps the
+original log. Isolated follow-up preserves actual SourceFile/text read evidence
+per compiler owner with fresh full physical identity and independent final fences:
+READY/degraded SDK text rereads96→0, exact3 references. Extended23/23 and types
+PASS after repairing a missing preparation trace callback; candidate is now in the
+workspace. Whole-fast requalification, runtime pressure, cross-group aggregation
+and broad performance gates remain open; no graduation claim.
+
+Checkpoint-14 current continuation: ordinary complete references keep their
+existing freshness fences without requiring a reusable resident proof (legal
+symlink recovery regression fixed). Actual observed Programs may enter retained
+admission; cold owners still cannot be created by a probe. Expanded85/87 retained
+two obsolete observer/inventory assertions; corrected targeted2/2 PASS with25
+name-filtered skips, not a claimed87/87 run. L2 now resamples after each trim and
+stops on recovered pressure: isolated22/22, related public/component42/42 and
+types PASS. Whole fast remains unqualified after checkpoint-10 FAIL.
+[New paired Photos report](../reports/2026-10-20-stable-program-checkpoint-14.md):
+78/78 predefined functional checks, edited first-reference7407→537ms median;
+all three candidate samples528–556ms FAIL500. Independent trace witnesses305
+resident-proof SDK text reads on the first edited query, none earlier. Existing
+96→0 warm-case evidence does not establish first-query savings. Original inputs,
+six valid RSS sessions and108 archived raw files remain; initialization input-fact
+preparation is being tested separately, no completion/graduation claim.
+
+Checkpoint-15 now seeds actual loaded-input observations during the first
+initialization after Program/Checker creation, including later-degraded outcomes.
+It transfers no READY certificate or query-refresh intent; ordinary recovery has
+no new full precheck or renewed pressure exemption. New public no-prequery case
+RED0→GREEN96 initial SDK text validations and0 post-edit rereads; seven complete
+public files37/37 and types PASS before promotion. Only readiness implementation
+and its test differ from checkpoint-14; frozen runtime/source identities remain.
+Photos timing and305→0 mechanism qualification are in progress; whole fast and
+remaining original gates remain open.
+
+Checkpoint-15 subsequent qualification is **NOT ADOPTABLE**: fixed14/15 three-pair
+Photos measurements have39/39 candidate operations≤500ms, first edited references
+median533.787→457.326ms, but the seven-file workflow still has6/35 slow operations.
+All35 normalized full completion/definition signatures match the old runtime;
+actual closed-file delta omission resets four slow contexts, two others remain
+partly unmeasured. See the [report and sealed raw evidence](../reports/2026-10-20-stable-program-checkpoint-15.md).
+More importantly, a320-filler unnotified equal-width/mtime-restored source edit
+proves ordinary references can return old positions outside256 preloads. This
+invalidates the earlier ordinary-proof bypass, not the retained historical logs.
+Isolated restoration plus symlink identity support passed53/53 before two further
+gaps were exposed: degraded same-Program observation skipped current admission;
+READY final identity construction rejected changed input but its caller ignored
+the report. Both have public REDs; post-query admission and failure propagation
+now pass4/4 focused checks. Current expanded qualification is running, no new
+whole-fast/500ms or release claim. Main remains15 until safe fixes are qualified.
+
+Further isolated evidence: failure propagation and trace on/off passed67/67 in
+ten complete public files. A later real final-source-read injection still changed
+an unpreloaded file after the per-query capture; READY/degraded both published the
+old import-only result. Immutable observed Program disk identities now join the
+existing synchronous-query input union and uncached publication fence. Focused
+14/14 and types/build PASS, all exact answers/diagnostics preserved; broader
+qualification and watcher recovery are running. This does not claim whole-LSP
+cross-worker input sharing or current whole-fast GREEN.
+
+The final isolated combination passed86/86 across fourteen complete files, no
+skips/cancellations, including exact watcher recovery after the injected final
+change. Types/build PASS;17 changed inputs were compared byte-for-byte with15
+before promotion to the workspace. It also supplies missing closed-file changed
+snapshots through the existing admission token/read port, retaining256-document/
+8MiB limits and all authority/removal/reset guards. Main is now this safety/delta
+candidate, pending independent workspace smoke, frozen16 normal comparison and
+fresh whole-fast; checkpoint15 remains withdrawn.
+
+Checkpoint16 workspace smoke15/15, types/build PASS; frozen670 source/82 runtime.
+[Normal three-pair comparisons](../reports/2026-10-20-stable-program-checkpoint-16.md)
+retain288 operations and144 full normalized result matches, only opaque completion
+data excluded. Seven-file105 candidate operations all≤500ms versus18 slow control
+operations; fixed first edited references525.361/516.891/545.235ms remainFAIL.
+Separate4 probe runs96 exact matches confirm content resets4→0/context creations
+13→9, and identify640 input identities observed twice plus current admission and
+independent final-union passes. No speculative normal exclusive attribution.
+All1163 archive members hash-verified;32 recorded benchmark PIDs exited. The
+checkpoint16 whole check:fast ended1918/1921,3 failures, no skips/cancellations.
+Two persisted-index tests were bypassed by default resident routing; queue-only
+trace had a missing readiness callback. Qualified REDs reproduce all three;
+explicit index-test resident opt-out plus callback repair pass4/4. Whole16 remainsFAIL.
+The isolated17 candidate
+only removes a post-read identity check when no new text read occurs, retaining
+before/admission/final fences: public RED3/3 failures→GREEN59/59, types/build PASS.
+It was frozen separately and not promoted or performance-qualified while16 ran.
+
+Current checkpoint21 combines the qualified17–20 changes and whole16 repairs.
+Member resolve shares the list's module scope; synchronous query and fresh final
+phases share only positive physical identity metadata, bounded8192/no cross-request
+cache. A full256-raw-snapshot window now supplies changed closed inputs through
+verified token/SHA/physical-path witnesses and existing lazy host invalidation;
+256 delta/8MiB admission and all final fences remain. Equal-width rewrite and
+same-inode parent-path retarget during the actual final-read window reject-32803
+and recover exact results after watcher notification. Related14 files86/86,
+combined repairs4/4, main public23/23 and types/build PASS;18 input promotion hashes
+and frozen671-source/82-runtime manifest retained. [Formal16/21 Photos comparisons](../reports/2026-10-20-stable-program-checkpoint-21.md)
+complete18 serial sessions: candidate312/312≤500ms,312 full normalized matches,
+edited references459–473ms, reopened resolve median1184→91ms. Independent6 trace
+sessions208 full normal-result matches; identity reads2560→1280 retain two fresh
+640-input phases, resolve project files284→138.24-run archive1318 members fully
+hash-verified,48 recorded PIDs exited. A later public unopened-source recovery
+regression is reproduced on frozen21 (16/19 controls pass);21 is NOT ADOPTABLE.
+Its whole-fast was intentionally interrupted after856 passing titles, exit-15,
+not a completed whole qualification; original logs and stop reason retained.
+Large8250-file diagnostic still~4.4s despite
+retained LS and8254 reused SourceFile objects; not500ms-qualified or parse counts.
+
+Checkpoint22 [continuation](../tdd/stable-program-compiler-owned-inputs.md): actual
+unchanged project Host text reads145/769→0 for400/1024 roots using weak records
+owned by still-live compiler snapshots, original strong limits/current/final guards
+retained. Known source deltas rebuild only their own lookup evidence through an
+actual authoritative read; unrelated SDK/configuration facts cannot be restamped.
+Private93/93 plus inventory4/4, main39/39 and types/build PASS;11 promotion hashes,
+677-source/82-runtime freeze retained. Large8250 diagnostic still1888ms, not500ms
+qualified. Normal16/22 comparisons completed54 serial sessions:546 exact normalized
+matches, originalPhotos312/312≤500ms; increased sizes13/546 candidate operations
+exceed500ms.18 separate traces match364 normal results;72-run/2004-member archive
+fully hash-verified. [Report22](../reports/2026-10-20-stable-program-checkpoint-22.md)
+retains actualProgram scope, reads/parses and probe limitations; whole22 pending.
+Next private reader-partitioned compiler-held snapshot facts eliminate96 repeated
+SDK Host reads in3 public cases;101/101 related cases PASS. Owner configuration,
+readiness and proofs remain local; current and independent final identities stay.
+Five hash-checked inputs promoted, main23/23 and types/build PASS, frozen23 has
+678-source/82-runtime inputs. [Report23](../reports/2026-10-20-stable-program-checkpoint-23.md):
+54 serial sessions/546 full normalized matches; slow operations14→9. Original
+Photos312/312≤500ms; synthetic1024 edited references491–494ms, Photos+512 still
+554–597ms, synthetic2048 references610–621ms and rename529–535ms. Negative paired
+samples retained.18 independent traces match364 normal results, no overflow;
+SDK Host reads305/255→0 and52 other libraries→0, SDK current/final scans stay
+305/305 or255/255.2048 still1664 project Port reads in the diagnostic; normal
+exclusive phases and GC are UNMEASURED.72-run/7797-member archive hash-verified,
+144 recorded PIDs exited; whole23 pending,500ms gate FAIL.
+
+[Checkpoint23 scale review](../reports/2026-10-20-checkpoint-23-scaling-review.md) reuses
+the42-session scale subset (7 scales,273 exact pairs), validates149 sealed inputs,
+and adds13-state medians/maxima without new timing runs. Synthetic64→2048 project
+roots retain19-file interaction Programs but expand full-query Programs64→2048;
+Photos raw289/417/801 versus full Program284/412/796, interaction171, SDK scopes fixed.
+23 edited-reference endpoint increase267.655ms versus22's254.311ms, rename218.554ms
+versus214.091ms: gains at several sizes do not establish lower scale-growth cost.
+All42 normal logs confirm reference miss/store/hit; result hits stay separate from
+first edited queries. READY, tens-of-thousands and growing active-dependency scopes
+remain unqualified; no overall RPC complexity order inferred.
+
 Current baseline (2026-10-11): PR #95 merged to main `a111235b`.
 [ADR 0015](../adr/0015-default-resident-optimization-policy.md) enables the six
 selected optimizations by default, with explicit opt-outs. The tested PR head
@@ -1398,7 +1585,7 @@ failure and real Settings/API24 gates separate; no production policy changes.
 Completed fixture-controlled whole-fast: **1,056/1,056 PASS**, exit0,
 2,012,515.851ms; zero failures/cancelled/skipped/todo. The only environment
 control is the verified-absent
-`ARKLINE_HARMONY_SDK_PATH=/private/tmp/arkts-fast-sdk-control-missing-20260927`;
+`ARKLINE_HARMONY_SDK_PATH=<isolated-fixture>`;
 explicit SDK fixtures retain their own configuration. No source, deadline,
 assertion or artifact change. This is a separate code-regression GREEN,
 **not resolution of the preserved59 default-host failures**, cold≤500ms or

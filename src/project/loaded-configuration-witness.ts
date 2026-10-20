@@ -1,5 +1,6 @@
 import fs from "node:fs"
 import path from "node:path"
+import { validateRequestInput } from "./request-input-validation.js"
 
 const MAX_WITNESS_PATHS = 4096
 const MAX_MISSING_ANCESTORS = 64
@@ -111,11 +112,33 @@ export class LoadedConfigurationWitness {
     this.resetEpoch += 1
   }
 
-  /** Capture keeps actual loaded identities; the predicate always performs the full scan. */
+  /** Only a known compiler source delta may replace its own prior lookup fact. */
+  observeChangedSourceRead(filePath: string, read: () => string | null): void {
+    const resolved = path.resolve(filePath)
+    if (!this.identities.has(resolved) && !this.pathIdentities.has(resolved)) return
+    const before = lookupIdentity(resolved)
+    const content = read()
+    const after = lookupIdentity(resolved)
+    if (!before || !after || content === null || before.absenceOwner
+      || before.witnessPath !== resolved || before.loadGuard !== after.loadGuard) {
+      this.markUnprovable("changed-source-read-unproven", resolved)
+      return
+    }
+    // This is a new authoritative byte read, not a cache-hit restamp. Other
+    // configuration, directory and negative lookup facts retain their original load.
+    for (const facts of [this.identities, this.pathIdentities]) {
+      if (facts.has(resolved) && facts.get(resolved) !== before.identity) {
+        facts.set(resolved, before.identity)
+        this.revision += 1
+      }
+    }
+  }
+
+  /** Loaded identities stay fixed; query-local sharing ends in an uncached union scan. */
   freshness(checkpoint: () => void, mode: ConfigurationFreshnessMode = "validate"): (() => boolean) | undefined {
     if (this.unprovable) return undefined
     const resetEpoch = this.resetEpoch
-    const current = (): boolean => {
+    const scan = (): boolean => {
       checkpoint()
       if (this.unprovable || this.resetEpoch !== resetEpoch) return false
       // Another root may append actual loads without changing existing inputs.
@@ -133,6 +156,11 @@ export class LoadedConfigurationWitness {
       }
       checkpoint()
       return !this.unprovable && this.resetEpoch === resetEpoch && this.revision === revision
+    }
+    const current = (): boolean => {
+      checkpoint()
+      if (this.unprovable || this.resetEpoch !== resetEpoch) return false
+      return validateRequestInput(this, resetEpoch, this.revision, scan)
     }
     return mode === "capture" ? current : current() ? current : undefined
   }

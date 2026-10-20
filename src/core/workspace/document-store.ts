@@ -15,16 +15,17 @@ import { createProjectSourceEligibility, isActiveProjectSource } from "./project
 import { listWorkspaceSourcePaths, SOURCE_EXTENSIONS, unresolvedSourceEntries } from "./workspace-source-enumerator.js"
 import { MAX_DISK_SNAPSHOT_BYTES, readDiskSource as safeRead, sourceStatIdentity } from "./workspace-disk-source.js"
 import { classifyWatchedSourceChanges } from "./watched-source-notifications.js"
+import { invalidateClosedDocument } from "./closed-document-invalidation.js"
 
 import type { ProjectMembershipSnapshot, ProjectFileAdmissionToken, ProjectFileAccessPort, SemanticWorkspaceView } from "./semantic-workspace-view.js"
+import { SEMANTIC_SOURCE_SNAPSHOT_LIMITS } from "./semantic-workspace-view.js"
 export type { ProjectMembershipSnapshot, ProjectFileAdmissionToken, ProjectFileAccessPort, SemanticWorkspaceView } from "./semantic-workspace-view.js"
 
 export { MAX_DISK_SNAPSHOT_BYTES } from "./workspace-disk-source.js"
 
 const MAX_CACHED_DOCUMENTS = 512
 const MAX_CACHED_BYTES = 16 * 1024 * 1024
-const MAX_CLOSURE_DOCUMENTS = 256
-const MAX_CLOSURE_BYTES = 8 * 1024 * 1024
+const { maxDocuments: MAX_CLOSURE_DOCUMENTS, maxBytes: MAX_CLOSURE_BYTES } = SEMANTIC_SOURCE_SNAPSHOT_LIMITS
 const MAX_CLOSURE_CREATION_CANDIDATES = MAX_CLOSURE_DOCUMENTS * 4
 const MAX_PROJECT_FILE_SET_ROOTS = 4
 const MAX_PROJECT_FILE_SET_PATHS = 20_000
@@ -276,7 +277,7 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
     return record
   }
 
-  close(filePath: string): void {
+  close(filePath: string, lexicalRoot?: string): void {
     const resolved = path.resolve(filePath)
     const cached = this.documents.get(resolved)
     if (!cached) return
@@ -288,31 +289,12 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
     if (cached.overlay) {
       const canonicalRoot = cached.workspaceRoot
         ?? canonicalWorkspaceRoot(resolveWorkspaceRoot(resolved))
-      const currentPhysicalPath = canonicalSourcePath(resolved)
-      const invalidationMatches = this.invalidateDiskDocuments(
-        [...new Set([physicalPath, currentPhysicalPath])].map((identity) => ({
-          path: resolved,
-          physicalPath: identity,
-        })),
-      )
-      const changedRoots = new Set([canonicalRoot])
-      const resetRoots = new Set<string>()
-      this.markWatchedChanged(canonicalRoot, resolved)
-      for (const [affectedRoot, affectedPaths] of invalidationMatches.get(resolved) ?? []) {
-        let physicalAliasAffected = false
-        for (const affectedPath of affectedPaths) {
-          this.markWatchedChanged(affectedRoot, affectedPath)
-          physicalAliasAffected ||= affectedPath !== resolved
-        }
-        changedRoots.add(affectedRoot)
-        if (affectedRoot !== canonicalRoot || physicalAliasAffected) {
-          resetRoots.add(affectedRoot)
-        }
-      }
-      for (const resetRoot of resetRoots) this.markTypeEngineReset(resetRoot)
-      for (const changedRoot of changedRoots) {
-        this.contentChanges.advance(changedRoot)
-      }
+      invalidateClosedDocument({ path: resolved, physicalPath, canonicalRoot, lexicalRoot }, {
+        invalidate: inputs => this.invalidateDiskDocuments(inputs),
+        changed: (root, source) => this.markWatchedChanged(root, source),
+        reset: root => this.markTypeEngineReset(root),
+        advance: (root, compatibleRoot) => this.contentChanges.advance(root, compatibleRoot),
+      })
     }
   }
 
@@ -998,6 +980,7 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
       ])],
       changedPaths: changes.changedPaths,
       contentDelta: changes.contentDelta,
+      contentDeltas: this.contentChanges.history(canonicalRoot),
       contentRevision: changes.contentRevision,
       resetTypeEngine: changes.resetTypeEngine,
       state: {

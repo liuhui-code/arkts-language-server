@@ -18,7 +18,9 @@ export class InitialProjectPreparation {
     checkpoints.add(checkpoint)
     try {
       const report = await operation()
-      if (report.semanticState === "ready") this.preparedRoots.add(rootUri)
+      // A completed attempt consumes initialization even when inputs are missing.
+      // Ordinary recovery must never renew the pressure exemption.
+      this.preparedRoots.add(rootUri)
       return report
     } finally { checkpoints.delete(checkpoint); activePreparations-- }
   }

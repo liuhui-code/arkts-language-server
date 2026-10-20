@@ -10,7 +10,7 @@ import { buildSync } from "esbuild"
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 
-test("the committed semantic runtime configuration fixes one worker and two contexts", () => {
+test("the committed semantic runtime configuration fixes one worker with pressure-managed residency", () => {
   const config = JSON.parse(fs.readFileSync(
     path.join(projectRoot, "config", "semantic-runtime.json"),
     "utf8",
@@ -18,7 +18,7 @@ test("the committed semantic runtime configuration fixes one worker and two cont
 
   assert.equal(config.schemaVersion, 1)
   assert.equal(config.semanticWorkers, 1)
-  assert.equal(config.maxResidentContexts, 2)
+  assert.equal(config.maxResidentContexts, null)
   assert.ok(config.level1Ratio < config.level2Ratio)
   assert.ok(config.level2Ratio < config.level3Ratio)
   assert.ok(config.level3TargetRatio < config.level3Ratio)
@@ -69,6 +69,21 @@ test("level 2 trims cold contexts before level 3 disposes them", (t) => {
     "trim:project-a",
     "dispose:project-a",
   ])
+})
+
+test("level 2 stops after trimming the idle scan when live pressure recovers", t => {
+  const { SemanticCoordinator } = buildCoordinatorDriver(t)
+  const events = []
+  const coordinator = new SemanticCoordinator({
+    isScanContext: id => id === "scan",
+    createContext: contextFactory(events, new Map()),
+    readMemoryPressure: () => events.includes("trim:scan") ? "level1" : "level2",
+  })
+  for (const id of ["a", "b", "scan"]) coordinator.acquire(id).release()
+  assert.equal(coordinator.applyMemoryPressure("level2"), "level1")
+  assert.deepEqual(events, ["create:a", "create:b", "create:scan", "trim:scan"],
+    "recovered pressure must preserve both interactive Programs")
+  assert.equal(coordinator.stats().residentContextCount, 3)
 })
 
 test("the resident set stays bounded and evicts the least recently used unleased context", (t) => {

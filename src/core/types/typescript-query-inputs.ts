@@ -20,7 +20,7 @@ export function loadedConfigurationIsCurrent(
   work.boundary()
   if (!witness) return work.finish(true)
   // Capture all load-owned predicates first, then verify once before returning.
-  // Capture is not a cached validity answer: each predicate scans every witness.
+  // Repeated checks may share this query's validation; its final union fence scans uncached.
   const compiler = witness.freshness(() => work.item(), "capture")
   const packages = resolver.configurationFreshness(rootPath, () => work.item(), "capture")
   return work.finish(Boolean(compiler?.() && packages?.()))

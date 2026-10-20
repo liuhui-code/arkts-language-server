@@ -35,7 +35,6 @@ import type {
 import { officialDocumentRegistryFor, recycleOfficialSemanticService, disposeOfficialSemanticService } from "../../semantic/backends/ohos-typescript/registry-pool.js"
 import type {
   ProjectFileAccessPort,
-  ProjectFileAdmissionToken,
   ProjectMembershipSnapshot,
   SemanticWorkspaceView,
 } from "../workspace/document-store.js"
@@ -53,7 +52,7 @@ import { loadedConfigurationIsCurrent, assertCurrentQueryInputs, SemanticInputUn
 import { queryAdmittedDefinition, queryAdmittedReferences } from "./typescript-resident-reference-query.js"
 import { normalizedDefinitionSpan } from "./typescript-definition-span.js"
 import { TypeScriptResidentReferenceState, type ResidentReferenceProofFailure } from "./typescript-resident-reference-state.js"
-import { compilerHostFileNames } from "./typescript-host-file-names.js"
+import { compilerHostFileNames, membershipHostFileNames } from "./typescript-host-file-names.js"
 import { LoadedConfigurationWitness } from "../../project/loaded-configuration-witness.js"
 import { discoverSdkAmbientDeclarations } from "./typescript-sdk-ambient.js"
 import { witnessedDirectoryExists, witnessedFileExists, witnessedFilesystemLookup } from "./typescript-resolution-witness.js"
@@ -62,8 +61,9 @@ import { QueryModuleResolution } from "./typescript-query-module-resolution.js"
 import { resolveTypeScriptModule } from "./typescript-module-resolution.js"
 import { assertVerifierSdkLookupsCurrent } from "./verifier-sdk-lookups.js"
 import { arktsLanguageServiceOptions } from "./arkts-language-service-options.js"
-import { createSourceDocument, type SourceDocument } from "./source-document.js"
-import { isRegularBoundedFile, safeRead } from "./typescript-safe-source-read.js"
+import { TypeScriptLazySnapshots, type LazySnapshotRecord } from "./typescript-lazy-snapshots.js"
+import { compilerScriptSnapshot } from "./compiler-source-snapshots.js"
+import { safeRead } from "./typescript-safe-source-read.js"
 import type {
   SemanticCodeFixCandidate,
   SemanticPrepareRenameQueryResult,
@@ -80,7 +80,7 @@ import {
   typescriptTypeStatus,
 } from "./typescript-language-helpers.js"
 import { exactSourceOffset, lineColumnToOffset, offsetToLineColumn, spanToRange } from "./text-position.js"
-import { cacheLimit, MAX_SCRIPTS, MAX_SCRIPT_BYTES, MAX_LAZY_SNAPSHOTS, MAX_LAZY_SNAPSHOT_BYTES } from "./typescript-cache-limits.js"
+import { MAX_SCRIPTS, MAX_SCRIPT_BYTES } from "./typescript-cache-limits.js"
 
 const MAX_COMPLETIONS = 128
 const MAX_MODULE_EXPORT_COMPLETION_SCAN = 4096
@@ -91,16 +91,6 @@ const MAX_CALL_HIERARCHY_RANGES_PER_EDGE = 64
 const MAX_CALL_HIERARCHY_TOTAL_RANGES = 2_048
 const MIN_MODULE_EXPORT_PREFIX_LENGTH = 2
 const ENGINE_VERSION = `typescript-${ts.version}-arkts-v2`
-
-interface LazySnapshotRecord {
-  path: string
-  content: string
-  virtualDocument: SourceDocument
-  snapshot: ts.IScriptSnapshot
-  sourceFingerprint: string
-  bytes: number
-  admissionToken?: ProjectFileAdmissionToken
-}
 
 const COMPLETION_PREFIX_MATCH = 0
 const COMPLETION_CAMEL_MATCH = 1
@@ -166,7 +156,7 @@ export class TypeScriptLanguageServiceEngine {
   private readonly projectMembershipPaths = new Set<string>()
   private semanticRootPaths: Set<string> | undefined
   private readonly projectContentVersions = new TypeScriptContentVersions()
-  private readonly lazySnapshots = new Map<string, LazySnapshotRecord>()
+  private readonly lazySnapshots: TypeScriptLazySnapshots
   private readonly scriptAdmission: TypeScriptScriptAdmission
   private readonly sdkDeclarationPaths: string[]
   private readonly sdkRoot: string | null
@@ -188,12 +178,9 @@ export class TypeScriptLanguageServiceEngine {
   private readonly readSourceFile: (filePath: string) => string | null
   private readonly projectFileAccess: ProjectFileAccessPort | undefined
   private readonly tolerateUnadmittedProjectDependencies: boolean
-  private readonly maxLazySnapshots: number
-  private readonly maxLazySnapshotBytes: number
   private accessClock = 0
   private generation = 0
   private scriptBytes = 0
-  private lazySnapshotBytes = 0
   private projectMembershipStatus: ProjectMembershipSnapshot["status"] | "none" = "none"
   private projectMembershipReason: ProjectMembershipSnapshot["reason"]
   private projectMembershipRevision = 0
@@ -237,16 +224,17 @@ export class TypeScriptLanguageServiceEngine {
     this.tolerateUnadmittedProjectDependencies = tolerateUnadmittedProjectDependencies
     this.projectMembershipRootId = path.resolve(rootPath)
     this.workspacePhysicalRoot = canonicalExistingPath(rootPath)
-    this.maxLazySnapshots = cacheLimit(
-      lazySnapshotLimits.maxFiles,
-      MAX_LAZY_SNAPSHOTS,
-      "lazy snapshot files",
-    )
-    this.maxLazySnapshotBytes = cacheLimit(
-      lazySnapshotLimits.maxBytes,
-      MAX_LAZY_SNAPSHOT_BYTES,
-      "lazy snapshot bytes",
-    )
+    this.lazySnapshots = new TypeScriptLazySnapshots({
+      limits: lazySnapshotLimits, projectFileAccess, readSourceFile,
+      isMember: filePath => this.projectMembershipPaths.has(filePath),
+      membership: () => ({ rootId: this.projectMembershipRootId, revision: this.projectMembershipRevision }),
+      unavailable: reason => {
+        if (reason === "read" || !this.tolerateUnadmittedProjectDependencies) this.projectMembershipSourceUnavailable = true
+      },
+      observed: (filePath, fingerprint) => this.scriptAdmission.observeLazy(filePath, fingerprint,
+        this.projectContentVersions.scriptVersion(filePath, undefined, true)),
+      checkpoint: () => this.checkpoint?.(),
+    })
     this.configurationWitness = residentReferenceReuse || packageResolver.witnessesConfiguration() ? new LoadedConfigurationWitness(
       onResidentReferenceProofFailure && (failure => onResidentReferenceProofFailure({
         ...failure, stage: "configuration", reason: `configuration-${failure.reason}`,
@@ -340,12 +328,7 @@ export class TypeScriptLanguageServiceEngine {
         maxFiles: MAX_SCRIPTS,
         maxBytes: MAX_SCRIPT_BYTES,
       },
-      lazySnapshots: {
-        files: this.lazySnapshots.size,
-        bytes: this.lazySnapshotBytes,
-        maxFiles: this.maxLazySnapshots,
-        maxBytes: this.maxLazySnapshotBytes,
-      },
+      lazySnapshots: this.lazySnapshots.state(),
     }
   }
 
@@ -353,8 +336,8 @@ export class TypeScriptLanguageServiceEngine {
     return measureOfficialCompilerReadiness(this.service)
   }
 
-  hasReadinessRefreshIntent(): boolean { return this.readiness.refreshRequested }
-
+  hasReadinessRefreshIntent(onlyStale = false): boolean { return this.readiness.refreshRequested && (!onlyStale || this.readiness.preparedGeneration !== this.generation) }
+  hasPreparedCompilerState(): boolean { return this.readiness.hasPreparedProgram || this.residentReferencesState?.hasObservedProgram === true }
   restoreReadinessRefreshIntent(): void { this.readiness.restoreQueryRefresh() }
 
   semanticReadiness(workspace: SemanticWorkspaceView, mode: boolean | "query" | "query-prepare", trace?: ReadinessTrace) {
@@ -727,7 +710,7 @@ export class TypeScriptLanguageServiceEngine {
     })
   }
 
-  define(position: SemanticDocumentPosition): SemanticDefinitionCandidate[] {
+  define(position: SemanticDocumentPosition, requiredWorkspace?: SemanticWorkspaceView): SemanticDefinitionCandidate[] {
     const work = new CooperativeWork(this.checkpoint)
     const candidates = this.definitionCandidates(
       position,
@@ -735,6 +718,9 @@ export class TypeScriptLanguageServiceEngine {
       work,
     )
     this.assertCurrentInputs(() => work.boundary())
+    if (requiredWorkspace && !this.residentReferencesState?.admit(requiredWorkspace, this.generation, this.scriptFileNames())) {
+      throw new SemanticInputUnavailableError()
+    }
     return candidates
   }
 
@@ -1325,11 +1311,12 @@ export class TypeScriptLanguageServiceEngine {
   references(
     position: SemanticDocumentPosition,
     includeDeclaration: boolean,
-    captureSearchScope = false,
+    captureSearchScope = false, requireResidentProof = false,
   ): SemanticReferenceQueryResult {
     const result = this.queryReferences(position, includeDeclaration, captureSearchScope)
-    if (result.status === "complete") this.residentReferencesState?.captureCurrentProgram(this.service)
-    return result
+    if (result.status !== "complete") return result
+    const current = this.residentReferencesState?.captureCurrentProgram(this.service, captureSearchScope || requireResidentProof)
+    return (requireResidentProof || (captureSearchScope && this.residentReferencesState)) && !current ? { status: "incomplete", reason: "source-unavailable" } : result
   }
 
   residentReferences(
@@ -1638,11 +1625,11 @@ export class TypeScriptLanguageServiceEngine {
     this.relativeResolutionFailures.clear()
     this.lazySnapshots.clear()
     this.scriptBytes = 0
-    this.lazySnapshotBytes = 0
   }
 
   trim(): void {
     this.invalidateResidentReferences()
+    this.lazySnapshots.clearCompilerOwned()
     this.service = recycleOfficialSemanticService(this.service, this.host, this.sdkSelection)
   }
 
@@ -1673,8 +1660,7 @@ export class TypeScriptLanguageServiceEngine {
         const lazy = this.loadLazySnapshot(filePath)
         if (lazy) return lazy.snapshot
         if (this.projectMembershipPaths.has(filePath)) return undefined
-        const content = safeRead(filePath)
-        return content === null ? undefined : ts.ScriptSnapshot.fromString(content)
+        return compilerScriptSnapshot(filePath, safeRead, () => this.checkpoint?.())
       },
       getScriptVersion: (fileName) => {
         const filePath = path.resolve(fileName)
@@ -1851,12 +1837,8 @@ export class TypeScriptLanguageServiceEngine {
   }
 
   private rebuildMembershipFileNames(): void {
-    const roots = this.semanticRootPaths
-      ?? (this.projectMembershipStatus === "complete" ? this.projectMembershipPaths : new Set<string>())
-    this.membershipFileNames = [
-      ...roots,
-      ...this.sdkDeclarationPaths.filter(filePath => !roots.has(filePath)),
-    ]
+    this.membershipFileNames = membershipHostFileNames(this.semanticRootPaths,
+      this.projectMembershipStatus === "complete", this.projectMembershipPaths, this.sdkDeclarationPaths)
     this.combinedFileNames = undefined
   }
 
@@ -1870,62 +1852,19 @@ export class TypeScriptLanguageServiceEngine {
       this.scriptAdmission.forget(filePath)
       this.removeScript(filePath)
       this.removeLazySnapshot(filePath)
+      if (this.projectMembershipStatus === "complete" && this.projectMembershipPaths.has(filePath)
+        && this.projectFileAccess && (!this.sdkRoot || !isWithinRoot(this.sdkRoot, filePath))) {
+        this.configurationWitness?.observeChangedSourceRead(filePath, () => {
+          const token = this.projectFileAccess!.tokenFor(this.projectMembershipRootId, this.projectMembershipRevision, filePath)
+          return token === undefined ? null : this.projectFileAccess!.read(
+            this.projectMembershipRootId, this.projectMembershipRevision, filePath, token)
+        })
+      }
     }
   }
 
   private loadLazySnapshot(filePath: string): LazySnapshotRecord | undefined {
-    if (!this.projectMembershipPaths.has(filePath)) return undefined
-    const admissionToken = this.projectFileAccess?.tokenFor(
-      this.projectMembershipRootId,
-      this.projectMembershipRevision,
-      filePath,
-    )
-    if (this.projectFileAccess && admissionToken === undefined) {
-      this.removeLazySnapshot(filePath)
-      if (!this.tolerateUnadmittedProjectDependencies) {
-        this.projectMembershipSourceUnavailable = true
-      }
-      return undefined
-    }
-    const cached = this.lazySnapshots.get(filePath)
-    if (cached && (!this.projectFileAccess || cached.admissionToken === admissionToken)) {
-      this.lazySnapshots.delete(filePath)
-      this.lazySnapshots.set(filePath, cached)
-      return cached
-    }
-    if (cached) this.removeLazySnapshot(filePath)
-    if (!this.projectFileAccess && !isRegularBoundedFile(filePath)) return undefined
-    const sourceContent = this.projectFileAccess
-      ? this.projectFileAccess.read(
-          this.projectMembershipRootId,
-          this.projectMembershipRevision,
-          filePath,
-          admissionToken!,
-        )
-      : this.readSourceFile(filePath)
-    if (sourceContent === null) {
-      if (this.projectFileAccess) this.projectMembershipSourceUnavailable = true
-      return undefined
-    }
-    const virtualDocument = createSourceDocument(sourceContent)
-    const content = virtualDocument.generatedContent
-    const record: LazySnapshotRecord = {
-      path: filePath,
-      content,
-      virtualDocument,
-      snapshot: ts.ScriptSnapshot.fromString(content),
-      sourceFingerprint: fingerprintSource(sourceContent),
-      bytes: Buffer.byteLength(sourceContent) + Buffer.byteLength(content),
-      ...(admissionToken === undefined ? {} : { admissionToken }),
-    }
-    this.scriptAdmission.observeLazy(filePath, record.sourceFingerprint,
-      this.projectContentVersions.scriptVersion(filePath, undefined, true))
-    if (record.bytes <= this.maxLazySnapshotBytes && this.maxLazySnapshots > 0) {
-      this.lazySnapshots.set(filePath, record)
-      this.lazySnapshotBytes += record.bytes
-      this.evictLazySnapshots()
-    }
-    return record
+    return this.lazySnapshots.load(filePath)
   }
 
   private projectMembershipFailure():
@@ -1939,28 +1878,8 @@ export class TypeScriptLanguageServiceEngine {
       : undefined
   }
 
-  private removeLazySnapshot(filePath: string): void {
-    const cached = this.lazySnapshots.get(filePath)
-    if (!cached) return
-    this.lazySnapshots.delete(filePath)
-    this.lazySnapshotBytes -= cached.bytes
-  }
-
-  private clearLazySnapshots(): void {
-    this.lazySnapshots.clear()
-    this.lazySnapshotBytes = 0
-  }
-
-  private evictLazySnapshots(): void {
-    while (
-      this.lazySnapshots.size > this.maxLazySnapshots
-      || this.lazySnapshotBytes > this.maxLazySnapshotBytes
-    ) {
-      const oldestPath = this.lazySnapshots.keys().next().value
-      if (oldestPath === undefined) return
-      this.removeLazySnapshot(oldestPath)
-    }
-  }
+  private removeLazySnapshot(filePath: string): void { this.lazySnapshots.forget(filePath) }
+  private clearLazySnapshots(): void { this.lazySnapshots.clear() }
 
   private mapCompletionEdits(
     currentPath: string,

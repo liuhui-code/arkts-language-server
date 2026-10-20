@@ -290,7 +290,7 @@ test("an observed directory proves absent children without exhausting resident a
     "references.resident.miss", "a changed directly observed owner must not certify its old child decisions")
 })
 
-test("an edited unsaved overlay invalidates the resident proof without dropping new calls", async (t) => {
+test("an edited unsaved overlay refreshes resident proof and preserves new calls", async (t) => {
   const fixture = createFixture(t)
   const resident = await replay(t, fixture, "batched", {
     warm: true, resident: true,
@@ -304,7 +304,13 @@ test("an edited unsaved overlay invalidates the resident proof without dropping 
   assert.deepEqual(resident.results, fresh.results)
   assert.ok(resident.results.every(result => result.map(JSON.parse)
     .some(location => location.uri === fixture.uri("Consumer.ets") && location.range.start.line === 3)))
-  assert.ok(!resident.events.some(event => event.event === "references.resident.hit"))
+  assert.equal(resident.events.filter(event => event.event === "references.resident.miss").length, 1,
+    "the old proof must fail before synchronizing the edited Program")
+  assert.equal(resident.events.filter(event => event.event === "semantic.references.complete").length, 1)
+  assert.equal(resident.events.filter(event => event.event === "references.resident.hit"
+    && event.completeScope && event.sameProgram).length, 1, "the second policy reuses the newly observed proof")
+  assert.equal(resident.events.filter(event => event.event === "semantic.context.create").length, 1)
+  assert.ok(!resident.events.some(event => event.event === "references.batch.start"))
 })
 
 test("level3 disposal invalidates resident reuse and the complete fallback recovers", async (t) => {
@@ -416,4 +422,28 @@ test("full-scope completion survives rejected class seeds and does not depend on
   const untraced = await replay(t, fixture, "batched", { trace: false })
   assert.deepEqual(untraced.results, legacy.results)
   assert.ok(!untraced.events.some(event => event.event === "references.search-scope.complete"))
+})
+
+test("a valid file symlink permits resident reuse but retargeting hardlinked sources revokes its proof", async t => {
+  const fixture = createFixture(t)
+  const first = path.join(fixture.root, "AliasTargetA.ts"), second = path.join(fixture.root, "AliasTargetB.ts")
+  fs.writeFileSync(first, "export const aliasValue = 1\n")
+  fs.linkSync(first, second)
+  const link = path.join(fixture.root, "Alias.ts")
+  fs.symlinkSync(first, link, "file")
+  fixture.sources["Target.ets"] = 'import "./Alias"\n' + fixture.sources["Target.ets"]
+  fs.writeFileSync(path.join(fixture.root, "Target.ets"), fixture.sources["Target.ets"])
+  const control = await replay(t, fixture, "batched", { warm: true, resident: true })
+  assert.equal(control.events.filter(event => event.event === "references.resident.hit").length, 2,
+    "unchanged supported symlinks must retain the full input proof")
+  const before = fs.statSync(first), other = fs.statSync(second)
+  assert.equal(before.dev, other.dev); assert.equal(before.ino, other.ino)
+  const retargeted = await replay(t, fixture, "batched", {
+    warm: true, resident: true,
+    afterWarm: () => { fs.unlinkSync(link); fs.symlinkSync(second, link, "file") },
+  })
+  const fresh = await replay(t, fixture, "legacy")
+  assert.deepEqual(retargeted.results, fresh.results)
+  assert.equal(retargeted.events.find(event => /^references\.resident\.(hit|miss)$/.test(event.event))?.event,
+    "references.resident.miss", "new physical paths cannot be hidden by identical target inode, bytes and timestamps")
 })

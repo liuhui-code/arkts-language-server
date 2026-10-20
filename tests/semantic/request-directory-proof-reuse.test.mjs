@@ -66,7 +66,7 @@ test("a request reuses witnessed directory presence beyond module-cache capacity
 
 for (const opened of [false, true]) {
 for (const reuse of [undefined, "0"]) {
-test(`a ${opened ? "opened" : "never-opened"} caller's READY refresh uses bounded request resolution (${reuse ?? "default"})`,
+test(`a ${opened ? "opened" : "never-opened"} caller's READY refresh retains unchanged SDK resolutions (${reuse ?? "default"})`,
   { timeout: 60_000 }, async t => {
     const source = 'import { value } from "./Dependency"\nexport const selected = value\n'
     const fixture = await makeQueryLayerFixture(t, { files: { "Query.ets": source,
@@ -139,9 +139,8 @@ test(`a ${opened ? "opened" : "never-opened"} caller's READY refresh uses bounde
     assert.deepEqual((await session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })
     t.diagnostic(JSON.stringify({ opened, reuse: reuse ?? "default", imports,
       nativeDirectoryProbes: observations.length, completeDefinition: current.result, coverage: ready.result.coverage }))
-    if (reuse === "0") assert.ok(observations.length >= imports, "disabled preparation must perform ordinary native lookups")
-    else assert.ok(observations.length > 0 && observations.length <= 2,
-      "ordinary READY refresh must include preparation in the bounded synchronous resolution scope")
+    assert.equal(observations.length, 0,
+      "a project-only edit must retain SDK resolutions even when request-local lookup reuse is disabled")
   })
 }
 }

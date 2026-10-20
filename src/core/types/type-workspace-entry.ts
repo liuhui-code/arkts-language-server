@@ -1,6 +1,6 @@
 import { ArkUIResourceLanguageProvider } from "../arkui/resource-language-provider.js"
 import type { LocalPackageResolver } from "../sdk/local-package-resolver.js"
-import type { SemanticWorkspaceView } from "../workspace/document-store.js"
+import type { ProjectFileAccessPort, SemanticWorkspaceView } from "../workspace/document-store.js"
 import type { HarmonyProjectModel } from "../../project/harmony-project-model.js"
 import type { SemanticManagedContext } from "../../semantic/coordinator/semantic-coordinator.js"
 import { ReferenceAnchorMemo } from "../../semantic/references/reference-anchor.js"
@@ -13,6 +13,7 @@ import path from "node:path"
 import type { SemanticCoordinator, SemanticMemoryLevel } from "../../semantic/coordinator/semantic-coordinator.js"
 import { runWithSemanticLease } from "./semantic-query-lease.js"
 import { assertCurrentWorkspaceSources } from "./typescript-workspace-source-fence.js"
+import { SemanticInputUnavailableError } from "./typescript-query-inputs.js"
 
 export interface WorkspaceEngineEntry extends SemanticManagedContext {
   engine: TypeScriptLanguageServiceEngine
@@ -45,9 +46,16 @@ export function queryWorkspaceReadiness(coordinator: SemanticCoordinator<Workspa
   const query = (prepared: boolean | "query-prepare") => {
     const entry = coordinator.peek(rootPath)
     if (!entry) return semanticUnprepared(rootUri)
-    const result = runWithSemanticLease(coordinator, rootPath,
-      current => current.engine.withRequestModuleResolution(() =>
-        current.engine.semanticReadiness(workspace, prepared, hooks.trace)), false)
+    let result: SemanticReadinessReport
+    try {
+      result = runWithSemanticLease(coordinator, rootPath,
+        current => current.engine.withRequestModuleResolution(() =>
+          current.engine.semanticReadiness(workspace, prepared, hooks.trace)), false)
+    } catch (error) {
+      if (!(error instanceof SemanticInputUnavailableError)) throw error
+      entry.engine.invalidateResidentReferences()
+      return semanticUnprepared(rootUri, "inputs-changed-during-preparation")
+    }
     hooks.refreshPressure?.()
     return coordinator.peek(rootPath) === entry && allowed() ? result : unavailable()
   }
@@ -63,11 +71,11 @@ export function queryWorkspaceReadiness(coordinator: SemanticCoordinator<Workspa
 /** Certification remains inside the caller's query lease and response interval. */
 export function runPreparedSemanticQuery<Result>(entry: WorkspaceEngineEntry,
   workspace: SemanticWorkspaceView, run: (entry: WorkspaceEngineEntry) => Result,
-  certifyReadiness: boolean, trace?: ReadinessTrace, checkpoint: () => void = () => {}): Result {
+  certifyReadiness: boolean, trace?: ReadinessTrace, checkpoint: () => void = () => {}, access?: ProjectFileAccessPort): Result {
   return entry.engine.withRequestModuleResolution(() => {
     const result = run(entry)
     if (certifyReadiness) certifyPreparedQuery(entry, workspace, trace)
-    assertCurrentWorkspaceSources(workspace, checkpoint)
+    assertCurrentWorkspaceSources(workspace, checkpoint, access)
     entry.engine.assertCurrentInputs(checkpoint)
     return result
   })
@@ -76,7 +84,7 @@ export function runPreparedSemanticQuery<Result>(entry: WorkspaceEngineEntry,
 /** Includes readiness input construction, afterQuery and final current-proof admission. */
 function certifyPreparedQuery(entry: WorkspaceEngineEntry, workspace: SemanticWorkspaceView, trace?: ReadinessTrace): void {
   if (process.env.ARKTS_SEMANTIC_QUEUE_TRACE !== "1" || !trace) {
-    entry.engine.semanticReadiness(workspace, "query")
+    assertCertifiedInputs(entry.engine.semanticReadiness(workspace, "query", trace))
     return
   }
   const startedMonotonicMs = performance.now()
@@ -87,6 +95,7 @@ function certifyPreparedQuery(entry: WorkspaceEngineEntry, workspace: SemanticWo
   }
   try {
     queryScopeReport = entry.engine.semanticReadiness(workspace, "query", record)
+    assertCertifiedInputs(queryScopeReport)
     outcome = "complete"
   } finally {
     const finishedMonotonicMs = performance.now()
@@ -100,6 +109,11 @@ function certifyPreparedQuery(entry: WorkspaceEngineEntry, workspace: SemanticWo
       certificationDurationMs: finishedMonotonicMs - startedMonotonicMs,
     })
   }
+}
+
+function assertCertifiedInputs(report: SemanticReadinessReport): void {
+  if (report.unavailableReasons.some(reason => reason === "current-program-inputs-unproven"
+    || reason === "inputs-changed-during-preparation")) throw new SemanticInputUnavailableError()
 }
 
 /** Updates provider ownership and resource scope after the existing engine prepare. */

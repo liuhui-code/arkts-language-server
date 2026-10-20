@@ -95,7 +95,8 @@ test("an opened caller cannot publish a dependency changed during final disk ver
       start: { line: 0, character: 16 }, end: { line: 0, character: 28 },
     } }]
     assert.deepEqual((await session.request("textDocument/definition", params)).result, oldLocation)
-    fs.writeFileSync(path.join(directory, "mutate-read-dependency.json"), JSON.stringify({ text: current }), { flag: "wx" })
+    fs.writeFileSync(path.join(directory, "mutate-read-dependency.json"),
+      JSON.stringify({ text: current, finalVerificationOnly: true }), { flag: "wx" })
     const response = await session.request("textDocument/definition", params, { timeoutMs: 20_000 })
     const witness = JSON.parse(fs.readFileSync(path.join(directory, "read-dependency-mutated.json"), "utf8"))
     assert.equal(witness.pid, session.transport.child.pid); assert(witness.threadId > 0)

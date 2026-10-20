@@ -39,7 +39,7 @@ export class SemanticGroups {
     return root
   }
 
-  available(workspace: SemanticWorkspaceView): boolean {
+  available(workspace: Pick<SemanticWorkspaceView, "rootPath">): boolean {
     const graph = this.resolver.projectFor(workspace.rootPath).semanticGraph()
     return graph.status === "ready" && graph.complete
   }

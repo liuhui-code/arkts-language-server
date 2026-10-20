@@ -16,7 +16,7 @@ if (!isMainThread && process.env.ARKTS_LSP_LOG_DIR && process.env.ARKLINE_HARMON
     const result = lstat.call(this, filePath, ...rest)
     const candidate = path.resolve(String(filePath))
     if (candidate.startsWith(sdk) && candidate.endsWith(".d.ts") && fs.existsSync(marker)) {
-      fs.appendFileSync(output, JSON.stringify({ timestamp: Date.now(), threadId }) + "\n")
+      fs.appendFileSync(output, JSON.stringify({ timestamp: Date.now(), threadId, path: candidate }) + "\n")
     }
     return result
   }

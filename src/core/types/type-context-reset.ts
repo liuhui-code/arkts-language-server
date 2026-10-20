@@ -1,12 +1,36 @@
 import fs from "node:fs"
 import path from "node:path"
 
-import type { SemanticWorkspaceView } from "../workspace/document-store.js"
+import type { ProjectFileAccessPort, SemanticWorkspaceView } from "../workspace/document-store.js"
+import { withChangedDiskDocuments } from "./type-delta-inputs.js"
 
 interface AppliedContextIdentity {
   readonly ownerId: string
   readonly resetEpoch: number
   readonly appliedContentRevision: number
+}
+
+/** A query cannot consume another group's evidence; only contiguous witnessed revisions are replayed. */
+export function synchronizeContextDelta(workspace: SemanticWorkspaceView, revision: number | undefined,
+  access?: ProjectFileAccessPort): SemanticWorkspaceView {
+  if (revision === undefined || revision === workspace.contentRevision || workspace.resetTypeEngine) return workspace
+  const history = workspace.contentDeltas
+  const start = history?.findIndex(delta => delta.fromRevision === revision) ?? -1
+  if (!history || start < 0) return workspace
+  const changed = new Set<string>()
+  let cursor = revision
+  for (const delta of history.slice(start)) {
+    if (delta.rootPath !== path.resolve(workspace.rootPath) || delta.fromRevision !== cursor
+      || delta.toRevision <= cursor || delta.toRevision > workspace.contentRevision) return workspace
+    for (const file of delta.changedPaths) changed.add(path.resolve(file))
+    cursor = delta.toRevision
+    if (cursor === workspace.contentRevision) break
+  }
+  if (cursor !== workspace.contentRevision) return workspace
+  const scope = workspace.semanticRootPaths ? new Set(workspace.semanticRootPaths.map(file => path.resolve(file))) : undefined
+  const changedPaths = [...changed].filter(file => !scope || scope.has(file))
+  return withChangedDiskDocuments({ ...workspace, changedPaths, contentDelta: { rootPath: path.resolve(workspace.rootPath),
+    fromRevision: revision, toRevision: cursor, changedPaths } }, access)
 }
 
 export function typeContextResetReason(
@@ -29,11 +53,12 @@ function hasCompleteDiskDelta(workspace: SemanticWorkspaceView, appliedRevision:
   const delta = workspace.contentDelta
   const paths = workspace.changedPaths
   const root = path.resolve(workspace.rootPath)
-  const deliveredPaths = new Set(workspace.documents.filter(document => !document.overlay)
-    .map(document => path.resolve(document.path)))
+  const deliveredPaths = new Set([...workspace.documents.map(document => path.resolve(document.path)),
+    ...(workspace.changedDiskInputs ?? []).map(input => path.resolve(input.path))])
   return delta !== undefined && delta.rootPath === root
     && delta.fromRevision === appliedRevision && delta.toRevision === workspace.contentRevision
-    && (workspace.removedPaths?.length ?? 0) === 0 && paths !== undefined && paths.length > 0
+    && (workspace.removedPaths?.length ?? 0) === 0 && paths !== undefined
+    && (paths.length > 0 || (workspace.semanticRootPaths !== undefined && delta.toRevision > delta.fromRevision))
     && delta.changedPaths.length === paths.length && paths.every((filePath, index) => {
       const relative = path.relative(root, filePath)
       return delta.changedPaths[index] === filePath && deliveredPaths.has(filePath)

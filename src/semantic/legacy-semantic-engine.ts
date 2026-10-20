@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
@@ -23,7 +22,6 @@ import type {
   SemanticCodeActionQuery,
   SemanticCodeActionResolveQuery,
   SemanticCompletion,
-  SemanticCompletionDiscovery,
   SemanticCompletionList,
   SemanticCompletionKind,
   SemanticCompletionResolveQuery,
@@ -62,8 +60,9 @@ import { isArkUIStringResourcePath } from "../core/arkui/resource-path.js"
 import { formatArktsDocument } from "../core/formatting/arkts-document-formatter.js"
 import { FoldingRangeProvider } from "../core/syntax/folding-range-provider.js"
 import { SemanticTypeEngineRegistry } from "../core/types/type-engine.js"
-import { isMemberAccessCompletion } from "../core/types/typescript-language-service.js"
 import { toFilePath } from "./semantic-worker-file-identity.js"
+import { completionDiscoveryBatches, semanticRootFingerprints, completionItemIdentity,
+  completionItemDiscoveryProjectRoots, memberCompletionScope } from "./completion-batch-planning.js"
 import { publicReferenceResult } from "./references/reference-result-mapping.js"
 import {
   SemanticDocumentStore,
@@ -86,7 +85,7 @@ export class LegacySemanticEngine implements SemanticEnginePort {
   private readonly engines: SemanticTypeEngineRegistry
   private readonly foldingRangeProvider = new FoldingRangeProvider()
   private readonly interactiveProjectRootProfile: "closure" | "current"
-  private readonly memberCompletionProjectRootProfile: "workspace" | "current"
+  private readonly memberCompletionProjectRootProfile: "group" | "workspace" | "current"
   private readonly autoImportProjectRootProfile: "workspace" | "discovery"
   private readonly autoImportBatchRootLimit: number
   private readonly autoImportTrimBetweenBatches: boolean
@@ -98,7 +97,7 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     private readonly runtime: LegacySemanticEngineRuntimeOptions = {},
   ) {
     this.interactiveProjectRootProfile = runtime.interactiveProjectRootProfile ?? "closure"
-    this.memberCompletionProjectRootProfile = runtime.memberCompletionProjectRootProfile ?? "workspace"
+    this.memberCompletionProjectRootProfile = runtime.memberCompletionProjectRootProfile ?? "group"
     this.autoImportProjectRootProfile = runtime.autoImportProjectRootProfile ?? "workspace"
     this.autoImportBatchRootLimit = runtime.autoImportBatchRootLimit ?? 128
     this.autoImportTrimBetweenBatches = runtime.autoImportTrimBetweenBatches ?? false
@@ -159,7 +158,8 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     return isProjectResourceFile(this.packageResolver, rootUri, fileUri)
   }
   close(documentUri: string): void {
-    if (documentUri.startsWith("file:")) this.documents.close(fileURLToPath(documentUri))
+    if (documentUri.startsWith("file:")) this.documents.close(fileURLToPath(documentUri),
+      fileURLToPath(this.projects.projectFor(documentUri).rootUri))
   }
 
   workspaceFilesChanged(batches: readonly SemanticWorkspaceFileChangeBatch[]): void {
@@ -192,15 +192,9 @@ export class LegacySemanticEngine implements SemanticEnginePort {
   ): Promise<VersionedSemanticResult<SemanticCompletionList>> {
     assertActive(query.signal)
     this.sync(query.document)
-    const memberAccess = isMemberAccessCompletion(
-      query.document.text,
-      query.position.line + 1,
-      query.position.character + 1,
-    )
-    const memberProjectRoots = memberAccess && (
-      this.interactiveProjectRootProfile === "current"
-      || this.memberCompletionProjectRootProfile === "current"
-    )
+    const { memberAccess, memberProjectRoots, memberGroup } = memberCompletionScope(query,
+      this.interactiveProjectRootProfile, this.memberCompletionProjectRootProfile,
+      () => this.engines.hasSemanticGroups(toFilePath(query.document.workspaceId)))
     const autoImportBatches = !memberAccess && this.autoImportProjectRootProfile === "discovery"
       ? completionDiscoveryBatches(
           query.completionDiscovery,
@@ -208,7 +202,7 @@ export class LegacySemanticEngine implements SemanticEnginePort {
           this.autoImportBatchRootLimit,
         )
       : undefined
-    const scopedProjectRoots = memberProjectRoots || autoImportBatches !== undefined
+    const scopedProjectRoots = memberGroup || memberProjectRoots || autoImportBatches !== undefined
     const batches = autoImportBatches ?? [{
       roots: [] as readonly string[],
       candidates: query.completionDiscovery?.candidates ?? [],
@@ -223,7 +217,7 @@ export class LegacySemanticEngine implements SemanticEnginePort {
         query.document,
         query.position,
         !scopedProjectRoots,
-        scopedProjectRoots ? "current" : this.interactiveProjectRootProfile,
+        memberGroup ? "closure" : scopedProjectRoots ? "current" : this.interactiveProjectRootProfile,
         batch.roots,
       )
       const traceContext = autoImportBatches
@@ -304,8 +298,11 @@ export class LegacySemanticEngine implements SemanticEnginePort {
         },
       }
     }
+    const member = autoImportRoots === undefined ? memberCompletionScope(query,
+      this.interactiveProjectRootProfile, this.memberCompletionProjectRootProfile,
+      () => this.engines.hasSemanticGroups(toFilePath(query.document.workspaceId))) : undefined
     const prepared = autoImportRoots === undefined
-      ? this.prepare(query.document, query.position, true)
+      ? this.prepare(query.document, query.position, ...member!.preparation)
       : this.prepare(query.document, query.position, false, "current", autoImportRoots)
     const item = prepared.engine.resolveCompletion(
       { ...prepared.position, allowSnippets: query.completionOptions?.snippets === true },
@@ -368,14 +365,15 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     return this.referencesWithCandidates(query)
   }
 
-  async residentReferences(query: SemanticReferencesQuery): Promise<VersionedSemanticResult<SemanticReferencesOutcome | null>> {
+  async residentReferences(query: SemanticReferencesQuery, synchronize = false): Promise<VersionedSemanticResult<SemanticReferencesOutcome | null>> {
     assertActive(query.signal)
     this.sync(query.document)
     const workspace = this.projects.projectFor(query.document.uri)
     const position = toLegacyPosition(query.document, query.position, workspace)
-    const result = this.engines.residentReferences(
-      prepareReferenceSearchWorkspace(position, this.documents, this.runtime.references?.trace ? this.logger : undefined, query.document),
-      position, query.includeDeclaration)
+    const prepare = () => prepareReferenceSearchWorkspace(position, this.documents,
+      this.runtime.references?.trace ? this.logger : undefined, query.document)
+    const result = synchronize ? this.engines.retainedReferences(fileURLToPath(workspace.rootUri), prepare, position, query.includeDeclaration)
+      : this.engines.residentReferences(prepare(), position, query.includeDeclaration)
     return result ? publicReferenceResult(query.document.version, result)
       : { documentVersion: query.document.version, value: null }
   }
@@ -747,86 +745,6 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     }
   }
 
-}
-
-interface CompletionDiscoveryBatch {
-  readonly roots: readonly string[]
-  readonly candidates: readonly SemanticCompletionDiscovery["candidates"][number][]
-}
-
-function completionDiscoveryBatches(
-  discovery: SemanticCompletionDiscovery | undefined,
-  workspaceId: string,
-  rootLimit: number,
-): readonly CompletionDiscoveryBatch[] | undefined {
-  if (!discovery || discovery.incomplete || discovery.candidates.length === 0) return undefined
-  const workspaceRoot = toFilePath(workspaceId)
-  if (!workspaceRoot) return undefined
-  const candidatesByRoot = new Map<string, SemanticCompletionDiscovery["candidates"][number][]>()
-  for (const candidate of discovery.candidates) {
-    const candidatePath = toFilePath(candidate.uri)
-    if (!candidatePath || !isWithinPath(workspaceRoot, candidatePath)) return undefined
-    const root = path.resolve(candidatePath)
-    const candidates = candidatesByRoot.get(root)
-    if (candidates) candidates.push(candidate)
-    else candidatesByRoot.set(root, [candidate])
-  }
-  const entries = [...candidatesByRoot].sort(([left], [right]) => left.localeCompare(right))
-  const batches: CompletionDiscoveryBatch[] = []
-  for (let start = 0; start < entries.length; start += rootLimit) {
-    const batch = entries.slice(start, start + rootLimit)
-    batches.push({
-      roots: batch.map(([root]) => root),
-      candidates: batch.flatMap(([, candidates]) => candidates),
-    })
-  }
-  return batches.length > 0 ? batches : undefined
-}
-
-function semanticRootFingerprints(
-  workspaceId: string,
-  roots: readonly string[],
-): string {
-  const workspaceRoot = toFilePath(workspaceId)
-  if (!workspaceRoot) return ""
-  return roots.map((root) => {
-    const relative = path.relative(workspaceRoot, path.resolve(root)).split(path.sep).join("/")
-    return createHash("sha256").update(relative).digest("hex").slice(0, 16)
-  }).join(",")
-}
-
-function completionItemIdentity(item: SemanticCompletionItem): string {
-  return JSON.stringify([
-    item.data?.provider ?? null,
-    item.data?.entryName ?? null,
-    item.data?.entrySource ?? null,
-    item.label,
-    item.kind,
-    item.insertText ?? null,
-  ])
-}
-
-function completionItemDiscoveryProjectRoots(
-  completion: SemanticCompletion,
-  workspaceId: string,
-): readonly string[] | undefined {
-  const candidateUris = completion.data?.discoveryCandidateUris
-  if (!Array.isArray(candidateUris) || candidateUris.length === 0) return undefined
-  const workspaceRoot = toFilePath(workspaceId)
-  if (!workspaceRoot) return undefined
-  const roots = new Set<string>()
-  for (const candidateUri of candidateUris) {
-    if (typeof candidateUri !== "string") return undefined
-    const candidatePath = toFilePath(candidateUri)
-    if (!candidatePath || !isWithinPath(workspaceRoot, candidatePath)) return undefined
-    roots.add(path.resolve(candidatePath))
-  }
-  return roots.size > 0 ? [...roots].sort() : undefined
-}
-
-function isWithinPath(root: string, candidate: string): boolean {
-  const relative = path.relative(path.resolve(root), path.resolve(candidate))
-  return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative))
 }
 
 function resourceEventPath(candidate: string): string {

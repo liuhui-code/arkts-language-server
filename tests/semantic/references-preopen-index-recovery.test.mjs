@@ -52,6 +52,7 @@ test("pre-open edits reject stale candidates and recover after their catalog com
       ARKTS_INDEX_CATALOG_TRACE: "1",
       ARKTS_LSP_LOG_DIR: logDirectory,
       ARKTS_REFERENCES_STRATEGY: "indexed-batched",
+      ARKTS_REFERENCES_RESIDENT_FAST_PATH: "0",
       ARKTS_REFERENCES_TRACE: "1",
     },
     capabilities: { window: { workDoneProgress: true } },

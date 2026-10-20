@@ -105,12 +105,12 @@ export interface SemanticTypeQueryContext {
   ): SemanticCompletionItemList
   trimCompletion(traceContext: SemanticCompletionTraceContext): void
   resolveCompletion(position: SemanticDocumentPosition, item: SemanticCompletionItem): SemanticCompletionItem
-  define(position: SemanticDocumentPosition): SemanticDefinitionCandidate[]
+  define(position: SemanticDocumentPosition, requireCurrentProgram?: boolean): SemanticDefinitionCandidate[]
   typeDefinitions(position: SemanticDocumentPosition): SemanticDefinitionCandidate[]
   implementations(position: SemanticDocumentPosition): SemanticDefinitionCandidate[]
   references(
     position: SemanticDocumentPosition,
-    includeDeclaration: boolean,
+    includeDeclaration: boolean, requireResidentProof?: boolean,
   ): SemanticReferenceQueryResult
   prepareRename(position: SemanticDocumentPosition): SemanticPrepareRenameQueryResult
   rename(position: SemanticDocumentPosition, newName: string): SemanticRenameQueryResult

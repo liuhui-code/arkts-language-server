@@ -1,4 +1,6 @@
 import ts from "typescript"
+import { withRequestInputValidation } from "../../project/request-input-validation.js"
+import { SemanticInputUnavailableError } from "./typescript-query-inputs.js"
 
 const MAX_RESOLUTION_CALLS = 32
 const MAX_DIRECTORY_PRESENCE = 32
@@ -12,6 +14,10 @@ export class QueryModuleResolution {
   constructor(private readonly rootPath: string, private readonly options: ts.CompilerOptions) {}
 
   query<Result>(run: () => Result): Result {
+    return withRequestInputValidation(() => this.queryModules(run), () => { throw new SemanticInputUnavailableError() })
+  }
+
+  private queryModules<Result>(run: () => Result): Result {
     if (this.active || (process.env.ARKTS_QUERY_MODULE_RESOLUTION_REUSE ?? "1") !== "1") return run()
     const active = { calls: 0, directories: new Map<string, boolean>(), directoryCodeUnits: 0,
       cache: ts.createModuleResolutionCache(this.rootPath,

@@ -23,13 +23,15 @@ if (!isMainThread && workerData?.runtimeConfig && process.env.ARKTS_LSP_LOG_DIR)
     const count = descriptors.get(fd) + 1
     descriptors.set(fd, count)
     if (count === 2 && fs.existsSync(control) && !fs.existsSync(witness)) {
-      const { text } = JSON.parse(fs.readFileSync(control, "utf8"))
+      const { text, finalVerificationOnly } = JSON.parse(fs.readFileSync(control, "utf8"))
+      const caller = new Error().stack.split("\n").slice(2, 12)
+      if (finalVerificationOnly && !caller.some(line => line.includes("assertCurrentWorkspaceSources"))) return stat
       if (typeof text !== "string" || Buffer.byteLength(text) !== stat.size) throw Error("private mutation must preserve byte length")
       fs.writeFileSync(file, text)
       fs.utimesSync(file, stat.atime, stat.mtime)
       fs.writeFileSync(witness, JSON.stringify({ pid: process.pid, threadId, boundary: "native-read-final-fstat-return",
         originalSize: stat.size, currentSize: fs.statSync(file).size, currentText: fs.readFileSync(file, "utf8"),
-        caller: new Error().stack.split("\n").slice(2, 9) }), { flag: "wx" })
+        caller }), { flag: "wx" })
     }
     return stat
   }

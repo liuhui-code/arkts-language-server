@@ -1,0 +1,3345 @@
+{
+  "schema": "stable-program-public-summary-v1",
+  "publicationPolicy": "Numeric summary only; no original source, full edits, protocol responses, snapshots, project manifests or raw archives.",
+  "timingEnvironment": {
+    "platform": "Mac",
+    "node": "20.19.5",
+    "compiler": "ohos-typescript 4.9.5-r10",
+    "sdkInputFiles": 1670,
+    "readiness": "degraded 2307"
+  },
+  "normalRuns": 54,
+  "completeNormalizedResultPairs": 546,
+  "latestOperations": 546,
+  "latestOver500": 9,
+  "scaleRuns": 42,
+  "scaleResultPairs": 273,
+  "limits": [
+    "Per-operation 500ms acceptance remains FAIL.",
+    "Scale growth costs remain unresolved; endpoint differences do not prove complexity.",
+    "READY, unbounded large projects and long-running soak are not qualified.",
+    "Heavy diagnostic traces cannot explain exclusive normal-run time shares."
+  ],
+  "statistics": [
+    {
+      "scenario": "total-64",
+      "version": "checkpoint-22",
+      "operation": 1,
+      "category": "disk-first-completion",
+      "roundsMs": [
+        319.7807699999994,
+        323.2790210000003,
+        320.6635980000001
+      ],
+      "medianMs": 320.6635980000001,
+      "maxMs": 323.2790210000003,
+      "over500": 0
+    },
+    {
+      "scenario": "total-64",
+      "version": "checkpoint-22",
+      "operation": 2,
+      "category": "disk-repeat-completion",
+      "roundsMs": [
+        28.407774000000245,
+        28.363195999999334,
+        28.21734800000013
+      ],
+      "medianMs": 28.363195999999334,
+      "maxMs": 28.407774000000245,
+      "over500": 0
+    },
+    {
+      "scenario": "total-64",
+      "version": "checkpoint-22",
+      "operation": 3,
+      "category": "disk-definition",
+      "roundsMs": [
+        28.921578999999838,
+        28.024647000000186,
+        28.458142000000407
+      ],
+      "medianMs": 28.458142000000407,
+      "maxMs": 28.921578999999838,
+      "over500": 0
+    },
+    {
+      "scenario": "total-64",
+      "version": "checkpoint-22",
+      "operation": 4,
+      "category": "open-first-completion",
+      "roundsMs": [
+        29.395974999999453,
+        29.542739999999867,
+        29.291887999999744
+      ],
+      "medianMs": 29.395974999999453,
+      "maxMs": 29.542739999999867,
+      "over500": 0
+    },
+    {
+      "scenario": "total-64",
+      "version": "checkpoint-22",
+      "operation": 5,
+      "category": "open-repeat-completion",
+      "roundsMs": [
+        26.02116600000045,
+        26.20532699999967,
+        25.664152000000286
+      ],
+      "medianMs": 26.02116600000045,
+      "maxMs": 26.20532699999967,
+      "over500": 0
+    },
+    {
+      "scenario": "total-64",
+      "version": "checkpoint-22",
+      "operation": 6,
+      "category": "open-definition",
+      "roundsMs": [
+        23.387416999999914,
+        23.788558999999623,
+        24.062895000000026
+      ],
+      "medianMs": 23.788558999999623,
+      "maxMs": 24.062895000000026,
+      "over500": 0
+    },
+    {
+      "scenario": "total-64",
+      "version": "checkpoint-22",
+      "operation": 7,
+      "category": "reopen-completion",
+      "roundsMs": [
+        337.9446200000002,
+        335.37046400000054,
+        337.2249869999996
+      ],
+      "medianMs": 337.2249869999996,
+      "maxMs": 337.9446200000002,
+      "over500": 0
+    },
+    {
+      "scenario": "total-64",
+      "version": "checkpoint-22",
+      "operation": 8,
+      "category": "reopen-definition",
+      "roundsMs": [
+        49.2337349999998,
+        50.011311000000205,
+        49.48362500000076
+      ],
+      "medianMs": 49.48362500000076,
+      "maxMs": 50.011311000000205,
+      "over500": 0
+    },
+    {
+      "scenario": "total-64",
+      "version": "checkpoint-22",
+      "operation": 9,
+      "category": "reopen-completion",
+      "roundsMs": [
+        328.03100900000027,
+        331.2518629999995,
+        325.7083010000006
+      ],
+      "medianMs": 328.03100900000027,
+      "maxMs": 331.2518629999995,
+      "over500": 0
+    },
+    {
+      "scenario": "total-64",
+      "version": "checkpoint-22",
+      "operation": 10,
+      "category": "reopen-definition",
+      "roundsMs": [
+        44.14178600000014,
+        44.59722099999999,
+        45.218087999999625
+      ],
+      "medianMs": 44.59722099999999,
+      "maxMs": 45.218087999999625,
+      "over500": 0
+    },
+    {
+      "scenario": "total-64",
+      "version": "checkpoint-22",
+      "operation": 11,
+      "category": "rename",
+      "roundsMs": [
+        320.660409000001,
+        322.54661999999917,
+        329.0011379999996
+      ],
+      "medianMs": 322.54661999999917,
+      "maxMs": 329.0011379999996,
+      "over500": 0
+    },
+    {
+      "scenario": "total-64",
+      "version": "checkpoint-22",
+      "operation": 12,
+      "category": "renamed-references-first",
+      "roundsMs": [
+        387.2995429999992,
+        388.180577000001,
+        400.96699400000034
+      ],
+      "medianMs": 388.180577000001,
+      "maxMs": 400.96699400000034,
+      "over500": 0
+    },
+    {
+      "scenario": "total-64",
+      "version": "checkpoint-22",
+      "operation": 13,
+      "category": "renamed-references-repeat",
+      "roundsMs": [
+        1.5550810000004276,
+        1.5604380000004312,
+        1.636290000000372
+      ],
+      "medianMs": 1.5604380000004312,
+      "maxMs": 1.636290000000372,
+      "over500": 0
+    },
+    {
+      "scenario": "total-64",
+      "version": "checkpoint-23",
+      "operation": 1,
+      "category": "disk-first-completion",
+      "roundsMs": [
+        323.1596639999998,
+        323.5669170000001,
+        321.78552500000023
+      ],
+      "medianMs": 323.1596639999998,
+      "maxMs": 323.5669170000001,
+      "over500": 0
+    },
+    {
+      "scenario": "total-64",
+      "version": "checkpoint-23",
+      "operation": 2,
+      "category": "disk-repeat-completion",
+      "roundsMs": [
+        23.240125000000262,
+        27.540420000000267,
+        28.26495199999954
+      ],
+      "medianMs": 27.540420000000267,
+      "maxMs": 28.26495199999954,
+      "over500": 0
+    },
+    {
+      "scenario": "total-64",
+      "version": "checkpoint-23",
+      "operation": 3,
+      "category": "disk-definition",
+      "roundsMs": [
+        22.913143999999193,
+        28.78137400000014,
+        28.820893999999498
+      ],
+      "medianMs": 28.78137400000014,
+      "maxMs": 28.820893999999498,
+      "over500": 0
+    },
+    {
+      "scenario": "total-64",
+      "version": "checkpoint-23",
+      "operation": 4,
+      "category": "open-first-completion",
+      "roundsMs": [
+        23.54247799999939,
+        27.33704299999954,
+        29.867960999999923
+      ],
+      "medianMs": 27.33704299999954,
+      "maxMs": 29.867960999999923,
+      "over500": 0
+    },
+    {
+      "scenario": "total-64",
+      "version": "checkpoint-23",
+      "operation": 5,
+      "category": "open-repeat-completion",
+      "roundsMs": [
+        21.15657899999951,
+        25.600421000000097,
+        26.108768000000055
+      ],
+      "medianMs": 25.600421000000097,
+      "maxMs": 26.108768000000055,
+      "over500": 0
+    },
+    {
+      "scenario": "total-64",
+      "version": "checkpoint-23",
+      "operation": 6,
+      "category": "open-definition",
+      "roundsMs": [
+        19.26598400000057,
+        23.75875999999971,
+        23.900166000000354
+      ],
+      "medianMs": 23.75875999999971,
+      "maxMs": 23.900166000000354,
+      "over500": 0
+    },
+    {
+      "scenario": "total-64",
+      "version": "checkpoint-23",
+      "operation": 7,
+      "category": "reopen-completion",
+      "roundsMs": [
+        310.7279010000002,
+        332.6854110000004,
+        333.670607
+      ],
+      "medianMs": 332.6854110000004,
+      "maxMs": 333.670607,
+      "over500": 0
+    },
+    {
+      "scenario": "total-64",
+      "version": "checkpoint-23",
+      "operation": 8,
+      "category": "reopen-definition",
+      "roundsMs": [
+        40.66385100000025,
+        49.78236299999935,
+        47.63646400000016
+      ],
+      "medianMs": 47.63646400000016,
+      "maxMs": 49.78236299999935,
+      "over500": 0
+    },
+    {
+      "scenario": "total-64",
+      "version": "checkpoint-23",
+      "operation": 9,
+      "category": "reopen-completion",
+      "roundsMs": [
+        304.6531409999998,
+        325.8428219999996,
+        319.93225000000075
+      ],
+      "medianMs": 319.93225000000075,
+      "maxMs": 325.8428219999996,
+      "over500": 0
+    },
+    {
+      "scenario": "total-64",
+      "version": "checkpoint-23",
+      "operation": 10,
+      "category": "reopen-definition",
+      "roundsMs": [
+        36.495115000000624,
+        43.69576899999993,
+        42.461465999999746
+      ],
+      "medianMs": 42.461465999999746,
+      "maxMs": 43.69576899999993,
+      "over500": 0
+    },
+    {
+      "scenario": "total-64",
+      "version": "checkpoint-23",
+      "operation": 11,
+      "category": "rename",
+      "roundsMs": [
+        274.0811440000007,
+        315.6990059999998,
+        317.02913400000034
+      ],
+      "medianMs": 315.6990059999998,
+      "maxMs": 317.02913400000034,
+      "over500": 0
+    },
+    {
+      "scenario": "total-64",
+      "version": "checkpoint-23",
+      "operation": 12,
+      "category": "renamed-references-first",
+      "roundsMs": [
+        328.2156299999997,
+        348.424500000001,
+        344.5943950000001
+      ],
+      "medianMs": 344.5943950000001,
+      "maxMs": 348.424500000001,
+      "over500": 0
+    },
+    {
+      "scenario": "total-64",
+      "version": "checkpoint-23",
+      "operation": 13,
+      "category": "renamed-references-repeat",
+      "roundsMs": [
+        1.6691250000003492,
+        1.5294730000005075,
+        1.886492999999973
+      ],
+      "medianMs": 1.6691250000003492,
+      "maxMs": 1.886492999999973,
+      "over500": 0
+    },
+    {
+      "scenario": "total-256",
+      "version": "checkpoint-22",
+      "operation": 1,
+      "category": "disk-first-completion",
+      "roundsMs": [
+        319.7169329999997,
+        320.6289590000006,
+        321.40443200000027
+      ],
+      "medianMs": 320.6289590000006,
+      "maxMs": 321.40443200000027,
+      "over500": 0
+    },
+    {
+      "scenario": "total-256",
+      "version": "checkpoint-22",
+      "operation": 2,
+      "category": "disk-repeat-completion",
+      "roundsMs": [
+        29.688673999999992,
+        31.094441999999617,
+        29.01620400000047
+      ],
+      "medianMs": 29.688673999999992,
+      "maxMs": 31.094441999999617,
+      "over500": 0
+    },
+    {
+      "scenario": "total-256",
+      "version": "checkpoint-22",
+      "operation": 3,
+      "category": "disk-definition",
+      "roundsMs": [
+        29.01103400000011,
+        29.63152699999955,
+        29.303007000000434
+      ],
+      "medianMs": 29.303007000000434,
+      "maxMs": 29.63152699999955,
+      "over500": 0
+    },
+    {
+      "scenario": "total-256",
+      "version": "checkpoint-22",
+      "operation": 4,
+      "category": "open-first-completion",
+      "roundsMs": [
+        29.183078999999452,
+        30.35226899999998,
+        30.016036999999415
+      ],
+      "medianMs": 30.016036999999415,
+      "maxMs": 30.35226899999998,
+      "over500": 0
+    },
+    {
+      "scenario": "total-256",
+      "version": "checkpoint-22",
+      "operation": 5,
+      "category": "open-repeat-completion",
+      "roundsMs": [
+        26.372027000000344,
+        26.50624400000015,
+        26.466833999999835
+      ],
+      "medianMs": 26.466833999999835,
+      "maxMs": 26.50624400000015,
+      "over500": 0
+    },
+    {
+      "scenario": "total-256",
+      "version": "checkpoint-22",
+      "operation": 6,
+      "category": "open-definition",
+      "roundsMs": [
+        24.5967270000001,
+        24.076504999999997,
+        24.895833000000493
+      ],
+      "medianMs": 24.5967270000001,
+      "maxMs": 24.895833000000493,
+      "over500": 0
+    },
+    {
+      "scenario": "total-256",
+      "version": "checkpoint-22",
+      "operation": 7,
+      "category": "reopen-completion",
+      "roundsMs": [
+        337.2730510000001,
+        345.91324299999997,
+        339.8425159999997
+      ],
+      "medianMs": 339.8425159999997,
+      "maxMs": 345.91324299999997,
+      "over500": 0
+    },
+    {
+      "scenario": "total-256",
+      "version": "checkpoint-22",
+      "operation": 8,
+      "category": "reopen-definition",
+      "roundsMs": [
+        51.36021500000061,
+        51.04592799999955,
+        51.642085999999836
+      ],
+      "medianMs": 51.36021500000061,
+      "maxMs": 51.642085999999836,
+      "over500": 0
+    },
+    {
+      "scenario": "total-256",
+      "version": "checkpoint-22",
+      "operation": 9,
+      "category": "reopen-completion",
+      "roundsMs": [
+        329.8856479999995,
+        330.04738799999996,
+        327.9529939999993
+      ],
+      "medianMs": 329.8856479999995,
+      "maxMs": 330.04738799999996,
+      "over500": 0
+    },
+    {
+      "scenario": "total-256",
+      "version": "checkpoint-22",
+      "operation": 10,
+      "category": "reopen-definition",
+      "roundsMs": [
+        43.311507999999776,
+        45.884995999998864,
+        45.11607399999957
+      ],
+      "medianMs": 45.11607399999957,
+      "maxMs": 45.884995999998864,
+      "over500": 0
+    },
+    {
+      "scenario": "total-256",
+      "version": "checkpoint-22",
+      "operation": 11,
+      "category": "rename",
+      "roundsMs": [
+        356.98467600000004,
+        348.2353899999998,
+        348.67194800000107
+      ],
+      "medianMs": 348.67194800000107,
+      "maxMs": 356.98467600000004,
+      "over500": 0
+    },
+    {
+      "scenario": "total-256",
+      "version": "checkpoint-22",
+      "operation": 12,
+      "category": "renamed-references-first",
+      "roundsMs": [
+        484.42440800000077,
+        423.9689039999994,
+        428.3582900000001
+      ],
+      "medianMs": 428.3582900000001,
+      "maxMs": 484.42440800000077,
+      "over500": 0
+    },
+    {
+      "scenario": "total-256",
+      "version": "checkpoint-22",
+      "operation": 13,
+      "category": "renamed-references-repeat",
+      "roundsMs": [
+        1.6177239999997255,
+        2.2669519999999466,
+        1.484809999999925
+      ],
+      "medianMs": 1.6177239999997255,
+      "maxMs": 2.2669519999999466,
+      "over500": 0
+    },
+    {
+      "scenario": "total-256",
+      "version": "checkpoint-23",
+      "operation": 1,
+      "category": "disk-first-completion",
+      "roundsMs": [
+        321.8675980000007,
+        321.98668499999985,
+        318.5871079999997
+      ],
+      "medianMs": 321.8675980000007,
+      "maxMs": 321.98668499999985,
+      "over500": 0
+    },
+    {
+      "scenario": "total-256",
+      "version": "checkpoint-23",
+      "operation": 2,
+      "category": "disk-repeat-completion",
+      "roundsMs": [
+        30.68481199999951,
+        29.57839100000001,
+        31.350561999999627
+      ],
+      "medianMs": 30.68481199999951,
+      "maxMs": 31.350561999999627,
+      "over500": 0
+    },
+    {
+      "scenario": "total-256",
+      "version": "checkpoint-23",
+      "operation": 3,
+      "category": "disk-definition",
+      "roundsMs": [
+        29.496478999999454,
+        29.549533999999767,
+        30.491062000000056
+      ],
+      "medianMs": 29.549533999999767,
+      "maxMs": 30.491062000000056,
+      "over500": 0
+    },
+    {
+      "scenario": "total-256",
+      "version": "checkpoint-23",
+      "operation": 4,
+      "category": "open-first-completion",
+      "roundsMs": [
+        30.65444099999968,
+        29.971214999999575,
+        30.120694999999614
+      ],
+      "medianMs": 30.120694999999614,
+      "maxMs": 30.65444099999968,
+      "over500": 0
+    },
+    {
+      "scenario": "total-256",
+      "version": "checkpoint-23",
+      "operation": 5,
+      "category": "open-repeat-completion",
+      "roundsMs": [
+        26.409590999999637,
+        26.99126299999989,
+        26.71841399999994
+      ],
+      "medianMs": 26.71841399999994,
+      "maxMs": 26.99126299999989,
+      "over500": 0
+    },
+    {
+      "scenario": "total-256",
+      "version": "checkpoint-23",
+      "operation": 6,
+      "category": "open-definition",
+      "roundsMs": [
+        24.672880999999506,
+        24.671809999999823,
+        25.07655799999975
+      ],
+      "medianMs": 24.672880999999506,
+      "maxMs": 25.07655799999975,
+      "over500": 0
+    },
+    {
+      "scenario": "total-256",
+      "version": "checkpoint-23",
+      "operation": 7,
+      "category": "reopen-completion",
+      "roundsMs": [
+        328.5697659999996,
+        328.62559000000056,
+        332.6859820000009
+      ],
+      "medianMs": 328.62559000000056,
+      "maxMs": 332.6859820000009,
+      "over500": 0
+    },
+    {
+      "scenario": "total-256",
+      "version": "checkpoint-23",
+      "operation": 8,
+      "category": "reopen-definition",
+      "roundsMs": [
+        50.469184000000496,
+        48.535093999999845,
+        51.8198339999999
+      ],
+      "medianMs": 50.469184000000496,
+      "maxMs": 51.8198339999999,
+      "over500": 0
+    },
+    {
+      "scenario": "total-256",
+      "version": "checkpoint-23",
+      "operation": 9,
+      "category": "reopen-completion",
+      "roundsMs": [
+        319.1539650000004,
+        325.6381960000008,
+        322.00941499999954
+      ],
+      "medianMs": 322.00941499999954,
+      "maxMs": 325.6381960000008,
+      "over500": 0
+    },
+    {
+      "scenario": "total-256",
+      "version": "checkpoint-23",
+      "operation": 10,
+      "category": "reopen-definition",
+      "roundsMs": [
+        44.80951200000072,
+        43.765856999998505,
+        44.73096600000008
+      ],
+      "medianMs": 44.73096600000008,
+      "maxMs": 44.80951200000072,
+      "over500": 0
+    },
+    {
+      "scenario": "total-256",
+      "version": "checkpoint-23",
+      "operation": 11,
+      "category": "rename",
+      "roundsMs": [
+        341.26718899999923,
+        339.46177999999964,
+        344.85999099999935
+      ],
+      "medianMs": 341.26718899999923,
+      "maxMs": 344.85999099999935,
+      "over500": 0
+    },
+    {
+      "scenario": "total-256",
+      "version": "checkpoint-23",
+      "operation": 12,
+      "category": "renamed-references-first",
+      "roundsMs": [
+        395.0224710000002,
+        395.53533499999867,
+        395.91589100000056
+      ],
+      "medianMs": 395.53533499999867,
+      "maxMs": 395.91589100000056,
+      "over500": 0
+    },
+    {
+      "scenario": "total-256",
+      "version": "checkpoint-23",
+      "operation": 13,
+      "category": "renamed-references-repeat",
+      "roundsMs": [
+        1.507035000000542,
+        1.5943980000010924,
+        1.5513760000012553
+      ],
+      "medianMs": 1.5513760000012553,
+      "maxMs": 1.5943980000010924,
+      "over500": 0
+    },
+    {
+      "scenario": "total-1024",
+      "version": "checkpoint-22",
+      "operation": 1,
+      "category": "disk-first-completion",
+      "roundsMs": [
+        322.8755170000004,
+        323.5565349999997,
+        324.83464600000025
+      ],
+      "medianMs": 323.5565349999997,
+      "maxMs": 324.83464600000025,
+      "over500": 0
+    },
+    {
+      "scenario": "total-1024",
+      "version": "checkpoint-22",
+      "operation": 2,
+      "category": "disk-repeat-completion",
+      "roundsMs": [
+        32.05069299999923,
+        31.961513000000195,
+        31.77273999999943
+      ],
+      "medianMs": 31.961513000000195,
+      "maxMs": 32.05069299999923,
+      "over500": 0
+    },
+    {
+      "scenario": "total-1024",
+      "version": "checkpoint-22",
+      "operation": 3,
+      "category": "disk-definition",
+      "roundsMs": [
+        33.97490900000048,
+        32.321288999999524,
+        32.03759199999968
+      ],
+      "medianMs": 32.321288999999524,
+      "maxMs": 33.97490900000048,
+      "over500": 0
+    },
+    {
+      "scenario": "total-1024",
+      "version": "checkpoint-22",
+      "operation": 4,
+      "category": "open-first-completion",
+      "roundsMs": [
+        33.031278000000384,
+        32.30115300000034,
+        33.49149800000032
+      ],
+      "medianMs": 33.031278000000384,
+      "maxMs": 33.49149800000032,
+      "over500": 0
+    },
+    {
+      "scenario": "total-1024",
+      "version": "checkpoint-22",
+      "operation": 5,
+      "category": "open-repeat-completion",
+      "roundsMs": [
+        29.61982900000021,
+        28.856442000000243,
+        29.651780999999573
+      ],
+      "medianMs": 29.61982900000021,
+      "maxMs": 29.651780999999573,
+      "over500": 0
+    },
+    {
+      "scenario": "total-1024",
+      "version": "checkpoint-22",
+      "operation": 6,
+      "category": "open-definition",
+      "roundsMs": [
+        28.991195000000516,
+        27.784316999999646,
+        29.01723899999979
+      ],
+      "medianMs": 28.991195000000516,
+      "maxMs": 29.01723899999979,
+      "over500": 0
+    },
+    {
+      "scenario": "total-1024",
+      "version": "checkpoint-22",
+      "operation": 7,
+      "category": "reopen-completion",
+      "roundsMs": [
+        343.03736500000105,
+        346.57624400000077,
+        368.16514800000095
+      ],
+      "medianMs": 346.57624400000077,
+      "maxMs": 368.16514800000095,
+      "over500": 0
+    },
+    {
+      "scenario": "total-1024",
+      "version": "checkpoint-22",
+      "operation": 8,
+      "category": "reopen-definition",
+      "roundsMs": [
+        57.137878999999884,
+        57.21393300000091,
+        57.26864099999875
+      ],
+      "medianMs": 57.21393300000091,
+      "maxMs": 57.26864099999875,
+      "over500": 0
+    },
+    {
+      "scenario": "total-1024",
+      "version": "checkpoint-22",
+      "operation": 9,
+      "category": "reopen-completion",
+      "roundsMs": [
+        339.5906669999986,
+        337.40414600000076,
+        333.8134140000002
+      ],
+      "medianMs": 337.40414600000076,
+      "maxMs": 339.5906669999986,
+      "over500": 0
+    },
+    {
+      "scenario": "total-1024",
+      "version": "checkpoint-22",
+      "operation": 10,
+      "category": "reopen-definition",
+      "roundsMs": [
+        51.418564999999944,
+        50.10019100000136,
+        51.35517400000026
+      ],
+      "medianMs": 51.35517400000026,
+      "maxMs": 51.418564999999944,
+      "over500": 0
+    },
+    {
+      "scenario": "total-1024",
+      "version": "checkpoint-22",
+      "operation": 11,
+      "category": "rename",
+      "roundsMs": [
+        424.90207399999963,
+        424.671832,
+        422.324693999999
+      ],
+      "medianMs": 424.671832,
+      "maxMs": 424.90207399999963,
+      "over500": 0
+    },
+    {
+      "scenario": "total-1024",
+      "version": "checkpoint-22",
+      "operation": 12,
+      "category": "renamed-references-first",
+      "roundsMs": [
+        522.9612840000009,
+        521.8297070000008,
+        517.9977440000002
+      ],
+      "medianMs": 521.8297070000008,
+      "maxMs": 522.9612840000009,
+      "over500": 3
+    },
+    {
+      "scenario": "total-1024",
+      "version": "checkpoint-22",
+      "operation": 13,
+      "category": "renamed-references-repeat",
+      "roundsMs": [
+        1.211338999999498,
+        1.198867999999493,
+        1.5107480000006035
+      ],
+      "medianMs": 1.211338999999498,
+      "maxMs": 1.5107480000006035,
+      "over500": 0
+    },
+    {
+      "scenario": "total-1024",
+      "version": "checkpoint-23",
+      "operation": 1,
+      "category": "disk-first-completion",
+      "roundsMs": [
+        320.8419359999998,
+        324.8545950000007,
+        319.5781219999999
+      ],
+      "medianMs": 320.8419359999998,
+      "maxMs": 324.8545950000007,
+      "over500": 0
+    },
+    {
+      "scenario": "total-1024",
+      "version": "checkpoint-23",
+      "operation": 2,
+      "category": "disk-repeat-completion",
+      "roundsMs": [
+        32.42801100000088,
+        32.012808999999834,
+        32.157695999999305
+      ],
+      "medianMs": 32.157695999999305,
+      "maxMs": 32.42801100000088,
+      "over500": 0
+    },
+    {
+      "scenario": "total-1024",
+      "version": "checkpoint-23",
+      "operation": 3,
+      "category": "disk-definition",
+      "roundsMs": [
+        33.2262639999999,
+        33.94645899999978,
+        34.74316500000077
+      ],
+      "medianMs": 33.94645899999978,
+      "maxMs": 34.74316500000077,
+      "over500": 0
+    },
+    {
+      "scenario": "total-1024",
+      "version": "checkpoint-23",
+      "operation": 4,
+      "category": "open-first-completion",
+      "roundsMs": [
+        33.15733700000055,
+        32.22117699999944,
+        32.797199999999975
+      ],
+      "medianMs": 32.797199999999975,
+      "maxMs": 33.15733700000055,
+      "over500": 0
+    },
+    {
+      "scenario": "total-1024",
+      "version": "checkpoint-23",
+      "operation": 5,
+      "category": "open-repeat-completion",
+      "roundsMs": [
+        29.568194000000403,
+        29.560976000000664,
+        29.619975000000522
+      ],
+      "medianMs": 29.568194000000403,
+      "maxMs": 29.619975000000522,
+      "over500": 0
+    },
+    {
+      "scenario": "total-1024",
+      "version": "checkpoint-23",
+      "operation": 6,
+      "category": "open-definition",
+      "roundsMs": [
+        28.426343000000088,
+        28.554666000000907,
+        27.041071000000557
+      ],
+      "medianMs": 28.426343000000088,
+      "maxMs": 28.554666000000907,
+      "over500": 0
+    },
+    {
+      "scenario": "total-1024",
+      "version": "checkpoint-23",
+      "operation": 7,
+      "category": "reopen-completion",
+      "roundsMs": [
+        336.115909000001,
+        337.8296969999992,
+        337.79862200000025
+      ],
+      "medianMs": 337.79862200000025,
+      "maxMs": 337.8296969999992,
+      "over500": 0
+    },
+    {
+      "scenario": "total-1024",
+      "version": "checkpoint-23",
+      "operation": 8,
+      "category": "reopen-definition",
+      "roundsMs": [
+        57.2694790000005,
+        57.42978699999912,
+        56.65493199999946
+      ],
+      "medianMs": 57.2694790000005,
+      "maxMs": 57.42978699999912,
+      "over500": 0
+    },
+    {
+      "scenario": "total-1024",
+      "version": "checkpoint-23",
+      "operation": 9,
+      "category": "reopen-completion",
+      "roundsMs": [
+        321.23005600000033,
+        325.83185700000104,
+        322.3159999999989
+      ],
+      "medianMs": 322.3159999999989,
+      "maxMs": 325.83185700000104,
+      "over500": 0
+    },
+    {
+      "scenario": "total-1024",
+      "version": "checkpoint-23",
+      "operation": 10,
+      "category": "reopen-definition",
+      "roundsMs": [
+        49.77572399999917,
+        50.482812000000195,
+        48.80500100000063
+      ],
+      "medianMs": 49.77572399999917,
+      "maxMs": 50.482812000000195,
+      "over500": 0
+    },
+    {
+      "scenario": "total-1024",
+      "version": "checkpoint-23",
+      "operation": 11,
+      "category": "rename",
+      "roundsMs": [
+        409.182592000001,
+        419.0546630000008,
+        419.5933989999994
+      ],
+      "medianMs": 419.0546630000008,
+      "maxMs": 419.5933989999994,
+      "over500": 0
+    },
+    {
+      "scenario": "total-1024",
+      "version": "checkpoint-23",
+      "operation": 12,
+      "category": "renamed-references-first",
+      "roundsMs": [
+        491.25235900000007,
+        491.80297999999857,
+        493.54073600000083
+      ],
+      "medianMs": 491.80297999999857,
+      "maxMs": 493.54073600000083,
+      "over500": 0
+    },
+    {
+      "scenario": "total-1024",
+      "version": "checkpoint-23",
+      "operation": 13,
+      "category": "renamed-references-repeat",
+      "roundsMs": [
+        1.6928440000010596,
+        1.5068000000010215,
+        1.5427569999992556
+      ],
+      "medianMs": 1.5427569999992556,
+      "maxMs": 1.6928440000010596,
+      "over500": 0
+    },
+    {
+      "scenario": "total-2048",
+      "version": "checkpoint-22",
+      "operation": 1,
+      "category": "disk-first-completion",
+      "roundsMs": [
+        339.5923700000003,
+        328.91981900000064,
+        330.8890110000011
+      ],
+      "medianMs": 330.8890110000011,
+      "maxMs": 339.5923700000003,
+      "over500": 0
+    },
+    {
+      "scenario": "total-2048",
+      "version": "checkpoint-22",
+      "operation": 2,
+      "category": "disk-repeat-completion",
+      "roundsMs": [
+        36.27666300000055,
+        36.69803900000079,
+        36.16309100000035
+      ],
+      "medianMs": 36.27666300000055,
+      "maxMs": 36.69803900000079,
+      "over500": 0
+    },
+    {
+      "scenario": "total-2048",
+      "version": "checkpoint-22",
+      "operation": 3,
+      "category": "disk-definition",
+      "roundsMs": [
+        37.34646199999952,
+        37.581725000000006,
+        36.171776999999565
+      ],
+      "medianMs": 37.34646199999952,
+      "maxMs": 37.581725000000006,
+      "over500": 0
+    },
+    {
+      "scenario": "total-2048",
+      "version": "checkpoint-22",
+      "operation": 4,
+      "category": "open-first-completion",
+      "roundsMs": [
+        36.079454000000624,
+        36.807449999998425,
+        36.34089099999983
+      ],
+      "medianMs": 36.34089099999983,
+      "maxMs": 36.807449999998425,
+      "over500": 0
+    },
+    {
+      "scenario": "total-2048",
+      "version": "checkpoint-22",
+      "operation": 5,
+      "category": "open-repeat-completion",
+      "roundsMs": [
+        34.05039100000067,
+        32.85936799999945,
+        33.75004199999967
+      ],
+      "medianMs": 33.75004199999967,
+      "maxMs": 34.05039100000067,
+      "over500": 0
+    },
+    {
+      "scenario": "total-2048",
+      "version": "checkpoint-22",
+      "operation": 6,
+      "category": "open-definition",
+      "roundsMs": [
+        30.767298999999184,
+        30.828558000001067,
+        31.793697000000975
+      ],
+      "medianMs": 30.828558000001067,
+      "maxMs": 31.793697000000975,
+      "over500": 0
+    },
+    {
+      "scenario": "total-2048",
+      "version": "checkpoint-22",
+      "operation": 7,
+      "category": "reopen-completion",
+      "roundsMs": [
+        354.9457020000009,
+        348.7040910000014,
+        355.646721000001
+      ],
+      "medianMs": 354.9457020000009,
+      "maxMs": 355.646721000001,
+      "over500": 0
+    },
+    {
+      "scenario": "total-2048",
+      "version": "checkpoint-22",
+      "operation": 8,
+      "category": "reopen-definition",
+      "roundsMs": [
+        62.07332399999905,
+        66.61392899999919,
+        65.98910699999942
+      ],
+      "medianMs": 65.98910699999942,
+      "maxMs": 66.61392899999919,
+      "over500": 0
+    },
+    {
+      "scenario": "total-2048",
+      "version": "checkpoint-22",
+      "operation": 9,
+      "category": "reopen-completion",
+      "roundsMs": [
+        327.8792890000004,
+        334.3951079999988,
+        334.14630899999975
+      ],
+      "medianMs": 334.14630899999975,
+      "maxMs": 334.3951079999988,
+      "over500": 0
+    },
+    {
+      "scenario": "total-2048",
+      "version": "checkpoint-22",
+      "operation": 10,
+      "category": "reopen-definition",
+      "roundsMs": [
+        59.64385899999979,
+        58.36041499999919,
+        60.700205000001006
+      ],
+      "medianMs": 59.64385899999979,
+      "maxMs": 60.700205000001006,
+      "over500": 0
+    },
+    {
+      "scenario": "total-2048",
+      "version": "checkpoint-22",
+      "operation": 11,
+      "category": "rename",
+      "roundsMs": [
+        513.9576309999993,
+        541.8259390000003,
+        536.6376189999992
+      ],
+      "medianMs": 536.6376189999992,
+      "maxMs": 541.8259390000003,
+      "over500": 3
+    },
+    {
+      "scenario": "total-2048",
+      "version": "checkpoint-22",
+      "operation": 12,
+      "category": "renamed-references-first",
+      "roundsMs": [
+        596.1524630000004,
+        642.4918539999999,
+        643.1461630000013
+      ],
+      "medianMs": 642.4918539999999,
+      "maxMs": 643.1461630000013,
+      "over500": 3
+    },
+    {
+      "scenario": "total-2048",
+      "version": "checkpoint-22",
+      "operation": 13,
+      "category": "renamed-references-repeat",
+      "roundsMs": [
+        1.361229000000094,
+        1.753939000000173,
+        1.69627600000058
+      ],
+      "medianMs": 1.69627600000058,
+      "maxMs": 1.753939000000173,
+      "over500": 0
+    },
+    {
+      "scenario": "total-2048",
+      "version": "checkpoint-23",
+      "operation": 1,
+      "category": "disk-first-completion",
+      "roundsMs": [
+        328.084519,
+        333.8532209999994,
+        339.78132600000026
+      ],
+      "medianMs": 333.8532209999994,
+      "maxMs": 339.78132600000026,
+      "over500": 0
+    },
+    {
+      "scenario": "total-2048",
+      "version": "checkpoint-23",
+      "operation": 2,
+      "category": "disk-repeat-completion",
+      "roundsMs": [
+        35.35173300000042,
+        36.1311139999998,
+        36.977145999999266
+      ],
+      "medianMs": 36.1311139999998,
+      "maxMs": 36.977145999999266,
+      "over500": 0
+    },
+    {
+      "scenario": "total-2048",
+      "version": "checkpoint-23",
+      "operation": 3,
+      "category": "disk-definition",
+      "roundsMs": [
+        36.96239499999956,
+        36.32113799999934,
+        35.97337399999924
+      ],
+      "medianMs": 36.32113799999934,
+      "maxMs": 36.96239499999956,
+      "over500": 0
+    },
+    {
+      "scenario": "total-2048",
+      "version": "checkpoint-23",
+      "operation": 4,
+      "category": "open-first-completion",
+      "roundsMs": [
+        36.53710500000034,
+        37.25975000000108,
+        35.6040639999992
+      ],
+      "medianMs": 36.53710500000034,
+      "maxMs": 37.25975000000108,
+      "over500": 0
+    },
+    {
+      "scenario": "total-2048",
+      "version": "checkpoint-23",
+      "operation": 5,
+      "category": "open-repeat-completion",
+      "roundsMs": [
+        34.14868700000079,
+        33.1442760000009,
+        32.44416099999944
+      ],
+      "medianMs": 33.1442760000009,
+      "maxMs": 34.14868700000079,
+      "over500": 0
+    },
+    {
+      "scenario": "total-2048",
+      "version": "checkpoint-23",
+      "operation": 6,
+      "category": "open-definition",
+      "roundsMs": [
+        31.663061000000198,
+        32.205173000000286,
+        32.107670999999755
+      ],
+      "medianMs": 32.107670999999755,
+      "maxMs": 32.205173000000286,
+      "over500": 0
+    },
+    {
+      "scenario": "total-2048",
+      "version": "checkpoint-23",
+      "operation": 7,
+      "category": "reopen-completion",
+      "roundsMs": [
+        353.3356739999999,
+        349.5425529999993,
+        346.13414300000113
+      ],
+      "medianMs": 349.5425529999993,
+      "maxMs": 353.3356739999999,
+      "over500": 0
+    },
+    {
+      "scenario": "total-2048",
+      "version": "checkpoint-23",
+      "operation": 8,
+      "category": "reopen-definition",
+      "roundsMs": [
+        66.71659800000089,
+        65.90971999999965,
+        65.19104599999991
+      ],
+      "medianMs": 65.90971999999965,
+      "maxMs": 66.71659800000089,
+      "over500": 0
+    },
+    {
+      "scenario": "total-2048",
+      "version": "checkpoint-23",
+      "operation": 9,
+      "category": "reopen-completion",
+      "roundsMs": [
+        331.9196329999995,
+        329.36292400000093,
+        323.5271040000007
+      ],
+      "medianMs": 329.36292400000093,
+      "maxMs": 331.9196329999995,
+      "over500": 0
+    },
+    {
+      "scenario": "total-2048",
+      "version": "checkpoint-23",
+      "operation": 10,
+      "category": "reopen-definition",
+      "roundsMs": [
+        60.06641900000068,
+        59.58804000000055,
+        58.670867999999246
+      ],
+      "medianMs": 59.58804000000055,
+      "maxMs": 60.06641900000068,
+      "over500": 0
+    },
+    {
+      "scenario": "total-2048",
+      "version": "checkpoint-23",
+      "operation": 11,
+      "category": "rename",
+      "roundsMs": [
+        535.0803169999999,
+        529.3885989999999,
+        534.2534159999996
+      ],
+      "medianMs": 534.2534159999996,
+      "maxMs": 535.0803169999999,
+      "over500": 3
+    },
+    {
+      "scenario": "total-2048",
+      "version": "checkpoint-23",
+      "operation": 12,
+      "category": "renamed-references-first",
+      "roundsMs": [
+        620.958869,
+        610.3851369999993,
+        612.2496499999997
+      ],
+      "medianMs": 612.2496499999997,
+      "maxMs": 620.958869,
+      "over500": 3
+    },
+    {
+      "scenario": "total-2048",
+      "version": "checkpoint-23",
+      "operation": 13,
+      "category": "renamed-references-repeat",
+      "roundsMs": [
+        1.3853990000006888,
+        1.6906290000006265,
+        1.538297999999486
+      ],
+      "medianMs": 1.538297999999486,
+      "maxMs": 1.6906290000006265,
+      "over500": 0
+    },
+    {
+      "scenario": "fixed",
+      "version": "checkpoint-22",
+      "operation": 1,
+      "category": "disk-first-completion",
+      "roundsMs": [
+        318.1909849999993,
+        318.72573700000066,
+        345.91700800000035
+      ],
+      "medianMs": 318.72573700000066,
+      "maxMs": 345.91700800000035,
+      "over500": 0
+    },
+    {
+      "scenario": "fixed",
+      "version": "checkpoint-22",
+      "operation": 2,
+      "category": "disk-repeat-completion",
+      "roundsMs": [
+        72.57974800000011,
+        80.18459999999868,
+        70.83213299999989
+      ],
+      "medianMs": 72.57974800000011,
+      "maxMs": 80.18459999999868,
+      "over500": 0
+    },
+    {
+      "scenario": "fixed",
+      "version": "checkpoint-22",
+      "operation": 3,
+      "category": "disk-definition",
+      "roundsMs": [
+        63.710181000000375,
+        67.62184700000034,
+        63.98255099999915
+      ],
+      "medianMs": 63.98255099999915,
+      "maxMs": 67.62184700000034,
+      "over500": 0
+    },
+    {
+      "scenario": "fixed",
+      "version": "checkpoint-22",
+      "operation": 4,
+      "category": "open-first-completion",
+      "roundsMs": [
+        69.60680499999944,
+        69.52188500000011,
+        70.0788760000014
+      ],
+      "medianMs": 69.60680499999944,
+      "maxMs": 70.0788760000014,
+      "over500": 0
+    },
+    {
+      "scenario": "fixed",
+      "version": "checkpoint-22",
+      "operation": 5,
+      "category": "open-repeat-completion",
+      "roundsMs": [
+        62.26116700000057,
+        59.85739100000137,
+        63.703026000001046
+      ],
+      "medianMs": 62.26116700000057,
+      "maxMs": 63.703026000001046,
+      "over500": 0
+    },
+    {
+      "scenario": "fixed",
+      "version": "checkpoint-22",
+      "operation": 6,
+      "category": "open-definition",
+      "roundsMs": [
+        144.79744199999914,
+        126.64817800000128,
+        142.89612000000125
+      ],
+      "medianMs": 142.89612000000125,
+      "maxMs": 144.79744199999914,
+      "over500": 0
+    },
+    {
+      "scenario": "fixed",
+      "version": "checkpoint-22",
+      "operation": 7,
+      "category": "reopen-completion",
+      "roundsMs": [
+        265.387748000001,
+        254.09137700000065,
+        264.39486699999907
+      ],
+      "medianMs": 264.39486699999907,
+      "maxMs": 265.387748000001,
+      "over500": 0
+    },
+    {
+      "scenario": "fixed",
+      "version": "checkpoint-22",
+      "operation": 8,
+      "category": "reopen-definition",
+      "roundsMs": [
+        212.1292709999998,
+        200.55320200000097,
+        211.04744500000015
+      ],
+      "medianMs": 211.04744500000015,
+      "maxMs": 212.1292709999998,
+      "over500": 0
+    },
+    {
+      "scenario": "fixed",
+      "version": "checkpoint-22",
+      "operation": 9,
+      "category": "reopen-completion",
+      "roundsMs": [
+        300.2951189999985,
+        284.283958,
+        303.92183099999966
+      ],
+      "medianMs": 300.2951189999985,
+      "maxMs": 303.92183099999966,
+      "over500": 0
+    },
+    {
+      "scenario": "fixed",
+      "version": "checkpoint-22",
+      "operation": 10,
+      "category": "reopen-definition",
+      "roundsMs": [
+        129.35845400000107,
+        124.7926179999995,
+        196.27786399999968
+      ],
+      "medianMs": 129.35845400000107,
+      "maxMs": 196.27786399999968,
+      "over500": 0
+    },
+    {
+      "scenario": "fixed",
+      "version": "checkpoint-22",
+      "operation": 11,
+      "category": "rename",
+      "roundsMs": [
+        284.04867399999966,
+        281.2360640000006,
+        285.8280219999997
+      ],
+      "medianMs": 284.04867399999966,
+      "maxMs": 285.8280219999997,
+      "over500": 0
+    },
+    {
+      "scenario": "fixed",
+      "version": "checkpoint-22",
+      "operation": 12,
+      "category": "renamed-references-first",
+      "roundsMs": [
+        460.70189499999833,
+        435.7789730000004,
+        462.7193590000006
+      ],
+      "medianMs": 460.70189499999833,
+      "maxMs": 462.7193590000006,
+      "over500": 0
+    },
+    {
+      "scenario": "fixed",
+      "version": "checkpoint-22",
+      "operation": 13,
+      "category": "renamed-references-repeat",
+      "roundsMs": [
+        1.8345989999979793,
+        1.589665999999852,
+        1.7557440000018687
+      ],
+      "medianMs": 1.7557440000018687,
+      "maxMs": 1.8345989999979793,
+      "over500": 0
+    },
+    {
+      "scenario": "fixed",
+      "version": "checkpoint-23",
+      "operation": 1,
+      "category": "disk-first-completion",
+      "roundsMs": [
+        314.0310449999997,
+        323.9673869999988,
+        326.20004599999993
+      ],
+      "medianMs": 323.9673869999988,
+      "maxMs": 326.20004599999993,
+      "over500": 0
+    },
+    {
+      "scenario": "fixed",
+      "version": "checkpoint-23",
+      "operation": 2,
+      "category": "disk-repeat-completion",
+      "roundsMs": [
+        71.8146969999998,
+        71.7761989999999,
+        71.05590600000141
+      ],
+      "medianMs": 71.7761989999999,
+      "maxMs": 71.8146969999998,
+      "over500": 0
+    },
+    {
+      "scenario": "fixed",
+      "version": "checkpoint-23",
+      "operation": 3,
+      "category": "disk-definition",
+      "roundsMs": [
+        65.93843100000049,
+        65.45080000000053,
+        64.77845799999886
+      ],
+      "medianMs": 65.45080000000053,
+      "maxMs": 65.93843100000049,
+      "over500": 0
+    },
+    {
+      "scenario": "fixed",
+      "version": "checkpoint-23",
+      "operation": 4,
+      "category": "open-first-completion",
+      "roundsMs": [
+        68.83829800000058,
+        70.32439299999896,
+        69.9177810000001
+      ],
+      "medianMs": 69.9177810000001,
+      "maxMs": 70.32439299999896,
+      "over500": 0
+    },
+    {
+      "scenario": "fixed",
+      "version": "checkpoint-23",
+      "operation": 5,
+      "category": "open-repeat-completion",
+      "roundsMs": [
+        65.2964350000002,
+        64.95890600000166,
+        63.46968199999901
+      ],
+      "medianMs": 64.95890600000166,
+      "maxMs": 65.2964350000002,
+      "over500": 0
+    },
+    {
+      "scenario": "fixed",
+      "version": "checkpoint-23",
+      "operation": 6,
+      "category": "open-definition",
+      "roundsMs": [
+        144.0135930000015,
+        142.73620500000106,
+        140.9096100000006
+      ],
+      "medianMs": 142.73620500000106,
+      "maxMs": 144.0135930000015,
+      "over500": 0
+    },
+    {
+      "scenario": "fixed",
+      "version": "checkpoint-23",
+      "operation": 7,
+      "category": "reopen-completion",
+      "roundsMs": [
+        256.3512499999997,
+        256.90480000000025,
+        255.66252799999893
+      ],
+      "medianMs": 256.3512499999997,
+      "maxMs": 256.90480000000025,
+      "over500": 0
+    },
+    {
+      "scenario": "fixed",
+      "version": "checkpoint-23",
+      "operation": 8,
+      "category": "reopen-definition",
+      "roundsMs": [
+        214.5129850000012,
+        219.24985900000138,
+        222.9725839999992
+      ],
+      "medianMs": 219.24985900000138,
+      "maxMs": 222.9725839999992,
+      "over500": 0
+    },
+    {
+      "scenario": "fixed",
+      "version": "checkpoint-23",
+      "operation": 9,
+      "category": "reopen-completion",
+      "roundsMs": [
+        290.1981109999997,
+        293.13495499999954,
+        262.0576069999988
+      ],
+      "medianMs": 290.1981109999997,
+      "maxMs": 293.13495499999954,
+      "over500": 0
+    },
+    {
+      "scenario": "fixed",
+      "version": "checkpoint-23",
+      "operation": 10,
+      "category": "reopen-definition",
+      "roundsMs": [
+        134.94310399999995,
+        131.51236000000063,
+        130.45929499999875
+      ],
+      "medianMs": 131.51236000000063,
+      "maxMs": 134.94310399999995,
+      "over500": 0
+    },
+    {
+      "scenario": "fixed",
+      "version": "checkpoint-23",
+      "operation": 11,
+      "category": "rename",
+      "roundsMs": [
+        276.3987130000005,
+        275.8371909999987,
+        274.0732960000005
+      ],
+      "medianMs": 275.8371909999987,
+      "maxMs": 276.3987130000005,
+      "over500": 0
+    },
+    {
+      "scenario": "fixed",
+      "version": "checkpoint-23",
+      "operation": 12,
+      "category": "renamed-references-first",
+      "roundsMs": [
+        410.9342699999979,
+        427.4789479999981,
+        423.8189860000002
+      ],
+      "medianMs": 423.8189860000002,
+      "maxMs": 427.4789479999981,
+      "over500": 0
+    },
+    {
+      "scenario": "fixed",
+      "version": "checkpoint-23",
+      "operation": 13,
+      "category": "renamed-references-repeat",
+      "roundsMs": [
+        1.6866059999993013,
+        1.2401630000022124,
+        1.607374000002892
+      ],
+      "medianMs": 1.607374000002892,
+      "maxMs": 1.6866059999993013,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-128",
+      "version": "checkpoint-22",
+      "operation": 1,
+      "category": "disk-first-completion",
+      "roundsMs": [
+        345.15251999999964,
+        325.69020699999965,
+        337.3568200000009
+      ],
+      "medianMs": 337.3568200000009,
+      "maxMs": 345.15251999999964,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-128",
+      "version": "checkpoint-22",
+      "operation": 2,
+      "category": "disk-repeat-completion",
+      "roundsMs": [
+        78.72914200000014,
+        73.18107100000088,
+        77.58698300000106
+      ],
+      "medianMs": 77.58698300000106,
+      "maxMs": 78.72914200000014,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-128",
+      "version": "checkpoint-22",
+      "operation": 3,
+      "category": "disk-definition",
+      "roundsMs": [
+        70.91240900000048,
+        65.02762699999948,
+        66.35393400000066
+      ],
+      "medianMs": 66.35393400000066,
+      "maxMs": 70.91240900000048,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-128",
+      "version": "checkpoint-22",
+      "operation": 4,
+      "category": "open-first-completion",
+      "roundsMs": [
+        73.51299500000096,
+        70.27008299999943,
+        71.44234100000176
+      ],
+      "medianMs": 71.44234100000176,
+      "maxMs": 73.51299500000096,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-128",
+      "version": "checkpoint-22",
+      "operation": 5,
+      "category": "open-repeat-completion",
+      "roundsMs": [
+        66.4417680000006,
+        64.96665100000064,
+        65.74090099999921
+      ],
+      "medianMs": 65.74090099999921,
+      "maxMs": 66.4417680000006,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-128",
+      "version": "checkpoint-22",
+      "operation": 6,
+      "category": "open-definition",
+      "roundsMs": [
+        150.1937109999999,
+        146.0235270000012,
+        149.8405389999989
+      ],
+      "medianMs": 149.8405389999989,
+      "maxMs": 150.1937109999999,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-128",
+      "version": "checkpoint-22",
+      "operation": 7,
+      "category": "reopen-completion",
+      "roundsMs": [
+        289.8327470000004,
+        266.9553629999991,
+        276.2867719999995
+      ],
+      "medianMs": 276.2867719999995,
+      "maxMs": 289.8327470000004,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-128",
+      "version": "checkpoint-22",
+      "operation": 8,
+      "category": "reopen-definition",
+      "roundsMs": [
+        238.7582939999993,
+        226.6007929999996,
+        211.55201800000032
+      ],
+      "medianMs": 226.6007929999996,
+      "maxMs": 238.7582939999993,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-128",
+      "version": "checkpoint-22",
+      "operation": 9,
+      "category": "reopen-completion",
+      "roundsMs": [
+        287.7005740000004,
+        283.442090999999,
+        309.58943999999974
+      ],
+      "medianMs": 287.7005740000004,
+      "maxMs": 309.58943999999974,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-128",
+      "version": "checkpoint-22",
+      "operation": 10,
+      "category": "reopen-definition",
+      "roundsMs": [
+        133.05123200000162,
+        133.88349000000017,
+        137.375320000001
+      ],
+      "medianMs": 133.88349000000017,
+      "maxMs": 137.375320000001,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-128",
+      "version": "checkpoint-22",
+      "operation": 11,
+      "category": "rename",
+      "roundsMs": [
+        308.9561130000002,
+        306.1080299999976,
+        307.13988000000063
+      ],
+      "medianMs": 307.13988000000063,
+      "maxMs": 308.9561130000002,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-128",
+      "version": "checkpoint-22",
+      "operation": 12,
+      "category": "renamed-references-first",
+      "roundsMs": [
+        503.76772100000017,
+        495.186952,
+        519.149668
+      ],
+      "medianMs": 503.76772100000017,
+      "maxMs": 519.149668,
+      "over500": 2
+    },
+    {
+      "scenario": "photos-noise-128",
+      "version": "checkpoint-22",
+      "operation": 13,
+      "category": "renamed-references-repeat",
+      "roundsMs": [
+        1.9292459999996936,
+        1.694619000001694,
+        1.5743959999999788
+      ],
+      "medianMs": 1.694619000001694,
+      "maxMs": 1.9292459999996936,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-128",
+      "version": "checkpoint-23",
+      "operation": 1,
+      "category": "disk-first-completion",
+      "roundsMs": [
+        336.43788499999937,
+        339.7917579999994,
+        332.9879119999987
+      ],
+      "medianMs": 336.43788499999937,
+      "maxMs": 339.7917579999994,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-128",
+      "version": "checkpoint-23",
+      "operation": 2,
+      "category": "disk-repeat-completion",
+      "roundsMs": [
+        71.22163300000102,
+        71.36747099999957,
+        72.2142989999993
+      ],
+      "medianMs": 71.36747099999957,
+      "maxMs": 72.2142989999993,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-128",
+      "version": "checkpoint-23",
+      "operation": 3,
+      "category": "disk-definition",
+      "roundsMs": [
+        65.34814400000141,
+        64.39518300000054,
+        64.25510699999904
+      ],
+      "medianMs": 64.39518300000054,
+      "maxMs": 65.34814400000141,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-128",
+      "version": "checkpoint-23",
+      "operation": 4,
+      "category": "open-first-completion",
+      "roundsMs": [
+        68.22323000000142,
+        69.57335199999943,
+        69.25259800000094
+      ],
+      "medianMs": 69.25259800000094,
+      "maxMs": 69.57335199999943,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-128",
+      "version": "checkpoint-23",
+      "operation": 5,
+      "category": "open-repeat-completion",
+      "roundsMs": [
+        63.823560999999245,
+        64.39830399999846,
+        64.73824400000012
+      ],
+      "medianMs": 64.39830399999846,
+      "maxMs": 64.73824400000012,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-128",
+      "version": "checkpoint-23",
+      "operation": 6,
+      "category": "open-definition",
+      "roundsMs": [
+        146.25380600000062,
+        143.60725400000047,
+        143.25026900000012
+      ],
+      "medianMs": 143.60725400000047,
+      "maxMs": 146.25380600000062,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-128",
+      "version": "checkpoint-23",
+      "operation": 7,
+      "category": "reopen-completion",
+      "roundsMs": [
+        263.1431049999992,
+        257.83162600000105,
+        250.2551169999988
+      ],
+      "medianMs": 257.83162600000105,
+      "maxMs": 263.1431049999992,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-128",
+      "version": "checkpoint-23",
+      "operation": 8,
+      "category": "reopen-definition",
+      "roundsMs": [
+        230.33848800000123,
+        219.44556099999863,
+        234.279410000001
+      ],
+      "medianMs": 230.33848800000123,
+      "maxMs": 234.279410000001,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-128",
+      "version": "checkpoint-23",
+      "operation": 9,
+      "category": "reopen-completion",
+      "roundsMs": [
+        268.64800900000046,
+        296.9149010000001,
+        271.84064000000035
+      ],
+      "medianMs": 271.84064000000035,
+      "maxMs": 296.9149010000001,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-128",
+      "version": "checkpoint-23",
+      "operation": 10,
+      "category": "reopen-definition",
+      "roundsMs": [
+        135.1004979999998,
+        133.5686509999996,
+        135.13129500000105
+      ],
+      "medianMs": 135.1004979999998,
+      "maxMs": 135.13129500000105,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-128",
+      "version": "checkpoint-23",
+      "operation": 11,
+      "category": "rename",
+      "roundsMs": [
+        293.13972900000226,
+        294.673972999999,
+        294.263211999998
+      ],
+      "medianMs": 294.263211999998,
+      "maxMs": 294.673972999999,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-128",
+      "version": "checkpoint-23",
+      "operation": 12,
+      "category": "renamed-references-first",
+      "roundsMs": [
+        443.9503939999995,
+        449.80225900000005,
+        447.8761379999996
+      ],
+      "medianMs": 447.8761379999996,
+      "maxMs": 449.80225900000005,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-128",
+      "version": "checkpoint-23",
+      "operation": 13,
+      "category": "renamed-references-repeat",
+      "roundsMs": [
+        1.9448339999980817,
+        2.258052000001044,
+        1.4579559999983758
+      ],
+      "medianMs": 1.9448339999980817,
+      "maxMs": 2.258052000001044,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-512",
+      "version": "checkpoint-22",
+      "operation": 1,
+      "category": "disk-first-completion",
+      "roundsMs": [
+        346.9420740000005,
+        334.6251250000005,
+        319.8901160000005
+      ],
+      "medianMs": 334.6251250000005,
+      "maxMs": 346.9420740000005,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-512",
+      "version": "checkpoint-22",
+      "operation": 2,
+      "category": "disk-repeat-completion",
+      "roundsMs": [
+        71.43749600000046,
+        74.62000100000114,
+        72.62179900000046
+      ],
+      "medianMs": 72.62179900000046,
+      "maxMs": 74.62000100000114,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-512",
+      "version": "checkpoint-22",
+      "operation": 3,
+      "category": "disk-definition",
+      "roundsMs": [
+        67.07159300000058,
+        66.95473099999981,
+        66.61805900000036
+      ],
+      "medianMs": 66.95473099999981,
+      "maxMs": 67.07159300000058,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-512",
+      "version": "checkpoint-22",
+      "operation": 4,
+      "category": "open-first-completion",
+      "roundsMs": [
+        71.48621399999865,
+        71.57995800000026,
+        72.9235520000002
+      ],
+      "medianMs": 71.57995800000026,
+      "maxMs": 72.9235520000002,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-512",
+      "version": "checkpoint-22",
+      "operation": 5,
+      "category": "open-repeat-completion",
+      "roundsMs": [
+        67.36114599999928,
+        65.0951129999994,
+        66.20082300000104
+      ],
+      "medianMs": 66.20082300000104,
+      "maxMs": 67.36114599999928,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-512",
+      "version": "checkpoint-22",
+      "operation": 6,
+      "category": "open-definition",
+      "roundsMs": [
+        143.72716599999876,
+        149.54598799999985,
+        148.9581139999991
+      ],
+      "medianMs": 148.9581139999991,
+      "maxMs": 149.54598799999985,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-512",
+      "version": "checkpoint-22",
+      "operation": 7,
+      "category": "reopen-completion",
+      "roundsMs": [
+        268.01444699999956,
+        266.6348990000006,
+        264.5325790000006
+      ],
+      "medianMs": 266.6348990000006,
+      "maxMs": 268.01444699999956,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-512",
+      "version": "checkpoint-22",
+      "operation": 8,
+      "category": "reopen-definition",
+      "roundsMs": [
+        234.29852399999982,
+        232.33678300000065,
+        230.10690799999975
+      ],
+      "medianMs": 232.33678300000065,
+      "maxMs": 234.29852399999982,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-512",
+      "version": "checkpoint-22",
+      "operation": 9,
+      "category": "reopen-completion",
+      "roundsMs": [
+        288.4987170000022,
+        304.50228199999947,
+        288.241446
+      ],
+      "medianMs": 288.4987170000022,
+      "maxMs": 304.50228199999947,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-512",
+      "version": "checkpoint-22",
+      "operation": 10,
+      "category": "reopen-definition",
+      "roundsMs": [
+        136.45658800000092,
+        135.63594399999965,
+        135.40215499999977
+      ],
+      "medianMs": 135.63594399999965,
+      "maxMs": 136.45658800000092,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-512",
+      "version": "checkpoint-22",
+      "operation": 11,
+      "category": "rename",
+      "roundsMs": [
+        424.02806899999996,
+        429.7729130000007,
+        426.04295400000046
+      ],
+      "medianMs": 426.04295400000046,
+      "maxMs": 429.7729130000007,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-512",
+      "version": "checkpoint-22",
+      "operation": 12,
+      "category": "renamed-references-first",
+      "roundsMs": [
+        633.4415110000009,
+        640.6219810000002,
+        641.9267519999994
+      ],
+      "medianMs": 640.6219810000002,
+      "maxMs": 641.9267519999994,
+      "over500": 3
+    },
+    {
+      "scenario": "photos-noise-512",
+      "version": "checkpoint-22",
+      "operation": 13,
+      "category": "renamed-references-repeat",
+      "roundsMs": [
+        1.4886919999989914,
+        1.7409120000011171,
+        1.5043389999991632
+      ],
+      "medianMs": 1.5043389999991632,
+      "maxMs": 1.7409120000011171,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-512",
+      "version": "checkpoint-23",
+      "operation": 1,
+      "category": "disk-first-completion",
+      "roundsMs": [
+        335.57622100000117,
+        298.85119399999894,
+        341.2033300000003
+      ],
+      "medianMs": 335.57622100000117,
+      "maxMs": 341.2033300000003,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-512",
+      "version": "checkpoint-23",
+      "operation": 2,
+      "category": "disk-repeat-completion",
+      "roundsMs": [
+        72.90663099999983,
+        70.05032700000083,
+        71.7362979999998
+      ],
+      "medianMs": 71.7362979999998,
+      "maxMs": 72.90663099999983,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-512",
+      "version": "checkpoint-23",
+      "operation": 3,
+      "category": "disk-definition",
+      "roundsMs": [
+        67.38504199999988,
+        55.94310899999982,
+        66.71459499999946
+      ],
+      "medianMs": 66.71459499999946,
+      "maxMs": 67.38504199999988,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-512",
+      "version": "checkpoint-23",
+      "operation": 4,
+      "category": "open-first-completion",
+      "roundsMs": [
+        73.10715300000084,
+        60.92550400000073,
+        72.71745900000133
+      ],
+      "medianMs": 72.71745900000133,
+      "maxMs": 73.10715300000084,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-512",
+      "version": "checkpoint-23",
+      "operation": 5,
+      "category": "open-repeat-completion",
+      "roundsMs": [
+        67.56271000000015,
+        57.46974600000067,
+        66.12846100000024
+      ],
+      "medianMs": 66.12846100000024,
+      "maxMs": 67.56271000000015,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-512",
+      "version": "checkpoint-23",
+      "operation": 6,
+      "category": "open-definition",
+      "roundsMs": [
+        146.24426200000016,
+        126.94120000000112,
+        150.41566899999998
+      ],
+      "medianMs": 146.24426200000016,
+      "maxMs": 150.41566899999998,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-512",
+      "version": "checkpoint-23",
+      "operation": 7,
+      "category": "reopen-completion",
+      "roundsMs": [
+        258.53383399999984,
+        227.20261100000062,
+        263.2283950000001
+      ],
+      "medianMs": 258.53383399999984,
+      "maxMs": 263.2283950000001,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-512",
+      "version": "checkpoint-23",
+      "operation": 8,
+      "category": "reopen-definition",
+      "roundsMs": [
+        255.26213300000018,
+        226.13559499999974,
+        238.76825199999985
+      ],
+      "medianMs": 238.76825199999985,
+      "maxMs": 255.26213300000018,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-512",
+      "version": "checkpoint-23",
+      "operation": 9,
+      "category": "reopen-completion",
+      "roundsMs": [
+        275.8655639999997,
+        271.2430460000014,
+        270.4793780000018
+      ],
+      "medianMs": 271.2430460000014,
+      "maxMs": 275.8655639999997,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-512",
+      "version": "checkpoint-23",
+      "operation": 10,
+      "category": "reopen-definition",
+      "roundsMs": [
+        142.30254200000127,
+        124.22561499999938,
+        138.66302800000267
+      ],
+      "medianMs": 138.66302800000267,
+      "maxMs": 142.30254200000127,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-512",
+      "version": "checkpoint-23",
+      "operation": 11,
+      "category": "rename",
+      "roundsMs": [
+        417.4644559999979,
+        375.7052930000027,
+        415.46531700000196
+      ],
+      "medianMs": 415.46531700000196,
+      "maxMs": 417.4644559999979,
+      "over500": 0
+    },
+    {
+      "scenario": "photos-noise-512",
+      "version": "checkpoint-23",
+      "operation": 12,
+      "category": "renamed-references-first",
+      "roundsMs": [
+        597.3025249999992,
+        554.4445220000016,
+        597.069227
+      ],
+      "medianMs": 597.069227,
+      "maxMs": 597.3025249999992,
+      "over500": 3
+    },
+    {
+      "scenario": "photos-noise-512",
+      "version": "checkpoint-23",
+      "operation": 13,
+      "category": "renamed-references-repeat",
+      "roundsMs": [
+        1.3286609999995562,
+        1.5654020000001765,
+        1.7922179999986838
+      ],
+      "medianMs": 1.5654020000001765,
+      "maxMs": 1.7922179999986838,
+      "over500": 0
+    }
+  ],
+  "scopes": [
+    {
+      "suite": "total-64",
+      "variant": "checkpoint-22",
+      "rawSourceFiles": 64,
+      "rawAllFiles": 69,
+      "addedIndependentSources": 45,
+      "nodeDependencies": 16,
+      "completionDefinitionProjectFiles": 19,
+      "completionDefinitionSdkFiles": 255,
+      "completionDefinitionOtherFiles": 52,
+      "renameReferencesProjectFiles": 64,
+      "renameReferencesSdkFiles": 255,
+      "renameReferencesOtherFiles": 52
+    },
+    {
+      "suite": "total-64",
+      "variant": "checkpoint-23",
+      "rawSourceFiles": 64,
+      "rawAllFiles": 69,
+      "addedIndependentSources": 45,
+      "nodeDependencies": 16,
+      "completionDefinitionProjectFiles": 19,
+      "completionDefinitionSdkFiles": 255,
+      "completionDefinitionOtherFiles": 52,
+      "renameReferencesProjectFiles": 64,
+      "renameReferencesSdkFiles": 255,
+      "renameReferencesOtherFiles": 52
+    },
+    {
+      "suite": "total-256",
+      "variant": "checkpoint-22",
+      "rawSourceFiles": 256,
+      "rawAllFiles": 261,
+      "addedIndependentSources": 237,
+      "nodeDependencies": 16,
+      "completionDefinitionProjectFiles": 19,
+      "completionDefinitionSdkFiles": 255,
+      "completionDefinitionOtherFiles": 52,
+      "renameReferencesProjectFiles": 256,
+      "renameReferencesSdkFiles": 255,
+      "renameReferencesOtherFiles": 52
+    },
+    {
+      "suite": "total-256",
+      "variant": "checkpoint-23",
+      "rawSourceFiles": 256,
+      "rawAllFiles": 261,
+      "addedIndependentSources": 237,
+      "nodeDependencies": 16,
+      "completionDefinitionProjectFiles": 19,
+      "completionDefinitionSdkFiles": 255,
+      "completionDefinitionOtherFiles": 52,
+      "renameReferencesProjectFiles": 256,
+      "renameReferencesSdkFiles": 255,
+      "renameReferencesOtherFiles": 52
+    },
+    {
+      "suite": "total-1024",
+      "variant": "checkpoint-22",
+      "rawSourceFiles": 1024,
+      "rawAllFiles": 1029,
+      "addedIndependentSources": 1005,
+      "nodeDependencies": 16,
+      "completionDefinitionProjectFiles": 19,
+      "completionDefinitionSdkFiles": 255,
+      "completionDefinitionOtherFiles": 52,
+      "renameReferencesProjectFiles": 1024,
+      "renameReferencesSdkFiles": 255,
+      "renameReferencesOtherFiles": 52
+    },
+    {
+      "suite": "total-1024",
+      "variant": "checkpoint-23",
+      "rawSourceFiles": 1024,
+      "rawAllFiles": 1029,
+      "addedIndependentSources": 1005,
+      "nodeDependencies": 16,
+      "completionDefinitionProjectFiles": 19,
+      "completionDefinitionSdkFiles": 255,
+      "completionDefinitionOtherFiles": 52,
+      "renameReferencesProjectFiles": 1024,
+      "renameReferencesSdkFiles": 255,
+      "renameReferencesOtherFiles": 52
+    },
+    {
+      "suite": "total-2048",
+      "variant": "checkpoint-22",
+      "rawSourceFiles": 2048,
+      "rawAllFiles": 2053,
+      "addedIndependentSources": 2029,
+      "nodeDependencies": 16,
+      "completionDefinitionProjectFiles": 19,
+      "completionDefinitionSdkFiles": 255,
+      "completionDefinitionOtherFiles": 52,
+      "renameReferencesProjectFiles": 2048,
+      "renameReferencesSdkFiles": 255,
+      "renameReferencesOtherFiles": 52
+    },
+    {
+      "suite": "total-2048",
+      "variant": "checkpoint-23",
+      "rawSourceFiles": 2048,
+      "rawAllFiles": 2053,
+      "addedIndependentSources": 2029,
+      "nodeDependencies": 16,
+      "completionDefinitionProjectFiles": 19,
+      "completionDefinitionSdkFiles": 255,
+      "completionDefinitionOtherFiles": 52,
+      "renameReferencesProjectFiles": 2048,
+      "renameReferencesSdkFiles": 255,
+      "renameReferencesOtherFiles": 52
+    },
+    {
+      "suite": "fixed",
+      "variant": "checkpoint-22",
+      "rawSourceFiles": 289,
+      "rawAllFiles": 577,
+      "addedIndependentSources": 0,
+      "nodeDependencies": "UNMEASURED separately",
+      "completionDefinitionProjectFiles": 171,
+      "completionDefinitionSdkFiles": 279,
+      "completionDefinitionOtherFiles": 52,
+      "renameReferencesProjectFiles": 284,
+      "renameReferencesSdkFiles": 305,
+      "renameReferencesOtherFiles": 52
+    },
+    {
+      "suite": "fixed",
+      "variant": "checkpoint-23",
+      "rawSourceFiles": 289,
+      "rawAllFiles": 577,
+      "addedIndependentSources": 0,
+      "nodeDependencies": "UNMEASURED separately",
+      "completionDefinitionProjectFiles": 171,
+      "completionDefinitionSdkFiles": 279,
+      "completionDefinitionOtherFiles": 52,
+      "renameReferencesProjectFiles": 284,
+      "renameReferencesSdkFiles": 305,
+      "renameReferencesOtherFiles": 52
+    },
+    {
+      "suite": "photos-noise-128",
+      "variant": "checkpoint-22",
+      "rawSourceFiles": 417,
+      "rawAllFiles": 705,
+      "addedIndependentSources": 128,
+      "nodeDependencies": "UNMEASURED separately",
+      "completionDefinitionProjectFiles": 171,
+      "completionDefinitionSdkFiles": 279,
+      "completionDefinitionOtherFiles": 52,
+      "renameReferencesProjectFiles": 412,
+      "renameReferencesSdkFiles": 305,
+      "renameReferencesOtherFiles": 52
+    },
+    {
+      "suite": "photos-noise-128",
+      "variant": "checkpoint-23",
+      "rawSourceFiles": 417,
+      "rawAllFiles": 705,
+      "addedIndependentSources": 128,
+      "nodeDependencies": "UNMEASURED separately",
+      "completionDefinitionProjectFiles": 171,
+      "completionDefinitionSdkFiles": 279,
+      "completionDefinitionOtherFiles": 52,
+      "renameReferencesProjectFiles": 412,
+      "renameReferencesSdkFiles": 305,
+      "renameReferencesOtherFiles": 52
+    },
+    {
+      "suite": "photos-noise-512",
+      "variant": "checkpoint-22",
+      "rawSourceFiles": 801,
+      "rawAllFiles": 1089,
+      "addedIndependentSources": 512,
+      "nodeDependencies": "UNMEASURED separately",
+      "completionDefinitionProjectFiles": 171,
+      "completionDefinitionSdkFiles": 279,
+      "completionDefinitionOtherFiles": 52,
+      "renameReferencesProjectFiles": 796,
+      "renameReferencesSdkFiles": 305,
+      "renameReferencesOtherFiles": 52
+    },
+    {
+      "suite": "photos-noise-512",
+      "variant": "checkpoint-23",
+      "rawSourceFiles": 801,
+      "rawAllFiles": 1089,
+      "addedIndependentSources": 512,
+      "nodeDependencies": "UNMEASURED separately",
+      "completionDefinitionProjectFiles": 171,
+      "completionDefinitionSdkFiles": 279,
+      "completionDefinitionOtherFiles": 52,
+      "renameReferencesProjectFiles": 796,
+      "renameReferencesSdkFiles": 305,
+      "renameReferencesOtherFiles": 52
+    }
+  ],
+  "endpointGrowth": [
+    {
+      "cohort": "synthetic",
+      "variant": "checkpoint-22",
+      "operationIndex": 1,
+      "category": "disk-first-completion",
+      "startMedianMs": 320.6635980000001,
+      "endMedianMs": 330.8890110000011,
+      "absoluteIncreaseMs": 10.225413000001026,
+      "increasePercent": 3.1888287488126554,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "synthetic",
+      "variant": "checkpoint-22",
+      "operationIndex": 2,
+      "category": "disk-repeat-completion",
+      "startMedianMs": 28.363195999999334,
+      "endMedianMs": 36.27666300000055,
+      "absoluteIncreaseMs": 7.913467000001219,
+      "increasePercent": 27.900477083053012,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "synthetic",
+      "variant": "checkpoint-22",
+      "operationIndex": 3,
+      "category": "disk-definition",
+      "startMedianMs": 28.458142000000407,
+      "endMedianMs": 37.34646199999952,
+      "absoluteIncreaseMs": 8.888319999999112,
+      "increasePercent": 31.232959621886014,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "synthetic",
+      "variant": "checkpoint-22",
+      "operationIndex": 4,
+      "category": "open-first-completion",
+      "startMedianMs": 29.395974999999453,
+      "endMedianMs": 36.34089099999983,
+      "absoluteIncreaseMs": 6.944916000000376,
+      "increasePercent": 23.625397694754135,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "synthetic",
+      "variant": "checkpoint-22",
+      "operationIndex": 5,
+      "category": "open-repeat-completion",
+      "startMedianMs": 26.02116600000045,
+      "endMedianMs": 33.75004199999967,
+      "absoluteIncreaseMs": 7.728875999999218,
+      "increasePercent": 29.702266224346307,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "synthetic",
+      "variant": "checkpoint-22",
+      "operationIndex": 6,
+      "category": "open-definition",
+      "startMedianMs": 23.788558999999623,
+      "endMedianMs": 30.828558000001067,
+      "absoluteIncreaseMs": 7.039999000001444,
+      "increasePercent": 29.594054015636484,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "synthetic",
+      "variant": "checkpoint-22",
+      "operationIndex": 7,
+      "category": "reopen-completion",
+      "startMedianMs": 337.2249869999996,
+      "endMedianMs": 354.9457020000009,
+      "absoluteIncreaseMs": 17.72071500000129,
+      "increasePercent": 5.2548641658043405,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "synthetic",
+      "variant": "checkpoint-22",
+      "operationIndex": 8,
+      "category": "reopen-definition",
+      "startMedianMs": 49.48362500000076,
+      "endMedianMs": 65.98910699999942,
+      "absoluteIncreaseMs": 16.505481999998665,
+      "increasePercent": 33.35544233066678,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "synthetic",
+      "variant": "checkpoint-22",
+      "operationIndex": 9,
+      "category": "reopen-completion",
+      "startMedianMs": 328.03100900000027,
+      "endMedianMs": 334.14630899999975,
+      "absoluteIncreaseMs": 6.115299999999479,
+      "increasePercent": 1.8642444867154273,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "synthetic",
+      "variant": "checkpoint-22",
+      "operationIndex": 10,
+      "category": "reopen-definition",
+      "startMedianMs": 44.59722099999999,
+      "endMedianMs": 59.64385899999979,
+      "absoluteIncreaseMs": 15.046637999999803,
+      "increasePercent": 33.73895875709343,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "synthetic",
+      "variant": "checkpoint-22",
+      "operationIndex": 11,
+      "category": "rename",
+      "startMedianMs": 322.54661999999917,
+      "endMedianMs": 536.6376189999992,
+      "absoluteIncreaseMs": 214.090999,
+      "increasePercent": 66.37521081448648,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "synthetic",
+      "variant": "checkpoint-22",
+      "operationIndex": 12,
+      "category": "renamed-references-first",
+      "startMedianMs": 388.180577000001,
+      "endMedianMs": 642.4918539999999,
+      "absoluteIncreaseMs": 254.31127699999888,
+      "increasePercent": 65.51365319857263,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "synthetic",
+      "variant": "checkpoint-22",
+      "operationIndex": 13,
+      "category": "renamed-references-repeat",
+      "startMedianMs": 1.5604380000004312,
+      "endMedianMs": 1.69627600000058,
+      "absoluteIncreaseMs": 0.1358380000001489,
+      "increasePercent": 8.705119972732733,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "synthetic",
+      "variant": "checkpoint-23",
+      "operationIndex": 1,
+      "category": "disk-first-completion",
+      "startMedianMs": 323.1596639999998,
+      "endMedianMs": 333.8532209999994,
+      "absoluteIncreaseMs": 10.6935569999996,
+      "increasePercent": 3.3090630395010034,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "synthetic",
+      "variant": "checkpoint-23",
+      "operationIndex": 2,
+      "category": "disk-repeat-completion",
+      "startMedianMs": 27.540420000000267,
+      "endMedianMs": 36.1311139999998,
+      "absoluteIncreaseMs": 8.59069399999953,
+      "increasePercent": 31.193039176597324,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "synthetic",
+      "variant": "checkpoint-23",
+      "operationIndex": 3,
+      "category": "disk-definition",
+      "startMedianMs": 28.78137400000014,
+      "endMedianMs": 36.32113799999934,
+      "absoluteIncreaseMs": 7.539763999999195,
+      "increasePercent": 26.196678449052357,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "synthetic",
+      "variant": "checkpoint-23",
+      "operationIndex": 4,
+      "category": "open-first-completion",
+      "startMedianMs": 27.33704299999954,
+      "endMedianMs": 36.53710500000034,
+      "absoluteIncreaseMs": 9.200062000000798,
+      "increasePercent": 33.654195883589,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "synthetic",
+      "variant": "checkpoint-23",
+      "operationIndex": 5,
+      "category": "open-repeat-completion",
+      "startMedianMs": 25.600421000000097,
+      "endMedianMs": 33.1442760000009,
+      "absoluteIncreaseMs": 7.543855000000804,
+      "increasePercent": 29.467698988234513,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "synthetic",
+      "variant": "checkpoint-23",
+      "operationIndex": 6,
+      "category": "open-definition",
+      "startMedianMs": 23.75875999999971,
+      "endMedianMs": 32.107670999999755,
+      "absoluteIncreaseMs": 8.348911000000044,
+      "increasePercent": 35.140348233662635,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "synthetic",
+      "variant": "checkpoint-23",
+      "operationIndex": 7,
+      "category": "reopen-completion",
+      "startMedianMs": 332.6854110000004,
+      "endMedianMs": 349.5425529999993,
+      "absoluteIncreaseMs": 16.85714199999893,
+      "increasePercent": 5.0669916511604685,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "synthetic",
+      "variant": "checkpoint-23",
+      "operationIndex": 8,
+      "category": "reopen-definition",
+      "startMedianMs": 47.63646400000016,
+      "endMedianMs": 65.90971999999965,
+      "absoluteIncreaseMs": 18.273255999999492,
+      "increasePercent": 38.35980773048022,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "synthetic",
+      "variant": "checkpoint-23",
+      "operationIndex": 9,
+      "category": "reopen-completion",
+      "startMedianMs": 319.93225000000075,
+      "endMedianMs": 329.36292400000093,
+      "absoluteIncreaseMs": 9.430674000000181,
+      "increasePercent": 2.9477097104152916,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "synthetic",
+      "variant": "checkpoint-23",
+      "operationIndex": 10,
+      "category": "reopen-definition",
+      "startMedianMs": 42.461465999999746,
+      "endMedianMs": 59.58804000000055,
+      "absoluteIncreaseMs": 17.1265740000008,
+      "increasePercent": 40.33439165760528,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "synthetic",
+      "variant": "checkpoint-23",
+      "operationIndex": 11,
+      "category": "rename",
+      "startMedianMs": 315.6990059999998,
+      "endMedianMs": 534.2534159999996,
+      "absoluteIncreaseMs": 218.55440999999973,
+      "increasePercent": 69.22872921557438,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "synthetic",
+      "variant": "checkpoint-23",
+      "operationIndex": 12,
+      "category": "renamed-references-first",
+      "startMedianMs": 344.5943950000001,
+      "endMedianMs": 612.2496499999997,
+      "absoluteIncreaseMs": 267.65525499999967,
+      "increasePercent": 77.67255036170846,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "synthetic",
+      "variant": "checkpoint-23",
+      "operationIndex": 13,
+      "category": "renamed-references-repeat",
+      "startMedianMs": 1.6691250000003492,
+      "endMedianMs": 1.538297999999486,
+      "absoluteIncreaseMs": -0.13082700000086334,
+      "increasePercent": -7.838058863226893,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "photos",
+      "variant": "checkpoint-22",
+      "operationIndex": 1,
+      "category": "disk-first-completion",
+      "startMedianMs": 318.72573700000066,
+      "endMedianMs": 334.6251250000005,
+      "absoluteIncreaseMs": 15.899387999999817,
+      "increasePercent": 4.988423008964538,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "photos",
+      "variant": "checkpoint-22",
+      "operationIndex": 2,
+      "category": "disk-repeat-completion",
+      "startMedianMs": 72.57974800000011,
+      "endMedianMs": 72.62179900000046,
+      "absoluteIncreaseMs": 0.042051000000356,
+      "increasePercent": 0.057937649494665955,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "photos",
+      "variant": "checkpoint-22",
+      "operationIndex": 3,
+      "category": "disk-definition",
+      "startMedianMs": 63.98255099999915,
+      "endMedianMs": 66.95473099999981,
+      "absoluteIncreaseMs": 2.9721800000006624,
+      "increasePercent": 4.6452977468821155,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "photos",
+      "variant": "checkpoint-22",
+      "operationIndex": 4,
+      "category": "open-first-completion",
+      "startMedianMs": 69.60680499999944,
+      "endMedianMs": 71.57995800000026,
+      "absoluteIncreaseMs": 1.9731530000008206,
+      "increasePercent": 2.834712784189475,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "photos",
+      "variant": "checkpoint-22",
+      "operationIndex": 5,
+      "category": "open-repeat-completion",
+      "startMedianMs": 62.26116700000057,
+      "endMedianMs": 66.20082300000104,
+      "absoluteIncreaseMs": 3.9396560000004683,
+      "increasePercent": 6.327629547965952,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "photos",
+      "variant": "checkpoint-22",
+      "operationIndex": 6,
+      "category": "open-definition",
+      "startMedianMs": 142.89612000000125,
+      "endMedianMs": 148.9581139999991,
+      "absoluteIncreaseMs": 6.061993999997867,
+      "increasePercent": 4.242238347687688,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "photos",
+      "variant": "checkpoint-22",
+      "operationIndex": 7,
+      "category": "reopen-completion",
+      "startMedianMs": 264.39486699999907,
+      "endMedianMs": 266.6348990000006,
+      "absoluteIncreaseMs": 2.24003200000152,
+      "increasePercent": 0.8472297610836454,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "photos",
+      "variant": "checkpoint-22",
+      "operationIndex": 8,
+      "category": "reopen-definition",
+      "startMedianMs": 211.04744500000015,
+      "endMedianMs": 232.33678300000065,
+      "absoluteIncreaseMs": 21.289338000000498,
+      "increasePercent": 10.087465403810247,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "photos",
+      "variant": "checkpoint-22",
+      "operationIndex": 9,
+      "category": "reopen-completion",
+      "startMedianMs": 300.2951189999985,
+      "endMedianMs": 288.4987170000022,
+      "absoluteIncreaseMs": -11.796401999996306,
+      "increasePercent": -3.9282696433025843,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "photos",
+      "variant": "checkpoint-22",
+      "operationIndex": 10,
+      "category": "reopen-definition",
+      "startMedianMs": 129.35845400000107,
+      "endMedianMs": 135.63594399999965,
+      "absoluteIncreaseMs": 6.277489999998579,
+      "increasePercent": 4.852786815153598,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "photos",
+      "variant": "checkpoint-22",
+      "operationIndex": 11,
+      "category": "rename",
+      "startMedianMs": 284.04867399999966,
+      "endMedianMs": 426.04295400000046,
+      "absoluteIncreaseMs": 141.9942800000008,
+      "increasePercent": 49.9894183628546,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "photos",
+      "variant": "checkpoint-22",
+      "operationIndex": 12,
+      "category": "renamed-references-first",
+      "startMedianMs": 460.70189499999833,
+      "endMedianMs": 640.6219810000002,
+      "absoluteIncreaseMs": 179.9200860000019,
+      "increasePercent": 39.053472093923666,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "photos",
+      "variant": "checkpoint-22",
+      "operationIndex": 13,
+      "category": "renamed-references-repeat",
+      "startMedianMs": 1.7557440000018687,
+      "endMedianMs": 1.5043389999991632,
+      "absoluteIncreaseMs": -0.2514050000027055,
+      "increasePercent": -14.319000947885218,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "photos",
+      "variant": "checkpoint-23",
+      "operationIndex": 1,
+      "category": "disk-first-completion",
+      "startMedianMs": 323.9673869999988,
+      "endMedianMs": 335.57622100000117,
+      "absoluteIncreaseMs": 11.608834000002389,
+      "increasePercent": 3.583334145915873,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "photos",
+      "variant": "checkpoint-23",
+      "operationIndex": 2,
+      "category": "disk-repeat-completion",
+      "startMedianMs": 71.7761989999999,
+      "endMedianMs": 71.7362979999998,
+      "absoluteIncreaseMs": -0.039901000000099884,
+      "increasePercent": -0.05559085122367469,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "photos",
+      "variant": "checkpoint-23",
+      "operationIndex": 3,
+      "category": "disk-definition",
+      "startMedianMs": 65.45080000000053,
+      "endMedianMs": 66.71459499999946,
+      "absoluteIncreaseMs": 1.263794999998936,
+      "increasePercent": 1.9309084075350036,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "photos",
+      "variant": "checkpoint-23",
+      "operationIndex": 4,
+      "category": "open-first-completion",
+      "startMedianMs": 69.9177810000001,
+      "endMedianMs": 72.71745900000133,
+      "absoluteIncreaseMs": 2.7996780000012222,
+      "increasePercent": 4.004243212468683,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "photos",
+      "variant": "checkpoint-23",
+      "operationIndex": 5,
+      "category": "open-repeat-completion",
+      "startMedianMs": 64.95890600000166,
+      "endMedianMs": 66.12846100000024,
+      "absoluteIncreaseMs": 1.1695549999985815,
+      "increasePercent": 1.8004536591157416,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "photos",
+      "variant": "checkpoint-23",
+      "operationIndex": 6,
+      "category": "open-definition",
+      "startMedianMs": 142.73620500000106,
+      "endMedianMs": 146.24426200000016,
+      "absoluteIncreaseMs": 3.5080569999990985,
+      "increasePercent": 2.4577205201715024,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "photos",
+      "variant": "checkpoint-23",
+      "operationIndex": 7,
+      "category": "reopen-completion",
+      "startMedianMs": 256.3512499999997,
+      "endMedianMs": 258.53383399999984,
+      "absoluteIncreaseMs": 2.1825840000001335,
+      "increasePercent": 0.8514036892740551,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "photos",
+      "variant": "checkpoint-23",
+      "operationIndex": 8,
+      "category": "reopen-definition",
+      "startMedianMs": 219.24985900000138,
+      "endMedianMs": 238.76825199999985,
+      "absoluteIncreaseMs": 19.51839299999847,
+      "increasePercent": 8.90235144917395,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "photos",
+      "variant": "checkpoint-23",
+      "operationIndex": 9,
+      "category": "reopen-completion",
+      "startMedianMs": 290.1981109999997,
+      "endMedianMs": 271.2430460000014,
+      "absoluteIncreaseMs": -18.955064999998285,
+      "increasePercent": -6.531767189896797,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "photos",
+      "variant": "checkpoint-23",
+      "operationIndex": 10,
+      "category": "reopen-definition",
+      "startMedianMs": 131.51236000000063,
+      "endMedianMs": 138.66302800000267,
+      "absoluteIncreaseMs": 7.150668000002042,
+      "increasePercent": 5.437259281182394,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "photos",
+      "variant": "checkpoint-23",
+      "operationIndex": 11,
+      "category": "rename",
+      "startMedianMs": 275.8371909999987,
+      "endMedianMs": 415.46531700000196,
+      "absoluteIncreaseMs": 139.62812600000325,
+      "increasePercent": 50.619760697898016,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "photos",
+      "variant": "checkpoint-23",
+      "operationIndex": 12,
+      "category": "renamed-references-first",
+      "startMedianMs": 423.8189860000002,
+      "endMedianMs": 597.069227,
+      "absoluteIncreaseMs": 173.25024099999973,
+      "increasePercent": 40.878357676972875,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    },
+    {
+      "cohort": "photos",
+      "variant": "checkpoint-23",
+      "operationIndex": 13,
+      "category": "renamed-references-repeat",
+      "startMedianMs": 1.607374000002892,
+      "endMedianMs": 1.5654020000001765,
+      "absoluteIncreaseMs": -0.041972000002715504,
+      "increasePercent": -2.6112155604507747,
+      "meaning": "observed endpoint difference, not a complexity fit or per-file cost"
+    }
+  ]
+}

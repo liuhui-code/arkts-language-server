@@ -10,7 +10,7 @@ import { buildSync } from "esbuild"
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 
-test("the type engine registry uses the two-context coordinator and honors pressure", (t) => {
+test("the default type engine registry retains three owners and honors pressure", (t) => {
   const { SemanticTypeEngineRegistry } = buildTypeEngineDriver(t)
   const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-context-runtime-fixture-"))
   t.after(() => fs.rmSync(fixtureRoot, { recursive: true, force: true }))
@@ -30,12 +30,12 @@ test("the type engine registry uses the two-context coordinator and honors press
       documentVersion: 1,
       workspaceRoot: rootPath,
     })
-    assert.ok(registry.runtimeStats().residentContextCount <= 2)
+    assert.equal(registry.runtimeStats().residentContextCount, ["a", "b", "c"].indexOf(name) + 1)
   }
 
-  assert.equal(registry.workspaceCount(), 2)
+  assert.equal(registry.workspaceCount(), 3)
   registry.applyMemoryPressure("level2")
-  assert.equal(registry.workspaceCount(), 2)
+  assert.equal(registry.workspaceCount(), 3)
   registry.applyMemoryPressure("level3")
   assert.equal(registry.workspaceCount(), 0)
 })
