@@ -1,0 +1,2 @@
+# Preserve byte-exact archived results and their recorded SHA-256 identities.
+docs/reports/evidence/** -text

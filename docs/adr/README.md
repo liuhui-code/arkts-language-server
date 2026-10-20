@@ -32,6 +32,7 @@ protection checks. Earlier L01/L02 resource-admission verdicts are historical.
 | [0016](0016-reference-verifier-sdk-cache.md) | Accepted and implemented; full fast 1,869/1,869 PASS | One serial verifier Worker retains current SDK ASTs; each job disposes project LS/Program |
 | [0017](0017-reference-shared-inputs-and-search.md) | Accepted and implemented; full fast 1,872/1,872 PASS; 500ms FAIL | Reuse standard-library syntax, witnessed SDK lookups and classified complete reference searches |
 | [0018](0018-semantic-groups-and-initial-preparation.md) | Accepted; implementation in progress | 4GiB configurable runtime pressure; initial preparation exempt; shared SDK initialization, stable semantic groups and delayed release |
+| [0019](0019-stable-programs-and-request-inputs.md) | Accepted; implementation and comparison IN_PROGRESS | Pressure-managed retained Programs, scoped coverage, shared request inputs and 1024-root fallback soft target |
 
 Invariant for every decision: **global semantic scope remains complete while
 compiler residency is bounded**. Reducing a compiler working set must never
