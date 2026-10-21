@@ -9,6 +9,13 @@ export class SemanticInputUnavailableError extends Error {
   }
 }
 
+/** Membership completeness and unavailable source admission are separate failure reasons. */
+export function projectMembershipFailure(status: "complete" | "partial" | "none", unavailable: boolean):
+  { status: "incomplete"; reason: "project-membership-incomplete" | "source-unavailable" } | undefined {
+  if (status !== "complete") return { status: "incomplete", reason: "project-membership-incomplete" }
+  return unavailable ? { status: "incomplete", reason: "source-unavailable" } : undefined
+}
+
 /** Validate metadata from its actual load, never restamp a cached resolution. */
 export function loadedConfigurationIsCurrent(
   witness: LoadedConfigurationWitness | undefined,

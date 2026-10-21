@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url"
 import { createReadinessFixture } from "../support/semantic-readiness-lsp.mjs"
 import { positionAt } from "../support/resident-interactive-lsp.mjs"
 import { applyWorkspaceEdit } from "../support/lsp-edits.mjs"
+import { groupInputWorkspace } from "../fixtures/semantic-group-input-workspace.mjs"
 
 test("an edited degraded prepared Program answers first references before candidate planning in one worker request",
   { timeout: 30_000 }, async t => {
@@ -290,5 +291,181 @@ test("default member completion keeps its stable module scope, ambient augmentat
       "the complete owner still finds both current field locations after the group consumed the close delta")
     assert.equal(events().filter(row => row.event === "semantic.context.create").length, created,
       "a group query must not consume the evidence needed to incrementally synchronize the complete owner")
+    assert.deepEqual((await session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })
+  })
+
+test("a retained module consumes an unrelated closed-file edit without scanning its compiler input versions",
+  { timeout: 30_000 }, async t => {
+    const { session, directory, workspace, sdk, rootUri, uri, events } = createReadinessFixture(t, {
+      ARKTS_MEMORY_BUDGET_MB: "4096", ARKTS_BENCHMARK_CONTROL: "0", ARKTS_REFERENCES_RESIDENT_FAST_PATH: "1",
+      NODE_OPTIONS: `--require=${fileURLToPath(new URL("../fixtures/semantic-group-version-counter.cjs", import.meta.url))}` })
+    const modules = ["a", "b"]
+    const source = name => `export class Local${name.toUpperCase()} { marker: number = 1 }\nexport const result = new Local${name.toUpperCase()}()\n`
+    fs.writeFileSync(path.join(workspace, "build-profile.json5"), JSON.stringify({
+      app: { products: [{ name: "default" }] }, modules: modules.map(name => ({
+        name, srcPath: `./${name}`, targets: [{ name: "default", applyToProducts: ["default"] }] })) }))
+    for (const name of modules) {
+      const module = path.join(workspace, name)
+      fs.mkdirSync(path.join(module, "src/main/ets"), { recursive: true })
+      fs.writeFileSync(path.join(module, "src/main/ets/Query.ets"), source(name))
+      fs.writeFileSync(path.join(module, "build-profile.json5"), "{ targets: [{ name: 'default' }] }")
+      fs.writeFileSync(path.join(module, "oh-package.json5"), JSON.stringify({
+        name, main: "./src/main/ets/Query.ets", dependencies: {} }))
+    }
+    await session.initialize({ initializationOptions: { sdk: { path: sdk } }, timeoutMs: 10_000 })
+    const prepared = await session.transport.notification("arkts/semanticPreparation",
+      message => message.params.rootUri === rootUri && message.params.phase === "complete", 10_000)
+    assert.equal(prepared.params.report.semanticState, "ready", JSON.stringify(prepared.params))
+    const progress = await session.transport.serverRequest("window/workDoneProgress/create", () => true, 10_000)
+    session.transport.send({ jsonrpc: "2.0", id: progress.id, result: null })
+    await session.transport.progress(progress.params.token, message => message.params.value.kind === "end", 10_000)
+    const a = "a/src/main/ets/Query.ets", b = "b/src/main/ets/Query.ets"
+    const checks = () => fs.readFileSync(path.join(directory, "group-program-checks.jsonl"), "utf8")
+      .trim().split("\n").filter(Boolean).map(JSON.parse).filter(row => row.roots.includes(path.join(workspace, a))
+        && !row.roots.includes(path.join(workspace, b)))
+    const query = async () => {
+      const response = await session.request("textDocument/definition", { textDocument: { uri: uri(a) },
+        position: positionAt(source("a"), source("a").lastIndexOf("LocalA") + 1) })
+      assert.equal(response.error, undefined, JSON.stringify(response))
+      assert.deepEqual(response.result, [{ uri: uri(a), range: {
+        start: { line: 0, character: 13 }, end: { line: 0, character: 19 } } }])
+    }
+    await query()
+    await query()
+    const before = checks().length
+    const buildsBefore = events().filter(row => row.event === "semantic.context.create").length
+    fs.writeFileSync(path.join(workspace, b), `// unrelated body edit\n${source("b")}`)
+    session.transport.send({ jsonrpc: "2.0", method: "workspace/didChangeWatchedFiles",
+      params: { changes: [{ uri: uri(b), type: 2 }] } })
+    await query()
+    const observed = checks().length - before
+    t.diagnostic(JSON.stringify({ unrelatedEditCompilerScans: observed,
+      contextCreates: events().filter(row => row.event === "semantic.context.create").length - buildsBefore,
+      preparations: events().filter(row => row.event === "semantic.prepare.complete").slice(-2) }))
+    assert.equal(observed, 0,
+      "an unrelated closed-file edit must not run isProgramUptoDate over the retained module's sources")
+    assert.equal(events().filter(row => row.event === "semantic.context.create").length, buildsBefore)
+    await query()
+    assert.equal(checks().length, before, "the consumed root event stays consumed on a repeated query")
+    assert.deepEqual((await session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })
+  })
+
+test("group deltas retain actual cross-root compiler dependencies beyond the delivered text window",
+  { timeout: 45_000 }, async t => {
+    const query = "a/src/main/ets/Query.ets", deep = "b/src/main/ets/Deep.ets"
+    const text = 'import { Deep } from "./Chain000"\nexport const result = new Deep().marker\n'
+    const target = "export class Deep { marker: number = 1 }\n"
+    const files = { [query]: text, [deep]: target, "b/src/main/ets/Query.ets": "export const unrelated = 1\n" }
+    for (let index = 0; index < 270; index++) files[`a/src/main/ets/Chain${String(index).padStart(3, "0")}.ets`] =
+      `export { Deep } from "${index === 269 ? "../../../../b/src/main/ets/Deep"
+        : `./Chain${String(index + 1).padStart(3, "0")}`}"\n`
+    const { session, uri, write, watch, define, events, preparation } = await groupInputWorkspace(t, files)
+    assert.equal(preparation.semanticState, "ready", JSON.stringify(preparation))
+    const expected = line => [{ uri: uri(deep), range: {
+      start: { line, character: 13 }, end: { line, character: 17 } } }]
+    const first = await define(query, text, "Deep")
+    assert.equal(first.error, undefined, JSON.stringify(first))
+    assert.deepEqual(first.result, expected(0))
+    const observed = events().filter(row => row.event === "semantic.definition.complete").at(-1)
+    assert.equal(observed.programProjectRootFiles, 271)
+    assert.equal(observed.programProjectFiles, 272, "the compiler really loaded the B dependency outside A's roots")
+    t.diagnostic(JSON.stringify({ actualProjectFiles: observed.programProjectFiles,
+      compilerRootFiles: observed.programProjectRootFiles, rawTextWindowLimit: 256 }))
+    write(deep, `// changed disk declaration\n${target}`)
+    watch(deep)
+    const changed = await define(query, text, "Deep")
+    assert.equal(changed.error, undefined, JSON.stringify(changed))
+    assert.deepEqual(changed.result, expected(1), "root exclusion must not discard an actually loaded dependency")
+    session.openDocument({ uri: uri(deep), version: 1, text: `// changed disk declaration\n${target}` })
+    session.changeDocument({ uri: uri(deep), version: 2, text: `// overlay one\n// overlay two\n${target}` })
+    const overlay = await define(query, text, "Deep")
+    assert.equal(overlay.error, undefined, JSON.stringify(overlay))
+    assert.deepEqual(overlay.result, expected(2), "an out-of-root overlay keeps its authoritative edited text")
+    assert.deepEqual((await session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })
+  })
+
+test("group clocks preserve negative resolution recovery and ambient edits from another module",
+  { timeout: 30_000 }, async t => {
+    const query = "a/src/main/ets/Query.ets", missing = "a/src/main/ets/Missing.ets"
+    const ambient = "b/src/main/ets/Globals.d.ts"
+    const text = 'import { Missing } from "./Missing"\ndeclare const ambient: GlobalMarker\nexport const result = ambient.oldMarker\nexport const usage = new Missing()\n'
+    const globals = "interface GlobalMarker { oldMarker: number }\n"
+    const { session, uri, write, watch, define, preparation } = await groupInputWorkspace(t, {
+      [query]: text, [ambient]: globals, "b/src/main/ets/Query.ets": "export const unrelated = 1\n" })
+    assert.equal(preparation.semanticState, "degraded", "the unresolved input must remain visible")
+    const expected = (file, source, symbol) => [{ uri: uri(file), range: {
+      start: positionAt(source, source.indexOf(symbol)), end: positionAt(source, source.indexOf(symbol) + symbol.length) } }]
+    const old = await define(query, text, "oldMarker")
+    assert.equal(old.error, undefined, JSON.stringify(old))
+    assert.deepEqual(old.result, expected(ambient, globals, "oldMarker"))
+    const unresolved = await define(query, text, "Missing")
+    assert.equal(unresolved.error, undefined, JSON.stringify(unresolved))
+    assert.ok(!(unresolved.result ?? []).some(location => location.uri === uri(missing)))
+    const created = "export class Missing {}\n"
+    write(missing, created)
+    watch(missing, 1)
+    const recovered = await define(query, text, "Missing")
+    assert.equal(recovered.error, undefined, JSON.stringify(recovered))
+    assert.deepEqual(recovered.result, expected(missing, created, "Missing"), "a previous negative lookup cannot remain cached")
+    const nextGlobals = globals.replace("oldMarker", "newMarker")
+    write(ambient, nextGlobals)
+    watch(ambient)
+    const next = text.replace("oldMarker", "newMarker")
+    session.openDocument({ uri: uri(query), version: 1, text })
+    session.changeDocument({ uri: uri(query), version: 2, text: next })
+    const augmented = await define(query, next, "newMarker")
+    assert.equal(augmented.error, undefined, JSON.stringify(augmented))
+    assert.deepEqual(augmented.result, expected(ambient, nextGlobals, "newMarker"))
+    assert.deepEqual((await session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })
+  })
+
+test("compiler input metadata overflow revokes group exclusions instead of treating a truncated set as complete",
+  { timeout: 30_000 }, async t => {
+    const query = "a/src/main/ets/Query.ets", other = "b/src/main/ets/Query.ets"
+    const text = "export class Marker {}\nexport const result = new Marker()\n"
+    const { session, directory, workspace, uri, write, watch, define } = await groupInputWorkspace(t, {
+      [query]: text, [other]: "export const unused = 1\n" }, {
+      ARKTS_TEST_GROUP_INPUT_OVERFLOW: "1",
+      NODE_OPTIONS: `--require=${fileURLToPath(new URL("../fixtures/semantic-group-version-counter.cjs", import.meta.url))}` })
+    const expected = [{ uri: uri(query), range: {
+      start: { line: 0, character: 13 }, end: { line: 0, character: 19 } } }]
+    assert.deepEqual((await define(query, text, "Marker")).result, expected)
+    const checks = () => fs.readFileSync(path.join(directory, "group-program-checks.jsonl"), "utf8")
+      .trim().split("\n").filter(Boolean).map(JSON.parse).filter(row => row.roots.includes(path.join(workspace, query))
+        && !row.roots.includes(path.join(workspace, other))).length
+    const before = checks()
+    write(other, "export const unused = 2\n")
+    watch(other)
+    const response = await define(query, text, "Marker")
+    assert.equal(response.error, undefined, JSON.stringify(response))
+    assert.deepEqual(response.result, expected)
+    assert.ok(checks() > before, "overflowed metadata must retain the whole source delta and synchronize conservatively")
+    assert.deepEqual((await session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })
+  })
+
+test("a transient group source read failure recovers on the next witnessed same-membership catalog update",
+  { timeout: 30_000 }, async t => {
+    const query = "a/src/main/ets/000Query.ets", other = "b/src/main/ets/Query.ets"
+    const text = "declare const recovered: Recovered\nexport const result = recovered.restoredMember\n"
+    const files = { [query]: text, [other]: "export const unused = 1\n",
+      "a/src/main/ets/ZRecovered.ets": "class Recovered { restoredMember: number = 1 }\n" }
+    for (let index = 0; index < 270; index++) files[`a/src/main/ets/Filler${String(index).padStart(3, "0")}.ets`] =
+      `export const filler${index} = ${index}\n`
+    const { session, directory, uri, write, watch } = await groupInputWorkspace(t, files, {
+      NODE_OPTIONS: `--require=${fileURLToPath(new URL("../fixtures/semantic-group-source-read-failure.cjs", import.meta.url))}` })
+    const failure = JSON.parse(fs.readFileSync(path.join(directory, "group-source-read-failure.json"), "utf8"))
+    assert.equal(failure.pid, session.transport.child.pid)
+    assert.ok(failure.threadId > 0 && failure.stack.includes("TypeScriptLazySnapshots.load"))
+    const complete = () => session.request("textDocument/completion", { textDocument: { uri: uri(query) },
+      position: positionAt(text, text.indexOf("recovered.") + "recovered.".length), context: { triggerKind: 1 } })
+    const first = await complete()
+    assert.equal(first.error, undefined, JSON.stringify(first))
+    const labels = response => (Array.isArray(response.result) ? response.result : response.result.items).map(item => item.label)
+    assert.ok(!labels(first).includes("restoredMember"), "the failed group input is actually missing before recovery")
+    write(other, "export const unused = 2\n")
+    watch(other)
+    const recovered = await complete()
+    assert.equal(recovered.error, undefined, JSON.stringify(recovered))
+    assert.ok(labels(recovered).includes("restoredMember"), "catalog recovery must synchronize the previously unavailable source")
     assert.deepEqual((await session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })
   })

@@ -11,7 +11,7 @@ type Acquisition = Parameters<ts.DocumentRegistry["acquireDocumentWithKey"]>
 /** Preparse the supported SDK declaration catalog; never add these files as Program roots. */
 export function prepareSdkDeclarations(root: string, actual: Acquisition, registry: ts.DocumentRegistry): void {
   const physicalRoot = fs.realpathSync.native(root)
-  // LanguageService defaults an omitted host case-sensitivity method to false, even on Linux.
+  // Preacquire the same canonical paths as the actual LanguageService host.
   const caseSensitive = (actual[2] as ts.LanguageServiceHost).useCaseSensitiveFileNames?.() ?? false
   const pending = ["ets/component", "ets/api", "ets/kits", "ets/arkts", "js/api"]
     .map(directory => path.join(root, directory))

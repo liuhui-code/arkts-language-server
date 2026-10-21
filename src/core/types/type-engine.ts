@@ -199,7 +199,7 @@ export class SemanticTypeEngineRegistry {
   prepare(workspace: SemanticWorkspaceView, contextId = this.groups.root(workspace), promoteRecency = true): SemanticTypeQueryContext {
     const rootPath = contextId
     const previous = this.coordinator.peek(rootPath)
-    workspace = synchronizeContextDelta(workspace, previous?.appliedContentRevision, this.projectFileAccess)
+    workspace = synchronizeContextDelta(workspace, previous?.appliedContentRevision, this.projectFileAccess, previous?.engine.compilerInputPaths())
     const resetReason = typeContextResetReason(workspace, previous,
       contextId !== path.resolve(workspace.rootPath) || this.options.references?.residentFastPath === true || this.options.references?.sessionReuse === "experimental")
     const refreshReadiness = resetReason === "content-revision-change" && previous?.engine.hasReadinessRefreshIntent() === true

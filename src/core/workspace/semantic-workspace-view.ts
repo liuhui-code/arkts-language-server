@@ -50,6 +50,8 @@ export interface SemanticWorkspaceView {
   semanticRootPaths?: readonly string[]
   removedPaths?: string[]
   changedPaths?: string[]
+  /** Full witnessed delta for per-file version/snapshot invalidation, before semantic-scope exclusion. */
+  contentChangedPaths?: readonly string[]
   /** Changed closed inputs read through the authority port when raw delivery is full. */
   changedDiskInputs?: readonly { readonly path: string; readonly physicalPath: string;
     readonly token: ProjectFileAdmissionToken; readonly sourceSha256: string }[]

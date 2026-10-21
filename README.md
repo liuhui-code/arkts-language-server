@@ -100,11 +100,22 @@ The server reads the workspace's `build-profile.json5`, module profiles and
 local/installed packages, explicit declaration entries, selected target source
 sets, self-package source imports and module-scoped string resources.
 
-Select an installed SDK using the workspace's existing `local.properties`:
+When no SDK path is configured, the server automatically checks this DevEco
+location on macOS (verified on the development Mac):
+
+```text
+/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony
+```
+
+To select an SDK explicitly, create or edit `local.properties` in the business
+project's root directory, alongside its `build-profile.json5`. Set `sdk.dir` to
+the SDK's absolute root path, for example:
 
 ```properties
-sdk.dir=/absolute/path/to/openharmony
+sdk.dir=/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony
 ```
+
+Both `ets/` and `toolchains/` must be direct children of the selected SDK root.
 
 Zed can override that selection per project through `.zed/settings.json`:
 
@@ -122,15 +133,17 @@ Zed can override that selection per project through `.zed/settings.json`:
 }
 ```
 
+After changing `initialization_options`, restart the language server so the
+editor sends the new initialization settings.
+
 The server also accepts the same value at runtime as
 `settings.arkts.sdk.path` in `workspace/didChangeConfiguration`; setting
 `arkts.sdk` to `{}` clears the editor override. The selected path must be
-absolute. Editor configuration takes precedence over `local.properties`, then
+absolute. Editor SDK configuration takes precedence over `local.properties`, then
 `ARKLINE_HARMONY_SDK_PATH`, then platform discovery.
 
-The selected root must contain `ets` and `toolchains`. Java properties escapes
-are supported. If no project SDK is specified, the existing
-`ARKLINE_HARMONY_SDK_PATH`/platform fallback remains available. Invalid explicit
+Java properties escapes are supported. If no project SDK is specified, the
+existing `ARKLINE_HARMONY_SDK_PATH`/platform fallback remains available. Invalid explicit
 configuration does not silently select another SDK. Imported APIs and ambient
 declarations share one selection; `sdk.selected` logs the selected source and
 API/component metadata separately.

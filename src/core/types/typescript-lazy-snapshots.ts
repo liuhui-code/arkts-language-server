@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto"
+import path from "node:path"
 import ts from "typescript"
 import type { ProjectFileAccessPort, ProjectFileAdmissionToken } from "../workspace/document-store.js"
 import { diskIdentity } from "../../project/source-file-identity.js"
@@ -35,6 +36,7 @@ export class TypeScriptLazySnapshots {
   private readonly records = new Map<string, LazySnapshotRecord>()
   private readonly paths = new Map<string, WeakRef<ts.IScriptSnapshot>>()
   private owned = new WeakMap<ts.IScriptSnapshot, OwnedSnapshot>()
+  private offeredFingerprint: { path: string; admissionToken?: ProjectFileAdmissionToken; fingerprint: string } | undefined
   private bytes = 0
   private readonly maxFiles: number
   private readonly maxBytes: number
@@ -50,6 +52,21 @@ export class TypeScriptLazySnapshots {
   *keys(): IterableIterator<string> { yield* new Set([...this.records.keys(), ...this.paths.keys()]) }
 
   load(filePath: string): LazySnapshotRecord | undefined {
+    const record = this.loadRecord(filePath)
+    this.offeredFingerprint = record && { path: filePath, admissionToken: record.admissionToken, fingerprint: record.sourceFingerprint }
+    return record
+  }
+
+  /** Compiler asks for a snapshot before its version; this metadata handoff owns no text or AST. */
+  fingerprint(filePath: string, token: ProjectFileAdmissionToken | undefined): string | undefined {
+    const snapshot = this.paths.get(filePath)?.deref()
+    const record = this.records.get(filePath) ?? (snapshot && this.owned.get(snapshot)?.record)
+    if (record && record.admissionToken === token) return record.sourceFingerprint
+    const offered = this.offeredFingerprint
+    return offered?.path === filePath && offered.admissionToken === token ? offered.fingerprint : undefined
+  }
+
+  private loadRecord(filePath: string): LazySnapshotRecord | undefined {
     if (!this.hooks.isMember(filePath)) return undefined
     const { rootId, revision } = this.hooks.membership()
     const admissionToken = this.projectFileAccess?.tokenFor(rootId, revision, filePath)
@@ -113,6 +130,21 @@ export class TypeScriptLazySnapshots {
     return input.record
   }
 
+  /** Same-version registry reuse can retain a different snapshot than the Host offered. */
+  adoptCompilerSourceFile(source: ts.SourceFile): void {
+    const filePath = path.resolve(source.fileName)
+    const offered = this.paths.get(filePath)?.deref()
+    const input = offered && this.owned.get(offered)
+    const snapshot = (source as ts.SourceFile & { scriptSnapshot?: ts.IScriptSnapshot }).scriptSnapshot
+    if (!input || !snapshot || snapshot === offered || source.text !== input.record.content
+      || snapshot.getText(0, snapshot.getLength()) !== input.record.content) return
+    const record = { ...input.record, snapshot }
+    this.owned.set(snapshot, { record, stamp: input.stamp })
+    this.paths.set(filePath, new WeakRef(snapshot))
+    if (this.records.get(filePath) === input.record) this.records.set(filePath, record)
+    this.owned.delete(offered!)
+  }
+
   private removeStrong(filePath: string): void {
     const record = this.records.get(filePath)
     if (record) this.bytes -= record.bytes
@@ -120,12 +152,13 @@ export class TypeScriptLazySnapshots {
   }
 
   forget(filePath: string): void {
+    if (this.offeredFingerprint?.path === filePath) this.offeredFingerprint = undefined
     this.removeStrong(filePath)
     const snapshot = this.paths.get(filePath)?.deref()
     if (snapshot) this.owned.delete(snapshot)
     this.paths.delete(filePath)
   }
 
-  clearCompilerOwned(): void { this.owned = new WeakMap(); this.paths.clear() }
+  clearCompilerOwned(): void { this.owned = new WeakMap(); this.paths.clear(); this.offeredFingerprint = undefined }
   clear(): void { this.records.clear(); this.bytes = 0; this.clearCompilerOwned() }
 }

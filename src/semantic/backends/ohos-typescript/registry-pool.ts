@@ -9,6 +9,7 @@ import { OHOS_TYPESCRIPT_BACKEND_IDENTITY } from "./identity.js"
 
 import { isCompilerLibrary, retainSdkDocuments, prepareRetainedSdkDocuments } from "./sdk-registry-cache.js"
 import { enableVerifierSdkLookups } from "../../../core/types/verifier-sdk-lookups.js"
+import { observedDocumentRegistry } from "./observed-document-registry.js"
 
 let retainVerifierSdk = false
 export function enableVerifierSdkRetention(): void {
@@ -36,7 +37,8 @@ interface RegistryProbeSnapshot {
 let nextServiceId = 0
 let nextSampleId = 0
 
-export function officialDocumentRegistryFor(sdk: ProjectSdkSelection): ts.DocumentRegistry {
+export function officialDocumentRegistryFor(sdk: ProjectSdkSelection,
+  observe?: (source: ts.SourceFile) => void): ts.DocumentRegistry {
   const key = JSON.stringify([
     OHOS_TYPESCRIPT_BACKEND_IDENTITY.revision,
     sdk.path ? path.resolve(sdk.path) : null,
@@ -54,7 +56,7 @@ export function officialDocumentRegistryFor(sdk: ProjectSdkSelection): ts.Docume
     }
     registries.set(key, registry)
   }
-  return registry
+  return observe ? observedDocumentRegistry(registry, observe) : registry
 }
 
 /** Recycle the LS at L2: this fork's cleanupSemanticCache drops Program ownership without releasing registry refs. */
@@ -62,8 +64,9 @@ export function recycleOfficialSemanticService(
   service: ts.LanguageService,
   host: ts.LanguageServiceHost,
   sdk: ProjectSdkSelection,
+  observe?: (source: ts.SourceFile) => void,
 ): ts.LanguageService {
-  const replacement = ts.createLanguageService(host, officialDocumentRegistryFor(sdk))
+  const replacement = ts.createLanguageService(host, officialDocumentRegistryFor(sdk, observe))
   const file = registryProbeFile()
   const sampleId = file ? ++nextSampleId : 0
   const snapshot = file ? captureRegistryProbe(service, sdk) : undefined
