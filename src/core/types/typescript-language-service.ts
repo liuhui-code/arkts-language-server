@@ -42,13 +42,14 @@ import { CooperativeWork } from "./cooperative-work.js"
 import { typescriptProgramStats, measureOfficialCompilerReadiness } from "./typescript-program-stats.js"
 import { OfficialReadinessState, withLoadedReadinessMembership, type ReadinessTrace } from "./typescript-semantic-readiness.js"
 import { TypeScriptContentVersions } from "./typescript-content-versions.js"
+import { applyTypeScriptContentChanges, membershipUpdate, TypeScriptCompilerInputs } from "./typescript-compiler-inputs.js"
 import { TypeScriptScriptAdmission } from "./typescript-script-admission.js"
 import { createScriptRecord, type ScriptRecord } from "./typescript-script-record.js"
 import { queryTypeScriptRename } from "./typescript-rename-query.js"
 import { exactSourceRange, queryTypeScriptReferences, semanticLocationKey } from "./typescript-reference-query.js"
 import { currentWholeFileCallHierarchyItem, exactCallHierarchySelectionRange, exactSourceBoundaryRange } from "./typescript-call-hierarchy-range.js"
 import { IncompleteImplementationError, queryTypeScriptImplementations } from "./typescript-implementation-query.js"
-import { loadedConfigurationIsCurrent, assertCurrentQueryInputs, SemanticInputUnavailableError } from "./typescript-query-inputs.js"
+import { loadedConfigurationIsCurrent, assertCurrentQueryInputs, projectMembershipFailure, SemanticInputUnavailableError } from "./typescript-query-inputs.js"
 import { queryAdmittedDefinition, queryAdmittedReferences } from "./typescript-resident-reference-query.js"
 import { normalizedDefinitionSpan } from "./typescript-definition-span.js"
 import { TypeScriptResidentReferenceState, type ResidentReferenceProofFailure } from "./typescript-resident-reference-state.js"
@@ -156,6 +157,7 @@ export class TypeScriptLanguageServiceEngine {
   private readonly projectMembershipPaths = new Set<string>()
   private semanticRootPaths: Set<string> | undefined
   private readonly projectContentVersions = new TypeScriptContentVersions()
+  private readonly compilerInputs = new TypeScriptCompilerInputs()
   private readonly lazySnapshots: TypeScriptLazySnapshots
   private readonly scriptAdmission: TypeScriptScriptAdmission
   private readonly sdkDeclarationPaths: string[]
@@ -232,7 +234,7 @@ export class TypeScriptLanguageServiceEngine {
         if (reason === "read" || !this.tolerateUnadmittedProjectDependencies) this.projectMembershipSourceUnavailable = true
       },
       observed: (filePath, fingerprint) => this.scriptAdmission.observeLazy(filePath, fingerprint,
-        this.projectContentVersions.scriptVersion(filePath, undefined, true)),
+        this.compilerScriptVersion(filePath, undefined, fingerprint)),
       checkpoint: () => this.checkpoint?.(),
     })
     this.configurationWitness = residentReferenceReuse || packageResolver.witnessesConfiguration() ? new LoadedConfigurationWitness(
@@ -257,7 +259,7 @@ export class TypeScriptLanguageServiceEngine {
     this.sdkAmbientProfile = sdkAmbientProfile
     this.membershipFileNames = [...this.sdkDeclarationPaths]
     this.host = this.createHost(hostCancellationToken)
-    this.service = ts.createLanguageService(this.host, officialDocumentRegistryFor(sdk))
+    this.service = ts.createLanguageService(this.host, officialDocumentRegistryFor(sdk, this.observeCompilerSourceFile))
     const residentCheckpoint = (): void => {
       this.checkpoint?.()
       if (hostCancellationToken?.isCancellationRequested()) throw new ts.OperationCanceledException()
@@ -285,9 +287,9 @@ export class TypeScriptLanguageServiceEngine {
     this.projectMembershipRootId = workspace.canonicalRootId ?? path.resolve(workspace.rootPath)
     const protectedPaths = new Set<string>()
     this.removeProjectFiles(workspace.removedPaths)
-    this.updateProjectMembership(workspace.projectMembership)
+    this.updateProjectMembership(workspace)
     this.updateSemanticRootPaths(workspace.semanticRootPaths)
-    this.updateProjectContent(workspace.contentRevision, workspace.changedPaths)
+    this.updateProjectContent(workspace)
     this.scriptAdmission.begin(this.scripts.size, this.generation)
     for (const document of workspace.documents) {
       const filePath = path.resolve(document.path)
@@ -353,8 +355,18 @@ export class TypeScriptLanguageServiceEngine {
       cancellation: this.host.getCancellationToken?.(), residentProofOwner: this.residentProofOwner, trace }
   }
 
-  programFileStats(): ReturnType<typeof typescriptProgramStats> {
-    return typescriptProgramStats(this.service.getProgram(), this.rootPath, this.sdkRoot)
+  programFileStats() { return typescriptProgramStats(this.service.getProgram(), this.rootPath, this.sdkRoot) }
+
+  compilerInputPaths(): ReadonlySet<string> | undefined { return this.compilerInputs.knownPaths() }
+  private readonly observeCompilerSourceFile = (source: ts.SourceFile): void => {
+    this.compilerInputs.add(path.resolve(source.fileName))
+    this.lazySnapshots.adoptCompilerSourceFile(source)
+  }
+  private compilerScriptVersion(filePath: string, resident?: ScriptRecord, fingerprint?: string): string {
+    const member = this.projectMembershipPaths.has(filePath)
+    const token = resident || !member ? undefined : this.projectFileAccess?.tokenFor(this.projectMembershipRootId, this.projectMembershipRevision, filePath)
+    return this.projectContentVersions.scriptVersion(filePath, resident?.version, member,
+      fingerprint ?? resident?.sourceFingerprint ?? this.lazySnapshots.fingerprint(filePath, token), token)
   }
 
   scriptFileNames(): string[] {
@@ -1620,6 +1632,7 @@ export class TypeScriptLanguageServiceEngine {
     this.projectMembershipPaths.clear()
     this.semanticRootPaths = undefined
     this.projectContentVersions.clear()
+    this.compilerInputs.clear()
     this.scriptAdmission.clear()
     this.projectMembershipSourceUnavailable = false
     this.relativeResolutionFailures.clear()
@@ -1630,7 +1643,8 @@ export class TypeScriptLanguageServiceEngine {
   trim(): void {
     this.invalidateResidentReferences()
     this.lazySnapshots.clearCompilerOwned()
-    this.service = recycleOfficialSemanticService(this.service, this.host, this.sdkSelection)
+    this.compilerInputs.clear()
+    this.service = recycleOfficialSemanticService(this.service, this.host, this.sdkSelection, this.observeCompilerSourceFile)
   }
 
   private createHost(
@@ -1646,7 +1660,6 @@ export class TypeScriptLanguageServiceEngine {
       getProjectVersion: () => [
         this.generation,
         this.projectMembershipStatus,
-        this.projectMembershipRevision,
         this.projectContentVersions.revision,
       ].join(":"),
       getScriptFileNames: () => this.scriptFileNames(),
@@ -1665,8 +1678,7 @@ export class TypeScriptLanguageServiceEngine {
       getScriptVersion: (fileName) => {
         const filePath = path.resolve(fileName)
         const resident = this.scripts.get(filePath)
-        return resident?.compilerVersion ?? this.projectContentVersions.scriptVersion(filePath, resident?.version,
-          this.projectMembershipPaths.has(filePath), resident?.sourceFingerprint)
+        return resident?.compilerVersion ?? this.compilerScriptVersion(filePath, resident)
       },
       directoryExists: directory => witnessedDirectoryExists(directory, this.configurationWitness),
       fileExists: (fileName) => {
@@ -1756,14 +1768,14 @@ export class TypeScriptLanguageServiceEngine {
     if (compilerVersion === undefined) this.generation += 1
   }
 
-  private removeScript(filePath: string): void {
+  private removeScript(filePath: string, invalidate = true): void {
     const previous = this.scripts.get(filePath)
     if (!previous) return
     this.scripts.delete(filePath)
     if (!this.projectMembershipPaths.has(filePath)) this.combinedFileNames = undefined
     this.scriptBytes -= previous.bytes
     this.relativeResolutionFailures.clear()
-    this.generation += 1
+    if (invalidate) this.generation += 1
   }
 
   private removeProjectFiles(removedPaths: string[] | undefined): void {
@@ -1781,14 +1793,14 @@ export class TypeScriptLanguageServiceEngine {
     this.generation += 1
   }
 
-  private updateProjectMembership(membership: ProjectMembershipSnapshot | undefined): void {
+  private updateProjectMembership(workspace: SemanticWorkspaceView): void {
+    const membership = workspace.projectMembership
     if (!membership) return
-    if (
-      membership.status === this.projectMembershipStatus
-      && membership.revision === this.projectMembershipRevision
-      // An earlier invalidation may have removed paths from the cached set.
-      && membership.paths.length === this.projectMembershipPaths.size
-    ) return
+    const update = membershipUpdate(workspace, { status: this.projectMembershipStatus,
+      revision: this.projectMembershipRevision, paths: this.projectMembershipPaths,
+      receivedContentRevision: this.projectContentVersions.receivedRevision, sourceUnavailable: this.projectMembershipSourceUnavailable })
+    if (update === "none") return
+    if (update === "catalog") { this.projectMembershipRevision = membership.revision; return }
 
     this.scriptAdmission.clear()
     this.projectMembershipStatus = membership.status
@@ -1842,15 +1854,11 @@ export class TypeScriptLanguageServiceEngine {
     this.combinedFileNames = undefined
   }
 
-  private updateProjectContent(
-    contentRevision: number | undefined,
-    changedPaths: string[] | undefined,
-  ): void {
-    const paths = this.projectContentVersions.update(contentRevision, changedPaths)
-    if (paths.length > 0) this.relativeResolutionFailures.clear()
-    for (const filePath of paths) {
+  private updateProjectContent(workspace: SemanticWorkspaceView): void {
+    applyTypeScriptContentChanges(workspace, this.projectContentVersions, (filePath, relevant) => {
+      this.relativeResolutionFailures.clear()
       this.scriptAdmission.forget(filePath)
-      this.removeScript(filePath)
+      this.removeScript(filePath, relevant)
       this.removeLazySnapshot(filePath)
       if (this.projectMembershipStatus === "complete" && this.projectMembershipPaths.has(filePath)
         && this.projectFileAccess && (!this.sdkRoot || !isWithinRoot(this.sdkRoot, filePath))) {
@@ -1860,23 +1868,14 @@ export class TypeScriptLanguageServiceEngine {
             this.projectMembershipRootId, this.projectMembershipRevision, filePath, token)
         })
       }
-    }
+    })
   }
 
   private loadLazySnapshot(filePath: string): LazySnapshotRecord | undefined {
     return this.lazySnapshots.load(filePath)
   }
 
-  private projectMembershipFailure():
-    | { status: "incomplete"; reason: "project-membership-incomplete" | "source-unavailable" }
-    | undefined {
-    if (this.projectMembershipStatus !== "complete") {
-      return { status: "incomplete", reason: "project-membership-incomplete" }
-    }
-    return this.projectMembershipSourceUnavailable
-      ? { status: "incomplete", reason: "source-unavailable" }
-      : undefined
-  }
+  private projectMembershipFailure() { return projectMembershipFailure(this.projectMembershipStatus, this.projectMembershipSourceUnavailable) }
 
   private removeLazySnapshot(filePath: string): void { this.lazySnapshots.forget(filePath) }
   private clearLazySnapshots(): void { this.lazySnapshots.clear() }

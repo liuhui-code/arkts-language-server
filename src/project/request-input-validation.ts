@@ -6,18 +6,27 @@ interface ValidatedInput {
 }
 
 let active: Map<object, ValidatedInput> | undefined
-const MAX_PHASE_FILE_IDENTITIES = 8192
+// Bound request-local metadata by its retained strings, rather than starving all
+// paths after an arbitrary file count. This accounting budget is not an RSS cap.
+const MAX_PHASE_FILE_IDENTITY_BYTES = 32 * 1024 * 1024
 interface FileIdentity { readonly physicalPath: string; readonly stamp: string }
-let fileIdentities: Map<string, FileIdentity> | undefined
+interface FileIdentityPhase { readonly values: Map<string, FileIdentity>; bytes: number }
+let fileIdentities: FileIdentityPhase | undefined
 
 /** Physical metadata only; query and final publication always start separate fresh scans. */
 export function requestFileIdentity(filePath: string,
   read: () => FileIdentity | undefined): FileIdentity | undefined {
-  const known = fileIdentities?.get(filePath)
+  const known = fileIdentities?.values.get(filePath)
   if (known) return known
   const current = read()
-  if (current && fileIdentities && fileIdentities.size < MAX_PHASE_FILE_IDENTITIES) {
-    fileIdentities.set(filePath, current)
+  // UTF-16 string storage plus an allowance for the entry, identity and Map
+  // bookkeeping. Overflow keeps the ordinary uncached read, never a stale fact.
+  if (current && fileIdentities) {
+    const bytes = 128 + 2 * (filePath.length + current.physicalPath.length + current.stamp.length)
+    if (fileIdentities.bytes + bytes <= MAX_PHASE_FILE_IDENTITY_BYTES) {
+      fileIdentities.values.set(filePath, current)
+      fileIdentities.bytes += bytes
+    }
   }
   return current
 }
@@ -38,19 +47,21 @@ export function validateRequestInput(owner: object, epoch: number, revision: num
 export function withRequestInputValidation<Result>(run: () => Result, unavailable: () => never): Result {
   if (active) return run()
   const inputs = new Map<object, ValidatedInput>()
-  const identities = new Map<string, FileIdentity>()
+  const identities: FileIdentityPhase = { values: new Map(), bytes: 0 }
   active = inputs
   fileIdentities = identities
   try {
     const result = run()
     active = undefined
-    identities.clear()
+    identities.values.clear()
+    identities.bytes = 0
     for (const input of inputs.values()) if (!input.validate()) unavailable()
     return result
   } finally {
     active = undefined
     fileIdentities = undefined
-    identities.clear()
+    identities.values.clear()
+    identities.bytes = 0
     inputs.clear()
   }
 }

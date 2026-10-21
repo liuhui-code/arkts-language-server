@@ -93,6 +93,57 @@ test(`retained ${degraded ? "degraded" : "READY"} full-scope references never pu
   })
 }
 
+test("one edited LSP reference query shares current physical identities beyond 8192 Program inputs",
+  { timeout: 90_000 }, async t => {
+    const fileCount = 8250
+    const { session, sdk, workspace, directory, rootUri, uri, events } = createReadinessFixture(t, {
+      ARKTS_BENCHMARK_CONTROL: "0", ARKTS_MEMORY_BUDGET_MB: "4096",
+      ARKTS_REFERENCES_STRATEGY: "legacy", ARKTS_REFERENCES_RESIDENT_FAST_PATH: "1",
+      NODE_OPTIONS: `--require=${path.resolve("tests/fixtures/request-input-identity-budget-counter.cjs")}` })
+    const target = "export class TargetOne {}\nexport class TargetTwo {}\n"
+    fs.writeFileSync(path.join(workspace, "Target.ets"), target)
+    fs.writeFileSync(path.join(workspace, "Broken.ets"), 'import unavailable from "@ohos.missing"\nexport { unavailable }\n')
+    for (let index = 0; index < fileCount; index++) fs.writeFileSync(path.join(workspace,
+      `Filler${String(index).padStart(5, "0")}.ets`), `export const filler${index} = ${index}\n`)
+    await session.initialize({ initializationOptions: { sdk: { path: sdk } }, timeoutMs: 20_000 })
+    const prepared = await session.transport.notification("arkts/semanticPreparation",
+      message => message.params.rootUri === rootUri && message.params.phase === "complete", 30_000)
+    assert.equal(prepared.params.report.semanticState, "degraded", JSON.stringify(prepared.params))
+    session.openDocument({ uri: uri("Target.ets"), version: 1, text: target })
+    const query = symbol => session.request("textDocument/references", { textDocument: { uri: uri("Target.ets") },
+      position: positionAt(target, target.indexOf(symbol) + 1), context: { includeDeclaration: true } },
+    { timeoutMs: 30_000 })
+    const expected = symbol => [{ uri: uri("Target.ets"), range: {
+      start: positionAt(target, target.indexOf(symbol)), end: positionAt(target, target.indexOf(symbol) + symbol.length) } }]
+    assert.deepEqual((await query("TargetOne")).result, expected("TargetOne"))
+    fs.writeFileSync(path.join(directory, "arm-input-identity-budget"), "edited query")
+    session.changeDocument({ uri: uri("Target.ets"), version: 2, text: target + "// local edit\n" })
+    const response = await query("TargetTwo")
+    assert.equal(response.error, undefined, JSON.stringify(response))
+    assert.deepEqual(response.result, expected("TargetTwo"))
+    const observations = fs.readdirSync(directory).filter(name => /^input-identity-budget-\d+\.json$/.test(name))
+      .map(name => JSON.parse(fs.readFileSync(path.join(directory, name), "utf8")))
+      .filter(row => Object.keys(row.shared).length > 0)
+    assert.equal(observations.length, 1, "metadata is observed in the actual semantic owner")
+    const counts = Object.values(observations[0].shared)
+    const histogram = Object.fromEntries([...new Set(counts)].map(count => [count, counts.filter(value => value === count).length]))
+    t.diagnostic(JSON.stringify({ fileCount, inputs: counts.length, sharedReads: counts.reduce((a, b) => a + b, 0),
+      actualReads: Object.values(observations[0].actual).reduce((a, b) => a + b, 0), histogram,
+      observedFillerIdentityBytes: observations[0].observedIdentityBytes,
+      compilerStats: events().filter(event => event.event === "semantic.references.complete").at(-1) }))
+    assert.ok(events().some(event => event.event === "semantic.references.complete" && event.programProjectFiles > 8192),
+      "the real searched Program must exceed the old phase capacity")
+    assert.equal(counts.length, fileCount, "every unchanged Program source joins current admission and the final union")
+    assert.ok(counts.every(count => count === 2),
+      `one current check and one independent final check per unchanged input: ${JSON.stringify(histogram)}`)
+    assert.deepEqual((await query("TargetOne")).result, expected("TargetOne"))
+    const repeated = JSON.parse(fs.readFileSync(path.join(directory,
+      `input-identity-budget-${observations[0].threadId}.json`), "utf8"))
+    assert.ok(Object.values(repeated.shared).every(count => count === 4),
+      "another uncached symbol query starts fresh current and final identity scans")
+    assert.deepEqual((await session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })
+  })
+
 for (const queueTrace of ["0", "1"]) {
 test(`references cannot publish an old result after READY identity construction changes an unpreloaded source (trace=${queueTrace})`,
   { timeout: 30_000 }, async t => {

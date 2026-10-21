@@ -12,7 +12,7 @@ interface AppliedContextIdentity {
 
 /** A query cannot consume another group's evidence; only contiguous witnessed revisions are replayed. */
 export function synchronizeContextDelta(workspace: SemanticWorkspaceView, revision: number | undefined,
-  access?: ProjectFileAccessPort): SemanticWorkspaceView {
+  access?: ProjectFileAccessPort, compilerInputs?: ReadonlySet<string>): SemanticWorkspaceView {
   if (revision === undefined || revision === workspace.contentRevision || workspace.resetTypeEngine) return workspace
   const history = workspace.contentDeltas
   const start = history?.findIndex(delta => delta.fromRevision === revision) ?? -1
@@ -27,9 +27,10 @@ export function synchronizeContextDelta(workspace: SemanticWorkspaceView, revisi
     if (cursor === workspace.contentRevision) break
   }
   if (cursor !== workspace.contentRevision) return workspace
-  const scope = workspace.semanticRootPaths ? new Set(workspace.semanticRootPaths.map(file => path.resolve(file))) : undefined
+  const scope = workspace.semanticRootPaths && compilerInputs
+    ? new Set([...workspace.semanticRootPaths.map(file => path.resolve(file)), ...compilerInputs]) : undefined
   const changedPaths = [...changed].filter(file => !scope || scope.has(file))
-  return withChangedDiskDocuments({ ...workspace, changedPaths, contentDelta: { rootPath: path.resolve(workspace.rootPath),
+  return withChangedDiskDocuments({ ...workspace, changedPaths, contentChangedPaths: [...changed], contentDelta: { rootPath: path.resolve(workspace.rootPath),
     fromRevision: revision, toRevision: cursor, changedPaths } }, access)
 }
 

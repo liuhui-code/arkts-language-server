@@ -16,6 +16,7 @@ import { listWorkspaceSourcePaths, SOURCE_EXTENSIONS, unresolvedSourceEntries } 
 import { MAX_DISK_SNAPSHOT_BYTES, readDiskSource as safeRead, sourceStatIdentity } from "./workspace-disk-source.js"
 import { classifyWatchedSourceChanges } from "./watched-source-notifications.js"
 import { invalidateClosedDocument } from "./closed-document-invalidation.js"
+import { extractImportSpecifiers } from "./import-specifiers.js"
 
 import type { ProjectMembershipSnapshot, ProjectFileAdmissionToken, ProjectFileAccessPort, SemanticWorkspaceView } from "./semantic-workspace-view.js"
 import { SEMANTIC_SOURCE_SNAPSHOT_LIMITS } from "./semantic-workspace-view.js"
@@ -1640,9 +1641,7 @@ function resolveRelativeImports(
   hasOverlay: (filePath: string) => boolean,
   overlayPath: (physicalPath: string) => string | undefined,
 ): { paths: string[]; creationCandidatePaths: string[]; complete: boolean } {
-  const specifiers = [...content.matchAll(/(?:import|export)\s+(?:type\s+)?(?:[^'";]+?\s+from\s+)?['"]([^'"]+)['"]/g)]
-    .map((match) => match[1])
-    .filter((specifier): specifier is string => Boolean(specifier))
+  const specifiers = extractImportSpecifiers(content)
   const resolved = specifiers.flatMap((specifier) => {
     if (specifier.startsWith(".")) {
       const relative = resolveImportPath(documentPath, specifier, operationControl)
