@@ -1,0 +1,36 @@
+name: Incremental Linux diagnostic
+on:
+  push:
+    branches: [codex/incremental-linux-diagnostic-20261021]
+permissions:
+  contents: read
+jobs:
+  reproduce:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: .node-version
+      - name: Install fixed toolchain dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@8.15.9 --activate
+          pnpm install --frozen-lockfile
+      - name: Build actual runtime and sidecar
+        run: |
+          pnpm build
+          cargo build --locked --package arkts-index-sidecar --release
+      - name: Serial focused original reproduction
+        run: |
+          set +e
+          failed=0
+          for attempt in 1 2 3; do
+            echo "DIAGNOSTIC_ATTEMPT=$attempt"
+            node --test --test-concurrency=1 --test-name-pattern='a retained source delta.*read-window|an unnotified source edit rejects the old resident text|a transient group source read failure' tests/semantic/changed-source-read-witness.test.mjs tests/semantic/references-batch-search-coverage.test.mjs tests/semantic/semantic-group-retention.test.mjs
+            result=$?
+            echo "DIAGNOSTIC_EXIT=$result"
+            if [ "$result" -ne 0 ]; then failed=1; fi
+          done
+          exit "$failed"

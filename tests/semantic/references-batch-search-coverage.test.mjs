@@ -208,18 +208,40 @@ test("a selective resident Program cannot omit a disconnected legal constructor 
 
 test("an unnotified source edit rejects the old resident text and preserves new references", async (t) => {
   const fixture = createFixture(t)
+  const rpcs = []
+  let editEpochMs
   const resident = await replay(t, fixture, "batched", {
     warm: true, resident: true,
-    afterWarm: () => {
+    afterWarm: session => {
       fixture.sources["Derived.ets"] += "export const changed = new Child()\n"
       fs.writeFileSync(path.join(fixture.root, "Derived.ets"), fixture.sources["Derived.ets"])
+      editEpochMs = Date.now()
+      const request = session.request.bind(session)
+      session.request = async (method, params, options) => {
+        if (method !== "textDocument/references") return request(method, params, options)
+        const rpc = { id: session.nextRequestId, includeDeclaration: params.context.includeDeclaration,
+          startedEpochMs: Date.now() }
+        rpcs.push(rpc)
+        const response = await request(method, params, options)
+        rpc.finishedEpochMs = Date.now()
+        rpc.error = response.error?.code ?? null
+        rpc.newReferences = response.result?.filter(location => location.uri === fixture.uri("Derived.ets")
+          && location.range.start.line === 3).length ?? 0
+        return response
+      }
     },
   })
+  // Diagnostic-only first slice: retain a3c7a91's original RED assertion below.
+  const misses = resident.events.filter(event => event.event === "references.cache.miss")
+  const route = resident.events.filter(event => /^(references\.|semantic\.(context|prepare|implementation|readiness)|diagnostics\.|request\.completed)/u.test(event.event))
+  const observation = { qualification: "UNNOTIFIED_REFERENCE_ADMISSION_SEQUENCE", parent: "a3c7a91", editEpochMs,
+    rpcs: rpcs.map((rpc, index) => ({ ...rpc, traceId: misses[index]?.traceId })), route }
+  t.diagnostic(JSON.stringify(observation))
   const fresh = await replay(t, fixture, "legacy")
   assert.deepEqual(resident.results, fresh.results)
   assert.ok(resident.results.every(result => result.map(JSON.parse)
     .some(location => location.uri === fixture.uri("Derived.ets") && location.range.start.line === 3)))
-  assert.ok(!resident.events.some(event => event.event === "references.resident.hit"))
+  assert.ok(!resident.events.some(event => event.event === "references.resident.hit"), JSON.stringify(observation))
 })
 
 test("an unprovable loaded lookup exposes its configuration failure without guessing resident input", async (t) => {
