@@ -33,3 +33,9 @@ dependencies and long-running soak remain unqualified. The existing unnotified a
 edit correctness gap is documented, not fixed by this change. Windows results remain
 separate from Mac results. Full checks for this merge candidate are recorded in the PR
 and CI independently from the historical local qualification.
+
+The merge also includes focused cross-platform correctness fixes recorded in the three
+2026-10-21 recovery TDD documents. The numeric performance evidence predates those fixes;
+its timings are not presented as a rerun of the final merge candidate. The initial PR's
+Linux failure and the interrupted local run remain retained alongside the subsequent
+qualification records; only the final candidate's complete PR/CI checks qualify the merge.

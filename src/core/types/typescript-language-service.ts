@@ -1656,6 +1656,7 @@ export class TypeScriptLanguageServiceEngine {
         : {}),
       getCompilationSettings: () => this.options,
       getCurrentDirectory: () => this.rootPath,
+      useCaseSensitiveFileNames: () => ts.sys.useCaseSensitiveFileNames,
       getDefaultLibFileName: (options) => ts.getDefaultLibFilePath(options),
       getProjectVersion: () => [
         this.generation,
@@ -1664,8 +1665,7 @@ export class TypeScriptLanguageServiceEngine {
       ].join(":"),
       getScriptFileNames: () => this.scriptFileNames(),
       getScriptKind: (fileName) => fileName.endsWith(".ets")
-        ? ts.ScriptKind.ETS
-        : ts.ScriptKind.TS,
+        ? ts.ScriptKind.ETS : ts.ScriptKind.TS,
       getScriptSnapshot: (fileName) => {
         const filePath = path.resolve(fileName)
         const resident = this.scripts.get(filePath)

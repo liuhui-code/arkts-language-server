@@ -17,6 +17,7 @@ export interface ConfigurationWitnessFailure {
 export class LoadedConfigurationWitness {
   private readonly identities = new Map<string, string>()
   private readonly pathIdentities = new Map<string, string>()
+  private readonly failedSourceReads = new Set<string>()
   private revision = 0
   private resetEpoch = 0
   private unprovable = false
@@ -43,7 +44,8 @@ export class LoadedConfigurationWitness {
         const witnessPath = coveredOwner?.[0] ?? before.witnessPath
         const identity = coveredOwner?.[1] ?? before.identity
         const previous = this.identities.get(witnessPath)
-        if (previous !== undefined && previous !== identity) this.markUnprovable("loaded-identity-changed", resolved)
+        if (previous !== undefined && previous !== identity) this.rejectLoadedIdentityChange(resolved, witnessPath,
+          before.regularSource && after.regularSource)
         else if (previous === undefined) {
           if (this.identities.size + this.pathIdentities.size >= MAX_WITNESS_PATHS) this.markUnprovable("witness-capacity", resolved)
           else { this.identities.set(witnessPath, identity); this.revision += 1 }
@@ -87,7 +89,8 @@ export class LoadedConfigurationWitness {
         const witnessPath = directory ? resolved : coveredOwner?.[0] ?? before.witnessPath
         const identity = directory ? before.loadGuard : coveredOwner?.[1] ?? before.identity
         const previous = records.get(witnessPath)
-        if (previous !== undefined && previous !== identity) this.markUnprovable("loaded-identity-changed", resolved)
+        if (previous !== undefined && previous !== identity) this.rejectLoadedIdentityChange(resolved, witnessPath,
+          !directory && before.regularSource && after.regularSource)
         else if (previous === undefined) {
           if (this.identities.size + this.pathIdentities.size >= MAX_WITNESS_PATHS) this.markUnprovable("witness-capacity", resolved)
           else { records.set(witnessPath, identity); this.revision += 1 }
@@ -100,6 +103,19 @@ export class LoadedConfigurationWitness {
     if (this.unprovable) return
     this.unprovable = true
     this.revision += 1
+    this.reportFailure(reason, sourcePath)
+  }
+
+  private rejectLoadedIdentityChange(sourcePath: string, witnessPath: string, regularSource: boolean): void {
+    // The failed known source still rejects every query. Ordinary compiler
+    // lookups cannot repair it or turn its own stale fact into a global poison.
+    // A distinct namespace/configuration owner retains the permanent rejection.
+    if (!regularSource || sourcePath !== witnessPath || !this.failedSourceReads.has(sourcePath)) {
+      this.markUnprovable("loaded-identity-changed", sourcePath)
+    }
+  }
+
+  private reportFailure(reason: string, sourcePath?: string): void {
     try { this.onUnprovable?.({ reason, sourcePath, retainedPaths: this.identities.size + this.pathIdentities.size }) }
     catch { /* Observability must never change admission or the complete fallback. */ }
   }
@@ -107,6 +123,7 @@ export class LoadedConfigurationWitness {
   reset(): void {
     this.identities.clear()
     this.pathIdentities.clear()
+    this.failedSourceReads.clear()
     this.unprovable = false
     this.revision += 1
     this.resetEpoch += 1
@@ -119,9 +136,19 @@ export class LoadedConfigurationWitness {
     const before = lookupIdentity(resolved)
     const content = read()
     const after = lookupIdentity(resolved)
-    if (!before || !after || content === null || before.absenceOwner
-      || before.witnessPath !== resolved || before.loadGuard !== after.loadGuard) {
-      this.markUnprovable("changed-source-read-unproven", resolved)
+    if (!before?.regularSource || !after?.regularSource) {
+      this.markUnprovable("changed-source-namespace-unproven", resolved)
+      return
+    }
+    if (content === null || before.loadGuard !== after.loadGuard) {
+      // This path already owns a retained fact, so the set shares the existing
+      // witness bound. Only a later authoritative read of this same source can
+      // recover it; unknown configuration failures remain globally unprovable.
+      if (!this.failedSourceReads.has(resolved)) {
+        this.failedSourceReads.add(resolved)
+        this.revision += 1
+        this.reportFailure("changed-source-read-unproven", resolved)
+      }
       return
     }
     // This is a new authoritative byte read, not a cache-hit restamp. Other
@@ -132,15 +159,16 @@ export class LoadedConfigurationWitness {
         this.revision += 1
       }
     }
+    if (this.failedSourceReads.delete(resolved)) this.revision += 1
   }
 
   /** Loaded identities stay fixed; query-local sharing ends in an uncached union scan. */
   freshness(checkpoint: () => void, mode: ConfigurationFreshnessMode = "validate"): (() => boolean) | undefined {
-    if (this.unprovable) return undefined
+    if (this.unprovable || this.failedSourceReads.size) return undefined
     const resetEpoch = this.resetEpoch
     const scan = (): boolean => {
       checkpoint()
-      if (this.unprovable || this.resetEpoch !== resetEpoch) return false
+      if (this.unprovable || this.failedSourceReads.size || this.resetEpoch !== resetEpoch) return false
       // Another root may append actual loads without changing existing inputs.
       // Validate ALL current facts, including additions, and fence this scan.
       const revision = this.revision
@@ -155,11 +183,12 @@ export class LoadedConfigurationWitness {
         if (lookupIdentity(filePath, true)?.identity !== identity) return false
       }
       checkpoint()
-      return !this.unprovable && this.resetEpoch === resetEpoch && this.revision === revision
+      return !this.unprovable && this.failedSourceReads.size === 0
+        && this.resetEpoch === resetEpoch && this.revision === revision
     }
     const current = (): boolean => {
       checkpoint()
-      if (this.unprovable || this.resetEpoch !== resetEpoch) return false
+      if (this.unprovable || this.failedSourceReads.size || this.resetEpoch !== resetEpoch) return false
       return validateRequestInput(this, resetEpoch, this.revision, scan)
     }
     return mode === "capture" ? current : current() ? current : undefined
@@ -168,7 +197,7 @@ export class LoadedConfigurationWitness {
 
 /** Include lexical links and genuine absence, including its existing parent owner. */
 function lookupIdentity(filePath: string, directoryIdentityOnly = false): {
-  identity: string; loadGuard: string; witnessPath: string; absenceOwner?: readonly [string, string]
+  identity: string; loadGuard: string; witnessPath: string; regularSource: boolean; absenceOwner?: readonly [string, string]
 } | undefined {
   let candidate = filePath
   const missing: string[] = []
@@ -198,7 +227,8 @@ function lookupIdentity(filePath: string, directoryIdentityOnly = false): {
       const absenceOwner = absent !== undefined && target.isDirectory()
         ? [candidate, JSON.stringify([candidate, [], physical, link, stamp(lexical, false), stamp(target, false)])] as const
         : undefined
-      return { loadGuard, absenceOwner, witnessPath: absent === undefined ? filePath : path.join(candidate, absent),
+      return { loadGuard, absenceOwner, regularSource: absent === undefined && lexical.isFile() && target.isFile(),
+        witnessPath: absent === undefined ? filePath : path.join(candidate, absent),
         identity: absent === undefined ? directoryIdentityOnly && target.isDirectory()
           ? JSON.stringify([...owner, stamp(lexical, true), stamp(target, true)]) : loadGuard
           : JSON.stringify([candidate, [absent], physical, link, stamp(lexical, true), stamp(target, true)]) }
