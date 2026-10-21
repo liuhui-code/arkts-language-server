@@ -212,6 +212,7 @@ test("an unnotified source edit rejects the old resident text and preserves new 
   let editEpochMs
   const resident = await replay(t, fixture, "batched", {
     warm: true, resident: true,
+    runtimeEnv: { ARKTS_TEST_DIAGNOSTIC_DELAY_MS: "5000" },
     afterWarm: session => {
       fixture.sources["Derived.ets"] += "export const changed = new Child()\n"
       fs.writeFileSync(path.join(fixture.root, "Derived.ets"), fixture.sources["Derived.ets"])
@@ -231,9 +232,9 @@ test("an unnotified source edit rejects the old resident text and preserves new 
       }
     },
   })
-  // Diagnostic-only first slice: retain a3c7a91's original RED assertion below.
+  // a3c7a91 rejected valid second-RPC reuse after the first RPC rebuilt current inputs.
   const misses = resident.events.filter(event => event.event === "references.cache.miss")
-  const route = resident.events.filter(event => /^(references\.|semantic\.(context|prepare|implementation|readiness)|diagnostics\.|request\.completed)/u.test(event.event))
+  const route = resident.events.filter(event => /^(references\.|semantic\.(context|prepare|implementation|readiness|queue)|diagnostics\.|request\.completed)/u.test(event.event))
   const observation = { qualification: "UNNOTIFIED_REFERENCE_ADMISSION_SEQUENCE", parent: "a3c7a91", editEpochMs,
     rpcs: rpcs.map((rpc, index) => ({ ...rpc, traceId: misses[index]?.traceId })), route }
   t.diagnostic(JSON.stringify(observation))
@@ -241,7 +242,24 @@ test("an unnotified source edit rejects the old resident text and preserves new 
   assert.deepEqual(resident.results, fresh.results)
   assert.ok(resident.results.every(result => result.map(JSON.parse)
     .some(location => location.uri === fixture.uri("Derived.ets") && location.range.start.line === 3)))
-  assert.ok(!resident.events.some(event => event.event === "references.resident.hit"), JSON.stringify(observation))
+  assert.equal(misses.length, 2, JSON.stringify(observation))
+  assert.deepEqual(rpcs.map(rpc => [rpc.error, rpc.newReferences]), [[null, 1], [null, 1]])
+  const admissions = route.filter(event => /^references\.resident\.(hit|miss)$/u.test(event.event))
+  assert.equal(admissions[0]?.traceId, misses[0].traceId, JSON.stringify(observation))
+  assert.equal(admissions[0]?.event, "references.resident.miss", "the old proof must be rejected before any reuse")
+  const rejected = route.findIndex(event => event.event === "references.resident.proof.rejected"
+    && event.traceId === misses[0].traceId)
+  assert.ok(rejected >= 0, "the first RPC must expose the old input proof rejection")
+  for (const hit of admissions.filter(event => event.event === "references.resident.hit")) {
+    assert.ok(observation.rpcs.some(rpc => rpc.traceId === hit.traceId), JSON.stringify(observation))
+    const hitIndex = route.indexOf(hit)
+    const prepared = route.findIndex((event, index) => index > rejected && index < hitIndex
+      && event.event === "semantic.prepare.complete")
+    const rebuilt = route.findIndex((event, index) => index > prepared && index < hitIndex
+      && event.event === "semantic.context.cost" && event.reason === "compiler-build")
+    assert.ok(prepared > rejected && rebuilt > prepared,
+      "resident reuse after invalidation requires a fresh prepare and actual compiler build")
+  }
 })
 
 test("an unprovable loaded lookup exposes its configuration failure without guessing resident input", async (t) => {

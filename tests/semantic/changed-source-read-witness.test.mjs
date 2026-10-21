@@ -5,12 +5,15 @@ import test from "node:test"
 import { createReadinessFixture } from "../support/semantic-readiness-lsp.mjs"
 import { positionAt } from "../support/resident-interactive-lsp.mjs"
 
-for (const mutation of [null, "sdk-config", "read-window"]) {
+for (const mutation of [null, "sdk-config", "read-window", "read-window-drift", "read-window-drift-sdk-config"]) {
   test(`a retained source delta replaces only its actual read fact (mutation=${mutation})`,
     { timeout: 30_000 }, async t => {
+      const readWindow = mutation?.startsWith("read-window")
+      const drift = mutation?.includes("drift")
       const { session, sdk, workspace, directory, rootUri, uri, events } = createReadinessFixture(t, {
         ARKTS_BENCHMARK_CONTROL: "0", ARKTS_MEMORY_BUDGET_MB: "4096", ARKTS_REFERENCES_RESIDENT_FAST_PATH: "1",
-        ...(mutation === "read-window" ? { NODE_OPTIONS: `--require=${path.resolve("tests/fixtures/changed-source-read-window.cjs")}` } : {}) })
+        ...(drift ? { ARKTS_TEST_DIAGNOSTIC_DELAY_MS: "5000" } : {}),
+        ...(readWindow ? { NODE_OPTIONS: `--require=${path.resolve("tests/fixtures/changed-source-read-window.cjs")}` } : {}) })
       const main = marker => `import { Model } from './ZZModel'\nconst model = new Model()\nexport const current = model.${marker}\n`
       const model = marker => `export class Model { ${marker}: number = 1 }\n`
       fs.writeFileSync(path.join(workspace, "Main.ets"), main("markerOld"))
@@ -34,13 +37,14 @@ for (const mutation of [null, "sdk-config", "read-window"]) {
       const contexts = () => events().filter(event => event.event === "semantic.context.create").length
       const beforeContexts = contexts()
       fs.writeFileSync(path.join(workspace, "ZZModel.ets"), model("markerNew"))
-      if (mutation === "sdk-config") {
+      const mutateSdk = () => {
         const file = path.join(sdk, "ets/oh-uni-package.json")
         const before = fs.readFileSync(file, "utf8"), after = before.replace('"24"', '"25"')
         assert.notEqual(before, after); fs.writeFileSync(file, after)
       }
-      if (mutation === "read-window") fs.writeFileSync(path.join(directory, "arm-changed-source-read.json"),
-        JSON.stringify({ text: model("markerEnd") }))
+      if (mutation === "sdk-config") mutateSdk()
+      if (readWindow) fs.writeFileSync(path.join(directory, "arm-changed-source-read.json"),
+        JSON.stringify({ text: model("markerEnd"), mtimeOffsetMs: drift ? 2000 : 0 }))
       const watched = () => session.transport.send({ jsonrpc: "2.0", method: "workspace/didChangeWatchedFiles",
         params: { changes: [{ uri: uri("ZZModel.ets"), type: 2 }] } })
       watched(); session.changeDocument({ uri: target, version: 2, text: main("markerNew") })
@@ -50,12 +54,23 @@ for (const mutation of [null, "sdk-config", "read-window"]) {
         assert.equal(contexts(), beforeContexts, "known semantic source changes update the original LS")
       } else {
         assert.equal(response.error?.code, -32803, JSON.stringify(response))
-        if (mutation === "read-window") {
+        if (readWindow) {
           const witness = JSON.parse(fs.readFileSync(path.join(directory, "changed-source-read-mutated.json"), "utf8"))
           assert.equal(witness.pid, session.transport.child.pid); assert.ok(witness.threadId > 0)
           assert.match(witness.caller, /observeChangedSourceRead/); assert.equal(witness.originalSize, witness.currentSize)
+          if (drift) assert.ok(witness.currentMtimeMs - witness.originalMtimeMs > 1999)
+          t.diagnostic(JSON.stringify({ mutation, rejectedRequestId: response.id, ...witness, caller: undefined }))
+          if (mutation === "read-window-drift-sdk-config") mutateSdk()
           watched(); session.changeDocument({ uri: target, version: 3, text: main("markerEnd") })
-          assertMarker(await complete(main("markerEnd")), "markerEnd", "markerOld")
+          const recovered = await complete(main("markerEnd"))
+          t.diagnostic(JSON.stringify({ mutation, recovery: recovered, beforeContexts, afterContexts: contexts(),
+            proofEvents: events().filter(event => /proof|context|prepare/.test(event.event)).map(event => ({
+              event: event.event, reason: event.reason, stage: event.stage, contextSequence: event.contextSequence,
+              source: event.sourcePath && path.basename(event.sourcePath),
+              resetReason: event.resetReason, newEntry: event.newEntry, ts: event.ts })) }))
+          if (drift) assert.equal(contexts(), beforeContexts, "recovery must retain its original LS")
+          if (mutation === "read-window-drift-sdk-config") assert.equal(recovered.error?.code, -32803, JSON.stringify(recovered))
+          else assertMarker(recovered, "markerEnd", "markerOld")
         }
       }
       assert.deepEqual((await session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })

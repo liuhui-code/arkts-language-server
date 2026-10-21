@@ -23,11 +23,15 @@ if (!isMainThread && process.env.ARKTS_LSP_LOG_DIR) {
     if (descriptors.get(fd) === 2 && fs.existsSync(marker) && !fs.existsSync(witness)) {
       const caller = new Error().stack
       if (!caller.includes("observeChangedSourceRead")) return stat
-      const { text } = JSON.parse(fs.readFileSync(marker, "utf8"))
+      const { text, mtimeOffsetMs = 0 } = JSON.parse(fs.readFileSync(marker, "utf8"))
       if (Buffer.byteLength(text) !== stat.size) throw Error("equal-byte fixture required")
-      fs.writeFileSync(file, text); fs.utimesSync(file, stat.atime, stat.mtime)
+      fs.writeFileSync(file, text)
+      if (mtimeOffsetMs) fs.utimesSync(file, stat.atimeMs / 1000, (stat.mtimeMs + mtimeOffsetMs) / 1000)
+      else fs.utimesSync(file, stat.atime, stat.mtime)
+      const current = fs.statSync(file)
       fs.writeFileSync(witness, JSON.stringify({ pid: process.pid, threadId, caller,
-        originalSize: stat.size, currentSize: fs.statSync(file).size }), { flag: "wx" })
+        originalSize: stat.size, currentSize: current.size, originalMtimeMs: stat.mtimeMs,
+        currentMtimeMs: current.mtimeMs, originalCtimeMs: stat.ctimeMs, currentCtimeMs: current.ctimeMs }), { flag: "wx" })
     }
     return stat
   }
