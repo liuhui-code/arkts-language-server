@@ -44,7 +44,8 @@ export class LoadedConfigurationWitness {
         const witnessPath = coveredOwner?.[0] ?? before.witnessPath
         const identity = coveredOwner?.[1] ?? before.identity
         const previous = this.identities.get(witnessPath)
-        if (previous !== undefined && previous !== identity) this.rejectLoadedIdentityChange(resolved, witnessPath)
+        if (previous !== undefined && previous !== identity) this.rejectLoadedIdentityChange(resolved, witnessPath,
+          before.regularSource && after.regularSource)
         else if (previous === undefined) {
           if (this.identities.size + this.pathIdentities.size >= MAX_WITNESS_PATHS) this.markUnprovable("witness-capacity", resolved)
           else { this.identities.set(witnessPath, identity); this.revision += 1 }
@@ -88,7 +89,8 @@ export class LoadedConfigurationWitness {
         const witnessPath = directory ? resolved : coveredOwner?.[0] ?? before.witnessPath
         const identity = directory ? before.loadGuard : coveredOwner?.[1] ?? before.identity
         const previous = records.get(witnessPath)
-        if (previous !== undefined && previous !== identity) this.rejectLoadedIdentityChange(resolved, witnessPath)
+        if (previous !== undefined && previous !== identity) this.rejectLoadedIdentityChange(resolved, witnessPath,
+          !directory && before.regularSource && after.regularSource)
         else if (previous === undefined) {
           if (this.identities.size + this.pathIdentities.size >= MAX_WITNESS_PATHS) this.markUnprovable("witness-capacity", resolved)
           else { records.set(witnessPath, identity); this.revision += 1 }
@@ -104,11 +106,11 @@ export class LoadedConfigurationWitness {
     this.reportFailure(reason, sourcePath)
   }
 
-  private rejectLoadedIdentityChange(sourcePath: string, witnessPath: string): void {
+  private rejectLoadedIdentityChange(sourcePath: string, witnessPath: string, regularSource: boolean): void {
     // The failed known source still rejects every query. Ordinary compiler
     // lookups cannot repair it or turn its own stale fact into a global poison.
     // A distinct namespace/configuration owner retains the permanent rejection.
-    if (sourcePath !== witnessPath || !this.failedSourceReads.has(sourcePath)) {
+    if (!regularSource || sourcePath !== witnessPath || !this.failedSourceReads.has(sourcePath)) {
       this.markUnprovable("loaded-identity-changed", sourcePath)
     }
   }
@@ -134,8 +136,11 @@ export class LoadedConfigurationWitness {
     const before = lookupIdentity(resolved)
     const content = read()
     const after = lookupIdentity(resolved)
-    if (!before || !after || content === null || before.absenceOwner
-      || before.witnessPath !== resolved || before.loadGuard !== after.loadGuard) {
+    if (!before?.regularSource || !after?.regularSource) {
+      this.markUnprovable("changed-source-namespace-unproven", resolved)
+      return
+    }
+    if (content === null || before.loadGuard !== after.loadGuard) {
       // This path already owns a retained fact, so the set shares the existing
       // witness bound. Only a later authoritative read of this same source can
       // recover it; unknown configuration failures remain globally unprovable.
@@ -192,7 +197,7 @@ export class LoadedConfigurationWitness {
 
 /** Include lexical links and genuine absence, including its existing parent owner. */
 function lookupIdentity(filePath: string, directoryIdentityOnly = false): {
-  identity: string; loadGuard: string; witnessPath: string; absenceOwner?: readonly [string, string]
+  identity: string; loadGuard: string; witnessPath: string; regularSource: boolean; absenceOwner?: readonly [string, string]
 } | undefined {
   let candidate = filePath
   const missing: string[] = []
@@ -222,7 +227,8 @@ function lookupIdentity(filePath: string, directoryIdentityOnly = false): {
       const absenceOwner = absent !== undefined && target.isDirectory()
         ? [candidate, JSON.stringify([candidate, [], physical, link, stamp(lexical, false), stamp(target, false)])] as const
         : undefined
-      return { loadGuard, absenceOwner, witnessPath: absent === undefined ? filePath : path.join(candidate, absent),
+      return { loadGuard, absenceOwner, regularSource: absent === undefined && lexical.isFile() && target.isFile(),
+        witnessPath: absent === undefined ? filePath : path.join(candidate, absent),
         identity: absent === undefined ? directoryIdentityOnly && target.isDirectory()
           ? JSON.stringify([...owner, stamp(lexical, true), stamp(target, true)]) : loadGuard
           : JSON.stringify([candidate, [absent], physical, link, stamp(lexical, true), stamp(target, true)]) }
