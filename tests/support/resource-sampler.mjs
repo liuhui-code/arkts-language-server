@@ -18,7 +18,10 @@ export function createResourceSampler({ pids, probe, clock, intervalMs }) {
         samples.push({
           timestamp,
           processes: processes
-            .map(({ pid, rssBytes, cpuPercent }) => ({ pid, rssBytes, cpuPercent }))
+            .map(({ pid, rssBytes, cpuPercent, cpuPercentUnavailableReason }) => ({
+              pid, rssBytes, cpuPercent,
+              ...(cpuPercentUnavailableReason === undefined ? {} : { cpuPercentUnavailableReason }),
+            }))
             .sort((left, right) => left.pid - right.pid),
         })
       })

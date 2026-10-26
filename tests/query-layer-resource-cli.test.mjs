@@ -209,6 +209,12 @@ test("resource sampler finishes normally when target exit races sampler teardown
         NODE_OPTIONS: `--require=${JSON.stringify(path.resolve("tests/fixtures/rss-sampler-close-race.cjs"))}` },
     })
     const report = JSON.parse(fs.readFileSync(fixture.output, "utf8"))
+    if (!["darwin", "linux"].includes(process.platform)) {
+      assert.equal(result.status, 1)
+      assert.equal(report.failure, "QUERY_LAYER_RSS_SAMPLER_FAILED")
+      assert.equal(report.resources.sampleCount, 0)
+      return
+    }
     assert.equal(result.status, 0, JSON.stringify({ failure: report.failure,
       close: report.closeResult, samplerClose: report.samplerCloseResult,
       samplerStderr: report.resources?.samplerStderr, stderr: result.stderr }))
@@ -229,7 +235,7 @@ test("resource checkpoints preserve dependent incoming calls in official and own
       target: { kind: "prepareCallHierarchy", file: "Query.ets", symbol: "targetThing", position: { line: 0, character: 16 } },
       oracle: { schemaVersion: 1, kind: "prepareCallHierarchy", result: [] },
     })
-    fixture.suite.runtime.sampleIntervalMs = 1 // DIAGNOSTIC cadence only; never a product timing sample.
+    fixture.suite.runtime.sampleIntervalMs = 1 // Diagnostic cadence only; never a product timing sample.
     const rootUri = pathToFileURL(fixture.suite.workspace).href
     const route = { arktsCallHierarchy: { protocol: 1, rootUri } }
     const item = { name: "targetThing", kind: 12,
@@ -264,7 +270,11 @@ test("resource checkpoints preserve dependent incoming calls in official and own
         assert.equal(report.failure, "QUERY_LAYER_RSS_SAMPLER_FAILED")
         continue
       }
-      assert.equal(result.status, 0, JSON.stringify({ layer, stderr: result.stderr, failure: report.failure, probeStderr: report.probeStderr, samplerStderr: report.resources?.samplerStderr, sampleCount: report.resources?.sampleCount, samplerCloseResult: report.samplerCloseResult, closeResult: report.closeResult, requests: report.requests, unexecuted: report.unexecutedScenarioIds }))
+      assert.equal(result.status, 0, JSON.stringify({ layer, stderr: result.stderr,
+        failure: report.failure, probeStderr: report.probeStderr,
+        samplerStderr: report.resources?.samplerStderr, sampleCount: report.resources?.sampleCount,
+        samplerCloseResult: report.samplerCloseResult, closeResult: report.closeResult,
+        requests: report.requests, unexecuted: report.unexecutedScenarioIds }))
       assert.equal(report.status, "PASS")
       assert.ok(report.requests.every(request => request.correctness.equal))
       assert.deepEqual(report.requests.map(request => request.payload), [[item], incoming, incoming])
