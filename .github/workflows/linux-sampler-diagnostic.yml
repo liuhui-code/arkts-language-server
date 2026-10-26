@@ -1,0 +1,38 @@
+name: PR99 Linux sampler diagnostic
+
+on:
+  push:
+    branches: [codex/pr99-linux-sampler-diagnostic-20261026]
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: .node-version
+      - name: Build the unchanged candidate
+        run: |
+          corepack enable
+          corepack prepare pnpm@8.15.9 --activate
+          pnpm install --frozen-lockfile
+          pnpm build
+          cargo build --locked -p arkts-index-sidecar --release
+      - name: Repeat the failed public CLI with retained diagnostics
+        run: |
+          mkdir -p .bench/linux-sampler-diagnostic
+          node --test tests/process-resource-probe.test.mjs
+          for attempt in $(seq 1 20); do
+            set +e
+            node --test --test-name-pattern='^resource watchdog retains the completed answer and the unfinished attempt before its unexecuted tail$' tests/query-layer-resource-cli.test.mjs > ".bench/linux-sampler-diagnostic/attempt-$attempt.log" 2>&1
+            result=$?
+            set -e
+            echo "ATTEMPT=$attempt EXIT=$result"
+            cat ".bench/linux-sampler-diagnostic/attempt-$attempt.log"
+            if [ "$result" -ne 0 ]; then exit "$result"; fi
+          done
