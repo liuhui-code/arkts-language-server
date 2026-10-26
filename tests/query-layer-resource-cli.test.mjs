@@ -226,7 +226,7 @@ test("resource checkpoints preserve dependent incoming calls in official and own
         assert.equal(report.failure, "QUERY_LAYER_RSS_SAMPLER_FAILED")
         continue
       }
-      assert.equal(result.status, 0, `${layer}: ${result.stderr}\n${report.probeStderr}`)
+      assert.equal(result.status, 0, JSON.stringify({ layer, stderr: result.stderr, failure: report.failure, probeStderr: report.probeStderr, samplerStderr: report.resources?.samplerStderr, sampleCount: report.resources?.sampleCount, samplerCloseResult: report.samplerCloseResult, closeResult: report.closeResult, requests: report.requests, unexecuted: report.unexecutedScenarioIds }))
       assert.equal(report.status, "PASS")
       assert.ok(report.requests.every(request => request.correctness.equal))
       assert.deepEqual(report.requests.map(request => request.payload), [[item], incoming, incoming])
