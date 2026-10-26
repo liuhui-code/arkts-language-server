@@ -29,7 +29,7 @@ jobs:
           node --test tests/process-resource-probe.test.mjs tests/resource-sampler-boundary-cli.test.mjs tests/resource-sampler.test.mjs
           for attempt in $(seq 1 50); do
             set +e
-            node --test --test-name-pattern='^resource checkpoints preserve dependent incoming calls in official and owner layers$' tests/query-layer-resource-cli.test.mjs > ".bench/linux-sampler-diagnostic/attempt-$attempt.log" 2>&1
+            node --test --test-name-pattern='^resource (checkpoints preserve dependent incoming calls in official and owner layers|sampler finishes normally when target exit races sampler teardown)$' tests/query-layer-resource-cli.test.mjs > ".bench/linux-sampler-diagnostic/attempt-$attempt.log" 2>&1
             result=$?
             set -e
             echo "ATTEMPT=$attempt EXIT=$result"

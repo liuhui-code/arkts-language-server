@@ -79,7 +79,8 @@ try {
   }
   clearTimeout(timeout)
   stoppingSampler = true
-  sampler.kill("SIGINT")
+  // The root has exited. Its sampler observes that exit and flushes naturally;
+  // a late SIGINT can kill it after Node has removed its signal handlers.
   const samplerTimeout = setTimeout(() => sampler.kill("SIGTERM"), 5_000)
   const samplerCloseResult = await samplerCompletion
   clearTimeout(samplerTimeout)
