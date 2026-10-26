@@ -341,6 +341,7 @@ function lifetimeCpuPercent(stat, uptimeSeconds, clockTicksPerSecond) {
   const elapsedTicks = (uptimeSeconds * clockTicksPerSecond) - stat.startTimeTicks
   if (elapsedTicks <= 0) {
     if (stat.totalCpuTicks === 0) return 0
+    process.stderr.write("[PR99_CLOCK_DIAG]" + JSON.stringify({ pid: stat.pid, uptimeSeconds, clockTicksPerSecond, startTimeTicks: stat.startTimeTicks, cpuTicks: stat.totalCpuTicks, elapsedTicks }) + "\n")
     throw probeError("EPROBE_PARSE", `process ${stat.pid} started after the reported uptime`)
   }
   return (stat.totalCpuTicks / elapsedTicks) * 100
