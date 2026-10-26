@@ -229,6 +229,7 @@ test("resource checkpoints preserve dependent incoming calls in official and own
       target: { kind: "prepareCallHierarchy", file: "Query.ets", symbol: "targetThing", position: { line: 0, character: 16 } },
       oracle: { schemaVersion: 1, kind: "prepareCallHierarchy", result: [] },
     })
+    fixture.suite.runtime.sampleIntervalMs = 1 // DIAGNOSTIC cadence only; never a product timing sample.
     const rootUri = pathToFileURL(fixture.suite.workspace).href
     const route = { arktsCallHierarchy: { protocol: 1, rootUri } }
     const item = { name: "targetThing", kind: 12,
