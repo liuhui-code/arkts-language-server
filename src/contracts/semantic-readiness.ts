@@ -11,9 +11,21 @@ export interface SemanticReadinessQuery {
   readonly signal?: AbortSignal
 }
 
+/** Query support is distinct from a complete-project semantic certificate. */
+export const SEMANTIC_AVAILABLE_CAPABILITIES = Object.freeze([
+  "definition", "typeDefinition", "hover", "signatureHelp", "completion", "completionResolve",
+] as const)
+
+export type SemanticInputIssue =
+  | { readonly layer: "sdk"; readonly reason: "module-not-found"; readonly specifier: string }
+  | { readonly layer: "sdk"; readonly reason: "coverage-unproven" | "declaration-not-found" }
+
 export interface SemanticReadinessReport {
   readonly rootUri: string
-  readonly semanticState: "unprepared" | "ready" | "degraded"
+  readonly semanticState: "unprepared" | "ready" | "partial" | "degraded"
+  /** Present for usable partial inputs; not a full-reference/rename proof. */
+  readonly availableCapabilities?: readonly string[]
+  readonly inputIssues?: readonly SemanticInputIssue[]
   readonly semanticGeneration: string | null
   readonly readyCapabilities: readonly string[]
   readonly unavailableReasons: readonly string[]
@@ -50,4 +62,10 @@ export function semanticUnprepared(rootUri: string, reason?: string): SemanticRe
   return { rootUri, semanticState: reason ? "degraded" : "unprepared",
     semanticGeneration: null, readyCapabilities: [], unavailableReasons: reason ? [reason] : [],
     unavailableInput: null, inputIdentity: null, coverage: null }
+}
+
+export function semanticSdkPartial(rootUri: string, issue: SemanticInputIssue,
+  unavailableInput: SemanticReadinessReport["unavailableInput"] = null): SemanticReadinessReport {
+  return { ...semanticUnprepared(rootUri, "sdk-inputs-incomplete"), semanticState: "partial",
+    availableCapabilities: SEMANTIC_AVAILABLE_CAPABILITIES, inputIssues: [issue], unavailableInput }
 }

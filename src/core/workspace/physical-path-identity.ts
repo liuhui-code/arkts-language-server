@@ -1,5 +1,6 @@
 import fs from "node:fs"
 import path from "node:path"
+import { relativePathWithinRoot } from "../../project/path-identity.js"
 
 export function canonicalWorkspaceRoot(rootPath: string): string {
   const resolved = path.resolve(rootPath)
@@ -39,6 +40,6 @@ export function canonicalSourcePath(filePath: string): string {
 }
 
 export function isInside(rootPath: string, candidatePath: string): boolean {
-  const relative = path.relative(rootPath, candidatePath)
-  return relative.length > 0 && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)
+  const relative = relativePathWithinRoot(rootPath, candidatePath)
+  return relative !== undefined && relative !== ""
 }

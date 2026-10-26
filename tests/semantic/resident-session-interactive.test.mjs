@@ -371,8 +371,9 @@ test("promoted auto-imports preserve distinct same-name sources, apply complete 
         target.indexOf("ValueTarget"), "ValueTarget")])
       for (const item of items) {
         const stale = await session.request("completionItem/resolve", item, { timeoutMs: 20_000 })
-        assert.equal(stale.error?.code, -32602, JSON.stringify(stale))
-        assert.equal(stale.result, undefined)
+        assert.equal(stale.error, undefined, JSON.stringify(stale))
+        assert.deepEqual(stale.result, item)
+        assert.equal(stale.result.additionalTextEdits, undefined)
       }
       assert.deepEqual((await session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })
     }

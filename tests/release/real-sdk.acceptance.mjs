@@ -11,6 +11,40 @@ import { projectRoot } from "../support/lsp-process.mjs"
 const SDK_API_VERSION = "24"
 const SDK_COMPONENT_VERSION = "6.1.1.125"
 
+test("API 24 official runtime globals survive an unrelated missing SDK module", { timeout: 60_000 }, async t => {
+  const source = [
+    'const timer = setTimeout(() => console.info("ready"), 10)',
+    "clearTimeout(timer)", "const interval = setInterval(() => {}, 10)", "clearInterval(interval)", "",
+  ].join("\n")
+  const fixture = await sdkSession(t, source, {
+    "Missing.ets": 'import missing from "@ohos.missingForCoverageTest"\nexport { missing }\n',
+  })
+  const diagnostics = await fixture.session.transport.notification("textDocument/publishDiagnostics",
+    message => message.params.uri === fixture.uri && message.params.version === 1, 30_000)
+  assert.deepEqual(diagnostics.params.diagnostics, [])
+  const prepared = await fixture.session.transport.notification("arkts/semanticPreparation",
+    message => ["complete", "failed"].includes(message.params.phase), 30_000)
+  assert.equal(prepared.params.phase, "complete")
+  assert.equal(prepared.params.report.semanticState, "partial")
+  const declaration = path.join(fixture.sdkRoot, "ets/build-tools/ets-loader/declarations/global.d.ts")
+  const declarations = await fs.readFile(declaration, "utf8")
+  for (const name of ["setTimeout", "clearTimeout", "setInterval", "clearInterval"]) {
+    const definition = await fixture.session.request("textDocument/definition", {
+      textDocument: { uri: fixture.uri }, position: rangeInAnchor(source, name + "(", name).start,
+    }, { timeoutMs: 30_000 })
+    assert.equal(definition.error, undefined)
+    assert.deepEqual(definition.result, [{ uri: pathToFileURL(declaration).href,
+      range: rangeInAnchor(declarations, "declare function " + name + "(", name) }])
+    const completion = await fixture.session.request("textDocument/completion", {
+      textDocument: { uri: fixture.uri }, position: rangeInAnchor(source, name + "(", name).end,
+      context: { triggerKind: 1 },
+    }, { timeoutMs: 30_000 })
+    assert.equal(completion.error, undefined)
+    const items = Array.isArray(completion.result) ? completion.result : completion.result?.items ?? []
+    assert.equal(items.filter(item => item.label === name).length, 1)
+  }
+})
+
 test("API 24 resolves the real ArkUI Text declaration through stdio", { timeout: 60_000 }, async (t) => {
   const source = 'const component = Text("Ready").fontColor("#ffffff")\n'
   const fixture = await sdkSession(t, source)

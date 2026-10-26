@@ -1,49 +1,8 @@
 import assert from "node:assert/strict"
-import fs from "node:fs"
-import path from "node:path"
 import test from "node:test"
-import { pathToFileURL } from "node:url"
 
-import { LspProcess, projectRoot } from "../support/lsp-process.mjs"
+import { openEditorFixture as openFixture } from "../support/editor-fixture.mjs"
 
-async function openFixture(t, directory, fileName, capabilities = {}) {
-  const server = new LspProcess()
-  t.after(() => server.close())
-  const fixtureRoot = path.join(projectRoot, "fixtures", "semantic", directory)
-  const documentPath = path.join(fixtureRoot, fileName)
-  const documentUri = pathToFileURL(documentPath).href
-  const text = fs.readFileSync(documentPath, "utf8")
-
-  server.send({
-    jsonrpc: "2.0",
-    id: 1,
-    method: "initialize",
-    params: {
-      processId: process.pid,
-      rootUri: pathToFileURL(fixtureRoot).href,
-      capabilities: {
-        general: { positionEncodings: ["utf-16"] },
-        ...capabilities,
-      },
-    },
-  })
-  const initialized = await server.response(1)
-  server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
-  server.send({
-    jsonrpc: "2.0",
-    method: "textDocument/didOpen",
-    params: {
-      textDocument: {
-        uri: documentUri,
-        languageId: "arkts",
-        version: 1,
-        text,
-      },
-    },
-  })
-
-  return { server, initialized, documentUri, text }
-}
 
 test("returns ArkTS signature help with the active parameter", async (t) => {
   const { server, documentUri } = await openFixture(t, "signature-help", "Calculator.ets")

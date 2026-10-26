@@ -424,8 +424,11 @@ test("official layer preparation records missing necessary inputs without pre-qu
       "--manifest", fixture.input, "--out", fixture.output], { encoding: "utf8", timeout: 25_000 })
     assert.equal(result.status, 0, `${result.stderr}\n${result.stdout}`)
     const report = JSON.parse(fs.readFileSync(fixture.output, "utf8"))
-    assert.equal(report.preparation?.semanticReadiness?.semanticState, "degraded")
-    assert.ok(report.preparation.semanticReadiness.unavailableReasons.includes("dependency-inputs-incomplete"))
+    assert.equal(report.preparation?.semanticReadiness?.semanticState, "partial")
+    assert.deepEqual(report.preparation.semanticReadiness.unavailableReasons, ["sdk-inputs-incomplete"])
+    assert.deepEqual(report.preparation.semanticReadiness.inputIssues,
+      [{ layer: "sdk", reason: "module-not-found", specifier: "@ohos.missing" }])
+    assert.equal(report.preparation.semanticReadiness.inputIdentity, null)
     assert.equal(report.preparation.targetQueries, 0)
     assert.ok(report.requests.every(request => request.correctness.equal))
   })

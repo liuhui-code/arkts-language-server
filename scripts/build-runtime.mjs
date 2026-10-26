@@ -6,6 +6,7 @@ import { createRequire } from "node:module"
 import path from "node:path"
 
 import { build } from "esbuild"
+import { compilerObservationPlugin } from "./compiler-observation-plugin.mjs"
 
 const require = createRequire(import.meta.url)
 const compilerLib = path.dirname(require.resolve("typescript"))
@@ -31,6 +32,7 @@ await build({
     "diagnostic-verifier-worker": "src/semantic/diagnostics/diagnostic-verifier-worker-runtime.ts",
   },
   bundle: true,
+  plugins: [compilerObservationPlugin(require.resolve("typescript"))],
   define: { ARKTS_COMPILER_ARTIFACT_IDENTITY: JSON.stringify(compilerArtifact) },
   platform: "node",
   target: "node20",

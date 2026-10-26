@@ -7,6 +7,15 @@ import {
   SemanticWorkerCancelState,
 } from "./worker-protocol.js"
 
+let synchronizing = 0
+
+/** TypeScript mutates shared SourceFiles here. Only synchronous work may enter. */
+export function completeCompilerSynchronization<Result>(run: () => Result): Result {
+  synchronizing += 1
+  try { return run() }
+  finally { synchronizing -= 1 }
+}
+
 export function cancellationSignal(cell: SharedArrayBuffer): AbortSignal {
   const reason = new Error("Semantic worker request cancelled")
   return {
@@ -24,6 +33,9 @@ export class SemanticCancellationScope {
   constructor() {
     this.hostToken = Object.freeze({
       isCancellationRequested: () => {
+        // Keep the request's cancellation cell intact. The unblocked supervisor
+        // still enforces cancellation/execution deadlines during this commit.
+        if (synchronizing !== 0) return false
         const cell = this.cells.getStore()
         return cell !== undefined
           && readSemanticWorkerCancellationState(cell) !== SemanticWorkerCancelState.active

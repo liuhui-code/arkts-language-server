@@ -32,7 +32,7 @@ import type {
   SemanticTextRange,
   SemanticUsageResult,
 } from "../protocol.js"
-import { officialDocumentRegistryFor, recycleOfficialSemanticService, disposeOfficialSemanticService } from "../../semantic/backends/ohos-typescript/registry-pool.js"
+import { createOfficialSemanticService, recycleOfficialSemanticService, disposeOfficialSemanticService } from "../../semantic/backends/ohos-typescript/registry-pool.js"
 import type {
   ProjectFileAccessPort,
   ProjectMembershipSnapshot,
@@ -259,7 +259,7 @@ export class TypeScriptLanguageServiceEngine {
     this.sdkAmbientProfile = sdkAmbientProfile
     this.membershipFileNames = [...this.sdkDeclarationPaths]
     this.host = this.createHost(hostCancellationToken)
-    this.service = ts.createLanguageService(this.host, officialDocumentRegistryFor(sdk, this.observeCompilerSourceFile))
+    this.service = createOfficialSemanticService(this.host, sdk, this.observeCompilerSourceFile, () => this.invalidateResidentReferences())
     const residentCheckpoint = (): void => {
       this.checkpoint?.()
       if (hostCancellationToken?.isCancellationRequested()) throw new ts.OperationCanceledException()
@@ -1644,7 +1644,7 @@ export class TypeScriptLanguageServiceEngine {
     this.invalidateResidentReferences()
     this.lazySnapshots.clearCompilerOwned()
     this.compilerInputs.clear()
-    this.service = recycleOfficialSemanticService(this.service, this.host, this.sdkSelection, this.observeCompilerSourceFile)
+    this.service = recycleOfficialSemanticService(this.service, this.host, this.sdkSelection, this.observeCompilerSourceFile, () => this.invalidateResidentReferences())
   }
 
   private createHost(

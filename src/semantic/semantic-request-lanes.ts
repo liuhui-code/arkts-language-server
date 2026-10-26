@@ -36,6 +36,18 @@ export function takeNextSemanticWorkerRequest<T extends { readonly input: { read
       bypassedDiagnostic: oldest === bypassedDiagnostic ? bypassedDiagnostic : undefined,
     }
   }
+  // A foreground completion can be behind highlights/type prefetch as well as
+  // diagnoses. Never cross a global barrier; serve the deferred oldest request
+  // after one bypass so neither diagnostics nor other reads can starve.
+  if (oldest !== bypassedDiagnostic && oldest.input.method !== "complete") {
+    for (let index = 0; index < pending.length; index += 1) {
+      const method = pending[index]!.input.method
+      if (method !== "diagnose" && !isInteractiveSemanticWorkerMethod(method)) break
+      if (index > 0 && method === "complete") {
+        return { request: pending.splice(index, 1)[0], bypassedDiagnostic: oldest }
+      }
+    }
+  }
   if (oldest.input.method === "diagnose" && oldest !== bypassedDiagnostic) {
     let index = 1
     while (pending[index]?.input.method === "diagnose") index += 1

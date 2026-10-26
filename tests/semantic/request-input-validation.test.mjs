@@ -51,8 +51,8 @@ test("one warm LSP query validates each loaded SDK identity before use and once 
     assert.deepEqual((await session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })
   })
 
-for (const degraded of [false, true]) {
-test(`retained ${degraded ? "degraded" : "READY"} full-scope references never publish stale locations from an unnotified source beyond preload`,
+for (const partialSdk of [false, true]) {
+test(`retained ${partialSdk ? "SDK-partial" : "READY"} full-scope references never publish stale locations from an unnotified source beyond preload`,
   { timeout: 30_000 }, async t => {
     const { session, sdk, workspace, rootUri, uri } = createReadinessFixture(t, {
       ARKTS_BENCHMARK_CONTROL: "0", ARKTS_MEMORY_BUDGET_MB: "4096",
@@ -61,7 +61,7 @@ test(`retained ${degraded ? "degraded" : "READY"} full-scope references never pu
     const caller = 'import { TargetOne, TargetTwo } from "./Target"\nclass UnusedOne {}\n'
       + "export const one = new TargetOne()\nexport const two = new UnusedOne()\n"
     fs.writeFileSync(path.join(workspace, "Target.ets"), target)
-    if (degraded) fs.writeFileSync(path.join(workspace, "Broken.ets"), 'import missing from "@ohos.unavailable"\nexport { missing }\n')
+    if (partialSdk) fs.writeFileSync(path.join(workspace, "Broken.ets"), 'import missing from "@ohos.unavailable"\nexport { missing }\n')
     const disk = path.join(workspace, "ZZCaller.ets")
     fs.writeFileSync(disk, caller)
     for (let index = 0; index < 320; index++) fs.writeFileSync(
@@ -69,7 +69,7 @@ test(`retained ${degraded ? "degraded" : "READY"} full-scope references never pu
     await session.initialize({ initializationOptions: { sdk: { path: sdk } }, timeoutMs: 10_000 })
     const initialized = await session.transport.notification("arkts/semanticPreparation",
       message => message.params.rootUri === rootUri && message.params.phase === "complete", 10_000)
-    assert.equal(initialized.params.report.semanticState, degraded ? "degraded" : "ready", JSON.stringify(initialized.params))
+    assert.equal(initialized.params.report.semanticState, partialSdk ? "partial" : "ready", JSON.stringify(initialized.params))
     session.openDocument({ uri: uri("Target.ets"), version: 1, text: target })
     const query = symbol => session.request("textDocument/references", {
       textDocument: { uri: uri("Target.ets") }, position: positionAt(target, target.indexOf(symbol) + 1),
@@ -108,7 +108,7 @@ test("one edited LSP reference query shares current physical identities beyond 8
     await session.initialize({ initializationOptions: { sdk: { path: sdk } }, timeoutMs: 20_000 })
     const prepared = await session.transport.notification("arkts/semanticPreparation",
       message => message.params.rootUri === rootUri && message.params.phase === "complete", 30_000)
-    assert.equal(prepared.params.report.semanticState, "degraded", JSON.stringify(prepared.params))
+    assert.equal(prepared.params.report.semanticState, "partial", JSON.stringify(prepared.params))
     session.openDocument({ uri: uri("Target.ets"), version: 1, text: target })
     const query = symbol => session.request("textDocument/references", { textDocument: { uri: uri("Target.ets") },
       position: positionAt(target, target.indexOf(symbol) + 1), context: { includeDeclaration: true } },
@@ -182,8 +182,8 @@ test(`references cannot publish an old result after READY identity construction 
   })
 }
 
-for (const [degraded, fileCount] of [[false, 320], [true, 320], [true, 8250]]) {
-test(`references retain all Program disk inputs through the final publication fence (degraded=${degraded}, files=${fileCount})`,
+for (const [partialSdk, fileCount] of [[false, 320], [true, 320], [true, 8250]]) {
+test(`references retain all Program disk inputs through the final publication fence (partialSdk=${partialSdk}, files=${fileCount})`,
   { timeout: fileCount > 8192 ? 60_000 : 30_000 }, async t => {
     const { session, sdk, workspace, directory, rootUri, uri, events } = createReadinessFixture(t, {
       ARKTS_BENCHMARK_CONTROL: "0", ARKTS_MEMORY_BUDGET_MB: "4096", ARKTS_REFERENCES_RESIDENT_FAST_PATH: "1",
@@ -194,13 +194,13 @@ test(`references retain all Program disk inputs through the final publication fe
       + "export const one = new TargetOne()\nexport const two = new UnusedOne()\n"
     fs.writeFileSync(path.join(workspace, "Target.ets"), target)
     fs.writeFileSync(path.join(workspace, "ZZCaller.ets"), caller)
-    if (degraded) fs.writeFileSync(path.join(workspace, "Broken.ets"), 'import unavailable from "@ohos.missing"\nexport { unavailable }\n')
+    if (partialSdk) fs.writeFileSync(path.join(workspace, "Broken.ets"), 'import unavailable from "@ohos.missing"\nexport { unavailable }\n')
     for (let index = 0; index < fileCount; index++) fs.writeFileSync(path.join(workspace,
       `Filler${String(index).padStart(4, "0")}.ets`), `export const filler${index} = ${index}\n`)
     await session.initialize({ initializationOptions: { sdk: { path: sdk } }, timeoutMs: 10_000 })
     const prepared = await session.transport.notification("arkts/semanticPreparation",
       message => message.params.rootUri === rootUri && message.params.phase === "complete", 10_000)
-    assert.equal(prepared.params.report.semanticState, degraded ? "degraded" : "ready", JSON.stringify(prepared.params))
+    assert.equal(prepared.params.report.semanticState, partialSdk ? "partial" : "ready", JSON.stringify(prepared.params))
     session.openDocument({ uri: uri("Target.ets"), version: 1, text: target })
     const query = symbol => session.request("textDocument/references", { textDocument: { uri: uri("Target.ets") },
       position: positionAt(target, target.indexOf(symbol) + 1), context: { includeDeclaration: false } })

@@ -10,8 +10,7 @@ import type {
 import type { ProjectResolverPort } from "../contracts/project-resolver.js"
 import { isProjectResourceFile } from "./resource-file-identity.js"
 import type { SemanticReadinessQuery } from "../contracts/semantic-readiness.js"
-import { InitialProjectPreparation } from "./coordinator/initial-preparation.js"
-import { prepareProjectReadiness } from "./project-readiness.js"
+import { ProjectReadinessLifecycle } from "./project-readiness.js"
 import type {
   SemanticCallHierarchyItem,
   SemanticCallHierarchyItemQuery,
@@ -89,7 +88,7 @@ export class LegacySemanticEngine implements SemanticEnginePort {
   private readonly autoImportProjectRootProfile: "workspace" | "discovery"
   private readonly autoImportBatchRootLimit: number
   private readonly autoImportTrimBetweenBatches: boolean
-  private readonly initialPreparation = new InitialProjectPreparation()
+  private readonly projectPreparation = new ProjectReadinessLifecycle()
 
   constructor(
     private readonly projects: ProjectResolverPort,
@@ -125,9 +124,8 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     return this.engines.runtimeStats()
   }
 
-  async semanticReadiness(query: SemanticReadinessQuery) {
-    return prepareProjectReadiness(query, this.projects, this.documents, this.engines, this.initialPreparation)
-  }
+  async semanticReadiness(query: SemanticReadinessQuery) { return this.projectPreparation.read(query, this.projects, this.documents, this.engines) }
+  restoreInitialPreparation(rootUri: string): void { this.projectPreparation.restoreCompleted(rootUri) }
 
   applyMemoryPressure(level: SemanticMemoryLevel): void {
     this.engines.applyMemoryPressure(level)

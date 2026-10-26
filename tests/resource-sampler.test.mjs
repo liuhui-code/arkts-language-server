@@ -131,6 +131,17 @@ test("records a controlled probe error, recovers, and does not leak its timer", 
   assert.equal(clock.activeTimerCount, 0)
 })
 
+test("preserves unavailable CPU metadata alongside an independently measured RSS value", async () => {
+  const observed = { pid: 7, rssBytes: 4096, cpuPercent: null,
+    cpuPercentUnavailableReason: "lifetime-below-clock-resolution" }
+  const sampler = createResourceSampler({ pids: [7], intervalMs: 250,
+    clock: createManualClock(1000), probe: async () => [observed] })
+  await sampler.start()
+  await sampler.stop()
+  assert.deepEqual(sampler.snapshot()[0].processes, [observed])
+  assert.equal(JSON.parse(JSON.stringify(sampler.snapshot()))[0].processes[0].cpuPercent, null)
+})
+
 function createManualClock(initialTimestamp) {
   let timestamp = initialTimestamp
   let nextTimerId = 1

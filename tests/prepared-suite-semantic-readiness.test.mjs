@@ -9,6 +9,29 @@ import { capturePreparedIdentity, digestJson } from "../scripts/bench/prepared-s
 import { sha256File } from "../scripts/bench/reference-replay-input.mjs"
 import { makeSuite, productionSuite, reportedProof, saveSuite } from "./support/prepared-suite-fixture.mjs"
 
+test("SDK partial readiness is retained without granting a complete-project benchmark pass", async t => {
+  const fixture = await makeSuite(t, "reported-readiness")
+  fixture.suite.readiness.candidateControl = false
+  const partial = { ...reportedProof(fixture), semanticState: "partial", semanticGeneration: null,
+    readyCapabilities: [], inputIdentity: null, coverage: null, unavailableReasons: ["sdk-inputs-incomplete"],
+    availableCapabilities: ["definition", "typeDefinition", "hover", "signatureHelp", "completion", "completionResolve"],
+    inputIssues: [{ layer: "sdk", reason: "module-not-found", specifier: "@ohos.missing" }] }
+  for (const [report, expected] of [[partial, "PARTIAL"],
+    [{ ...partial, inputIdentity: reportedProof(fixture).inputIdentity }, "READINESS_INVALID"]]) {
+    fixture.output = path.join(fixture.directory, expected + ".json")
+    fixture.suite.runtime.env.ARKTS_TEST_PREPARED_READINESS = JSON.stringify(report)
+    saveSuite(fixture)
+    const run = execute(fixture)
+    assert.equal(run.status, 1, run.stderr)
+    const actual = JSON.parse(fs.readFileSync(fixture.output, "utf8"))
+    assert.equal(actual.readiness.semantic.status, expected)
+    assert.equal(actual.gateStatus.ready, "FAIL")
+    assert.equal(actual.gateStatus.latency, "BLOCKED")
+    assert.equal(actual.requests.length, 0)
+    assert.deepEqual(actual.closeResult.exit, { code: 0, signal: null })
+  }
+})
+
 test("prepared benchmark observes a real root Program before target queries without certifying unbound samples",
   { timeout: 40_000 }, async t => {
     const fixture = await productionSuite(t)

@@ -148,11 +148,45 @@ configuration does not silently select another SDK. Imported APIs and ambient
 declarations share one selection; `sdk.selected` logs the selected source and
 API/component metadata separately.
 
+SDK input quality is separate from service availability. An unresolved SDK module
+produces its normal source diagnostic and a `partial` semantic-readiness report,
+including `inputIssues` and the available local query capabilities. Unrelated
+completion, navigation and diagnostics remain usable in the same session.
+Complete-project reference/rename certification still requires complete inputs;
+`partial` does not claim that certificate or trigger Worker recovery.
+
+Use a complete SDK when available. Runtime globals such as `setTimeout`,
+`setInterval` and `console` come from the selected SDK's
+`ets/build-tools/ets-loader/declarations/global.d.ts` (or
+`ets/component/global.d.ts`). The exported API module
+`ets/api/@internal/full/global.d.ts` alone does not provide ambient globals.
+For declaration-only SDKs without loader configuration, the server derives
+ArkUI component names from that SDK's `ets/component/component_config.json`.
+
+For a missing API, update the selected SDK or add an explicit project `.d.ts`
+patch in a selected module/source set, with signatures matching the actual runtime. For example:
+
+```typescript
+// SdkCompatibility.d.ts: replace this example API with the actual SDK contract.
+declare module "@ohos.example" {
+  const example: { read(): number };
+  export default example;
+}
+```
+
+Project declaration changes follow ordinary file notifications. After replacing
+SDK files, send `workspace/didChangeConfiguration` with the selected SDK path to
+refresh its input domain, even when the path stays the same. The public
+`arkts/semanticReadiness` request with `{ rootUri, prepare: true }` explicitly
+re-evaluates qualification; repair does not require a new LSP session. In Zed,
+restarting the language server also reloads the SDK.
+
 The currently verified SDK baseline is OpenHarmony API 24 with the ETS
 `6.1.1.125` component. Its named real-SDK acceptance covers ArkUI `Text`,
 `@ohos`, `@kit`, `@arkts` and shipped `@system` declarations, diagnostics,
 member completion/definition, transitive dotted-relative types, and workspace
-auto-import completion under the full ambient declaration set. Run it explicitly
+auto-import completion under the full ambient declaration set. It also checks
+official timer globals while an unrelated SDK module is missing. Run it explicitly
 on a machine with that SDK:
 
 ```sh
@@ -227,13 +261,36 @@ retention, complete resident references, same-content promotion, pressure
 admission, cost-aware eviction, and transient diagnosis under L3. These six
 options do not require benchmark controls. Reuse still requires an unchanged
 Program and complete scope; stale inputs, missing coverage or pressure retain
-complete fallback or an explicit resource error. Active Worker recycling, old
-session reuse, scope narrowing, GC and tracing remain off.
+complete fallback or an explicit resource error. Pressure-triggered Worker
+recycling, old session reuse, scope narrowing, GC and tracing remain off.
 Set `ARKTS_REFERENCES_RESIDENT_FAST_PATH=0` to disable resident reference reuse;
 the [default policy and full rollback](docs/adr/0015-default-resident-optimization-policy.md)
 list all six settings. This is a maintainer decision, not a passed 550ms or L08
 gate; the [comparison](docs/reports/2026-10-11-resident-effective-combo-comparison.md)
 retains slower edit and warmup results.
+
+Worker failure recovery is enabled by default. The parent supervises stalled
+requests and mutations, waits for the old Worker to exit, then restores current
+configuration and unsaved documents into one replacement. It permits at most
+three recoveries per 180 seconds and three automatic recoveries until a changed
+input generation completes a successful semantic operation. Successful queries
+on unchanged input cannot replenish this budget. A failed replacement stops the recovery cycle.
+After the circuit stops, correcting a document, a concrete workspace file or
+configuration permits one foreground retry within the same frequency budget;
+status polling and identical settings do not reset it. No client restart is
+required for that retry. See [ADR 0020](docs/adr/0020-failed-semantic-build-recovery.md)
+for the lifecycle and remaining isolation limits.
+
+Default liveness deadlines are 30 seconds for ordinary semantic requests,
+120 seconds for global reference/rename/incoming-call requests, 180 seconds for
+preparation and commands posted to the Worker but not yet executing, 10 seconds for mutations,
+and a one-second cancellation grace period. Optional positive integer
+millisecond overrides are `ARKTS_SEMANTIC_REQUEST_TIMEOUT_MS`,
+`ARKTS_SEMANTIC_GLOBAL_TIMEOUT_MS`, `ARKTS_SEMANTIC_PREPARE_TIMEOUT_MS`,
+`ARKTS_SEMANTIC_MUTATION_TIMEOUT_MS`, and `ARKTS_SEMANTIC_CANCEL_GRACE_MS`.
+These bound liveness failures; they are not performance targets.
+Callers can cancel while waiting for shared preparation or recovery without
+cancelling that shared operation for other requests.
 
 `ARKTS_REFERENCES_CONSTRUCTOR_SCOPE=1` is also default-off. After an exact
 constructor search, it may omit proven-safe pending disk roots: exactly empty

@@ -11,6 +11,7 @@ export class SemanticWorkerMutationTracker {
     readonly host: SemanticWorkerHost,
     readonly recycle: SemanticWorkerRecycle,
     readonly failed: (error: unknown) => void,
+    readonly available: () => boolean = () => true,
   ) {}
 
   get pendingCount(): number { return this.#pending.size }
@@ -18,9 +19,10 @@ export class SemanticWorkerMutationTracker {
   retire(): void { this.#generation += 1 }
 
   mutate(rootUri: string, mutation: RootSemanticWorkerMutationInput): void {
-    if (this.recycle.defer(rootUri, mutation)) return
+    if (!this.available()) return // The parent still owns the latest buffers for a later admitted replay.
     const generation = this.#generation
     try {
+      if (this.recycle.defer(rootUri, mutation)) return
       const pending = this.host.supervisor(rootUri).mutate(mutation)
       this.#pending.add(pending)
       void pending.catch(error => {

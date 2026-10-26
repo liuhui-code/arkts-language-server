@@ -130,11 +130,11 @@ test(earlyObservationTimer ? "prepared suite completes its real minimum post-evi
     } } : {}) })
   assert.equal(run.status, 1, `${run.stderr}\n${run.stdout}`)
   const report = JSON.parse(fs.readFileSync(output, "utf8"))
-  assert.equal(report.readiness.semantic.status, "DEGRADED", JSON.stringify(report.readiness))
+  assert.equal(report.readiness.semantic.status, recoveredBeforeControl ? "DEGRADED" : "PARTIAL", JSON.stringify(report.readiness))
   assert.equal(report.readiness.semantic.observed.semanticGeneration, null)
   assert.deepEqual(report.readiness.semantic.observed.readyCapabilities, [])
   assert.deepEqual(report.readiness.semantic.observed.unavailableReasons,
-    [recoveredBeforeControl ? "resource-budget-exceeded" : "sdk-coverage-unproven"])
+    [recoveredBeforeControl ? "resource-budget-exceeded" : "sdk-inputs-incomplete"])
   assert.equal(report.gateStatus.ready, "FAIL")
   assert.equal(report.gateStatus.latency, "BLOCKED")
   if (recoveredBeforeControl) {

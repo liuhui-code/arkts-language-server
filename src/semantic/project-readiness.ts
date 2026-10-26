@@ -4,8 +4,18 @@ import type { ProjectResolverPort } from "../contracts/project-resolver.js"
 import type { SemanticDocumentStore } from "../core/workspace/document-store.js"
 import type { SemanticTypeEngineRegistry } from "../core/types/type-engine.js"
 import { enableSharedSdkRetention } from "./backends/ohos-typescript/registry-pool.js"
-import type { InitialProjectPreparation } from "./coordinator/initial-preparation.js"
+import { InitialProjectPreparation } from "./coordinator/initial-preparation.js"
 import { toFilePath } from "./semantic-worker-file-identity.js"
+
+/** Keep the root's initialization lifetime separate from a replaceable Worker. */
+export class ProjectReadinessLifecycle {
+  private readonly initial = new InitialProjectPreparation()
+  restoreCompleted(rootUri: string): void { this.initial.restoreCompleted(rootUri) }
+  read(query: SemanticReadinessQuery, projects: ProjectResolverPort,
+    documents: SemanticDocumentStore, engines: SemanticTypeEngineRegistry) {
+    return prepareProjectReadiness(query, projects, documents, engines, this.initial)
+  }
+}
 
 /** First complete project preparation owns its pressure exemption, never later recovery. */
 export function prepareProjectReadiness(query: SemanticReadinessQuery, projects: ProjectResolverPort,

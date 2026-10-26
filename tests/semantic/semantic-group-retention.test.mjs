@@ -8,7 +8,7 @@ import { positionAt } from "../support/resident-interactive-lsp.mjs"
 import { applyWorkspaceEdit } from "../support/lsp-edits.mjs"
 import { groupInputWorkspace } from "../fixtures/semantic-group-input-workspace.mjs"
 
-test("an edited degraded prepared Program answers first references before candidate planning in one worker request",
+test("an edited SDK-partial prepared Program answers first references before candidate planning in one worker request",
   { timeout: 30_000 }, async t => {
     const { session, workspace, sdk, rootUri, uri, events } = createReadinessFixture(t, {
       ARKTS_MEMORY_BUDGET_MB: "4096", ARKTS_BENCHMARK_CONTROL: "0",
@@ -19,7 +19,7 @@ test("an edited degraded prepared Program answers first references before candid
     await session.initialize({ initializationOptions: { sdk: { path: sdk } }, timeoutMs: 10_000 })
     const prepared = await session.transport.notification("arkts/semanticPreparation",
       message => message.params.rootUri === rootUri && message.params.phase === "complete", 10_000)
-    assert.equal(prepared.params.report.semanticState, "degraded")
+    assert.equal(prepared.params.report.semanticState, "partial")
     const progress = await session.transport.serverRequest("window/workDoneProgress/create", () => true, 10_000)
     session.transport.send({ jsonrpc: "2.0", id: progress.id, result: null })
     await session.transport.progress(progress.params.token, message => message.params.value.kind === "end", 10_000)
@@ -160,7 +160,7 @@ test("module groups retain dependency Programs across A B C A and global scans w
     assert.deepEqual((await session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })
   })
 
-test("a degraded retained full-scope owner synchronizes a rename and searches unopened callers without disposable batches",
+test("an SDK-partial retained full-scope owner synchronizes a rename and searches unopened callers without disposable batches",
   { timeout: 30_000 }, async t => {
     const { session, workspace, sdk, rootUri, uri, events, directory } = createReadinessFixture(t, {
       ARKTS_MEMORY_BUDGET_MB: "4096", ARKTS_BENCHMARK_CONTROL: "0",
@@ -176,7 +176,7 @@ test("a degraded retained full-scope owner synchronizes a rename and searches un
     await session.initialize({ initializationOptions: { sdk: { path: sdk } }, timeoutMs: 10_000 })
     const initialized = await session.transport.notification("arkts/semanticPreparation",
       message => message.params.rootUri === rootUri && message.params.phase === "complete", 10_000)
-    assert.equal(initialized.params.report.semanticState, "degraded", "do not hide the genuine missing SDK input")
+    assert.equal(initialized.params.report.semanticState, "partial", "do not hide the genuine missing SDK input")
     const progress = await session.transport.serverRequest("window/workDoneProgress/create", () => true, 10_000)
     session.transport.send({ jsonrpc: "2.0", id: progress.id, result: null })
     await session.transport.progress(progress.params.token, message => message.params.value.kind === "end", 10_000)

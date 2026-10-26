@@ -64,7 +64,7 @@ export function canonicalPreparedCompletion(item) {
 }
 
 export function summarizePreparedBuckets(suite, requests, readinessStatus = "READINESS_UNSUPPORTED") {
-  const reason = { READY: "REQUEST_GENERATION_NOT_VERIFIED", DEGRADED: "SEMANTIC_INPUTS_UNAVAILABLE",
+  const reason = { READY: "REQUEST_GENERATION_NOT_VERIFIED", DEGRADED: "SEMANTIC_INPUTS_UNAVAILABLE", PARTIAL: "SDK_INPUTS_INCOMPLETE",
     UNPREPARED: "PROGRAM_NOT_PREPARED" }[readinessStatus] ?? readinessStatus
   const groups = new Map()
   for (const scenario of suite.scenarios) {

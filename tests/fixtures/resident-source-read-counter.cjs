@@ -1,6 +1,7 @@
 const fs = require("node:fs")
 const path = require("node:path")
 const Module = require("node:module")
+const { AsyncLocalStorage } = require("node:async_hooks")
 const { isMainThread, threadId, parentPort } = require("node:worker_threads")
 
 if (!isMainThread && process.env.ARKTS_LSP_LOG_DIR) {
@@ -11,6 +12,8 @@ if (!isMainThread && process.env.ARKTS_LSP_LOG_DIR) {
   const hostPhases = new Map()
   const identityPhases = new Map()
   const rawIdentityPhases = new Map()
+  const referenceIdentityPhases = new Map()
+  globalThis.__residentEvidenceRequest = new AsyncLocalStorage()
   const lstat = fs.lstatSync
   fs.lstatSync = function(file, ...args) {
     const result = Reflect.apply(lstat, this, [file, ...args])
@@ -20,6 +23,11 @@ if (!isMainThread && process.env.ARKTS_LSP_LOG_DIR) {
       if (!rawIdentityPhases.has(phase)) rawIdentityPhases.set(phase, {})
       const counts = rawIdentityPhases.get(phase)
       counts[file] = (counts[file] ?? 0) + 1
+      if (globalThis.__residentEvidenceRequest.getStore()?.method === "references") {
+        if (!referenceIdentityPhases.has(phase)) referenceIdentityPhases.set(phase, {})
+        const references = referenceIdentityPhases.get(phase)
+        references[file] = (references[file] ?? 0) + 1
+      }
     }
     return result
   }
@@ -50,6 +58,11 @@ if (!isMainThread && process.env.ARKTS_LSP_LOG_DIR) {
   const compile = Module.prototype._compile
   Module.prototype._compile = function(source, file) {
     if (path.basename(file) === "semantic-worker.cjs") {
+      const dispatch = "async function dispatch(message, receivedAt) {"
+      if (source.split(dispatch).length !== 2) throw Error("one actual worker dispatch required")
+      source = source.replace(dispatch, dispatch
+        + " return globalThis.__residentEvidenceRequest.run(message, () => __evidenceDispatch(message, receivedAt)); }"
+        + " async function __evidenceDispatch(message, receivedAt) {")
       const hostReads = ["safeRead", "readSourceFile"].map(reader => ({ reader,
         site: `const content = ${reader}(filePath);` })).filter(({ site }) => source.includes(site))
       if (hostReads.length !== 1 || source.split(hostReads[0].site).length !== 2) throw Error("one actual host fallback source read required")
@@ -72,7 +85,7 @@ if (!isMainThread && process.env.ARKTS_LSP_LOG_DIR) {
   const post = parentPort.postMessage
   parentPort.postMessage = function(message, ...args) {
     if (message?.workerEvent !== "log") fs.writeFileSync(path.join(directory, `resident-source-reads-${threadId}.json`),
-      JSON.stringify({ pid: process.pid, threadId, hostPhases: Object.fromEntries(hostPhases), rawIdentityPhases: Object.fromEntries(rawIdentityPhases), identityPhases: Object.fromEntries(identityPhases), phases: Object.fromEntries(
+      JSON.stringify({ pid: process.pid, threadId, referenceIdentityPhases: Object.fromEntries(referenceIdentityPhases), hostPhases: Object.fromEntries(hostPhases), rawIdentityPhases: Object.fromEntries(rawIdentityPhases), identityPhases: Object.fromEntries(identityPhases), phases: Object.fromEntries(
         [...phases].map(([phase, counts]) => [phase, Object.fromEntries(counts)])) }))
     return post.call(this, message, ...args)
   }

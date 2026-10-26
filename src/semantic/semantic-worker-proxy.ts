@@ -24,6 +24,7 @@ import { resourceEventPath, toFilePath } from "./semantic-worker-file-identity.j
 import { SemanticWorkerHost, semanticWorkerData } from "./semantic-worker-host.js"
 import { SemanticWorkerRecycle } from "./semantic-worker-recycle.js"
 import { SemanticWorkerMutationTracker } from "./semantic-worker-mutation-tracker.js"
+import { SemanticWorkerFailureRecovery } from "./semantic-worker-failure-recovery.js"
 import { workerDocumentRequest } from "./semantic-worker-document-request.js"
 import { workerCallHierarchyRequest } from "./semantic-worker-source-request.js"
 import { WorkerProjectPreparation } from "./worker-project-preparation.js"
@@ -69,10 +70,10 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
   readonly #mutations: SemanticWorkerMutationTracker
   readonly #recycle: SemanticWorkerRecycle
   readonly #preparation: WorkerProjectPreparation
+  readonly #recovery: SemanticWorkerFailureRecovery
   #inFlightPreparations = 0
   #projectConfiguration: unknown
   #sdkConfiguration: unknown
-  #failure: unknown
   #disposed = false
 
   constructor(
@@ -93,18 +94,24 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
       workerPath,
       logger,
       environment: this.#environment,
-      onFailure: error => { this.#failure = error },
+      onFailure: error => this.#recovery.workerFailed(error),
+      onHealthy: () => this.#recovery.healthy(),
+      initialPreparationConsumed: rootUri => this.#preparation.hasCompleted(rootUri),
       onPressureRecycle: () => this.#recycle.requestAutomatic(() => this.#recycleOptions()),
       workerData: rootUri => semanticWorkerData(rootUri, this.#environment,
         this.#projectConfiguration, this.#sdkConfiguration),
     })
     this.#recycle = new SemanticWorkerRecycle(this.#host, this.#environment, logger)
     this.#mutations = new SemanticWorkerMutationTracker(this.#host, this.#recycle,
-      error => this.#mutationFailed(error))
+      error => this.#recovery.mutationFailed(error), () => this.#recovery.acceptsMutations)
+    this.#recovery = new SemanticWorkerFailureRecovery({ recycle: this.#recycle, mutations: this.#mutations,
+      disposed: () => this.#disposed,
+      options: () => this.#recycleOptions(), logger })
     this.#preparation = new WorkerProjectPreparation({
-      assertAvailable: () => this.#assertAvailable(), hasRoot: rootUri => this.#host.rootUris.includes(rootUri),
+      admitRecovery: explicit => this.#recovery.admit(explicit),
+      assertAvailable: () => this.#recovery.assertHealthy(), hasRoot: rootUri => this.#host.rootUris.includes(rootUri),
       queriedRoots: this.#queriedRoots,
-      request: (rootUri, input, signal) => this.#recycle.request(rootUri, input, signal, () => this.#assertAvailable()),
+      request: (rootUri, input, signal) => this.#recycle.request(rootUri, input, signal, () => this.#assertAvailable(input.method !== "diagnose" && (input.method !== "semanticReadiness" || input.args.prepare))),
     })
   }
 
@@ -112,6 +119,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
     this.#preparation.configurationChanged()
     this.#recycle.configurationChanged()
     const ownedSelection = structuredClone(selection)
+    this.#recovery.inputChanged("project", ownedSelection)
     this.#referenceInputs.configurationChanged()
     this.#referenceResults.clear()
     this.#projectConfiguration = ownedSelection
@@ -123,6 +131,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
     this.#preparation.configurationChanged()
     this.#recycle.configurationChanged()
     const ownedSelection = structuredClone(selection)
+    this.#recovery.inputChanged("sdk", ownedSelection)
     this.#referenceInputs.configurationChanged()
     this.#referenceResults.clear()
     this.#sdkConfiguration = ownedSelection
@@ -149,8 +158,8 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
     return {
       documents: this.#documents,
       quiescent: !this.#preparation.active && this.#inFlightPreparations === 0 && this.#mutations.pendingCount === 0,
-      checkHealth: () => this.#assertHealthy(),
-      fail: (error: unknown) => { this.#failure = error },
+      checkHealth: () => this.#recovery.assertHealthy(),
+      fail: (error: unknown) => this.#recovery.fail(error),
       invalidate: () => {
         this.#referenceResults.clear()
         this.#queriedRoots.clear()
@@ -444,6 +453,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
     this.#referenceResults.clear()
     this.#referenceInputs.clear()
     this.#queriedRoots.clear()
+    await this.#recovery.settle()
     await this.#host.dispose()
   }
 
@@ -467,28 +477,16 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
   }
 
   #mutate(rootUri: string, mutation: RootSemanticWorkerMutationInput): void {
+    if (mutation.kind !== "workspaceFilesChanged" || mutation.changes.length) this.#recovery.inputChanged()
     for (const knownRoot of this.#referenceInputs.changed(rootUri)) {
       this.#referenceResults.invalidateRoot(knownRoot)
     }
     this.#mutations.mutate(rootUri, mutation)
   }
 
-  #mutationFailed(error: unknown): void {
-    if (!this.#disposed && error instanceof SemanticWorkerSupervisorError
-      && error.code === "restart-required") {
-      this.#mutations.retire()
-      void this.#recycle.recover(this.#recycleOptions()).catch(failure => { this.#failure = failure })
-    } else this.#failure = error
-  }
-
-  #assertAvailable(): void {
-    this.#assertHealthy()
+  #assertAvailable(explicit = true): void {
+    this.#recovery.assertHealthy(explicit)
     if (this.#recycle.active) throw new Error("Semantic Worker recycle is in progress")
-  }
-
-  #assertHealthy(): void {
-    if (this.#disposed) throw new Error("Semantic worker is disposed")
-    if (this.#failure) throw this.#failure
   }
 
   #assertReferenceSnapshot(snapshot: ReferenceInputSnapshot): void {

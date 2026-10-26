@@ -70,7 +70,7 @@ test("project initialization prepares real semantics automatically despite a one
     assert.deepEqual((await session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })
   })
 
-test("a degraded first preparation consumes its pressure exemption before a recovery request",
+test("a partial SDK first preparation consumes its pressure exemption before a recovery request",
   { timeout: 30_000 }, async t => {
     const { session, rootUri, sdk, workspace } = createReadinessFixture(t, {
       ARKTS_MEMORY_BUDGET_MB: "1", ARKTS_BENCHMARK_CONTROL: "0" })
@@ -78,8 +78,8 @@ test("a degraded first preparation consumes its pressure exemption before a reco
     await session.initialize({ initializationOptions: { sdk: { path: sdk } }, timeoutMs: 10_000 })
     const complete = await session.transport.notification("arkts/semanticPreparation",
       message => message.params.rootUri === rootUri && message.params.phase === "complete", 10_000)
-    assert.equal(complete.params.report.semanticState, "degraded")
-    assert.deepEqual(complete.params.report.unavailableReasons, ["dependency-inputs-incomplete"],
+    assert.equal(complete.params.report.semanticState, "partial")
+    assert.deepEqual(complete.params.report.unavailableReasons, ["sdk-inputs-incomplete"],
       "the first attempt must finish the real compiler preparation above the pressure budget")
     const recovery = await session.request("arkts/semanticReadiness", { rootUri, prepare: true })
     assert.equal(recovery.error, undefined, JSON.stringify(recovery))
@@ -172,7 +172,8 @@ test("SDK configuration recovery retains reference compilation in the initialize
     { uri: uri("Unopened.ets"), range: { start: { line: 0, character: 16 }, end: { line: 0, character: 28 } } },
   ])
   const rows = fs.readFileSync(path.join(directory, "initial-parses.jsonl"), "utf8").trim().split("\n").map(JSON.parse)
-  assert.equal(rows.filter(row => row.file.endsWith("/sdk/ets/component/common.d.ts")).length, 1,
+  const declaration = path.join(sdk, "ets", "component", "common.d.ts")
+  assert.equal(rows.filter(row => row.file === declaration).length, 1,
     "reference recovery must not cold-parse the same SDK in another verifier isolate")
   assert.ok(!events().some(row => row.event === "references.batch.start"))
   assert.deepEqual((await session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })

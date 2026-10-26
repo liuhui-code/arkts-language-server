@@ -271,12 +271,18 @@ function createLinuxProbe({
           if (pid !== serverPid && error?.code === "EPROCESS_NOT_FOUND") continue
           throw error
         }
+        // A child can be born while the tree is read, after the sample's first
+        // uptime. Refresh that real clock before deriving its CPU lifetime.
+        const cpuUptime = uptimeSeconds * clockTicksPerSecond <= stat.startTimeTicks
+          ? parseLinuxProcUptime(await readProc("uptime")) : uptimeSeconds
+        const cpuPercent = lifetimeCpuPercent(stat, cpuUptime, clockTicksPerSecond)
         const process = {
           pid,
           parentPid: stat.parentPid,
           startIdentity: `linux:${stat.startTimeTicks}`,
           rssBytes,
-          cpuPercent: lifetimeCpuPercent(stat, uptimeSeconds, clockTicksPerSecond),
+          cpuPercent,
+          ...(cpuPercent === null ? { cpuPercentUnavailableReason: "lifetime-below-clock-resolution" } : {}),
         }
         if (expectedParentPid !== undefined && stat.parentPid !== expectedParentPid) {
           const rootNow = await readStat(serverPid)
@@ -333,11 +339,15 @@ function parseLinuxProcChildren(output) {
 }
 
 function lifetimeCpuPercent(stat, uptimeSeconds, clockTicksPerSecond) {
-  const elapsedTicks = (uptimeSeconds * clockTicksPerSecond) - stat.startTimeTicks
-  if (elapsedTicks <= 0) {
-    if (stat.totalCpuTicks === 0) return 0
+  const uptimeTicks = uptimeSeconds * clockTicksPerSecond
+  const elapsedTicks = uptimeTicks - stat.startTimeTicks
+  const rounding = 2 * Number.EPSILON * Math.max(1, Math.abs(uptimeTicks), stat.startTimeTicks)
+  if (elapsedTicks < -rounding) {
     throw probeError("EPROBE_PARSE", `process ${stat.pid} started after the reported uptime`)
   }
+  // Quantized clocks can report zero age even after CPU ticks accrue. Keep RSS
+  // but do not invent a percentage or divide by floating-point near-zero age.
+  if (elapsedTicks <= rounding) return null
   return (stat.totalCpuTicks / elapsedTicks) * 100
 }
 

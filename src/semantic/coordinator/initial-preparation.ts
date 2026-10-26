@@ -10,6 +10,8 @@ export function initialPreparationCheckpoint(): void { for (const check of check
 export class InitialProjectPreparation {
   private readonly preparedRoots = new Set<string>()
 
+  restoreCompleted(rootUri: string): void { this.preparedRoots.add(rootUri) }
+
   async run(rootUri: string, prepare: boolean,
     operation: () => SemanticReadinessReport | Promise<SemanticReadinessReport>,
     checkpoint: () => void = () => {}): Promise<SemanticReadinessReport> {

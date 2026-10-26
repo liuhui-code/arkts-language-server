@@ -5,6 +5,7 @@ import { createRequire } from "node:module"
 import path from "node:path"
 import { promisify } from "node:util"
 import { build, stop } from "esbuild"
+import { compilerObservationPlugin, compilerObservedSource } from "../compiler-observation-plugin.mjs"
 
 export async function buildObservedWorkers(directory, server, identity) {
   const source = new URL(import.meta.url).href
@@ -31,7 +32,7 @@ export async function buildWorkerArtifacts({ directory, server, identity }) {
   platform: "node", target: "node20", format: "cjs", outdir: "dist", outExtension: { ".js": ".cjs" } }
   const production = path.dirname(server)
   try {
-    const baseline = await build(options)
+    const baseline = await build({ ...options, plugins: [compilerObservationPlugin(compilerFile, { writeMetadata: false })] })
     for (const file of baseline.outputFiles) {
       if (sha256(file.contents) !== sha256(fs.readFileSync(path.join(production, path.basename(file.path))))) {
         throw new Error(`QUERY_LAYER_WORKER_BASELINE_DRIFT:${path.basename(file.path)}`)
@@ -45,7 +46,7 @@ export async function buildWorkerArtifacts({ directory, server, identity }) {
       builder.onLoad({ filter: /[/\\]typescript\.js$/ }, args => {
         if (fs.realpathSync(args.path) !== compilerFile) return
         loaded++
-        return { contents: `${compilerSource}\n${hook}\n`, loader: "js", resolveDir: path.dirname(args.path) }
+        return { contents: `${compilerObservedSource(compilerSource)}\n${hook}\n`, loader: "js", resolveDir: path.dirname(args.path) }
       })
     } }
     const artifacts = []

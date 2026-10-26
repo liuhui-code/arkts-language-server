@@ -1,6 +1,6 @@
 import path from "node:path"
 import { readOwnDataRecord } from "./semantic-worker-record.js"
-import { SEMANTIC_READY_CAPABILITIES } from "../contracts/semantic-readiness.js"
+import { SEMANTIC_AVAILABLE_CAPABILITIES, SEMANTIC_READY_CAPABILITIES } from "../contracts/semantic-readiness.js"
 
 /** Validate the raw readiness boundary before generic JSON omission/cloning. */
 export function assertSemanticReadinessResponse(value: unknown, invalid: () => Error,
@@ -11,10 +11,10 @@ export function assertSemanticReadinessResponse(value: unknown, invalid: () => E
   if (!response.ok) return
   const report = readOwnDataRecord(response.value,
     ["rootUri", "semanticState", "semanticGeneration", "readyCapabilities", "unavailableReasons",
-      "unavailableInput", "inputIdentity", "coverage"], [], 8)
+      "unavailableInput", "inputIdentity", "coverage"], ["availableCapabilities", "inputIssues"], 10)
   if (!report) throw invalid()
   if (!expectedRootUri || !isCanonicalUri(expectedRootUri) || report.rootUri !== expectedRootUri) throw invalid()
-  if (!["ready", "unprepared", "degraded"].includes(report.semanticState as string)) throw invalid()
+  if (!["ready", "unprepared", "partial", "degraded"].includes(report.semanticState as string)) throw invalid()
   const capabilities = strings(report.readyCapabilities, SEMANTIC_READY_CAPABILITIES.length, invalid)
   const reasons = strings(report.unavailableReasons, 14, invalid)
   if (report.semanticState === "ready" && (!report.inputIdentity || typeof report.inputIdentity !== "object"
@@ -26,7 +26,14 @@ export function assertSemanticReadinessResponse(value: unknown, invalid: () => E
   if (report.semanticState !== "ready" && (report.semanticGeneration !== null || report.inputIdentity !== null
     || report.coverage !== null || capabilities.length !== 0
     || (report.semanticState === "unprepared" && (reasons.length !== 0 || report.unavailableInput !== null))
-    || (report.semanticState === "degraded" && reasons.length === 0))) throw invalid()
+    || (["degraded", "partial"].includes(report.semanticState as string) && reasons.length === 0))) throw invalid()
+  if (report.semanticState === "partial") {
+    const available = strings(report.availableCapabilities, SEMANTIC_AVAILABLE_CAPABILITIES.length, invalid)
+    if (available.length !== SEMANTIC_AVAILABLE_CAPABILITIES.length
+      || SEMANTIC_AVAILABLE_CAPABILITIES.some(capability => !available.includes(capability))
+      || reasons.length !== 1 || reasons[0] !== "sdk-inputs-incomplete") throw invalid()
+    assertSdkIssues(report.inputIssues, invalid)
+  } else if ("availableCapabilities" in report || "inputIssues" in report) throw invalid()
   if (report.semanticState === "ready") {
     const digest = assertIdentity(report.inputIdentity, invalid)
     assertCoverage(report.coverage, invalid)
@@ -37,6 +44,22 @@ export function assertSemanticReadinessResponse(value: unknown, invalid: () => E
       || !/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/.test(parts[2]) || parts[3] !== digest) throw invalid()
   }
   if (report.unavailableInput !== null) assertDiagnostic(report.unavailableInput, invalid, isCanonicalUri)
+}
+
+function assertSdkIssues(value: unknown, invalid: () => Error): void {
+  try {
+    if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype
+      || Object.getOwnPropertyDescriptor(value, "length")?.value !== 1
+      || Reflect.ownKeys(value).join(",") !== "0,length") throw invalid()
+    const descriptor = Object.getOwnPropertyDescriptor(value, "0")
+    if (!descriptor?.enumerable || !("value" in descriptor)) throw invalid()
+    const issue = readOwnDataRecord(descriptor.value, ["layer", "reason"], ["specifier"], 3)
+    if (!issue || issue.layer !== "sdk") throw invalid()
+    if (["coverage-unproven", "declaration-not-found"].includes(issue.reason as string)
+      && !("specifier" in issue)) return
+    if (issue.reason !== "module-not-found" || typeof issue.specifier !== "string"
+      || issue.specifier.length > 4096 || !/^@(?:ohos|system|kit|arkts)\.[^\0\r\n]+$/.test(issue.specifier)) throw invalid()
+  } catch { throw invalid() }
 }
 
 function assertDiagnostic(value: unknown, invalid: () => Error, isCanonicalUri: (value: unknown) => boolean): void {

@@ -3,7 +3,7 @@ import path from "node:path"
 import { pathToFileURL } from "node:url"
 import ts from "typescript"
 
-import { SEMANTIC_READY_CAPABILITIES, semanticUnprepared,
+import { SEMANTIC_READY_CAPABILITIES, semanticSdkPartial, semanticUnprepared,
   type SemanticReadinessReport } from "../../contracts/semantic-readiness.js"
 import type { LoadedConfigurationWitness } from "../../project/loaded-configuration-witness.js"
 import type { LocalPackageResolver } from "../sdk/local-package-resolver.js"
@@ -12,6 +12,7 @@ import type { ProjectMembershipSnapshot, SemanticWorkspaceView } from "../worksp
 import { compilerArtifactIdentity } from "./typescript-compiler-artifact.js"
 import { TypeScriptResidentReferenceState } from "./typescript-resident-reference-state.js"
 import { initialPreparationActive } from "../../semantic/coordinator/initial-preparation.js"
+import { relativeResourcePath, sameResolvedPath } from "../../project/path-identity.js"
 
 const programIds = new WeakMap<ts.Program, string>()
 const MISSING_INPUT_DIAGNOSTICS = new Set([2307, 2318, 2688, 2792, 6053, 5083])
@@ -122,14 +123,14 @@ export function withLoadedReadinessMembership(workspace: SemanticWorkspaceView,
 export function prepareOfficialReadiness(input: ReadinessPreparation): OfficialReadinessObservation | SemanticReadinessReport {
   const { workspace } = input
   const rootUri = pathToFileURL(workspace.rootPath).href
-  const unavailable = (reason: string, diagnostic?: ts.Diagnostic): SemanticReadinessReport => ({
-    ...semanticUnprepared(rootUri, reason),
-    unavailableInput: diagnostic ? {
+  const diagnosticInput = (diagnostic?: ts.Diagnostic): SemanticReadinessReport["unavailableInput"] => diagnostic ? {
       uri: diagnostic.file ? pathToFileURL(path.resolve(diagnostic.file.fileName)).href : null,
       code: diagnostic.code, message: ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"),
       position: diagnostic.file && diagnostic.start !== undefined
         ? diagnostic.file.getLineAndCharacterOfPosition(diagnostic.start) : null,
-    } : null,
+    } : null
+  const unavailable = (reason: string, diagnostic?: ts.Diagnostic): SemanticReadinessReport => ({
+    ...semanticUnprepared(rootUri, reason), unavailableInput: diagnosticInput(diagnostic),
   })
   const checkpoint = () => {
     if (input.cancellation?.isCancellationRequested()) throw new ts.OperationCanceledException()
@@ -140,8 +141,13 @@ export function prepareOfficialReadiness(input: ReadinessPreparation): OfficialR
   } : undefined
   checkpoint()
   if (workspace.projectMembership?.status !== "complete") return unavailable("project-membership-incomplete")
-  if (!input.sdk.ready || input.sdk.identity?.status !== "identified"
-    || input.sdkRoots.length === 0 || input.sdkAmbientProfile !== "full") return unavailable("sdk-coverage-unproven")
+  const sdkCoverageProven = input.sdk.ready && input.sdk.identity?.status === "identified"
+    && input.sdkAmbientProfile === "full" && input.sdkRoots.some(root =>
+      ["index-full.d.ts", "common.d.ts", "arkui.d.ts"].some(name =>
+        sameResolvedPath(root, path.join(input.sdk.path!, "ets", "component", name))))
+  // SDK qualification may be unknown before a complete-root Program exists.
+  // Keep ordinary queries available without introducing new global build work.
+  if (!sdkCoverageProven) return semanticSdkPartial(rootUri, { layer: "sdk", reason: "coverage-unproven" })
   if (!compilerArtifactIdentity) return unavailable("backend-artifact-unproven")
   const graph = input.resolver.projectFor(workspace.rootPath).semanticGraph()
   if (graph.status === "unavailable" || (graph.status === "ready" && !graph.complete)) {
@@ -154,27 +160,46 @@ export function prepareOfficialReadiness(input: ReadinessPreparation): OfficialR
   input.onProgramPrepared?.()
   // Initial preparation owns loaded-byte validation even if a missing input
   // later prevents READY. This seeds facts only, never a readiness certificate.
-  if (initialPreparationActive()) observePreparedInputs(input, program, checkpoint)
+  if (sdkCoverageProven && initialPreparationActive()) observePreparedInputs(input, program, checkpoint)
   const sources = program.getSourceFiles()
   const firstMissingInput = (diagnostics: readonly ts.Diagnostic[]) =>
     diagnostics.find(diagnostic => MISSING_INPUT_DIAGNOSTICS.has(diagnostic.code))
   const missingCompilerInput = firstMissingInput(program.getOptionsDiagnostics(cancellation))
     ?? firstMissingInput(program.getGlobalDiagnostics(cancellation))
   if (missingCompilerInput) {
+    if (missingCompilerInput.file && input.sdk.path
+      && relativeResourcePath(input.sdk.path, missingCompilerInput.file.fileName) !== undefined) {
+      return semanticSdkPartial(rootUri, { layer: "sdk", reason: "declaration-not-found" },
+        diagnosticInput(missingCompilerInput))
+    }
     return unavailable("compiler-inputs-incomplete", missingCompilerInput)
   }
   // Complete dependency checking, not position/symbol queries or benchmark answers.
   for (const source of sources) {
     checkpoint()
+    // skipLibCheck hides missing triple-slash declarations. Use the already
+    // parsed directives and actual Program membership, without type-checking
+    // the entire SDK or manufacturing compiler diagnostics.
+    if (input.sdk.path && relativeResourcePath(input.sdk.path, source.fileName) !== undefined
+      && source.referencedFiles.some(reference => /\.d\.(?:ts|ets)$/.test(reference.fileName)
+        && !program.getSourceFile(path.resolve(path.dirname(source.fileName), reference.fileName)))) {
+      return semanticSdkPartial(rootUri, { layer: "sdk", reason: "declaration-not-found" })
+    }
     const missing = firstMissingInput(checkInput(program, source, cancellation, input.trace))
-    if (missing) return unavailable("dependency-inputs-incomplete", missing)
+    if (missing) {
+      const specifier = missingSdkSpecifier(missing)
+      return specifier ? semanticSdkPartial(rootUri, specifier.length <= 4096 && !specifier.includes("\0")
+        ? { layer: "sdk", reason: "module-not-found", specifier }
+        : { layer: "sdk", reason: "coverage-unproven" }, diagnosticInput(missing))
+        : unavailable("dependency-inputs-incomplete", missing)
+    }
   }
   const proof = observePreparedInputs(input, program, checkpoint)
   if (proof.admit({ ...workspace, resetTypeEngine: false }, input.generation, input.roots) !== program) {
     return unavailable("current-program-inputs-unproven")
   }
   const standardLibraryRoot = path.dirname(ts.getDefaultLibFilePath(input.compilerOptions))
-  const standardLibrary = sources.filter(source => path.dirname(path.resolve(source.fileName)) === standardLibraryRoot
+  const standardLibrary = sources.filter(source => sameResolvedPath(path.dirname(path.resolve(source.fileName)), standardLibraryRoot)
     && /^lib(?:\.[a-z0-9]+)*\.d\.ts$/.test(path.basename(source.fileName)))
   if (standardLibrary.length === 0) return unavailable("standard-library-unavailable")
   const manifest = (files: readonly ts.SourceFile[]) => files.map(source =>
@@ -208,6 +233,13 @@ export function prepareOfficialReadiness(input: ReadinessPreparation): OfficialR
   }
   programIds.set(program, programId)
   return { proof, report }
+}
+
+function missingSdkSpecifier(diagnostic: ts.Diagnostic): string | undefined {
+  if ((diagnostic.code !== 2307 && diagnostic.code !== 2792) || !diagnostic.file
+    || diagnostic.start === undefined || diagnostic.length === undefined) return
+  const token = diagnostic.file.text.slice(diagnostic.start, diagnostic.start + diagnostic.length)
+  return /^["'](@(?:ohos|system|kit|arkts)\.[^"'\r\n]+)["']$/.exec(token)?.[1]
 }
 
 function observePreparedInputs(input: ReadinessPreparation, program: ts.Program, checkpoint: () => void) {

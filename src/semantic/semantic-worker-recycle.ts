@@ -3,9 +3,13 @@ import type { StructuredLogger } from "../observability/logger.js"
 import { SemanticWorkerHost, type DeferredSemanticMutation } from "./semantic-worker-host.js"
 import { pressureWorkerRecycleEnabled } from "./semantic-worker-runtime-control.js"
 import { SemanticWorkerCancelState, SemanticWorkerSupervisorError,
+  type RootSemanticWorkerRequestHandle,
   type RootSemanticWorkerMutationInput,
   type RootSemanticWorkerRequestInput } from "./semantic-worker-supervisor.js"
 import type { SemanticWorkerJsonValue } from "./worker-protocol.js"
+import { semanticWorkerDeadlines } from "./semantic-worker-watchdog.js"
+import { mutationTextBytes } from "./semantic-worker-input-guards.js"
+import { MAX_SEMANTIC_WORKER_TEXT_BYTES } from "./worker-protocol.js"
 
 interface RecycleOptions {
   readonly documents: ReadonlyMap<string, DocumentSnapshot>
@@ -27,6 +31,7 @@ export class SemanticWorkerRecycle {
   #requests = 0
   #automaticOptions: (() => RecycleOptions) | undefined
   #automaticQueued = false
+  #halted = false
 
   constructor(host: SemanticWorkerHost, environment: NodeJS.ProcessEnv,
     logger?: StructuredLogger) {
@@ -41,18 +46,15 @@ export class SemanticWorkerRecycle {
     signal: AbortSignal | undefined, checkAvailable: () => void): Promise<SemanticWorkerJsonValue> {
     if (this.#active) await this.wait(signal)
     checkAvailable()
+    const handle = this.#host.supervisor(rootUri).request(input)
     this.#requests += 1
-    try {
-      const handle = this.#host.supervisor(rootUri).request(input)
-      const abort = () => handle.cancel(workerAbortState(signal))
-      signal?.addEventListener("abort", abort, { once: true })
-      if (signal?.aborted) abort()
-      try { return await handle.result }
-      finally { signal?.removeEventListener("abort", abort) }
-    } finally {
+    const settled = () => {
       this.#requests -= 1
       this.retryAutomatic()
     }
+    // Quiescence follows the real command terminal, even if its caller stops waiting first.
+    void handle.result.then(settled, settled)
+    return await cancellableResponse(handle, signal, semanticWorkerDeadlines(this.#environment).cancellation)
   }
 
   requestAutomatic(options: () => RecycleOptions): void {
@@ -79,6 +81,7 @@ export class SemanticWorkerRecycle {
   }
 
   cancelAutomatic(): void { this.#automaticOptions = undefined }
+  retire(closing = false): Promise<number> { this.#halted = true; this.#changed = true; return this.#host.replaceWorker(closing) }
 
   wait(signal?: AbortSignal): Promise<void> {
     const completed = this.#completed ?? Promise.resolve()
@@ -103,20 +106,40 @@ export class SemanticWorkerRecycle {
   defer(rootUri: string, mutation: RootSemanticWorkerMutationInput): boolean {
     if (!this.#active) return false
     this.#changed = true
-    this.#mutations.push({ rootUri, mutation })
+    const tail = this.#mutations.at(-1)
+    const coalesce = tail?.rootUri === rootUri && mutation.kind === "change"
+      && (tail.mutation.kind === "open" || tail.mutation.kind === "change")
+      && tail.mutation.uri === mutation.uri
+    const next = { rootUri, mutation: coalesce ? { ...mutation, kind: tail.mutation.kind } : mutation } as DeferredSemanticMutation
+    const records = this.#mutations.length + Number(!coalesce)
+    const bytes = this.#mutations.reduce((sum, entry) => sum + mutationTextBytes(entry.mutation), 0)
+      - (coalesce ? mutationTextBytes(tail.mutation) : 0) + mutationTextBytes(next.mutation)
+    if (records > 32 || bytes > MAX_SEMANTIC_WORKER_TEXT_BYTES) {
+      this.#logger?.error("semantic.worker.recovery.buffer-overflow", { records, bytes })
+      throw new SemanticWorkerSupervisorError("restart-required")
+    }
+    if (coalesce) this.#mutations[this.#mutations.length - 1] = next
+    else this.#mutations.push(next)
     return true
   }
 
   /** A failed mutation journal cannot be reused; restore authoritative buffers. */
-  async recover(options: RecycleOptions): Promise<void> {
+  async recover(options: RecycleOptions, restart = true, beforeRestart: () => Promise<void> = async () => {}): Promise<void> {
     if (this.#active) return this.wait()
     const roots = this.#host.rootUris
     this.#active = true
+    this.#halted = false
     let release!: () => void
     this.#completed = new Promise(resolve => { release = resolve })
     try {
       options.invalidate()
-      const oldThreadId = await this.#host.replaceWorker()
+      const oldThreadId = await this.#host.replaceWorker(true)
+      if (!restart) {
+        this.#logger?.info("semantic.worker.recovery.retired", { oldThreadId })
+        return
+      }
+      await beforeRestart()
+      if (this.#halted) throw new Error("Semantic Worker recovery was stopped")
       const documents = [...options.documents.values()]
       for (const rootUri of roots) this.#host.supervisor(rootUri)
       for (const document of documents) {
@@ -130,8 +153,10 @@ export class SemanticWorkerRecycle {
       })
     } catch (error) {
       options.fail(error)
+      await this.retire()
       throw error
     } finally {
+      this.#mutations.length = 0
       this.#active = false
       this.#completed = undefined
       release()
@@ -175,6 +200,7 @@ export class SemanticWorkerRecycle {
       options.invalidate()
       replacing = true
       const oldThreadId = await this.#host.replaceWorker()
+      if (this.#halted) throw new Error("Semantic Worker recycle was stopped")
       for (const rootUri of rootUris) this.#host.supervisor(rootUri)
       for (const document of options.documents.values()) {
         await this.#host.supervisor(document.workspaceId).mutate({ kind: "open", uri: document.uri,
@@ -212,4 +238,24 @@ export function workerAbortState(signal: AbortSignal | undefined) {
   }
   if (kind === "shutdown") return SemanticWorkerCancelState.supervisorDisposing
   return SemanticWorkerCancelState.clientCancelled
+}
+
+function cancellableResponse(handle: RootSemanticWorkerRequestHandle, signal: AbortSignal | undefined,
+  graceMs: number): Promise<SemanticWorkerJsonValue> {
+  return new Promise((resolve, reject) => {
+    let timer: NodeJS.Timeout | undefined
+    const cleanup = () => { clearTimeout(timer); signal?.removeEventListener("abort", abort) }
+    const abort = () => {
+      const state = workerAbortState(signal)
+      try { handle.cancel(state) } catch (error) { cleanup(); reject(error); return }
+      timer = setTimeout(() => {
+        cleanup()
+        reject(new SemanticWorkerSupervisorError(state === SemanticWorkerCancelState.contentModified
+          ? "content-modified" : state === SemanticWorkerCancelState.clientCancelled ? "client-cancelled" : "worker-unavailable"))
+      }, graceMs)
+    }
+    signal?.addEventListener("abort", abort, { once: true })
+    if (signal?.aborted) abort()
+    void handle.result.then(value => { cleanup(); resolve(value) }, error => { cleanup(); reject(error) })
+  })
 }

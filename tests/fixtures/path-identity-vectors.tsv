@@ -1,0 +1,6 @@
+windows	D:\Photos\MixedCase.ts	file:///d:/Photos/MixedCase.ts
+windows	d:\Photos\mixedcase.ts	file:///d:/Photos/mixedcase.ts
+windows	E:\My Photos\中文#%.ts	file:///e:/My%20Photos/%E4%B8%AD%E6%96%87%23%25.ts
+unix	/Photos/MixedCase.ts	file:///Photos/MixedCase.ts
+unix	/Photos/mixedcase.ts	file:///Photos/mixedcase.ts
+unix	/My Photos/中文#%.ts	file:///My%20Photos/%E4%B8%AD%E6%96%87%23%25.ts

@@ -1,4 +1,4 @@
-import { CompletionItemKind, ErrorCodes, InsertTextFormat, ResponseError } from "vscode-languageserver/node.js"
+import { CompletionItemKind, ErrorCodes, InsertTextFormat, ResponseError, type CompletionItem } from "vscode-languageserver/node.js"
 
 import type { SemanticCompletion } from "../contracts/semantic-engine.js"
 import type { CompletionResolutionData, CompletionResolutionRecord } from "./completion-resolution-store.js"
@@ -53,9 +53,8 @@ function stripSnippetPlaceholders(text: string): string {
 
 export function toLspResolvedCompletionItem(
   item: SemanticCompletion,
-  data: CompletionResolutionData,
+  original: CompletionItem,
   record: CompletionResolutionRecord,
-  profile: CompletionClientProfile,
 ) {
   const additionalTextEdits = item.additionalTextEdits?.map((edit) => {
     if (
@@ -65,7 +64,8 @@ export function toLspResolvedCompletionItem(
     return { range: edit.range, newText: edit.newText }
   })
   return {
-    ...toLspCompletionItem(item, data, profile, record.position),
+    ...original,
+    detail: item.detail,
     documentation: item.documentation,
     additionalTextEdits,
   }
@@ -106,7 +106,7 @@ function comparePositions(
 export function invalidCompletionResolution(): ResponseError<void> {
   return new ResponseError(
     ErrorCodes.InvalidParams,
-    "Completion item is unknown or stale",
+    "Completion item is unknown or invalid",
   )
 }
 

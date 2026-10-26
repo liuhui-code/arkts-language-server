@@ -158,7 +158,7 @@ for (const [layer, mode] of [["official", "watchdog"], ["official", "abrupt exit
       assert.equal(report.resources.sampleCount, 0)
       return
     }
-    assert.ok(fs.existsSync(marker), JSON.stringify({ failure: report.failure, closeResult: report.closeResult, stderr: result.stderr }))
+    assert.ok(fs.existsSync(marker), JSON.stringify({ failure: report.failure, closeResult: report.closeResult, stderr: result.stderr, samplerStderr: report.resources?.samplerStderr, sampleCount: report.resources?.sampleCount, samplerCloseResult: report.samplerCloseResult, timeline: report.timeline }))
     const observed = JSON.parse(fs.readFileSync(marker, "utf8"))
     assert.equal(observed.pid, report.pid)
     assert.equal(observed.completed, 1)
@@ -182,6 +182,49 @@ for (const [layer, mode] of [["official", "watchdog"], ["official", "abrupt exit
     assert.equal(report.timeline.filter(event => event.phase === "query-complete").length, 1)
   })
 }
+
+test("resource sampler finishes normally when target exit races sampler teardown",
+  { timeout: 35_000 }, async t => {
+    const source = 'import { Thing } from "./Target"\nexport const item = new Thing()\n'
+    const point = offset => {
+      const lines = source.slice(0, offset).split("\n")
+      return { line: lines.length - 1, character: lines.at(-1).length }
+    }
+    const locations = [source.indexOf("Thing"), source.lastIndexOf("Thing")].map(offset => ({
+      file: "Use.ets", range: { start: point(offset), end: point(offset + 5) },
+    }))
+    const fixture = await makeQueryLayerFixture(t, {
+      files: { "Target.ets": "export class Thing {}\n", "Use.ets": source },
+      target: { kind: "references", file: "Use.ets", symbol: "Thing",
+        position: point(source.lastIndexOf("Thing")), includeDeclaration: false },
+      oracle: { schemaVersion: 1, locations },
+    })
+    const marker = path.join(fixture.directory, "sampler-exiting.json")
+    fixture.suite.runtime.env.ARKTS_TEST_RSS_CLOSE_RACE = marker
+    fixture.suite.pins = await capturePreparedIdentity(fixture.suite)
+    saveSuite(fixture)
+    const result = spawnSync(process.execPath, [path.resolve("scripts/bench/measure-query-layer.mjs"),
+      "--layer", "owner", "--manifest", fixture.input, "--out", fixture.output], {
+      encoding: "utf8", timeout: 25_000, env: { ...process.env, ARKTS_TEST_RSS_CLOSE_RACE: marker,
+        NODE_OPTIONS: `--require=${JSON.stringify(path.resolve("tests/fixtures/rss-sampler-close-race.cjs"))}` },
+    })
+    const report = JSON.parse(fs.readFileSync(fixture.output, "utf8"))
+    if (!["darwin", "linux"].includes(process.platform)) {
+      assert.equal(result.status, 1)
+      assert.equal(report.failure, "QUERY_LAYER_RSS_SAMPLER_FAILED")
+      assert.equal(report.resources.sampleCount, 0)
+      return
+    }
+    assert.equal(result.status, 0, JSON.stringify({ failure: report.failure,
+      close: report.closeResult, samplerClose: report.samplerCloseResult,
+      samplerStderr: report.resources?.samplerStderr, stderr: result.stderr }))
+    assert.ok(fs.existsSync(marker), "the controlled natural-exit boundary must actually be reached")
+    assert.equal(report.status, "PASS")
+    assert.deepEqual(report.samplerCloseResult, { code: 0, signal: null, error: null })
+    assert.deepEqual(report.requests.map(request => request.locations), [locations, locations])
+    assert.ok(report.requests.every(request => request.correctness.equal))
+    assert.deepEqual(report.unexecutedScenarioIds, [])
+  })
 
 test("resource checkpoints preserve dependent incoming calls in official and owner layers",
   { timeout: 35_000 }, async t => {
@@ -226,7 +269,11 @@ test("resource checkpoints preserve dependent incoming calls in official and own
         assert.equal(report.failure, "QUERY_LAYER_RSS_SAMPLER_FAILED")
         continue
       }
-      assert.equal(result.status, 0, `${layer}: ${result.stderr}\n${report.probeStderr}`)
+      assert.equal(result.status, 0, JSON.stringify({ layer, stderr: result.stderr,
+        failure: report.failure, probeStderr: report.probeStderr,
+        samplerStderr: report.resources?.samplerStderr, sampleCount: report.resources?.sampleCount,
+        samplerCloseResult: report.samplerCloseResult, closeResult: report.closeResult,
+        requests: report.requests, unexecuted: report.unexecutedScenarioIds }))
       assert.equal(report.status, "PASS")
       assert.ok(report.requests.every(request => request.correctness.equal))
       assert.deepEqual(report.requests.map(request => request.payload), [[item], incoming, incoming])

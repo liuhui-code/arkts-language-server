@@ -17,7 +17,20 @@ const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 test("classifies every executable test entry exactly once in an explicit layer", () => {
   const audit = validateTestLayerManifest({ root: projectRoot, manifest: TEST_LAYER_MANIFEST })
 
-  assert.equal(audit.entryCount, 232)
+  assert.equal(audit.entryCount, 252)
+  assert.equal(audit.assignments["tests/semantic/completion-foreground-scheduling.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/lsp-feature-matrix-validation.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/semantic/completion-resolve-lifecycle.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/lsp-completion-resolution.test.mjs"], "protocol")
+  assert.equal(audit.assignments["tests/lsp-completion-reliability.test.mjs"], "protocol")
+  assert.equal(audit.assignments["tests/semantic/sdk-runtime-globals.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/editor-fixture-readiness.test.mjs"], "bundle-e2e")
+  for (const entry of ["worker-recovery-replay", "worker-recovery-replay-model", "worker-recovery-configuration",
+    "worker-registry-cleanup", "worker-ownership-fault-boundaries", "worker-parent-compiler-isolation", "worker-retirement", "worker-retirement-boundaries"]) {
+    assert.equal(audit.assignments[`tests/semantic/${entry}.test.mjs`], "bundle-e2e")
+  }
+  assert.equal(audit.assignments["tests/path-identity.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/lsp-path-identity.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/semantic/import-specifier-work-bound.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/semantic/group-late-dependency-version.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/semantic/retained-lazy-source-evidence.test.mjs"], "bundle-e2e")
@@ -307,9 +320,9 @@ test("classifies every executable test entry exactly once in an explicit layer",
     "bundle-e2e",
   )
   assert.deepEqual(audit.layerCounts, {
-    "unit-contract": 104,
-    protocol: 9,
-    "bundle-e2e": 112,
+    "unit-contract": 107,
+    protocol: 11,
+    "bundle-e2e": 127,
     "artifact-e2e": 3,
     "sealed-artifact-e2e": 1,
     large: 1,

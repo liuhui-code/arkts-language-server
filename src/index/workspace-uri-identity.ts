@@ -3,6 +3,7 @@ import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
 import type { DocumentUri } from "../contracts/document.js"
+import { relativeResourcePath, samePhysicalPath } from "../project/path-identity.js"
 
 export interface WorkspaceUriIdentity {
   clientRootUri: DocumentUri
@@ -23,7 +24,7 @@ export async function canonicalDirectory(directory: string): Promise<string> {
 
 export function isEquivalentWorkspaceIdentity(identity: string, canonicalRoot: string): boolean {
   try {
-    return path.resolve(fileURLToPath(identity)) === path.resolve(canonicalRoot)
+    return samePhysicalPath(fileURLToPath(identity), canonicalRoot)
   } catch {
     return false
   }
@@ -58,10 +59,8 @@ function tryRebaseFileUri(
   try {
     const sourceRoot = fileURLToPath(sourceRootUri)
     const documentPath = fileURLToPath(documentUri)
-    const relative = path.relative(sourceRoot, documentPath)
-    if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
-      return undefined
-    }
+    const relative = relativeResourcePath(sourceRoot, documentPath)
+    if (relative === undefined) return undefined
     return pathToFileURL(path.join(fileURLToPath(targetRootUri), relative)).href
   } catch {
     return undefined
