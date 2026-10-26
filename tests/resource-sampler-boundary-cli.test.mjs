@@ -5,6 +5,54 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import test from "node:test"
+import { createProcessResourceProbe } from "./support/process-resource-probe.mjs"
+
+test("Linux RSS sampling refreshes the CPU clock for a child born during the sample", async () => {
+  let uptimeReads = 0
+  const stat = (pid, parent, start, cpu) => {
+    const fields = Array(21).fill("0")
+    fields[0] = String(parent); fields[10] = String(cpu); fields[18] = String(start)
+    return `${pid} (node) S ${fields.join(" ")}`
+  }
+  const files = new Map([
+    ["/virtual-proc/410/stat", stat(410, 1, 5000, 1)],
+    ["/virtual-proc/410/status", "VmRSS:\t2048 kB\n"],
+    ["/virtual-proc/410/task/410/children", "411"],
+    ["/virtual-proc/411/stat", stat(411, 410, 10005, 2)],
+    ["/virtual-proc/411/status", "VmRSS:\t512 kB\n"],
+    ["/virtual-proc/411/task/411/children", ""],
+  ])
+  const probe = createProcessResourceProbe({ platform: "linux", procRoot: "/virtual-proc",
+    now: () => 4000, clockTicksPerSecond: 100, readFile: async file => {
+      if (file === "/virtual-proc/uptime") return ++uptimeReads === 1 ? "100.00 50.00\n" : "100.20 50.00\n"
+      assert.ok(files.has(file), file)
+      return files.get(file)
+    } })
+  const sample = await probe.sample(await probe.identify(410))
+  assert.deepEqual(sample.processes.map(({ pid, rssBytes }) => ({ pid, rssBytes })), [
+    { pid: 410, rssBytes: 2097152 }, { pid: 411, rssBytes: 524288 },
+  ])
+  assert.equal(sample.processes[1].cpuPercent, 2 / 15 * 100)
+  assert.equal(uptimeReads, 2, "refresh only the stale per-sample clock, never fabricate CPU lifetime")
+})
+
+test("Linux sampling still rejects a CPU clock inconsistent after the real clock refresh", async () => {
+  let uptimeReads = 0
+  const fields = Array(21).fill("0")
+  fields[0] = "1"; fields[10] = "1"; fields[18] = "10005"
+  const probe = createProcessResourceProbe({ platform: "linux", procRoot: "/virtual-proc",
+    now: () => 4000, clockTicksPerSecond: 100, readFile: async file => {
+      if (file === "/virtual-proc/uptime") { uptimeReads++; return "100.00 50.00\n" }
+      if (file.endsWith("/stat")) return `410 (node) S ${fields.join(" ")}`
+      if (file.endsWith("/status")) return "VmRSS:\t2048 kB\n"
+      if (file.endsWith("/children")) return ""
+      assert.fail(file)
+    } })
+  await assert.rejects(() => probe.sample({ pid: 410, startIdentity: "linux:10005" }), {
+    code: "EPROBE_PARSE", message: "process 410 started after the reported uptime",
+  })
+  assert.equal(uptimeReads, 2)
+})
 
 test("a real RSS snapshot crossing a task boundary retains its actual completion interval",
   { timeout: 20_000 }, async t => {
