@@ -8,6 +8,7 @@ import {
 import { hasExactInputKeys, ownPlainInputRecord } from "./semantic-worker-command-codec.js"
 import type { RootSemanticWorkerMutationInput } from "./semantic-worker-command-input.js"
 import { SemanticWorkerSupervisorError } from "./semantic-worker-supervisor-errors.js"
+import { workerUriWithinRoot } from "./semantic-worker-uri.js"
 
 export function mutationTextBytes(input: RootSemanticWorkerMutationInput): number {
   return input.kind === "open" || input.kind === "change"
@@ -131,9 +132,5 @@ export function isSemanticWorkerUriWithinRoot(uriValue: string, rootValue: strin
     !isCanonicalSemanticWorkerFileUri(uriValue)
     || !isCanonicalSemanticWorkerFileUri(rootValue)
   ) return false
-  const uri = new URL(uriValue)
-  const root = new URL(rootValue)
-  const rootPath = root.pathname.endsWith("/") ? root.pathname : `${root.pathname}/`
-  return uri.host === root.host
-    && (uri.pathname === root.pathname || uri.pathname.startsWith(rootPath))
+  return workerUriWithinRoot(uriValue, rootValue)
 }

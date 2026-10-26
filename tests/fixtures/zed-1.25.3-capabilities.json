@@ -1,0 +1,293 @@
+{
+  "workspace": {
+    "applyEdit": true,
+    "workspaceEdit": {
+      "documentChanges": true,
+      "resourceOperations": [
+        "create",
+        "rename",
+        "delete"
+      ],
+      "snippetEditSupport": true
+    },
+    "didChangeConfiguration": {
+      "dynamicRegistration": true
+    },
+    "didChangeWatchedFiles": {
+      "dynamicRegistration": true,
+      "relativePatternSupport": true
+    },
+    "symbol": {
+      "dynamicRegistration": true
+    },
+    "executeCommand": {
+      "dynamicRegistration": true
+    },
+    "workspaceFolders": true,
+    "configuration": true,
+    "semanticTokens": {
+      "refreshSupport": true
+    },
+    "codeLens": {
+      "refreshSupport": true
+    },
+    "fileOperations": {
+      "dynamicRegistration": true,
+      "didRename": true,
+      "willRename": true
+    },
+    "inlayHint": {
+      "refreshSupport": true
+    },
+    "diagnostics": {
+      "refreshSupport": true
+    }
+  },
+  "textDocument": {
+    "synchronization": {
+      "dynamicRegistration": true,
+      "didSave": true
+    },
+    "completion": {
+      "dynamicRegistration": true,
+      "completionItem": {
+        "snippetSupport": true,
+        "documentationFormat": [
+          "markdown",
+          "plaintext"
+        ],
+        "deprecatedSupport": true,
+        "tagSupport": {
+          "valueSet": [
+            1
+          ]
+        },
+        "insertReplaceSupport": true,
+        "resolveSupport": {
+          "properties": [
+            "additionalTextEdits",
+            "command",
+            "detail",
+            "documentation"
+          ]
+        },
+        "insertTextModeSupport": {
+          "valueSet": [
+            1,
+            2
+          ]
+        },
+        "labelDetailsSupport": true
+      },
+      "contextSupport": true,
+      "insertTextMode": 2,
+      "completionList": {
+        "itemDefaults": [
+          "commitCharacters",
+          "editRange",
+          "insertTextMode",
+          "insertTextFormat",
+          "data"
+        ]
+      }
+    },
+    "hover": {
+      "dynamicRegistration": true,
+      "contentFormat": [
+        "markdown"
+      ]
+    },
+    "signatureHelp": {
+      "dynamicRegistration": true,
+      "signatureInformation": {
+        "documentationFormat": [
+          "markdown",
+          "plaintext"
+        ],
+        "parameterInformation": {
+          "labelOffsetSupport": true
+        },
+        "activeParameterSupport": true
+      }
+    },
+    "documentHighlight": {
+      "dynamicRegistration": true
+    },
+    "documentSymbol": {
+      "dynamicRegistration": true,
+      "hierarchicalDocumentSymbolSupport": true
+    },
+    "formatting": {
+      "dynamicRegistration": true
+    },
+    "rangeFormatting": {
+      "dynamicRegistration": true
+    },
+    "onTypeFormatting": {
+      "dynamicRegistration": true
+    },
+    "definition": {
+      "dynamicRegistration": true,
+      "linkSupport": true
+    },
+    "codeAction": {
+      "dynamicRegistration": true,
+      "codeActionLiteralSupport": {
+        "codeActionKind": {
+          "valueSet": [
+            "refactor",
+            "quickfix",
+            "source"
+          ]
+        }
+      },
+      "dataSupport": true,
+      "resolveSupport": {
+        "properties": [
+          "kind",
+          "diagnostics",
+          "isPreferred",
+          "disabled",
+          "edit",
+          "command"
+        ]
+      }
+    },
+    "codeLens": {
+      "dynamicRegistration": true
+    },
+    "documentLink": {
+      "dynamicRegistration": true,
+      "tooltipSupport": true
+    },
+    "colorProvider": {
+      "dynamicRegistration": true
+    },
+    "rename": {
+      "dynamicRegistration": true,
+      "prepareSupport": true,
+      "prepareSupportDefaultBehavior": 1
+    },
+    "publishDiagnostics": {
+      "relatedInformation": true,
+      "tagSupport": {
+        "valueSet": [
+          1,
+          2
+        ]
+      },
+      "versionSupport": true,
+      "codeDescriptionSupport": true,
+      "dataSupport": true
+    },
+    "foldingRange": {
+      "dynamicRegistration": true,
+      "lineFoldingOnly": false,
+      "foldingRangeKind": {
+        "valueSet": [
+          "comment",
+          "region",
+          "imports"
+        ]
+      },
+      "foldingRange": {
+        "collapsedText": true
+      }
+    },
+    "callHierarchy": {
+      "dynamicRegistration": true
+    },
+    "semanticTokens": {
+      "dynamicRegistration": true,
+      "requests": {
+        "full": {
+          "delta": true
+        }
+      },
+      "tokenTypes": [
+        "namespace",
+        "class",
+        "enum",
+        "interface",
+        "struct",
+        "typeParameter",
+        "type",
+        "parameter",
+        "variable",
+        "property",
+        "enumMember",
+        "decorator",
+        "function",
+        "method",
+        "macro",
+        "label",
+        "comment",
+        "string",
+        "keyword",
+        "number",
+        "regexp",
+        "operator",
+        "modifier",
+        "event",
+        "lifetime"
+      ],
+      "tokenModifiers": [
+        "declaration",
+        "definition",
+        "readonly",
+        "static",
+        "deprecated",
+        "abstract",
+        "async",
+        "modification",
+        "documentation",
+        "defaultLibrary",
+        "constant"
+      ],
+      "formats": [
+        "relative"
+      ],
+      "overlappingTokenSupport": true,
+      "multilineTokenSupport": true,
+      "serverCancelSupport": true,
+      "augmentsSyntaxTokens": true
+    },
+    "inlayHint": {
+      "dynamicRegistration": true,
+      "resolveSupport": {
+        "properties": [
+          "textEdits",
+          "tooltip",
+          "label.tooltip",
+          "label.location",
+          "label.command"
+        ]
+      }
+    },
+    "diagnostic": {
+      "dynamicRegistration": true,
+      "relatedDocumentSupport": true,
+      "markupMessageSupport": true
+    }
+  },
+  "window": {
+    "workDoneProgress": true,
+    "showMessage": {
+      "messageActionItem": {
+        "additionalPropertiesSupport": true
+      }
+    },
+    "showDocument": {
+      "support": true
+    }
+  },
+  "general": {
+    "positionEncodings": [
+      "utf-16"
+    ]
+  },
+  "experimental": {
+    "serverStatusNotification": true,
+    "localDocs": true
+  }
+}

@@ -13,6 +13,14 @@ export function discoverSdkAmbientDeclarations(
   if (!sdkRoot) return []
   const exists = (candidate: string): boolean => witness
     ? witness.observe(candidate, () => fs.existsSync(candidate)) : fs.existsSync(candidate)
+  // The SDK's exported API module is not a global script. Its loader ships the
+  // generated ambient declarations separately from the component index.
+  const runtime = [
+    path.join(sdkRoot, "ets", "build-tools", "ets-loader", "declarations", "global.d.ts"),
+    path.join(sdkRoot, "ets", "component", "global.d.ts"),
+  ].find(exists)
+  const withRuntime = (paths: string[]): string[] => runtime && !paths.includes(runtime)
+    ? [...paths, runtime] : paths
   if (profile === "core") {
     const core = [
       path.join(sdkRoot, "ets", "component", "common.d.ts"),
@@ -20,19 +28,19 @@ export function discoverSdkAmbientDeclarations(
       path.join(sdkRoot, "ets", "component", "common_ts_ets_api.d.ts"),
       path.join(sdkRoot, "ets", "component", "enums.d.ts"),
     ]
-    if (core.every(exists) && fullSdkIndexOnlyReferences(sdkRoot, core, witness)) return core
+    if (core.every(exists) && fullSdkIndexOnlyReferences(sdkRoot, core, witness)) return withRuntime(core)
   }
   if (profile === "common") {
     const common = path.join(sdkRoot, "ets", "component", "common.d.ts")
     if (!exists(common)) throw new Error(`SDK common ambient declaration is unavailable: ${common}`)
-    return [common]
+    return withRuntime([common])
   }
   const prelude = [
     path.join(sdkRoot, "ets", "component", "index-full.d.ts"),
     path.join(sdkRoot, "ets", "component", "common.d.ts"),
     path.join(sdkRoot, "ets", "component", "arkui.d.ts"),
   ].find(exists)
-  return prelude ? [prelude] : []
+  return withRuntime(prelude ? [prelude] : [])
 }
 
 function fullSdkIndexOnlyReferences(

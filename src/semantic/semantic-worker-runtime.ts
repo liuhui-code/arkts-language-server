@@ -4,20 +4,20 @@ import { parentPort, threadId, workerData } from "node:worker_threads"
 
 import type { DocumentSnapshot } from "../contracts/document.js"
 import type * as Contract from "../contracts/semantic-engine.js"
-import { IncompleteImplementationError } from "../core/types/typescript-implementation-query.js"
-import { SemanticInputUnavailableError } from "../core/types/typescript-query-inputs.js"
 import type { StructuredLogger } from "../observability/logger.js"
 import { SingleRootProjectResolver } from "../project/single-root-project-resolver.js"
 import { OhosTypeScriptSemanticEngine } from "./backends/ohos-typescript/engine.js"
 import { enableSharedSdkRetention } from "./backends/ohos-typescript/registry-pool.js"
+import { observeCompilerOwnershipFailure } from "./backends/ohos-typescript/compiler-resource-lifetime.js"
+import { ownershipFaultEvent } from "./semantic-worker-fault.js"
+import { workerRequestErrorCode } from "./semantic-worker-request-error.js"
 import { createSemanticRuntimeMetricsRecorder } from "./coordinator/metrics.js"
 import { SemanticMemoryPolicy } from "./coordinator/memory-policy.js"
 import { createPostEvictionGcProbe } from "./coordinator/post-eviction-gc-probe.js"
 import type { SemanticMemoryLevel } from "./coordinator/semantic-coordinator.js"
-import type { SemanticRuntimeConfig } from "./coordinator/runtime-config.js"
 import { runTransientDiagnosis } from "./diagnostics/transient-diagnosis.js"
-import type { ReferenceSearchRuntimeConfig } from "./references/reference-runtime.js"
-import type { InteractiveSemanticRuntimeConfig } from "./interactive-runtime.js"
+import type { semanticWorkerData } from "./semantic-worker-host.js"
+import { runWorkerCommand } from "./semantic-worker-progress.js"
 import { SemanticCancellationScope, cancellationSignal } from "./semantic-cancellation-scope.js"
 import { isInteractiveSemanticWorkerMethod } from "./semantic-request-lanes.js"
 import { traceSemanticWorkerDispatch } from "./semantic-worker-queue-trace.js"
@@ -26,28 +26,23 @@ import { isWorkerControl, pressureWorkerRecycleEnabled, requireParentPort,
   type WorkerControl } from "./semantic-worker-runtime-control.js"
 import {
   SEMANTIC_WORKER_PROTOCOL_VERSION,
-  SemanticWorkerCancelState,
   createSemanticWorkerError,
   decodeSemanticWorkerMutation,
   decodeSemanticWorkerRequest,
-  readSemanticWorkerCancellationState,
   type SemanticWorkerErrorCode,
   type SemanticWorkerMutation,
   type SemanticWorkerRequest,
 } from "./worker-protocol.js"
 
-interface RuntimeWorkerData {
-  readonly rootUri: string
-  readonly projectConfiguration?: unknown
-  readonly sdkConfiguration?: unknown
-  readonly runtimeConfig: SemanticRuntimeConfig & { readonly memoryBudgetBytes: number }
-  readonly references?: ReferenceSearchRuntimeConfig
-  readonly interactive?: InteractiveSemanticRuntimeConfig
-  readonly metricsPath?: string
-}
+type RuntimeWorkerData = ReturnType<typeof semanticWorkerData>
 
 const port = requireParentPort(parentPort)
 const data = workerData as RuntimeWorkerData
+let quarantined = false
+const stopOwnershipObservation = observeCompilerOwnershipFailure(() => {
+  quarantined = true
+  port.postMessage(ownershipFaultEvent())
+})
 const roots = new Map<number, string>()
 const configuredRoots = new Set([data.rootUri])
 const documents = new Map<string, DocumentSnapshot>()
@@ -111,18 +106,23 @@ port.on("close", dispose)
 async function dispatch(message: unknown, receivedAt: number): Promise<void> {
   if (isWorkerControl(message)) {
     if (message.control === "shutdown") {
-      dispose()
-      await stopReferenceVerifierWorkers()
-      port.postMessage({ workerEvent: "shutdownComplete" })
-    } else applyControl(message)
+      try { dispose() }
+      finally {
+        await stopReferenceVerifierWorkers()
+        port.postMessage({ workerEvent: "shutdownComplete" })
+      }
+    } else if (!quarantined) applyControl(message)
     return
   }
   if (isMutationLike(message)) {
-    applyMutation(decodeSemanticWorkerMutation(message))
+    if (quarantined) return
+    const mutation = decodeSemanticWorkerMutation(message)
+    await runWorkerCommand(mutation, async () => applyMutation(mutation))
     sampleMemory()
     return
   }
   const request = decodeSemanticWorkerRequest(message)
+  if (quarantined) { postError(request, "restart-required"); return }
   if (process.env.ARKTS_SEMANTIC_QUEUE_TRACE === "1") {
     traceSemanticWorkerDispatch(logger, roots.get(request.epoch), request, receivedAt)
   }
@@ -146,7 +146,7 @@ async function dispatch(message: unknown, receivedAt: number): Promise<void> {
       queueWaitMs: Math.round((performance.now() - receivedAt) * 100) / 100,
     })
   }
-  const run = () => referenceTraces.run(traceId, () => answerRequest(request))
+  const run = () => runWorkerCommand(request, () => referenceTraces.run(traceId, () => answerRequest(request)))
   if (request.method === "references") {
     activeGlobalReferenceTraceId = traceId
     void run().then(sampleMemory, failRuntime).finally(() => {
@@ -180,6 +180,7 @@ function applyControl(control: Exclude<WorkerControl, { readonly control: "shutd
     configuredRoots.add(control.rootUri)
     projects.configure([...configuredRoots])
     appliedRevisions.set(control.epoch, 0)
+    if (control.initialPreparationConsumed) engine.restoreInitialPreparation(control.rootUri)
   } else if (control.control === "configureProject") {
     projectConfiguration = control.value
     engine.configureProject(control.value)
@@ -275,16 +276,7 @@ async function answerRequest(request: SemanticWorkerRequest): Promise<void> {
       value,
     })
   } catch (error) {
-    const state = readSemanticWorkerCancellationState(request.cancelCell)
-    const code: SemanticWorkerErrorCode = state === SemanticWorkerCancelState.clientCancelled
-      ? "client-cancelled"
-      : state === SemanticWorkerCancelState.contentModified
-        ? "content-modified"
-        : state === SemanticWorkerCancelState.supervisorDisposing
-          ? "worker-unavailable"
-          : error instanceof IncompleteImplementationError || error instanceof SemanticInputUnavailableError
-            ? "workspace-incomplete" : "internal-error"
-    postError(request, code)
+    postError(request, workerRequestErrorCode(request.cancelCell, error))
   }
 }
 
@@ -407,8 +399,16 @@ function diagnose(document: DocumentSnapshot, signal: AbortSignal): Promise<unkn
 
 async function holdTestDiagnosis(document: DocumentSnapshot, signal: AbortSignal): Promise<unknown> {
   logger.info("semantic.test.diagnose.hold.start", { uri: document.uri, delayMs: testDiagnoseHoldMs })
-  await new Promise(resolve => setTimeout(resolve, testDiagnoseHoldMs))
-  logger.info("semantic.test.diagnose.hold.end", { uri: document.uri })
+  const deadline = performance.now() + testDiagnoseHoldMs
+  // Queue-pressure fault tests keep this hold uncooperative; scheduling tests opt in.
+  const cooperative = process.env.ARKTS_TEST_WORKER_DIAGNOSE_HOLD_COOPERATIVE === "1"
+  try {
+    while (performance.now() < deadline) {
+      if (cooperative) cancellation.checkpoint()
+      await new Promise(resolve => setTimeout(resolve, Math.min(25, deadline - performance.now())))
+    }
+    if (cooperative) cancellation.checkpoint()
+  } finally { logger.info("semantic.test.diagnose.hold.end", { uri: document.uri }) }
   return valueOf(engine.diagnose({ document, signal }))
 }
 
@@ -483,7 +483,7 @@ function dispose(): void {
   if (disposed) return
   disposed = true
   clearInterval(sampleTimer)
-  engine.dispose()
+  try { engine.dispose() } finally { stopOwnershipObservation() }
 }
 
 function isMutationLike(value: unknown): boolean {

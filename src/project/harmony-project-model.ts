@@ -5,6 +5,7 @@ import { buildSemanticGraph } from "./harmony-semantic-graph.js"
 import { readHarmonyProfile } from "./harmony-profile-reader.js"
 import { LoadedConfigurationWitness, type ConfigurationFreshnessMode } from "./loaded-configuration-witness.js"
 import { containsResolvedPath } from "./resolved-path-containment.js"
+import { resolvedPathIdentity } from "./path-identity.js"
 
 const MAX_MODULES = 256
 
@@ -397,7 +398,7 @@ function physicalPath(filePath: string, witness?: LoadedConfigurationWitness): s
 }
 
 function physicalScopeKey(physicalPath: string): string {
-  return process.platform === "win32" ? physicalPath.toLowerCase() : physicalPath
+  return resolvedPathIdentity(physicalPath)
 }
 
 function inside(rootPath: string, candidate: string): boolean {

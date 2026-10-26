@@ -33,6 +33,10 @@ protection checks. Earlier L01/L02 resource-admission verdicts are historical.
 | [0017](0017-reference-shared-inputs-and-search.md) | Accepted and implemented; full fast 1,872/1,872 PASS; 500ms FAIL | Reuse standard-library syntax, witnessed SDK lookups and classified complete reference searches |
 | [0018](0018-semantic-groups-and-initial-preparation.md) | Accepted; implementation in progress | 4GiB configurable runtime pressure; initial preparation exempt; shared SDK initialization, stable semantic groups and delayed release |
 | [0019](0019-stable-programs-and-request-inputs.md) | Accepted; implementation and comparison IN_PROGRESS | Pressure-managed retained Programs, scoped coverage, shared request inputs and 1024-root fallback soft target |
+| [0020](0020-failed-semantic-build-recovery.md) | Implemented in working tree; fast 1,969/1,969 and Windows recovery 15/15 PASS; synchronous-hang protection OPEN; not merged | Owner-scoped Registry cleanup, same-version failed-build recovery and bounded fatal Worker recovery |
+| [0021](0021-sdk-input-quality-and-service-availability.md) | Implemented in working tree; fast 2,028/2,028, Windows SDK 10/10, actual SDK 11/11 PASS; not merged | Separate partial SDK inputs from service failure; selected-SDK runtime globals and component metadata |
+| [0022](0022-completion-resolution-lifecycle.md) | Implemented; fast 2,035/2,035 and targeted Windows UI PASS (243 details); latency/teardown open, not merged | Separate issued completion items from expiring semantic contexts; benign late resolve with edit and forgery guards |
+| [0023](0023-completion-cancellation-and-synchronization.md) | Implemented; fast 2,039/2,039, Windows 50/50 and targeted UI correctness PASS; latency open, not merged | Complete in-place Program synchronization despite caller cancellation; bounded completion priority before global barriers |
 
 Invariant for every decision: **global semantic scope remains complete while
 compiler residency is bounded**. Reducing a compiler working set must never
@@ -51,7 +55,7 @@ supersede them by implication:
 | 0003 historical integration | 0014 L01–L03 do not change its default; L04–L07 retain exact fallback during default-off integration; final resource/latency acceptance is at L08 |
 | 0004 complete-result cache | Keep bounded complete-answer cache/coalescing and conservative invalidation; paused S02 facts are not a substitute |
 | 0005 compiler proof/index recovery | 0014 keeps official compiler authority; lexical candidates and candidate-ready generations remain insufficient for final semantics |
-| 0006 references lanes | 0012 reuses lanes, cancellation and revision fences; extend only through a second real capability transcript |
+| 0006 references lanes | 0012 reuses lanes, cancellation and revision fences; extend only through a second real capability transcript; 0022 supersedes only the stale completion-resolve error mapping |
 
 S02 v1–v6 non-equivalence blocks production facts/schema and S03 publication;
 that research is paused, not silently converted to L01. S05's compatible-disk

@@ -154,7 +154,7 @@ test("the exact missing Settings SDK module resolves when its declaration is act
       + "export function size(result: DataShareResultSet): number { return result.rowCount }\n"
     fs.writeFileSync(path.join(workspace, "Main.ets"), source)
     const missing = await session.request("arkts/semanticReadiness", { rootUri, prepare: true }, { timeoutMs: 20_000 })
-    assert.equal(missing.result?.semanticState, "degraded", JSON.stringify(missing))
+    assert.equal(missing.result?.semanticState, "partial", JSON.stringify(missing))
     assert.equal(missing.result.unavailableInput?.code, 2307)
     assert.match(missing.result.unavailableInput.message, /@ohos.data.DataShareResultSet/)
     const api = path.join(sdk, "ets", "api")
@@ -355,18 +355,19 @@ test("missing dependency input cannot become ready while ordinary source diagnos
     } }])
   })
 
-test("catalog completion cannot certify semantic readiness when actual SDK inputs are unavailable",
+test("catalog completion cannot certify complete readiness when SDK identity is unproven",
   { timeout: 20_000 }, async t => {
     const fixture = createReadinessFixture(t)
     fs.rmSync(path.join(fixture.sdk, "ets", "oh-uni-package.json"))
     const { session, rootUri, events } = await initializeReadinessFixture(fixture)
     const response = await session.request("arkts/semanticReadiness", { rootUri, prepare: false })
     assert.equal(response.error, undefined, JSON.stringify(response.error))
-    assert.equal(response.result.semanticState, "degraded")
+    assert.equal(response.result.semanticState, "partial")
     assert.equal(response.result.semanticGeneration, null)
     assert.deepEqual(response.result.readyCapabilities, [])
     assert.ok(events().some(e => e.event === "index.catalog.terminal" && e.phase === "ready"))
-    assert.deepEqual(response.result.unavailableReasons, ["sdk-coverage-unproven"])
+    assert.deepEqual(response.result.unavailableReasons, ["sdk-inputs-incomplete"])
+    assert.deepEqual(response.result.inputIssues, [{ layer: "sdk", reason: "coverage-unproven" }])
     assert.deepEqual((await session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })
   })
 

@@ -678,9 +678,74 @@ aec84852且是旧单bundle布局，不等于候选server9ae12f90／当前Worker�
 未打开目标随后完整可查询，正常诊断保留；不得用客户端 API 假设或只测启动命令
 宣布体验完成。客户端接线不豁免 server ready／资源／时延门禁。
 
+### 2026-10-24 真实 Zed UI 问题待办
+
+以下为2026-10-24诊断状态，后续实现进展逐项补记；[跨平台原因与覆盖审计](../reports/2026-10-24-zed-cross-platform-causes-and-coverage.md)
+关联[原 Windows UI 证据](../reports/2026-10-24-windows-zed-ui-validation.md)。不是 Mac 无问题：旧普通三轮只有45条定义，
+且原始协议已有与 Windows 相同的源码诊断；新 Mac/Windows 公开接口复现也一致。
+
+- [x] **ZUI-01（候选修复与目标UI验收完成）**：审查补全详情的生命周期与错误分类。关闭后句柄删除、无关 mutation 使在途结果失效分别覆盖；
+  后者已证 supervisor content-modified → runner null fallback → resolve -32602，同一未删除句柄随后又成功。
+  保留真实取消、新鲜度与陈旧 edits 拒绝；不能以吞错或重建 Worker 处理普通失效。
+  2026-10-25：已按 [ADR 0022](../adr/0022-completion-resolution-lifecycle.md) 实现；
+  过期签发项安全返回原始条目，512项淘汰亦不误报，禁止旧自动导入编辑，保留取消/伪造/输入未证明/后端故障的独立错误。
+  完整fast 2,035/2,035、Mac/Windows 公开生命周期及 Photos 三轮通过，见[修复报告与原始证据](../reports/2026-10-25-completion-resolve-lifecycle.md)。
+  前次三次真实UI复测在首个F6前被前台保护拦住，第三次前台为Edge；保留当时失败证据。
+  后续已完成[实际前台验收](../reports/2026-10-25-windows-zed-foreground-acceptance.md)：243条详情零错误，
+  含39条关闭后晚到、11条目标不变的无关mutation交错；6次编辑接受和实际跳转均正确。
+  本勾选只表示候选修复及目标场景验收；日常安装未更新。500ms未达标，关窗/受控清理有3条Zed日志另列，未宣称全部UI问题解决。
+- [ ] **ZUI-02**：补真实 Zed 能力协商验收。实际 client 不声明 failureHandling，当前服务因此不广告 renameProvider；
+  两端仅增加一个 textOnlyTransactional 字段的对照会广告。兼容方案须先审查安全合同，不直接删除事务前提。
+- [ ] **ZUI-03（继续暂缓）**：将引用视图 open/close 纳入既有 OP-04 缓存 TODO 的后续评估。
+  Mac 控制场同快照重复约2ms，目标不变而其他视图文件开关后743.887ms且miss；编辑后首查581.473ms。
+  Windows UI 编辑后首查中位4146.941ms、最大4620.979ms；内部差额未测，不启动缓存优化。
+- [ ] **ZUI-04**：明确初始化期间到达的前台查询与初始化后热态的验收口径。
+  新 Mac 冷定义23222.927ms；Windows id6的34523.123ms中，33153ms区间位于初始化终态之前。
+  普通请求等待共享初始化 Promise；SDK/Program/checker等内部独占比例未测，500ms目标未解决。
+- [ ] **ZUI-05**：补真实 SDK 资格与协议诊断验收。userFileManager缺失造成2307/degraded；
+  两端声明版SDK还缺少ets-loader/tsconfig，ets.components未加载。仅内存补传现有128组件名可消除相同源码的1005/1128。
+  原 Mac 三轮也已有2307/1005/1128/2304，不能只看日志级别/RPC error而漏列publishDiagnostics，也不能把phase=complete当READY。
+  2026-10-25：按 [ADR 0021](../adr/0021-sdk-input-quality-and-service-availability.md) 分离 SDK 输入质量与服务可用性；
+  工作树已实现 SDK partial、官方 runtime globals 加载、组件元数据回退及部分 loader 选项的中性默认值。
+  Mac/Windows 公开回归验证局部 SDK 缺项不连锁阻断健康查询，并覆盖显式补桩/SDK 更新后的同会话恢复。
+  未补齐的声明仍保留真实诊断；完整 READY 证明、实际 Zed UI 后续验收及性能目标不得据此宣称完成。
+  证据与最终检查状态见 [SDK 分层报告](../reports/2026-10-25-sdk-input-quality-and-availability.md)。
+  最终固定候选：`pnpm check:fast` 2,028/2,028、Windows SDK 10/10、Mac 实际 SDK 11/11 通过；
+  实际 Photos 的组件 height 与定时器跳转/补全通过，SDK 缺项仍保留为 partial；未替换日常 Zed 安装。
+
+证据根 `.bench/windows-ui-cause-20261024/`；正常与只读观测分开，逐次请求和健康对照保留。
+GitHub外发记录被自动审批拒绝，已改为本地待办/报告持久化；未重试、未对外发布。
+以上登记不恢复暂停的缓存/索引路线，不修改新鲜度合同，不授权发布或合并；455文件冷目录3秒门槛仍按用户授权排除。
+
 ## OP-04 有界增量快照与编辑失效
 
 状态：IN_PROGRESS。依赖 OP-00 编辑解析／准备归因；对应 R-13/31，承接 L02。
+
+- [ ] TODO（2026-10-23，用户决定暂缓）：后续再评估缓存失效范围与编辑后首次查引用优化，
+  本轮不实施、不重跑性能测试、不执行合并。已确认根级引用答案缓存失效、无关语义组
+  Host project version 推进、全局 Program 更新，以及 query/final 两轮全范围身份核验。
+  Mac 隔离夹具 2048 个活动项目源码、每类三轮的首查中位数基线：局部编辑约 **1.43s**、
+  无关组编辑约 **1.39s**、import 变化约 **1.99s**、配置变化约 **3.47s**；仍超过500ms目标。
+  具体测量合同、调用链和限制见[路径修复与缓存失效报告](../reports/2026-10-22-path-fix-and-cache-invalidation.md)。
+  原始证据：`.bench/20261022-path-fix/invalidation/*-final*-2048/` 下的 `report.json`、
+  `wire.ndjson`、`server.stderr.raw`、`probe-*.ndjson`；汇总见同证据根目录的
+  `invalidation-summary.json`、`invalidation-phases.json`、`invalidation-operations.csv`，
+  执行顺序与命令见 `invalidation-matrix-final-ledger.json`。
+
+2026-10-25补充诊断，优化仍暂缓：Windows真实Zed编辑后的3999.476ms补全，
+其中3799.583ms为父队列等待、197.404ms为发给Worker至响应；前序真实客户端取消打断同步，
+安全退役内部LanguageService后，诊断重新构建Program/checker，完整任务耗时3074.037ms。
+该诊断中172/174项目SourceFile、279/279 SDK SourceFile复用，不能把AST复用等同于保留语义状态。
+证据、取消恢复与调度的独立缺口见[编辑后补全耗时拆解](../reports/2026-10-25-edited-completion-latency-breakdown.md)。
+此次只取证记录，没有恢复缓存优化或修改产品代码。
+
+随后用户授权参照主流实现解决该补全问题，按[ADR0023](../adr/0023-completion-cancellation-and-synchronization.md)
+实施“已开始的原地Program同步安全完成＋一次有界补全优先”。这不修改根级引用结果缓存的失效合同，
+上述引用缓存/Host版本/全范围核验TODO继续暂停。
+阶段观测显示取消构建能正常返回，未再出现此前约3秒的重建峰值，但仍有补全超过500ms；
+普通对照及最终检查状态以[实施报告](../reports/2026-10-25-completion-shared-preparation-and-priority.md)为准。
+最终本切片完整fast2039/2039、Windows相关50/50通过；普通6条补全中位647.820ms、最大807.603ms，
+4/6仍超500ms。同步取消/排队缺口的修复不等同于OP-04或L08完成，缓存TODO仍暂停。
 
 2026-10-15 Snapshot默认推广决策已REJECTED／收口，缺省／0完整解析、显式1
 实验保留。当前原十完整表征63/63；同0fb92f3e正常trace-off／完整SDK，冻结

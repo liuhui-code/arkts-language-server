@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto"
 import { pathToFileURL } from "node:url"
 
 import {
@@ -22,8 +21,6 @@ import { ARKTS_LANGUAGE_SERVER_IDENTITY } from "../build-identity.js"
 import type { DocumentSnapshot } from "../contracts/document.js"
 import type {
   SemanticCodeAction,
-  SemanticCompletion,
-  SemanticCompletionList,
   SemanticEnginePort,
   SemanticResolvedCodeAction,
 } from "../contracts/semantic-engine.js"
@@ -37,18 +34,11 @@ import { createStructuredLogger, processMemoryFields, type StructuredLogger } fr
 import { createProductionSemanticEngine } from "../semantic/backends/production-semantic-engine.js"
 import { createDocumentDiagnostics } from "./document-diagnostics.js"
 import {
-  CompletionResolutionStore,
-  type CompletionResolutionData,
-} from "./completion-resolution-store.js"
-import {
   CodeActionResolutionStore,
   type CodeActionResolutionData,
 } from "./code-action-resolution-store.js"
 import { CallHierarchySourceAuthority } from "./call-hierarchy-source-authority.js"
-import {
-  invalidCompletionResolution, toLspCompletionItem, toLspResolvedCompletionItem,
-  type CompletionClientProfile,
-} from "./completion-mapper.js"
+import { registerCompletionHandlers } from "./register-completion.js"
 import { toLspDiagnostic } from "./diagnostic-mapper.js"
 import { RequestFreshness } from "./request-freshness.js"
 import { registerBenchmarkControls } from "./register-benchmark-controls.js"
@@ -61,14 +51,6 @@ import {
 } from "./register-semantic-capabilities.js"
 import { requestCancelled, SemanticRequestRunner } from "./semantic-request-runner.js"
 import { WorkspaceFileChangeCoordinator } from "./workspace-file-change-coordinator.js"
-
-const MAX_COMPLETION_ITEMS = 256
-
-const DEFAULT_COMPLETION_CLIENT_PROFILE: CompletionClientProfile = Object.freeze({
-  commitCharacters: false,
-  insertReplaceEdits: false,
-  snippets: false,
-})
 
 export interface LanguageServerServices {
   logger?: StructuredLogger
@@ -86,7 +68,6 @@ export function runLanguageServer(services?: LanguageServerServices): void {
   const semantic = services?.semantic ?? createProductionSemanticEngine(projects, logger)
   const workspaceSymbols = services?.workspaceSymbols
   const freshness = new RequestFreshness()
-  const completionResolutions = new CompletionResolutionStore()
   const codeActionResolutions = new CodeActionResolutionStore()
   let shuttingDown = false
   let disposed = false
@@ -97,14 +78,13 @@ export function runLanguageServer(services?: LanguageServerServices): void {
   let workspaceSymbolKindValueSet: readonly SymbolKind[] | undefined
   let workspaceIndexAbort: AbortController | undefined
   const initialPreparation = new AbortController()
-  let completionClientProfile: CompletionClientProfile = DEFAULT_COMPLETION_CLIENT_PROFILE
 
   const disposeOnce = (reason: "shutdown" | "exit") => {
     if (disposed) return disposal
     disposed = true
     workspaceIndexAbort?.abort(new Error("Language server stopped"))
     initialPreparation.abort(new Error("Language server stopped"))
-    completionResolutions.clear()
+    completionHandlers.clear()
     codeActionResolutions.clear()
     disposal = Promise.resolve(semantic.dispose()).then(() => workspaceSymbols?.dispose()).then(() => {
       logger.info("server.stopped", { reason })
@@ -130,6 +110,7 @@ export function runLanguageServer(services?: LanguageServerServices): void {
     assertRunning,
     snapshot: (document) => snapshot(document, projects),
   })
+  const completionHandlers = registerCompletionHandlers({ connection, documents, semantic, requests, assertRunning })
   const diagnostics = createDocumentDiagnostics({
     connection,
     documents,
@@ -165,14 +146,7 @@ export function runLanguageServer(services?: LanguageServerServices): void {
       ?.didChangeWatchedFiles?.dynamicRegistration === true
     workspaceSymbolKindValueSet = params.capabilities.workspace?.symbol
       ?.symbolKind?.valueSet
-    completionClientProfile = Object.freeze({
-      commitCharacters: params.capabilities.textDocument?.completion
-        ?.completionItem?.commitCharactersSupport === true,
-      insertReplaceEdits: params.capabilities.textDocument?.completion
-        ?.completionItem?.insertReplaceSupport === true,
-      snippets: params.capabilities.textDocument?.completion
-        ?.completionItem?.snippetSupport === true,
-    })
+    completionHandlers.configure(params.capabilities)
     semanticCapabilities.configure(params.capabilities)
     logger.info("lsp.initialized", {
       workspaceCount: initialRootUris(params).length,
@@ -289,7 +263,6 @@ export function runLanguageServer(services?: LanguageServerServices): void {
     const changed = snapshot(document, projects)
     freshness.cancelDocument(document.uri)
     freshness.cancelWorkspace(changed.workspaceId)
-    completionResolutions.forgetDocument(document.uri)
     codeActionResolutions.forgetDocument(document.uri)
     semantic.sync(changed)
     workspaceSymbols?.sync(changed)
@@ -298,80 +271,11 @@ export function runLanguageServer(services?: LanguageServerServices): void {
   documents.onDidClose(({ document }) => {
     freshness.cancelDocument(document.uri)
     freshness.cancelWorkspace(projects.projectFor(document.uri).id)
-    completionResolutions.forgetDocument(document.uri)
     codeActionResolutions.forgetDocument(document.uri)
     semantic.close(document.uri)
     workspaceSymbols?.closeDocument(document.uri)
     diagnostics.close(document.uri)
   })
-  connection.onCompletion(async (params, token) => {
-    let completionDocument: DocumentSnapshot | undefined
-    const result = await requests.run({
-      method: "textDocument/completion",
-      documentUri: params.textDocument.uri,
-      token,
-      fallback: { items: [], isIncomplete: false } as SemanticCompletionList,
-      execute: (document, signal) => {
-        completionDocument = document
-        return semantic.complete({ document, position: params.position,
-          completionOptions: { snippets: completionClientProfile.snippets }, signal })
-      },
-    })
-    const document = documents.get(params.textDocument.uri) ?? completionDocument
-    if (!document) return { isIncomplete: false, items: [] }
-    const diskSourceSha256 = completionDocument?.source?.kind === "disk"
-      ? createHash("sha256").update(completionDocument.text).digest("hex") : undefined
-    const bounded = result.items.slice(0, MAX_COMPLETION_ITEMS)
-    const items = bounded.map((completion) => toLspCompletionItem(
-      completion,
-      completionResolutions.remember({
-        documentUri: document.uri,
-        documentVersion: document.version,
-        position: { ...params.position },
-        completion,
-        ...(diskSourceSha256 ? { diskSourceSha256 } : {}),
-      }),
-      completionClientProfile,
-      params.position,
-    ))
-    return {
-      isIncomplete: result.isIncomplete || result.items.length > bounded.length,
-      items,
-    }
-  })
-
-  connection.onCompletionResolve(async (clientItem, token) => {
-    assertRunning()
-    const record = completionResolutions.find(clientItem.data)
-    const currentDocument = record ? documents.get(record.documentUri) : undefined
-    if (!record || (record.diskSourceSha256 === undefined
-      ? !currentDocument || currentDocument.version !== record.documentVersion
-      : currentDocument !== undefined)) {
-      throw invalidCompletionResolution()
-    }
-    const resolved = await requests.run<SemanticCompletion | null>({
-      method: "completionItem/resolve",
-      documentUri: record.documentUri,
-      token,
-      fallback: null,
-      execute: (document, signal) => {
-        if (record.diskSourceSha256 !== undefined && (document.source?.kind !== "disk"
-          || createHash("sha256").update(document.text).digest("hex") !== record.diskSourceSha256)) {
-          throw invalidCompletionResolution()
-        }
-        return semantic.resolveCompletion({ document, position: record.position,
-          completionOptions: { snippets: completionClientProfile.snippets }, completion: record.completion, signal })
-      },
-    })
-    if (!resolved) throw invalidCompletionResolution()
-    return toLspResolvedCompletionItem(
-      resolved,
-      clientItem.data as CompletionResolutionData,
-      record,
-      completionClientProfile,
-    )
-  })
-
   connection.onCodeAction(async (params, token) => {
     if (!includesQuickFix(params.context.only)) return []
     const actions = await requests.run({

@@ -64,10 +64,13 @@ test("keeps unproven rule providers out of the production semantic runtime", () 
     path.join(projectRoot, "src", "semantic", "backends", "ohos-typescript", "registry-pool.ts"),
     "utf8",
   )
-  // The official engine owns initial construction and its registry pool owns L2 recycling.
-  assert.equal((engineSource.match(languageServiceFactory) ?? []).length, 1)
-  assert.equal((registryPoolSource.match(languageServiceFactory) ?? []).length, 1)
-  assert.equal((semanticSources.match(languageServiceFactory) ?? []).length, 2)
+  const recoverySource = fs.readFileSync(path.join(projectRoot, "src", "semantic", "backends",
+    "ohos-typescript", "recoverable-language-service.ts"), "utf8")
+  // Initial construction and L2 recycling must both use the one owned official factory.
+  assert.equal((engineSource.match(/createOfficialSemanticService\s*\(/gu) ?? []).length, 1)
+  assert.equal((registryPoolSource.match(/createOfficialSemanticService\s*\(/gu) ?? []).length, 2)
+  assert.equal((recoverySource.match(languageServiceFactory) ?? []).length, 1)
+  assert.equal((semanticSources.match(languageServiceFactory) ?? []).length, 1)
   assert.doesNotMatch(semanticSources, /\.createProgram\s*\(/gu)
 
   const resourceProvider = fs.readFileSync(

@@ -45,6 +45,7 @@ test("an uncached cross-file definition overtakes a queued second diagnostic", a
       ARKTS_TEST_DIAGNOSTIC_DELAY_MS: "100",
       ARKTS_TEST_WORKER_DIAGNOSE_HOLD_URI_SUFFIX: "/DiagnosticA.ets",
       ARKTS_TEST_WORKER_DIAGNOSE_HOLD_MS: "1800",
+      ARKTS_TEST_WORKER_DIAGNOSE_HOLD_COOPERATIVE: "1",
     },
   })
   t.after(() => session.close().catch(() => {}))
@@ -138,6 +139,7 @@ test("uncached inherited completion overtakes a queued diagnostic without suppre
         ARKTS_TEST_DIAGNOSTIC_DELAY_MS: "100",
         ARKTS_TEST_WORKER_DIAGNOSE_HOLD_URI_SUFFIX: "/DiagnosticA.ets",
         ARKTS_TEST_WORKER_DIAGNOSE_HOLD_MS: "1800",
+        ARKTS_TEST_WORKER_DIAGNOSE_HOLD_COOPERATIVE: "1",
       },
     })
     t.after(() => session.close().catch(() => {}))
@@ -256,6 +258,7 @@ test("queued completion cancellation publishes once and a changed overlay recove
         ARKTS_TEST_DIAGNOSTIC_DELAY_MS: "100",
         ARKTS_TEST_WORKER_DIAGNOSE_HOLD_URI_SUFFIX: "/DiagnosticA.ets",
         ARKTS_TEST_WORKER_DIAGNOSE_HOLD_MS: "1800",
+        ARKTS_TEST_WORKER_DIAGNOSE_HOLD_COOPERATIVE: "1",
       },
     })
     t.after(() => session.close().catch(() => {}))
@@ -303,6 +306,8 @@ test("queued completion cancellation publishes once and a changed overlay recove
     assert.equal(readEvents(logDirectory).some(entry => entry.event === "semantic.queue.send.returned"
       && entry.epoch === admission.epoch && entry.traceId === admission.traceId), false,
     "cancelled pending work must not acquire a successful send receipt")
+    assert.equal(readEvents(logDirectory).filter(entry => entry.event === "semantic.worker.started").length, 1,
+      "cooperative diagnostic cancellation must preserve the physical Worker")
     assert.deepEqual((await session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })
   })
 
@@ -334,6 +339,7 @@ test("completion priority cannot cross a queued global implementation query",
         ARKTS_TEST_DIAGNOSTIC_DELAY_MS: "100",
         ARKTS_TEST_WORKER_DIAGNOSE_HOLD_URI_SUFFIX: "/DiagnosticA.ets",
         ARKTS_TEST_WORKER_DIAGNOSE_HOLD_MS: "1800",
+        ARKTS_TEST_WORKER_DIAGNOSE_HOLD_COOPERATIVE: "1",
       },
     })
     t.after(() => session.close().catch(() => {}))
@@ -409,6 +415,7 @@ test("an edit invalidates a definition queued behind diagnostics", async (t) => 
       ARKTS_TEST_DIAGNOSTIC_DELAY_MS: "100",
       ARKTS_TEST_WORKER_DIAGNOSE_HOLD_URI_SUFFIX: "/DiagnosticA.ets",
       ARKTS_TEST_WORKER_DIAGNOSE_HOLD_MS: "1800",
+      ARKTS_TEST_WORKER_DIAGNOSE_HOLD_COOPERATIVE: "1",
     },
   })
   t.after(() => session.close().catch(() => {}))
@@ -451,6 +458,8 @@ test("an edit invalidates a definition queued behind diagnostics", async (t) => 
     uri: uri("Navigation"),
     range: rangeAt(files.Navigation, files.Navigation.indexOf("NavigationTarget"), "NavigationTarget"),
   }])
+  assert.equal(readEvents(logDirectory).filter(entry => entry.event === "semantic.worker.started").length, 1,
+    "cooperative diagnostic cancellation must preserve the physical Worker")
   const closed = await session.close({ timeoutMs: 5_000 })
   assert.deepEqual(closed.exit, { code: 0, signal: null })
 })

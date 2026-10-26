@@ -49,7 +49,7 @@ test("call hierarchy preserves a genuine whole-module top-level caller and follo
       const incoming = await session.request("callHierarchy/incomingCalls", { item: prepared.result[0] },
         { timeoutMs: 20_000 })
       assert.equal(incoming.error, undefined, JSON.stringify(incoming.error))
-      const moduleItem = { name: path.join(fixture.workspace, "ZTop.ets"), kind: 2,
+      const moduleItem = { name: path.join(fixture.workspace, "ZTop.ets").split(path.sep).join("/"), kind: 2,
         uri: fixture.uri("ZTop.ets"), range: { start: positionAt(top, 0), end: positionAt(top, top.length) },
         selectionRange: { start: positionAt(top, 0), end: positionAt(top, 0) },
         data: { arktsCallHierarchy: { protocol: 1, rootUri: pathToFileURL(fixture.workspace).href } } }
@@ -241,7 +241,15 @@ test("L07 selected policy physically replaces the Worker and restores the comple
 
 function createFixture(t) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-resident-calls-"))
-  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const sessions = []
+  t.after(async () => {
+    const failures = []
+    for (const session of sessions) {
+      try { await session.close({ timeoutMs: 5_000 }) } catch (error) { failures.push(error) }
+    }
+    try { fs.rmSync(directory, { recursive: true, force: true }) } catch (error) { failures.push(error) }
+    if (failures.length) throw new AggregateError(failures, "Failed to close resident call fixture")
+  })
   const workspace = path.join(directory, "workspace")
   const sdk = path.join(directory, "sdk")
   fs.mkdirSync(workspace)
@@ -264,7 +272,7 @@ function createFixture(t) {
     sources[`Filler${String(index).padStart(3, "0")}.ets`] = `export const filler${index} = ${index}\n`
   }
   for (const [name, source] of Object.entries(sources)) fs.writeFileSync(path.join(workspace, name), source)
-  return { directory, workspace, sdk, sources, uri: name => pathToFileURL(path.join(workspace, name)).href }
+  return { directory, workspace, sdk, sources, sessions, uri: name => pathToFileURL(path.join(workspace, name)).href }
 }
 
 async function startSession(t, fixture, enabled, env = {}) {
@@ -283,7 +291,7 @@ async function startSession(t, fixture, enabled, env = {}) {
       ARKTS_MEMORY_BUDGET_MB: "1024", ...env,
     },
   })
-  t.after(() => session.close().catch(() => {}))
+  fixture.sessions.push(session)
   const initialized = await session.initialize({ timeoutMs: 10_000,
     initializationOptions: { sdk: { path: fixture.sdk } } })
   assert.equal(initialized.result.capabilities.callHierarchyProvider, true)

@@ -1,6 +1,7 @@
 import { fileURLToPath, pathToFileURL } from "node:url"
 
 import { stringByteMetrics } from "./semantic-worker-string-bytes.js"
+import { relativeResourcePath } from "../project/path-identity.js"
 
 /** URI canonicalization is shared by transport bounds and physical source authority. */
 export function canonicalWorkerFileUri(value: unknown, maxUriBytes: number, maxMessageBytes: number): value is string {
@@ -26,9 +27,7 @@ export function canonicalWorkerFileUri(value: unknown, maxUriBytes: number, maxM
 }
 
 export function workerUriWithinRoot(uriValue: string, rootValue: string): boolean {
-  const uri = new URL(uriValue)
-  const root = new URL(rootValue)
-  const rootPath = root.pathname.endsWith("/") ? root.pathname : `${root.pathname}/`
-  return uri.host === root.host
-    && (uri.pathname === root.pathname || uri.pathname.startsWith(rootPath))
+  try {
+    return relativeResourcePath(fileURLToPath(rootValue), fileURLToPath(uriValue)) !== undefined
+  } catch { return false }
 }

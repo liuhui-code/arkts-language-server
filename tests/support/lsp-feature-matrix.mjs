@@ -3,6 +3,10 @@ import { isDeepStrictEqual } from "node:util"
 import path from "node:path"
 import ts from "typescript"
 
+import { completionFeatureEvidence } from "./lsp-completion-feature-evidence.mjs"
+
+const completionFeatures = completionFeatureEvidence({ enabledFeature, capability, evidence })
+
 export const CURRENT_LSP_FEATURE_MATRIX = Object.freeze({
   schema: "arkts-language-server.lsp-feature-evidence",
   schemaVersion: 2,
@@ -43,26 +47,7 @@ export const CURRENT_LSP_FEATURE_MATRIX = Object.freeze({
       )],
       artifactGap: null,
     }),
-    enabledFeature({
-      id: "completion",
-      requiredCapabilities: [capability("completionProvider.triggerCharacters", ["."])],
-      protocol: [evidence(
-        "tests/lsp-reliability.test.mjs",
-        "a newer completion request supersedes the previous request in its lane",
-        "completion.protocol.latest-wins",
-      )],
-      bundle: [evidence(
-        "tests/lsp-transcript.test.mjs",
-        "completes both a field and a method from the opened ArkTS snapshot",
-        "completion.bundle.open-member-field-method",
-      )],
-      artifact: [evidence(
-        "tests/release/portable-install.acceptance.mjs",
-        "installs one verified artifact without source dependencies or a rebuild",
-        "completion.artifact.immutable-typescript-arkui-sdk-resource-builder",
-      )],
-      artifactGap: null,
-    }),
+    completionFeatures.list,
     enabledFeature({
       id: "definition",
       requiredCapabilities: [capability("definitionProvider", true)],
@@ -387,26 +372,7 @@ export const CURRENT_LSP_FEATURE_MATRIX = Object.freeze({
       artifactGap: null,
       knownGaps: [],
     }),
-    enabledFeature({
-      id: "completion-resolve",
-      requiredCapabilities: [capability("completionProvider.resolveProvider", true)],
-      protocol: [evidence(
-        "tests/lsp-reliability.test.mjs",
-        "maps completion resolve cancellation to the semantic abort signal",
-        "completion-resolve.protocol.cancellation",
-      )],
-      bundle: [evidence(
-        "tests/semantic/semantic-characterization.test.mjs",
-        "resolves and applies an unopened class auto-import through the production server",
-        "completion-resolve.bundle.auto-import",
-      )],
-      artifact: [evidence(
-        "tests/release/portable-install.acceptance.mjs",
-        "installs one verified artifact without source dependencies or a rebuild",
-        "completion-resolve.artifact.immutable-auto-import",
-      )],
-      artifactGap: null,
-    }),
+    completionFeatures.resolve,
     enabledFeature({
       id: "references",
       requiredCapabilities: [capability("referencesProvider", true)],

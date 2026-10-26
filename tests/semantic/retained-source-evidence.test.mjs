@@ -6,15 +6,15 @@ import { createReadinessFixture } from "../support/semantic-readiness-lsp.mjs"
 import { positionAt } from "../support/resident-interactive-lsp.mjs"
 import { applyWorkspaceEdit } from "../support/lsp-edits.mjs"
 
-for (const degraded of [true, false]) {
-  test(`a retained edited ${degraded ? "degraded" : "READY"} Program reuses validated unchanged SDK SourceFiles without reading their text again`,
-    { timeout: 30_000 }, t => sourceEvidenceCase(t, degraded))
+for (const partialSdk of [true, false]) {
+  test(`a retained edited ${partialSdk ? "SDK-partial" : "READY"} Program reuses validated unchanged SDK SourceFiles without reading their text again`,
+    { timeout: 30_000 }, t => sourceEvidenceCase(t, partialSdk))
 }
 
-test("degraded initialization validates loaded SDK text before any reference query", { timeout: 30_000 },
+test("SDK-partial initialization validates loaded SDK text before any reference query", { timeout: 30_000 },
   t => sourceEvidenceCase(t, true, false))
 
-async function sourceEvidenceCase(t, degraded, warmReferences = true) {
+async function sourceEvidenceCase(t, partialSdk, warmReferences = true) {
   const { session, workspace, sdk, directory, rootUri, uri } = createReadinessFixture(t, {
     ARKTS_MEMORY_BUDGET_MB: "4096", ARKTS_BENCHMARK_CONTROL: "0", ARKTS_REFERENCES_RESIDENT_FAST_PATH: "1",
     NODE_OPTIONS: `--require=${path.resolve("tests/fixtures/resident-source-read-counter.cjs")}` })
@@ -26,11 +26,11 @@ async function sourceEvidenceCase(t, degraded, warmReferences = true) {
     `import { Evidence${index} } from '@ohos.sourceevidence${index}'`).join("\n")
     + "\nexport class Target { value: number = 1; read(): number { return this.value } }\nexport const result = new Target().value\n"
   fs.writeFileSync(path.join(workspace, "Main.ets"), source)
-  if (degraded) fs.writeFileSync(path.join(workspace, "Broken.ets"), 'import missing from "@ohos.missing"\nexport { missing }\n')
+  if (partialSdk) fs.writeFileSync(path.join(workspace, "Broken.ets"), 'import missing from "@ohos.missing"\nexport { missing }\n')
   await session.initialize({ initializationOptions: { sdk: { path: sdk } }, timeoutMs: 10_000 })
   const prepared = await session.transport.notification("arkts/semanticPreparation",
     message => message.params.rootUri === rootUri && message.params.phase === "complete", 10_000)
-  assert.equal(prepared.params.report.semanticState, degraded ? "degraded" : "ready",
+  assert.equal(prepared.params.report.semanticState, partialSdk ? "partial" : "ready",
     "preserve the actual input and initialization state")
   const sourceReads = () => fs.readdirSync(directory).filter(file => /^resident-source-reads-\d+\.json$/.test(file))
     .map(file => JSON.parse(fs.readFileSync(path.join(directory, file), "utf8")))
@@ -51,6 +51,8 @@ async function sourceEvidenceCase(t, degraded, warmReferences = true) {
     { documentVersions: new Map([[target, 1]]) }).get(target)
   fs.writeFileSync(path.join(directory, "source-read-phase"), "edited")
   session.changeDocument({ uri: target, version: 2, text: updated })
+  if (!warmReferences) await session.transport.notification("textDocument/publishDiagnostics",
+    message => message.params.uri === target && message.params.version === 2, 10_000)
   const response = await session.request("textDocument/references", {
     textDocument: { uri: target }, position, context: { includeDeclaration: true } })
   assert.equal(response.error, undefined, JSON.stringify(response))
@@ -76,10 +78,12 @@ async function sourceEvidenceCase(t, degraded, warmReferences = true) {
   const afterReads = Object.values(identities.after).reduce((sum, value) => sum + value, 0)
   t.diagnostic(JSON.stringify({ beforeIdentities: Object.values(identities.before).reduce((a, b) => a + b, 0), afterReadIdentities: afterReads }))
   assert.equal(afterReads, 0, "a reused actual text fact performs no read, so it needs no duplicate post-read identity check")
-  const rawIdentities = Object.values(observations[0].rawIdentityPhases.edited)
+  const rawIdentities = Object.values(observations[0].referenceIdentityPhases.edited)
   assert.equal(rawIdentities.length, 96)
   t.diagnostic(JSON.stringify({ actualSdkIdentityReads: rawIdentities.reduce((a, b) => a + b, 0), perInput: [...new Set(rawIdentities)] }))
   assert.ok(rawIdentities.every(count => count === 2),
     "each SDK input needs one fresh query-phase identity and one independent fresh final-union identity")
+  if (!warmReferences) assert.ok(Object.values(observations[0].rawIdentityPhases.edited).some(count => count > 2),
+    "the real background diagnosis must exercise the same counter window without polluting reference counts")
   assert.deepEqual((await session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })
 }

@@ -2,6 +2,11 @@
 
 Status: **Accepted and implemented for references; broader global operations remain deferred**.
 
+2026-10-25 amendment: [ADR0023](0023-completion-cancellation-and-synchronization.md)
+extends completion's bounded bypass across queued diagnostics and interactive reads up to the first global barrier.
+The deferred oldest request runs after one bypass, preserving progress for diagnoses/highlights/prefetch.
+Mutation priority, active synchronous work, detached references and the original define/hover rule remain unchanged.
+
 ## Context and proposed decision
 
 The persistent semantic Worker serializes messages with one Promise queue and
@@ -161,6 +166,11 @@ or advances the mutation revision; original call-hierarchy disk follow-ups now u
 that transport too. Genuine client version zero is no longer treated as a disk
 marker, fixing public close-to-disk and outgoing-call regressions. No new owner,
 LS, scheduler, concurrency, budget or flag; source work remains in the response.
+2026-10-25 amendment: [ADR 0022](0022-completion-resolution-lifecycle.md) supersedes
+the stale completion-resolve error mapping below. Issued items whose context
+expired return a safe original payload without new edits; unknown/forged handles
+still fail. The source-byte, input-proof and freshness requirements remain.
+
 SignatureHelp, completion, completion resolve and call-hierarchy preparation have
 since each passed their own public RED/GREEN. Full incoming/outgoing items and
 ranges match opened-caller oracles too. Disk completion records bind exact source

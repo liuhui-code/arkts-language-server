@@ -3,30 +3,34 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { createRequire } from "node:module"
+import { pathToFileURL } from "node:url"
 import test from "node:test"
 
 import { buildSync } from "esbuild"
 
 import { projectRoot } from "./support/lsp-process.mjs"
 
+const workspaceUri = pathToFileURL(path.join(os.tmpdir(), "arkts-supervisor-lanes-workspace")).href
+const mainUri = `${workspaceUri}/Main.ets`
+
 test("routes an interactive response while references remain detached", async (t) => {
   const protocol = buildDriver(t)
   const endpoint = new FakeEndpoint()
   const supervisor = new protocol.RootSemanticWorkerSupervisor({
-    rootUri: "file:///workspace",
+    rootUri: workspaceUri,
     epoch: 7,
     endpoint,
     waitForDisposeDeadline: () => new Promise(() => {}),
   })
   const references = supervisor.request({
     method: "references",
-    uri: "file:///workspace/Main.ets",
+    uri: mainUri,
     expectedDocumentVersion: 1,
     args: { position: { line: 0, character: 0 }, includeDeclaration: true },
   })
   const hover = supervisor.request({
     method: "hover",
-    uri: "file:///workspace/Main.ets",
+    uri: mainUri,
     expectedDocumentVersion: 1,
     args: { position: { line: 0, character: 0 } },
   })
@@ -44,7 +48,7 @@ test("routes an interactive response while references remain detached", async (t
 
   const mutation = supervisor.mutate({
     kind: "change",
-    uri: "file:///workspace/Main.ets",
+    uri: mainUri,
     documentVersion: 2,
     text: "const current = 2\n",
   })
@@ -61,6 +65,27 @@ test("routes an interactive response while references remain detached", async (t
   await mutation
   endpoint.message(success(protocol, endpoint.sent[0], { status: "complete", references: [] }))
   await assert.rejects(references.result, error => error.code === "content-modified")
+  await supervisor.dispose()
+})
+
+test("completion priority is bounded for queued highlights and definition prefetch too", async t => {
+  const protocol = buildDriver(t), endpoint = new FakeEndpoint()
+  const supervisor = new protocol.RootSemanticWorkerSupervisor({ rootUri: workspaceUri, epoch: 7,
+    endpoint, waitForDisposeDeadline: () => new Promise(() => {}) })
+  const request = method => supervisor.request({ method, uri: mainUri,
+    expectedDocumentVersion: 1, args: { position: { line: 0, character: 0 } } })
+  const held = request("hover"), highlight = request("documentHighlights"), definition = request("define")
+  const first = request("complete"), second = request("complete")
+  const finish = value => endpoint.message(success(protocol, endpoint.sent.at(-1), value))
+  finish(null); await held.result
+  assert.equal(endpoint.sent.at(-1).method, "complete")
+  finish({ items: [], isIncomplete: false }); await first.result
+  assert.equal(endpoint.sent.at(-1).method, "documentHighlights", "oldest read runs after one bypass")
+  finish([]); await highlight.result
+  assert.equal(endpoint.sent.at(-1).method, "complete")
+  finish({ items: [], isIncomplete: false }); await second.result
+  assert.equal(endpoint.sent.at(-1).method, "define", "prefetch still makes forward progress")
+  finish([]); await definition.result
   await supervisor.dispose()
 })
 

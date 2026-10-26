@@ -4,6 +4,7 @@ interface RegisterRootControl {
   readonly control: "registerRoot"
   readonly epoch: number
   readonly rootUri: string
+  readonly initialPreparationConsumed?: boolean
 }
 
 type ConfigurationControl =
@@ -32,6 +33,7 @@ export function isWorkerControl(value: unknown): value is WorkerControl {
     return Number.isSafeInteger(candidate.epoch)
       && typeof candidate.rootUri === "string"
       && candidate.rootUri.startsWith("file:")
+      && (candidate.initialPreparationConsumed === undefined || typeof candidate.initialPreparationConsumed === "boolean")
   }
   if (control === "applyMemoryPressure") {
     return ["level2", "level3"].includes((value as Partial<MemoryPressureControl>).value ?? "")

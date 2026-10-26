@@ -22,7 +22,7 @@ for (const fileCount of [128, 400, 1024]) {
       await session.initialize({ initializationOptions: { sdk: { path: sdk } }, timeoutMs: 10_000 })
       const initialized = await session.transport.notification("arkts/semanticPreparation",
         message => message.params.rootUri === rootUri && message.params.phase === "complete", 10_000)
-      assert.equal(initialized.params.report.semanticState, "degraded")
+      assert.equal(initialized.params.report.semanticState, "partial")
       const target = uri("Main.ets"), position = positionAt(source, source.indexOf("value:") + 1)
       session.openDocument({ uri: target, version: 1, text: source })
       const query = () => session.request("textDocument/references", {
@@ -84,7 +84,7 @@ test("edited references keep the compiler's actual project snapshots reusable af
     await session.initialize({ initializationOptions: { sdk: { path: sdk } }, timeoutMs: 10_000 })
     const prepared = await session.transport.notification("arkts/semanticPreparation",
       message => message.params.rootUri === rootUri && message.params.phase === "complete", 10_000)
-    assert.equal(prepared.params.report.semanticState, "degraded")
+    assert.equal(prepared.params.report.semanticState, "partial")
     const target = uri(main), position = positionAt(source, source.indexOf("value:") + 1)
     session.openDocument({ uri: target, version: 1, text: source })
     const query = () => session.request("textDocument/references", {

@@ -22,7 +22,8 @@ export async function observeSemanticReadiness(session, suite, prepare = true) {
     } else if (response.error) {
       semantic = { status: "READINESS_ERROR", reason: "PUBLIC_PREPARATION_FAILED", observed: null, error: response.error }
     } else if (response.result?.rootUri === session.rootUri
-      && ["ready", "unprepared", "degraded"].includes(response.result.semanticState)
+      && ["ready", "unprepared", "degraded", "partial"].includes(response.result.semanticState)
+      && (response.result.semanticState !== "partial" || hasPartialInputs(response.result))
       && (response.result.semanticState !== "ready" || hasReadyProof(response.result, suite))) {
       semantic = { status: response.result.semanticState.toUpperCase(), reason: null, observed: response.result }
     } else {
@@ -35,6 +36,19 @@ export async function observeSemanticReadiness(session, suite, prepare = true) {
       reason: "PUBLIC_PREPARATION_FAILED", observed: null, error: { message: error.message } }
   }
   return { semantic, elapsedMs: performance.now() - started }
+}
+
+function hasPartialInputs(report) {
+  const available = ["definition", "typeDefinition", "hover", "signatureHelp", "completion", "completionResolve"]
+  const issues = report.inputIssues
+  return report.semanticGeneration === null && report.inputIdentity === null && report.coverage === null
+    && Array.isArray(report.readyCapabilities) && report.readyCapabilities.length === 0
+    && isDeepStrictEqual(report.unavailableReasons, ["sdk-inputs-incomplete"])
+    && Array.isArray(report.availableCapabilities) && report.availableCapabilities.length === available.length
+    && available.every(capability => report.availableCapabilities.includes(capability))
+    && Array.isArray(issues) && issues.length === 1 && issues[0]?.layer === "sdk"
+    && (issues[0].reason === "module-not-found" && typeof issues[0].specifier === "string"
+      || ["coverage-unproven", "declaration-not-found"].includes(issues[0].reason) && issues[0].specifier === undefined)
 }
 
 export function sameReadySnapshot(left, right) {

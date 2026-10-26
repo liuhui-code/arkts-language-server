@@ -28,6 +28,37 @@ const ready = () => ({ rootUri, semanticState: "ready",
   coverage: { projectSources: 2, sdkSources: 1, standardLibrarySources: 1, programSources: 4, dependenciesComplete: true },
 })
 
+test("usable partial SDK reports remain distinct from a complete readiness proof", t => {
+  const protocol = buildDriver(t)
+  const partial = { ...unprepared(), semanticState: "partial", unavailableReasons: ["sdk-inputs-incomplete"],
+    availableCapabilities: ["definition", "typeDefinition", "hover", "signatureHelp", "completion", "completionResolve"],
+    inputIssues: [{ layer: "sdk", reason: "module-not-found", specifier: "@ohos.missing" }] }
+  const decoded = decode(protocol, success(protocol, partial))
+  assert.deepEqual(decoded.value, partial)
+  assert.ok(Object.isFrozen(decoded.value.inputIssues[0]))
+  for (const reason of ["coverage-unproven", "declaration-not-found"]) {
+    const report = { ...partial, inputIssues: [{ layer: "sdk", reason }] }
+    assert.deepEqual(decode(protocol, success(protocol, report)).value, report)
+  }
+  let calls = 0
+  const accessor = { layer: "sdk", reason: "module-not-found" }
+  Object.defineProperty(accessor, "specifier", { enumerable: true, get() { calls++; return "@ohos.missing" } })
+  for (const report of [
+    { ...partial, semanticGeneration: ready().semanticGeneration },
+    { ...partial, readyCapabilities: capabilities },
+    { ...partial, inputIdentity: ready().inputIdentity },
+    { ...partial, coverage: ready().coverage },
+    { ...partial, availableCapabilities: [...partial.availableCapabilities.slice(1), "definition", "rename"] },
+    { ...partial, inputIssues: [{ layer: "project", reason: "module-not-found", specifier: "@ohos.missing" }] },
+    { ...partial, inputIssues: [{ layer: "sdk", reason: "module-not-found", specifier: "./Local" }] },
+    { ...partial, inputIssues: [{ layer: "sdk", reason: "declaration-not-found", specifier: "forged" }] },
+    { ...partial, inputIssues: [accessor] }, { ...partial, inputIssues: Array(1) },
+    { ...partial, semanticState: "ready" }, { ...partial, unavailableReasons: ["worker-failed"] },
+    { ...ready(), inputIssues: partial.inputIssues, availableCapabilities: partial.availableCapabilities },
+  ]) assert.throws(() => decode(protocol, success(protocol, report)), /Invalid semantic worker response/)
+  assert.equal(calls, 0)
+})
+
 test("a readiness response cannot claim ready without complete input and coverage proofs", t => {
   const protocol = buildDriver(t)
   const incomplete = { ...unprepared(), semanticState: "ready", semanticGeneration: "claimed-ready" }

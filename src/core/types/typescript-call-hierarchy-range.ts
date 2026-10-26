@@ -1,3 +1,4 @@
+import path from "node:path"
 import ts from "typescript"
 
 import type { SemanticCallHierarchyItemInfo, SemanticTextRange } from "../protocol.js"
@@ -29,7 +30,7 @@ export function currentWholeFileCallHierarchyItem(
     || sourceView.virtualDocument.toGeneratedOffset(0) !== 0) return undefined
   const range = exactSourceBoundaryRange(sourceView, { start: 0, length: sourceFile.getEnd() })
   if (!range) return undefined
-  return { path: sourceFile.fileName, name: sourceFile.fileName,
+  return { path: path.resolve(sourceFile.fileName), name: sourceFile.fileName,
     kind: ts.isExternalModule(sourceFile) ? "module" : "file",
     sourceFingerprint: sourceView.sourceFingerprint, range,
     selectionRange: spanToRange(sourceView.virtualDocument.sourceContent, 0, 0) }
