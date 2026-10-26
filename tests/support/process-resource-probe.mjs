@@ -271,12 +271,17 @@ function createLinuxProbe({
           if (pid !== serverPid && error?.code === "EPROCESS_NOT_FOUND") continue
           throw error
         }
+        // A child can be born while the tree is read, after the sample's first
+        // uptime. Refresh that real clock before deriving its CPU lifetime.
+        const cpuUptime = stat.totalCpuTicks > 0
+          && uptimeSeconds * clockTicksPerSecond <= stat.startTimeTicks
+          ? parseLinuxProcUptime(await readProc("uptime")) : uptimeSeconds
         const process = {
           pid,
           parentPid: stat.parentPid,
           startIdentity: `linux:${stat.startTimeTicks}`,
           rssBytes,
-          cpuPercent: lifetimeCpuPercent(stat, uptimeSeconds, clockTicksPerSecond),
+          cpuPercent: lifetimeCpuPercent(stat, cpuUptime, clockTicksPerSecond),
         }
         if (expectedParentPid !== undefined && stat.parentPid !== expectedParentPid) {
           const rootNow = await readStat(serverPid)
