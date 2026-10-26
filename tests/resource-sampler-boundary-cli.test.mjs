@@ -54,6 +54,27 @@ test("Linux sampling still rejects a CPU clock inconsistent after the real clock
   assert.equal(uptimeReads, 2)
 })
 
+test("Linux zero-lifetime CPU is explicitly unavailable while measured RSS stays usable", async () => {
+  for (const [uptime, start] of [["100.05", "10005"], ["0.29", "29"], ["0.07", "7"]]) {
+    for (const cpu of [0, 1]) {
+      const fields = Array(21).fill("0")
+      fields[0] = "1"; fields[10] = String(cpu); fields[18] = start
+      const probe = createProcessResourceProbe({ platform: "linux", procRoot: "/virtual-proc",
+        now: () => 4000, clockTicksPerSecond: 100, readFile: async file => {
+          if (file === "/virtual-proc/uptime") return `${uptime} 50.00\n`
+          if (file.endsWith("/stat")) return `410 (node) S ${fields.join(" ")}`
+          if (file.endsWith("/status")) return "VmRSS:\t2048 kB\n"
+          if (file.endsWith("/children")) return ""
+          assert.fail(file)
+        } })
+      const sample = await probe.sample({ pid: 410, startIdentity: `linux:${start}` })
+      assert.equal(sample.processes[0].rssBytes, 2097152)
+      assert.equal(sample.processes[0].cpuPercent, null)
+      assert.equal(sample.processes[0].cpuPercentUnavailableReason, "lifetime-below-clock-resolution")
+    }
+  }
+})
+
 test("a real RSS snapshot crossing a task boundary retains its actual completion interval",
   { timeout: 20_000 }, async t => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-rss-boundary-"))

@@ -57,7 +57,7 @@ timeline: []
    ```
 
 2. 只在已累积 CPU 且初始 clock 不晚于进程出生时，重新读取一次真实 `/proc/uptime`，再计算 CPU lifetime。
-   正常进程路径不增加读取；不伪造零 CPU、不钳制时钟、不放宽 PID/父目录身份、进程退出或解析错误。
+   正常进程路径不增加读取；不伪造零 CPU、不钳制时钟、不放宽 PID/父子进程关系、进程退出或解析错误。
    RSS 仍来自原实际读取；sample 的开始与完成边界保持原样。
 3. 新增反例：新读取的 uptime 仍不一致时，继续精确抛出原 `EPROBE_PARSE`；不能吞错后发布假值。
 4. `sampler-clock-green-with-rejection.log`：以下三个完整文件 24/24 通过，零 skip/cancel/todo：
@@ -83,3 +83,67 @@ timeline: []
 进程树采样本身不是原子快照，已存在的 sample 完成时间仍用于识别跨操作区间的采样；
 本修复不把 CPU lifetime 近似值或一次采样当成语言服务器的独占阶段时间。
 30K OOM、20,000 成员上限和超过 500ms 的操作仍按原报告保留。
+
+## 第二个独立收尾竞态
+
+提交 `f3d328827e4c448a88db2319455d5eb136d8ba65` 的
+[第二次完整 Linux CI](https://github.com/liuhui-code/arkts-language-server/actions/runs/40252030789)
+为 2040/2041，唯一失败为 owner 层 incoming-calls 资源验收，原 watchdog 场景已通过。
+原断言只打印进程 stderr 和 probe stderr，缺少资源 report，因此先增强错误信息再做独立复现。
+
+[Linux 原样循环](https://github.com/liuhui-code/arkts-language-server/actions/runs/40255551502)
+第 3 轮给出：3 个语义结果全部与完整 oracle 一致、无未执行场景、probe 正常 code=0、
+已有 33 条采样、所有 stderr 为空，而 sampler 终态为 signal=SIGINT、code=null。
+该 SIGINT 来自 `measure-query-layer.mjs` 在 probe close 后的主动收尾；不是 CPU 时钟再次抛错。
+
+采样器本来就会在目标进程消失时退出循环并刷新输出。驱动在目标已退出后发送 SIGINT，
+与采样器自己的退出收尾存在竞态，导致完整结果被收尾信号判失败。
+不能把 SIGINT 当作成功码绕过，也不能删掉资源终态断言。
+
+新增 `resource sampler finishes normally when target exit races sampler teardown`，通过真实 CLI
+运行真实查询与采样。测试 preload 仅在独立子进程制造“输出已刷新、信号处理器已撤销、OS 进程尚存”的退出窗口；
+原驱动在窗口内发送真实 SIGINT，`sampler-teardown-red.log` 得到同样的 SIGINT 终态，先 RED。
+该窗口是受控故障模型；原始 Linux 已证明收尾 SIGINT 失败，但没有采样 Node 内部撤销处理器的具体指令时刻。
+
+最小实现移除正常收尾时多余的 SIGINT，等待采样器随已退出目标自然结束并刷新输出；
+保留原 5 秒 SIGTERM 收尾兜底和严格 code=0/采样数量/全部语义结果判断。
+不增加配置或 IPC 协议，不延长超时，不将信号退出改成成功。
+新增场景保留 Windows 等不支持平台的显式失败合同，不以 skip 冒充支持。
+
+`sampler-teardown-green.log` 的四个完整相关文件为 32/32，零 skip/cancel/todo。
+修改后的完整 CI 必须再次执行；此前 2040/2041 不追认为通过。原两次 CI 与两次独立复现均保留。
+
+## 零 lifetime 与精度边界
+
+上述退出竞态修复的独立 Linux 循环在第 12 轮仍出现时钟拒绝，见
+`linux-sampler-close-fixed-attempt.log`；不能将前 11 轮通过当成问题已完全消失。
+当时 stderr 未包含原始 ticks，不能断言该自然失败的确切 ticks 数值。
+后续带原始时钟观测的 50 轮和 1ms 诊断采样循环均通过，未捕获新的自然时钟失败；
+该结果只限定复现范围，不追认此前失败，也不证明不存在其他 procfs 竞态。
+
+公开 probe API 的最小反例单独证明剩余确定性缺口：uptime×CLK_TCK 与 starttime 相同，
+CPU ticks 为 0 或 1 时，无法计算 lifetime 百分比；100.05×100、0.29×100 和 0.07×100
+还覆盖浮点运算的两侧舍入。`sampler-zero-lifetime-red.log` 在父提交
+`f3d328827e4c448a88db2319455d5eb136d8ba65` 上失败。
+新时钟仍明显早于 starttime 的原反例继续拒绝，未放宽成整 tick 容差。
+
+最小修复在初始时钟不晚于 starttime 时重读一次真实 uptime（也覆盖 CPU=0）；
+仅在实际 lifetime 为零或浮点 ULP 舍入范围内时，将 CPU 标为 `null` 并附
+`cpuPercentUnavailableReason: "lifetime-below-clock-resolution"`，保留独立读取的 RSS。
+不伪造 0%、不接受实质负 lifetime、不取消身份或进程关系校验。
+采样器保留该缺测原因的公开回归先失败于 `sampler-unavailable-metadata-red.log`，
+随后最小修改仅在存在该字段时传递它，正常输出形状不变。
+
+字段依据：Linux [proc_uptime(5)](https://man7.org/linux/man-pages/man5/proc_uptime.5.html)
+提供秒数，[proc_pid_stat(5)](https://man7.org/linux/man-pages/man5/proc_pid_stat.5.html)
+提供以 `_SC_CLK_TCK` 为单位的 CPU/starttime；这些文件不是进程树的原子快照。
+这是对无法测量的 CPU 比率明确标缺测，不是将资源门槛改成通过。
+
+最终四个完整相关文件在 Mac 为 34/34，零 fail/skip/cancel/todo：
+
+```sh
+node --test tests/process-resource-probe.test.mjs tests/resource-sampler-boundary-cli.test.mjs tests/resource-sampler.test.mjs tests/query-layer-resource-cli.test.mjs
+```
+
+原始输出 `sampler-final-boundary-focused.log`。最终 PR 提交仍须运行原样完整发布 CI，
+包括完整 `pnpm check:fast`；本地相关回归和诊断循环都不替代该检查。
