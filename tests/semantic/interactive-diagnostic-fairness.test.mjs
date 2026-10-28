@@ -66,18 +66,16 @@ for (const operation of ["hover", "signatureHelp", "documentSymbol", "documentHi
         item = prepared.result?.find(x => x.name === "launch")
         assert.ok(item, JSON.stringify(prepared))
       }
-      let secondPublished = false
       const first = diagnostic("DiagnosticA.ets"), second = diagnostic("DiagnosticB.ets")
-      void second.then(() => { secondPublished = true })
       for (const letter of ["A", "B"]) f.session.openDocument({ uri: f.uri(`Diagnostic${letter}.ets`), version: 1,
         text: fs.readFileSync(path.join(f.workspace, `Diagnostic${letter}.ets`), "utf8") })
       await until(() => f.events().some(e => e.event === "semantic.test.diagnose.hold.start")
         && f.events().filter(e => e.event === "semantic.queue.enqueued" && e.method === "diagnose"
           && e.uri.includes("/Diagnostic")).length === 2)
+      const eventStart = f.events().length
       const response = await f.session.request(operation === "outgoingCalls"
         ? "callHierarchy/outgoingCalls" : `textDocument/${operation}`, item ? { item } : params)
       assert.equal(response.error, undefined, JSON.stringify(response))
-      assert.equal(secondPublished, false, "all foreground classes use bounded priority")
       if (operation === "hover") assert.match(response.result.contents.value, /neverQueried/)
       else if (operation === "signatureHelp") assert.match(response.result.signatures[0].label, /neverQueried\(\): number/)
       else if (operation === "documentSymbol") assert.ok(response.result.some(x => x.name === "launch"))
@@ -88,6 +86,14 @@ for (const operation of ["hover", "signatureHelp", "documentSymbol", "documentHi
         assert.equal(d.params.version, 1)
         assert.ok(d.params.diagnostics.some(x => x.code === 2322))
       }
+      // A public response can still be validating unopened result files while
+      // the Worker starts the next diagnosis. Assert the scheduling boundary.
+      const workerMethod = { documentSymbol: "documentSymbols", documentHighlight: "documentHighlights" }[operation] ?? operation
+      const dispatches = f.events().slice(eventStart).filter(e => e.event === "semantic.queue.worker.dispatch.started")
+      const foreground = dispatches.findIndex(e => e.method === workerMethod && e.uri === f.uri("Main.ets"))
+      const background = dispatches.findIndex(e => e.method === "diagnose" && e.uri === f.uri("DiagnosticB.ets"))
+      assert.ok(foreground >= 0 && background >= 0, JSON.stringify(dispatches))
+      assert.ok(foreground < background, "every foreground class must bypass the queued diagnosis")
       function diagnostic(name) {
         return f.session.transport.notification("textDocument/publishDiagnostics",
           m => m.params.uri === f.uri(name) && m.params.version === 1, 10_000)

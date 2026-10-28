@@ -291,3 +291,12 @@ node .bench/30k-three-fixes-20261027/soak-harness/summarize.mjs .bench/30k-three
 - B的`candidate11-final-delivery-working-tree.patch`及交付收据：最终可审查工作树（包含既有工作，不自动提交/合并）；冻结candidate11原patch不覆盖。
 - B的`latency-policy-20261028/`：本次口径修订前文档副本、文档变化及校验收据；旧交付收据仍指向当时报告，产品/运行产物和原始耐久证据未改。
 - 原始失败、旧保护触线、候选6/10失败、各独立诊断/最小RED和错误default导出的无效primer尝试继续保留；详见历史实施报告。
+
+## 9. 合并候选的跨环境复核
+
+提交`3ab8936`在Linux Node20.19.5的完整fast得到2082pass/3fail；这不是前述candidate11 Mac全绿的同环境重跑。
+失败分别涉及前台dispatch与父端返回后核验的观测边界，以及失效后重建的合法命中；
+原始失败、受控RED/GREEN、未能证明的自然CI精确窗口和仅测试范围的修订见
+[合并CI观测边界记录](../tdd/2026-10-28-merge-ci-observation-boundaries.md)。
+最终HEAD必须重新完成CI全量，不能以旧2085/2085代替；该记录及PR状态保留后续结果。
+真实UI仍未执行、SDK两超时及完整30K范围缺口不因此变绿。

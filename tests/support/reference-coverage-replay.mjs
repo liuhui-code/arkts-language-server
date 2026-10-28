@@ -56,7 +56,7 @@ export function createFixture(t, { disconnected = false, namedPackage = false, i
 export async function replay(t, fixture, strategy, {
   noAnchor = false, localSeed = false, trace = true, warm = false, resident = false, afterWarm,
   benchmarkControl = false, runtimeEnv = {}, expectedReferencesError, afterRejectedReferences,
-  includeDeclarations = [false, true], settleBeforeWarm = false,
+  includeDeclarations = [false, true], settleBeforeWarm = false, afterReference,
 } = {}) {
   const { root, sources, uri } = fixture
   fixture.replayCount = (fixture.replayCount ?? 0) + 1
@@ -124,6 +124,7 @@ export async function replay(t, fixture, strategy, {
     const response = await ask(includeDeclaration)
     assert.equal(response.error, undefined, JSON.stringify(response.error))
     results.push(response.result.map(location => JSON.stringify(location)).sort())
+    await afterReference?.(session, includeDeclaration)
   }
   await session.close({ timeoutMs: 5_000 })
   const events = fs.readFileSync(path.join(logs, "server.log"), "utf8")
