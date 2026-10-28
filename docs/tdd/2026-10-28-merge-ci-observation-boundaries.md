@@ -52,6 +52,27 @@
 这证明原no-hit观测范围过宽；**不证明原CI一定由同一个implementation请求触发**。
 普通诊断也可能重建有效状态，原SDK freshness测试已经允许首次拒绝后的合法命中。
 
+## 第二轮CI：安装链接的同类遗漏
+
+[run40655243243](https://github.com/liuhui-code/arkts-language-server/actions/runs/40655243243)
+对`f80e6b2`完整执行2086项：2085pass、1fail，0cancelled/skipped/todo，1605738.815ms；Windows安装检查通过。
+前三项原失败和新增重建对照均通过，但安装链接retarget仍保留旧“整个会话无hit”断言，上一轮收敛遗漏了它。
+此用例的精确fresh oracle及旧PackageConsumer消失检查同样先通过，随后在no-hit断言失败。
+`../ci-final-linux-job-raw.log`保留完整失败；没有将其算作性能门槛豁免。
+
+`installation-link-red.log`在同一公开中间implementation干预下复现：首次miss/batch、当前重建成功，
+第二查询completeScope hit且programBuilds=0；`installation-link-green.log`保留相同干预并通过。
+将包入口和安装链接统一使用首次失效实验夹具，每种声明策略均独立会话、等待初始诊断、实际改动manifest或真实链接；
+首次仍严格无hit、必须batch、精确结果等于新进程，且修改前PackageConsumer必须确实存在。
+新鲜度校验及符号链接真实边界均不变，夹具41行，主测试文件474行。
+
+审计同文件其余整段no-hit断言：创建缺失owner已是独立首次查询；未启用resident、选择性不完整范围
+是在整个会话中都不具备准入资格的负对照，保留原断言。源码编辑、SDK配置和同inode符号链接retarget
+已有首次拒绝/重建后合法复用边界，不改为整段禁止命中。其他文件的禁用策略/范围不完整负对照不扩大修改。
+该审计不等于宣称所有平台时序穷尽；新HEAD仍须完整CI，不以这一次受控GREEN替代。
+补齐安装链接后的普通两文件Node20回归为32/32、140333.851ms，0fail/cancelled/skipped/todo，
+见`second-focused-node20.log`；Node26及新HEAD的全量结果继续独立记录。
+
 ## 命令、原始证据与最终门禁
 
 证据根目录：`.bench/merge-candidate11-20261028/ci-diagnosis/`，保留RED/GREEN日志、清理前夹具日志及以下诊断脚本：
@@ -64,10 +85,10 @@
 node --test --test-concurrency=1 --test-reporter=spec tests/semantic/interactive-diagnostic-fairness.test.mjs tests/semantic/references-batch-search-coverage.test.mjs
 ```
 
-普通两文件实际结果：Node20为32/32、134972.961ms；Node26为32/32、131427.970ms，
+第一轮修订的普通两文件实际结果：Node20为32/32、134972.961ms；Node26为32/32、131427.970ms，
 均0fail/cancelled/skipped/todo，见`focused-node{20,26}.log`和`focused-verification-receipt.json`。
 `pnpm check`退出0。与candidate11的775输入相比仅三份已有测试/夹具变化并新增34行包入口夹具；
-产品源码0变化、87冻结产物0差异，见`qualification-identity.json`。
+产品源码0变化、87冻结产物0差异，见`qualification-identity.json`；34行为当时夹具长度，第二轮扩为41行。
 
 诊断RED/GREEN不是全量通过证据；定向name筛选中的未选测试明确记为skipped。
 最终提交仍须通过新一轮完整`pnpm check:fast`和适用release检查，结果以PR最终HEAD的CI及本地收据为准。

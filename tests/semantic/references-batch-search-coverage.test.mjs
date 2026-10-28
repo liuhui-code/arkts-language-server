@@ -41,12 +41,12 @@ test("an unnotified package entry retarget cannot certify a stale resident Progr
 })
 
 test("L04 selected policy rejects an unnotified package retarget and retains only current fallback state", async t => {
-  await assertPackageRetarget(t, {
+  await assertPackageRetarget(t, { runtimeEnv: {
     ARKTS_BENCHMARK_CONTROL: "1", ARKTS_MEMORY_BUDGET_MB: "1024",
     ARKTS_REFERENCES_CONTEXT_RETENTION: "budget-aware", ARKTS_L03_COST_AWARE_EVICTION: "1",
     ARKTS_L01_PRESSURE_ADMISSION: "1", ARKTS_L01_TRANSIENT_DIAGNOSTICS: "1",
     ARKTS_L01_SEMANTIC_WORKER_RECYCLE: "0", ARKTS_L03_PRESSURE_WORKER_RECYCLE: "0",
-  })
+  } })
 })
 
 test("a fresh complete Program may serve references after the stale package owner was rejected", async t => {
@@ -97,23 +97,7 @@ test("creating a previously absent package owner rejects cached unresolved impor
 })
 
 test("an installation link retarget rejects the old loaded package identity", async (t) => {
-  const fixture = createFixture(t, { namedPackage: true, installedPackage: true })
-  const before = await replay(t, fixture, "legacy")
-  assert.ok(before.results.every(result => result.map(JSON.parse)
-    .some(location => location.uri === fixture.uri("PackageConsumer.ets"))))
-  const resident = await replay(t, fixture, "batched", {
-    warm: true, resident: true,
-    afterWarm: () => {
-      const link = path.join(fixture.root, "oh_modules/shared")
-      fs.unlinkSync(link)
-      fs.symlinkSync(path.join(fixture.root, "shared/B"), link, process.platform === "win32" ? "junction" : "dir")
-    },
-  })
-  const fresh = await replay(t, fixture, "legacy")
-  assert.deepEqual(resident.results, fresh.results)
-  assert.ok(fresh.results.every(result => !result.map(JSON.parse)
-    .some(location => location.uri === fixture.uri("PackageConsumer.ets"))))
-  assert.ok(!resident.events.some(event => event.event === "references.resident.hit"))
+  await assertPackageRetarget(t, { installedPackage: true })
 })
 
 test("SDK selection metadata and ETS loader options are actual resident freshness inputs", async (t) => {

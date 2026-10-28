@@ -299,4 +299,6 @@ node .bench/30k-three-fixes-20261027/soak-harness/summarize.mjs .bench/30k-three
 原始失败、受控RED/GREEN、未能证明的自然CI精确窗口和仅测试范围的修订见
 [合并CI观测边界记录](../tdd/2026-10-28-merge-ci-observation-boundaries.md)。
 最终HEAD必须重新完成CI全量，不能以旧2085/2085代替；该记录及PR状态保留后续结果。
+第二轮`f80e6b2`完整fast为2085/2086：前三项通过，安装链接切换用例还存在同类整段no-hit遗漏；
+同一TDD记录补充其受控RED/GREEN、统一首次实验夹具及剩余负对照审计。该轮也不是全绿。
 真实UI仍未执行、SDK两超时及完整30K范围缺口不因此变绿。

@@ -5,9 +5,9 @@ import path from "node:path"
 import { createFixture, replay } from "./reference-coverage-replay.mjs"
 
 /** Each declaration policy must independently reject its first stale owner. */
-export async function assertPackageRetarget(t, runtimeEnv = {}) {
+export async function assertPackageRetarget(t, { runtimeEnv = {}, installedPackage = false } = {}) {
   for (const includeDeclaration of [false, true]) {
-    const fixture = createFixture(t, { namedPackage: true })
+    const fixture = createFixture(t, { namedPackage: true, installedPackage })
     const options = { includeDeclarations: [includeDeclaration], settleBeforeWarm: true }
     const hasPackageConsumer = result => result.map(JSON.parse)
       .some(location => location.uri === fixture.uri("PackageConsumer.ets"))
@@ -15,8 +15,15 @@ export async function assertPackageRetarget(t, runtimeEnv = {}) {
     assert.ok(before.results.every(hasPackageConsumer))
     const resident = await replay(t, fixture, "batched", {
       ...options, warm: true, resident: true, runtimeEnv,
-      afterWarm: () => fs.writeFileSync(path.join(fixture.root, "shared/oh-package.json5"),
-        "{ main: 'B.ets' }"),
+      afterWarm: () => {
+        if (!installedPackage) {
+          fs.writeFileSync(path.join(fixture.root, "shared/oh-package.json5"), "{ main: 'B.ets' }")
+        } else {
+          const link = path.join(fixture.root, "oh_modules/shared")
+          fs.unlinkSync(link)
+          fs.symlinkSync(path.join(fixture.root, "shared/B"), link, process.platform === "win32" ? "junction" : "dir")
+        }
+      },
     })
     // The original compiler also caches package metadata: use a new process
     // after mutation as the exact oracle, never that original warm service.
