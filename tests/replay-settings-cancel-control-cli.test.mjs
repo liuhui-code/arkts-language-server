@@ -183,7 +183,7 @@ test("Settings cancel control classifies a completion racing with cancel as NOT_
   const result = invoke(...fixture.args)
   assert.equal(result.status, 1, `${result.stderr}\n${result.stdout}`)
   const report = JSON.parse(fs.readFileSync(fixture.output, "utf8"))
-  assert.equal(report.status, "NOT_CANCELLED")
+  assert.equal(report.status, "NOT_CANCELLED", JSON.stringify(report))
   assert.equal(report.cancellation.sent, true)
   assert.equal(report.cancellation.stage.event.event, "references.batch.start")
   assert.equal(report.cancellation.response.result.length, 9)
