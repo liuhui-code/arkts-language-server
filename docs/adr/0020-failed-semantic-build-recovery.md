@@ -128,3 +128,7 @@ Mac/Windows Photos 受控同步不返回＋真实取消中，旧 Worker exit 后
 真实 Photos 仍自然 degraded，原 Windows 无限循环未自然复现；2 万文件规模、native/OOM、长期压力和缓存性能仍未闭环。
 前轮 RED 及三轮中止/失败的全量记录保留，不据最终 GREEN 追认它们通过。455 冷目录门槛按用户授权未执行；无提交/合并/发布。
 最终身份、命令、原始数据及限制以 [本轮实施报告](../reports/2026-10-24-worker-state-contract-implementation.md) 为准。
+
+2026-10-26：父端取消宽限由 [ADR0024](0024-partial-initialization-and-progressing-synchronization.md)补充活动观测，
+避免普通close/open退役仍在安全同步的线程；绝对截止、失败租约清算、共享恢复预算和物理exit前不得创建替代线程的规则不变。
+新证据单列，不将自然degraded、原始OOM和受控同步不返回归为同一种故障。

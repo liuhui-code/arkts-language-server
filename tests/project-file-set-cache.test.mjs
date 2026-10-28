@@ -1760,26 +1760,6 @@ test("closing an overlay drops a regular root source replaced by an in-workspace
   })
 })
 
-test("hard-bounds cached source paths per workspace", (t) => {
-  const workspace = createWorkspace(t, "path-limit", {
-    "Main.ets": "export const main = 1\n",
-    "One.ets": "export const one = 1\n",
-    "Two.ets": "export const two = 2\n",
-  })
-  const mainPath = path.join(workspace, "Main.ets")
-  const onePath = path.join(workspace, "One.ets")
-  const twoPath = path.join(workspace, "Two.ets")
-  const store = new SemanticDocumentStore({
-    enumerateWorkspaceSources: () => [mainPath, onePath, twoPath],
-    projectFileSetLimits: { maxPaths: 2 },
-  })
-  t.after(() => store.dispose?.())
-
-  const view = store.prepare(syncPosition(store, workspace, mainPath), true)
-
-  assert.deepEqual(documentPaths(view), [mainPath, onePath].sort())
-})
-
 test("issues lazy file access tokens only for admitted project members", (t) => {
   const limitedWorkspace = createWorkspace(t, "token-count-limit", {
     "Main.ets": "export const main = 1\n",

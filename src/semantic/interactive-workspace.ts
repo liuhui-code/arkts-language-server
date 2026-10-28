@@ -7,13 +7,14 @@ import type { ProjectResolverPort } from "../contracts/project-resolver.js"
 import type { SemanticTypeEngineRegistry } from "../core/types/type-engine.js"
 import type { SemanticDocumentPosition } from "../core/protocol.js"
 import type { SemanticDocumentStore, SemanticWorkspaceView } from "../core/workspace/document-store.js"
+import { assertCompleteProjectMembership } from "./workspace-membership-admission.js"
 
 /** Ordinary queries may refresh an existing explicit session, never create a cold one. */
 export function refreshInteractiveReadiness(documents: SemanticDocumentStore,
   engines: SemanticTypeEngineRegistry, workspace: SemanticWorkspaceView): void {
   if (!engines.needsReadinessRootRefresh(workspace)) return
   const complete = documents.prepareRoot(workspace.rootPath)
-  if (complete) engines.semanticReadiness(complete, "query")
+  if (complete?.projectMembership?.status === "complete") engines.semanticReadiness(complete, "query")
 }
 
 /** Existing query preparation, with complete root certification only for an explicit session. */
@@ -74,6 +75,7 @@ export function prepareSourceWorkspace(documents: SemanticDocumentStore, source:
         return documents.prepare(legacyPosition, includeWorkspaceFiles)
       })()
     : documents.prepareDiskSnapshot(legacyPosition, source.text, includeWorkspaceFiles)
+  if (includeWorkspaceFiles) assertCompleteProjectMembership(workspace)
   return { workspace, position: legacyPosition }
 }
 
@@ -87,7 +89,9 @@ export function prepareInteractiveWorkspace(
 ): SemanticWorkspaceView {
   let workspace = documents.prepare(position, includeWorkspaceFiles)
   if (includeWorkspaceFiles && workspace.projectMembership?.status === "partial") {
-    documents.workspaceFilesChanged({ rootPath: workspace.rootPath, rootDirty: true, changes: [] })
+    // Retry actual membership, without inventing a configuration/source mutation.
+    // Real changes retain refreshProjectMembership's existing invalidation rules.
+    documents.refreshProjectMembership(workspace.rootPath)
     workspace = documents.prepare(position, includeWorkspaceFiles)
   }
   return interactiveWorkspace(workspace, position.path, includeWorkspaceFiles,
@@ -102,7 +106,8 @@ export function interactiveWorkspace(
   projectRootProfile: "closure" | "current",
   additionalSemanticRoots: readonly string[] = [],
 ): SemanticWorkspaceView {
-  if (includeWorkspaceFiles || projectRootProfile !== "current") return workspace
+  if (includeWorkspaceFiles) { assertCompleteProjectMembership(workspace); return workspace }
+  if (projectRootProfile !== "current") return workspace
   const roots = new Set([path.resolve(currentPath)])
   for (const document of workspace.documents) {
     if (document.overlay) roots.add(path.resolve(document.path))

@@ -42,7 +42,7 @@ export class ReferenceInputState {
     })
   }
 
-  isCurrent(snapshot: ReferenceInputSnapshot): boolean {
+  isCurrent(snapshot: Pick<ReferenceInputSnapshot, "rootUri" | "rootRevision" | "configurationRevision">): boolean {
     return (this.#rootRevisions.get(snapshot.rootUri) ?? 0) === snapshot.rootRevision
       && this.#configurationRevision === snapshot.configurationRevision
   }

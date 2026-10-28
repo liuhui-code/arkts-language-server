@@ -127,6 +127,18 @@ test("recalls and semantically validates an auto-import beyond 4096 module expor
     .filter((entry) => entry.event === "completion.resolve.program.complete")
   assert.equal(resolveEvents.length, 0)
 
+  // A cached details payload is still owned by the namespace in which the
+  // compiler produced it; a new package epoch cannot authorize its edits.
+  const packagePath = path.join(materialized.workspaceRoot, "entry", "oh-package.json5")
+  const packageSource = fs.readFileSync(packagePath, "utf8")
+  fs.writeFileSync(packagePath, `${packageSource}\n// namespace lifecycle regression\n`)
+  session.transport.send({ jsonrpc: "2.0", method: "workspace/didChangeWatchedFiles",
+    params: { changes: [{ uri: pathToFileURL(packagePath).href, type: 2 }] } })
+  const expiredCached = await session.request("completionItem/resolve", matches[0])
+  assert.equal(expiredCached.error, undefined, JSON.stringify(expiredCached))
+  assert.deepEqual(expiredCached.result, matches[0])
+  assert.equal(expiredCached.result.additionalTextEdits, undefined)
+
   const staleLogDirectory = path.join(materialized.root, "semantic-over-4096-stale-logs")
   const staleSession = new LspSession({
     command: process.execPath,

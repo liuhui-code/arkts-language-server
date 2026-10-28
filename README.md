@@ -265,9 +265,14 @@ complete fallback or an explicit resource error. Pressure-triggered Worker
 recycling, old session reuse, scope narrowing, GC and tracing remain off.
 Set `ARKTS_REFERENCES_RESIDENT_FAST_PATH=0` to disable resident reference reuse;
 the [default policy and full rollback](docs/adr/0015-default-resident-optimization-policy.md)
-list all six settings. This is a maintainer decision, not a passed 550ms or L08
+list all six settings. This is a maintainer decision, not a completed L08
 gate; the [comparison](docs/reports/2026-10-11-resident-effective-combo-comparison.md)
 retains slower edit and warmup results.
+
+Interactive latency has a [500ms experience target](docs/benchmarks/interactive-latency-assessment.md).
+Occasional slower responses alone do not fail functionality or block delivery;
+assess typical operations, latency distributions, frequency and persistence.
+Persistent severe delays, timeouts and unavailable features remain recorded issues.
 
 Worker failure recovery is enabled by default. The parent supervises stalled
 requests and mutations, waits for the old Worker to exit, then restores current

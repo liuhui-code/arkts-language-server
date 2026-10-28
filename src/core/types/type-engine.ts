@@ -2,6 +2,7 @@ import path from "node:path"
 
 import type { SemanticDefinitionCandidate, SemanticDocumentPosition } from "../protocol.js"
 import { SemanticGroups } from "./semantic-groups.js"
+import { prepareInitialSemanticContexts } from "./initial-semantic-contexts.js"
 import { createTypeScriptEngine } from "./type-engine-factory.js"
 import { LocalPackageResolver } from "../sdk/local-package-resolver.js"
 import type { ProjectFileAccessPort, SemanticWorkspaceView } from "../workspace/document-store.js"
@@ -10,7 +11,8 @@ import { mergeDefinitions, mergeDiagnostics } from "./type-result-merge.js"
 import { withProjectFileIdentities } from "./type-project-file-identities.js"
 import { retainedReferenceOwnerAllowed, withResidentReferenceContext, queryRetainedReferenceContext, completeReferenceScope } from "./resident-context-lease.js"
 import { queryResidentReferences } from "./resident-reference-query.js"
-import { canonicalTypeEngineOwner, typeContextResetReason, synchronizeContextDelta } from "./type-context-reset.js"
+import { canonicalTypeEngineOwner, typeContextResetReason, synchronizeContextDelta, reconcileResolutionOwner } from "./type-context-reset.js"
+import { SemanticInputUnavailableError } from "./typescript-query-inputs.js"
 import { traceCompilerQuery, traceImplementationQuery, traceReferenceQuery, traceSemanticQuery } from "./compiler-query-timing.js"
 import { runWithSemanticLease } from "./semantic-query-lease.js"
 import { createWorkspaceEngineEntry, updateWorkspaceEngineEntry, runPreparedSemanticQuery, queryWorkspaceReadiness, type WorkspaceEngineEntry } from "./type-workspace-entry.js"
@@ -190,22 +192,23 @@ export class SemanticTypeEngineRegistry {
   }
 
   prepareInitialGroups(workspace: SemanticWorkspaceView): void {
-    this.groups.prepareInitial(workspace, this.options.maxResidentContexts ?? Number.POSITIVE_INFINITY, group => {
-      this.prepare(group.workspace, group.id)
-      runWithSemanticLease(this.coordinator, group.id, entry => entry.engine.measureCompilerReadiness(), true)
-    })
+    prepareInitialSemanticContexts(workspace, this.groups, this.options.maxResidentContexts ?? Number.POSITIVE_INFINITY,
+      this.coordinator, (view, id) => { this.prepare(view, id) })
   }
 
   prepare(workspace: SemanticWorkspaceView, contextId = this.groups.root(workspace), promoteRecency = true): SemanticTypeQueryContext {
     const rootPath = contextId
-    const previous = this.coordinator.peek(rootPath)
+    const previous = reconcileResolutionOwner(workspace, rootPath, this.packageResolver, this.coordinator,
+      referenceCheckpoint(this.options.hostCancellationToken) ?? (() => {}))
     workspace = synchronizeContextDelta(workspace, previous?.appliedContentRevision, this.projectFileAccess, previous?.engine.compilerInputPaths())
+    const resolutionChanged = previous !== undefined && previous.resolutionGeneration !== this.packageResolver.generation
     const resetReason = typeContextResetReason(workspace, previous,
       contextId !== path.resolve(workspace.rootPath) || this.options.references?.residentFastPath === true || this.options.references?.sessionReuse === "experimental")
+      ?? (resolutionChanged ? "resolution-generation-change" : undefined)
     const refreshReadiness = resetReason === "content-revision-change" && previous?.engine.hasReadinessRefreshIntent() === true
     if (resetReason) {
       if (resetReason === "canonical-owner-change") this.packageResolver.projectFor(workspace.rootPath).invalidate()
-      this.coordinator.remove(rootPath, resetReason)
+      if (!this.coordinator.remove(rootPath, resetReason) && resolutionChanged) throw new SemanticInputUnavailableError()
     }
     const lease = this.coordinator.acquire(rootPath, promoteRecency)
     const entry = lease.context
@@ -475,11 +478,6 @@ export class SemanticTypeEngineRegistry {
     this.coordinator.dispose()
   }
   private createContext(rootPath: string): WorkspaceEngineEntry {
-    if (this.groups.owner(rootPath) === rootPath) {
-      const project = this.packageResolver.projectFor(rootPath)
-      const fresh = project.configurationFreshness(referenceCheckpoint(this.options.hostCancellationToken) ?? (() => {}))
-      if (!fresh || !fresh()) project.invalidate()
-    }
     rootPath = this.groups.owner(rootPath)
     return createWorkspaceEngineEntry(rootPath, createTypeScriptEngine(rootPath, this.packageResolver,
       this.onSdkSelected, this.projectFileAccess, this.sdkConfiguration, this.options,

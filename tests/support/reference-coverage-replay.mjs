@@ -56,6 +56,7 @@ export function createFixture(t, { disconnected = false, namedPackage = false, i
 export async function replay(t, fixture, strategy, {
   noAnchor = false, localSeed = false, trace = true, warm = false, resident = false, afterWarm,
   benchmarkControl = false, runtimeEnv = {}, expectedReferencesError, afterRejectedReferences,
+  includeDeclarations = [false, true], settleBeforeWarm = false, afterReference,
 } = {}) {
   const { root, sources, uri } = fixture
   fixture.replayCount = (fixture.replayCount ?? 0) + 1
@@ -89,6 +90,8 @@ export async function replay(t, fixture, strategy, {
   session.openDocument({ uri: uri("Target.ets"), version: 1, text: sources["Target.ets"] })
   const overlay = fixture.overlay ?? sources["Consumer.ets"] + "export const unsaved = new Maker()\n"
   session.openDocument({ uri: uri("Consumer.ets"), version: 1, text: overlay })
+  if (settleBeforeWarm) await Promise.all(["Target.ets", "Consumer.ets"].map(file =>
+    session.transport.notification("textDocument/publishDiagnostics", message => message.params.uri === uri(file), 10_000)))
   if (warm) {
     const response = await session.request(warm === "selective" ? "textDocument/definition"
       : "textDocument/implementation", {
@@ -117,10 +120,11 @@ export async function replay(t, fixture, strategy, {
     await afterRejectedReferences?.(session, logs)
   }
   const results = []
-  for (const includeDeclaration of [false, true]) {
+  for (const includeDeclaration of includeDeclarations) {
     const response = await ask(includeDeclaration)
     assert.equal(response.error, undefined, JSON.stringify(response.error))
     results.push(response.result.map(location => JSON.stringify(location)).sort())
+    await afterReference?.(session, includeDeclaration)
   }
   await session.close({ timeoutMs: 5_000 })
   const events = fs.readFileSync(path.join(logs, "server.log"), "utf8")

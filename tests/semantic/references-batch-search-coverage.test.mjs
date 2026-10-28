@@ -4,6 +4,7 @@ import path from "node:path"
 import test from "node:test"
 
 import { assertColdOwnerRecovery } from "../support/semantic-preparation-state.mjs"
+import { assertPackageRetarget } from "../support/package-retarget-replay.mjs"
 
 import { assertKnownReferences, createFixture, createTestSdk, positionAt, replay, waitForEvent } from "../support/reference-coverage-replay.mjs"
 
@@ -36,83 +37,67 @@ test("indexed constructor queries reuse the original cursor instead of trusting 
 })
 
 test("an unnotified package entry retarget cannot certify a stale resident Program", async (t) => {
-  const fixture = createFixture(t, { namedPackage: true })
-  const before = await replay(t, fixture, "legacy")
-  assert.ok(before.results.every(result => result.map(JSON.parse)
-    .some(location => location.uri === fixture.uri("PackageConsumer.ets"))))
-  const resident = await replay(t, fixture, "batched", {
-    warm: true, resident: true,
-    afterWarm: () => fs.writeFileSync(path.join(fixture.root, "shared/oh-package.json5"),
-      "{ main: 'B.ets' }"),
-  })
-  // Only a new process after the mutation is a valid compiler oracle here:
-  // the original legacy service also caches package entry metadata.
-  const fresh = await replay(t, fixture, "legacy")
-  assert.ok(fresh.results.every(result => !result.map(JSON.parse)
-    .some(location => location.uri === fixture.uri("PackageConsumer.ets"))))
-  assert.deepEqual(resident.results, fresh.results)
-  assert.ok(!resident.events.some(event => event.event === "references.resident.hit"))
-  assert.ok(resident.events.some(event => event.event === "references.batch.start"))
+  await assertPackageRetarget(t)
 })
 
 test("L04 selected policy rejects an unnotified package retarget and retains only current fallback state", async t => {
+  await assertPackageRetarget(t, { runtimeEnv: {
+    ARKTS_BENCHMARK_CONTROL: "1", ARKTS_MEMORY_BUDGET_MB: "1024",
+    ARKTS_REFERENCES_CONTEXT_RETENTION: "budget-aware", ARKTS_L03_COST_AWARE_EVICTION: "1",
+    ARKTS_L01_PRESSURE_ADMISSION: "1", ARKTS_L01_TRANSIENT_DIAGNOSTICS: "1",
+    ARKTS_L01_SEMANTIC_WORKER_RECYCLE: "0", ARKTS_L03_PRESSURE_WORKER_RECYCLE: "0",
+  } })
+})
+
+test("a fresh complete Program may serve references after the stale package owner was rejected", async t => {
   const fixture = createFixture(t, { namedPackage: true })
-  const before = await replay(t, fixture, "legacy")
-  assert.ok(before.results.every(result => result.map(JSON.parse)
-    .some(location => location.uri === fixture.uri("PackageConsumer.ets"))))
+  let refreshed = false
   const resident = await replay(t, fixture, "batched", {
-    warm: true, resident: true,
-    runtimeEnv: {
-      ARKTS_BENCHMARK_CONTROL: "1", ARKTS_MEMORY_BUDGET_MB: "1024",
-      ARKTS_REFERENCES_CONTEXT_RETENTION: "budget-aware", ARKTS_L03_COST_AWARE_EVICTION: "1",
-      ARKTS_L01_PRESSURE_ADMISSION: "1", ARKTS_L01_TRANSIENT_DIAGNOSTICS: "1",
-      ARKTS_L01_SEMANTIC_WORKER_RECYCLE: "0", ARKTS_L03_PRESSURE_WORKER_RECYCLE: "0",
-    },
+    warm: true, resident: true, settleBeforeWarm: true,
     afterWarm: () => fs.writeFileSync(path.join(fixture.root, "shared/oh-package.json5"), "{ main: 'B.ets' }"),
+    afterReference: async (session, includeDeclaration) => {
+      if (includeDeclaration) return
+      const response = await session.request("textDocument/implementation", {
+        textDocument: { uri: fixture.uri("Target.ets") }, position: positionAt(fixture.sources["Target.ets"],
+          fixture.sources["Target.ets"].indexOf("Thing") + 1),
+      })
+      assert.equal(response.error, undefined, JSON.stringify(response))
+      refreshed = true
+    },
   })
+  assert.equal(refreshed, true, "refresh the owner through an intervening public LSP request")
   const fresh = await replay(t, fixture, "legacy")
   assert.deepEqual(resident.results, fresh.results)
-  assert.ok(fresh.results.every(result => !result.map(JSON.parse)
-    .some(location => location.uri === fixture.uri("PackageConsumer.ets"))))
-  assert.ok(!resident.events.some(event => event.event === "references.resident.hit"))
-  assert.ok(resident.events.some(event => event.event === "references.batch.start"))
-  assert.ok(resident.events.some(event => event.event === "references.context.retention"
-    && event.profile === "budget-aware" && event.removed === false), "actually run the selected budget policy")
+  const firstEnd = resident.events.findIndex(e => e.event === "request.completed" && e.method === "textDocument/references")
+  assert.ok(firstEnd >= 0)
+  const first = resident.events.slice(0, firstEnd)
+  assert.ok(first.some(e => e.event === "references.resident.miss"))
+  assert.ok(first.some(e => e.event === "references.batch.start"))
+  assert.ok(!first.some(e => e.event === "references.resident.hit"))
+  assert.ok(resident.events.slice(firstEnd).some(e => e.event === "references.resident.hit" && e.completeScope === true))
 })
 
 test("creating a previously absent package owner rejects cached unresolved imports", async (t) => {
-  const fixture = createFixture(t, { namedPackage: true })
-  const manifest = path.join(fixture.root, "oh-package.json5")
-  fs.unlinkSync(manifest)
-  const resident = await replay(t, fixture, "batched", {
-    warm: true, resident: true,
-    afterWarm: () => fs.writeFileSync(manifest, "{ dependencies: { shared: 'file:./shared' } }"),
-  })
-  const fresh = await replay(t, fixture, "legacy")
-  assert.deepEqual(resident.results, fresh.results)
-  assert.ok(fresh.results.every(result => result.map(JSON.parse)
-    .some(location => location.uri === fixture.uri("PackageConsumer.ets"))))
-  assert.ok(!resident.events.some(event => event.event === "references.resident.hit"))
+  for (const includeDeclaration of [false, true]) {
+    const fixture = createFixture(t, { namedPackage: true })
+    const manifest = path.join(fixture.root, "oh-package.json5")
+    fs.unlinkSync(manifest)
+    const options = { includeDeclarations: [includeDeclaration], settleBeforeWarm: true }
+    const resident = await replay(t, fixture, "batched", {
+      ...options, warm: true, resident: true,
+      afterWarm: () => fs.writeFileSync(manifest, "{ dependencies: { shared: 'file:./shared' } }"),
+    })
+    const fresh = await replay(t, fixture, "legacy", options)
+    assert.equal(resident.results.length, 1, "each stale-owner check must be its session's first query")
+    assert.deepEqual(resident.results, fresh.results)
+    assert.ok(fresh.results.every(result => result.map(JSON.parse)
+      .some(location => location.uri === fixture.uri("PackageConsumer.ets"))))
+    assert.ok(!resident.events.some(event => event.event === "references.resident.hit"))
+  }
 })
 
 test("an installation link retarget rejects the old loaded package identity", async (t) => {
-  const fixture = createFixture(t, { namedPackage: true, installedPackage: true })
-  const before = await replay(t, fixture, "legacy")
-  assert.ok(before.results.every(result => result.map(JSON.parse)
-    .some(location => location.uri === fixture.uri("PackageConsumer.ets"))))
-  const resident = await replay(t, fixture, "batched", {
-    warm: true, resident: true,
-    afterWarm: () => {
-      const link = path.join(fixture.root, "oh_modules/shared")
-      fs.unlinkSync(link)
-      fs.symlinkSync(path.join(fixture.root, "shared/B"), link, process.platform === "win32" ? "junction" : "dir")
-    },
-  })
-  const fresh = await replay(t, fixture, "legacy")
-  assert.deepEqual(resident.results, fresh.results)
-  assert.ok(fresh.results.every(result => !result.map(JSON.parse)
-    .some(location => location.uri === fixture.uri("PackageConsumer.ets"))))
-  assert.ok(!resident.events.some(event => event.event === "references.resident.hit"))
+  await assertPackageRetarget(t, { installedPackage: true })
 })
 
 test("SDK selection metadata and ETS loader options are actual resident freshness inputs", async (t) => {

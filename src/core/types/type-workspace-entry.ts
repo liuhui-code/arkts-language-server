@@ -23,6 +23,7 @@ export interface WorkspaceEngineEntry extends SemanticManagedContext {
   ownerId: string
   resetEpoch: number
   appliedContentRevision: number
+  readonly resolutionGeneration: number
   lastAccess: number
   projectFiles: number
   openDocuments: number
@@ -140,7 +141,7 @@ export function updateWorkspaceEngineEntry(entry: WorkspaceEngineEntry,
 
 /** Creates one coordinator-owned entry with the existing provider lifecycle. */
 export function createWorkspaceEngineEntry(rootPath: string, engine: TypeScriptLanguageServiceEngine,
-  packageResolver: Pick<LocalPackageResolver, "projectFor">): WorkspaceEngineEntry {
+  packageResolver: Pick<LocalPackageResolver, "projectFor" | "generation">): WorkspaceEngineEntry {
   return {
     engine,
     arkui: new ArkUIResourceLanguageProvider(rootPath),
@@ -149,6 +150,7 @@ export function createWorkspaceEngineEntry(rootPath: string, engine: TypeScriptL
     ownerId: rootPath,
     resetEpoch: -1,
     appliedContentRevision: -1,
+    resolutionGeneration: packageResolver.generation,
     lastAccess: 0,
     projectFiles: 0,
     openDocuments: 0,

@@ -17,6 +17,7 @@ export function compilerObservationPlugin(compilerFile, { writeMetadata = true }
           schema: 1, inputSha256: createHash("sha256").update(original).digest("hex"),
           transformedSha256: createHash("sha256").update(contents).digest("hex"),
           phases: ["program", "checker"], inputFileUnmodified: true,
+          activity: ["source-file", "binding"],
           }, null, 2))
         }
         return { contents, loader: "js", resolveDir: path.dirname(args.path) }
@@ -39,6 +40,14 @@ export function compilerObservedSource(original) {
     contents = contents.replace(declaration, declaration
       + " return __arktsCompilerObserver.observeCompilerPhase(" + JSON.stringify(phase)
       + ", () => " + implementation + "(...arguments)); }\nfunction " + implementation + "(" + parameters + ") {")
+  }
+  for (const [name, parameters] of [
+    ["createLanguageServiceSourceFile", "fileName, scriptSnapshot, scriptTargetOrOptions, version2, setNodeParents, scriptKind, option"],
+    ["bindSourceFile", "file, options"],
+  ]) {
+    const declaration = "function " + name + "(" + parameters + ") {"
+    if (contents.split(declaration).length !== 2) throw Error("Fixed compiler activity signature changed: " + name)
+    contents = contents.replace(declaration, declaration + " __arktsCompilerObserver.compilerSynchronizationActivity();")
   }
   // Insert beside the declaration so an existing strict directive stays a directive.
   const importLine = "var __arktsCompilerObserver = require(" + JSON.stringify(observer) + ");\n"

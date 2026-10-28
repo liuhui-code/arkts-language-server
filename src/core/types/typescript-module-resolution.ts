@@ -49,9 +49,9 @@ export function resolveTypeScriptModule(port: ModuleResolutionPort, name: string
       witnessedModuleResolutionHost(port.configurationWitness))
   }
   const base = path.resolve(path.dirname(containingFile), name)
-  const resolved = relativeModuleCandidate(base,
+  const resolved = port.moduleResolution.relativeCandidate(base, () => relativeModuleCandidate(base,
     candidate => port.scripts.has(path.resolve(candidate)),
-    candidate => verifierSdkFileExists(candidate, port.sdkRoot, port.configurationWitness))
+    candidate => verifierSdkFileExists(candidate, port.sdkRoot, port.configurationWitness)))
   const resolvedPath = resolved && path.resolve(resolved)
   const sourcePath = resolvedPath && relativeBoundaryRoot
     ? port.packageResolver.installedSourcePath(

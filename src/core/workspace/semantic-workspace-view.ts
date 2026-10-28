@@ -1,6 +1,7 @@
 import type { WorkspaceDocument } from "../sdk/workspace-loader.js"
 import type { SemanticResponseState } from "../protocol.js"
 import type { WorkspaceContentDelta } from "./workspace-content-changes.js"
+import { RESOLUTION_INPUT_GENERATION, type ResolutionInputGeneration } from "./workspace-resolution-inputs.js"
 
 /** Raw source delivery budget; this does not bound a Program's dependency closure. */
 export const SEMANTIC_SOURCE_SNAPSHOT_LIMITS = Object.freeze({
@@ -33,6 +34,8 @@ export interface ProjectFileAccessPort {
 
 export interface SemanticWorkspaceView {
   rootPath: string
+  /** Resolver generation used to build membership and dependency input projections. */
+  [RESOLUTION_INPUT_GENERATION]?: ResolutionInputGeneration
   canonicalRootId: string
   typeEngineResetEpoch: number
   overlayPaths?: ReadonlyMap<string, string>

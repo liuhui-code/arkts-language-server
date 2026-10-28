@@ -6,6 +6,7 @@ import ts from "typescript"
 
 import { discoverProjectSdk, type ProjectSdkSelection } from "../sdk/project-sdk.js"
 import { LocalPackageResolver } from "../sdk/local-package-resolver.js"
+import { compilerCompletionData, completionNamespaceCurrent } from "./completion-resolution-inputs.js"
 import type {
   SemanticCallHierarchyItemInfo,
   SemanticCallHierarchyFailureReason,
@@ -43,6 +44,7 @@ import { typescriptProgramStats, measureOfficialCompilerReadiness } from "./type
 import { OfficialReadinessState, withLoadedReadinessMembership, type ReadinessTrace } from "./typescript-semantic-readiness.js"
 import { TypeScriptContentVersions } from "./typescript-content-versions.js"
 import { applyTypeScriptContentChanges, membershipUpdate, TypeScriptCompilerInputs } from "./typescript-compiler-inputs.js"
+import { observeAdmittedSourceRead, observePreparedSourceRead } from "./typescript-source-witness-updates.js"
 import { TypeScriptScriptAdmission } from "./typescript-script-admission.js"
 import { createScriptRecord, type ScriptRecord } from "./typescript-script-record.js"
 import { queryTypeScriptRename } from "./typescript-rename-query.js"
@@ -237,12 +239,10 @@ export class TypeScriptLanguageServiceEngine {
         this.compilerScriptVersion(filePath, undefined, fingerprint)),
       checkpoint: () => this.checkpoint?.(),
     })
-    this.configurationWitness = residentReferenceReuse || packageResolver.witnessesConfiguration() ? new LoadedConfigurationWitness(
+    this.configurationWitness = packageResolver.createInputWitness(rootPath, residentReferenceReuse,
       onResidentReferenceProofFailure && (failure => onResidentReferenceProofFailure({
         ...failure, stage: "configuration", reason: `configuration-${failure.reason}`,
-      }))) : undefined
-    if (this.configurationWitness) this.packageResolver.enableConfigurationWitness()
-    if (this.configurationWitness) this.packageResolver.projectFor(rootPath)
+      })))
     const sdk = discoverProjectSdk(
       rootPath,
       process.env.ARKLINE_HARMONY_SDK_PATH,
@@ -301,6 +301,8 @@ export class TypeScriptLanguageServiceEngine {
         document.documentVersion,
         document.overlay,
       )
+      observePreparedSourceRead(document, this.configurationWitness, { rootPath: this.rootPath,
+        workspacePhysicalRoot: this.workspacePhysicalRoot, sdkRoot: this.sdkRoot, sdkPhysicalRoot: this.sdkPhysicalRoot })
     }
     this.evict(protectedPaths)
     this.scriptAdmission.complete(this.scripts.size, this.generation)
@@ -600,17 +602,8 @@ export class TypeScriptLanguageServiceEngine {
             )
           : defaultReplacementRange,
         preResolved,
-        data: {
-          provider: "typescript",
-          engineVersion: ENGINE_VERSION,
-          documentVersion: position.documentVersion,
-          entryName: entry.name,
-          entrySource: entry.source,
-          entryData: entry.data,
-          ...(discoveryCandidateUris?.length
-            ? { discoveryCandidateUris: [...new Set(discoveryCandidateUris)].sort() }
-            : {}),
-        },
+        data: compilerCompletionData(this.packageResolver, ENGINE_VERSION, position.documentVersion,
+          entry, discoveryCandidateUris),
       }
       work.item()
       return completion
@@ -682,7 +675,8 @@ export class TypeScriptLanguageServiceEngine {
     const filePath = path.resolve(position.path)
     const script = this.scripts.get(filePath)
     const data = item.data
-    if (!script || data?.provider !== "typescript" || data.engineVersion !== ENGINE_VERSION) {
+    if (!script || data?.provider !== "typescript" || data.engineVersion !== ENGINE_VERSION
+      || !completionNamespaceCurrent(this.packageResolver, item)) {
       return work.finish(item)
     }
     const entryName = typeof data.entryName === "string" ? data.entryName : item.label
@@ -1860,14 +1854,9 @@ export class TypeScriptLanguageServiceEngine {
       this.scriptAdmission.forget(filePath)
       this.removeScript(filePath, relevant)
       this.removeLazySnapshot(filePath)
-      if (this.projectMembershipStatus === "complete" && this.projectMembershipPaths.has(filePath)
-        && this.projectFileAccess && (!this.sdkRoot || !isWithinRoot(this.sdkRoot, filePath))) {
-        this.configurationWitness?.observeChangedSourceRead(filePath, () => {
-          const token = this.projectFileAccess!.tokenFor(this.projectMembershipRootId, this.projectMembershipRevision, filePath)
-          return token === undefined ? null : this.projectFileAccess!.read(
-            this.projectMembershipRootId, this.projectMembershipRevision, filePath, token)
-        })
-      }
+      observeAdmittedSourceRead(filePath, this.configurationWitness, this.sdkRoot, this.projectFileAccess,
+        this.projectMembershipRootId, this.projectMembershipRevision,
+        this.projectMembershipStatus === "complete" && this.projectMembershipPaths.has(filePath))
     })
   }
 

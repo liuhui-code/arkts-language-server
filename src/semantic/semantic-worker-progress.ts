@@ -2,7 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks"
 import { parentPort, workerData } from "node:worker_threads"
 import type { SemanticWorkerMutation, SemanticWorkerRequest } from "./worker-protocol.js"
 
-const phases = ["idle", "request", "synchronize", "program", "checker", "semantic-query"] as const
+const phases = ["idle", "request", "synchronize", "program", "checker", "semantic-query", "terminal"] as const
 type Phase = typeof phases[number]
 const buffer = (workerData as { semanticProgress?: SharedArrayBuffer } | undefined)?.semanticProgress
 const words = buffer ? new Int32Array(buffer) : undefined
@@ -13,7 +13,13 @@ export function workerProgressSnapshot(shared: SharedArrayBuffer) {
   const values = Array.from(new Int32Array(shared))
   return { commandEpoch: values[0], commandId: values[1], phase: phases[values[2]] ?? "unknown",
     programStarts: values[3], programReturns: values[4], checkerStarts: values[5], checkerReturns: values[6],
-    synchronizationStarts: values[7], synchronizationReturns: values[8] }
+    synchronizationStarts: values[7], synchronizationReturns: values[8], activitySequence: values[9],
+    terminalState: ["none", "produced", "sent"][values[10]!] ?? "unmeasured" }
+}
+
+/** Checkpoint activity is observable during a sync commit; it never renews an execution deadline. */
+export function compilerSynchronizationActivity(): void {
+  if (words) Atomics.add(words, 9, 1)
 }
 
 export function runWorkerCommand(command: SemanticWorkerMutation | SemanticWorkerRequest,
@@ -22,6 +28,7 @@ export function runWorkerCommand(command: SemanticWorkerMutation | SemanticWorke
   return scope.run(ticket, async () => {
     if (words) {
       Atomics.store(words, 0, ticket.epoch); Atomics.store(words, 1, ticket.commandId); Atomics.store(words, 2, 1)
+      Atomics.store(words, 10, 0)
       parentPort?.postMessage({ workerEvent: "execution", action: "started", ...ticket })
     }
     try { await run() } finally {
@@ -30,6 +37,16 @@ export function runWorkerCommand(command: SemanticWorkerMutation | SemanticWorke
       }
     }
   })
+}
+
+/** Worker-local milestones; only the parent validating the envelope can establish receipt. */
+export function publishWorkerTerminal(send: () => void): void {
+  const ticket = scope.getStore()
+  const matches = words && ticket && Atomics.load(words, 0) === ticket.epoch && Atomics.load(words, 1) === ticket.commandId
+  if (!matches) { send(); return } // An early rejection cannot annotate another command's progress.
+  Atomics.store(words, 10, 1)
+  observeCompilerPhase("terminal", () => send())
+  Atomics.store(words, 10, 2)
 }
 
 /** Wraps the actual fixed compiler function, not a readiness flag or grouped timing event. */

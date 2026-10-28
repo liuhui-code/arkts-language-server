@@ -7,7 +7,8 @@ import { workerProgressSnapshot } from "./semantic-worker-progress.js"
 import { readCancellationWithoutThrowing } from "./semantic-worker-supervisor-errors.js"
 
 type Command = SemanticWorkerMutation | SemanticWorkerRequest
-interface Waiting { readonly command: Command; readonly sent: number; started?: number; cancelled?: number; synchronized?: boolean }
+interface Waiting { readonly command: Command; readonly sent: number; started?: number; cancelled?: number;
+  synchronized?: boolean; activitySequence?: number; activityAt?: number }
 
 export function semanticWorkerDeadlines(env: NodeJS.ProcessEnv) {
   const read = (name: string, fallback: number) => {
@@ -73,6 +74,7 @@ export class SemanticWorkerWatchdog {
   dispose(): void { clearInterval(this.timer); this.waiting.clear() }
   private check(): void {
     const now = performance.now()
+    const progress = this.progress ? workerProgressSnapshot(this.progress) : undefined
     for (const entry of this.waiting.values()) {
       const command = entry.command
       const request = "method" in command ? command : undefined
@@ -84,13 +86,28 @@ export class SemanticWorkerWatchdog {
       if (request && entry.started !== undefined && cancellation !== SemanticWorkerCancelState.active) {
         entry.cancelled ??= now
       }
-      const reason = cancellation === undefined ? "invalid-cancellation-state" : entry.cancelled !== undefined && now - entry.cancelled >= this.limits.cancellation
+      const committing = request && entry.started !== undefined && progress?.commandEpoch === command.epoch
+        && progress.commandId === request.id && ["synchronize", "program", "checker"].includes(progress.phase)
+      if (committing && progress.activitySequence !== entry.activitySequence) {
+        entry.activitySequence = progress.activitySequence
+        entry.activityAt = now
+      }
+      // A normal input cancellation cannot safely unwind an in-place sync.
+      // Only a matching sync may advance activityAt. Once accepted, that reference
+      // remains monotonic until a validated terminal removes the waiting entry.
+      // Returning to request/idle is not terminal receipt and cannot rewind grace.
+      const cancelledSince = entry.cancelled === undefined ? undefined
+        : Math.max(entry.cancelled, entry.activityAt ?? entry.cancelled)
+      const reason = cancellation === undefined ? "invalid-cancellation-state" : cancelledSince !== undefined && now - cancelledSince >= this.limits.cancellation
         ? "cancellation-deadline" : entry.started !== undefined && now - entry.started >= limit
           ? "execution-deadline" : entry.started === undefined && now - entry.sent >= Math.max(limit, this.limits.preparation) ? "queue-deadline" : undefined
       if (!reason) continue
       this.logger?.error("semantic.worker.unresponsive", { reason, method, epoch: command.epoch,
         elapsedMs: now - entry.sent, limitMs: reason === "cancellation-deadline" ? this.limits.cancellation : limit,
-        ...(this.progress ? workerProgressSnapshot(this.progress) : { phase: "unmeasured" }) })
+        commandState: entry.cancelled !== undefined ? "cancel-pending" : entry.started !== undefined ? "executing" : "sent",
+        ...(cancelledSince === undefined ? {} : { cancellationReferenceMs: cancelledSince, cancellationQuietMs: now - cancelledSince }),
+        ...(entry.activityAt === undefined ? {} : { lastActivityAgeMs: now - entry.activityAt }),
+        ...(progress ?? { phase: "unmeasured" }) })
       this.dispose()
       this.failed(new Error("Semantic Worker did not settle " + method + ": " + reason))
       return

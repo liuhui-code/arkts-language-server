@@ -63,11 +63,16 @@ if (!isMainThread && process.env.ARKTS_LSP_LOG_DIR) {
       source = source.replace(dispatch, dispatch
         + " return globalThis.__residentEvidenceRequest.run(message, () => __evidenceDispatch(message, receivedAt)); }"
         + " async function __evidenceDispatch(message, receivedAt) {")
+      const snapshotHeader = "function compilerScriptSnapshot("
+      if (source.split(snapshotHeader).length !== 2) throw Error("one actual compiler snapshot function required")
+      const snapshotStart = source.indexOf(snapshotHeader), snapshotEnd = source.indexOf("\n}", snapshotStart) + 2
+      if (snapshotEnd <= snapshotStart) throw Error("actual compiler snapshot function boundary required")
+      const snapshot = source.slice(snapshotStart, snapshotEnd)
       const hostReads = ["safeRead", "readSourceFile"].map(reader => ({ reader,
-        site: `const content = ${reader}(filePath);` })).filter(({ site }) => source.includes(site))
-      if (hostReads.length !== 1 || source.split(hostReads[0].site).length !== 2) throw Error("one actual host fallback source read required")
-      source = source.replace(hostReads[0].site,
-        `const content = globalThis.__observeHostSdkRead(filePath, () => ${hostReads[0].reader}(filePath));`)
+        site: `const content = ${reader}(filePath);` })).filter(({ site }) => snapshot.includes(site))
+      if (hostReads.length !== 1 || snapshot.split(hostReads[0].site).length !== 2) throw Error("one actual host fallback source read required")
+      source = source.slice(0, snapshotStart) + snapshot.replace(hostReads[0].site,
+        `const content = globalThis.__observeHostSdkRead(filePath, () => ${hostReads[0].reader}(filePath));`) + source.slice(snapshotEnd)
       const hook = "const currentText = this.readSourceFile(filePath);"
       if (source.split(hook).length !== 2) throw new Error("one actual resident source-read site required")
       source = source.replace(hook, "globalThis.__observeResidentSourceRead(filePath);\n" + hook)
