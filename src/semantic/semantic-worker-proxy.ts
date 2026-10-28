@@ -20,6 +20,7 @@ import { routeReferenceQuery } from "./references/reference-query-router.js"
 import { selectReferenceCandidates, type ReferenceCandidateSelection } from "./references/reference-candidate-selection.js"
 import { interactiveSemanticRuntimeConfig } from "./interactive-runtime.js"
 import { discoverCompletionCandidates } from "./completion-discovery.js"
+import { PreparedCompletionReceipts } from "./prepared-completion-receipts.js"
 import { resourceEventPath, toFilePath } from "./semantic-worker-file-identity.js"
 import { SemanticWorkerHost, semanticWorkerData } from "./semantic-worker-host.js"
 import { SemanticWorkerRecycle } from "./semantic-worker-recycle.js"
@@ -66,6 +67,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
   readonly #host: SemanticWorkerHost
   readonly #referenceResults = new ReferenceResultCache()
   readonly #referenceInputs = new ReferenceInputState()
+  readonly #preparedCompletions = new PreparedCompletionReceipts()
   readonly #queriedRoots = new Set<string>()
   readonly #mutations: SemanticWorkerMutationTracker
   readonly #recycle: SemanticWorkerRecycle
@@ -219,12 +221,16 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
   async complete(query: Contract.SemanticQuery) {
     this.#inFlightPreparations += 1
     try {
+      if (query.document.source?.kind !== "disk") this.sync(query.document)
+      const input = this.#referenceInputs.capture(query.document.workspaceId, [], this.#projectConfiguration, this.#sdkConfiguration)
       const discovery = await discoverCompletionCandidates(this.#exportIndex, query)
-      return this.#documentRequest<Contract.SemanticCompletionList>("complete", query, {
+      const result = await this.#documentRequest<Contract.SemanticCompletionList>("complete", query, {
         position: query.position,
         snippets: query.completionOptions?.snippets === true,
         ...(discovery ? { discovery } : {}),
       })
+      if (this.#referenceInputs.isCurrent(input)) this.#preparedCompletions.remember(result.value, input)
+      return result
     } finally {
       this.#inFlightPreparations -= 1
       this.#recycle.retryAutomatic()
@@ -234,24 +240,13 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
   resolveCompletion(query: Contract.SemanticCompletionResolveQuery) {
     if (query.document.source?.kind !== "disk") this.sync(query.document)
     const { preResolved, ...completion } = query.completion
-    if (
-      query.document.source?.kind !== "disk" && interactiveSemanticRuntimeConfig(this.#environment).autoImportProjectRootProfile
-        === "discovery"
-      && preResolved?.documentVersion === query.document.version
-      && (preResolved.additionalTextEdits ?? []).every((edit) => (
-        edit.uri === query.document.uri && edit.expectedVersion === query.document.version
-      ))
-    ) {
-      return Promise.resolve({
-        documentVersion: query.document.version,
-        value: {
-          ...completion,
-          detail: preResolved.detail,
-          documentation: preResolved.documentation,
-          additionalTextEdits: preResolved.additionalTextEdits,
-          data: { ...completion.data, resolved: true },
-        },
-      })
+    if (preResolved && interactiveSemanticRuntimeConfig(this.#environment).autoImportProjectRootProfile === "discovery") {
+      const cached = this.#preparedCompletions.resolve(query, input => this.#referenceInputs.isCurrent(input),
+        recipe => this.#documentRequest<Contract.SemanticCompletion>("resolveCompletion", query, {
+          position: query.position, completion: recipe as unknown as SemanticWorkerJsonObject,
+          snippets: query.completionOptions?.snippets === true,
+        }))
+      if (cached) return cached
     }
     return this.#documentRequest<Contract.SemanticCompletion>("resolveCompletion", query, {
       position: query.position,

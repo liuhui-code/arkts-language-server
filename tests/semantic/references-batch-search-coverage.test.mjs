@@ -81,18 +81,22 @@ test("L04 selected policy rejects an unnotified package retarget and retains onl
 })
 
 test("creating a previously absent package owner rejects cached unresolved imports", async (t) => {
-  const fixture = createFixture(t, { namedPackage: true })
-  const manifest = path.join(fixture.root, "oh-package.json5")
-  fs.unlinkSync(manifest)
-  const resident = await replay(t, fixture, "batched", {
-    warm: true, resident: true,
-    afterWarm: () => fs.writeFileSync(manifest, "{ dependencies: { shared: 'file:./shared' } }"),
-  })
-  const fresh = await replay(t, fixture, "legacy")
-  assert.deepEqual(resident.results, fresh.results)
-  assert.ok(fresh.results.every(result => result.map(JSON.parse)
-    .some(location => location.uri === fixture.uri("PackageConsumer.ets"))))
-  assert.ok(!resident.events.some(event => event.event === "references.resident.hit"))
+  for (const includeDeclaration of [false, true]) {
+    const fixture = createFixture(t, { namedPackage: true })
+    const manifest = path.join(fixture.root, "oh-package.json5")
+    fs.unlinkSync(manifest)
+    const options = { includeDeclarations: [includeDeclaration], settleBeforeWarm: true }
+    const resident = await replay(t, fixture, "batched", {
+      ...options, warm: true, resident: true,
+      afterWarm: () => fs.writeFileSync(manifest, "{ dependencies: { shared: 'file:./shared' } }"),
+    })
+    const fresh = await replay(t, fixture, "legacy", options)
+    assert.equal(resident.results.length, 1, "each stale-owner check must be its session's first query")
+    assert.deepEqual(resident.results, fresh.results)
+    assert.ok(fresh.results.every(result => result.map(JSON.parse)
+      .some(location => location.uri === fixture.uri("PackageConsumer.ets"))))
+    assert.ok(!resident.events.some(event => event.event === "references.resident.hit"))
+  }
 })
 
 test("an installation link retarget rejects the old loaded package identity", async (t) => {

@@ -41,6 +41,11 @@ export function registerReferenceCapability(
           resumeDiagnostics()
         }
       },
+    }).catch(error => {
+      if (error instanceof Error && "code" in error && error.code === "workspace-incomplete") {
+        throw new ResponseError(LSPErrorCodes.RequestFailed, "References require a complete workspace snapshot")
+      }
+      throw error
     })
     if (outcome.status === "stale") {
       throw new ResponseError(LSPErrorCodes.ContentModified, "References request is stale")

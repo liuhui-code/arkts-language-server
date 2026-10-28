@@ -11,6 +11,8 @@ import type { ProjectResolverPort } from "../contracts/project-resolver.js"
 import { isProjectResourceFile } from "./resource-file-identity.js"
 import type { SemanticReadinessQuery } from "../contracts/semantic-readiness.js"
 import { ProjectReadinessLifecycle } from "./project-readiness.js"
+import { prepareIncomingCallMembership } from "./incoming-call-membership.js"
+import { reusablePreparedCompletion } from "./prepared-completion-inputs.js"
 import type {
   SemanticCallHierarchyItem,
   SemanticCallHierarchyItemQuery,
@@ -58,16 +60,14 @@ import type {
 import { isArkUIStringResourcePath } from "../core/arkui/resource-path.js"
 import { formatArktsDocument } from "../core/formatting/arkts-document-formatter.js"
 import { FoldingRangeProvider } from "../core/syntax/folding-range-provider.js"
-import { SemanticTypeEngineRegistry } from "../core/types/type-engine.js"
+import type { SemanticTypeEngineRegistry } from "../core/types/type-engine.js"
 import { toFilePath } from "./semantic-worker-file-identity.js"
 import { completionDiscoveryBatches, semanticRootFingerprints, completionItemIdentity,
   completionItemDiscoveryProjectRoots, memberCompletionScope } from "./completion-batch-planning.js"
 import { publicReferenceResult } from "./references/reference-result-mapping.js"
-import {
-  SemanticDocumentStore,
-  type SemanticWorkspaceView,
-} from "../core/workspace/document-store.js"
-import { LocalPackageResolver } from "../core/sdk/local-package-resolver.js"
+import type { SemanticDocumentStore, SemanticWorkspaceView } from "../core/workspace/document-store.js"
+import type { LocalPackageResolver } from "../core/sdk/local-package-resolver.js"
+import { createSemanticEngineResources } from "./semantic-engine-resources.js"
 import type { StructuredLogger } from "../observability/logger.js"
 import type { SemanticMemoryLevel } from "./coordinator/semantic-coordinator.js"
 import type { LegacySemanticEngineRuntimeOptions } from "./semantic-engine-runtime-options.js"
@@ -79,8 +79,8 @@ import { toPublicCompletion, toLegacyCompletion, toPublicCallHierarchyItem,
 export type { LegacySemanticEngineRuntimeOptions } from "./semantic-engine-runtime-options.js"
 
 export class LegacySemanticEngine implements SemanticEnginePort {
-  private readonly packageResolver = new LocalPackageResolver()
-  private readonly documents = new SemanticDocumentStore({ packageResolver: this.packageResolver })
+  private readonly packageResolver: LocalPackageResolver
+  private readonly documents: SemanticDocumentStore
   private readonly engines: SemanticTypeEngineRegistry
   private readonly foldingRangeProvider = new FoldingRangeProvider()
   private readonly interactiveProjectRootProfile: "closure" | "current"
@@ -95,29 +95,15 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     private readonly logger?: StructuredLogger,
     private readonly runtime: LegacySemanticEngineRuntimeOptions = {},
   ) {
+    const resources = createSemanticEngineResources(logger, runtime)
+    this.packageResolver = resources.packageResolver
+    this.documents = resources.documents
+    this.engines = resources.engines
     this.interactiveProjectRootProfile = runtime.interactiveProjectRootProfile ?? "closure"
     this.memberCompletionProjectRootProfile = runtime.memberCompletionProjectRootProfile ?? "group"
     this.autoImportProjectRootProfile = runtime.autoImportProjectRootProfile ?? "workspace"
     this.autoImportBatchRootLimit = runtime.autoImportBatchRootLimit ?? 128
     this.autoImportTrimBetweenBatches = runtime.autoImportTrimBetweenBatches ?? false
-    this.engines = new SemanticTypeEngineRegistry(
-      this.packageResolver,
-      logger ? (workspaceRoot, sdk) => {
-        logger.info("sdk.selected", {
-          workspaceRoot, sdkPath: sdk.path, source: sdk.source, ready: sdk.ready,
-          metadataStatus: sdk.identity?.status ?? "unavailable",
-          apiVersion: sdk.identity?.apiVersion, componentVersion: sdk.identity?.componentVersion,
-          dialectCompatibility: "unverified", declarationSupport: "typescript-compatible-only",
-        })
-      } : undefined,
-      this.documents,
-      {
-        ...runtime,
-        onReferenceTrace: logger
-          ? (event, fields) => logger.info(event, fields)
-          : undefined,
-      },
-    )
   }
 
   runtimeStats() {
@@ -281,21 +267,9 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     const autoImportRoots = this.autoImportProjectRootProfile === "discovery"
       ? completionItemDiscoveryProjectRoots(query.completion, query.document.workspaceId)
       : undefined
-    if (
-      autoImportRoots !== undefined
-      && query.completion.preResolved?.documentVersion === query.document.version
-    ) {
-      return {
-        documentVersion: query.document.version,
-        value: {
-          ...query.completion,
-          detail: query.completion.preResolved.detail,
-          documentation: query.completion.preResolved.documentation,
-          additionalTextEdits: query.completion.preResolved.additionalTextEdits,
-          data: { ...query.completion.data, resolved: true },
-        },
-      }
-    }
+    const reusable = reusablePreparedCompletion(query, this.packageResolver, toFilePath(query.document.workspaceId),
+      autoImportRoots !== undefined, () => assertActive(query.signal))
+    if (reusable) return { documentVersion: query.document.version, value: reusable }
     const member = autoImportRoots === undefined ? memberCompletionScope(query,
       this.interactiveProjectRootProfile, this.memberCompletionProjectRootProfile,
       () => this.engines.hasSemanticGroups(toFilePath(query.document.workspaceId))) : undefined
@@ -543,11 +517,8 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     query: SemanticCallHierarchyItemQuery,
   ): Promise<SemanticCallHierarchyIncomingOutcome> {
     assertActive(query.signal)
-    const workspaceRoot = fileURLToPath(query.source.workspaceRootUri)
-    const membershipRefresh = this.documents.refreshProjectMembership(workspaceRoot)
-    if (membershipRefresh.removedPaths.length > 0) {
-      return { status: "incomplete", reason: "source-unavailable" }
-    }
+    const membershipFailure = prepareIncomingCallMembership(this.documents, query.source.workspaceRootUri)
+    if (membershipFailure) return membershipFailure
     const prepared = this.prepareCallHierarchySource(
       query.source,
       query.item.selectionRange.start,

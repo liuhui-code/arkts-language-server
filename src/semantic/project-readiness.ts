@@ -30,6 +30,9 @@ export function prepareProjectReadiness(query: SemanticReadinessQuery, projects:
     const workspace = documents.prepareRoot(rootPath)
     checkpoint(query.signal)
     if (workspace && query.prepare) engines.prepareInitialGroups(workspace)
+    if (workspace && workspace.projectMembership?.status !== "complete") {
+      return semanticUnprepared(query.rootUri, "project-membership-incomplete")
+    }
     return workspace ? engines.semanticReadiness(workspace, query.prepare)
       : semanticUnprepared(query.rootUri, "workspace-sources-unavailable")
   }, () => checkpoint(query.signal))

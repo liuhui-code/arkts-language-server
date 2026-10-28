@@ -171,8 +171,8 @@ export class SemanticRequestRunner {
         outcome = "stale"
         return request.fallback
       }
-      // The implementation adapter retains its existing capability-specific wording.
-      if (request.method !== "textDocument/implementation" && error instanceof Error
+      // These adapters retain their existing capability-specific wording.
+      if (request.method !== "textDocument/implementation" && request.method !== "textDocument/references" && error instanceof Error
         && "code" in error && error.code === "workspace-incomplete") {
         throw new ResponseError(LSPErrorCodes.RequestFailed, "Semantic query requires current workspace inputs")
       }

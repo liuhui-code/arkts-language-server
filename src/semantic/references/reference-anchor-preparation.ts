@@ -9,6 +9,7 @@ import type { StructuredLogger } from "../../observability/logger.js"
 import type { SemanticWorkerReferencesArgs } from "../worker-protocol.js"
 import { toFilePath } from "../semantic-worker-file-identity.js"
 import { publicReferenceResult } from "./reference-result-mapping.js"
+import { assertCompleteProjectMembership } from "../workspace-membership-admission.js"
 
 export function prepareReferenceSearchWorkspace(
   position: SemanticDocumentPosition,
@@ -30,6 +31,7 @@ export function prepareReferenceSearchWorkspace(
       preparedDocuments: workspace.documents.length,
     })
   } catch { /* Tracing must not change references. */ }
+  assertCompleteProjectMembership(workspace)
   return workspace
 }
 
@@ -67,6 +69,7 @@ export async function prepareReferenceAnchor(
     durationMs: performance.now() - prepareStarted,
     preparedDocuments: workspace.documents.length,
   })
+  assertCompleteProjectMembership(workspace)
   const resolveStarted = performance.now()
   const definitions = await engines.referenceAnchor(workspace, position)
   trace?.info("references.anchor.resolve.complete", {

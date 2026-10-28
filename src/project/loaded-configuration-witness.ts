@@ -22,7 +22,8 @@ export class LoadedConfigurationWitness {
   private resetEpoch = 0
   private unprovable = false
 
-  constructor(private readonly onUnprovable?: (failure: ConfigurationWitnessFailure) => void) {}
+  constructor(private readonly onUnprovable?: (failure: ConfigurationWitnessFailure) => void,
+    private readonly ownerCurrent: () => boolean = () => true) {}
 
   observe<T>(filePath: string, load: () => T): T {
     const resolved = path.resolve(filePath)
@@ -129,6 +130,21 @@ export class LoadedConfigurationWitness {
     this.resetEpoch += 1
   }
 
+  /** Retain unaffected original facts, never replace them with current cache-hit stamps. */
+  retireNamespaces(roots: readonly string[]): boolean {
+    if (this.unprovable || this.failedSourceReads.size) return false
+    const affected = (file: string) => roots.some(root => {
+      const relative = path.relative(root, file)
+      return !path.isAbsolute(relative) && relative !== ".." && !relative.startsWith(".." + path.sep)
+    })
+    for (const facts of [this.identities, this.pathIdentities]) {
+      for (const file of facts.keys()) if (affected(file)) facts.delete(file)
+    }
+    this.revision += 1
+    this.resetEpoch += 1
+    return true
+  }
+
   /** Only a known compiler source delta may replace its own prior lookup fact. */
   observeChangedSourceRead(filePath: string, read: () => string | null): void {
     const resolved = path.resolve(filePath)
@@ -164,11 +180,11 @@ export class LoadedConfigurationWitness {
 
   /** Loaded identities stay fixed; query-local sharing ends in an uncached union scan. */
   freshness(checkpoint: () => void, mode: ConfigurationFreshnessMode = "validate"): (() => boolean) | undefined {
-    if (this.unprovable || this.failedSourceReads.size) return undefined
+    if (!this.ownerCurrent() || this.unprovable || this.failedSourceReads.size) return undefined
     const resetEpoch = this.resetEpoch
     const scan = (): boolean => {
       checkpoint()
-      if (this.unprovable || this.failedSourceReads.size || this.resetEpoch !== resetEpoch) return false
+      if (!this.ownerCurrent() || this.unprovable || this.failedSourceReads.size || this.resetEpoch !== resetEpoch) return false
       // Another root may append actual loads without changing existing inputs.
       // Validate ALL current facts, including additions, and fence this scan.
       const revision = this.revision
@@ -183,12 +199,12 @@ export class LoadedConfigurationWitness {
         if (lookupIdentity(filePath, true)?.identity !== identity) return false
       }
       checkpoint()
-      return !this.unprovable && this.failedSourceReads.size === 0
+      return this.ownerCurrent() && !this.unprovable && this.failedSourceReads.size === 0
         && this.resetEpoch === resetEpoch && this.revision === revision
     }
     const current = (): boolean => {
       checkpoint()
-      if (this.unprovable || this.failedSourceReads.size || this.resetEpoch !== resetEpoch) return false
+      if (!this.ownerCurrent() || this.unprovable || this.failedSourceReads.size || this.resetEpoch !== resetEpoch) return false
       return validateRequestInput(this, resetEpoch, this.revision, scan)
     }
     return mode === "capture" ? current : current() ? current : undefined

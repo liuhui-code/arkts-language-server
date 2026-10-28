@@ -1,5 +1,13 @@
 # ArkTS 查询性能后续执行计划
 
+2026-10-28当前时延口径：[500ms体验目标](../benchmarks/interactive-latency-assessment.md)，允许适当波动；
+单次/偶发超过目标不独立判功能失败或阻塞交付。按典型操作、分布、频率和持续性评估，
+持续严重慢响应、超时和不可用仍跟踪；无新增数值硬线。下方550ms/P95及旧FAIL为有日期的历史口径，不重标原始结果。
+
+2026-10-28[真实Zed UI验收](../reports/2026-10-28-zed-ui-30k-acceptance.md)状态BLOCKED：
+独立30K副本/profile和candidate11产物部署已准备；系统辅助功能及屏幕读取未授权，窗口读取-1728，UI0次/0秒。
+默认Zed/launcher未改，未启动测试实例；待用户开启实际控制程序权限后复核，不能用协议2h或部署预检替代UI验收。
+
 日期：2026-10-11；最新推进：2026-10-18。状态：IN_PROGRESS；OP-00继续补齐，
 OP-01路由与OP-02选定复用切片已采纳／DONE；OP-03a及OP-00／04／05／06继续。
 最新切片：[403冷引用原因专项定位](../tdd/op00-query-layer-attribution.md#2026-10-18-403冷引用超时专项定位)
@@ -110,7 +118,7 @@ UUID可解析；两入口completion/resolve与prepare/incoming/outgoing完整pay
 剩余优化切片；L03–L07 的阶段完成结论继续有效，L02 剩余增量合同由 OP-04 承接。
 
 目标是减少重复准备、检查与等待，同时控制驻留和 transient compiler 的总成本。
-正式验收为完整响应 P95 ≤550 ms，500 ms 为优化目标。OP-00–OP-05 按各自
+当前时延按500ms体验目标、完整响应分布/波动频率/持续性评估，不设替代硬线。OP-00–OP-05 按各自
 功能、正确性和机制证据验收；最终时延、内存、就绪、soak 和平台门禁统一在
 OP-06／L08 判定，未达最终目标的样本继续作为下一切片的输入。
 
@@ -717,6 +725,132 @@ aec84852且是旧单bundle布局，不等于候选server9ae12f90／当前Worker�
 GitHub外发记录被自动审批拒绝，已改为本地待办/报告持久化；未重试、未对外发布。
 以上登记不恢复暂停的缓存/索引路线，不修改新鲜度合同，不授权发布或合并；455文件冷目录3秒门槛仍按用户授权排除。
 
+### 2026-10-27 30K 混合操作问题待办
+
+稳定编号下列三项，沿用上方本地待办，不重试外发；原证据中的M001/M002/M003为别名。
+历史登记状态OPEN；随后用户明确授权三项正式修复及完整回归/耐久验证，当前均IN_PROGRESS，未合并/发布。
+实施与验证入口：[执行计划](2026-10-27-three-soak-defects-implementation.md)、
+[TDD收据](../tdd/2026-10-27-three-soak-defects.md)。原历史诊断证据保留。
+[混合测试原报告](../reports/2026-10-27-30k-mixed-endurance.md)和
+[根因/ADR审计](../reports/2026-10-27-30k-issues-root-causes-and-adrs.md)持有逐项证据与后续结论。
+原7200s正常/探索验收均FAIL，后续局部实验不能追认通过；OP-04缓存性能TODO继续暂缓。
+
+共同身份：`17e923f0cb8c430b6a10793a0f3d2f9097febfec`父提交上的取消修复工作树，
+server SHA `118d7575dfbb6cbd65ae87037e64a95fee03fad9d69d759cd785684643270b81`，
+Worker SHA `6c583128f7b395053deff52a15d133e0f847bb20ae8d148d9a6bba979ec8efe3`；
+Node26.3.0、ohos-typescript4.9.5-r10、SDK API24/component6.1.1.125。
+输入为真实Photos30000源码隔离副本，初始化degraded（membership超过20000）；原项目/未保存编辑不改。
+原始索引`.bench/30k-mixed-soak-20261027/issues.json`及身份清单保留。
+
+<a id="soak-30k-m001"></a>
+- [x] **SOAK-30K-M001 / P1 / 原功能阻断已修复并完成本轮协议耐久验证**：恢复移动的依赖并删除历史探测空目录后，局部跳转持续失败。
+  复现：PickerUIExtensionAbility__copy_003.ets的SelectParams.defaultParam（零基70:46），
+  将ThirdSelectConstants.ts移入新建utils/soak_moved，改import并查询，再恢复原文件/import、删空目录。
+  实际：请求29在1668.36ms后-32803；独立复现请求4在1182.96ms后同错误；后续重试/关闭重开仍拒绝。
+  预期：当前输入恢复有效后，同会话查询原声明；保留物理身份及最终新鲜度校验。
+  影响：该root后续多个文件/符号查询，配置重载才恢复；无Worker换代，不是OOM。
+  对照：同制品无GC observer，保留空目录通过、删除空目录持续失败；同目录rename/delete另通过。
+  证据：`normal-2h-v2/anomalies/A001`、`move-fence-v5/witness-mismatch.ndjson`、
+  `move-keep-dir-control-v1/result.json`、`move-remove-dir-no-gc-control-v1/result.json`（均在上述证据根）。
+  已确认机制：Worker resolver保留历史负向oh-package探测祖先身份，普通源码delta没有重载该证明域；
+  父端resolver实际已清理，不能代替Worker实例。身份拒绝正确，恢复生命周期有缺口。
+  当前候选已实现解析证明域与closure/membership/Program消费者共同代次退役，公开移动及未通知配置切换回归通过。
+  中间候选遗漏membership消费者的反例及修复也保留；最终candidate6完整fast2075/2075，真实30K原移动/恢复/实际删目录短复现通过。
+  7200s `functional-2h-candidate6-node-waived`运行中，尚不勾选关闭；原失败证据不覆写。
+  2026-10-28最终candidate11完整fast2085/2085、新单会话7204.609s；37次实际移动/恢复/删探测目录均精确跳转。
+  同候选输入/SDK/产物及关闭审计通过，原失败保留；此勾选仅关闭该可用性缺陷，不授予500ms/完整30K功能通过。
+  [最终验证及证据](../reports/2026-10-28-three-soak-defects-final-verification.md)，原项目和用户Zed未改，无合并/发布。
+  最小边界见[Proposed ADR0025](../adr/0025-namespace-proof-domain-recovery.md)。
+
+<a id="soak-30k-m002"></a>
+- [ ] **SOAK-30K-M002 / P1 / 活性失败，受控根因已证、原自然竞态部分未证**：后台诊断取消截止退役Worker，前台跳转一起不可用。
+  复现来源：探索第103动作的跨模块开关/重开标签，03:49:17.054Z epoch1内部diagnose1394，
+  AbsDataSource.ts版本80；公开请求512查询Picker.filterMediaType（零基76:15），768.39ms后-32603。
+  实际：03:49:18.453Z cancellation-deadline；日志phase=idle、Program/checker/sync计数配对；
+  随后thread1退役、thread2重放18份overlay。预期：可合作取消与前台查询保持单终态/最新输入；
+  真正无响应仍受截止和共享恢复预算约束。不能由recovery.complete宣称前台已恢复或READY。
+  影响：同一监督域所有排队请求；原一次发生不代表已稳定复现，不能直接称编译卡死/GC/OOM。
+  对照：最后动作窗口及同种子108动作/529请求前缀未复现原自然竞态；不能从idle推断编译器卡死。
+  补证：有限SDK图早取消＋50ms原包终态交付延迟，2次及1次只读决策观测均使前台-32603；
+  无交付延迟、短图、晚取消均通过。实际决策距活动26.117ms，却回退到2978.000ms前取消时间。
+  离开同步phase时watchdog丢弃activityAt已证；原30K缺terminal交付/取消时刻，精确窗口未闭环。
+  三次受控故障的独立新请求均精确恢复，全部正常关闭，未修产品。见[Proposed ADR0026](../adr/0026-cancellation-grace-terminal-handoff.md)。
+  证据：`exploratory-2h-v1/{anomalies/A001,logs/server.log,wire.ndjson.gz}`、
+  `prefix-internal-v1/terminal-audit.json`；新增`.bench/30k-cause-20261027/controlled-summary.json`、
+  `m002-decision-observation/decision.ndjson`、`m002-original-window.json`。
+  当前候选已保持合格活动参考点单调至终态接收，补产生/发送观测；有限交付与丢包/绝对截止对照通过。
+  原自然30K精确竞态仍未证明；中间candidate6完整fast通过，后续耐久因其他缺陷失败，不追认此前失败。
+  2026-10-28最终candidate11完整fast2085/2085及7204.609s混合通过，1Worker/0运行期退役/恢复；
+  172条公开取消通知（171in-flight、1晚到）均合法终态，in-flight最大3.117ms，受控丢终态/真正卡死仍有界退役。
+  本项保留未勾选以跟踪原自然30K精确窗口，**机制已修复及回归通过与现场窗口未证分开**。
+  证据[最终报告](../reports/2026-10-28-three-soak-defects-final-verification.md)及`candidate11-endurance-audit.json`。
+
+<a id="soak-30k-m003"></a>
+- [x] **SOAK-30K-M003 / P1 / 前台调度缺口已修复，体验尾延迟另跟踪**：补全详情等待8个后台诊断，完整响应5328.783ms。
+  复现来源：探索action14请求70，AlbumSetPageActionBar.ets版本35，createHorizontalActionBar详情。
+  实际：trace1282父端准入到send返回5266.325ms（98.83%），内部diagnose213–220先执行，
+  到来时另有212已在途；详情221接收至dispatch0.194ms，其他全部阶段上界62.458ms；区间不可重叠相加。
+  预期：详情作为前台交互在mutation/global及公平性约束内及时服务，完整响应目标500ms。
+  影响：多标签诊断积压时的resolve；不等于SDK解析本身耗时5秒。
+  已证：等待位于父线程supervisor.pendingRequests；wire1225–1256无mutation，全部命令revision187。
+  10文件/8诊断同输入对照中，resolve等完其余7个诊断，complete先于它们派发；两组8份最新诊断均正确。
+  原因是普通诊断有限绕过名单仅complete/define/hover；INTERACTIVE分类不授予所有方法同优先级。
+  当前候选已统一22种方法分类和有界优先，7项公开交互/诊断矩阵及公平性/屏障对照通过；
+  不代表所有详情低于500ms；最终candidate11完整fast2085/2085，7204.609s混合通过。
+  304份详情均实际enriched，p50/p95/max93.807/1241.931/1387.730ms；最慢请求3621只等已在途诊断，随后即派发，无8份排队诊断越过。
+  该请求父端等待1206.780ms（86.961%）；长在途编译仍阻塞前台。调度缺口已修复，关闭本缺陷；
+  按2026-10-28用户新口径，500ms是体验目标，不要求所有详情都低于目标才能交付，也不单凭偶发超过判功能失败。
+  性能观察继续保留：46/304（15.13%）详情超过目标、p95约1.24秒，结合在途等待、频率及持续影响评估；
+  这是体验跟踪，不是新的比例/分位数硬门槛，不因关闭调度缺陷宣称所有慢响应解决。
+  最小边界见[Proposed ADR0027](../adr/0027-completion-details-diagnostic-priority.md)，逐次与排队证据见[最终报告](../reports/2026-10-28-three-soak-defects-final-verification.md)。
+  证据：`exploratory-2h-v1/{requests.ndjson,slow-resolve-timeline.json,over-500ms.ndjson}`。
+  补证：`.bench/30k-cause-20261027/{m003-original-audit.json,m003-resolve-queue,m003-list-queue-control}`。
+  与ZUI-01的过期句柄错误修复分开，勾选只确认原八诊断越过缺口修复，不授予所有性能观察通过。
+
+<a id="soak-30k-m004"></a>
+- [x] **SOAK-30K-M004 / P1 / 局部跳转旧source proof，修复及本轮协议耐久已验证**：正常混合序列第212动作，打开
+  `common/src/main/ets/default/model/browser/album/AlbumDataImpl.ts`版本16，genAlbumsInfo零基71:13，
+  请求1027在66.282ms返回-32803（Semantic query requires current workspace inputs）。
+  前一动作在另一文件编辑/撤销/保存；这只是前置序列，尚未证明保存直接致错。
+  预期：所有已送达的当前输入有效时，局部跳转返回当前声明；未知/竞态输入继续保留真实性校验。
+  新条件仍为Node RSS2048豁免、其他保护不变；mixed1484.441s后FAIL，未完成7200s，212动作/1027请求。
+  1Worker/0恢复，Node/native/tree峰值1479.9/4459.6/5110.4MiB，无资源保护/OOM；SIGTERM是事故封存后的驱动清理。
+  单标签、多标签保存对照及瞬时源码创建/删除、嵌套原子保存表征均通过，不能将最后一次保存猜为根因。
+  独立插桩前缀观察到源码fileExists原证明变更使个别witness unprovable；是否直接造成该次错误尚待关联终态栈。
+  证据`.bench/30k-three-fixes-20261027/soak-harness/functional-2h-candidate6-node-waived/{result.json,anomalies/A001}`；
+  [实施/耐久报告](../reports/2026-10-27-three-soak-defects-implementation-and-endurance.md)。
+  两轮同动作212失败已定位到另一已保存overlay的旧磁盘load fact（5060→5091字节），在compiler前核验拒绝。
+  属于M001同类消费者生命周期缺口，不等同M002计时或M003排队；3语义文件+20001无关文件的partial公开回归RED、complete对照GREEN。
+  candidate7按当前overlay协调自身旧source fact，随后补出nested overlay删除反例；候选7完整fast中断143。
+  candidate8还在source created/deleted mutation显式退休解析命名空间，普通body不推进；79项相关回归GREEN，最终全量/7200s尚待验证，仍不关闭。
+  candidate10完整fast2081/2081且原动作212同目标/版本/输入事件精确通过67.448ms，但后在M005动作255失败，仍不关闭整体耐久。
+  最终candidate11完整2085/2085、7204.609s混合完成；同原动作212、版本16/inputRevision2309精确75.369ms通过。
+  1Worker/0恢复、输入/SDK/产物恢复及关闭审计通过，关闭本可用性缺陷；历史失败和其他性能/全范围限制不变。
+  [最终报告](../reports/2026-10-28-three-soak-defects-final-verification.md)与ADR0025保留修复边界及完整证据。
+
+<a id="soak-30k-m005"></a>
+- [x] **SOAK-30K-M005 / P1 / partial中overlay→disk source proof交接遗漏，修复及本轮协议耐久已验证**：固定seed817954798，
+  第255动作依赖overlay优先于外部磁盘变化的查询通过；恢复磁盘、撤销overlay并didClose依赖后，
+  PickerUIExtensionAbility__copy_003.ets版本183、零基53:20、ScreenManager.getInstance，
+  请求1236在954.725ms返回-32803。预期已通知的当前磁盘输入应精确跳转，不永久复用旧load fact。
+  candidate10 Worker b57d54dc…94ca2aba；父17e923f、完整fast2081/2081、真实SDK11pass/2性能控制取消。
+  mixed1477.767s（含事故采样窗口）、255动作/1236请求后FAIL，7200s未完成；1Worker/0恢复、无资源保护/OOM。
+  Node/native/tree峰值1865.4/4728.1/5686.6MiB；Node2048豁免继续，仅驱动项，产品策略/其他保护不变。
+  前一M004原动作212已同目标/版本16/inputRevision2309及等价动作211输入通过，不能据此追认整体稳定。
+  M005是否与M004同属source authority交接尚待最小实验，不仅凭-32803判同源。
+  证据`.bench/30k-three-fixes-20261027/soak-harness/functional-2h-candidate10-node-waived/{result.json,anomalies/A001}`，
+  `candidate10-endurance-failure-triage.json`及[实施报告](../reports/2026-10-27-three-soak-defects-implementation-and-endurance.md)。
+  独立插桩同动作255/请求1236在942.734ms复现：ScreenManager.ts旧证明17243字节、当前17200字节，LS.define的compiler调用前拒绝。
+  `candidate10-m005-proof-root-cause.json`保留调用栈；非容量/Worker/排队。与M004同类source authority，具体边界不同。
+  新公开fallback→显式准入→overlay→磁盘四格仅partial/default resident1 RED；候选11按实际安装的snapshot协调自身旧fact，
+  非overlay要求真实稳定读取与准入文本相等，保留SDK/路径/最终联合校验，不清全缓存或重建健康context。四格GREEN，完整检查及7200s待跑。
+  决策补充[Proposed ADR0025](../adr/0025-namespace-proof-domain-recovery.md#m005overlay返回已准入磁盘快照)。
+  2026-10-28最终candidate11完整fast2085/2085，新单会话7204.609s完成，保留原所有场景、无排除/手动重启。
+  原动作255/请求1236/版本183/inputRevision2885精确跳转1005.862ms，38次关闭返回磁盘场景均精确通过；
+  耗时保留，按当前体验目标不因该样本超过500ms单独判功能失败或阻塞交付。
+  775输入/87产物、原/隔离各30287及SDK44894零差异，关闭exit0且本轮owned进程无残留；1Worker/0恢复。
+  关闭本可用性缺陷，保留反复尾延迟、原生高内存、37份完整范围不可用及SDK层2项180s控制取消，见[最终报告](../reports/2026-10-28-three-soak-defects-final-verification.md)。
+
 ## OP-04 有界增量快照与编辑失效
 
 状态：IN_PROGRESS。依赖 OP-00 编辑解析／准备归因；对应 R-13/31，承接 L02。
@@ -1108,7 +1242,7 @@ trace-only、错误、超时和不足样本负例。合成正例仅验证判定�
 随后在默认组合开启、正常诊断、trace-off 的新构建执行产品矩阵：
 
 - 14 个 capability 项 × 8 个正常场景桶 × 3 平台，共 336 格；每格 ≥100 请求、
-  ≥5 独立会话，引用的两种声明策略独立，P95 ≤550 ms，500 ms 为目标。
+  ≥5 独立会话，引用的两种声明策略独立；时延按500ms体验目标及分布/频率/持续影响评估，不以旧550ms/P95作替代硬线。
 - 零完整 payload/oracle 差异、零 partial-success、零 OOM；错误、拒绝、超时和
   取消单列，不能删除失败样本或用 cache 命中填新符号桶。
 - 原内存门禁全部保留：DevEco steady/peak PSS 比 ≤0.75/0.85、100k/10k 比

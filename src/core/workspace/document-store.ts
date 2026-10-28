@@ -17,6 +17,8 @@ import { MAX_DISK_SNAPSHOT_BYTES, readDiskSource as safeRead, sourceStatIdentity
 import { classifyWatchedSourceChanges } from "./watched-source-notifications.js"
 import { invalidateClosedDocument } from "./closed-document-invalidation.js"
 import { extractImportSpecifiers } from "./import-specifiers.js"
+import { prepareInitialWorkspace } from "./initial-workspace-preparation.js"
+import { WorkspaceResolutionInputs, invalidateCreatedResolutionClosures, RESOLUTION_INPUT_GENERATION } from "./workspace-resolution-inputs.js"
 
 import type { ProjectMembershipSnapshot, ProjectFileAdmissionToken, ProjectFileAccessPort, SemanticWorkspaceView } from "./semantic-workspace-view.js"
 import { SEMANTIC_SOURCE_SNAPSHOT_LIMITS } from "./semantic-workspace-view.js"
@@ -50,6 +52,7 @@ interface DocumentRecord extends WorkspaceDocument {
 }
 
 interface DependencyClosureCacheEntry {
+  resolutionGeneration: number
   contentGeneration: number
   paths: string[]
   physicalPaths: string[]
@@ -148,6 +151,7 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
   private cachedBytes = 0
   private projectMembershipRevision = 0
   private readonly packageResolver: LocalPackageResolver
+  private readonly resolutionInputs: WorkspaceResolutionInputs
 
   constructor({
     packageResolver = new LocalPackageResolver(),
@@ -157,6 +161,7 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
     watchedFileLimits = {},
   }: SemanticDocumentStoreOptions = {}) {
     this.packageResolver = packageResolver
+    this.resolutionInputs = new WorkspaceResolutionInputs(packageResolver, [this.dependencyClosures, this.projectFileSets], () => operationControl.checkpoint())
     this.operationControl = operationControl
     this.enumerateWorkspaceSources = enumerateWorkspaceSources
     this.maxProjectFileSetRoots = boundedLimit(
@@ -404,7 +409,6 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
     const lexicalRoot = path.resolve(batch.rootPath)
     const canonicalRoot = canonicalWorkspaceRoot(batch.rootPath)
     if (batch.rootDirty) {
-      this.packageResolver.invalidate()
       const dirtyProjectRoots = new Set([canonicalRoot])
       const dirtyClosureOwners: string[] = []
       // Configuration invalidates dependency edges even when every source is an overlay.
@@ -435,6 +439,7 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
           || isInside(lexicalRoot, documentPath)
         ) knownPaths.add(documentPath)
       }
+      this.packageResolver.invalidateNamespaces([lexicalRoot, ...dirtyProjectRoots])
       const invalidatedPaths = [...knownPaths].filter((knownPath) => (
         !this.documents.get(knownPath)?.overlay
       ))
@@ -642,6 +647,7 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
         && !resetRoots.has(changedRoot) ? lexicalRoot : undefined)
     }
     for (const dirtyRoot of dirtyMembershipRoots) this.projectFileSets.delete(dirtyRoot)
+    this.resolutionInputs.changedNamespaces(batch.rootPath, sourceChanges)
   }
 
   private invalidateDiskDocuments(
@@ -746,16 +752,7 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
     sources: readonly DiskInvalidationInput[],
   ): Set<string> {
     const createdPaths = new Set(sources.flatMap(createdSourcePathIdentities))
-    const affectedRoots = new Set<string>()
-    if (createdPaths.size === 0) return affectedRoots
-    for (const [ownerPath, closure] of this.dependencyClosures) {
-      const affected = closure.creationCandidatesComplete !== true
-        || closure.creationCandidatePaths.some((candidatePath) => createdPaths.has(candidatePath))
-      if (!affected) continue
-      this.dependencyClosures.delete(ownerPath)
-      affectedRoots.add(closure.workspaceRoot)
-    }
-    return affectedRoots
+    return invalidateCreatedResolutionClosures(this.dependencyClosures, createdPaths)
   }
 
   private markTypeEngineReset(canonicalRoot: string): void {
@@ -814,21 +811,12 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
   }
 
   /** Reuse the current authoritative catalog without preloading unrelated source text. */
-  membershipFor(rootPath: string): ProjectMembershipSnapshot { return this.projectMembership(rootPath) }
+  membershipFor(rootPath: string): ProjectMembershipSnapshot { this.resolutionInputs.prepare(rootPath); return this.projectMembership(rootPath) }
 
   /** Selects a store-owned source only to anchor full preparation, never a query target. */
   prepareRoot(rootPath: string): SemanticWorkspaceView | undefined {
     this.refreshProjectMembership(rootPath)
-    const canonicalRoot = canonicalWorkspaceRoot(rootPath)
-    let membership = this.projectFileSets.get(canonicalRoot)
-    if (!membership) {
-      membership = this.scanProjectMembership(rootPath)
-      membership.revision = ++this.projectMembershipRevision
-      this.publishProjectMembership(canonicalRoot, membership)
-    }
-    const currentPath = membership.paths[0]
-    return currentPath ? this.prepare({ path: currentPath, workspaceRoot: rootPath,
-      line: 1, column: 1 }, true) : undefined
+    return prepareInitialWorkspace(rootPath, this.projectMembership(rootPath), position => this.prepare(position, true))
   }
 
   prepareDiskSnapshot(
@@ -895,6 +883,7 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
     transaction: DocumentCacheTransaction,
     observer?: SemanticPrepareObserver,
   ): SemanticWorkspaceView {
+    const resolutionGeneration = this.resolutionInputs.prepare(rootPath)
     const overlayStarted = observer ? performance.now() : 0
     const overlays = this.openOverlays(canonicalRoot)
     const { overlayPaths, authoritativeOverlayPaths, shadowedPaths } =
@@ -929,7 +918,7 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
       const preloadStarted = observer ? performance.now() : 0
       const beforePreload = closure.length
       let totalBytes = closure.reduce((total, { record }) => total + Buffer.byteLength(record.content), 0)
-      for (const sourcePath of projectMembership.paths) {
+      for (const sourcePath of projectMembership.status === "complete" ? projectMembership.paths : []) {
         if (loadedPaths.has(sourcePath) || closure.length >= MAX_CLOSURE_DOCUMENTS) continue
         const before = this.documents.get(sourcePath)
         const loaded = this.loadFromDiskWithinTransaction(
@@ -969,6 +958,7 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
 
     const view: SemanticWorkspaceView = {
       rootPath,
+      [RESOLUTION_INPUT_GENERATION]: resolutionGeneration,
       canonicalRootId: canonicalRoot,
       overlayPaths,
       typeEngineResetEpoch: changes.typeEngineResetEpoch,
@@ -1459,6 +1449,7 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
     this.operationControl.checkpoint()
     if (complete && aggregateAdmissionComplete) {
       this.dependencyClosures.set(current.path, {
+        resolutionGeneration: this.packageResolver.inputGeneration,
         contentGeneration: current.contentGeneration,
         paths: result.map(({ record }) => record.path),
         physicalPaths: result.map(({ record }) => record.physicalPath),
@@ -1483,6 +1474,7 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
     const cached = this.dependencyClosures.get(current.path)
     if (
       !currentCacheHit
+      || cached?.resolutionGeneration !== this.packageResolver.inputGeneration
       || cached?.contentGeneration !== current.contentGeneration
       || cached.workspaceRoot !== workspaceRoot
     ) return null

@@ -1,9 +1,9 @@
 import fs from "node:fs"
 import path from "node:path"
 
-import { HarmonyProjectModel } from "../../project/harmony-project-model.js"
 import { readHarmonyProfile } from "../../project/harmony-profile-reader.js"
-import { LoadedConfigurationWitness, type ConfigurationFreshnessMode } from "../../project/loaded-configuration-witness.js"
+import type { LoadedConfigurationWitness } from "../../project/loaded-configuration-witness.js"
+import { LocalPackageResolutionOwner, type PackageManifest } from "./local-package-resolution-owner.js"
 import { clientWorkspaceRoot, findInstalledPackage } from "./local-package-installation.js"
 const MAX_CACHED_MANIFESTS = 128
 const MAX_CACHED_DIRECTORY_OWNERS = 256
@@ -12,62 +12,10 @@ const MAX_CACHED_INSTALLATIONS = 256
 const MAX_CACHED_ROOTS = 8
 const MAX_ANCESTORS = 64
 
-interface PackageManifest {
-  name?: string
-  entry?: string
-  dependencies: Map<string, string>
-}
-
 // undefined: no supported dependency declaration; null: declared but unresolved.
 export type LocalPackageResolution = { path: string | null } | undefined
 
-export class LocalPackageResolver {
-  private readonly manifests = new Map<string, PackageManifest | null | undefined>()
-  // Filesystem snapshots: manifest/directory watcher changes must call invalidate().
-  private readonly directoryOwners = new Map<string, string | undefined>()
-  private readonly installations = new Map<string, string>()
-  private readonly canonicalRoots = new Map<string, string>()
-  private readonly projectModels = new Map<string, HarmonyProjectModel>()
-  private projectSelection: unknown
-  private configurationWitness?: LoadedConfigurationWitness
-
-  witnessesConfiguration(): boolean { return this.configurationWitness !== undefined }
-
-  enableConfigurationWitness(): void {
-    if (this.configurationWitness) return
-    this.configurationWitness = new LoadedConfigurationWitness()
-    if (this.manifests.size || this.directoryOwners.size || this.installations.size || this.canonicalRoots.size) {
-      this.configurationWitness.markUnprovable()
-    }
-    for (const model of this.projectModels.values()) model.enableConfigurationWitness()
-  }
-
-  configurationFreshness(rootPath: string, checkpoint: () => void, mode: ConfigurationFreshnessMode = "validate"): (() => boolean) | undefined {
-    const resolver = this.configurationWitness?.freshness(checkpoint, mode)
-    const model = this.projectModels.get(path.resolve(rootPath))?.configurationFreshness(checkpoint, mode)
-    if (!resolver || !model) return undefined
-    return () => resolver() && model()
-  }
-
-  configureProject(selection: unknown): void {
-    this.projectSelection = selection
-    this.projectModels.clear()
-    this.invalidate()
-  }
-
-  projectFor(rootPath: string): HarmonyProjectModel {
-    const root = path.resolve(rootPath)
-    let model = this.projectModels.get(root)
-    if (!model) {
-      model = new HarmonyProjectModel(root, this.projectSelection)
-      if (this.configurationWitness) model.enableConfigurationWitness()
-    }
-    this.projectModels.delete(root)
-    this.projectModels.set(root, model)
-    while (this.projectModels.size > 4) this.projectModels.delete(this.projectModels.keys().next().value!)
-    return model
-  }
-
+export class LocalPackageResolver extends LocalPackageResolutionOwner {
   moduleEntryPath(rootPath: string, moduleRoot: string): string | undefined {
     const root = path.resolve(rootPath)
     const directory = path.resolve(moduleRoot)
@@ -202,20 +150,6 @@ export class LocalPackageResolver {
       }
     }
     return undefined
-  }
-
-  invalidate(rootPath?: string): void {
-    // Clear the bounded ownership snapshot across lexical/canonical root aliases.
-    this.directoryOwners.clear()
-    this.installations.clear()
-    this.canonicalRoots.clear()
-    for (const model of this.projectModels.values()) model.invalidate()
-    for (const manifestPath of this.manifests.keys()) {
-      if (rootPath === undefined || inside(rootPath, manifestPath)) this.manifests.delete(manifestPath)
-    }
-    this.configurationWitness?.reset()
-    // A surviving cache entry was loaded under the previous witness, not this one.
-    if (this.manifests.size) this.configurationWitness?.markUnprovable()
   }
 
   private resolveSelfSource(
@@ -442,9 +376,7 @@ export class LocalPackageResolver {
     return result
   }
 
-  private observed<T>(filePath: string, lookup: () => T): T {
-    return this.configurationWitness ? this.configurationWitness.observe(filePath, lookup) : lookup()
-  }
+
 }
 
 function readManifest(filePath: string, witness?: LoadedConfigurationWitness): PackageManifest | null | undefined {

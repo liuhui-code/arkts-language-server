@@ -3,6 +3,31 @@ import path from "node:path"
 
 import type { ProjectFileAccessPort, SemanticWorkspaceView } from "../workspace/document-store.js"
 import { withChangedDiskDocuments } from "./type-delta-inputs.js"
+import type { LocalPackageResolver } from "../sdk/local-package-resolver.js"
+import type { SemanticCoordinator } from "../../semantic/coordinator/semantic-coordinator.js"
+import type { WorkspaceEngineEntry } from "./type-workspace-entry.js"
+import { SemanticInputUnavailableError } from "./typescript-query-inputs.js"
+import { RESOLUTION_INPUT_GENERATION } from "../workspace/workspace-resolution-inputs.js"
+import { resolutionInputWasRebased } from "../../project/resolution-input-admission.js"
+
+/** Validate load-owned resolution input before choosing the consumer's ordinary reset cause. */
+export function reconcileResolutionOwner(workspace: SemanticWorkspaceView, contextId: string,
+  resolver: LocalPackageResolver, coordinator: SemanticCoordinator<WorkspaceEngineEntry>, checkpoint: () => void) {
+  const recoveredUnnotifiedInput = resolver.refreshInputGeneration(workspace.rootPath, checkpoint)
+  const inputs = workspace[RESOLUTION_INPUT_GENERATION]
+  const previous = coordinator.peek(contextId)
+  const ownerChanged = typeContextResetReason(workspace, previous) === "canonical-owner-change"
+  // Repair belongs to the next input attempt. An unchanged request cannot
+  // silently rebase its prepared proof; observed source deltas already open a new input.
+  if ((recoveredUnnotifiedInput || inputs?.recoveredUnnotifiedInput || resolutionInputWasRebased(resolver)) && !workspace.resetTypeEngine
+    && !ownerChanged && !workspace.changedPaths?.length && !workspace.removedPaths?.length) {
+    coordinator.remove(contextId, "unnotified-resolution-change")
+    throw new SemanticInputUnavailableError()
+  }
+  if (inputs && (inputs.generation !== inputs.owner.generation || inputs.owner !== resolver
+    && !inputs.owner.configurationFreshness(workspace.rootPath, checkpoint)?.())) throw new SemanticInputUnavailableError()
+  return previous
+}
 
 interface AppliedContextIdentity {
   readonly ownerId: string

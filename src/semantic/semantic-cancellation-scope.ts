@@ -1,6 +1,8 @@
 import { AsyncLocalStorage } from "node:async_hooks"
 
 import ts from "typescript"
+import { compilerSynchronizationActivity } from "./semantic-worker-progress.js"
+import { withResolutionInputAdmission } from "../project/resolution-input-admission.js"
 
 import {
   readSemanticWorkerCancellationState,
@@ -35,7 +37,7 @@ export class SemanticCancellationScope {
       isCancellationRequested: () => {
         // Keep the request's cancellation cell intact. The unblocked supervisor
         // still enforces cancellation/execution deadlines during this commit.
-        if (synchronizing !== 0) return false
+        if (synchronizing !== 0) { compilerSynchronizationActivity(); return false }
         const cell = this.cells.getStore()
         return cell !== undefined
           && readSemanticWorkerCancellationState(cell) !== SemanticWorkerCancelState.active
@@ -51,12 +53,12 @@ export class SemanticCancellationScope {
       throw new Error("Semantic cancellation scope already has an active request")
     }
     readSemanticWorkerCancellationState(cell)
-    return this.cells.run(cell, async () => {
+    return this.cells.run(cell, () => withResolutionInputAdmission(async () => {
       this.checkpoint()
       const result = await operation()
       this.checkpoint()
       return result
-    })
+    }))
   }
 
   checkpoint(): void {

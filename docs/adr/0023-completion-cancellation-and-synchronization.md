@@ -59,3 +59,7 @@ SourceFile 复用不能保留已退役服务中的语义状态。现有调度也
 临界区期间取消响应可能等待同步完成或原有监督截止；不承诺任意大型构建能立即合作取消。
 本次不是编译器事务回滚补丁，不支持复用真正失败的 Program，也不宣称所有编辑性能或规模成本达到 500ms。
 实际最终结果见 [TDD记录](../tdd/completion-shared-preparation-20261025.md)及[实施报告](../reports/2026-10-25-completion-shared-preparation-and-priority.md)。
+
+2026-10-26 补充：[ADR0024](0024-partial-initialization-and-progressing-synchronization.md)细化父端监督：
+安全同步中的实际活动仅调整取消宽限参考点，绝对执行/准备截止不变。原30K close/open现场及有限 SDK 图公开复现
+证明原固定取消宽限会退役仍在处理输入的线程；无活动、真正失败及绝对截止的物理恢复合同继续保留。

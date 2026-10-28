@@ -1,6 +1,8 @@
-# Semantic-ready：就绪后 500 ms 目标 / 550 ms 验收文档入口
+# Semantic-ready：就绪后500ms体验目标文档入口
 
 初始日期：2026-09-29。初始整合基线：`911ae43c274175614559b63f0311504747d8393d`。
+2026-10-28当前时延口径：[500ms体验目标](../../benchmarks/interactive-latency-assessment.md)，按典型操作、分布、频率和持续性评估；
+偶发超过不独立判功能失败/阻塞交付，不新增替代硬线。下方550ms/P95及旧FAIL保留历史语境，不重标原测量。
 2026-10-06 路线更新：本目录保留原产品契约与历史设计输入；当前实施主线改为
 [L01–L08 预算约束长驻语义会话计划](../2026-10-06-budgeted-resident-semantic-plan.md)，
 决策见 [ADR 0014](../../adr/0014-budgeted-long-lived-semantic-session.md) 和
@@ -179,7 +181,7 @@ SDK／产物／启动器及实际根退出审计47ad6dda。原403四份oracle／
 不称以前超时修复；旧a6整轮1837/1839 FAIL保留。六默认／预算不变，真正编辑
 准备／复杂真实工程／压力／生命周期／soak及全部产品门禁继续；未提交或推送。
 
-2026-10-10 用户明确确认“550”：L08正式完整响应P95≤550ms，500ms保留
+历史记录：2026-10-10 用户明确确认“550”：当时L08正式完整响应P95≤550ms，500ms保留
 为优化目标，其它验收门槛不变。当前实测与剩余项见
 [L08报告](../../reports/2026-10-10-resident-l08-semantic-readiness.md)，历史
 500ms失败不重标；各阶段旧统计不代表当前构建或产品毕业。
@@ -221,7 +223,7 @@ S03 BLOCKED；S05 相容磁盘 LS 复用候选已 REJECTED。不得把它们改�
 
 | 文档 | 唯一职责 |
 | --- | --- |
-| [产品契约](product-contract.md) | 首次豁免、正常工作负载、语义就绪、500 ms目标与550 ms验收 |
+| [产品契约](product-contract.md) | 首次准备、正常工作负载、语义就绪、500ms体验目标及分布/持续影响评估 |
 | [当前执行计划](../2026-10-06-budgeted-resident-semantic-plan.md) | L01–L08 顺序、安全与产品门禁 |
 | [查询性能后续计划](../2026-10-11-query-performance-follow-up-plan.md) | 研究建议审核、OP-00–OP-06 依赖、验收与回退 |
 | [历史 S-series 计划](../2026-09-29-semantic-ready-execution-plan.md) | 保留 S00–S12 原始证据与停止线 |

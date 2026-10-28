@@ -1,4 +1,4 @@
-# Semantic-Ready：正确性、就绪、500 ms 目标 / 550 ms 验收与内存
+# Semantic-Ready：正确性、就绪、500ms体验目标与内存
 
 状态：后续执行的规范性契约；当前实施主线为预算约束的长驻官方 LS
 [L01–L08 计划](../plans/2026-10-06-budgeted-resident-semantic-plan.md)，
@@ -16,13 +16,19 @@ L01 首轮 Settings/API24 是 42/42 exact，但同文件未查询符号三次为
 保留历史失败及门禁；产品边界见[产品契约](../plans/semantic-ready/product-contract.md)，
 新实验决策见[ADR 0014](../adr/0014-budgeted-long-lived-semantic-session.md)。
 
-2026-10-10 用户确认“550”：500 ms 保留为优化目标，L08 正式完整响应
+2026-10-28当前时延口径：**500ms是体验目标；偶发超过不独立判功能失败，也不单独阻塞交付**。
+结合典型操作、p50/p95/p99/max、波动频率、连续性和持续性评估；持续严重慢响应、超时与不可用仍记录。
+不新增硬数值/比例/持续时长，不将旧550ms/P95改套为替代硬线；其他正确性和执行保护不变。
+客观统计、功能结果与体验结论分开，细则及旧自动化边界见[当前时延评估](interactive-latency-assessment.md)。
+
+历史记录：2026-10-10 用户确认“550”：500 ms 保留为优化目标，当时L08 正式完整响应
 P95 上限调整为 550 ms。仅此项授权变更；100 请求/5 会话、336 格、
 完整正确性/真实 ready/内存/soak/平台等要求不变。下文历史 500 ms
 失败保持原判定，新口径必须使用独立冻结的当前证据，不能自动重标旧报告。
 
 所有支持范围、阈值、场景分类、目标池和采样规则在变更／取样前冻结。
-门禁结果只使用 `PASS`、`FAIL`、`BLOCKED`、`NOT_RUN`；功能实现状态与性能毕业状态分别记录。
+客观门禁结果沿用`PASS`、`FAIL`、`BLOCKED`、`NOT_RUN`；功能状态与时延体验评估分别记录。
+时延分布和超目标次数本身不自动产生功能FAIL；旧数值门禁输出须注明历史口径，不能替代当前体验评估。
 `Implemented`、候选索引 ready、单次快速响应或已有 ADR 均不等于本契约 PASS。
 2026-10-08 用户确认：**最终产品验证统一在 L08，最终目标不阻塞 L01–L07。**
 前序阶段按切片功能、真实 LSP 回归和可重放证据推进，保留完整性、快照
@@ -91,13 +97,13 @@ mtime／文件大小不是内容身份的充分证明；监听丢失或身份未
 都须单列，不能用“index ready”或跑过目标列表代替 semantic ready。
 原 S02 投影路线已经停止 production schema 投入，保留 v1–v6 反例及
 正确慢 fallback；S03 不作为 L01–L08 的前置。
-慢 fallback 可以保护正确性，但仍可能使 G-LATENCY FAIL；不得补第二套 checker 或扩张 Rust 语义模型掩盖缺口。
+慢fallback可以保护正确性，耗时仍计入体验评估；持续严重延迟需保留，不得补第二套checker或扩张Rust语义模型掩盖缺口。
 
 ## G-LATENCY：每能力、每场景独立计量
 
 单调时钟计时：`客户端开始写请求 → 收到并解析完整终态响应`。
 包含排队、增量追赶、anchor、索引／compiler、合并、fallback、重试、编码和等待；不以首条结果或内部 CPU 时间代替。
-以下每个 capability × bucket 的正常请求以 500 ms 为优化目标，正式验收要求 P95 ≤550 ms：
+以下每个capability × bucket的正常请求以500ms为体验目标；按分布、频率和持续影响评估，不采用替代数值硬线：
 
 | bucket | 冻结的初始状态 |
 | --- | --- |
@@ -110,18 +116,19 @@ mtime／文件大小不是内容身份的充分证明；监听丢失或身份未
 | after-eviction | 正常预算回收／空闲淘汰后立即请求 |
 | restart-after-validated-ready | 新进程重建或校验官方 LS／Program 的有效输入和完整覆盖后达到 ready；查询未查过符号；SQLite catalog ready 单独不算 |
 
-ready 后普通编辑产生的 updating／等待完整计入，不是新初始化；公开签名影响面大时记该桶失败。
+ready后普通编辑产生的updating/等待完整计入，不是新初始化；公开签名影响面大时独立记录该桶延迟和影响，不自动判功能失败。
 首次准备和重启恢复分别报告 initialize、time-to-semantic-ready、CPU、总时长、峰值内存、Program／SourceFile 范围及必要磁盘量；恢复验证／重建成本不能藏为零。
 首次准备只豁免交互时延门禁，不豁免正确性、内存、可取消和可观测失败。
 SDK／target／大型分支切换可单列重新准备，事件阈值与分类须预先冻结，不事后把普通编辑改名。
 
 PR smoke 每桶至少 10 个终态样本用于回归，不能据此宣称稳定 P95 毕业。
 release 每 capability × bucket 至少 100 个请求、跨至少 5 个独立会话；未见符号须足够多且分层均衡，不复制一个符号冒充样本。
-使用 nearest-rank `ceil(.95*n)`；报告原始分布、P50／P95／P99／max、>500 ms 目标和 >550 ms 上限的比例、error／timeout、fallback 原因／命中率及 coverage。
+沿用本矩阵nearest-rank `ceil(.95*n)`并标明统计方法；报告原始分布、p50/p95/p99/max、>500ms次数/比例、
+慢响应的连续性/时间窗口分布、error/timeout、fallback原因/命中率及coverage；旧>550ms计数仅作历史比较，不作当前硬线。
 样本不足为 `BLOCKED`，未运行为 `NOT_RUN`；bootstrap 区间可追加，不能代替原始分布。
 
 正常请求的 error、内部 timeout 和最终失败均为失败样本，留在分母；超时记录下界／未完成标识，不能记 0 或删掉。
-任何正常请求语义错误直接 G-CORRECT FAIL；slow fallback 不享豁免。
+任何正常请求语义错误直接G-CORRECT FAIL；slow fallback完整计时，不因目标是软目标就隐去持续慢响应。
 用户主动取消和故意 ContentModified 是独立负例，不混成快速成功。
 产品性能用 trace-off；归因用独立 trace-on 运行，不能合并两者样本。
 记录 phase 包含／重叠关系，不相加重叠 wall time；宿主 sleep、thermal、swap 等污染保留并标记，再重测，不冒充 compiler CPU。
@@ -172,7 +179,8 @@ SDK字节、必要分析输入、完整正确性与真实ready仍需验证；兼
 | allowedContractFailures | 0 |
 | warm P95／baseline ratio | ≤1.25 |
 
-新 550 ms 验收上限与旧 warm 回归比同时适用，500 ms 优化目标保留。原 >3 GB 复现及最终 50% peak reduction 目标保持 open，本契约不能关闭它们。
+当前时延按500ms体验目标与分布/持续影响评估，历史550ms不作替代硬线；表中的其他既有资源/回归要求不由本次自动改写。
+原>3GB复现及最终50% peak reduction目标保持open，本契约不能关闭它们。
 准备、正常交互、编辑追赶、淘汰、重启恢复均记录 Zed + server + sidecar product tree 与 compiler context 数量；harness 单列。
 按 PID 计量：worker thread RSS 已包含在 Node PID，不能重复相加；heapUsed／external／arrayBuffers 不能简单相加当 RSS。
 Linux PSS、macOS footprint／RSS、Windows private working set 分别命名，Mac RSS 不能称 PSS 或替代 DevEco/PSS gate。

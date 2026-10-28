@@ -17,7 +17,7 @@ import { createPostEvictionGcProbe } from "./coordinator/post-eviction-gc-probe.
 import type { SemanticMemoryLevel } from "./coordinator/semantic-coordinator.js"
 import { runTransientDiagnosis } from "./diagnostics/transient-diagnosis.js"
 import type { semanticWorkerData } from "./semantic-worker-host.js"
-import { runWorkerCommand } from "./semantic-worker-progress.js"
+import { runWorkerCommand, publishWorkerTerminal } from "./semantic-worker-progress.js"
 import { SemanticCancellationScope, cancellationSignal } from "./semantic-cancellation-scope.js"
 import { isInteractiveSemanticWorkerMethod } from "./semantic-request-lanes.js"
 import { traceSemanticWorkerDispatch } from "./semantic-worker-queue-trace.js"
@@ -266,7 +266,7 @@ async function answerRequest(request: SemanticWorkerRequest): Promise<void> {
         .then(report => report.semanticGeneration ? { ...report,
           semanticGeneration: `${request.epoch}:${request.requiredRevision}:${report.semanticGeneration}:${report.inputIdentity!.sha256}` } : report)
       : invoke(request, document!, rootUri))
-    port.postMessage({
+    publishWorkerTerminal(() => port.postMessage({
       protocol: SEMANTIC_WORKER_PROTOCOL_VERSION,
       epoch: request.epoch,
       id: request.id,
@@ -274,7 +274,7 @@ async function answerRequest(request: SemanticWorkerRequest): Promise<void> {
       documentVersion: request.expectedDocumentVersion,
       ok: true,
       value,
-    })
+    }))
   } catch (error) {
     postError(request, workerRequestErrorCode(request.cancelCell, error))
   }
@@ -432,7 +432,7 @@ function callHierarchySource(
 }
 
 function postError(request: SemanticWorkerRequest, code: SemanticWorkerErrorCode): void {
-  port.postMessage({
+  publishWorkerTerminal(() => port.postMessage({
     protocol: SEMANTIC_WORKER_PROTOCOL_VERSION,
     epoch: request.epoch,
     id: request.id,
@@ -440,7 +440,7 @@ function postError(request: SemanticWorkerRequest, code: SemanticWorkerErrorCode
     documentVersion: request.expectedDocumentVersion,
     ok: false,
     error: createSemanticWorkerError(code),
-  })
+  }))
 }
 
 function readMemoryPressure(): SemanticMemoryLevel {
