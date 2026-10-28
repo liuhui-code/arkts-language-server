@@ -73,6 +73,26 @@
 补齐安装链接后的普通两文件Node20回归为32/32、140333.851ms，0fail/cancelled/skipped/todo，
 见`second-focused-node20.log`；Node26及新HEAD的全量结果继续独立记录。
 
+## 第三轮CI：独立取消基准工具的未复现失败
+
+[run40660325776](https://github.com/liuhui-code/arkts-language-server/actions/runs/40660325776)
+对`f4da57e`完整执行2086项：2085pass、1fail，0cancelled/skipped/todo，1922794.001ms；Windows检查通过。
+以上语义测试全部通过，唯一失败是`replay-settings-cancel-control-cli`的完成/取消竞争场景，
+工具期望NOT_CANCELLED却产生FAIL；该用例运行假LSP子进程，不是30K真实SDK测试。
+原job未保存生成报告，无法区分terminalValidation、恢复、RSS采样、关闭或来源完整性哪个条件失败。
+不将其静态归因于采样、Node生命周期或产品取消实现。
+
+Mac Node20串行30次没有复现，清理前报告保留于`cancel-classification-repeats/`。
+临时CI前置步骤在同版Node20 Linux串行40次也全部通过，见
+[诊断run40668828512](https://github.com/liuhui-code/arkts-language-server/actions/runs/40668828512)；
+这是定向诊断，不计完整fast，更不是UI验收。临时步骤随后撤回，正式工作流恢复原状后另跑最终全量。
+原断言增加完整报告作为失败消息，NOT_CANCELLED、sent、batch阶段、精确九结果和恢复断言均保持不变。
+**该问题仍未定位/未宣称修复**；后续若再失败，应依据报告逐项定位，不能反复无证据重跑获得绿色。
+
+本地已有Docker曾用于准备隔离Linux最小复现，但官方镜像下载十分钟无进展；
+终止本轮下载后确认0容器并退出Docker，没有改产品依赖或使用他人的业务镜像。
+相关尝试及原始失败见`../ci-attempt3/`、`../ci-cancel-diagnostic/`与`docker-node20-pull.log`。
+
 ## 命令、原始证据与最终门禁
 
 证据根目录：`.bench/merge-candidate11-20261028/ci-diagnosis/`，保留RED/GREEN日志、清理前夹具日志及以下诊断脚本：

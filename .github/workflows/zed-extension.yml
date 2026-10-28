@@ -79,12 +79,6 @@ jobs:
       - name: Install the Zed WebAssembly target
         run: rustup target add wasm32-wasip2
 
-      - name: Diagnose cancellation report race before the full gate
-        run: |
-          for attempt in $(seq 1 40); do
-            node --test --test-name-pattern='Settings cancel control classifies a completion racing' tests/replay-settings-cancel-control-cli.test.mjs
-          done
-
       - name: Run the canonical release gate
         run: pnpm check:release
 
