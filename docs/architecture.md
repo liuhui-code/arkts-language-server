@@ -1,12 +1,16 @@
 # Architecture and ownership
 
-The 2026-10-18 [initial preparation and semantic-group decision](adr/0018-semantic-groups-and-initial-preparation.md)
-sets a configurable 4GiB runtime pressure default and exempts first project initialization from pressure admission/eviction.
+The 2026-10-29 [opt-in RSS budget decision](adr/0029-opt-in-rss-memory-budget.md)
+removes the default fixed RSS budget and its automatic pressure actions in the current candidate.
+An explicit positive `ARKTS_MEMORY_BUDGET_MB` retains pressure protection and the first-initialization exemption.
+Normal ownership cleanup, bounded caches and fault recovery remain independent of this setting.
+This supersedes the default 4GiB portion of the 2026-10-18
+[initial preparation and semantic-group decision](adr/0018-semantic-groups-and-initial-preparation.md).
 Shared SDK prewarming and stable retained groups are being implemented in TDD slices; migration and validation status remain in that ADR's evidence record.
 
 The 2026-10-11 [maintainer default-policy decision](adr/0015-default-resident-optimization-policy.md)
 enables six selected resident optimizations with explicit opt-out. Earlier
-default-off stage statements below are historical; normal ownership, budgets,
+default-off stage statements below are historical; normal ownership, explicit budgets,
 exact fallback and unfinished L08 gates are unchanged.
 
 The 2026-10-18 [SDK cache decision](adr/0016-reference-verifier-sdk-cache.md)

@@ -84,12 +84,14 @@ async function runTestChild({ spawn, nodePath, entries, cwd, target, stderr }) {
         "--test",
         "--test-concurrency=1",
         "--test-reporter=spec",
-        `--test-reporter=${runtimeReporterPath}`,
+        `--test-reporter=${pathToFileURL(runtimeReporterPath).href}`,
         "--test-reporter-destination=stdout",
         `--test-reporter-destination=${reportPath}`,
         ...entries,
       ],
-      { cwd, stdio: "inherit" },
+      { cwd, stdio: "inherit", env: { ...process.env,
+        ARKTS_INDEX_CACHE_GC: process.env.ARKTS_INDEX_CACHE_GC ?? "off",
+        ARKTS_INDEX_CACHE_DIR: path.join(reportDirectory, "index-cache") } },
     ))
     if (termination.code !== 0 || termination.signal !== null) {
       stderr.write(`[node-test-layer] child-exit code=${termination.code} signal=${termination.signal}\n`)

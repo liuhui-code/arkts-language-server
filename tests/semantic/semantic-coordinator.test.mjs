@@ -10,7 +10,7 @@ import { buildSync } from "esbuild"
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 
-test("the committed semantic runtime configuration fixes one worker with pressure-managed residency", () => {
+test("the committed semantic runtime configuration fixes one worker without a default RSS or context-count budget", () => {
   const config = JSON.parse(fs.readFileSync(
     path.join(projectRoot, "config", "semantic-runtime.json"),
     "utf8",
@@ -19,16 +19,19 @@ test("the committed semantic runtime configuration fixes one worker with pressur
   assert.equal(config.schemaVersion, 1)
   assert.equal(config.semanticWorkers, 1)
   assert.equal(config.maxResidentContexts, null)
+  assert.equal(config.defaultMemoryBudgetMiB, null)
   assert.ok(config.level1Ratio < config.level2Ratio)
   assert.ok(config.level2Ratio < config.level3Ratio)
   assert.ok(config.level3TargetRatio < config.level3Ratio)
 })
 
-test("runtime pressure defaults to four GiB and accepts an explicit MiB override", t => {
+test("runtime pressure defaults to no budget and accepts an explicit MiB override", t => {
   const { semanticRuntimeConfig } = buildCoordinatorDriver(t)
-  assert.equal(semanticRuntimeConfig({}).memoryBudgetBytes, 4096 * 1024 * 1024)
+  assert.equal(semanticRuntimeConfig({}).memoryBudgetBytes, null)
+  assert.equal(semanticRuntimeConfig({ ARKTS_MEMORY_BUDGET_MB: "4096" }).memoryBudgetBytes, 4096 * 1024 * 1024)
   assert.equal(semanticRuntimeConfig({ ARKTS_MEMORY_BUDGET_MB: "768" }).memoryBudgetBytes, 768 * 1024 * 1024)
-  for (const value of ["0", "-1", "NaN", "Infinity"]) {
+  assert.equal(semanticRuntimeConfig({ ARKTS_MEMORY_BUDGET_MB: "768.5" }).memoryBudgetBytes, 768.5 * 1024 * 1024)
+  for (const value of ["0", "-1", "NaN", "Infinity", "", "   ", "off", "null", "1e-12", "1e100"]) {
     assert.throws(() => semanticRuntimeConfig({ ARKTS_MEMORY_BUDGET_MB: value }), /must be.*positive/)
   }
 })
@@ -50,6 +53,18 @@ test("an active lease pins its context through level 3 pressure", (t) => {
   lease.release()
   coordinator.applyMemoryPressure("level3")
   assert.deepEqual(events, ["create:project-a", "dispose:project-a"])
+})
+
+test("an absent RSS budget never classifies large samples and does not retain an old pressure latch", t => {
+  const { SemanticMemoryPolicy } = buildCoordinatorDriver(t)
+  const policy = new SemanticMemoryPolicy({ level1Ratio: 0.7, level2Ratio: 0.82,
+    level3Ratio: 0.92, level3TargetRatio: 0.85 })
+  for (const rss of [0, 4 * 1024 ** 3, 8 * 1024 ** 3, Number.MAX_SAFE_INTEGER]) {
+    assert.equal(policy.levelFor(rss, null), "level0")
+  }
+  assert.equal(policy.levelFor(950, 1000), "level3")
+  assert.equal(policy.levelFor(950, null), "level0")
+  assert.equal(policy.levelFor(900, 1000), "level2")
 })
 
 test("level 2 trims cold contexts before level 3 disposes them", (t) => {

@@ -19,8 +19,12 @@ export class SemanticMemoryPolicy {
     }
   }
 
-  levelFor(rssBytes: number, budgetBytes: number): SemanticMemoryLevel {
+  levelFor(rssBytes: number, budgetBytes: number | null): SemanticMemoryLevel {
     if (!Number.isFinite(rssBytes) || rssBytes < 0) throw new Error("rssBytes must be non-negative")
+    if (budgetBytes === null) {
+      this.#level3Active = false
+      return "level0"
+    }
     if (!Number.isFinite(budgetBytes) || budgetBytes <= 0) {
       throw new Error("budgetBytes must be positive")
     }

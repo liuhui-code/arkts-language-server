@@ -2,6 +2,7 @@ import { pathToFileURL } from "node:url"
 
 import type { LanguageServerServices } from "../lsp/run-language-server.js"
 import { resolveIndexCacheDirectory } from "../index/cache-directory.js"
+import { IndexCacheMaintenance } from "../index/cache-maintenance.js"
 import { SidecarWorkspaceIndex, type SidecarProtocolEvent } from "../index/sidecar-workspace-index.js"
 import { SingleRootProjectResolver } from "../project/single-root-project-resolver.js"
 import { createProductionSemanticEngine } from "../semantic/backends/production-semantic-engine.js"
@@ -55,6 +56,7 @@ export function createProductionLanguageServerServices(
     catalog: index,
     semantic,
     cacheDirectory: resolveIndexCacheDirectory({ env: environment }),
+    maintenance: new IndexCacheMaintenance(resolveIndexCacheDirectory({ env: environment }), environment, logger),
   })
   return { projects, semantic, workspaceSymbols, logger }
 }

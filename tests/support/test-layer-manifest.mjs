@@ -23,6 +23,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/l01-soak-suite-generator-cli.test.mjs",
       "tests/local-delivery-config.test.mjs",
       "tests/logging.test.mjs",
+      "tests/lsp-cache-isolation.test.mjs",
       "tests/lsp-feature-matrix.test.mjs",
       "tests/lsp-feature-matrix-validation.test.mjs",
       "tests/lsp-edits.test.mjs",
@@ -132,6 +133,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/semantic-worker-test-harness.test.mjs",
     ]),
     layer("bundle-e2e", true, [
+      "tests/index-cache-cli.test.mjs",
       "tests/conformance-scenario.test.mjs",
       "tests/lsp-capability-contract.test.mjs",
       "tests/lsp-call-hierarchy.test.mjs",
@@ -269,6 +271,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/version-identity.test.mjs",
     ], true),
     layer("artifact-e2e", false, [
+      "tests/release/index-cache-install.acceptance.mjs",
       "tests/release/index-sidecar.acceptance.mjs",
       "tests/release/local-delivery.acceptance.mjs",
       "tests/release/portable-install.acceptance.mjs",

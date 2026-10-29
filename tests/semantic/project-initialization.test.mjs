@@ -1,10 +1,139 @@
 import assert from "node:assert/strict"
 import fs from "node:fs"
+import os from "node:os"
 import path from "node:path"
 import test from "node:test"
 import { pathToFileURL } from "node:url"
 import { createReadinessFixture, startReadinessFixture } from "../support/semantic-readiness-lsp.mjs"
 import { positionAt } from "../support/resident-interactive-lsp.mjs"
+import { projectRoot } from "../support/lsp-process.mjs"
+
+test("an unconfigured RSS budget keeps complete public readiness above the former default", async t => {
+  const f = await startReadinessFixture(t, reportedPressureEnvironment())
+  const evidence = fs.readFileSync(path.join(f.directory, "reported-rss.jsonl"), "utf8")
+    .trim().split("\n").map(JSON.parse)
+  assert.equal(evidence[0].budget, null, "the child must actually have no configured budget")
+  assert.equal(evidence[0].reportedRss, 8 * 1024 ** 3)
+  assert.ok(evidence[0].actualRss < evidence[0].reportedRss, "do not allocate the synthetic RSS")
+  const response = await f.session.request("arkts/semanticReadiness", { rootUri: f.rootUri, prepare: false })
+  assert.equal(response.error, undefined, JSON.stringify(response))
+  assert.equal(response.result.semanticState, "ready", JSON.stringify(response))
+  assert.deepEqual(response.result.unavailableReasons, [])
+  assert.ok(!f.events().some(e => ["memory-level2", "memory-level3"].includes(e.reason)))
+  assert.equal(f.events().filter(e => e.event === "semantic.worker.started").length, 1)
+})
+
+test("an explicit RSS budget still applies pressure after initial preparation", async t => {
+  const f = await startReadinessFixture(t, reportedPressureEnvironment("4096"))
+  assert.equal(f.initialPreparation.semanticState, "ready", "the initial exemption remains scoped")
+  const response = await f.session.request("arkts/semanticReadiness", { rootUri: f.rootUri, prepare: false })
+  assert.equal(response.error, undefined, JSON.stringify(response))
+  assert.equal(response.result.semanticState, "degraded")
+  assert.deepEqual(response.result.unavailableReasons, ["resource-budget-exceeded"])
+  assert.ok(f.events().some(e => e.reason === "memory-level3"), "an explicit budget may evict idle owners")
+})
+
+test("no RSS budget preserves warm Programs and fresh complete results through edit undo and reopen",
+  { timeout: 45_000 }, async t => {
+    const metricsDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-no-rss-budget-"))
+    const metricsFile = path.join(metricsDirectory, "metrics.jsonl")
+    const f = await startReadinessFixture(t, {
+      ...reportedPressureEnvironment(), ARKTS_MEMORY_METRICS_FILE: metricsFile,
+    })
+    t.after(() => fs.rmSync(metricsDirectory, { recursive: true, force: true }))
+    const { session, sources, uri, rootUri, events } = f
+    const original = sources["Main.ets"], originalTarget = sources["Unopened.ets"]
+    const timings = [], generations = []
+    const request = async (method, params) => {
+      const started = performance.now()
+      const response = await session.request(method, params, { timeoutMs: 20_000 })
+      timings.push({ method, durationMs: performance.now() - started })
+      assert.equal(response.error, undefined, JSON.stringify(response))
+      return response.result
+    }
+    const occurrences = text => {
+      const ranges = []
+      for (let offset = text.indexOf("neverQueried"); offset >= 0; offset = text.indexOf("neverQueried", offset + 1)) {
+        ranges.push({ start: positionAt(text, offset), end: positionAt(text, offset + "neverQueried".length) })
+      }
+      return ranges
+    }
+    const sorted = locations => locations.map(location => JSON.stringify(location)).sort()
+    const query = async text => {
+      const params = { textDocument: { uri: uri("Main.ets") },
+        position: positionAt(text, text.lastIndexOf("neverQueried") + 1) }
+      assert.deepEqual(await request("textDocument/definition", params),
+        [{ uri: uri("Unopened.ets"), range: occurrences(originalTarget)[0] }])
+      const expected = [...occurrences(text).map(range => ({ uri: uri("Main.ets"), range })),
+        ...occurrences(originalTarget).map(range => ({ uri: uri("Unopened.ets"), range }))]
+      assert.deepEqual(sorted(await request("textDocument/references",
+        { ...params, context: { includeDeclaration: true } })), sorted(expected))
+      const renamed = await request("textDocument/rename", { textDocument: { uri: uri("Unopened.ets") },
+        position: occurrences(originalTarget)[0].start, newName: "renamedFunction" })
+      const edits = renamed.documentChanges.flatMap(change => change.edits.map(edit => {
+        assert.equal(edit.newText, "renamedFunction")
+        return { uri: change.textDocument.uri, range: edit.range }
+      }))
+      assert.deepEqual(sorted(edits), sorted(expected), "complete rename must include the unsaved call")
+      const hover = await request("textDocument/hover", params)
+      assert.match(hover.contents.value, /neverQueried\(\): number/)
+      const completion = await request("textDocument/completion", { ...params,
+        position: positionAt(text, text.lastIndexOf("neverQueried") + 5) })
+      const item = (Array.isArray(completion) ? completion : completion.items)
+        .find(candidate => candidate.label === "neverQueried")
+      assert.ok(item, "the live imported function remains available for completion")
+      const resolved = await request("completionItem/resolve", item)
+      assert.match(resolved.detail, /neverQueried/)
+      const status = await request("arkts/semanticReadiness", { rootUri, prepare: false })
+      assert.equal(status.semanticState, "ready", JSON.stringify(status))
+      return status
+    }
+    session.openDocument({ uri: uri("Main.ets"), version: 1, text: original })
+    let version = 1
+    await query(original)
+    const contexts = events().filter(e => e.event === "semantic.context.create").length
+    for (let round = 0; round < 6; round++) {
+      const edited = original + `export const unsaved${round} = neverQueried()\n`
+      session.changeDocument({ uri: uri("Main.ets"), version: ++version, text: edited })
+      const fresh = await query(edited)
+      for (let repeated = 0; repeated < 2; repeated++) {
+        const warm = await query(edited)
+        assert.equal(warm.semanticGeneration, fresh.semanticGeneration, "unchanged warm queries retain the same Program")
+        assert.deepEqual(warm.inputIdentity, fresh.inputIdentity)
+      }
+      generations.push(fresh.semanticGeneration)
+      session.changeDocument({ uri: uri("Main.ets"), version: ++version, text: original })
+      await query(original)
+      session.transport.send({ jsonrpc: "2.0", method: "textDocument/didClose",
+        params: { textDocument: { uri: uri("Main.ets") } } })
+      session.openDocument({ uri: uri("Main.ets"), version: ++version, text: original })
+      await query(original)
+    }
+    assert.equal(events().filter(e => e.event === "semantic.context.create").length, contexts,
+      "content versions and requests must not create a growing owner set")
+    assert.ok(!events().some(e => ["memory-level2", "memory-level3"].includes(e.reason)))
+    assert.equal(events().filter(e => e.event === "semantic.worker.started").length, 1)
+    assert.equal(fs.readFileSync(path.join(f.workspace, "Main.ets"), "utf8"), original)
+    const metrics = fs.readFileSync(metricsFile, "utf8").trim().split("\n").map(JSON.parse)
+    assert.ok(metrics.every(row => row.rss === 8 * 1024 ** 3))
+    assert.equal(metrics.at(-1).leaseCount, 0, "completed operations release their leases")
+    assert.equal(metrics.at(-1).activeVerifierJobCount, 0)
+    assert.ok(metrics.every(row => row.residentContextCount <= contexts))
+    assert.deepEqual((await session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })
+    t.diagnostic(JSON.stringify({ qualification: "PRIVATE_SDK_SYNTHETIC_RSS_NOT_8GIB_ALLOCATION_OR_30K_SOAK",
+      rounds: 6, contexts, generations, requests: timings.length, timings,
+      firstMetrics: metrics[0], lastMetrics: metrics.at(-1),
+      actualRss: fs.readFileSync(path.join(f.directory, "reported-rss.jsonl"), "utf8").trim().split("\n").map(JSON.parse) }))
+  })
+
+function reportedPressureEnvironment(budget) {
+  return { ARKTS_MEMORY_BUDGET_MB: budget, ARKTS_BENCHMARK_CONTROL: "0",
+    ARKTS_REFERENCES_RESIDENT_FAST_PATH: "1",
+    ARKTS_INDEX_SIDECAR_PATH: path.join(projectRoot, "target/release",
+      process.platform === "win32" ? "arkts-index-sidecar.exe" : "arkts-index-sidecar"),
+    NODE_OPTIONS: `--require=${JSON.stringify(path.join(projectRoot, "tests/fixtures/reported-worker-rss.cjs"))}`,
+    ARKTS_TEST_REPORTED_RSS_MIB: "8192" }
+}
 
 test("initial preparation covers every selected semantic group before a first query of the last module",
   { timeout: 30_000 }, async t => {

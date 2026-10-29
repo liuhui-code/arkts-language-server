@@ -2,9 +2,8 @@
 
 use std::{
     collections::BTreeSet,
-    fmt::Write as _,
     fs,
-    path::{Path, PathBuf},
+    path::Path,
     time::{Duration, Instant},
 };
 
@@ -24,8 +23,8 @@ use rusqlite::{
     Connection, ErrorCode, OpenFlags, ToSql, Transaction, TransactionBehavior, params,
     params_from_iter,
 };
-use sha2::{Digest, Sha256};
 
+pub mod cache_gc;
 mod catalog_insert;
 mod catalog_replace;
 mod class_binding_migration;
@@ -49,77 +48,13 @@ const SCHEMA_VERSION: i64 = 111;
 
 type DirectImportDeclaration = (String, String, String, Option<String>);
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct WorkspaceCacheLocation {
-    pub workspace_identity: String,
-    pub database_path: PathBuf,
-}
-
-pub fn workspace_cache_location(
-    cache_directory: impl AsRef<Path>,
-    workspace_root: impl AsRef<Path>,
-) -> Result<WorkspaceCacheLocation, StoreError> {
-    let canonical_root = fs::canonicalize(workspace_root).map_err(|error| {
-        StoreError::new(
-            StoreErrorKind::Io,
-            format!("failed to canonicalize workspace root: {error}"),
-        )
-    })?;
-    let workspace_identity = path_to_file_uri(&canonical_root);
-    let mut hasher = Sha256::new();
-    hasher.update(b"arkts-index-cache\0v2\0");
-    hasher.update(workspace_identity.as_bytes());
-    let mut cache_key = String::with_capacity(64);
-    for byte in hasher.finalize() {
-        write!(&mut cache_key, "{byte:02x}").expect("writing to String cannot fail");
-    }
-    Ok(WorkspaceCacheLocation {
-        workspace_identity,
-        database_path: cache_directory
-            .as_ref()
-            .join("workspaces")
-            .join(cache_key)
-            .join("symbols-v2.sqlite3"),
-    })
-}
-
-#[cfg(unix)]
-pub fn path_to_file_uri(path: &Path) -> String {
-    use std::os::unix::ffi::OsStrExt;
-
-    format!(
-        "file://{}",
-        percent_encode_path(path.as_os_str().as_bytes())
-    )
-}
-
-#[cfg(windows)]
-pub fn path_to_file_uri(path: &Path) -> String {
-    let mut normalized = path.to_string_lossy().replace('\\', "/");
-    if let Some(without_prefix) = normalized.strip_prefix("//?/") {
-        normalized = without_prefix.to_owned();
-    }
-    if normalized.as_bytes().get(1) == Some(&b':') {
-        let normalized_drive = normalized[0..1].to_ascii_lowercase();
-        normalized.replace_range(0..1, &normalized_drive);
-    }
-    format!("file:///{}", percent_encode_path(normalized.as_bytes()))
-}
-
-fn percent_encode_path(bytes: &[u8]) -> String {
-    let mut encoded = String::with_capacity(bytes.len());
-    for byte in bytes {
-        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~' | b'/' | b':') {
-            encoded.push(char::from(*byte));
-        } else {
-            write!(&mut encoded, "%{byte:02X}").expect("writing to String cannot fail");
-        }
-    }
-    encoded
-}
-
+mod cache_location;
+pub use cache_location::{
+    WorkspaceCacheLocation, cache_key, path_to_file_uri, workspace_cache_location,
+};
 pub struct SqliteStore {
     connection: Connection,
+    _cache_lease: Option<cache_gc::lease::CacheLease>,
     #[cfg(debug_assertions)]
     fail_before_commit: bool,
     #[cfg(debug_assertions)]
@@ -133,6 +68,17 @@ pub struct SqliteStore {
 impl SqliteStore {
     pub fn open(path: impl AsRef<Path>, workspace_identity: &str) -> Result<Self, StoreError> {
         let path = path.as_ref();
+        let cache_lease =
+            cache_gc::lease::CacheLease::acquire(path, workspace_identity).map_err(|error| {
+                StoreError::new(
+                    if matches!(&error, cache_gc::lease::CacheLeaseError::IdentityMismatch) {
+                        StoreErrorKind::WorkspaceMismatch
+                    } else {
+                        StoreErrorKind::Io
+                    },
+                    error.to_string(),
+                )
+            })?;
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|error| {
                 StoreError::new(
@@ -162,9 +108,15 @@ impl SqliteStore {
             .map_err(map_sqlite_error)?;
 
         schema_migrations::ensure_schema(&mut connection, workspace_identity)?;
+        if let Some(lease) = &cache_lease {
+            lease
+                .record_use()
+                .map_err(|error| StoreError::new(StoreErrorKind::Io, error))?;
+        }
 
         Ok(Self {
             connection,
+            _cache_lease: cache_lease,
             #[cfg(debug_assertions)]
             fail_before_commit: false,
             #[cfg(debug_assertions)]

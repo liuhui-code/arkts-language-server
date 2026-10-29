@@ -3,6 +3,7 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { hasOwn, isResponse, isServerRequest, isNotification, messageKind, protocolFailure, contentLengthFromHeader } from "./lsp-message-shape.mjs"
 import { fileURLToPath } from "node:url"
+import { testIndexCache } from "./test-index-cache.mjs"
 
 export const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 
@@ -63,13 +64,16 @@ export class LspProcess {
     maxTranscriptEntries = 128,
     maxTranscriptBytes = 64 * 1_024,
   } = {}) {
+    const cache = testIndexCache(env)
+    this.indexCacheDirectory = cache.directory
     this.child = spawn(command, args, {
       cwd,
       env: { ...process.env,
         ARKLINE_HARMONY_SDK_PATH: path.join(projectRoot, "fixtures/conformance/v1/sdk/openharmony"),
-        ...env },
+        ...cache.environment },
       stdio: ["pipe", "pipe", "pipe"],
     })
+    this.indexCacheCleanup = cache.afterClose(this.child)
     this.buffer = Buffer.alloc(0)
     this.messages = []
     this.waiters = []

@@ -3,9 +3,9 @@ import committedConfig from "../../../config/semantic-runtime.json" assert { typ
 export interface SemanticRuntimeConfig {
   readonly schemaVersion: 1
   readonly semanticWorkers: 1
-  /** null selects pressure-managed retention; finite limits remain for isolated controls. */
+  /** null disables the context-count cap; an RSS budget is independently opt-in. */
   readonly maxResidentContexts: number | null
-  readonly defaultMemoryBudgetMiB: number
+  readonly defaultMemoryBudgetMiB: number | null
   readonly sampleIntervalMs: number
   readonly level1Ratio: number
   readonly level2Ratio: number
@@ -15,13 +15,17 @@ export interface SemanticRuntimeConfig {
 
 export function semanticRuntimeConfig(
   env: NodeJS.ProcessEnv = process.env,
-): SemanticRuntimeConfig & { readonly memoryBudgetBytes: number } {
+): SemanticRuntimeConfig & { readonly memoryBudgetBytes: number | null } {
   const override = env.ARKTS_MEMORY_BUDGET_MB
   const budgetMiB = override === undefined
     ? committedConfig.defaultMemoryBudgetMiB
     : Number(override)
-  if (!Number.isFinite(budgetMiB) || budgetMiB <= 0) {
+  if (budgetMiB !== null && (!Number.isFinite(budgetMiB) || budgetMiB <= 0)) {
     throw new Error("ARKTS_MEMORY_BUDGET_MB must be a positive number")
+  }
+  const memoryBudgetBytes = budgetMiB === null ? null : Math.floor(budgetMiB * 1024 * 1024)
+  if (memoryBudgetBytes !== null && (!Number.isSafeInteger(memoryBudgetBytes) || memoryBudgetBytes < 1)) {
+    throw new Error("ARKTS_MEMORY_BUDGET_MB must be positive and represent a safe byte budget")
   }
   if (committedConfig.semanticWorkers !== 1 || (committedConfig.maxResidentContexts !== null
     && (!Number.isSafeInteger(committedConfig.maxResidentContexts) || committedConfig.maxResidentContexts < 1))) {
@@ -31,6 +35,6 @@ export function semanticRuntimeConfig(
     ...committedConfig,
     schemaVersion: 1,
     semanticWorkers: 1,
-    memoryBudgetBytes: Math.floor(budgetMiB * 1024 * 1024),
+    memoryBudgetBytes,
   })
 }

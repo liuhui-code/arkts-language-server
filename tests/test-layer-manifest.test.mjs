@@ -17,7 +17,10 @@ const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 test("classifies every executable test entry exactly once in an explicit layer", () => {
   const audit = validateTestLayerManifest({ root: projectRoot, manifest: TEST_LAYER_MANIFEST })
 
-  assert.equal(audit.entryCount, 264)
+  assert.equal(audit.entryCount, 267)
+  assert.equal(audit.assignments["tests/lsp-cache-isolation.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/index-cache-cli.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/release/index-cache-install.acceptance.mjs"], "artifact-e2e")
   for (const entry of ["partial-project-initialization", "relative-candidate-reuse", "progressing-synchronization", "edit-undo-definition",
     "resolution-namespace-lifecycle", "synchronization-terminal-handoff", "interactive-diagnostic-fairness"]) {
     assert.equal(audit.assignments[`tests/semantic/${entry}.test.mjs`], "bundle-e2e")
@@ -325,10 +328,10 @@ test("classifies every executable test entry exactly once in an explicit layer",
     "bundle-e2e",
   )
   assert.deepEqual(audit.layerCounts, {
-    "unit-contract": 111,
+    "unit-contract": 112,
     protocol: 11,
-    "bundle-e2e": 135,
-    "artifact-e2e": 3,
+    "bundle-e2e": 136,
+    "artifact-e2e": 4,
     "sealed-artifact-e2e": 1,
     large: 1,
     "real-sdk": 2,
