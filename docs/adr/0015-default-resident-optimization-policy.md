@@ -2,6 +2,8 @@
 
 日期：2026-10-11。状态：Accepted by explicit maintainer decision。
 
+2026-10-29：[ADR0029](0029-opt-in-rss-memory-budget.md)取消默认固定RSS预算；本记录的复用开关不变，压力动作仅在显式配置预算时自动触发。下文1024MiB/4GiB为历史策略，不代表新候选默认值。
+
 2026-10-18：[ADR 0018](0018-semantic-groups-and-initial-preparation.md) 接受稳定组与延迟释放，默认压力改为 4GiB、支持配置，首次项目初始化不受压力值限制；下文 1024MiB 和成本优先排序为此前策略。新机制按 TDD 迁移，实际实现状态见 ADR 0018，不借用本记录的旧回归结果。
 
 维护者明确要求当前有效优化组合默认开启，通过分支和 PR 合入 main

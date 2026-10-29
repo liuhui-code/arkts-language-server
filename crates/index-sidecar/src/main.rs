@@ -1,16 +1,17 @@
 mod catalog;
+mod stdio;
+use stdio::{InputUpdate, spawn_input_reader, write_response};
+mod cache_cli;
 mod class_binding_discovery;
 mod reference_candidates;
 
 use std::{
-    fs,
-    io::{self, BufRead, Write},
+    fs, io,
     path::PathBuf,
     sync::{
         Mutex,
         mpsc::{self, Sender},
     },
-    thread,
     time::{Duration, Instant},
 };
 
@@ -535,7 +536,7 @@ impl Runtime {
 }
 
 fn main() {
-    if let Err(error) = run() {
+    if let Err(error) = cache_cli::run().unwrap_or_else(run) {
         eprintln!("arkts-index-sidecar: {error}");
         std::process::exit(1);
     }
@@ -630,49 +631,6 @@ fn run() -> Result<(), String> {
         active.control.cancel();
     }
     Ok(())
-}
-
-enum InputUpdate {
-    Line(String),
-    End,
-    Error(String),
-}
-
-fn spawn_input_reader(sender: Sender<InputUpdate>) -> Result<(), String> {
-    thread::Builder::new()
-        .name("arkts-sidecar-stdin".to_owned())
-        .spawn(move || {
-            let stdin = io::stdin();
-            for line in stdin.lock().lines() {
-                match line {
-                    Ok(line) => {
-                        if sender.send(InputUpdate::Line(line)).is_err() {
-                            return;
-                        }
-                    }
-                    Err(error) => {
-                        let _ = sender
-                            .send(InputUpdate::Error(format!("failed to read stdin: {error}")));
-                        return;
-                    }
-                }
-            }
-            let _ = sender.send(InputUpdate::End);
-        })
-        .map(|_| ())
-        .map_err(|error| format!("failed to spawn stdin reader: {error}"))
-}
-
-fn write_response(writer: &Mutex<impl Write>, response: Value) -> Result<(), String> {
-    let mut writer = writer
-        .lock()
-        .map_err(|_| "stdout writer mutex is poisoned".to_owned())?;
-    serde_json::to_writer(&mut *writer, &response)
-        .map_err(|error| format!("failed to serialize response: {error}"))?;
-    writer
-        .write_all(b"\n")
-        .and_then(|()| writer.flush())
-        .map_err(|error| format!("failed to write response: {error}"))
 }
 
 fn parse_params<T: for<'de> Deserialize<'de>>(value: Value) -> Result<T, ProtocolError> {

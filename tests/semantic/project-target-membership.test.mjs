@@ -457,7 +457,7 @@ function targetFixture(t) {
         env: {
           ARKLINE_HARMONY_SDK_PATH: path.join(root, "missing-sdk"),
           ARKTS_LSP_LOG_DIR: path.join(root, `logs-${sessions.length}`),
-          ARKTS_LSP_CACHE_DIR: path.join(root, `cache-${sessions.length}`),
+          ARKTS_INDEX_CACHE_DIR: path.join(root, `cache-${sessions.length}`),
         },
       })
       sessions.push(session)

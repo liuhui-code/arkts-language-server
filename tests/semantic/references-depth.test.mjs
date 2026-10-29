@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url"
 import { LspProcess, projectRoot } from "../support/lsp-process.mjs"
 import { materializeConformanceWorkspace } from "../support/materialize-conformance-workspace.mjs"
 import { requestReferenceLocations } from "../support/request-reference-locations.mjs"
+import { closeProductionFixture } from "../support/production-session-lifecycle.mjs"
 
 const fixtureRoot = path.join(projectRoot, "fixtures", "semantic", "references-depth")
 const apiPath = path.join(fixtureRoot, "Api.ets")
@@ -79,13 +80,7 @@ test("finds named cross-module references only in declared Stage modules", async
       ARKTS_INDEX_CACHE_DIR: path.join(materialized.root, "cache"),
     },
   })
-  t.after(async () => {
-    try {
-      await server.close()
-    } finally {
-      await fs.promises.rm(materialized.root, { recursive: true, force: true })
-    }
-  })
+  t.after(() => closeProductionFixture([server], materialized.root))
 
   server.send({
     jsonrpc: "2.0",
@@ -659,13 +654,7 @@ function namedReferenceScenario(t, materialized) {
     return location(uri, range)
   }))
 
-  t.after(async () => {
-    try {
-      for (const server of servers.reverse()) await server.close()
-    } finally {
-      await fs.promises.rm(materialized.root, { recursive: true, force: true })
-    }
-  })
+  t.after(() => closeProductionFixture(servers, materialized.root))
 
   return {
     query,

@@ -1,6 +1,7 @@
 # ADR 0019：稳定语义组、长期 Program 与请求输入复用
 
 - 日期：2026-10-19。
+- 2026-10-29修订：[ADR0029](0029-opt-in-rss-memory-budget.md)取消默认固定RSS预算；保留本记录的稳定组、长期Program、输入证明及显式预算行为。下文默认4096MiB与压力管理结论保留为当时历史，不代表新候选的默认配置。
 - 状态：Accepted，维护者已授权实现与对比测试；实现和性能验收 **IN_PROGRESS**。
 - 父版本：`3add697043380612efe71cef074e5de292422fe2`。
 - 执行与逐片证据：[实施记录](../tdd/stable-program-optimization.md)。

@@ -11,3 +11,8 @@ experimental-occurrence-without-rowid = []
 arkts-index-core = { path = "../index-core" }
 rusqlite = { version = "=0.40.1", features = ["bundled"] }
 sha2 = "0.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(unix)'.dependencies]
+libc = "=0.2.189"

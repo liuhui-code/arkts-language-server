@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "semanticWorkers": 1,
   "maxResidentContexts": null,
-  "defaultMemoryBudgetMiB": 4096,
+  "defaultMemoryBudgetMiB": null,
   "sampleIntervalMs": 1000,
   "level1Ratio": 0.70,
   "level2Ratio": 0.82,

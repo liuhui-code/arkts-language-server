@@ -5,7 +5,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import test from "node:test"
-import { fileURLToPath } from "node:url"
+import { fileURLToPath, pathToFileURL } from "node:url"
 
 import nodeTestRuntimeReporter from "../scripts/node-test-runtime-reporter.mjs"
 import { runNodeTestLayer } from "../scripts/run-node-test-layer.mjs"
@@ -81,7 +81,7 @@ test("--layer spawns the selected tests with the current Node and preserves term
         "--test",
         "--test-concurrency=1",
         "--test-reporter=spec",
-        `--test-reporter=${path.join(projectRoot, "scripts", "node-test-runtime-reporter.mjs")}`,
+        `--test-reporter=${pathToFileURL(path.join(projectRoot, "scripts", "node-test-runtime-reporter.mjs")).href}`,
         "--test-reporter-destination=stdout",
       ])
       const destinationPrefix = "--test-reporter-destination="
@@ -91,7 +91,8 @@ test("--layer spawns the selected tests with the current Node and preserves term
       assert.match(path.basename(path.dirname(reportPath)), /^arkts-node-test-runtime-/)
       assert.equal(fs.existsSync(path.dirname(reportPath)), false)
       assert.deepEqual(call.args.slice(6), ["tests/a.test.mjs", "tests/z.test.mjs"])
-      assert.deepEqual(call.options, { cwd: "/repository", stdio: "inherit" })
+      assert.deepEqual(call.options, { cwd: "/repository", stdio: "inherit",
+        env: { ...process.env, ARKTS_INDEX_CACHE_GC: process.env.ARKTS_INDEX_CACHE_GC ?? "off", ARKTS_INDEX_CACHE_DIR: path.join(path.dirname(reportPath), "index-cache") } })
       assert.deepEqual(result, {
         entries: ["tests/a.test.mjs", "tests/z.test.mjs"],
         ...termination,

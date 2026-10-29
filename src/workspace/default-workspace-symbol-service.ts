@@ -24,6 +24,7 @@ interface DefaultWorkspaceSymbolServiceDependencies {
   catalog: WorkspaceCatalogPort
   semantic: SemanticEnginePort
   cacheDirectory: string
+  maintenance?: { start(): void; dispose(): Promise<void> }
 }
 
 export class DefaultWorkspaceSymbolService implements WorkspaceSymbolServicePort {
@@ -155,10 +156,12 @@ export class DefaultWorkspaceSymbolService implements WorkspaceSymbolServicePort
     if (this.closePromise) return this.closePromise
     this.disposed = true
     this.openDocuments.clear()
+    const maintenance = this.dependencies.maintenance?.dispose()
     const closing = [...this.workspaces].map(([workspaceId]) =>
       this.dependencies.index.close(workspaceId))
     this.pendingCatalogs.clear()
     this.closePromise = Promise.allSettled([
+      maintenance,
       ...closing,
       ...this.opening,
       ...this.catalogRuns.values(),
@@ -180,6 +183,7 @@ export class DefaultWorkspaceSymbolService implements WorkspaceSymbolServicePort
         await this.dependencies.index.close(workspace.id)
       }
       assertActive(signal)
+      this.dependencies.maintenance?.start()
       this.searchableWorkspaces.add(workspace.id)
       this.scheduleCatalog(workspace, signal)
     } catch (error) {

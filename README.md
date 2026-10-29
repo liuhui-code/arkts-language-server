@@ -251,17 +251,98 @@ request timing, and aggregate catalog terminal counters. Each
 workers) and `heapUsedBytes` (main-thread V8 heap) at completion; neither is a
 peak-memory measurement.
 
+Index-cache maintenance is separate from installed server/Worker releases. A
+workspace keeps its existing cache key across server updates. After an index
+opens successfully, a separate low-priority process performs bounded maintenance;
+it protects active connections across windows and stops when the server closes.
+The default policies retain registered caches for 30 idle days and require two
+unchanged observations at least 24 hours apart for abandoned local temporary
+projects. These periods are retention policies, not query deadlines.
+
+Inspect the cache without starting LSP or changing the inspected directory:
+
+```sh
+arkts-language-server --index-cache preview --include-legacy --limit 20000
+```
+
+From a built checkout, use `node dist/server.cjs --index-cache ...` instead of
+the installed command.
+
+The JSON report lists each workspace, logical file bytes, protection/defer
+reasons, any continuation cursor, and cleanup issues. `--cache-dir DIRECTORY`
+selects another cache root. Preview does not authorize deletion. To explicitly
+enroll abandoned legacy temporary caches and begin their observation period:
+
+```sh
+arkts-language-server --index-cache clean --include-legacy --limit 20000
+```
+
+The first clean records observations; a later clean or automatic pass may reclaim
+the same unchanged, still-missing temporary cache after its grace period. Existing
+legacy caches are otherwise protected by default. Ordinary legacy projects with
+unknown last-use time are protected. Opening a legacy cache with the new server
+records its current use and enrolls it without discarding or rebuilding it for GC.
+Offline/inaccessible roots, unsupported
+paths or file identities, unknown layouts, and occupied databases remain protected
+or deferred. DB/WAL/SHM are retired as one workspace group; active WAL is never
+deleted separately. Source files and installed releases are outside this command.
+
+Automatic maintenance can be disabled with `ARKTS_INDEX_CACHE_GC=off` (default:
+`auto`). Optional nonnegative integer settings are:
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `ARKTS_INDEX_CACHE_GC_INTERVAL_MS` | `3600000` | Minimum interval after a complete scan cycle |
+| `ARKTS_INDEX_CACHE_GC_LIMIT` | `128` | Entries per background pass, from 1 through 4096 |
+| `ARKTS_INDEX_CACHE_GC_IDLE_MS` | `2592000000` | Idle retention for registered caches |
+| `ARKTS_INDEX_CACHE_GC_ORPHAN_GRACE_MS` | `86400000` | Minimum missing-project observation period |
+| `ARKTS_INDEX_CACHE_GC_MAX_BYTES` | unset | Optional logical-byte LRU budget for idle eligible caches |
+| `ARKTS_INDEX_CACHE_GC_IDENTITY_COPY_BYTES` | `16777216` | Maximum private DB/WAL copy for WAL-only identity inspection |
+
+Equivalent CLI options include `--idle-ms`, `--orphan-grace-ms`, `--max-bytes`,
+`--identity-copy-max-bytes`, `--limit`, and `--after-key`. Global capacity eviction
+requires a complete inventory: a partial/paginated scan reports `budgetUnmet`
+instead of guessing which protected data to delete. Increase the explicit CLI
+scan limit to inventory the full cache. No default hard disk quota is imposed.
+The byte budget covers inventoried workspace files; management records, private
+inspection scratch and deferred trash are outside it. Trash retry results are reported separately.
+Cleanup failures are reported and retried; clearing a cache does not accelerate
+the known slow full-index replacement in the 30K project. See
+[ADR 0028](docs/adr/0028-index-cache-lifecycle.md) and the
+[validation report](docs/reports/2026-10-29-index-cache-lifecycle.md).
+
 References default to `indexed-batched` with conservative `closure` dependencies
 and the full SDK. Set `ARKTS_REFERENCES_STRATEGY=legacy` to use the original
 full-Program path; `ARKTS_REFERENCES_DEPENDENCY_PROFILE=identity` remains an
 experimental opt-in.
 
-The selected resident optimization policy is enabled by default: budget-aware
+There is **no default product RSS budget**. Leaving `ARKTS_MEMORY_BUDGET_MB`
+unset preserves valid warm Programs and complete results without RSS-triggered
+trimming, eviction, admission errors or pressure Worker recycling. RSS/heap
+observations, normal owner/session cleanup and bounded fault recovery remain.
+This does not disable V8's heap limits or the operating system's OOM handling,
+and does not promise that any project size fits in available memory.
+
+To opt into the existing pressure policy, set a positive MiB budget, for example
+`ARKTS_MEMORY_BUDGET_MB=4096`. Despite its name, the unit is MiB: 4096 means
+4 GiB. Pressure uses the whole Node process RSS once, including its Worker
+threads; it excludes the separate native index process and is not a hard cap.
+Explicit budgets retain L1/L2/L3 hysteresis, active-lease protection and the
+first-initialization exemption. Empty values, zero, negative/nonfinite values,
+`off` and values that cannot represent a safe positive byte count are rejected.
+Remove the variable to disable a configured budget; configuration is read when
+a new language-service session starts, not changed in an already running one.
+Disk cache retention and the test driver's RSS stop condition are separate.
+See [ADR 0029](docs/adr/0029-opt-in-rss-memory-budget.md) and its
+[validation report](docs/reports/2026-10-29-default-unbudgeted-memory.md).
+
+The selected resident optimization switches remain enabled by default: budget-aware
 retention, complete resident references, same-content promotion, pressure
 admission, cost-aware eviction, and transient diagnosis under L3. These six
 options do not require benchmark controls. Reuse still requires an unchanged
-Program and complete scope; stale inputs, missing coverage or pressure retain
-complete fallback or an explicit resource error. Pressure-triggered Worker
+Program and complete scope; stale inputs, missing coverage or explicitly
+configured pressure retain complete fallback or an explicit resource error.
+The pressure switches produce no automatic RSS action without a budget. Pressure-triggered Worker
 recycling, old session reuse, scope narrowing, GC and tracing remain off.
 Set `ARKTS_REFERENCES_RESIDENT_FAST_PATH=0` to disable resident reference reuse;
 the [default policy and full rollback](docs/adr/0015-default-resident-optimization-policy.md)
