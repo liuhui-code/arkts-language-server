@@ -1,7 +1,7 @@
 # ADR0031：读取取消与可变编译同步的生命周期分离
 
 - 日期：2026-10-30。
-- 状态：Accepted（2026-10-30）；用户明确批准跨平台复验后通过分支/PR 合入 main。本记录不追认独立设计审阅或发布。
+- 状态：Accepted（2026-10-30）；已按用户授权经 [PR #105](https://github.com/liuhui-code/arkts-language-server/pull/105) 合入 main，提交 `f78952f`。未替换日常安装。
 - 父提交：`4859f76c46265a885332d7141c99698bf749c61e`，保留既有 Windows UI 工作树。
 - 证据：[启动与取消 TDD](../tdd/startup-worker-cancellation-20261030.md)。
 
@@ -60,3 +60,7 @@ SDK、999 运行输入及 native SHA 全部一致。Mac 同场景 SDK 为 2083 �
 二者均是实际工程公开协议资格，未冒充用户原现场或 Zed UI 验收。
 最终合入须通过本次 PR 的 canonical release gate；原 Mac 2106 整轮与最终新增
 子测试的计时夹具版本分别记录于 TDD，不互相替代。
+
+最终提交 `844db34` 的 [canonical release gate](https://github.com/liuhui-code/arkts-language-server/actions/runs/40986247913)
+已通过：Linux fast 2107/2107、零 fail/cancelled/skipped/todo，后续 release 检查及 Windows 安装任务均成功。
+合入提交 `f78952f` 与该受检提交具有相同完整树；首次 CI 2106/2107 失败及两项测试夹具修正仍保留于 TDD。

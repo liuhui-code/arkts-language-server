@@ -1,6 +1,6 @@
 # 大项目启动与语义 Worker 取消恢复
 
-日期：2026-10-30。状态：Mac 原候选完整 fast 2106/2106；最终定向回归 Mac 28/28、Windows 24/24。用户批准验证后通过分支/PR 合入 main。
+日期：2026-10-30。状态：已通过 PR #105 合入 main（`f78952f`）；最终 Linux canonical release gate 和 fast 2107/2107、Windows 安装通过。原 Mac/跨平台阶段结果及失败分别保留。
 父提交：`4859f76c46265a885332d7141c99698bf749c61e`，保留先前 Windows UI 修复工作树。
 本轮起点及 28 份既有修改 SHA、原补丁独立保存于
 `.bench/startup-recovery-20261030-o1_kdgda/before.json`、`before.patch`、`before/`。
@@ -167,3 +167,20 @@ Windows Node20.19.5 6/6、exit0，均零 fail/cancelled/skipped/todo；999 输�
 最终夹具 SHA `7b2b08e7ecc9b876a79162eaf30840fbff5852aa92ad275adae1cd8ef38beb6a`，
 测试文件 SHA `e154b1acff91ea5483237465143028c47583f0512a44692a52cc8977fb6e83b6`。
 完整最终 CI 仍须重跑；Mac 原整轮后仅三个测试/夹具文件有差异，生产源码和运行 bundle 不变。
+
+## 最终完整验证与交付
+
+提交 `844db34a1fee57cd6a57f66c7f99f2aed56e0fca` 的
+[CI 40986247913](https://github.com/liuhui-code/arkts-language-server/actions/runs/40986247913)
+执行完整 `pnpm check:release` 成功。fresh fast 2107/2107、exit0、零 fail/cancelled/skipped/todo，
+1973884.622456ms；后续 Rust fmt/clippy/test、固定真实工程、release、语法/WASM、产物及大工程检查通过。
+同一提交 Windows 安装、重装及 LSP smoke 成功。该整轮覆盖最终两个已有读取窗口测试/夹具修正及 startup 子测试版本。
+
+官方原始 Linux 日志 SHA `5bdb9e0e4a4071d5430cb095a31eda46eee4cbd6ce203b6bcc5163dddca4d440`；
+Windows 安装日志 SHA `89165b9ebac0d510b6dee22bc821a592e68cf3de499127bfee8ae6a5854554c0`，
+收据 `ci-final-receipt.json`。原快照 17 项相关代码/测试，随后追加两项已有测试/夹具修正，最终交付为 19 项相关代码/测试及 17 项文档。
+未纳入原工作区的并行 completion-resolve、inferred roots、SDK 观测夹具及其后续报告。
+
+用户批准后经 [PR #105](https://github.com/liuhui-code/arkts-language-server/pull/105) squash 合入 main，
+合入提交 `f78952f501db11b3a307a9dbe3c68f9c2c87ec4b`，时间 `2026-10-30T02:12:44Z`；
+其完整树与受检 `844db34` 相同。ADR0031 Accepted；原 RED、首次整轮 FAIL、旧计时版本均不重标。

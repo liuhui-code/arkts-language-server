@@ -1,6 +1,6 @@
 # 三万文件启动与取消导致的 Worker 不必要换代
 
-状态：用户批准跨平台复验并通过 PR 合入 main；原候选 Mac fast 2106/2106、实际 Photos 三万文件验证通过，最终 Mac 定向 28/28、Windows 24/24。
+状态：已经 [PR #105](https://github.com/liuhui-code/arkts-language-server/pull/105) 合入 main（`f78952f`）。最终 Linux canonical release gate/fast 2107/2107、Windows 安装均通过；Mac/Windows 实际 Photos 三万文件验证通过。
 交付分支 `fix/large-project-worker-liveness-20261030`，父 `4859f76c46265a885332d7141c99698bf749c61e`。
 原工作树及后续并行修改独立保留；日常 Zed 安装未替换。
 [TDD 命令及原失败](../tdd/startup-worker-cancellation-20261030.md)；
@@ -88,6 +88,11 @@ Windows 真实 Photos 工程复验：`2026-10-30T00:40:12.246Z` 至 `00:40:54.44
 Windows 该补充文件首轮另发现原 namespace 夹具的打开描述符替换不兼容，5/6 原失败保留；
 注入移到真实 close 后、外层读取证明后置 lookup 前，保留真实目录与拒绝断言。
 最终读取证明完整文件 Mac/Windows 各 6/6，Windows 999 输入 SHA MATCH；仅两项测试/夹具修正，产品不变。
+
+最终 `844db34` 的 [CI 40986247913](https://github.com/liuhui-code/arkts-language-server/actions/runs/40986247913)
+已成功：fresh fast 2107/2107、零注解，后续 Rust/release、语法、WASM、产物和固定大工程检查通过。
+Windows 安装任务同样通过。`f78952f` 与受检提交完整树相同；最终收据为
+`ci-final-receipt.json`，源/测试/脚本相对原 Mac 整轮仅三项测试/夹具差异，生产代码相同。
 
 ## 证据与剩余范围
 
