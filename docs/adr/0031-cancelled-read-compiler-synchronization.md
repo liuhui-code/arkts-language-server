@@ -64,3 +64,13 @@ SDK、999 运行输入及 native SHA 全部一致。Mac 同场景 SDK 为 2083 �
 最终提交 `844db34` 的 [canonical release gate](https://github.com/liuhui-code/arkts-language-server/actions/runs/40986247913)
 已通过：Linux fast 2107/2107、零 fail/cancelled/skipped/todo，后续 release 检查及 Windows 安装任务均成功。
 合入提交 `f78952f` 与该受检提交具有相同完整树；首次 CI 2106/2107 失败及两项测试夹具修正仍保留于 TDD。
+
+
+## 并行候选验证历史
+
+下列为并行任务在原分支上的阶段记录；当前采纳状态以上方 Accepted 为准。
+
+- 状态：Proposed；用户授权修复，前阶段Mac fast 2106/2106及实际三万文件验证通过。
+  2026-10-30已隔离同步Windows；原30K用例总截止取消保留，诊断证实63秒夹具准备挤占计时窗口。
+  准备/服务分开后公开三项及整组28项GREEN，四轮/1Worker/0恢复；后续同候选真实UI已开始，最终结果见报告。
+  最终整合候选结果见[后续报告](../reports/2026-10-30-ui-remediation.md)，未独立审批、合入或发布。

@@ -4,6 +4,76 @@ import path from "node:path"
 import test from "node:test"
 import { createReadinessFixture } from "../support/semantic-readiness-lsp.mjs"
 
+test("partial projects retain the Program when an unchanged compiler dependency becomes resident",
+  { timeout: 60_000 }, async t => {
+    const f = createReadinessFixture(t, {
+      ARKTS_BENCHMARK_CONTROL: "0", ARKTS_MEMORY_BUDGET_MB: undefined,
+      ARKTS_SEMANTIC_QUEUE_TRACE: "1", ARKTS_TEST_DIAGNOSTIC_DELAY_MS: "10000",
+    })
+    const sources = {
+      "Main.ets": "export const main = 1\n",
+      "First.ts": 'import { value1 } from "./Dep1"\nexport const first = value1\n',
+      "Second.ts": 'import { value2 } from "./Dep2"\nexport const second = value2\n',
+      "Dep1.ts": "export const value1 = 1\n",
+      "Dep2.ts": "export const value2 = 2\n",
+    }
+    for (const [name, text] of Object.entries(sources)) fs.writeFileSync(path.join(f.workspace, name), text)
+    const noise = path.join(f.workspace, "noise")
+    fs.mkdirSync(noise)
+    for (let i = 0; i < 20_001; i++) fs.writeFileSync(path.join(noise, `Unused${i}.ts`), "export {}\n")
+    await f.session.initialize({ initializationOptions: { sdk: { path: f.sdk } } })
+    const prepared = await f.session.transport.notification("arkts/semanticPreparation",
+      m => m.params.phase === "complete", 20_000)
+    assert.ok(prepared.params.report.unavailableReasons.includes("project-membership-incomplete"))
+    for (const name of ["Main.ets", "First.ts", "Second.ts"]) {
+      f.session.openDocument({ uri: f.uri(name), version: 1, text: sources[name] })
+    }
+    const targets = [["Main.ets", "main", "Main.ets"], ["First.ts", "value1", "Dep1.ts"],
+      ["Second.ts", "value2", "Dep2.ts"]]
+    const observations = []
+    for (const [name, token, expected] of targets) {
+      const source = sources[name], offset = source.lastIndexOf(token) + 1
+      const position = { line: source.slice(0, offset).split("\n").length - 1,
+        character: offset - source.lastIndexOf("\n", offset - 1) - 1 }
+      const result = await f.session.request("textDocument/definition", {
+        textDocument: { uri: f.uri(name) }, position,
+      })
+      assert.equal(result.error, undefined, JSON.stringify(result))
+      assert.equal(result.result[0]?.uri, f.uri(expected))
+      observations.push(f.events().filter(e => e.event === "semantic.definition.complete").at(-1))
+    }
+    assert.ok(observations.every(Boolean), "each real query has a Program identity observation")
+    assert.ok(observations[0].programProjectFiles >= 5, "both unopened dependencies already belong to the Program")
+    assert.equal(observations[1].programSequence, observations[0].programSequence,
+      "storage promotion must not reconstruct an unchanged Program")
+    assert.equal(observations[2].programSequence, observations[0].programSequence)
+    assert.equal(observations[2].programRootFiles, observations[0].programRootFiles,
+      "a cache-residency change must not grow the semantic root list")
+    f.session.openDocument({ uri: f.uri("Dep1.ts"), version: 1, text: sources["Dep1.ts"] })
+    f.session.changeDocument({ uri: f.uri("Dep1.ts"), version: 2,
+      text: 'export let value1: string = "updated"\n' })
+    const consumer = { textDocument: { uri: f.uri("First.ts") }, position: { line: 1, character: 22 } }
+    const edited = await f.session.request("textDocument/hover", consumer)
+    assert.equal(edited.error, undefined, JSON.stringify(edited))
+    assert.match(edited.result.contents.value, /value1: string/u,
+      "preserving cache promotion cannot hide a real unsaved dependency edit")
+    f.session.transport.send({ jsonrpc: "2.0", method: "textDocument/didClose",
+      params: { textDocument: { uri: f.uri("Dep1.ts") } } })
+    f.session.documentVersions.delete(f.uri("Dep1.ts"))
+    const closed = await f.session.request("textDocument/hover", consumer)
+    assert.equal(closed.error, undefined, JSON.stringify(closed))
+    assert.match(closed.result.contents.value, /value1: (?:1|number)/u)
+    fs.writeFileSync(path.join(f.workspace, "Dep2.ts"), "export let value2: boolean = true\n")
+    f.session.transport.send({ jsonrpc: "2.0", method: "workspace/didChangeWatchedFiles",
+      params: { changes: [{ uri: f.uri("Dep2.ts"), type: 2 }] } })
+    const disk = await f.session.request("textDocument/hover", {
+      textDocument: { uri: f.uri("Second.ts") }, position: { line: 1, character: 23 },
+    })
+    assert.equal(disk.error, undefined, JSON.stringify(disk))
+    assert.match(disk.result.contents.value, /value2: boolean/u,
+      "a new disk identity must invalidate the old compiler-input promotion witness")
+  })
+
 test("an edited comment completion does not demand complete project membership",
   { timeout: 60_000 }, async t => {
     const f = createReadinessFixture(t, {

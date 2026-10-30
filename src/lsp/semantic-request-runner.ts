@@ -16,7 +16,7 @@ import type {
 import { processMemoryFields, type StructuredLogger } from "../observability/logger.js"
 import type { CallHierarchySourceAuthority } from "./call-hierarchy-source-authority.js"
 import { InFlightRequestCoalescer } from "./in-flight-request-coalescer.js"
-import { RequestFreshness, type FreshRequest } from "./request-freshness.js"
+import { RequestFreshness, semanticRequestLane, type FreshRequest } from "./request-freshness.js"
 import { runDiskSourceRequest } from "./disk-source-request.js"
 
 interface SemanticRequestRunnerDependencies {
@@ -35,6 +35,7 @@ interface SemanticRequest<T> {
   fallback: T
   scope?: "document" | "workspace"
   coalesceKey?: string
+  identityKey?: string
   execute(document: DocumentSnapshot, signal: AbortSignal): Promise<VersionedSemanticResult<T>>
 }
 
@@ -104,11 +105,11 @@ export class SemanticRequestRunner {
       if (!document || !document.uri.startsWith("file:")) {
         outcome = "disk-source"
         return await runDiskSourceRequest(request, this.dependencies.callHierarchySources, this.dependencies.freshness,
-          this.#coalescer, () => this.dependencies.logger.info("references.coalesced", { method: request.method, sourceKind: "disk" }))
+          this.#coalescer, () => this.dependencies.logger.info(coalescedEvent(request.method), { method: request.method, sourceKind: "disk" }))
       }
 
       const requestedDocument = this.dependencies.snapshot(document)
-      const lane = `${request.method}:${document.uri}`
+      const lane = semanticRequestLane(request.method, document.uri, request.identityKey)
       const operationKey = request.coalesceKey === undefined ? undefined : [
         lane,
         requestedDocument.workspaceId,
@@ -116,22 +117,15 @@ export class SemanticRequestRunner {
         request.coalesceKey,
       ].join("\u0000")
       const joining = operationKey !== undefined && this.#coalescer.has(operationKey)
-      freshRequest = joining
-        ? this.dependencies.freshness.startConcurrent(
-            lane,
-            request.token,
-            request.scope === "workspace"
-              ? { kind: "workspace", workspaceId: requestedDocument.workspaceId }
-              : { kind: "document", documentUri: document.uri },
-          )
-        : this.dependencies.freshness.start(
-            lane,
-            request.token,
-            request.scope === "workspace"
-              ? { kind: "workspace", workspaceId: requestedDocument.workspaceId }
-              : { kind: "document", documentUri: document.uri },
-          )
-      if (joining) this.dependencies.logger.info("references.coalesced", {
+      // Request IDs own reads. A new cursor/consumer is not a cancellation event.
+      freshRequest = this.dependencies.freshness.startConcurrent(
+        lane,
+        request.token,
+        request.scope === "workspace"
+          ? { kind: "workspace", workspaceId: requestedDocument.workspaceId }
+          : { kind: "document", documentUri: document.uri },
+      )
+      if (joining) this.dependencies.logger.info(coalescedEvent(request.method), {
         method: request.method,
         documentVersion: requestedDocument.version,
       })
@@ -203,7 +197,7 @@ export class SemanticRequestRunner {
         outcome = "source-outside-workspace"
         return request.incomplete("source-outside-workspace")
       }
-      freshRequest = this.dependencies.freshness.start(
+      freshRequest = this.dependencies.freshness.startConcurrent(
         `${request.method}:${request.documentUri}`,
         request.token,
         { kind: "workspace", workspaceId: workspace.id },
@@ -288,7 +282,7 @@ export class SemanticRequestRunner {
         outcome = "source-outside-workspace"
         return request.incomplete("source-outside-workspace")
       }
-      freshRequest = this.dependencies.freshness.start(
+      freshRequest = this.dependencies.freshness.startConcurrent(
         `${request.method}:${request.documentUri}`,
         request.token,
         { kind: "workspace", workspaceId: workspace.id },
@@ -375,6 +369,10 @@ export class SemanticRequestRunner {
 
 export function requestCancelled(): ResponseError<void> {
   return new ResponseError(LSPErrorCodes.RequestCancelled, "Request cancelled by client")
+}
+
+function coalescedEvent(method: string): string {
+  return method === "textDocument/references" ? "references.coalesced" : "semantic.request.coalesced"
 }
 
 export function referenceRequestCoalesceKey(

@@ -91,3 +91,13 @@ WUI-003真实定义9221ms中8848.952ms在父队列；3份highlight、1份typeDef
 保留每队首最多一次绕过、mutation/global屏障和原detached-reference既有通道。
 同级自动definition/typeDefinition无法按LSP来源进一步区分；正在执行的编译不抢占，仍可能造成长尾。
 新增公开LSP先RED派发第12、后GREEN第1且原队首随后执行。此为Proposed补充，不改写原历史。
+
+## 2026-10-30逐项身份与准入补充
+
+[ADR0032](0032-completion-item-identity-and-inferred-roots.md)补充Worker队列之前的详情生命周期：
+不同已认证item不能因同URI互相supersede；同item共享在途工作并独立取消，128项预取先经有界准入。
+第一候选保留Worker分类、每队首一次绕过、mutation/global屏障与64条计数；后续真实80请求反例促成ADR0032决定D，明确将计数改为64来源/4MiB输入，原调度和屏障仍保留。
+同输入依赖promotion不应变成新语义root并触发重复Program更新；这是减少队列服务成本，
+不是声称有界优先能消除真实编译成本。第一候选真实UI35分17.680秒又发现跨位置读取隐式替换（WUI-006）；
+ADR0032决定C统一独立请求所有权，新公开17项及Windows最终48项通过，正式UI复验另记。
+本补充仍Proposed，不用小夹具、校准或前一候选完整检查追认整体长尾解决。

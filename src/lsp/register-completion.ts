@@ -3,8 +3,10 @@ import { LSPErrorCodes, ResponseError, type ClientCapabilities, type Connection,
 import type { TextDocument } from "vscode-languageserver-textdocument"
 
 import type { DocumentSnapshot } from "../contracts/document.js"
-import type { SemanticCompletion, SemanticCompletionList, SemanticEnginePort } from "../contracts/semantic-engine.js"
+import type { SemanticCompletion, SemanticCompletionList, SemanticEnginePort,
+  VersionedSemanticResult } from "../contracts/semantic-engine.js"
 import { CompletionResolutionStore } from "./completion-resolution-store.js"
+import { CompletionResolutionQueue } from "./completion-resolution-queue.js"
 import { invalidCompletionResolution, toLspCompletionItem, toLspResolvedCompletionItem,
   type CompletionClientProfile } from "./completion-mapper.js"
 import type { SemanticRequestRunner } from "./semantic-request-runner.js"
@@ -23,6 +25,7 @@ export function registerCompletionHandlers({ connection, documents, semantic, re
   assertRunning(): void
 }) {
   const completionResolutions = new CompletionResolutionStore()
+  const resolutionQueue = new CompletionResolutionQueue()
   let completionClientProfile = DEFAULT_PROFILE
   documents.onDidChangeContent(({ document }) => completionResolutions.forgetDocument(document.uri))
   documents.onDidClose(({ document }) => completionResolutions.forgetDocument(document.uri))
@@ -73,9 +76,13 @@ export function registerCompletionHandlers({ connection, documents, semantic, re
     const resolved = await requests.run<SemanticCompletion | null>({
       method: "completionItem/resolve",
       documentUri: record.documentUri,
+      identityKey: entry.item.data.arktsCompletionId,
+      coalesceKey: entry.item.data.arktsCompletionId,
       token,
       fallback: null,
-      execute: (document, signal) => {
+      execute: (document, signal) => resolutionQueue.run<VersionedSemanticResult<SemanticCompletion | null>>(
+        document.workspaceId, signal, () => {
+        if (entry.record !== record) return Promise.resolve({ documentVersion: document.version, value: null })
         if (record.diskSourceSha256 !== undefined && (document.source?.kind !== "disk"
           || createHash("sha256").update(document.text).digest("hex") !== record.diskSourceSha256)) {
           entry.record = undefined
@@ -83,7 +90,7 @@ export function registerCompletionHandlers({ connection, documents, semantic, re
         }
         return semantic.resolveCompletion({ document, position: record.position,
           completionOptions: { snippets: completionClientProfile.snippets }, completion: record.completion, signal })
-      },
+        }),
     })
     // Close/reopen may reuse the numeric version; record identity is the lifetime fence.
     if (!resolved || entry.record !== record) return entry.item
@@ -105,6 +112,6 @@ export function registerCompletionHandlers({ connection, documents, semantic, re
           ?.completionItem?.snippetSupport === true,
       })
     },
-    clear(): void { completionResolutions.clear() },
+    clear(): void { completionResolutions.clear(); resolutionQueue.clear() },
   }
 }

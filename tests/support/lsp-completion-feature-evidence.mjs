@@ -6,8 +6,8 @@ export function completionFeatureEvidence({ enabledFeature, capability, evidence
       requiredCapabilities: [capability("completionProvider.triggerCharacters", ["."])],
       protocol: [evidence(
         "tests/lsp-completion-reliability.test.mjs",
-        "a newer completion request supersedes the previous request in its lane",
-        "completion.protocol.latest-wins",
+        "preserves independent current completion consumers at different positions",
+        "completion.protocol.independent-consumers",
       )],
       bundle: [evidence(
         "tests/lsp-transcript.test.mjs",

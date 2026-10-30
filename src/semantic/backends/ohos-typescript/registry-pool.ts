@@ -61,8 +61,9 @@ export function officialDocumentRegistryFor(sdk: ProjectSdkSelection,
 }
 
 export function createOfficialSemanticService(host: ts.LanguageServiceHost, sdk: ProjectSdkSelection,
-  observe?: (source: ts.SourceFile) => void, invalidate?: () => void): ts.LanguageService {
-  return recoverableLanguageService(host, officialDocumentRegistryFor(sdk), observe, invalidate)
+  observe?: (source: ts.SourceFile) => void, invalidate?: () => void,
+  programReturned?: (program: ts.Program | undefined) => void): ts.LanguageService {
+  return recoverableLanguageService(host, officialDocumentRegistryFor(sdk), observe, invalidate, programReturned)
 }
 
 /** Recycle the LS at L2: this fork's cleanupSemanticCache drops Program ownership without releasing registry refs. */
@@ -72,8 +73,9 @@ export function recycleOfficialSemanticService(
   sdk: ProjectSdkSelection,
   observe?: (source: ts.SourceFile) => void,
   invalidate?: () => void,
+  programReturned?: (program: ts.Program | undefined) => void,
 ): ts.LanguageService {
-  const replacement = createOfficialSemanticService(host, sdk, observe, invalidate)
+  const replacement = createOfficialSemanticService(host, sdk, observe, invalidate, programReturned)
   const file = registryProbeFile()
   const sampleId = file ? ++nextSampleId : 0
   const snapshot = file ? captureRegistryProbe(service, sdk) : undefined

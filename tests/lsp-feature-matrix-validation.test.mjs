@@ -188,7 +188,7 @@ test("rejects a duplicate evidence claim across the matrix", () => {
       capabilityContract: CURRENT_LSP_CAPABILITY_CONTRACT,
       layerManifest: TEST_LAYER_MANIFEST,
     }),
-    /completion: duplicate evidence claim completion\.protocol\.latest-wins/,
+    /completion: duplicate evidence claim completion\.protocol\.independent-consumers/,
   )
 })
 
@@ -207,7 +207,7 @@ test("rejects relabeling one exact test as multiple claims in one feature layer"
       capabilityContract: CURRENT_LSP_CAPABILITY_CONTRACT,
       layerManifest: TEST_LAYER_MANIFEST,
     }),
-    /completion: protocol evidence reuses tests\/lsp-completion-reliability\.test\.mjs#"a newer completion request supersedes the previous request in its lane" for multiple claims/,
+    /completion: protocol evidence reuses tests\/lsp-completion-reliability\.test\.mjs#"preserves independent current completion consumers at different positions" for multiple claims/,
   )
 })
 

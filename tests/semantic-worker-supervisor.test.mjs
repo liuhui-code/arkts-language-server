@@ -155,35 +155,6 @@ test("acknowledges every mutation before dispatching a revision-bound query", as
   await supervisor.dispose()
 })
 
-test("allows one active command plus 64 waiting requests and rejects the 65th", async (t) => {
-  const protocol = buildDriver(t)
-  const endpoint = new FakeEndpoint()
-  const supervisor = createSupervisor(protocol, endpoint)
-  const mutation = supervisor.mutate(changeMutation(1, "const value = 1\n"))
-  mutation.catch(() => {})
-  const waiting = Array.from({ length: 64 }, (_, index) => supervisor.request({
-    method: "hover",
-    uri: "file:///workspace/Main.ets",
-    expectedDocumentVersion: 1,
-    args: { position: { line: index, character: 0 } },
-  }))
-  for (const handle of waiting) handle.result.catch(() => {})
-
-  const overflow = supervisor.request({
-    method: "hover",
-    uri: "file:///workspace/Main.ets",
-    expectedDocumentVersion: 1,
-    args: { position: { line: 65, character: 0 } },
-  })
-
-  await assert.rejects(overflow.result, error => (
-    error instanceof protocol.SemanticWorkerSupervisorError
-    && error.code === "queue-overflow"
-  ))
-  assert.equal(endpoint.sent.length, 1)
-  endpoint.error()
-  await Promise.allSettled([mutation, ...waiting.map(handle => handle.result)])
-})
 
 test("prioritizes mutations, coalesces the latest URI snapshot, and invalidates older queries", async (t) => {
   const protocol = buildDriver(t)

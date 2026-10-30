@@ -53,10 +53,10 @@ test("runs injected semantic services and observes framed notifications", async 
   assert.match(notification.params.message, /scripted completion v3/)
 })
 
-test("a newer completion request supersedes the previous request in its lane", async (t) => {
+test("preserves independent current completion consumers at different positions", async (t) => {
   const server = new LspProcess({ serverPath: scriptedServerPath })
   t.after(() => server.close())
-  const uri = pathToFileURL(`${projectRoot}/fixtures/LatestWins.ets`).href
+  const uri = pathToFileURL(`${projectRoot}/fixtures/IndependentConsumers.ets`).href
 
   server.send({
     jsonrpc: "2.0",
@@ -78,7 +78,7 @@ test("a newer completion request supersedes the previous request in its lane", a
         uri,
         languageId: "arkts",
         version: 1,
-        text: "// FIRST_WAITS_FOR_ABORT",
+        text: "// DELAY_IGNORING_ABORT",
       },
     },
   })
@@ -101,11 +101,13 @@ test("a newer completion request supersedes the previous request in its lane", a
     },
   })
 
-  const latest = await server.response(11)
-  assert.equal(latest.result.isIncomplete, false)
-  assert.equal(latest.result.items[0].label, "fixture-v1")
-  const superseded = await server.response(10)
-  assert.deepEqual(superseded.result, { isIncomplete: false, items: [] })
+  for (const id of [11, 10]) {
+    const response = await server.response(id)
+    assert.equal(response.error, undefined, JSON.stringify(response))
+    assert.equal(response.result.isIncomplete, false)
+    assert.equal(response.result.items[0].label, "stale-v1")
+  }
+  assert.doesNotMatch(server.stderr, /SCRIPTED_STALE_ABORT/)
 })
 
 test("drops a semantic result for a superseded document version", async (t) => {

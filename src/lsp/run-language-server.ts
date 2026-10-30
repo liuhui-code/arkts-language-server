@@ -403,7 +403,7 @@ export function runLanguageServer(services?: LanguageServerServices): void {
   connection.onWorkspaceSymbol(async (params, token) => {
     const startedAt = performance.now()
     let outcome = "error"
-    const request = freshness.start(
+    const request = freshness.startConcurrent(
       "workspace/symbol",
       token,
       { kind: "independent" },

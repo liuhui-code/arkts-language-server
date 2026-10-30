@@ -22,7 +22,7 @@ import {
   wireMutation,
   wireRequest,
 } from "./semantic-worker-command-codec.js"
-import { takeNextSemanticWorkerRequest } from "./semantic-request-lanes.js"
+import { SemanticWorkerPendingReads } from "./semantic-worker-pending-reads.js"
 import { invalidateActiveWorkerRequests } from "./semantic-worker-invalidation.js"
 import type { SemanticWorkerQueueTrace } from "./semantic-worker-queue-trace.js"
 import { findCoalescingMutation, mergeDocumentMutations } from "./semantic-worker-mutation-coalescing.js"
@@ -99,7 +99,6 @@ interface RequestRecord {
 type CommandRecord = MutationRecord | RequestRecord
 
 export class RootSemanticWorkerSupervisor {
-  static readonly maxWaitingRequests = 64
   static readonly maxQueuedMutationDocuments = 32
   static readonly maxQueuedMutationRecords = 32
   static readonly maxQueuedMutationTextBytes = MAX_SEMANTIC_WORKER_TEXT_BYTES
@@ -109,7 +108,7 @@ export class RootSemanticWorkerSupervisor {
   readonly #waitForDisposeDeadline: () => Promise<void>
   readonly #queueTrace: SemanticWorkerQueueTrace | undefined
   readonly #pendingMutations: MutationRecord[] = []
-  readonly #pendingRequests: RequestRecord[] = []
+  readonly #pendingRequests = new SemanticWorkerPendingReads<RequestRecord>()
   #bypassedDiagnostic: RequestRecord | undefined
   #active: CommandRecord | undefined
   #activeTerminal: Deferred<void> | undefined
@@ -250,14 +249,6 @@ export class RootSemanticWorkerSupervisor {
       throw new SemanticWorkerSupervisorError("invalid-request")
     }
     const completion = deferred<SemanticWorkerJsonValue>()
-    if (
-      this.#pendingRequests.length >= RootSemanticWorkerSupervisor.maxWaitingRequests
-    ) {
-      completion.reject(new SemanticWorkerSupervisorError("queue-overflow"))
-      return requestHandle(completion.promise, reason => (
-        cancelSemanticWorkerRequest(cancelCell, reason)
-      ))
-    }
     const record: RequestRecord = {
       kind: "request",
       input: snapshot,
@@ -265,7 +256,10 @@ export class RootSemanticWorkerSupervisor {
       completion,
       stateGeneration: this.#stateGeneration,
     }
-    this.#pendingRequests.push(record)
+    if (!this.#pendingRequests.add(record)) {
+      completion.reject(new SemanticWorkerSupervisorError("queue-overflow"))
+      return requestHandle(completion.promise, reason => cancelSemanticWorkerRequest(cancelCell, reason))
+    }
     this.#queueTrace?.enqueued(snapshot)
     this.#pump()
     return requestHandle(completion.promise, reason => this.#cancelRequest(record, reason))
@@ -290,7 +284,7 @@ export class RootSemanticWorkerSupervisor {
     for (const record of this.#pendingMutations.splice(0)) {
       record.completion.reject(disposalError)
     }
-    for (const record of this.#pendingRequests.splice(0)) {
+    for (const record of this.#pendingRequests.drain()) {
       cancelWithoutThrowing(
         record.cancelCell,
         SemanticWorkerCancelState.supervisorDisposing,
@@ -306,9 +300,8 @@ export class RootSemanticWorkerSupervisor {
     if (this.#active || this.#disposed) return
     const mutation = this.#pendingMutations.shift()
     if (mutation) this.#queuedMutationTextBytes -= mutation.textBytes
-    const selection = mutation ? undefined : takeNextSemanticWorkerRequest(
-      this.#pendingRequests, Boolean(this.#detachedReference), this.#bypassedDiagnostic,
-    )
+    const selection = mutation ? undefined : this.#pendingRequests.take(
+      Boolean(this.#detachedReference), this.#bypassedDiagnostic)
     if (selection) this.#bypassedDiagnostic = selection.bypassedDiagnostic
     const record = mutation ?? selection?.request
     if (!record) return
@@ -412,7 +405,7 @@ export class RootSemanticWorkerSupervisor {
     for (const record of this.#pendingMutations.splice(0)) {
       record.completion.reject(failure)
     }
-    for (const record of this.#pendingRequests.splice(0)) {
+    for (const record of this.#pendingRequests.drain()) {
       cancelWithoutThrowing(
         record.cancelCell,
         SemanticWorkerCancelState.supervisorDisposing,
@@ -452,7 +445,7 @@ export class RootSemanticWorkerSupervisor {
     for (const record of this.#pendingMutations.splice(0)) {
       record.completion.reject(failure)
     }
-    for (const record of this.#pendingRequests.splice(0)) {
+    for (const record of this.#pendingRequests.drain()) {
       cancelWithoutThrowing(
         record.cancelCell,
         SemanticWorkerCancelState.supervisorDisposing,
@@ -516,7 +509,7 @@ export class RootSemanticWorkerSupervisor {
   #invalidateRequests(mutation: RootSemanticWorkerMutationInput): void {
     invalidateActiveWorkerRequests([this.#active?.kind === "request" ? this.#active : undefined,
       this.#detachedReference], this.#endpoint, mutation)
-    for (const record of this.#pendingRequests.splice(0)) {
+    for (const record of this.#pendingRequests.drain()) {
       cancelWithoutThrowing(record.cancelCell, SemanticWorkerCancelState.contentModified)
       record.completion.reject(new SemanticWorkerSupervisorError("content-modified"))
     }
@@ -529,9 +522,7 @@ export class RootSemanticWorkerSupervisor {
     if (record.wire && reason !== SemanticWorkerCancelState.contentModified) this.#endpoint.invalidate?.(record.wire)
     const winner = cancelSemanticWorkerRequest(record.cancelCell, reason)
     if (this.#active === record || this.#detachedReference === record) return winner
-    const pendingIndex = this.#pendingRequests.indexOf(record)
-    if (pendingIndex >= 0) {
-      this.#pendingRequests.splice(pendingIndex, 1)
+    if (this.#pendingRequests.remove(record)) {
       record.completion.reject(cancellationError(winner))
     }
     return winner

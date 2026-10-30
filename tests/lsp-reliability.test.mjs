@@ -139,7 +139,7 @@ test("a document change supersedes code-action resolve with ContentModified and 
   assert.equal(stale.error.code, -32801)
 })
 
-test("a newer code-action resolve suppresses a cancellation-resistant late edit", async (t) => {
+test("explicit cancellation suppresses a resistant code-action edit without cancelling its sibling", async (t) => {
   const server = new LspProcess({ serverPath: scriptedServerPath })
   t.after(() => server.close())
   const uri = pathToFileURL(`${projectRoot}/fixtures/CodeActionResolveLatest.ets`).href
@@ -192,6 +192,7 @@ test("a newer code-action resolve suppresses a cancellation-resistant late edit"
     params: listed.result[0],
   })
   await entered
+  server.send({ jsonrpc: "2.0", method: "$/cancelRequest", params: { id: 48 } })
   server.send({
     jsonrpc: "2.0",
     id: 49,
@@ -202,9 +203,9 @@ test("a newer code-action resolve suppresses a cancellation-resistant late edit"
   const current = await server.response(49)
   assert.equal(current.error, undefined, JSON.stringify(current.error))
   assert.equal(current.result.edit.documentChanges[0].textDocument.version, 1)
-  const superseded = await server.response(48)
-  assert.equal(superseded.result, undefined)
-  assert.equal(superseded.error.code, -32801)
+  const cancelled = await server.response(48)
+  assert.equal(cancelled.result, undefined)
+  assert.equal(cancelled.error.code, -32800)
 })
 
 test("shutdown rejects later requests, disposes once, and waits for exit", async (t) => {

@@ -134,6 +134,14 @@ separates cancellation of obsolete reads from an already-entered mutable compile
 The parent still enforces the original absolute deadlines, terminal delivery and physical exit;
 current input fences and the shared recovery budget remain authoritative.
 
+The authorized [ADR0032 candidate](adr/0032-completion-item-identity-and-inferred-roots.md)
+separates per-request ownership from document invalidation. Independent semantic reads,
+call-hierarchy requests and workspace-symbol queries do not supersede one another.
+Completion details share
+work only for the same authenticated item, with bounded admission before the serial
+Worker. Inferred semantic roots are owned independently of text-cache residency;
+same-input promotion needs a returned Program, exact snapshot and current disk proof.
+
 1. LSP `initialize` configures all workspace roots and advertises only tested
    capabilities.
 2. `initialized` opens one sidecar session per root and starts cataloging in the

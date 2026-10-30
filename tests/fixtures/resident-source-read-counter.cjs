@@ -73,17 +73,23 @@ if (!isMainThread && process.env.ARKTS_LSP_LOG_DIR) {
       if (hostReads.length !== 1 || snapshot.split(hostReads[0].site).length !== 2) throw Error("one actual host fallback source read required")
       source = source.slice(0, snapshotStart) + snapshot.replace(hostReads[0].site,
         `const content = globalThis.__observeHostSdkRead(filePath, () => ${hostReads[0].reader}(filePath));`) + source.slice(snapshotEnd)
+      const moduleHeader = "var TypeScriptResidentReferenceState = class {"
+      if (source.split(moduleHeader).length !== 2) throw Error("one actual resident reference class required")
+      const moduleStart = source.indexOf(moduleHeader), moduleEnd = source.indexOf("\n// src/", moduleStart + moduleHeader.length)
+      if (moduleEnd < 0) throw Error("actual resident reference class boundary required")
+      let resident = source.slice(moduleStart, moduleEnd)
       const hook = "const currentText = this.readSourceFile(filePath);"
-      if (source.split(hook).length !== 2) throw new Error("one actual resident source-read site required")
-      source = source.replace(hook, "globalThis.__observeResidentSourceRead(filePath);\n" + hook)
+      if (resident.split(hook).length !== 2) throw new Error("one actual resident source-read site required")
+      resident = resident.replace(hook, "globalThis.__observeResidentSourceRead(filePath);\n" + hook)
       const beforeSites = ["const before = diskIdentity(filePath);",
-        "const before = requestFileIdentity(filePath, () => diskIdentity(filePath));"].filter(site => source.includes(site))
+        "const before = requestFileIdentity(filePath, () => diskIdentity(filePath));"].filter(site => resident.includes(site))
       if (beforeSites.length !== 1) throw new Error("one actual before identity site required")
       for (const [stage, site] of [["before", beforeSites[0]],
         ["after", 'if (diskIdentity(filePath)?.stamp !== before.stamp)']]) {
-        if (source.split(site).length !== 2) throw new Error("one actual observation identity site required")
-        source = source.replace(site, `globalThis.__observeResidentIdentity(${JSON.stringify(stage)}, filePath);\n` + site)
+        if (resident.split(site).length !== 2) throw new Error("one actual observation identity site required")
+        resident = resident.replace(site, `globalThis.__observeResidentIdentity(${JSON.stringify(stage)}, filePath);\n` + site)
       }
+      source = source.slice(0, moduleStart) + resident + source.slice(moduleEnd)
     }
     return Reflect.apply(compile, this, [source, file])
   }

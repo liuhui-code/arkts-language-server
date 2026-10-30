@@ -7,7 +7,7 @@ import { pathToFileURL } from "node:url"
 import { LspSession } from "./lsp-session.mjs"
 import { projectRoot } from "./lsp-process.mjs"
 
-export async function startCompletionLifecycle(t) {
+export async function startCompletionLifecycle(t, { preload } = {}) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-completion-lifetime-"))
   const workspace = path.join(directory, "workspace")
   fs.mkdirSync(workspace)
@@ -21,7 +21,7 @@ export async function startCompletionLifecycle(t) {
     .filter(key => /^(ARKTS_|ARKLINE_|OP00_|DEGRADED_|UI_CAUSE_|PHOTOS_)/u.test(key))
     .map(key => [key, undefined]))
   Object.assign(env, {
-    NODE_OPTIONS: "", ARKLINE_HARMONY_SDK_PATH: sdk,
+    NODE_OPTIONS: preload ? `--require=${JSON.stringify(preload.replaceAll("\\", "/"))}` : "", ARKLINE_HARMONY_SDK_PATH: sdk,
     ARKTS_LSP_LOG_DIR: path.join(directory, "logs"),
     ARKTS_INDEX_CACHE_DIR: path.join(directory, "index"),
     ARKTS_INDEX_SIDECAR_PATH: path.join(projectRoot, "target/release/arkts-index-sidecar"
