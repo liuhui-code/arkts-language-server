@@ -254,9 +254,19 @@ function emptyProgress(phase: WorkspaceIndexProgress["phase"]): WorkspaceIndexPr
 
 function aggregateProgress(statuses: readonly WorkspaceIndexProgress[]): WorkspaceIndexProgress {
   const phase = aggregatePhase(statuses.map((status) => status.phase))
+  const active = statuses.find(status => status.phase === "indexing" && status.storage)?.storage
+  const storage = active && {
+    ...active,
+    writtenDocuments: sum(statuses, s => s.phase === "ready" ? s.indexedFiles : (s.storage?.writtenDocuments ?? 0)),
+    writtenRows: sum(statuses, s => s.storage?.writtenRows ?? 0),
+    walFrames: sum(statuses, s => s.storage?.walFrames ?? 0),
+    checkpointedFrames: sum(statuses, s => s.storage?.checkpointedFrames ?? 0),
+    activitySequence: sum(statuses, s => s.storage?.activitySequence ?? 0),
+  }
   const totalsKnown = statuses.every((status) => status.totalFiles !== undefined)
   return {
     phase,
+    ...(storage ? { storage } : {}),
     discoveredFiles: sum(statuses, (status) => status.discoveredFiles),
     indexedFiles: sum(statuses, (status) => status.indexedFiles),
     skippedEntries: sum(statuses, (status) => status.skippedEntries),

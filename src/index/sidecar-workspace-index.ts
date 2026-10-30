@@ -1,3 +1,6 @@
+import { mapCatalogStatus, assertMonotonicCatalogProgress, type CatalogProgressMark, type MappedCatalogStatus } from "./catalog-status.js"
+import { SidecarProtocolError, asRecord, isRecord, isIndexState, isCompleteness, isNonNegativeInteger, isNullableGeneration } from "./sidecar-protocol-validation.js"
+export { SidecarProtocolError } from "./sidecar-protocol-validation.js"
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process"
 
 import type {
@@ -848,13 +851,6 @@ export class SidecarRequestError extends Error {
   }
 }
 
-export class SidecarProtocolError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = "SidecarProtocolError"
-  }
-}
-
 export class SidecarTimeoutError extends Error {
   constructor(readonly method: string, readonly timeoutMs: number) {
     super(`index sidecar ${method} timed out after ${timeoutMs}ms`)
@@ -1038,74 +1034,6 @@ function unsupportedReferenceCandidates(
   }
 }
 
-interface MappedCatalogStatus {
-  progress: WorkspaceIndexProgress
-  indexStatus: WorkspaceIndexStatus
-  phase: CatalogPhase
-  committedGeneration: number
-  buildingGeneration: number | null
-  mark: CatalogProgressMark
-  terminal: boolean
-}
-
-interface CatalogProgressMark {
-  phase: CatalogPhase
-  discovered: number
-  indexed: number
-  rejected: number
-  policySkipped: number
-  ignored: number
-  totalFiles?: number
-}
-
-function mapCatalogStatus(value: unknown): MappedCatalogStatus {
-  const status = asRecord(value)
-  if (!isCatalogPhase(status.phase)
-    || !isIndexState(status.state)
-    || !isCompleteness(status.completeness)
-    || !isNonNegativeInteger(status.committedGeneration)
-    || !isNullableGeneration(status.buildingGeneration)
-    || !isNonNegativeInteger(status.discovered)
-    || !isNonNegativeInteger(status.indexed)
-    || !isNonNegativeInteger(status.rejected)
-    || !isNonNegativeInteger(status.policySkipped)
-    || !isNonNegativeInteger(status.ignored)
-    || (status.totalFiles !== undefined && !isNonNegativeInteger(status.totalFiles))) {
-    throw new SidecarProtocolError("index sidecar returned an invalid catalog status")
-  }
-  const phase = mapCatalogPhase(status.phase, status.totalFiles !== undefined)
-  return {
-    progress: {
-      phase,
-      discoveredFiles: status.discovered,
-      indexedFiles: status.indexed,
-      skippedEntries: status.rejected + status.policySkipped + status.ignored,
-      ...(status.totalFiles === undefined ? {} : { totalFiles: status.totalFiles }),
-    },
-    indexStatus: {
-      state: status.state, committedGeneration: status.committedGeneration,
-      ...(typeof status.buildingGeneration === "number" ? { buildingGeneration: status.buildingGeneration } : {}),
-      ...(typeof status.message === "string" ? { message: status.message } : {}),
-    },
-    phase: status.phase,
-    committedGeneration: status.committedGeneration,
-    buildingGeneration: status.buildingGeneration,
-    mark: {
-      phase: status.phase,
-      discovered: status.discovered,
-      indexed: status.indexed,
-      rejected: status.rejected,
-      policySkipped: status.policySkipped,
-      ignored: status.ignored,
-      ...(status.totalFiles === undefined ? {} : { totalFiles: status.totalFiles }),
-    },
-    terminal: status.phase === "ready"
-      || status.phase === "partial"
-      || status.phase === "degraded"
-      || status.phase === "cancelled",
-  }
-}
-
 function mapWorkspaceSymbol(value: unknown): WorkspaceSymbol {
   const symbol = asRecord(value)
   if (typeof symbol.name !== "string"
@@ -1167,17 +1095,6 @@ function mapPosition(value: unknown): { line: number; character: number } {
   return { line: position.line, character: position.character }
 }
 
-function asRecord(value: unknown): Record<string, unknown> {
-  if (!isRecord(value)) {
-    throw new SidecarProtocolError("index sidecar returned an invalid object")
-  }
-  return value
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
-}
-
 function isProtocolEvent(value: unknown): value is SidecarProtocolEvent {
   if (!(isRecord(value)
     && value.protocol === PROTOCOL_VERSION
@@ -1198,76 +1115,6 @@ function isIdlessEventEnvelope(value: unknown): value is Record<string, unknown>
     && value.protocol === PROTOCOL_VERSION
     && !("id" in value)
     && "event" in value
-}
-
-function isIndexState(value: unknown): value is WorkspaceIndexStatus["state"] {
-  return value === "warming" || value === "ready" || value === "degraded"
-}
-
-function isCompleteness(value: unknown): value is WorkspaceSymbolSearchResult["completeness"] {
-  return value === "ready" || value === "partial" || value === "stale"
-}
-
-type CatalogPhase = "idle" | "discovering" | "activating" | "cancelling" | "ready" | "partial" | "degraded" | "cancelled"
-
-function isCatalogPhase(value: unknown): value is CatalogPhase {
-  return value === "idle"
-    || value === "discovering"
-    || value === "activating"
-    || value === "cancelling"
-    || value === "ready"
-    || value === "partial"
-    || value === "degraded"
-    || value === "cancelled"
-}
-
-function mapCatalogPhase(
-  phase: CatalogPhase,
-  totalKnown: boolean,
-): WorkspaceIndexProgress["phase"] {
-  if (phase === "ready" || phase === "partial") return "ready"
-  if (phase === "degraded") return "degraded"
-  if (phase === "cancelled") return "cancelled"
-  if (phase === "activating" || phase === "cancelling" || totalKnown) return "indexing"
-  return "discovering"
-}
-
-function assertMonotonicCatalogProgress(
-  previous: CatalogProgressMark,
-  current: CatalogProgressMark,
-): void {
-  const regressed = catalogPhaseRank(current.phase) < catalogPhaseRank(previous.phase)
-    || current.discovered < previous.discovered
-    || current.indexed < previous.indexed
-    || current.rejected < previous.rejected
-    || current.policySkipped < previous.policySkipped
-    || current.ignored < previous.ignored
-    || (previous.totalFiles !== undefined
-      && (current.totalFiles === undefined || current.totalFiles < previous.totalFiles))
-  if (regressed) {
-    throw new SidecarProtocolError("index sidecar catalog progress regressed")
-  }
-}
-
-function catalogPhaseRank(phase: CatalogPhase): number {
-  switch (phase) {
-    case "idle": return 0
-    case "discovering": return 1
-    case "activating": return 2
-    case "cancelling": return 3
-    case "ready":
-    case "partial":
-    case "degraded":
-    case "cancelled": return 4
-  }
-}
-
-function isNullableGeneration(value: unknown): value is number | null {
-  return value === null || isNonNegativeInteger(value)
-}
-
-function isNonNegativeInteger(value: unknown): value is number {
-  return Number.isSafeInteger(value) && Number(value) >= 0
 }
 
 function abortError(): Error {

@@ -53,7 +53,7 @@ export function startIndexRejectionObserver({ logPath, cacheDir }) {
 function readIndexSnapshot(cacheDir, targetUri) {
   const workspaceDirectory = path.join(cacheDir, "workspaces")
   const databases = fs.readdirSync(workspaceDirectory)
-    .map(name => path.join(workspaceDirectory, name, "symbols-v2.sqlite3"))
+    .map(name => activeIndexDatabase(path.join(workspaceDirectory, name)))
     .filter(file => fs.existsSync(file))
   if (databases.length !== 1) {
     throw new Error(`expected one private index database, found ${databases.length}`)
@@ -74,4 +74,17 @@ function readIndexSnapshot(cacheDir, targetUri) {
   return { generation: rows[0].generation,
     rows: rows.filter(row => typeof row.documentUri === "string")
       .map(({ generation, ...row }) => row) }
+}
+
+function activeIndexDatabase(directory) {
+  const state = path.join(directory, "catalog-state.sqlite3")
+  if (!fs.existsSync(state)) return path.join(directory, "symbols-v2.sqlite3")
+  const output = execFileSync("sqlite3", ["-readonly", "-json", state,
+    "SELECT database_name FROM catalog_state WHERE id=1"], { encoding: "utf8", timeout: 5_000 })
+  const name = JSON.parse(output)[0]?.database_name
+  if (name !== "symbols-v2.sqlite3" && (typeof name !== "string"
+    || !/^catalog-[0-9a-f]+-[0-9a-f]+-[0-9a-f]+\.sqlite3$/u.test(name))) {
+    throw new Error("invalid private index publication")
+  }
+  return path.join(directory, name)
 }

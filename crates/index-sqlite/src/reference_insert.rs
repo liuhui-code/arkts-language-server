@@ -28,7 +28,7 @@ pub(super) fn insert_reference_documents(
     documents: &[DocumentSymbols],
     trace_enabled: bool,
 ) -> Result<ReferenceInsertTimings, StoreError> {
-    insert_documents(transaction, documents, trace_enabled, None)
+    insert_documents(transaction, documents, trace_enabled, None, 0, false)
 }
 
 pub(super) fn insert_catalog_reference_documents(
@@ -38,7 +38,22 @@ pub(super) fn insert_catalog_reference_documents(
     trace_enabled: bool,
 ) -> Result<ReferenceInsertTimings, StoreError> {
     let progress = ReferenceInsertProgress::begin(generation, documents.len());
-    insert_documents(transaction, documents, trace_enabled, progress)
+    insert_documents(transaction, documents, trace_enabled, progress, 0, false)
+}
+
+pub(super) fn insert_document_chunk(
+    transaction: &Transaction<'_>,
+    document: &DocumentSymbols,
+    offset: usize,
+) -> Result<ReferenceInsertTimings, StoreError> {
+    insert_documents(
+        transaction,
+        std::slice::from_ref(document),
+        true,
+        None,
+        offset,
+        true,
+    )
 }
 
 fn insert_documents(
@@ -46,6 +61,8 @@ fn insert_documents(
     documents: &[DocumentSymbols],
     trace_enabled: bool,
     mut progress: Option<ReferenceInsertProgress>,
+    offset: usize,
+    ignore_identity_conflicts: bool,
 ) -> Result<ReferenceInsertTimings, StoreError> {
     let trace_enabled = trace_enabled || progress.is_some();
     const VALUES_PER_OCCURRENCE_IDENTITY: usize = 4;
@@ -81,7 +98,7 @@ fn insert_documents(
             let inserted = occurrence_statement
                 .execute(params![
                     document.uri,
-                    sqlite_ordinal(ordinal, "reference occurrence")?,
+                    sqlite_ordinal(ordinal + offset, "reference occurrence")?,
                     occurrence.name,
                     i64::from(occurrence.range.start.line),
                     i64::from(occurrence.range.start.character),
@@ -131,6 +148,7 @@ fn insert_documents(
                     occurrence_identity_count,
                     &occurrence_identity_values,
                     &mut full_identity_sql,
+                    ignore_identity_conflicts,
                 )?;
                 if trace_enabled {
                     timings.occurrence_identity_rows += inserted;
@@ -155,7 +173,7 @@ fn insert_documents(
             let inserted = alias_statement
                 .execute(params![
                     document.uri,
-                    sqlite_ordinal(ordinal, "reference alias")?,
+                    sqlite_ordinal(ordinal + offset, "reference alias")?,
                     alias.from_name,
                     alias.to_name,
                 ])
@@ -180,7 +198,7 @@ fn insert_documents(
             let inserted = binding_statement
                 .execute(params![
                     document.uri,
-                    sqlite_ordinal(ordinal, "reference binding")?,
+                    sqlite_ordinal(ordinal + offset, "reference binding")?,
                     binding.imported_name,
                     binding.local_name,
                     binding.source_specifier,
@@ -212,6 +230,7 @@ fn insert_documents(
             occurrence_identity_count,
             &occurrence_identity_values,
             &mut full_identity_sql,
+            ignore_identity_conflicts,
         )?;
         if trace_enabled {
             timings.occurrence_identity_rows += inserted;
@@ -238,12 +257,14 @@ fn insert_occurrence_identity_values(
     row_count: usize,
     values: &[SqlValue],
     full_identity_sql: &mut Option<String>,
+    ignore_identity_conflicts: bool,
 ) -> Result<usize, StoreError> {
     let tail_sql;
     let sql = if row_count == OCCURRENCE_IDENTITIES_PER_INSERT {
-        full_identity_sql.get_or_insert_with(|| occurrence_identity_sql(row_count))
+        full_identity_sql
+            .get_or_insert_with(|| occurrence_identity_sql(row_count, ignore_identity_conflicts))
     } else {
-        tail_sql = occurrence_identity_sql(row_count);
+        tail_sql = occurrence_identity_sql(row_count, ignore_identity_conflicts);
         &tail_sql
     };
     transaction
@@ -253,7 +274,7 @@ fn insert_occurrence_identity_values(
         .map_err(map_sqlite_error)
 }
 
-fn occurrence_identity_sql(row_count: usize) -> String {
+fn occurrence_identity_sql(row_count: usize, ignore_identity_conflicts: bool) -> String {
     const VALUES_PER_OCCURRENCE_IDENTITY: usize = 4;
     let mut sql = String::from(
         "INSERT INTO reference_occurrence_identities(\
@@ -262,6 +283,9 @@ fn occurrence_identity_sql(row_count: usize) -> String {
     );
     let value_group = format!("({})", ["?"; VALUES_PER_OCCURRENCE_IDENTITY].join(","));
     sql.push_str(&vec![value_group; row_count].join(","));
+    if ignore_identity_conflicts {
+        sql.push_str(" ON CONFLICT(document_uri,name,qualification,qualifier) DO NOTHING");
+    }
     sql
 }
 

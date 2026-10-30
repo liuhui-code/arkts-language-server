@@ -3,7 +3,7 @@ use super::{
     inspect::{self, Candidate},
     now_ms, retire,
     source::{Anchor, Source},
-    sqlite_guard::SqliteGuard,
+    sqlite_guard::SqliteGroupGuard,
 };
 use serde::{Deserialize, Serialize};
 use std::{fs, path::Path};
@@ -38,7 +38,7 @@ pub(super) fn evaluate(
     policy: &Policy,
     inventory_complete: bool,
     remaining: u64,
-    database: SqliteGuard,
+    database: SqliteGroupGuard,
     issues: &mut Vec<String>,
 ) -> Result<(), String> {
     let identity = candidate.entry.workspace_identity.as_ref().unwrap();

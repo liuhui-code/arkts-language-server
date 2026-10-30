@@ -6,6 +6,8 @@ import readline from "node:readline"
 import { pathToFileURL } from "node:url"
 import { scriptedExports } from "./scripted-export-results.mjs"
 
+import { storageCatalog } from "./scripted-storage-catalog.mjs"
+
 let workspaceRoot = process.cwd()
 let workspaceIdentity = pathToFileURL(workspaceRoot).href
 let generation = 0
@@ -41,6 +43,9 @@ input.on("line", (line) => {
       })
       progress(status("discovering", "warming", "stale", generation))
       if (process.env.ARKTS_INDEX_TEST_SCENARIO === "stalled-catalog") break
+      if (process.env.ARKTS_INDEX_TEST_SCENARIO === "storage-stages") {
+        catalogTimer = storageCatalog(status, progress, generation, () => { committedGeneration = generation }); break
+      }
       if ((process.env.ARKTS_INDEX_TEST_SCENARIO === "reference-generation-race"
         && generation > 1) || process.env.ARKTS_INDEX_TEST_SCENARIO === "reference-preopen-stale") {
         progress(status("activating", "ready", "ready", generation))

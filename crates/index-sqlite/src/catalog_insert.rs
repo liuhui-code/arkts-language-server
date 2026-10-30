@@ -48,6 +48,14 @@ pub(super) fn insert_symbol_documents(
     transaction: &Transaction<'_>,
     documents: &[DocumentSymbols],
 ) -> Result<(), StoreError> {
+    insert_symbol_documents_at(transaction, documents, 0)
+}
+
+pub(super) fn insert_symbol_documents_at(
+    transaction: &Transaction<'_>,
+    documents: &[DocumentSymbols],
+    offset: usize,
+) -> Result<(), StoreError> {
     const SYMBOLS_PER_INSERT: usize = 256;
     const VALUES_PER_SYMBOL: usize = 11;
     let mut values = Vec::with_capacity(SYMBOLS_PER_INSERT * VALUES_PER_SYMBOL);
@@ -55,7 +63,7 @@ pub(super) fn insert_symbol_documents(
 
     for document in documents {
         for (ordinal, symbol) in document.symbols.iter().enumerate() {
-            let ordinal = i64::try_from(ordinal).map_err(|_| {
+            let ordinal = i64::try_from(ordinal + offset).map_err(|_| {
                 StoreError::new(
                     StoreErrorKind::InvalidData,
                     "symbol ordinal exceeds SQLite integer range",

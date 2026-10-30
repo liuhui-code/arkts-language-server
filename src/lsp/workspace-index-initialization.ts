@@ -12,8 +12,9 @@ export async function startWorkspaceIndex(connection: Connection, workspaceSymbo
   const cancellation = progress.token.onCancellationRequested(() => {
     workspaceIndexAbort?.abort(new Error("Workspace indexing cancelled by client"))
   })
+  let lastStorageLog = 0
+  let lastStorageStage: string | undefined
   let finished = false
-  let lastPercentage = 0
   progress.begin("ArkTS workspace index", undefined, "Discovering project files", true)
   const report = (status: WorkspaceIndexProgress) => {
     if (finished) return
@@ -24,14 +25,17 @@ export async function startWorkspaceIndex(connection: Connection, workspaceSymbo
       return
     }
     if (status.phase === "indexing") {
-      const percentage = indexPercentage(status)
-      const message = indexingMessage(status)
-      if (percentage === undefined) {
-        progress.report(message)
-      } else {
-        lastPercentage = Math.max(lastPercentage, percentage)
-        progress.report(lastPercentage, message)
+      if (status.storage) {
+        const storage = status.storage
+        const stage = ["writing", "committing", "checkpointing"].includes(storage.stage) ? "persisting" : storage.stage
+        const now = Date.now()
+        if (stage !== lastStorageStage || now - lastStorageLog >= 10_000) {
+          logger.info("index.catalog.storage", { ...storage, workspaceCount: workspaceRoots.length })
+          lastStorageLog = now
+          lastStorageStage = stage
+        }
       }
+      progress.report(status.storage ? storageMessage(status) : indexingMessage(status))
       return
     }
     if (status.phase === "ready") {
@@ -48,6 +52,10 @@ export async function startWorkspaceIndex(connection: Connection, workspaceSymbo
       indexedFiles: status.indexedFiles,
       skippedEntries: status.skippedEntries,
       totalFiles: status.totalFiles,
+      storageStage: status.storage?.stage,
+      storageStageElapsedMs: status.storage?.stageElapsedMs,
+      persistedFiles: status.storage?.writtenDocuments,
+      persistedRows: status.storage?.writtenRows,
     })
     finished = true
     cancellation.dispose()
@@ -67,9 +75,16 @@ export async function startWorkspaceIndex(connection: Connection, workspaceSymbo
   return workspaceIndexAbort
 }
 
-function indexPercentage(status: WorkspaceIndexProgress): number | undefined {
-  if (!status.totalFiles || status.indexedFiles <= 0) return undefined
-  return Math.min(99, Math.max(1, Math.floor(status.indexedFiles * 100 / status.totalFiles)))
+function storageMessage(status: WorkspaceIndexProgress): string {
+  const storage = status.storage!
+  const labels = { writing: "Writing index", committing: "Committing index", checkpointing: "Saving index",
+    validating: "Validating index", checking: "Checking project files", publishing: "Publishing index",
+    reusing: "Reusing unchanged index" }
+  const elapsed = Math.floor(storage.stageElapsedMs / 1000)
+  const count = storage.stage === "reusing" ? `; ${status.indexedFiles} files unchanged`
+    : ["writing", "committing", "checkpointing"].includes(storage.stage)
+      ? `; ${storage.writtenDocuments}/${status.indexedFiles} files saved` : ""
+  return `${labels[storage.stage]}${count}; ${elapsed}s elapsed`
 }
 
 function discoveryMessage(status: WorkspaceIndexProgress): string {
