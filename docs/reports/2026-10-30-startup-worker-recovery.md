@@ -80,6 +80,15 @@ Windows 真实 Photos 工程复验：`2026-10-30T00:40:12.246Z` 至 `00:40:54.44
 三个 JS bundle SHA 与 Mac 复验一致。原始协议、stderr、指标、日志、逐次结果及审计取回到
 `windows-final-evidence/`，归档 SHA `e1c8553056803f45af72722f602f0b86cb077451fa7c254db8cc95e7e3e77ad2`。
 
+首次最终 Linux CI（`b97b9ea`、run40981352593）为 fast 2106/2107、exit1，唯一失败是
+已有读取窗口负例的自动诊断竞态；其他 release 步骤尚未执行。受控探针证明诊断先消费
+注入并拒绝旧证明，后继补全返回合法最新内容。仅补齐该变体漏掉的私有诊断延迟控制，
+原新鲜度断言不变；同调度探针由 RED 转 GREEN，Mac 完整文件 6/6。
+原 CI 失败保留于 TDD；最终新版本须重新通过 canonical gate，不能借前一整轮或局部 GREEN 合并。
+Windows 该补充文件首轮另发现原 namespace 夹具的打开描述符替换不兼容，5/6 原失败保留；
+注入移到真实 close 后、外层读取证明后置 lookup 前，保留真实目录与拒绝断言。
+最终读取证明完整文件 Mac/Windows 各 6/6，Windows 999 输入 SHA MATCH；仅两项测试/夹具修正，产品不变。
+
 ## 证据与剩余范围
 
 `.bench/startup-recovery-20261030-o1_kdgda/` 保留两个独立 RED、首次 GREEN、

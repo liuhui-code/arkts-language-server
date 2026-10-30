@@ -132,3 +132,38 @@ membership degraded，索引 99% 时功能保持正确，1 Worker/0 恢复、shu
 原 Windows 首轮失败和私有阶段探针不覆盖；最终证据保留在 `windows-final-evidence/`，
 取回归档 SHA `e1c8553056803f45af72722f602f0b86cb077451fa7c254db8cc95e7e3e77ad2`。
 本轮不替代真实 Zed UI、索引 commit 完成、PSS/soak 或用户原现场日志证明。
+
+## 首次最终 CI 的读取窗口测试竞态
+
+父 `b97b9eacf1f99e71603824182c324602b2ade416`，
+[CI 40981352593](https://github.com/liuhui-code/arkts-language-server/actions/runs/40981352593)
+执行 `pnpm check:release`：fast 2106/2107、exit1、零 cancelled/skipped/todo。
+唯一失败为 `changed-source-read-witness.test.mjs` 的 `mutation=read-window`：
+预期 -32803，实际返回当前磁盘的 `markerEnd`。Windows 安装 CI 通过；fast 失败后的其他 release 步骤未运行。
+完整官方 job 原始日志为 `ci-linux-direct.log`，SHA
+`39293dd1ee611938042d6c621eae794448c000bbfa1098a92a64df358c3b8b18`；首次整轮失败不覆盖。
+
+原文件本机完整 6/6 未复现，不据此忽略 CI。私有只读调度探针在通知与补全之间留 1200ms，
+保持所有原断言，公开 stdio 再次 RED：0 PASS/1 FAIL/5 名称过滤，exit1。
+真实队列记录先派发 version2 `diagnose`，它触发并拒绝变化中的读取证明；
+后续 version2 `complete` 重新读取并返回 `markerEnd`。这是有效最新内容，原测试把
+“任一自动读取遇到注入”错误等同于“目标补全必须遇到注入”。收据 `read-window-background-probe.*`。
+
+仅把已有 drift/namespace 变体的私有诊断延迟 5000ms 同样用于全部 read-window 变体；
+目标补全先消费注入窗口，原 -32803、真实文件/线程、恢复内容及 namespace 断言均保留。
+相同 1200ms 探针 GREEN：1 PASS/5 名称过滤、exit0，实际派发为 complete(version2)，
+返回 -32803；完整文件 GREEN 6/6、exit0、零注解，15382.930ms。
+没有修改任何产品源码、截止或准入合同。本次提交因此另含这一项已有测试时序修正，
+生产代码仍与先前 Mac/Windows 实际工程运行相同；最终完整资格等待新 PR CI。
+
+Windows 新文件补充复验先为 5/6、exit1：namespace 注入在实际描述符尚未关闭时
+执行 unlink→mkdir，未能写出注入收据；原 32803 断言已通过，不能拿这份错误冒充
+真实目录切换已验证。原输出 `windows-read-witness-first.log` 保留。
+私有夹具改在真实 close 后、外层 `observeChangedSourceRead` 的后置 lookup 前执行
+同样目录替换，并在注入 I/O 前移除描述符跟踪，避免编号复用；不伪造 stat、回复或目录证明。
+原 namespace 变目录、实际 lookup caller、sticky 拒绝与恢复断言全部不变。
+先以原六项 GREEN 表征后整理跟踪清理，最终 Mac 6/6、exit0、15112.739ms，
+Windows Node20.19.5 6/6、exit0，均零 fail/cancelled/skipped/todo；999 输入前后 SHA MATCH。
+最终夹具 SHA `7b2b08e7ecc9b876a79162eaf30840fbff5852aa92ad275adae1cd8ef38beb6a`，
+测试文件 SHA `e154b1acff91ea5483237465143028c47583f0512a44692a52cc8977fb6e83b6`。
+完整最终 CI 仍须重跑；Mac 原整轮后仅三个测试/夹具文件有差异，生产源码和运行 bundle 不变。
