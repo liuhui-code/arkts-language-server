@@ -18,7 +18,8 @@ const semanticMethods = new Set<keyof ts.LanguageService>([
 
 /** Isolate failed compiler synchronization without changing input versions or SDK ownership. */
 export function recoverableLanguageService(host: ts.LanguageServiceHost, shared: ts.DocumentRegistry,
-  observe?: (source: ts.SourceFile) => void, invalidate: () => void = () => {}): ts.LanguageService {
+  observe?: (source: ts.SourceFile) => void, invalidate: () => void = () => {},
+  programReturned?: (program: ts.Program | undefined) => void): ts.LanguageService {
   const create = () => {
     assertCompilerOwnership()
     const owner = ownedDocumentRegistry(shared)
@@ -76,6 +77,7 @@ export function recoverableLanguageService(host: ts.LanguageServiceHost, shared:
       catch (cleanup) { throw new AggregateError([error, cleanup], "Failed to clean up compiler synchronization") }
       throw error
     }
+    programReturned?.(program)
     checkpoint()
     return program
   }

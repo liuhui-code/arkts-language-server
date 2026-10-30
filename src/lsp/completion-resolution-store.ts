@@ -3,7 +3,7 @@ import type { CompletionItem } from "vscode-languageserver/node.js"
 import type { SemanticCompletion } from "../contracts/semantic-engine.js"
 import { CompletionItemTickets } from "./completion-item-ticket.js"
 
-const MAX_COMPLETION_RESOLUTIONS = 512
+export const MAX_COMPLETION_RESOLUTIONS = 512
 
 export interface CompletionResolutionRecord {
   documentUri: string

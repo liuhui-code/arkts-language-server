@@ -802,6 +802,21 @@ Windows Zed1.25.3/Node20.19.5、API24声明SDK、30000源码隔离项目。
 不同符号/非成员补全专项被驱动/焦点保护阻断未执行；不宣称完整SDK或默认launcher激活已验收。
 所有活动overlay、项目/SDK/产物/日常安装核验MATCH，专用窗口正常关闭、所属进程退出；原index/DB/WAL保留。
 
+2026-10-30后续实现（不覆盖上述原始失败）：[ADR0032](../adr/0032-completion-item-identity-and-inferred-roots.md)、
+[执行计划](2026-10-30-ui-remediation.md)、[TDD](../tdd/2026-10-30-ui-remediation.md)。
+WUI-004已实现逐item身份、同item共享/独立取消及有界预取准入；128项公开RED曾出现57次物理队列满，修复后全签名，11项详情回归通过。
+WUI-003/WUI-005确认部分共同放大机制：同revision896前序18高亮/17codeAction反复同内容promotion，
+partial Host将已加载依赖提升为根、使Program更新；20007源文件公开反例修复后Program保持1，根列表不变。
+真实编辑、关闭回盘、磁盘watch、SDK/包/入口变化仍重建；不能据此宣称所有长尾或全局规模成本消失。
+最终聚焦34项GREEN；完整fast及Windows真实UI候选验证进行中，稳定ID暂不关闭。
+Windows最终冻结候选`4859f76+working-tree-624c665d34b537c2`公开27pass/1cancelled：
+30K夹具用例75秒总截止，曾与全项目输入哈希核验重叠，须串行补验；中间候选D临时目录3项通过不能冒充最终版本完整通过。
+后续诊断确认准备63233ms/初始化5729ms，前三轮定义成功、第四轮总截止；
+before独立准备真实30K文件后，服务75秒及每请求/四轮/正确性断言不变。最终Windows整组28/28，
+准备/服务边界变化已单列，不冒充原总75秒通过或真实SDK/UI验收。
+UI专用窗口启动后被前台SearchApp焦点保护拦住，尚未执行本轮UI动作；不以协议GREEN代替。
+默认无RSS预算，原500ms体验目标、完整结果/路径证明/Worker截止与恢复预算不变；native99%和30K全量能力缺口继续单列。
+
 ### 2026-10-27 30K 混合操作问题待办
 
 稳定编号下列三项，沿用上方本地待办，不重试外发；原证据中的M001/M002/M003为别名。
@@ -1585,3 +1600,97 @@ source／SDK／产物稳定，audit SHA
 临时诊断探针已删除；库存207/unit101/fast200，所有本切片源文件≤500行。
 继续真正产品执行消费和原剩余范围，不将Mac／私有fixture SDK／通知send记录
 升级为DevEco／Linux PSS或L08毕业；合入前新工具head须fresh whole。
+
+### WUI-006：不同位置语义读取互相取消（2026-10-30，P1）
+
+- 状态：真实Windows UI已确认，公开回归与修复执行中；未合并。
+- 复现：30K隔离项目，同候选4859f76+624c665d、server55def416/Workerbf8433e7；
+  rapid第53宏，ScreenManager.ts零基76:9的F12请求4516，被约70ms后同URI其他位置的自动请求取代。
+- 实际：无编辑/客户端取消却返回[]、父日志superseded，UI未跳转；预期有效请求均独立完成。
+- 原因：默认method+URI Freshness.start的隐式替换，与item详情身份问题同类，但在独立入口触发。
+- 证据：[修复报告](../reports/2026-10-30-ui-remediation.md)、`.bench/windows-ui-remediation-20261030/formal-failure-sealed-1/`。
+- 原35分17.680秒验收保持FAILED，不以fast2113/2113或局部新回归代替后续真实UI验收。
+
+
+2026-10-30 WUI-006更新：默认语义读取/disk/call hierarchy/workspace symbol统一逐请求所有权；
+新增17项公开stdio、Mac聚焦33/33及Windows最终48/48通过。候选父78a3158，server de22cc02/Worker bf8433e7，
+完整检查重新运行；真实四宏校准95.376秒通过。旧35分17.680秒FAILED不覆盖，最终正式复验从04:07:14Z开始，
+与原时长不累加。WUI-004与003/005同输入重复构建修复保留，不把500ms当硬限制。
+
+### WUI-007：暖缓存索引打开0文件退化（2026-10-30，P1，诊断中）
+
+- 同最终候选真实Zed03:49:09.883–03:49:41.180Z，索引0/0文件degraded、native13780退出；语义Worker线程1仍存活。
+- 私有缓存DB5439492096/WAL5471430072字节；整个DB/WAL/SHM及租约备份保留，未删缓存。
+- 单独原生initialize45秒无响应，被外部诊断保护终止；它不是产品30秒截止通过，也不是OOM证据。
+- 随后独立插桩LSP能打开并开始catalog，40秒观察后主动shutdown，只捕获“closed during cataloging”；
+  此关闭错误由诊断自身触发，**不能充当原UI错误**。原UI底层异常被服务层catch省略，超时/具体内部热点仍待补证。
+- 影响：原UI会话索引不可用，不能宣称整体验收通过；未重启该Zed，以相同混合操作继续观察补全/导航修复，
+  formal-preconditions明确记录初始化失败，不以局部功能成功抵消。相关报告及`.bench/windows-ui-remediation-20261030/`。
+- 本轮不为此盲改SQLite checkpoint、超时或产品门槛；原99%全量写入慢、30K全局功能与SDK缺项仍分别登记。
+
+
+### WUI-008：独立读取真实突发击穿全局64条计数（2026-10-30，P1）
+
+- C3真实UI关闭回盘，04:08:59.606Z typeDefinition430首份-32603 queue-full；1.2秒80不同参数、总30份queue-full。
+- 原正式3分6.406秒/5宏后保护停测，FAILED保留，不用48公开GREEN或先前35分钟抵消。
+- 根因：取消隐式替换后有效读取保留，原按全root64条request计数不适配正常Zed按位置预取；非重复输入，不能合并不同位置。
+- 修复候选：ADR0032决定D，64canonical源码归属/4MiB等待输入，原队列/有限公平/屏障/取消/退出清算保留。
+- 公开80读取RED10份queue-full→GREEN；新增生命周期和来源/字节超载对照，最终聚焦89/89。
+- C4父78a3158、server dd3feefd/Worker BF、694源清单；完整检查及Windows/真实UI复验进行中，未关闭/未合并。
+- 证据：`.bench/windows-ui-remediation-20261030/formal-failure-sealed-2/`、`wui008-burst.json`、`burst-admission-red/`、[报告](../reports/2026-10-30-ui-remediation.md)。
+
+
+### WUI-009：晚到定义导航抢占文件选择器输入（2026-10-30，P1）
+
+- C4真实Zed1.25.3/8dd255c，30K，server dd3feefd/BFWorker；正式2分39.510秒、4宏完成，第5宏FAILED，60分钟未完成。
+- AlbumGrid零基160:9 F12请求582，5064.901ms后正确Log31响应；期间返回/打开Picker选择器，未发送582取消。
+  响应后Log打开，后续测试路径和Enter进入Log未保存overlay；错误目标截图与逐次输入/帧完整保留。
+- 贡献因素分层：服务器排队放大晚响应；客户端结果应用缺导航意图围栏；驱动仅窗口保护未识别输入控件变化。
+  不能借全局取消有效LSP读取绕过客户端所有权。安装版源码支持机制，原UI调用栈与独立最小对照尚未闭环。
+- 原failure3 SHA0888f336...封存后，按已证明测试后缀经真实Ctrl-Z恢复原Log字节；不保存/强制丢弃，不影响原项目/其他窗口。
+- [ADR0033 Proposed](../adr/0033-client-navigation-ownership-and-ui-input-context.md)记录客户端代次、取消及最终围栏，未宣称Zed核心修复已实施。
+- 原正式FAILED保持；后续等待导航结清的独立补测不算原快速交错通过。证据见[本轮报告](../reports/2026-10-30-ui-remediation.md)。
+
+WUI-003残余：C4请求463关闭回盘跳转11746.157ms，其中父队列11531.117ms（98.17%）；期间Program17/0构建。
+这是未解决的严重长尾，不能继续归为同内容promotion重建；原直接阶段与未测区间见tail-463-evidence.json。
+
+
+2026-10-30移动恢复补证（不另判永久缓存缺陷）：C4独立定向UI第五宏1310在2791.826ms返回[]，
+期间收到迟到1852份Created文件事件、父端67份stale终态；原ScreenManager不在该批，但源码命名空间变化仍触发原root新鲜度围栏。
+同会话不编辑/重开/重启的三次实际F12均正确恢复。首轮FAILED保留，未验证客户端自动重试，
+用户可见首次失败体验继续跟踪。证据`move-transient-stale-evidence.json`与`targeted-failure-sealed-4.zip`。
+C4完整2133/2136因旧请求契约测试失败；严格迁移聚焦31通过、最终695清单重新跑完整check，不能拼接通过。
+
+
+### WUI-010：跳入工作区外SDK后语义请求内部错误（2026-10-30，P1，新发现）
+
+- 真实30K/C4符号补测第10项：Want定义1682正确，Zed随后didOpen外部SDK/version0，自动highlight1683为-32603Invalidsemanticworkerrequest，后续definition/typeDefinition/codeAction同样失败。
+- 原因：projectFor无包含根却返回首workspace；sync正确不接纳根外overlay，随后documentRequest仍用错误root提交，Supervisor根校验正确拒绝。
+- 与请求互取消、版本0非法或Worker崩溃不同；须建立外部声明所属项目/只读来源与生命周期合同，不能删根校验、吞错或无界创建scratchProgram。
+- 本轮未实施外部来源合同；记录为功能缺口。ADR0023/0030输入来源隔离及ADR0032独立请求的边界需要后续设计补充，不伪装现有ADR已经覆盖。
+- 证据：`sdk-file-failure-sealed-5.zip` SHAcfe9dae0...，本轮报告WUI-010；符号tour176.703秒/187命令FAILED，7/9结果正确、2份setTimeout失败、后7项未完成。
+- 实际SDK含setTimeout声明（1450d.ts中3份），2次导航-32803不能简单算SDK缺项；选中profile与Program投影尚未归因。严重长尾16.428/9.567秒亦保留。
+
+
+setTimeout输入核验补充：当前Windows declarations-only SDK缺少SDKambient发现逻辑的两份runtime-global候选；
+internal/full/global有export函数属于模块，component index/common无timer。不能把模块存在说成全局已入Program，
+也不能直接说SDK完全没有函数。`windows-runtime-global-input-audit-1.*`留存；未自动打桩/变更SDK。
+
+
+真实Zed重命名覆盖限制核验：F2没有LSP请求；实际client未声明workspaceEdit.failureHandling，
+当前事务式rename守卫因此不公布renameProvider。命令面板虽有Rename/F2，不等于服务器能力启用；
+不放宽事务安全合同或伪造客户端能力获取UI绿色。证据本轮报告及rename-palette-probe.png。
+
+
+WUI-010补证：Mac最小公共stdio“源定义→SDK目标didOpen/version0→highlight”RED0/1，源项目随后hover仍正确；
+同最终695源/五产物，非PhotosSDK/非UI，不计入完整fast。诊断脚本/结果`.bench/windows-ui-remediation-20261030/sdk-follow-target-diagnostic*`。
+不是Windows盘符或30K专属问题；正式修复前保持OPEN，不能用现有suite通过掩盖新增RED。
+
+
+2026-10-30本轮最终：695源/五产物冻结再核MATCH，Mac完整fast2136/2136、Windows同轮91/91，diffcheck通过。
+WUI-004/006/008候选机制已实现和回归，仍未合入；WUI-003持续严重排队、WUI-009及WUI-010仍OPEN，
+Mac SDK跟随目标最小诊断RED0/1未关闭。原生0degraded/runtimeglobals/完整30K引用改名与Zed事务能力限制仍在。
+真实UI整体验收FAILED保持；仅独立13分钟空闲后的F12/详情恢复通过，不代替耐久。
+全部测试PID正常窗口关闭后消失；shutdown未录响应的握手缺口如实保留。
+[最终报告](../reports/2026-10-30-ui-remediation.md#最终同会话空闲恢复关闭与验证结论)、生命周期封存7/源码与输入审计为最终证据。
+原无关缓存性能TODO仍暂缓；未提交/push/合并/发布/日常部署。

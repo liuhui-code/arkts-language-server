@@ -1,7 +1,8 @@
 import assert from "node:assert/strict"
 import fs from "node:fs"
 import path from "node:path"
-import test from "node:test"
+import os from "node:os"
+import test, { after, before, describe } from "node:test"
 import { createReadinessFixture } from "../support/semantic-readiness-lsp.mjs"
 
 test("opening and editing during a finite cold synchronization preserves initialization and its Worker",
@@ -73,18 +74,30 @@ test("cancelling a read during finite synchronization preserves its compiler for
     assert.equal(responses.length, 1, "a cancelled read still has exactly one public terminal")
   })
 
-test("thirty thousand sources and repeated edits do not turn finite synchronization into a recovery storm",
-  { timeout: 180_000 }, async t => {
-    const f = createReadinessFixture(t, {
-      ARKTS_BENCHMARK_CONTROL: "0", ARKTS_MEMORY_BUDGET_MB: undefined,
-      NODE_OPTIONS: `--require=${JSON.stringify(path.resolve("tests/fixtures/save-during-synchronization.cjs"))}`,
-    })
-    const noise = path.join(f.workspace, "noise")
+describe("thirty thousand source synchronization", () => {
+  let preparedDirectory, fixturePreparationMs
+  // Filesystem throughput is setup evidence, not evidence of semantic unresponsiveness.
+  before(() => {
+    const started = performance.now()
+    preparedDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-startup-noise-"))
+    const noise = path.join(preparedDirectory, "noise")
     fs.mkdirSync(noise)
     for (let i = 0; i < 29_998; i++) fs.writeFileSync(path.join(noise, `Unused${i}.ts`), `export const unused${i} = ${i}\n`)
-    // Filesystem setup/cleanup has its own envelope; semantic work keeps its original limit.
-    await t.test("serves current inputs through finite synchronization within the original behavior budget",
-      { timeout: 75_000 }, async child => {
+    fixturePreparationMs = performance.now() - started
+  }, { timeout: 75_000 })
+  after(() => { if (preparedDirectory) fs.rmSync(preparedDirectory, { recursive: true, force: true }) })
+
+  test("thirty thousand sources and repeated edits do not turn finite synchronization into a recovery storm",
+    { timeout: 75_000 }, async t => {
+      const f = createReadinessFixture(t, {
+        ARKTS_BENCHMARK_CONTROL: "0", ARKTS_MEMORY_BUDGET_MB: undefined,
+        NODE_OPTIONS: `--require=${JSON.stringify(path.resolve("tests/fixtures/save-during-synchronization.cjs"))}`,
+      })
+      fs.renameSync(path.join(preparedDirectory, "noise"), path.join(f.workspace, "noise"))
+      const sourceFiles = fs.readdirSync(path.join(f.workspace, "noise")).length + Object.keys(f.sources).length
+      assert.equal(sourceFiles, 30_000)
+      t.diagnostic(JSON.stringify({ fixturePreparationMs, sourceFiles,
+        timing: "filesystem preparation is separate from the unchanged 75000ms service scenario deadline" }))
       const arm = () => {
         for (const name of ["finite-save-entered.json", "finite-save-returned.json"]) fs.rmSync(path.join(f.directory, name), { force: true })
         fs.writeFileSync(path.join(f.directory, "finite-save-sync.json"), JSON.stringify({ remaining: 1, holdMs: 1400 }))
@@ -121,7 +134,7 @@ test("thirty thousand sources and repeated edits do not turn finite synchronizat
       assert.equal(f.events().filter(e => e.event === "semantic.worker.started").length, 1)
       assert.ok(!f.events().some(e => /semantic\.worker\.(unresponsive|recovery)/.test(e.event)))
       assert.deepEqual((await f.session.close({ timeoutMs: 5000 })).exit, { code: 0, signal: null })
-      child.diagnostic(JSON.stringify({ qualification: "PRIVATE_SDK_30000_SOURCES_NOT_REAL_PROJECT_UI",
+      t.diagnostic(JSON.stringify({ qualification: "PRIVATE_SDK_30000_SOURCES_NOT_REAL_PROJECT_UI",
         rounds: 4, finalVersion: version, workerStarts: 1, recoveries: 0 }))
       async function diagnostic(selectedVersion, codes) {
         const message = await f.session.transport.notification("textDocument/publishDiagnostics",
@@ -129,4 +142,4 @@ test("thirty thousand sources and repeated edits do not turn finite synchronizat
         assert.deepEqual(message.params.diagnostics.map(d => d.code), codes)
       }
     })
-  })
+})

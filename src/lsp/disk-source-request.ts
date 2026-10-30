@@ -3,7 +3,7 @@ import { LSPErrorCodes, ResponseError, type CancellationToken } from "vscode-lan
 import type { DocumentSnapshot } from "../contracts/document.js"
 import type { VersionedSemanticResult } from "../contracts/semantic-engine.js"
 import type { CallHierarchySourceAuthority } from "./call-hierarchy-source-authority.js"
-import type { FreshRequest, RequestFreshness } from "./request-freshness.js"
+import { semanticRequestLane, type FreshRequest, type RequestFreshness } from "./request-freshness.js"
 import type { InFlightRequestCoalescer } from "./in-flight-request-coalescer.js"
 
 interface DiskSourceRequest<T> {
@@ -12,6 +12,7 @@ interface DiskSourceRequest<T> {
   token?: CancellationToken
   fallback: T
   coalesceKey?: string
+  identityKey?: string
   execute(document: DocumentSnapshot, signal: AbortSignal): Promise<VersionedSemanticResult<T>>
 }
 
@@ -28,12 +29,12 @@ export async function runDiskSourceRequest<T>(request: DiskSourceRequest<T>,
   const rootUri = sources.rootUriFor(request.documentUri)
   const workspace = rootUri ? sources.workspace(rootUri) : undefined
   if (!rootUri || !workspace) return request.fallback
-  const lane = `${request.method}:${request.documentUri}`
+  const lane = semanticRequestLane(request.method, request.documentUri, request.identityKey)
   const key = request.coalesceKey === undefined ? undefined
     : [lane, workspace.id, "disk", request.coalesceKey].join("\u0000")
   const joining = key !== undefined && coalescer.has(key)
   const scope = { kind: "workspace" as const, workspaceId: workspace.id }
-  const fresh = joining ? freshness.startConcurrent(lane, request.token, scope) : freshness.start(lane, request.token, scope)
+  const fresh = freshness.startConcurrent(lane, request.token, scope)
   const execute = (current: FreshRequest, signal: AbortSignal) => diskSourceValue(request, sources, rootUri, current, signal)
   try {
     if (joining) onJoin()

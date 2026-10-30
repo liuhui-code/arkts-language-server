@@ -88,3 +88,8 @@ pnpm check
 This slice intentionally does not reject every advertised feature that still
 has an artifact gap. That policy becomes safe only after the remaining hover,
 signature-help, and document-symbol installed transcripts exist.
+
+
+2026-10-30后继：上文latest-wins例子记录当时决策；ADR0032决定C已替代服务器隐式取消。
+当前completion证据为`preserves independent current completion consumers at different positions`，
+claim=`completion.protocol.independent-consumers`；每ID取消和输入新鲜度仍单独严格验证。

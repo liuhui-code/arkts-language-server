@@ -24,6 +24,11 @@ export type RequestAbortReason =
   | "shutdown"
   | "superseded"
 
+/** Group a logical operation independently of its input-invalidation scope. */
+export function semanticRequestLane(method: string, uri: string, identityKey?: string): string {
+  return identityKey === undefined ? `${method}:${uri}` : JSON.stringify([method, uri, identityKey])
+}
+
 export class RequestAbortError extends Error {
   override readonly name = "RequestAbortError"
 
