@@ -36,6 +36,7 @@ interface SemanticWorkerHostOptions {
   readonly onHealthy?: () => void
   readonly onPressureRecycle: () => void
   readonly initialPreparationConsumed?: (rootUri: string) => boolean
+  readonly canFinishSynchronization?: (mutation: RootSemanticWorkerMutationInput) => boolean
 }
 
 interface RecycleWitness {
@@ -85,6 +86,8 @@ export class SemanticWorkerHost {
         return () => { this.#handlers.delete(epoch) }
       },
       send: message => { worker.postMessage(message); this.#watchdog?.sent(message) },
+      invalidate: (request, mutation) => this.#watchdog?.invalidate(request,
+        mutation !== undefined && this.#options.canFinishSynchronization?.(mutation) === true),
       terminate: () => {
         this.#handlers.delete(epoch)
         if (this.#worker === worker && !this.#disposed) {

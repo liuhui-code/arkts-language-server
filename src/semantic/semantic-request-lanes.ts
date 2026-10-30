@@ -1,24 +1,24 @@
 import type { SemanticWorkerMethod } from "./worker-protocol.js"
 
-type RequestClass = "completion" | "interactive" | "diagnostic" | "global"
+type RequestClass = "completion" | "foreground" | "interactive" | "diagnostic" | "global"
 
 /** Exhaustive: adding a method requires a scheduling decision, not an implicit FIFO default. */
 const REQUEST_CLASS = {
   complete: "completion",
   resolveCompletion: "completion",
-  define: "interactive",
-  typeDefinitions: "interactive",
+  define: "foreground",
+  typeDefinitions: "foreground",
   documentHighlights: "interactive",
   inlayHints: "interactive",
   foldingRanges: "interactive",
-  formatDocument: "interactive",
+  formatDocument: "foreground",
   documentSymbols: "interactive",
   codeActions: "interactive",
-  resolveCodeAction: "interactive",
-  hover: "interactive",
-  signatureHelp: "interactive",
-  prepareCallHierarchy: "interactive",
-  outgoingCalls: "interactive",
+  resolveCodeAction: "foreground",
+  hover: "foreground",
+  signatureHelp: "foreground",
+  prepareCallHierarchy: "foreground",
+  outgoingCalls: "foreground",
   diagnose: "diagnostic",
   implementations: "global",
   references: "global",
@@ -28,7 +28,7 @@ const REQUEST_CLASS = {
   semanticReadiness: "global",
 } as const satisfies Readonly<Record<SemanticWorkerMethod, RequestClass>>
 
-const PRIORITY = { completion: 2, interactive: 1, diagnostic: 0, global: -1 } as const
+const PRIORITY = { completion: 3, foreground: 2, interactive: 1, diagnostic: 0, global: -1 } as const
 
 export function isInteractiveSemanticWorkerMethod(method: SemanticWorkerMethod): boolean {
   return PRIORITY[REQUEST_CLASS[method]] > 0

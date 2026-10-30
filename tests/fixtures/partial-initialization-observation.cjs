@@ -9,6 +9,13 @@ if (!isMainThread && process.env.ARKTS_LSP_LOG_DIR) {
   globalThis.__partialInitialObservation = (kind, value) => fs.appendFileSync(
     path.join(directory, "partial-initialization.jsonl"), JSON.stringify({ kind, value, threadId }) + "\n")
   const open = fs.openSync
+  const openDirectory = fs.opendirSync
+  fs.opendirSync = function(file, ...args) {
+    if (typeof file === "string" && /[\\/]workspace[\\/]noise$/.test(file)) {
+      globalThis.__partialInitialObservation("noise-directory-open", file)
+    }
+    return Reflect.apply(openDirectory, this, [file, ...args])
+  }
   fs.openSync = function(file, ...args) {
     if (typeof file === "string" && /[\\/]workspace[\\/]noise[\\/]Unused\d+\.ts$/.test(file)) {
       globalThis.__partialInitialObservation("noise-read", file)

@@ -23,6 +23,7 @@ import { discoverCompletionCandidates } from "./completion-discovery.js"
 import { PreparedCompletionReceipts } from "./prepared-completion-receipts.js"
 import { resourceEventPath, toFilePath } from "./semantic-worker-file-identity.js"
 import { SemanticWorkerHost, semanticWorkerData } from "./semantic-worker-host.js"
+import { canFinishOverlaySynchronization } from "./semantic-worker-invalidation.js"
 import { SemanticWorkerRecycle } from "./semantic-worker-recycle.js"
 import { SemanticWorkerMutationTracker } from "./semantic-worker-mutation-tracker.js"
 import { SemanticWorkerFailureRecovery } from "./semantic-worker-failure-recovery.js"
@@ -98,6 +99,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
       environment: this.#environment,
       onFailure: error => this.#recovery.workerFailed(error),
       onHealthy: () => this.#recovery.healthy(),
+      canFinishSynchronization: mutation => canFinishOverlaySynchronization(mutation, this.#documents),
       initialPreparationConsumed: rootUri => this.#preparation.hasCompleted(rootUri),
       onPressureRecycle: () => this.#recycle.requestAutomatic(() => this.#recycleOptions()),
       workerData: rootUri => semanticWorkerData(rootUri, this.#environment,

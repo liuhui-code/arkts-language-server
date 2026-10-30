@@ -8,7 +8,8 @@ import { readCancellationWithoutThrowing } from "./semantic-worker-supervisor-er
 
 type Command = SemanticWorkerMutation | SemanticWorkerRequest
 interface Waiting { readonly command: Command; readonly sent: number; started?: number; cancelled?: number;
-  synchronized?: boolean; activitySequence?: number; activityAt?: number }
+  synchronized?: boolean; activitySequence?: number; activityAt?: number;
+  invalidation?: "finish-sync" | "settling" | "interrupt" }
 
 export function semanticWorkerDeadlines(env: NodeJS.ProcessEnv) {
   const read = (name: string, fallback: number) => {
@@ -41,13 +42,26 @@ export class SemanticWorkerWatchdog {
     this.waiting.set(key(command.epoch, "method" in command ? command.id : -command.revision),
       { command, sent: performance.now() })
   }
+  invalidate(request: SemanticWorkerRequest, finishSynchronization: boolean): void {
+    const entry = this.waiting.get(key(request.epoch, request.id))
+    if (!entry || entry.invalidation === "settling") return
+    // Later mutations cannot re-arm a completed commit or its delivery grace.
+    // check() admits ordinary cancellation only inside the matching live commit.
+    if (!finishSynchronization) entry.invalidation = "interrupt"
+    else entry.invalidation ??= "finish-sync"
+  }
   execution(message: unknown): boolean {
     if (!message || typeof message !== "object" || (message as { workerEvent?: unknown }).workerEvent !== "execution") return false
     const value = message as { epoch?: number; commandId?: number; action?: string }
     if (!Number.isSafeInteger(value.epoch) || !Number.isSafeInteger(value.commandId)) return true
     const entry = this.waiting.get(key(value.epoch!, value.commandId!))
     if (entry && value.action === "started") entry.started ??= performance.now()
-    if (entry && value.action === "synchronized") entry.synchronized = true
+    if (entry && value.action === "synchronized") {
+      entry.synchronized = true
+      if (entry.invalidation === "finish-sync" && entry.cancelled !== undefined) {
+        entry.invalidation = "settling"; entry.cancelled = performance.now()
+      }
+    }
     return true
   }
   settled(message: unknown): void {
@@ -88,6 +102,15 @@ export class SemanticWorkerWatchdog {
       }
       const committing = request && entry.started !== undefined && progress?.commandEpoch === command.epoch
         && progress.commandId === request.id && ["synchronize", "program", "checker"].includes(progress.phase)
+      // Cancelling a read revokes its result, not the mutable Program commit it
+      // already entered. Let that commit settle under its original absolute cap.
+      if (committing && entry.cancelled !== undefined && entry.invalidation !== "settling"
+        && (cancellation === SemanticWorkerCancelState.clientCancelled
+          || cancellation === SemanticWorkerCancelState.contentModified)) entry.invalidation = "finish-sync"
+      const draining = entry.invalidation === "finish-sync" && committing
+      if (entry.invalidation === "finish-sync" && !committing && entry.cancelled !== undefined) {
+        entry.invalidation = "settling"; entry.cancelled = now
+      }
       if (committing && progress.activitySequence !== entry.activitySequence) {
         entry.activitySequence = progress.activitySequence
         entry.activityAt = now
@@ -98,13 +121,14 @@ export class SemanticWorkerWatchdog {
       // Returning to request/idle is not terminal receipt and cannot rewind grace.
       const cancelledSince = entry.cancelled === undefined ? undefined
         : Math.max(entry.cancelled, entry.activityAt ?? entry.cancelled)
-      const reason = cancellation === undefined ? "invalid-cancellation-state" : cancelledSince !== undefined && now - cancelledSince >= this.limits.cancellation
+      const reason = cancellation === undefined ? "invalid-cancellation-state" : !draining && cancelledSince !== undefined && now - cancelledSince >= this.limits.cancellation
         ? "cancellation-deadline" : entry.started !== undefined && now - entry.started >= limit
           ? "execution-deadline" : entry.started === undefined && now - entry.sent >= Math.max(limit, this.limits.preparation) ? "queue-deadline" : undefined
       if (!reason) continue
       this.logger?.error("semantic.worker.unresponsive", { reason, method, epoch: command.epoch,
         elapsedMs: now - entry.sent, limitMs: reason === "cancellation-deadline" ? this.limits.cancellation : limit,
         commandState: entry.cancelled !== undefined ? "cancel-pending" : entry.started !== undefined ? "executing" : "sent",
+        cancellationPolicy: entry.invalidation ?? "interrupt",
         ...(cancelledSince === undefined ? {} : { cancellationReferenceMs: cancelledSince, cancellationQuietMs: now - cancelledSince }),
         ...(entry.activityAt === undefined ? {} : { lastActivityAgeMs: now - entry.activityAt }),
         ...(progress ?? { phase: "unmeasured" }) })
