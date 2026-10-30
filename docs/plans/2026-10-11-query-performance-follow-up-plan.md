@@ -1,5 +1,10 @@
 # ArkTS 查询性能后续执行计划
 
+2026-10-30 启动/取消活性修复已通过 [PR #105](https://github.com/liuhui-code/arkts-language-server/pull/105) 合入 main（`f78952f`）。
+最终 canonical release gate 和 fresh fast 2107/2107、Windows 安装、Mac/Windows 实际 Photos 三万文件资格通过；
+[ADR0031](../adr/0031-cancelled-read-compiler-synchronization.md) 已 Accepted。[最终 TDD](../tdd/startup-worker-cancellation-20261030.md#最终完整验证与交付)保留失败与版本差异。
+下方候选期的未合并状态及旧计数保留为各阶段历史；native 索引99%耗时与并行 UI 后续缺陷仍按各自合同跟踪。
+
 2026-10-28当前时延口径：[500ms体验目标](../benchmarks/interactive-latency-assessment.md)，允许适当波动；
 单次/偶发超过目标不独立判功能失败或阻塞交付。按典型操作、分布、频率和持续性评估，
 持续严重慢响应、超时和不可用仍跟踪；无新增数值硬线。下方550ms/P95及旧FAIL为有日期的历史口径，不重标原始结果。
