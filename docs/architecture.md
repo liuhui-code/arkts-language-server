@@ -129,6 +129,11 @@ details beyond the stable executable name and `--stdio`.
 
 ## Runtime sequencing
 
+The user-authorized [ADR0031 candidate](adr/0031-cancelled-read-compiler-synchronization.md)
+separates cancellation of obsolete reads from an already-entered mutable compiler synchronization.
+The parent still enforces the original absolute deadlines, terminal delivery and physical exit;
+current input fences and the shared recovery budget remain authoritative.
+
 1. LSP `initialize` configures all workspace roots and advertises only tested
    capabilities.
 2. `initialized` opens one sidecar session per root and starts cataloging in the

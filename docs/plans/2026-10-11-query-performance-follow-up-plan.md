@@ -725,6 +725,78 @@ aec84852且是旧单bundle布局，不等于候选server9ae12f90／当前Worker�
 GitHub外发记录被自动审批拒绝，已改为本地待办/报告持久化；未重试、未对外发布。
 以上登记不恢复暂停的缓存/索引路线，不修改新鲜度合同，不授权发布或合并；455文件冷目录3秒门槛仍按用户授权排除。
 
+### 2026-10-29 Windows真实UI优先修复
+
+2026-10-30 后续启动活性修复：[报告](../reports/2026-10-30-startup-worker-recovery.md)及
+[ADR0031](../adr/0031-cancelled-read-compiler-synchronization.md)。普通启动输入/客户端取消导致有限同步被1秒监督退休，
+两条公开RED后修正；三万测试源与实际SDK Photos三万文件12轮/58请求保持1 Worker/0恢复，Mac完整fast2106/2106。
+用户随后明确批准Windows代码传输及验证后通过PR合入main；最终定向Mac28/28、Windows24/24。
+Windows首轮取消已定位为三万文件夹具创建耗时66.075s；只隔离文件准备/清理预算，业务子测试仍75s、产品截止不变。
+原2106整轮对应旧夹具；最终多一个子测试的完整资格由本次PR的canonical release gate单列。
+Windows真实Photos三万源码/API24 SDK1580声明也已完成12轮/58请求、1Worker/0恢复、正常shutdown/exit0；
+前后原工程/副本各30287输入、SDK、999运行输入与native SHA全部一致。Mac/Windows的SDK和原证据分别保留。
+原生索引99%、用户原现场与既有自然竞态仍分别记录，不用该结果追认旧失败或实际UI通过。
+
+用户授权按下列顺序实施；[执行计划](2026-10-29-windows-ui-fixes.md)，
+[原始报告](../reports/2026-10-29-windows-zed-30k-ui-stress.md)。父版本main4859f76，
+Windows Zed1.25.3/Node20.19.5、API24声明SDK、30000源码隔离项目。
+
+- [ ] **WUI-001 / P1 / 优先1 / 候选验证完成、未合并**：[GitHub #102](https://github.com/liuhui-code/arkts-language-server/issues/102)。
+  PickerUIExtensionAbility__copy_003.ets末尾输入`// ui30k editable while indexing`，零基90:32/版本33，
+  冷请求80/4244ms、暖116/3653ms均-32803；无该请求取消或期间新编辑，暖已index ready。
+  注释处可无候选但应合法返回；不以吞错/删除新鲜度证明解决。后续Log.恢复。
+  根因已证为partial仍要求完整workspace准入，非SDK局部缺项或编辑缓存失效；列表/详情共享有界范围、明确isIncomplete，
+  ready索引候选仍由compiler验证。公开RED/GREEN、Windows原v33输入正常1430ms；144补全0份-32803。
+  原证据`completion80-timeline.json`、`warm-observe-first-edit.stdout`、完整wire/日志保持。
+- [ ] **WUI-003 / P1 / 优先2 / 候选验证完成、未合并**：[GitHub #103](https://github.com/liuhui-code/arkts-language-server/issues/103)。
+  移动恢复ScreenManager并删空目录后请求1688正确跳转9221ms，父队列8848.952ms。
+  前面3份highlight、1份typeDefinition和8份codeAction，同epoch1/revision394且无mutation；同级FIFO已证。
+  穷尽策略新增foreground层、保留公平/屏障；公开定义派发第12→第1，14项对照GREEN；真实移动恢复后3次定义正确750/1321/430ms。
+  原证据`queue-before-request1688.json`、`selected-queue-spans.json`。
+- [ ] **WUI-002 / P1 / 优先3 / 候选验证完成、未合并**：[GitHub #104](https://github.com/liuhui-code/arkts-language-server/issues/104)。
+  12:52:55.416Z撤销至v27、55.500Z诊断1268、56.199Z保存watcher、57.282Z取消截止，phase=program/111starts/110returns；
+  58.804Z线程2创建、59.897Z恢复10份文档，Node未退出，无OOM证据。一次真实窗口已证，稳定最小序列尚待建立。
+  有限1800ms实际Program公开反例已证并修正；仅合格open-overlay磁盘通知允许已有同步清算，旧结果仍失效，
+  绝对截止/真正编辑取消/丢终态/恢复预算对照GREEN。自然30K的具体CPU热点与精确窗口仍未证明相同。
+  原证据`worker-recovery-real-ui-timeline.json`及完整stderr；[ADR0030](../adr/0030-completion-scope-and-navigation-liveness.md)。
+
+上述证据均在`.bench/windows-zed-ui-30k-20261029/`，保留源码/产物哈希和原FAILED。
+2026-10-30候选证据`.bench/windows-ui-fixes-20261029/`，Mac完整fast2103/2103/exit0、Windows新增回归7/7；
+33分38秒真实UI/533输入批次中1Worker/0退役恢复，原Album4轮与移动恢复目标正确，所有活动缓冲区及项目输入恢复。
+剩余观察：缺失SDK目标2次定义失败、全量范围3次失败、86/96详情仅通用回退未逐条归因、后台读取秒级尾部，
+关闭shutdown未观察答复（进程均正常退出）。不把这些算成功或据此称两小时/全功能通过；
+[报告](../reports/2026-10-30-windows-ui-fixes.md)与[ADR0030](../adr/0030-completion-scope-and-navigation-liveness.md)保存边界。
+本轮不包括native全量替换或30K完整引用/重命名功能扩展；500ms仍为体验目标，不恢复默认RSS预算。
+
+2026-10-30继续真实Windows UI混合压测补充（未改产品、未合并）：
+[本轮报告](../reports/2026-10-30-windows-zed-ui-endurance.md)，证据`.bench/windows-zed-ui-endurance-20261030/`。
+固定Windows候选4859f76+working-tree-66495b5c0a31fc36；本地并行修改未部署，不由本轮结果背书。
+正式53分27秒、79宏/2483输入批次，第80宏因两次Undo/一次Redo的驱动假设停测，原FAILED保留。
+不累计校准、后续诊断或前轮时长来宣称60分钟/两小时验收完成。
+
+- [ ] **WUI-004 / P1 / 优先1 / 新确认，待修复**：同文档多个有效补全item详情互相supersede。
+  正式510份resolve中487份仅通用描述、23份真实签名；同区间父日志487次superseded/23次ok；
+  通用回退时目标文档出生/请求/响应生命周期和版本相同，无该请求终态前的客户端取消。
+  register-completion:73→semantic-request-runner:111/127→request-freshness:46–49，lane仅method+URI，
+  不同item也取消前项，runner回退null→原通用item；截图实际debug无签名，不能以result非空当成功。
+  Mac独立公开stdio两个item串行均签名、无编辑/取消并发丢前项，原一次及固定辅助产物3轮RED保留；
+  Mac产物/Node与Windows不同，身份分别记录，不冒充Windows UI最小回归通过。
+  后续按item+文档生命周期区分请求，同item合并/独立取消，保留编辑/关闭栅栏、公平与背压；
+  回归不同item、重复item、单消费者取消、编辑/重开、过期句柄、Zed预取，不只加方法特判。
+- [ ] **WUI-003补充 / P1 / 优先2 / 受控回归GREEN，真实长尾仍未闭环**：移动恢复定义889正确但4543.630ms，
+  父准入至send4163.157ms/91.6%，Worker接收至派发0.381ms；前面highlight/typeDefinition自动读取，
+  同epoch/revision、无mutation。具体公平bypass计数未测，不强行归因某个分支。
+  正式成功定义1452份中位53.10/p951242.44/max4923.07ms；205份超过500ms，保留分布，500ms非硬门禁。
+- [ ] **WUI-005 / P2 / 待诊断**：真实自动documentHighlight/codeAction终态长尾35708.71/43937.07ms。
+  具体等待/执行/可见结果归因未测，不能推定前台连续冻结同样时长；完整请求和队列日志已保存。
+- [ ] **WUI-002补充 / 优先3 / 本轮未复现换代，仍保留原缺陷边界**：同server仅thread1、0退役恢复/OOM，
+  7轮保存/关闭与6轮移动恢复局部目标正确；不外推本地新watchdog修改或所有取消时序稳定。
+
+99%仍停467206ms后end，native第一轮replace464210ms（commit约330016ms），未混同Worker换代。
+30K全量引用/实现/incomingCalls各7份完整性错误，SDK位置定义17份-32803，均不算成功。
+不同符号/非成员补全专项被驱动/焦点保护阻断未执行；不宣称完整SDK或默认launcher激活已验收。
+所有活动overlay、项目/SDK/产物/日常安装核验MATCH，专用窗口正常关闭、所属进程退出；原index/DB/WAL保留。
+
 ### 2026-10-27 30K 混合操作问题待办
 
 稳定编号下列三项，沿用上方本地待办，不重试外发；原证据中的M001/M002/M003为别名。

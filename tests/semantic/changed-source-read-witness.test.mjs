@@ -13,7 +13,8 @@ for (const mutation of [null, "sdk-config", "read-window", "read-window-drift", 
       const namespace = mutation === "read-window-namespace"
       const { session, sdk, workspace, directory, rootUri, uri, events } = createReadinessFixture(t, {
         ARKTS_BENCHMARK_CONTROL: "0", ARKTS_MEMORY_BUDGET_MB: "4096", ARKTS_REFERENCES_RESIDENT_FAST_PATH: "1",
-        ...(drift || namespace ? { ARKTS_TEST_DIAGNOSTIC_DELAY_MS: "5000" } : {}),
+        // The target completion must consume the injected read window before automatic diagnosis.
+        ...(readWindow ? { ARKTS_TEST_DIAGNOSTIC_DELAY_MS: "5000" } : {}),
         ...(readWindow ? { NODE_OPTIONS: `--require=${path.resolve("tests/fixtures/changed-source-read-window.cjs")}` } : {}) })
       const main = marker => `import { Model } from './ZZModel'\nconst model = new Model()\nexport const current = model.${marker}\n`
       const model = marker => `export class Model { ${marker}: number = 1 }\n`

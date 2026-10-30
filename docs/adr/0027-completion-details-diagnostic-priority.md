@@ -82,3 +82,12 @@ candidate11完整fast2085/2085，7种公开交互矩阵与队首有界绕过/公
 
 2026-10-28按新体验口径关闭M003原调度缺陷；46/304份详情超过500ms等测量保留为体验观察，
 不是以单次/偶发超过目标判功能失败或要求全部压进500ms才交付。反复尾延迟仍需结合使用场景评估。
+
+## 2026-10-30后续缺口：导航与自动读取同级
+
+WUI-003真实定义9221ms中8848.952ms在父队列；3份highlight、1份typeDefinition及8份codeAction原同级FIFO。
+原列表/详情优先决策未给导航独立于自动读取的层级，不能据前述详情收据声称所有前台排队已解决。
+[ADR0030](0030-completion-scope-and-navigation-liveness.md#导航有限优先不改变读写顺序)在普通队列增加foreground层，
+保留每队首最多一次绕过、mutation/global屏障和原detached-reference既有通道。
+同级自动definition/typeDefinition无法按LSP来源进一步区分；正在执行的编译不抢占，仍可能造成长尾。
+新增公开LSP先RED派发第12、后GREEN第1且原队首随后执行。此为Proposed补充，不改写原历史。

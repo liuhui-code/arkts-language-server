@@ -39,8 +39,8 @@ function definition(f) {
   return { textDocument: { uri: f.uri("Main.ets") }, position: { line: 1, character: 23 } }
 }
 
-test("cancelling a synchronous checker stall retires the Worker and recovers the same input once", { timeout: 20_000 }, async t => {
-  const f = fixture(t)
+test("a cancelled nonreturning checker still reaches its original execution deadline and recovers once", { timeout: 20_000 }, async t => {
+  const f = fixture(t, { ARKTS_SEMANTIC_REQUEST_TIMEOUT_MS: "1500" })
   await ready(f)
   configure(f); await f.readiness(false)
   f.fault("checker")
@@ -52,6 +52,8 @@ test("cancelling a synchronous checker stall retires the Worker and recovers the
   assert.equal(terminal.error?.code, -32800, JSON.stringify(terminal))
   await waitFor(() => f.events().some(e => e.event === "semantic.worker.recovery.complete"), "recovery")
   const stalled = f.events().find(e => e.event === "semantic.worker.unresponsive")
+  assert.equal(stalled.reason, "execution-deadline")
+  assert.equal(stalled.limitMs, 1500)
   assert.equal(stalled.phase, "checker")
   assert.equal(stalled.programStarts, stalled.programReturns)
   assert.equal(stalled.checkerStarts, stalled.checkerReturns + 1)

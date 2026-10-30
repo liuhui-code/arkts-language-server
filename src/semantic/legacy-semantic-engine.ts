@@ -62,7 +62,7 @@ import { formatArktsDocument } from "../core/formatting/arkts-document-formatter
 import { FoldingRangeProvider } from "../core/syntax/folding-range-provider.js"
 import type { SemanticTypeEngineRegistry } from "../core/types/type-engine.js"
 import { toFilePath } from "./semantic-worker-file-identity.js"
-import { completionDiscoveryBatches, semanticRootFingerprints, completionItemIdentity,
+import { completionQueryPlan, semanticRootFingerprints, completionItemIdentity,
   completionItemDiscoveryProjectRoots, memberCompletionScope } from "./completion-batch-planning.js"
 import { publicReferenceResult } from "./references/reference-result-mapping.js"
 import type { SemanticDocumentStore, SemanticWorkspaceView } from "../core/workspace/document-store.js"
@@ -176,34 +176,24 @@ export class LegacySemanticEngine implements SemanticEnginePort {
   ): Promise<VersionedSemanticResult<SemanticCompletionList>> {
     assertActive(query.signal)
     this.sync(query.document)
-    const { memberAccess, memberProjectRoots, memberGroup } = memberCompletionScope(query,
-      this.interactiveProjectRootProfile, this.memberCompletionProjectRootProfile,
-      () => this.engines.hasSemanticGroups(toFilePath(query.document.workspaceId)))
-    const autoImportBatches = !memberAccess && this.autoImportProjectRootProfile === "discovery"
-      ? completionDiscoveryBatches(
-          query.completionDiscovery,
-          query.document.workspaceId,
-          this.autoImportBatchRootLimit,
-        )
-      : undefined
-    const scopedProjectRoots = memberGroup || memberProjectRoots || autoImportBatches !== undefined
+    const plan = completionQueryPlan(query, {
+      projectRootProfile: this.interactiveProjectRootProfile, memberCompletionProjectRootProfile: this.memberCompletionProjectRootProfile,
+      autoImportProjectRootProfile: this.autoImportProjectRootProfile, autoImportBatchRootLimit: this.autoImportBatchRootLimit,
+    }, () => this.engines.hasSemanticGroups(toFilePath(query.document.workspaceId)),
+      () => this.documents.membershipFor(toFilePath(query.document.workspaceId)!).status === "complete")
+    const autoImportBatches = plan.discovery, preparation = plan.scope
     const batches = autoImportBatches ?? [{
       roots: [] as readonly string[],
       candidates: query.completionDiscovery?.candidates ?? [],
     }]
     const mergedItems: SemanticCompletionItem[] = []
     const itemIndexes = new Map<string, number>()
-    let isIncomplete = false
+    let isIncomplete = !plan.memberAccess && preparation.scopeIncomplete
     for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
       assertActive(query.signal)
       const batch = batches[batchIndex]
-      const prepared = this.prepare(
-        query.document,
-        query.position,
-        !scopedProjectRoots,
-        memberGroup ? "closure" : scopedProjectRoots ? "current" : this.interactiveProjectRootProfile,
-        batch.roots,
-      )
+      const prepared = this.prepare(query.document, query.position,
+        preparation.includeWorkspaceFiles, preparation.projectRootProfile, batch.roots)
       const traceContext = autoImportBatches
         ? {
             completionBatchIndex: batchIndex,
@@ -224,7 +214,7 @@ export class LegacySemanticEngine implements SemanticEnginePort {
             ? {
                 ...query.completionDiscovery,
                 candidates: batch.candidates,
-                preResolve: this.autoImportProjectRootProfile === "discovery",
+                preResolve: autoImportBatches !== undefined,
               }
             : undefined,
         },
@@ -264,15 +254,14 @@ export class LegacySemanticEngine implements SemanticEnginePort {
   ): Promise<VersionedSemanticResult<SemanticCompletion>> {
     assertActive(query.signal)
     this.sync(query.document)
-    const autoImportRoots = this.autoImportProjectRootProfile === "discovery"
-      ? completionItemDiscoveryProjectRoots(query.completion, query.document.workspaceId)
-      : undefined
+    const autoImportRoots = completionItemDiscoveryProjectRoots(query.completion, query.document.workspaceId)
     const reusable = reusablePreparedCompletion(query, this.packageResolver, toFilePath(query.document.workspaceId),
       autoImportRoots !== undefined, () => assertActive(query.signal))
     if (reusable) return { documentVersion: query.document.version, value: reusable }
     const member = autoImportRoots === undefined ? memberCompletionScope(query,
       this.interactiveProjectRootProfile, this.memberCompletionProjectRootProfile,
-      () => this.engines.hasSemanticGroups(toFilePath(query.document.workspaceId))) : undefined
+      () => this.engines.hasSemanticGroups(toFilePath(query.document.workspaceId)),
+      () => this.documents.membershipFor(toFilePath(query.document.workspaceId)!).status === "complete") : undefined
     const prepared = autoImportRoots === undefined
       ? this.prepare(query.document, query.position, ...member!.preparation)
       : this.prepare(query.document, query.position, false, "current", autoImportRoots)

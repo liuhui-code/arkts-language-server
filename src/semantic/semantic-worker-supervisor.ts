@@ -23,6 +23,7 @@ import {
   wireRequest,
 } from "./semantic-worker-command-codec.js"
 import { takeNextSemanticWorkerRequest } from "./semantic-request-lanes.js"
+import { invalidateActiveWorkerRequests } from "./semantic-worker-invalidation.js"
 import type { SemanticWorkerQueueTrace } from "./semantic-worker-queue-trace.js"
 import { findCoalescingMutation, mergeDocumentMutations } from "./semantic-worker-mutation-coalescing.js"
 
@@ -60,6 +61,7 @@ export interface RootSemanticWorkerEndpoint {
   listen(handlers: RootSemanticWorkerEndpointHandlers): () => void
   send(message: SemanticWorkerMutation | SemanticWorkerRequest): void
   terminate(): void | Promise<void>
+  invalidate?(request: SemanticWorkerRequest, mutation?: RootSemanticWorkerMutationInput): void
 }
 
 export interface RootSemanticWorkerSupervisorOptions {
@@ -207,7 +209,7 @@ export class RootSemanticWorkerSupervisor {
       return this.#rejectMutationAndRestart()
     }
     this.#stateGeneration += 1
-    this.#invalidateRequests()
+    this.#invalidateRequests(snapshot)
     if (existing) {
       this.#queuedMutationTextBytes = nextTextBytes
       existing.input = nextSnapshot
@@ -511,19 +513,9 @@ export class RootSemanticWorkerSupervisor {
     }
   }
 
-  #invalidateRequests(): void {
-    if (this.#active?.kind === "request") {
-      cancelWithoutThrowing(
-        this.#active.cancelCell,
-        SemanticWorkerCancelState.contentModified,
-      )
-    }
-    if (this.#detachedReference) {
-      cancelWithoutThrowing(
-        this.#detachedReference.cancelCell,
-        SemanticWorkerCancelState.contentModified,
-      )
-    }
+  #invalidateRequests(mutation: RootSemanticWorkerMutationInput): void {
+    invalidateActiveWorkerRequests([this.#active?.kind === "request" ? this.#active : undefined,
+      this.#detachedReference], this.#endpoint, mutation)
     for (const record of this.#pendingRequests.splice(0)) {
       cancelWithoutThrowing(record.cancelCell, SemanticWorkerCancelState.contentModified)
       record.completion.reject(new SemanticWorkerSupervisorError("content-modified"))
@@ -534,6 +526,7 @@ export class RootSemanticWorkerSupervisor {
     record: RequestRecord,
     reason: SemanticWorkerTerminalCancellationState,
   ): SemanticWorkerTerminalCancellationState {
+    if (record.wire && reason !== SemanticWorkerCancelState.contentModified) this.#endpoint.invalidate?.(record.wire)
     const winner = cancelSemanticWorkerRequest(record.cancelCell, reason)
     if (this.#active === record || this.#detachedReference === record) return winner
     const pendingIndex = this.#pendingRequests.indexOf(record)

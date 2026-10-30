@@ -43,6 +43,8 @@ protection checks. Earlier L01/L02 resource-admission verdicts are historical.
 | [0027](0027-completion-details-diagnostic-priority.md) | **Proposed; scheduling defect verified; latency distribution tracked against500ms experience target** | Exhaustive foreground classification with bounded priority and diagnostic fairness; SOAK-30K-M003 |
 | [0028](0028-index-cache-lifecycle.md) | **Proposed; implemented/validated under explicit authorization, not marked Accepted** | Isolated test caches, use leases, legacy preview and safe collection; full fast2092/2092, native Mac/Windows verified |
 | [0029](0029-opt-in-rss-memory-budget.md) | **Proposed; implemented/validated under explicit authorization; fast2096/2096, Windows focused24 + lifetime2; not marked Accepted** | No default fixed RSS budget; explicit positive budget preserves pressure semantics; normal cleanup and fault recovery remain |
+| [0030](0030-completion-scope-and-navigation-liveness.md) | **Proposed; candidate verified: fast2103/2103, Windows7/7; UI scope/limits recorded** | Separate partial completion scope from validity; finite navigation priority; reason-scoped compiler synchronization drain under unchanged absolute deadlines |
+| [0031](0031-cancelled-read-compiler-synchronization.md) | **Accepted 2026-10-30; user approved PR delivery; Mac fast2106, final focused Mac28/28 and Windows24/24; actual Photos30K evidence recorded** | Cancel obsolete reads while letting an already-entered compiler synchronization finish under its original absolute deadline |
 
 2026-10-27 [三项根因与ADR审计](../reports/2026-10-27-30k-issues-root-causes-and-adrs.md#adr逐项映射与设计缺口)：
 上表0020–0023的“not merged”及检查数是各切片当时的历史收据，不能作为当前版本判定。

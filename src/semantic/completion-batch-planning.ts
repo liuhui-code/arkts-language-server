@@ -4,23 +4,47 @@ import type { SemanticCompletion, SemanticCompletionDiscovery, SemanticQuery } f
 import type { SemanticCompletionItem } from "../core/protocol.js"
 import { isMemberAccessCompletion } from "../core/types/typescript-language-service.js"
 import { toFilePath } from "./semantic-worker-file-identity.js"
+import type { InteractiveSemanticRuntimeConfig } from "./interactive-runtime.js"
 
 interface CompletionDiscoveryBatch {
   readonly roots: readonly string[]
   readonly candidates: readonly SemanticCompletionDiscovery["candidates"][number][]
 }
 
+/** Completion can use a valid local scope while full-project membership is unavailable. */
+export function completionPreparation(scoped: boolean, memberGroup: boolean,
+  profile: "closure" | "current", membershipComplete: () => boolean) {
+  const includeWorkspaceFiles = !scoped && membershipComplete()
+  return { includeWorkspaceFiles,
+    projectRootProfile: memberGroup ? "closure" as const : scoped || !includeWorkspaceFiles ? "current" as const : profile,
+    scopeIncomplete: !scoped && !includeWorkspaceFiles }
+}
+
+/** Keep local completion independent from optional whole-project auto-import enrichment. */
+export function completionQueryPlan(query: SemanticQuery, runtime: Omit<InteractiveSemanticRuntimeConfig,
+  "sdkAmbientProfile" | "autoImportTrimBetweenBatches">, hasGroups: () => boolean, membershipComplete: () => boolean) {
+  const member = memberCompletionScope(query, runtime.projectRootProfile, runtime.memberCompletionProjectRootProfile, hasGroups)
+  let discovery = !member.memberAccess && runtime.autoImportProjectRootProfile === "discovery"
+    ? completionDiscoveryBatches(query.completionDiscovery, query.document.workspaceId, runtime.autoImportBatchRootLimit) : undefined
+  const scope = completionPreparation(member.memberGroup || member.memberProjectRoots || discovery !== undefined,
+    member.memberGroup, runtime.projectRootProfile, membershipComplete)
+  if (scope.scopeIncomplete && !member.memberAccess) {
+    discovery = completionDiscoveryBatches(query.completionDiscovery, query.document.workspaceId, runtime.autoImportBatchRootLimit)
+  }
+  return { memberAccess: member.memberAccess, discovery, scope }
+}
+
 /** Member list and details consume the same complete stable scope or explicit fallback. */
 export function memberCompletionScope(query: Pick<SemanticQuery, "document" | "position">,
   interactiveProfile: "closure" | "current", memberProfile: "group" | "workspace" | "current",
-  hasGroups: () => boolean) {
+  hasGroups: () => boolean, membershipComplete: () => boolean = () => true) {
   const memberAccess = isMemberAccessCompletion(query.document.text,
     query.position.line + 1, query.position.character + 1)
   const memberProjectRoots = memberAccess && (interactiveProfile === "current" || memberProfile === "current")
   const memberGroup = memberAccess && memberProfile === "group" && !memberProjectRoots && hasGroups()
+  const scope = completionPreparation(memberProjectRoots || memberGroup, memberGroup, interactiveProfile, membershipComplete)
   return { memberAccess, memberProjectRoots, memberGroup,
-    preparation: [!memberProjectRoots && !memberGroup,
-      memberGroup ? "closure" : memberProjectRoots ? "current" : interactiveProfile] as const }
+    preparation: [scope.includeWorkspaceFiles, scope.projectRootProfile] as const }
 }
 
 export function completionDiscoveryBatches(
