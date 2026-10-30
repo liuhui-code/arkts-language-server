@@ -170,7 +170,7 @@ test("matches an open ArkTS symbol by uppercase acronym without treating digits 
   assert.equal((await server.response(20)).result[0].name, "Chat2BaseViewModel")
 })
 
-test("reports discovery without fake zero percent and completes monotonic indexing progress", async (t) => {
+test("reports discovery without fake zero percent and keeps indexing indeterminate until publication", async (t) => {
   const server = new LspProcess({ serverPath: scriptedServerPath })
   t.after(() => server.close())
   server.send({
@@ -204,7 +204,7 @@ test("reports discovery without fake zero percent and completes monotonic indexi
   const percentages = reports
     .map((message) => message.params.value.percentage)
     .filter((value) => value !== undefined)
-  assert.deepEqual(percentages, [33, 100])
+  assert.deepEqual(percentages, [100])
   assert.ok(percentages.every((value, index) => index === 0 || value >= percentages[index - 1]))
   assert.ok(reports.some((message) => /1\/3 files/.test(message.params.value.message)))
 

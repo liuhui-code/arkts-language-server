@@ -1,11 +1,12 @@
-//! Separate-process GC only. Never open/close another descriptor for this DB while held:
+//! GC, or generation pruning after acquiring its exclusive reader lease.
+//! Never open/close another descriptor for this DB while held:
 //! POSIX fcntl locks are process-owned and closing ANY descriptor for that inode releases them.
 use std::{
     fs::{File, OpenOptions},
     path::Path,
 };
 
-pub(super) struct SqliteGuard {
+pub(crate) struct SqliteGuard {
     _file: File,
 }
 
@@ -72,4 +73,34 @@ fn lock(file: &File) -> std::io::Result<()> {
         return Err(std::io::Error::last_os_error());
     }
     Ok(())
+}
+
+/// Pin every database inode in a flat catalog group, including the control DB.
+pub(super) struct SqliteGroupGuard {
+    _databases: Vec<SqliteGuard>,
+}
+
+impl SqliteGroupGuard {
+    pub fn acquire(
+        directory: &Path,
+        snapshot: &[(String, u64, u128, String)],
+    ) -> Result<Self, String> {
+        let mut databases = Vec::new();
+        for (name, _, _, identity) in snapshot {
+            if name != "symbols-v2.sqlite3"
+                && name != "catalog-state.sqlite3"
+                && !crate::catalog_control::generation_database(name)
+            {
+                continue;
+            }
+            let guard = SqliteGuard::acquire(&directory.join(name))?;
+            if guard.object_id()? != *identity {
+                return Err("database-handle-identity-changed".into());
+            }
+            databases.push(guard);
+        }
+        Ok(Self {
+            _databases: databases,
+        })
+    }
 }

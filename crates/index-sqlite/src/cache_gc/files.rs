@@ -153,6 +153,7 @@ pub fn snapshot(path: &Path) -> Result<Vec<(String, u64, u128, String)>, String>
             "retired.json",
         ]
         .contains(&name.as_str())
+            && !catalog_file(&name)
             || !meta.is_file()
             || unsafe_meta(&meta)
         {
@@ -168,4 +169,20 @@ pub fn snapshot(path: &Path) -> Result<Vec<(String, u64, u128, String)>, String>
     }
     result.sort();
     Ok(result)
+}
+
+// Flat generation files keep the existing workspace namespace lease and whole-group GC.
+fn catalog_file(name: &str) -> bool {
+    if name == "catalog-publication.lock" {
+        return true;
+    }
+    let database = name
+        .strip_suffix("-wal")
+        .or_else(|| name.strip_suffix("-shm"))
+        .or_else(|| name.strip_suffix("-journal"))
+        .or_else(|| name.strip_suffix(".lease"))
+        .unwrap_or(name);
+    database == "symbols-v2.sqlite3"
+        || database == "catalog-state.sqlite3"
+        || crate::catalog_control::generation_database(database)
 }

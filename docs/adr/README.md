@@ -47,6 +47,7 @@ protection checks. Earlier L01/L02 resource-admission verdicts are historical.
 | [0031](0031-cancelled-read-compiler-synchronization.md) | **Accepted; merged PR105/f78952f; final release gate and fast2107/2107, Windows install, Mac/Windows Photos30K verified** | Cancel obsolete reads while letting an already-entered compiler synchronization finish under its original absolute deadline |
 | [0032](0032-completion-item-identity-and-inferred-roots.md) | **Proposed; C4 final fast2136/2136 + Windows91 GREEN; original RED retained; real UI FAILED and external-SDK diagnosis RED0/1** | Independent request ownership, source/byte-bounded read admission, and same-input promotion without changing inferred roots |
 | [0033](0033-client-navigation-ownership-and-ui-input-context.md) | **Proposed; observed Windows client navigation/input race, client fix not implemented** | Client navigation generations and input-context ownership; do not globally cancel valid server reads |
+| [0034](0034-private-catalog-publication.md) | **Proposed; implementation authorized; tests NOT RUN** | Private bounded catalog builds, atomic publication, safe retirement and truthful storage progress |
 
 2026-10-27 [三项根因与ADR审计](../reports/2026-10-27-30k-issues-root-causes-and-adrs.md#adr逐项映射与设计缺口)：
 上表0020–0023的“not merged”及检查数是各切片当时的历史收据，不能作为当前版本判定。

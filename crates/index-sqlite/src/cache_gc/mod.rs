@@ -2,13 +2,13 @@
 mod activity;
 pub mod automatic;
 mod decision;
-mod files;
+pub(crate) mod files;
 mod identity_snapshot;
 mod inspect;
 pub mod lease;
 mod retire;
 mod source;
-mod sqlite_guard;
+pub(crate) mod sqlite_guard;
 #[cfg(windows)]
 mod windows_identity;
 
@@ -212,17 +212,8 @@ pub fn collect(policy: &Policy) -> Result<Report, String> {
     for mut candidate in candidates {
         let result = (|| {
             let _leases = lease::exclusive(&policy.cache, &candidate.entry.key, policy.apply)?;
-            let _sqlite = sqlite_guard::SqliteGuard::acquire(
-                &candidate.directory.join("symbols-v2.sqlite3"),
-            )?;
-            let expected = candidate
-                .snapshot
-                .iter()
-                .find(|item| item.0 == "symbols-v2.sqlite3")
-                .ok_or("missing-database")?;
-            if _sqlite.object_id()? != expected.3 {
-                return Err("database-handle-identity-changed".into());
-            }
+            let _sqlite =
+                sqlite_guard::SqliteGroupGuard::acquire(&candidate.directory, &candidate.snapshot)?;
             if files::snapshot(&candidate.directory)? != candidate.snapshot {
                 return Err("cache-changed-before-proof".into());
             }

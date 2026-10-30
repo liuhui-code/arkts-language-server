@@ -8,12 +8,23 @@ export type WorkspaceIndexPhase =
   | "degraded"
   | "cancelled"
 
+export interface WorkspaceCatalogStorage {
+  stage: "writing" | "committing" | "checkpointing" | "validating" | "publishing" | "checking" | "reusing"
+  writtenDocuments: number
+  writtenRows: number
+  stageElapsedMs: number
+  activitySequence: number
+  walFrames: number
+  checkpointedFrames: number
+}
+
 export interface WorkspaceIndexProgress {
   phase: WorkspaceIndexPhase
   discoveredFiles: number
   indexedFiles: number
   skippedEntries: number
   totalFiles?: number
+  storage?: WorkspaceCatalogStorage
 }
 
 export interface WorkspaceSymbolServicePort {

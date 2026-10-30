@@ -9,6 +9,7 @@ use std::{
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WorkspaceCacheLocation {
     pub workspace_identity: String,
+    /// Logical base path. Open with CatalogStore to follow atomic publications.
     pub database_path: PathBuf,
 }
 

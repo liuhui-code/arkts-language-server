@@ -47,13 +47,13 @@ test("index rejection observer captures the committed row or reports missing SQL
   assert.equal(captures[0].targetSpanMatches, false)
 })
 
-test("index rejection observer does not classify an unmatched generation", t => {
+test("index rejection observer follows the published file and does not classify an unmatched generation", t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-index-observer-"))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const cacheDir = path.join(root, "cache")
   const databaseDir = path.join(cacheDir, "workspaces", "one")
   fs.mkdirSync(databaseDir, { recursive: true })
-  const database = path.join(databaseDir, "symbols-v2.sqlite3")
+  const database = path.join(databaseDir, "catalog-a-b-c.sqlite3")
   if (sqliteAvailable) execFileSync("sqlite3", [database, `
     CREATE TABLE metadata(id INTEGER PRIMARY KEY, committed_generation INTEGER);
     INSERT INTO metadata VALUES (1, 8);
@@ -62,6 +62,12 @@ test("index rejection observer does not classify an unmatched generation", t => 
       reference_searchable INTEGER, declaration_identity TEXT);
   `])
   else fs.writeFileSync(database, "")
+  const control = path.join(databaseDir, "catalog-state.sqlite3")
+  if (sqliteAvailable) execFileSync("sqlite3", [control, `
+    CREATE TABLE catalog_state(id INTEGER PRIMARY KEY, database_name TEXT);
+    INSERT INTO catalog_state VALUES(1, 'catalog-a-b-c.sqlite3');
+  `])
+  else fs.writeFileSync(control, "")
   const logPath = path.join(root, "server.log")
   fs.writeFileSync(logPath, "")
   const observer = startIndexRejectionObserver({ logPath, cacheDir })
