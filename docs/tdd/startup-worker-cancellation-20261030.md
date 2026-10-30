@@ -109,7 +109,7 @@ Node20.19.5 首轮三文件 22 PASS/1 cancelled、exit1，保留 `windows-focuse
 
 仅把三万文件用例的文件准备/清理外层设为 180000ms；实际语义部分移入
 `await t.test(..., { timeout: 75000 }, ...)`，保留原 75s 限制、全部断言、四轮输入、
-规模和注入点。Node20 官方 `node:test` 的父/子 timeout 独立，父端 await 子测试；
+规模和注入点。[Node20 官方 node:test](https://nodejs.org/docs/latest-v20.x/api/test.html#contexttestname-options-fn)的父/子 timeout 独立，父端 await 子测试；
 未增大任何产品截止。`test-fixture-portability-delta.json` 记录这一唯一源/测试差异。
 
 最终 `pnpm check` 及 Mac 三恢复文件＋入口清单 28/28，exit0，120430.598ms；
@@ -118,3 +118,17 @@ Windows 同三个恢复文件 24/24，exit0，185750.165ms，均零 fail/cancell
 本次 PR 的 `pnpm check:release`（先执行 `pnpm check:fast`），不借旧计数。
 17 项相关代码/测试与 17 项文档从已验证快照拷入独立 worktree；
 并行的 completion-resolve 及后续输入缓存工作不纳入本次提交。
+
+## Windows 实际工程最终资格
+
+`windows-real-project-qualification.mjs` 复用 Mac 的源码推导 oracle 和公开 stdio 操作，
+在 Windows 已有 Photos 三万源码工程的独立副本运行；不动日常工程/安装。
+API24 `6.1.1.125` SDK 1580 声明，30287 输入；取消、编译、索引与语义监督均为真实产品。
+42.198s 内完成 12 轮、58 次记录操作，`PASS_LOCAL_FUNCTIONS`；实际初始准备 14.319s、
+membership degraded，索引 99% 时功能保持正确，1 Worker/0 恢复、shutdown 回复及 exit0。
+无注入等待、NODE_OPTIONS 或 RSS 预算；详情仅验证合法返回/标签，不声称每份均 enriched。
+前后原工程与副本各 30287、SDK 1580、999 运行输入、native 均 SHA MATCH。
+三个 JS bundle 与 Mac 原整轮/实际工程运行相同；测试计时版仅改变测试文件。
+原 Windows 首轮失败和私有阶段探针不覆盖；最终证据保留在 `windows-final-evidence/`，
+取回归档 SHA `e1c8553056803f45af72722f602f0b86cb077451fa7c254db8cc95e7e3e77ad2`。
+本轮不替代真实 Zed UI、索引 commit 完成、PSS/soak 或用户原现场日志证明。

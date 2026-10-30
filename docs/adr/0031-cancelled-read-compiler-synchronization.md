@@ -52,3 +52,11 @@ Context7 查询先选 `/microsoft/typescript`；main 返回新 Go/snapshot API�
 最新未保存定义/诊断、超过恢复预算次数的有限交错、单终态、永久同步、丢终态、
 关闭和熔断。另以三万文件工程及实际 SDK 复核，记录来源与现场证据差别。
 本决定消除一种不必要换代，不承诺所有真实 OOM、绝对执行超时或索引慢均已解决。
+
+用户批准后的 Windows Node20.19.5 最终恢复回归 24/24；Mac 最终定向 28/28。
+Windows 真实 Photos 三万源码隔离副本、API24 SDK 1580 声明，在索引真实 99% 时
+完成 12 轮/58 请求，1 Worker/0 恢复、shutdown 回复及 exit0；前后 30287 输入、
+SDK、999 运行输入及 native SHA 全部一致。Mac 同场景 SDK 为 2083 声明。
+二者均是实际工程公开协议资格，未冒充用户原现场或 Zed UI 验收。
+最终合入须通过本次 PR 的 canonical release gate；原 Mac 2106 整轮与最终新增
+子测试的计时夹具版本分别记录于 TDD，不互相替代。

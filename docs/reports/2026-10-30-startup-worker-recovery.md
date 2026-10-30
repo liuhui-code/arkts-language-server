@@ -70,6 +70,16 @@ Windows 首轮 22 PASS/1 cancelled 的原失败保留：探针量得创建三万
 四轮交错和产品所有截止不变。因此原 Mac 2106 整轮对应旧测试夹具，最终新增一个子测试，
 用最终定向结果及 PR 的 canonical release gate 记录其资格，不把旧整轮冒充最终新计数。
 
+Windows 真实 Photos 工程复验：`2026-10-30T00:40:12.246Z` 至 `00:40:54.444Z`，
+独立副本 30287 输入、API24 `6.1.1.125` SDK 1580 声明；与 Mac 的 2083 声明 SDK 分开。
+未启用 NODE_OPTIONS、RSS 预算或插桩等待。真实准备 14318.807ms 后仍为 membership degraded。
+索引真实 99% 期间 12 轮/58 请求全部通过，覆盖同样定义完整位置、hover、补全/详情、
+客户端取消及新 2322 出现/撤销，1 Worker/0 unresponsive/恢复；shutdown 回复且 exit0。
+关闭时索引仍 99%，不声称其提交完成；不是 Zed UI 或长期资源验证。
+原工程/副本各 30287、SDK 1580、运行输入 999 与 native 前后均零 SHA 差异；
+三个 JS bundle SHA 与 Mac 复验一致。原始协议、stderr、指标、日志、逐次结果及审计取回到
+`windows-final-evidence/`，归档 SHA `e1c8553056803f45af72722f602f0b86cb077451fa7c254db8cc95e7e3e77ad2`。
+
 ## 证据与剩余范围
 
 `.bench/startup-recovery-20261030-o1_kdgda/` 保留两个独立 RED、首次 GREEN、
