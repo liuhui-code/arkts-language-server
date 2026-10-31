@@ -7,6 +7,7 @@ import { pathToFileURL } from "node:url"
 
 import { LspSession } from "../support/lsp-session.mjs"
 import { projectRoot } from "../support/lsp-process.mjs"
+import { completeLogEvents } from "../support/complete-log-events.mjs"
 
 test("experimental L3 admission verifies uncached references without rebuilding a resident context",
   { timeout: 60_000 }, async t => {
@@ -458,7 +459,7 @@ for (const [strategy, pressureAdmission = "1", cancelFirst = false, batchRoots =
 function events(logDirectory) {
   const logFile = path.join(logDirectory, "server.log")
   if (!fs.existsSync(logFile)) return []
-  return fs.readFileSync(logFile, "utf8").split("\n").filter(Boolean).map(JSON.parse)
+  return completeLogEvents(logFile)
 }
 
 async function waitForEvent(logDirectory, predicate, count = 1) {
@@ -469,3 +470,15 @@ async function waitForEvent(logDirectory, predicate, count = 1) {
   }
   assert.fail(`timed out waiting for ${count} matching events`)
 }
+
+test("in-flight pressure transcript polling waits for complete lines and rejects corrupt complete records", t => {
+  const logs = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-pressure-log-reader-"))
+  t.after(() => fs.rmSync(logs, { recursive: true, force: true }))
+  const file = path.join(logs, "server.log"), first = { event: "references.batch.start", source: "😀" }
+  fs.writeFileSync(file, `${JSON.stringify(first)}\n{"event":"par`)
+  assert.deepEqual(events(logs), [first])
+  fs.appendFileSync(file, 'tial"}\n')
+  assert.deepEqual(events(logs), [first, { event: "partial" }])
+  fs.appendFileSync(file, "corrupt-complete-record\n")
+  assert.throws(() => events(logs), SyntaxError)
+})

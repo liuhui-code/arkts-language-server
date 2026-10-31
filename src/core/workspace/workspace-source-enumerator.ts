@@ -19,6 +19,43 @@ interface SourceDirectory {
   checkNativePath: boolean
 }
 
+type DirectoryObservation = Pick<SourceDirectory, "path" | "physicalPath" | "identity" | "root">
+
+/** Retain the actual enumeration identities; overflow falls back to ordinary enumeration. */
+export class WorkspaceNamespaceWitness {
+  private readonly directories: DirectoryObservation[] = []
+  private bytes = 0
+  private provable = true
+  constructor(private readonly maxBytes: number) {}
+
+  observe(directory: DirectoryObservation): void {
+    if (!this.provable) return
+    const bytes = 512 + 2 * (directory.path.length + directory.physicalPath.length)
+    if (this.bytes + bytes > this.maxBytes) {
+      this.provable = false
+      this.directories.length = 0
+      return
+    }
+    this.directories.push({ path: directory.path, physicalPath: directory.physicalPath,
+      identity: directory.identity, root: directory.root })
+    this.bytes += bytes
+  }
+
+  current(control: SemanticOperationControl): boolean {
+    if (!this.provable) return false
+    try {
+      for (const directory of this.directories) {
+        control.checkpoint()
+        if (!sameDirectory(directory.identity, directoryIdentity(directory.path, directory.root))
+          || fs.realpathSync.native(directory.path) !== directory.physicalPath
+          || !sameDirectory(directory.identity, directoryIdentity(directory.path, directory.root))) return false
+      }
+      control.checkpoint()
+      return true
+    } catch { control.checkpoint(); return false }
+  }
+}
+
 function directoryIdentity(directoryPath: string, root: boolean): fs.BigIntStats {
   return root ? fs.statSync(directoryPath, { bigint: true }) : fs.lstatSync(directoryPath, { bigint: true })
 }
@@ -38,6 +75,7 @@ export function* listWorkspaceSourcePaths(
   operationControl: SemanticOperationControl,
   includePath: (sourcePath: string, directoryTraversal: boolean, physicalPath?: string) => boolean,
   rootPhysicalPath?: string,
+  observeDirectory?: (directory: DirectoryObservation) => void,
 ): Generator<WorkspaceSourceEntry> {
   const pending: SourceDirectory[] = []
   const open = (directoryPath: string, physicalPath: string, root = false): void => {
@@ -71,6 +109,7 @@ export function* listWorkspaceSourcePaths(
     } catch (error) { failure = error }
     try { current.directory.closeSync() } catch (error) { failure ??= error }
     if (failure) throw failure
+    observeDirectory?.(current)
   }
   try {
     open(rootPath, rootPhysicalPath ?? fs.realpathSync.native(rootPath), true)

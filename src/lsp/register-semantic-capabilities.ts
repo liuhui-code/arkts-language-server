@@ -126,20 +126,6 @@ export function registerSemanticCapabilities({
     return result ? toLspHover(result, hoverMarkupKind) : null
   })
 
-  connection.onTypeDefinition(async (params, token) => {
-    return requests.run({
-      method: "textDocument/typeDefinition",
-      documentUri: params.textDocument.uri,
-      token,
-      fallback: [],
-      execute: (document, signal) => semantic.typeDefinitions({
-        document,
-        position: params.position,
-        signal,
-      }),
-    })
-  })
-
   registerImplementationCapability(connection, semantic, requests)
 
   connection.languages.inlayHint.on(async (params, token) => {

@@ -1694,3 +1694,52 @@ Mac SDK跟随目标最小诊断RED0/1未关闭。原生0degraded/runtimeglobals/
 全部测试PID正常窗口关闭后消失；shutdown未录响应的握手缺口如实保留。
 [最终报告](../reports/2026-10-30-ui-remediation.md#最终同会话空闲恢复关闭与验证结论)、生命周期封存7/源码与输入审计为最终证据。
 原无关缓存性能TODO仍暂缓；未提交/push/合并/发布/日常部署。
+
+### 2026-10-31跳转工作复用后续（WUI-003/WUI-005仍OPEN）
+
+上段“未合入”为当时历史：既有产品候选随后由PR107/1194399合入，报告由PR108/04282ed合入。
+本轮在其上新增[ADR0037](../adr/0037-navigation-work-and-input-validation.md)候选：等价导航共享、
+目录见证的容量失败、同步准备与租约内全新终检。103项相关回归及最终fast2147/2147通过，结果见
+[实施报告](../reports/2026-10-31-navigation-work-reuse.md)。
+原64个位置/方法全部不同，未发生合并；固定驱动与进度握手后的Mac隔离30K三轮最坏定义约6466→3564ms，仍有多秒排队。
+关闭重开中位数1052→1200ms，没有改善。早先8279→4925ms为未正确回应进度创建的初步数据，保留原证据但不作最终对照。
+实际Windows/UI受SSH超时、Mac UI查询失败未重验，不能关闭原21.56秒问题或ADR0033。
+不扩展无关缓存TODO、20K完整范围、SDK来源或原生索引路线，不自动合并/部署。
+
+### 2026-10-31同内容关闭重开（ADR0035；WUI-003/WUI-005仍OPEN）
+
+在未提交ADR0037候选上，保留同owner已交付同文本驻留源码的compiler版本，
+独立消费事件revision、更新文档权威；旧请求/句柄失效和最终物理输入校验保持。
+[ADR0035](../adr/0035-unchanged-source-authority-transitions.md)逐项对照历史决策，7份相关旧ADR原文未改。
+最终fast2152/2152、exit0、0skip/cancelled/todo；Mac隔离30K三轮重开定义中位1136.739→140.757ms，
+最大1192.076→158.738ms，Program7→8变为7→7，69份完整响应一致（含原有错误）。
+64不同请求的突发长尾未改善；未重验Windows/UI，未提交、合并或部署，不能关闭原问题。
+[报告](../reports/2026-10-31-unchanged-navigation-inputs.md)、`.bench/navigation-close-reopen-20261031/`。
+
+<a id="nav-input-001"></a>
+
+### NAV-INPUT-001：动态类型依赖无通知创建后的同会话恢复（本地候选已验证；Windows/UI阻塞）
+
+- 条件：独立最小夹具，Main包含`type Alias = import("./nested/Lazy").Lazy`及
+  `export let selected: Alias`、`export const result = selected.value`；nested初始为空。
+  hover Main零基2:32，先查询，再关闭Main、创建Lazy.ets、不发文件通知，以同文本低版本重开。
+- 实际：旧ADR0037候选Workerdebfcd3e、本轮Worker6ffc6fac均首次/重复-32803；冷会话正确显示Lazy.value:number。
+  显式Created通知后立即恢复，配置控制亦与冷会话完整响应一致；不把通知恢复算原场景通过。
+- 预期/合同：不得返回旧答案；需核对并补齐ADR0025决定3的缺事件后有界前台恢复。
+  当前仅证明行为和恢复触发条件，具体缓存/证明所有者、是否消费者迁移遗漏尚未定位，不推测根因。
+- 证据：上述[报告](../reports/2026-10-31-unchanged-navigation-inputs.md#追加诊断nav-input-001无通知动态类型依赖创建后的恢复缺口open)，
+  证据根negative-creation-probe.log、negative-creation-controls.log及negative-creation-control-{baseline,candidate}/results.json。
+  negative-creation-probe.mjs保留复跑脚本，exit1/summary失败标志保留；不计入fast2152，非30K/真实UI复现。
+- 上轮只记录此既有恢复缺口；历史失败证据保留。2026-10-31继续实施：编译器私有源码 namespace proof
+  没有通知 resolver 的恢复入口，导致代次不前进、同消费者重复拒绝；[ADR0036](../adr/0036-compiler-source-namespace-recovery.md)
+  补齐来源区分、SDK/配置全事实保护、同域消费者有界退役。首次请求仍拒绝，后继显式查询恢复。
+- 最小公开 RED、目录创建/删除恢复、complete/partial、SDK 并发变更反证及候选收据见
+  [最终报告](../reports/2026-10-31-compiler-namespace-recovery-final.md)、[历史失败](../reports/2026-10-31-compiler-namespace-recovery.md)，最终检查/UI范围以最终报告为准。
+  无关缓存性能 TODO 继续暂缓；64不同有效请求长尾、真实 Windows/UI 验收不因本项局部通过而关闭。
+- 初版13e90ee7完整检查出现5项正向源码读回归，已封存并退回；修正版e2a30dd0区分regular-source内容变化
+  与namespace变化，原6项及相关26项通过，从头完整check:fast2160/2160、exit0，旧短测不再作为最终合格证明。
+- 最终三轮旧/新Mac30K每轮69响应一致；根目录98.619秒、phone/picker模块91.184秒各6轮创建/删除恢复，
+  模块内number/string交替、声明行1–6及详情textEdit正确，均1Worker/0恢复换代。
+  无通知namespace后继恢复仍约3.1秒；64不同合法请求突发中位1957.068ms/最大3783.785ms，WUI-003仍OPEN。
+  两份短测都不计作正式耐久，真实UI动作0；Windows仍SSH超时，Mac辅助功能false/窗口访问-25211。
+  native99%无end、既有SDK超时未重验、完整30K引用/重命名限制均未关闭；未提交、合并或部署。

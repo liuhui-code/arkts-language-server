@@ -2,7 +2,7 @@ import fs from "node:fs"
 import path from "node:path"
 import type { SemanticCallHierarchyFailureReason } from "../protocol.js"
 
-interface ModuleBoundary {
+export interface ModuleBoundary {
   rootPath: string
   workspacePhysicalRoot: string | undefined
   sdkRoot: string | null
@@ -45,7 +45,7 @@ export function callHierarchyPathFailure(rootPath: string, filePath: string,
   } catch { return "source-unavailable" }
 }
 
-function prospectiveRealPathSync(filePath: string): string {
+export function prospectiveRealPathSync(filePath: string): string {
   let cursor = filePath
   const suffix: string[] = []
   while (true) {
