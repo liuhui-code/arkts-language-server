@@ -14,7 +14,18 @@ if (!isMainThread && process.env.ARKTS_LSP_LOG_DIR) {
     if (typeof file === "string" && /[\\/]workspace[\\/]noise$/.test(file)) {
       globalThis.__partialInitialObservation("noise-directory-open", file)
     }
-    return Reflect.apply(openDirectory, this, [file, ...args])
+    const directory = Reflect.apply(openDirectory, this, [file, ...args])
+    const first = process.env.ARKTS_TEST_MEMBERSHIP_FIRST_SOURCE
+    if (first && typeof file === "string" && path.basename(file) === "workspace") {
+      // Directory order is unspecified: exercise both an available and an unavailable first member.
+      const entries = []
+      for (let entry; (entry = directory.readSync()) !== null;) entries.push(entry)
+      if (!entries.some(entry => entry.name === first)) throw Error("required membership-order fixture missing")
+      entries.sort((a, b) => Number(b.name === first) - Number(a.name === first))
+      directory.readSync = () => entries.shift() ?? null
+      globalThis.__partialInitialObservation("forced-first-source", first)
+    }
+    return directory
   }
   fs.openSync = function(file, ...args) {
     if (typeof file === "string" && /[\\/]workspace[\\/]noise[\\/]Unused\d+\.ts$/.test(file)) {
