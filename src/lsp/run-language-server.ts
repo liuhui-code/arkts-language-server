@@ -39,6 +39,7 @@ import {
 } from "./code-action-resolution-store.js"
 import { CallHierarchySourceAuthority } from "./call-hierarchy-source-authority.js"
 import { registerCompletionHandlers } from "./register-completion.js"
+import { registerNavigationCapabilities } from "./register-navigation.js"
 import { toLspDiagnostic } from "./diagnostic-mapper.js"
 import { RequestFreshness } from "./request-freshness.js"
 import { registerBenchmarkControls } from "./register-benchmark-controls.js"
@@ -386,19 +387,7 @@ export function runLanguageServer(services?: LanguageServerServices): void {
     }
   })
 
-  connection.onDefinition(async (params, token) => {
-    return requests.run({
-      method: "textDocument/definition",
-      documentUri: params.textDocument.uri,
-      token,
-      fallback: [],
-      execute: (document, signal) => semantic.define({
-        document,
-        position: params.position,
-        signal,
-      }),
-    })
-  })
+  registerNavigationCapabilities(connection, semantic, requests)
 
   connection.onWorkspaceSymbol(async (params, token) => {
     const startedAt = performance.now()

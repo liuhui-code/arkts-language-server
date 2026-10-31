@@ -11,8 +11,9 @@ import { LocalPackageResolver } from "../sdk/local-package-resolver.js"
 import { WorkspaceContentChanges } from "./workspace-content-changes.js"
 import { appendAuthoritativeOverlays, projectOverlayAuthority, withoutShadowedPaths } from "./overlay-authority.js"
 import { canonicalSourcePath, canonicalWorkspaceRoot, isInside, isWorkspacePhysicalAlias } from "./physical-path-identity.js"
-import { createProjectSourceEligibility, isActiveProjectSource } from "./project-source-eligibility.js"
-import { listWorkspaceSourcePaths, SOURCE_EXTENSIONS, unresolvedSourceEntries } from "./workspace-source-enumerator.js"
+import { isActiveProjectSource } from "./project-source-eligibility.js"
+import { SOURCE_EXTENSIONS } from "./workspace-source-enumerator.js"
+import { scanProjectMembership, type ProjectFileSetCacheEntry } from "./project-membership-catalog.js"
 import { MAX_DISK_SNAPSHOT_BYTES, readDiskSource as safeRead, sourceStatIdentity } from "./workspace-disk-source.js"
 import { classifyWatchedSourceChanges } from "./watched-source-notifications.js"
 import { invalidateClosedDocument } from "./closed-document-invalidation.js"
@@ -84,13 +85,6 @@ interface DocumentCacheTransaction {
   cachedBytes: number
   accessClock: number
   committed: boolean
-}
-
-interface ProjectFileSetCacheEntry extends Omit<ProjectMembershipSnapshot, "paths"> {
-  paths: string[]
-  pathBytes: number
-  diskIdentities: Map<string, string>
-  publicSnapshot?: ProjectMembershipSnapshot
 }
 
 export interface SemanticOperationControl {
@@ -813,6 +807,17 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
   /** Reuse the current authoritative catalog without preloading unrelated source text. */
   membershipFor(rootPath: string): ProjectMembershipSnapshot { this.resolutionInputs.prepare(rootPath); return this.projectMembership(rootPath) }
 
+  /** No TTL: unchanged observed namespaces prove only the same capacity failure, never complete scope. */
+  hasCurrentCapacityFailure(rootPath: string): boolean {
+    this.resolutionInputs.prepare(rootPath)
+    const root = canonicalWorkspaceRoot(rootPath), entry = this.projectFileSets.get(root)
+    const proof = entry?.capacityProof
+    if (entry?.status !== "partial" || !proof) return false
+    const overlays = new Set(proof.overlays.length ? this.membershipOverlays(root) : [])
+    return proof.overlays.every(file => overlays.has(file))
+      && proof.directories.current(this.operationControl)
+  }
+
   /** Selects a store-owned source only to anchor full preparation, never a query target. */
   prepareRoot(rootPath: string): SemanticWorkspaceView | undefined {
     this.refreshProjectMembership(rootPath)
@@ -1087,83 +1092,16 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
   }
 
   private scanProjectMembership(rootPath: string): ProjectFileSetCacheEntry {
-    const resolvedRoot = path.resolve(rootPath)
-    const canonicalRoot = canonicalWorkspaceRoot(resolvedRoot)
-    const eligibility = createProjectSourceEligibility(
-      this.packageResolver.projectFor(resolvedRoot), () => this.operationControl.checkpoint(),
-    )
-    const overlayPaths = [...this.documents.values()]
-      .filter((record) => record.overlay && isInside(canonicalRoot, canonicalSourcePath(record.path)))
-      .map((record) => record.path)
-      .sort()
-    const paths: string[] = []
-    const seen = new Set<string>()
-    let pathBytes = 0
-    let status: ProjectMembershipSnapshot["status"] = "complete"
-    let reason: ProjectMembershipSnapshot["reason"]
-    const diskIdentities = new Map<string, string>()
-    const accept = (candidate: string, diskIdentity?: string, physicalPath?: string): boolean => {
-      const sourcePath = path.resolve(candidate)
-      if (!eligibility.includes(sourcePath, false, physicalPath)) return true
-      if (seen.has(sourcePath)) {
-        if (diskIdentity !== undefined) diskIdentities.set(sourcePath, diskIdentity)
-        return true
-      }
-      if (paths.length >= this.maxProjectFileSetPaths) {
-        status = "partial"
-        reason = "path-count-limit"
-        return false
-      }
-      const bytes = Buffer.byteLength(sourcePath)
-      if (pathBytes + bytes > this.maxProjectFileSetPathBytes) {
-        status = "partial"
-        reason = "path-byte-limit"
-        return false
-      }
-      seen.add(sourcePath)
-      paths.push(sourcePath)
-      pathBytes += bytes
-      if (diskIdentity !== undefined) diskIdentities.set(sourcePath, diskIdentity)
-      return true
-    }
-    for (const overlayPath of overlayPaths) {
-      if (!accept(overlayPath)) break
-    }
-    if (status === "complete") {
-      try {
-        const entries = this.enumerateWorkspaceSources
-          ? unresolvedSourceEntries(this.enumerateWorkspaceSources(resolvedRoot))
-          : listWorkspaceSourcePaths(resolvedRoot, this.operationControl, eligibility.includes, canonicalRoot)
-        for (const { path: sourcePath, physicalPath } of entries) {
-          this.operationControl.checkpoint()
-          const lexicalStat = safeLstat(sourcePath, this.operationControl)
-          if (lexicalStat?.isSymbolicLink()) continue
-          const stat = lexicalStat
-          if (!stat?.isFile() || stat.size > MAX_DISK_SNAPSHOT_BYTES) {
-            status = "partial"
-            reason = "source-unavailable"
-            break
-          }
-          if (!accept(sourcePath, sourceStatIdentity(stat), physicalPath)) break
-        }
-        eligibility.validate()
-      } catch {
-        this.operationControl.checkpoint()
-        status = "partial"
-        reason = "enumeration-error"
-      }
-    }
-    paths.sort()
-    const entry: ProjectFileSetCacheEntry = {
-      paths,
-      pathBytes,
-      status,
-      ...(reason ? { reason } : {}),
-      revision: 0,
-      diskIdentities,
-    }
-    this.operationControl.checkpoint()
-    return entry
+    return scanProjectMembership(rootPath, this.membershipOverlays(canonicalWorkspaceRoot(rootPath)), {
+      resolver: this.packageResolver, control: this.operationControl,
+      maxPaths: this.maxProjectFileSetPaths, maxPathBytes: this.maxProjectFileSetPathBytes,
+      enumerate: this.enumerateWorkspaceSources,
+    })
+  }
+
+  private membershipOverlays(root: string): string[] {
+    return [...this.documents.values()].filter(record => record.overlay && isInside(root, canonicalSourcePath(record.path)))
+      .map(record => record.path).sort()
   }
 
   private publishProjectMembership(canonicalRoot: string, entry: ProjectFileSetCacheEntry): void {
