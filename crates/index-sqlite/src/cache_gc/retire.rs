@@ -1,4 +1,4 @@
-use super::{files, inspect, lease, now_ms, sqlite_guard::SqliteGuard};
+use super::{files, inspect, lease, now_ms, sqlite_guard::SqliteGroupGuard};
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
@@ -20,7 +20,7 @@ pub(super) fn retire(
     key: &str,
     identity: &str,
     snapshot: Vec<(String, u64, u128, String)>,
-    database: SqliteGuard,
+    database: SqliteGroupGuard,
 ) -> Result<Vec<String>, String> {
     let trash = base.join(".gc-trash");
     files::directory(&trash, true)?;
@@ -100,11 +100,7 @@ fn retry_one(base: &Path, trash: &Path, proof: &Path) -> Result<(), String> {
         if remaining.iter().any(|item| !record.files.contains(item)) {
             return Err("trash-changed".into());
         }
-        let _database = if target.join("symbols-v2.sqlite3").exists() {
-            Some(SqliteGuard::acquire(&target.join("symbols-v2.sqlite3"))?)
-        } else {
-            None
-        };
+        let _database = SqliteGroupGuard::acquire(&target, &remaining)?;
         #[cfg(windows)]
         drop(_database);
         fs::remove_dir_all(target).map_err(|e| format!("delete-deferred: {e}"))?;

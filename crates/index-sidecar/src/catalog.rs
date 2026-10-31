@@ -1,10 +1,8 @@
 use std::{
     collections::VecDeque,
-    fs::{self, File},
-    io::Read,
+    fs,
     path::{Path, PathBuf},
     sync::{
-        Arc,
         atomic::{AtomicU8, Ordering},
         mpsc::Sender,
     },
@@ -12,33 +10,27 @@ use std::{
     time::{Duration, Instant},
 };
 
-use arkts_index_core::{
-    Document, DocumentSymbols, RefreshReport, WorkspaceIndex, parse_document_symbols,
-};
-use arkts_index_sqlite::{SqliteStore, path_to_file_uri};
+use arkts_index_core::{Document, DocumentSymbols, parse_document_symbols};
+use arkts_index_sqlite::{CatalogInputs, path_to_file_uri};
 use ignore::{
     Match,
     gitignore::{Gitignore, GitignoreBuilder},
 };
 
+#[path = "catalog_source.rs"]
+mod source;
 #[path = "catalog_test_gate.rs"]
 mod test_gate;
+use source::{SourceRead, SourceStamp, read_source};
 
-use self::test_gate::{
-    ActivationGateResult, TEST_ACTIVATION_WAITING, activation_file_gate, test_entry_delay,
-    wait_at_test_activation_gate, wait_at_test_catalog_gate, wait_for_test_entry_delay,
-};
+use self::test_gate::{test_entry_delay, wait_at_test_catalog_gate, wait_for_test_entry_delay};
 
 const MAX_SOURCE_BYTES: u64 = 2 * 1024 * 1024;
-const READ_CHUNK_BYTES: usize = 64 * 1024;
 const PROGRESS_FILE_BATCH: usize = 64;
 const PROGRESS_BYTE_BATCH: u64 = 1024 * 1024;
 const PROGRESS_ENTRY_BATCH: usize = 512;
 const PROGRESS_INTERVAL: Duration = Duration::from_millis(250);
 const PARSE_WORKERS: usize = 4;
-const CATALOG_RUNNING: u8 = 0;
-const CATALOG_CANCELLED: u8 = 1;
-const CATALOG_ACTIVATING: u8 = 2;
 const HARD_EXCLUDED_DIRECTORIES: &[&str] = &[
     ".git",
     ".hg",
@@ -56,45 +48,10 @@ const HARD_EXCLUDED_DIRECTORIES: &[&str] = &[
     "target",
 ];
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct CatalogProgress {
-    pub discovered: usize,
-    pub indexed: usize,
-    pub rejected: usize,
-    pub policy_skipped: usize,
-    pub ignored: usize,
-    pub total_files: Option<usize>,
-}
-
-#[derive(Debug)]
-pub enum CatalogUpdate {
-    Progress {
-        generation: u64,
-        progress: CatalogProgress,
-    },
-    Activating {
-        generation: u64,
-        progress: CatalogProgress,
-    },
-    Complete {
-        generation: u64,
-        report: RefreshReport,
-        progress: CatalogProgress,
-    },
-    Cancelled {
-        generation: u64,
-        progress: CatalogProgress,
-    },
-    Failed {
-        generation: u64,
-        progress: CatalogProgress,
-        message: String,
-    },
-}
-
-pub struct CatalogControl {
-    state: Arc<AtomicU8>,
-}
+#[path = "catalog_worker.rs"]
+mod worker;
+use worker::CATALOG_CANCELLED;
+pub use worker::{CatalogControl, CatalogProgress, CatalogUpdate, spawn_catalog};
 
 struct DirectoryTask {
     relative: PathBuf,
@@ -106,80 +63,12 @@ struct LoadedIgnore {
     had_error: bool,
 }
 
-impl CatalogControl {
-    pub fn cancel(&self) -> bool {
-        if self
-            .state
-            .compare_exchange(
-                CATALOG_RUNNING,
-                CATALOG_CANCELLED,
-                Ordering::AcqRel,
-                Ordering::Acquire,
-            )
-            .is_ok()
-        {
-            return true;
-        }
-        self.state
-            .compare_exchange(
-                TEST_ACTIVATION_WAITING,
-                CATALOG_CANCELLED,
-                Ordering::AcqRel,
-                Ordering::Acquire,
-            )
-            .is_ok()
-    }
-}
-
-pub fn spawn_catalog(
-    workspace_root: PathBuf,
-    database_path: PathBuf,
-    workspace_identity: String,
-    generation: u64,
-    updates: Sender<CatalogUpdate>,
-) -> CatalogControl {
-    let state = Arc::new(AtomicU8::new(CATALOG_RUNNING));
-    let worker_state = Arc::clone(&state);
-    thread::Builder::new()
-        .name(format!("arkts-catalog-{generation}"))
-        .spawn(move || {
-            let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                scan_workspace(
-                    &workspace_root,
-                    &database_path,
-                    &workspace_identity,
-                    generation,
-                    &worker_state,
-                    &updates,
-                )
-            }));
-            match outcome {
-                Ok(Ok(())) => {}
-                Ok(Err((progress, message))) => {
-                    let _ = updates.send(CatalogUpdate::Failed {
-                        generation,
-                        progress,
-                        message,
-                    });
-                }
-                Err(_) => {
-                    let _ = updates.send(CatalogUpdate::Failed {
-                        generation,
-                        progress: CatalogProgress::default(),
-                        message: "catalog worker panicked".to_owned(),
-                    });
-                }
-            }
-        })
-        .expect("catalog worker thread should spawn");
-    CatalogControl { state }
-}
-
 fn scan_workspace(
     workspace_root: &Path,
     database_path: &Path,
     workspace_identity: &str,
     generation: u64,
+    force: bool,
     state: &AtomicU8,
     updates: &Sender<CatalogUpdate>,
 ) -> Result<(), (CatalogProgress, String)> {
@@ -196,6 +85,8 @@ fn scan_workspace(
         return Ok(());
     }
     let mut documents = Vec::new();
+    let mut sources = Vec::new();
+    let mut inputs = CatalogInputs::new().ok();
     let mut rejected_uris = Vec::new();
     let mut document_batch = Vec::with_capacity(PROGRESS_FILE_BATCH);
     let mut document_batch_bytes = 0usize;
@@ -408,6 +299,10 @@ fn scan_workspace(
             } else {
                 match read_source(&path) {
                     Ok(SourceRead::Text(text)) => {
+                        sources.push(SourceStamp::capture(&path, &metadata, &text));
+                        if let Some(inputs) = &mut inputs {
+                            inputs.record(&uri, &text);
+                        }
                         document_batch_bytes = document_batch_bytes.saturating_add(text.len());
                         document_batch.push(Document::new(uri, text));
                         if document_batch.len() >= PROGRESS_FILE_BATCH
@@ -450,73 +345,18 @@ fn scan_workspace(
         &mut progress,
     );
     progress.total_files = Some(progress.discovered);
-    let file_gate =
-        activation_file_gate(generation).map_err(|message| (progress.clone(), message))?;
-    let activating_state = if file_gate.is_some() {
-        TEST_ACTIVATION_WAITING
-    } else {
-        CATALOG_ACTIVATING
-    };
-    if state
-        .compare_exchange(
-            CATALOG_RUNNING,
-            activating_state,
-            Ordering::AcqRel,
-            Ordering::Acquire,
-        )
-        .is_err()
-    {
-        let _ = updates.send(CatalogUpdate::Cancelled {
-            generation,
-            progress,
-        });
-        return Ok(());
-    }
-    let _ = updates.send(CatalogUpdate::Activating {
+    worker::activate(
+        database_path,
+        workspace_identity,
         generation,
-        progress: progress.clone(),
-    });
-    if let Some(file_gate) = file_gate {
-        match file_gate.wait_for_release(state, CATALOG_CANCELLED) {
-            Ok(ActivationGateResult::Released) => {}
-            #[cfg(debug_assertions)]
-            Ok(ActivationGateResult::Cancelled) => {
-                let _ = updates.send(CatalogUpdate::Cancelled {
-                    generation,
-                    progress,
-                });
-                return Ok(());
-            }
-            Err(message) => return Err((progress, message)),
-        }
-        if state
-            .compare_exchange(
-                TEST_ACTIVATION_WAITING,
-                CATALOG_ACTIVATING,
-                Ordering::AcqRel,
-                Ordering::Acquire,
-            )
-            .is_err()
-        {
-            let _ = updates.send(CatalogUpdate::Cancelled {
-                generation,
-                progress,
-            });
-            return Ok(());
-        }
-    }
-    wait_at_test_activation_gate();
-    let store = SqliteStore::open(database_path, workspace_identity)
-        .map_err(|error| (progress.clone(), error.to_string()))?;
-    let report = WorkspaceIndex::with_store(store)
-        .activate_catalog(generation, documents, rejected_uris)
-        .map_err(|error| (progress.clone(), error.to_string()))?;
-    let _ = updates.send(CatalogUpdate::Complete {
-        generation,
-        report,
+        state,
+        updates,
+        documents,
+        rejected_uris,
         progress,
-    });
-    Ok(())
+        sources,
+        inputs.map(CatalogInputs::finish).filter(|_| !force),
+    )
 }
 
 fn parse_document_batch(
@@ -657,28 +497,4 @@ fn is_source_path(path: &Path) -> bool {
     path.extension()
         .and_then(|extension| extension.to_str())
         .is_some_and(|extension| matches!(extension, "ets" | "ts"))
-}
-
-enum SourceRead {
-    Text(String),
-    PolicySkipped,
-}
-
-fn read_source(path: &Path) -> Result<SourceRead, ()> {
-    let mut file = File::open(path).map_err(|_| ())?;
-    let mut bytes = Vec::new();
-    let mut chunk = [0u8; READ_CHUNK_BYTES];
-    loop {
-        let read = file.read(&mut chunk).map_err(|_| ())?;
-        if read == 0 {
-            break;
-        }
-        if bytes.len().saturating_add(read) > MAX_SOURCE_BYTES as usize {
-            return Ok(SourceRead::PolicySkipped);
-        }
-        bytes.extend_from_slice(&chunk[..read]);
-    }
-    String::from_utf8(bytes)
-        .map(SourceRead::Text)
-        .map_err(|_| ())
 }

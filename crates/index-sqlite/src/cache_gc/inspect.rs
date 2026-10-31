@@ -10,7 +10,10 @@ pub(super) fn identity(database: &Path, limit: u64) -> Result<String, String> {
     let result = main_identity(database);
     if result.is_err()
         && database
-            .with_file_name("symbols-v2.sqlite3-wal")
+            .with_file_name(format!(
+                "{}-wal",
+                database.file_name().unwrap_or_default().to_string_lossy()
+            ))
             .metadata()
             .is_ok_and(|meta| meta.len() > 0)
     {
@@ -109,10 +112,7 @@ pub(super) fn candidate(
     if !directory.join("cache-use.json").exists() && !policy.include_legacy && !legacy_approved {
         return Err("legacy-opt-in-required".into());
     }
-    let identity = identity(
-        &directory.join("symbols-v2.sqlite3"),
-        policy.identity_copy_bytes,
-    )?;
+    let identity = identity(&catalog_database(directory)?, policy.identity_copy_bytes)?;
     if key(&identity) != name {
         return Err("identity-key-mismatch".into());
     }
@@ -155,4 +155,29 @@ pub(super) fn candidate(
         source,
         last_used,
     })
+}
+
+// Read-only inspection: never create the publication state or recover it in preview.
+fn catalog_database(directory: &Path) -> Result<PathBuf, String> {
+    let state = directory.join("catalog-state.sqlite3");
+    if !state.exists() {
+        return Ok(directory.join("symbols-v2.sqlite3"));
+    }
+    crate::catalog_control::safe_file(&state).map_err(|e| e.to_string())?;
+    let control = Connection::open_with_flags(&state, OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .map_err(|e| e.to_string())?;
+    let (name, identity, generation): (String, String, i64) = control
+        .query_row("SELECT database_name,workspace_identity,published_generation FROM catalog_state WHERE id=1", [], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+        .map_err(|e| e.to_string())?;
+    if generation < 0
+        || directory
+            .file_name()
+            .is_none_or(|name| name != crate::cache_key(&identity).as_str())
+    {
+        return Err("invalid-catalog-control-identity".into());
+    }
+    if name != "symbols-v2.sqlite3" && !crate::catalog_control::generation_database(&name) {
+        return Err("invalid-catalog-publication".into());
+    }
+    Ok(directory.join(name))
 }

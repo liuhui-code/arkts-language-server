@@ -114,7 +114,10 @@ impl Drop for Snapshot {
 }
 
 pub(super) fn identity(database: &Path, limit: u64) -> Result<String, String> {
-    let wal = database.with_file_name("symbols-v2.sqlite3-wal");
+    let wal = database.with_file_name(format!(
+        "{}-wal",
+        database.file_name().unwrap_or_default().to_string_lossy()
+    ));
     let required = database
         .metadata()
         .map_err(|e| e.to_string())?

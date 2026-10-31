@@ -8,6 +8,10 @@ use std::{
 
 use serde_json::json;
 
+#[expect(
+    dead_code,
+    reason = "activation characterization has its own transcript crate"
+)]
 #[path = "support/sidecar_process.rs"]
 mod sidecar_process;
 
@@ -1950,119 +1954,6 @@ fn completed_catalog_replaces_the_active_generation_atomically() {
         "ReplacementService"
     );
     process.shutdown(6);
-}
-
-#[test]
-fn sqlite_activation_does_not_block_status_or_search_on_the_protocol_loop() {
-    let temp = TestDir::new("catalog-nonblocking-activation");
-    let workspace = temp.path().join("workspace");
-    let cache = temp.path().join("cache");
-    fs::create_dir_all(&workspace).expect("workspace should exist");
-    fs::write(
-        workspace.join("Replacement.ets"),
-        "class ReplacementService {}\n",
-    )
-    .expect("replacement source should be written");
-
-    let mut process = SidecarProcess::spawn_with_activation_gate(Duration::from_millis(400));
-    assert_eq!(initialize(&mut process, &workspace, &cache, 1)["ok"], true);
-    assert_eq!(
-        process.request(json!({
-            "protocol": 1,
-            "id": 2,
-            "method": "refresh",
-            "params": {
-                "generation": 1,
-                "changed": [{
-                    "uri": "file:///workspace/Stable.ets",
-                    "text": "class StableService {}\n"
-                }],
-                "removedUris": []
-            }
-        }))["ok"],
-        true
-    );
-    assert_eq!(
-        process.request(json!({
-            "protocol": 1,
-            "id": 3,
-            "method": "catalog/start",
-            "params": {"reason": "activation-responsiveness", "force": true}
-        }))["result"]["generation"],
-        2
-    );
-
-    loop {
-        let event = process.read_event();
-        let phase = event["params"]["status"]["phase"]
-            .as_str()
-            .expect("phase should be a string");
-        if phase == "activating" {
-            break;
-        }
-        assert!(
-            !matches!(phase, "ready" | "partial" | "degraded" | "cancelled"),
-            "activation must be observable before terminal status"
-        );
-    }
-
-    let status_started_at = Instant::now();
-    let status = process.request(json!({
-        "protocol": 1,
-        "id": 4,
-        "method": "status",
-        "params": {}
-    }));
-    assert!(status_started_at.elapsed() < Duration::from_millis(200));
-    assert_eq!(status["result"]["phase"], "activating");
-    assert_eq!(status["result"]["committedGeneration"], 1);
-    assert_eq!(status["result"]["buildingGeneration"], 2);
-
-    let search_started_at = Instant::now();
-    let old = process.request(json!({
-        "protocol": 1,
-        "id": 5,
-        "method": "search",
-        "params": {"query": "StableService", "limit": 20}
-    }));
-    assert!(search_started_at.elapsed() < Duration::from_millis(200));
-    assert_eq!(old["result"]["servedGeneration"], 1);
-    assert_eq!(old["result"]["items"][0]["name"], "StableService");
-
-    let too_late_to_cancel = process.request(json!({
-        "protocol": 1,
-        "id": 6,
-        "method": "catalog/cancel",
-        "params": {"generation": 2}
-    }));
-    assert_eq!(too_late_to_cancel["result"]["cancelled"], false);
-    assert_eq!(
-        too_late_to_cancel["result"]["status"]["phase"],
-        "activating"
-    );
-
-    loop {
-        let event = process.read_event();
-        if matches!(
-            event["params"]["status"]["phase"].as_str(),
-            Some("ready" | "partial" | "degraded" | "cancelled")
-        ) {
-            assert_eq!(event["params"]["status"]["phase"], "ready");
-            break;
-        }
-    }
-    let replacement = process.request(json!({
-        "protocol": 1,
-        "id": 7,
-        "method": "search",
-        "params": {"query": "ReplacementService", "limit": 20}
-    }));
-    assert_eq!(replacement["result"]["servedGeneration"], 2);
-    assert_eq!(
-        replacement["result"]["items"][0]["name"],
-        "ReplacementService"
-    );
-    process.shutdown(8);
 }
 
 #[test]

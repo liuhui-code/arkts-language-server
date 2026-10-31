@@ -164,7 +164,13 @@ retain their original admission rules; healthy edits and hot queries do not invo
 2. `initialized` opens one sidecar session per root and starts cataloging in the
    background. Existing committed generations remain searchable.
 3. Open buffers shadow persisted rows; close returns authority to the index.
-4. Catalog generations activate atomically. A timeout, malformed protocol, or
+4. Full catalogs build in private SQLite files with bounded commits and checkpoints;
+   a small control database publishes the sealed generation atomically
+   ([ADR0034 candidate](adr/0034-private-catalog-publication.md)). Queries pin one
+   published connection, ordinary edits retain their incremental transaction, and
+   leased old files retire after readers close. Storage stages and elapsed time
+   reach the LSP progress stream; no percentage is advertised before publication.
+   A timeout, malformed protocol, or
    child exit degrades only that session and preserves the last committed
    generation.
 5. Shutdown rejects new work, cancels cataloging, disposes semantic state, and

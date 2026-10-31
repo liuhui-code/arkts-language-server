@@ -38,6 +38,14 @@ pub(super) fn insert_documents(
     transaction: &Transaction<'_>,
     documents: &[DocumentSymbols],
 ) -> Result<(), StoreError> {
+    insert_documents_at(transaction, documents, 0)
+}
+
+pub(super) fn insert_documents_at(
+    transaction: &Transaction<'_>,
+    documents: &[DocumentSymbols],
+    offset: usize,
+) -> Result<(), StoreError> {
     let mut insert = transaction
         .prepare_cached(
             "INSERT INTO class_heritage_declarations(
@@ -83,7 +91,7 @@ pub(super) fn insert_documents(
             insert
                 .execute(params![
                     document.uri,
-                    ordinal as i64,
+                    (ordinal + offset) as i64,
                     class.name,
                     class.name_range.start.line,
                     class.name_range.start.character,
