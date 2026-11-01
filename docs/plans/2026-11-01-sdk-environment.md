@@ -47,10 +47,10 @@ and auto-imports. Decision: [ADR0038](../adr/0038-sdk-component-environment.md).
 | Retained module groups and partial-SDK full-scope owners | 9/9 PASS on unchangedf9c0366; original Program and SDK-parse assertions retained |
 | Atomic fault-counter publication and cleanup ownership | 34/34 PASS; deterministic JSON-publication regression and original fault assertions |
 | Reference replay runtime/source isolation | 30/30 PASS plus20 rounds/60 case executions; controlled churn and original exact-reference/cancellation assertions |
-| Native-permission `pnpm check:fast` | 2206/2206 PASS, exit0 on frozen3f9c289, Node26.3.0; zero skipped/cancelled/todo |
+| Complete `pnpm check:fast` | Frozen3f9c289 local2206/2206 and7ac936b CI2207/2207 PASS; zero skipped/cancelled/todo |
 | Live reference-log observer repair | 43/43 plus final strict-reader17/17 PASS; CI partial-JSONL race reproduced and repaired |
-| Canonical native debug cold-catalog gate | FAIL: unchanged455-file/3s gate; independent SQLite writing bottleneck under diagnosis |
-| Source size and `git diff --check` | PASS except declared existing LS migration debt |
+| Canonical native debug cold-catalog gate | Original455-file/3s contract retained; per-revision results in release-gate evidence and [PR111 checks](https://github.com/liuhui-code/arkts-language-server/pull/111/checks) |
+| Source size and `git diff --check` | PASS except declared existing LS and local-delivery migration debt |
 
 The prior full native gate (before target/export integration) finished
 2168/2171 with three failures: interrupted transport, duplicate SDK path facts,
@@ -72,8 +72,8 @@ it is not acceptance evidence. Logs and RED/GREEN commands are recorded in
 | Stable SDK gaps retain local service | Relative/module/type references are partial; six capabilities and healthy local navigation; ambient/wildcard positive cases | PASS |
 | Existing cache, cancellation and lifetime owners | Original project recovery, SDK optional failures and actual release-after-effect quarantine; included in2206/2206 full run | PASS |
 | Same-process multi-root SDK replacement | Public two-root HMS facade replacement, first root updated and second root completion/resolve preserved | PASS |
-| ADR and reviewable branch | ADR0038, TDD records, draft PR #111 | DELIVERED; final evidence update pending |
-| Final integration gate | Frozen3f9c289 full Node suite passes; new log-observer repair needs fresh CI; native debug performance gate remains RED | PENDING |
+| ADR and reviewable branch | ADR0038, TDD records, draft PR #111 | DELIVERED; per-revision evidence linked |
+| Final integration gate | SDK full suites pass; native and release follow-up tracked under original budgets | [PR111 checks](https://github.com/liuhui-code/arkts-language-server/pull/111/checks) |
 
 The added multi-root replacement characterization runs against the unchanged
 final implementation. It strengthens the earlier static isolation case; it does
@@ -83,7 +83,7 @@ gate retains its original test snapshot; production sources remain identical.
 ## Delivery boundary
 
 Implementation and reviewable branch delivery are complete (draft PR #111);
-frozen3f9c289 full verification passes2206/2206. The latest CI exposes an additional live-log observer race, now repaired with deterministic RED/GREEN evidence. Fresh CI and the native performance gate remain pending; see [release-gate evidence](../tdd/sdk-release-gates-20261101.md). The fourteen
+frozen3f9c289 full verification passes2206/2206. The live-log observer race is repaired and the7ac936b whole Node CI passes2207/2207. Current canonical release status is tracked by PR111 checks; see [release-gate evidence](../tdd/sdk-release-gates-20261101.md). The fourteen
 af89166 failures have focused repairs and converged 71-case verification. The six
 286bcca initialization parse-reuse failures plus two group reuse failures have a
 shared Registry bucket repair and 90/90 plus9/9 unchanged regressions. Its terminal

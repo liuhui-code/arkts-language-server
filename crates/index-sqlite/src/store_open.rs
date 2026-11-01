@@ -9,7 +9,7 @@ impl SqliteStore {
         path: &Path,
         workspace_identity: &str,
     ) -> Result<Self, StoreError> {
-        Self::open_with_page_size(path, workspace_identity, Some(32768))
+        Self::open_with_page_size(path, workspace_identity, Some(16384))
     }
 
     fn open_with_page_size(

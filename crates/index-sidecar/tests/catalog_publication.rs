@@ -176,3 +176,82 @@ fn storage_progress_and_the_published_catalog_survive_a_sidecar_restart() {
     assert_eq!(search["result"]["servedGeneration"], 1);
     restarted.shutdown(3);
 }
+
+#[test]
+fn same_length_same_mtime_source_replacement_rejects_private_publication() {
+    let temp = TestDir::new("catalog-source-hash-fence");
+    let workspace = temp.path().join("workspace");
+    let cache = temp.path().join("cache");
+    fs::create_dir(&workspace).unwrap();
+    for ordinal in 0..130 {
+        fs::write(
+            workspace.join(format!("Source{ordinal:03}.ets")),
+            "export class CapturedService {}\n",
+        )
+        .unwrap();
+    }
+    let changed = workspace.join("Source129.ets");
+    let before = fs::metadata(&changed).unwrap();
+    let mut process = SidecarProcess::spawn_with_activation_gate(Duration::from_millis(400));
+    assert_eq!(initialize(&mut process, &workspace, &cache, 1)["ok"], true);
+    assert_eq!(process.request(json!({"protocol":1,"id":2,"method":"refresh","params":{
+        "generation":1,"changed":[{"uri":"file:///workspace/Stable.ets","text":"class StableService {}"}],"removedUris":[]
+    }}))["ok"], true);
+    assert_eq!(
+        process.request(
+            json!({"protocol":1,"id":3,"method":"catalog/start","params":{
+                "reason":"source-hash-fence","force":true
+            }})
+        )["result"]["generation"],
+        2
+    );
+    loop {
+        let event = process.read_event();
+        let phase = event["params"]["status"]["phase"].as_str().unwrap();
+        if phase == "activating" {
+            break;
+        }
+        assert!(!matches!(
+            phase,
+            "ready" | "partial" | "degraded" | "cancelled"
+        ));
+    }
+    fs::write(&changed, "export class ModifiedService {}\n").unwrap();
+    fs::OpenOptions::new()
+        .write(true)
+        .open(&changed)
+        .unwrap()
+        .set_times(fs::FileTimes::new().set_modified(before.modified().unwrap()))
+        .unwrap();
+    let after = fs::metadata(&changed).unwrap();
+    assert_eq!(after.len(), before.len());
+    assert_eq!(after.modified().unwrap(), before.modified().unwrap());
+    loop {
+        let event = process.read_event();
+        let status = &event["params"]["status"];
+        if matches!(
+            status["phase"].as_str(),
+            Some("ready" | "partial" | "degraded" | "cancelled")
+        ) {
+            assert_eq!(
+                status["phase"], "degraded",
+                "changed bytes must reject the private catalog: {status}"
+            );
+            assert_eq!(status["committedGeneration"], 1);
+            break;
+        }
+    }
+    for (id, query, count) in [
+        (4, "StableService", 1),
+        (5, "CapturedService", 0),
+        (6, "ModifiedService", 0),
+    ] {
+        let result = process.request(
+            json!({"protocol":1,"id":id,"method":"search","params":{"query":query,"limit":10}}),
+        );
+        assert_eq!(result["ok"], true);
+        assert_eq!(result["result"]["servedGeneration"], 1);
+        assert_eq!(result["result"]["items"].as_array().unwrap().len(), count);
+    }
+    process.shutdown(7);
+}

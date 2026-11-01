@@ -179,3 +179,66 @@ Fresh formatting, strict workspace/all-target Clippy and release build pass,
 exit0. Logs: `/tmp/sdk-native-identity-layout32k-clippy-20261101.log` and
 `/tmp/sdk-native-identity-layout32k-release-20261101.log`. CI validation remains
 pending; no local3s PASS is claimed.
+
+## Completed Node follow-up and input-check optimization
+
+The7ac936b whole CI is terminal: **2207/2207 Node cases PASS**,
+zero failed/cancelled/skipped/todo,2030483.138339ms. Its later unchanged native
+gate fails at5.793662179s, exit101; this is not a Node failure.
+[Run41299389154](https://github.com/liuhui-code/arkts-language-server/actions/runs/41299389154),
+raw log `/tmp/sdk-ci-7ac936b-raw-job-20261101.log`.
+
+The025b4fd32KiB candidate also fails its Linux native gate at3.748835375s
+after regular Rust checks pass; Windows installation passes.
+[Run41301197237](https://github.com/liuhui-code/arkts-language-server/actions/runs/41301197237),
+raw log `/tmp/sdk-ci-025b4fd-raw-job-20261101.log`. Its actual release sidecar
+and SDK source pass all13 installed API24 cases, zero annotations, exit0,
+115097.557809ms; `/tmp/sdk-native-layout32k-real-sdk-20261101.log`.
+Do not infer a reliable page-size improvement from these independent hosts.
+Return to the conservative16KiB setting and retain the proven borrowed-value
+allocation reduction. No gate is retried to erase a failure.
+
+Parent for this slice: `025b4fd7eca9f5c66bfaeaa9d984d388fc0f9507`.
+Add a real NDJSON characterization that captures130 files, replaces source
+bytes after activating while restoring exactly the old byte length and mtime,
+and requires degraded status with the old generation and exact old results.
+Before optimization it passes1/1;
+`/tmp/sdk-native-source-hash-characterization-20261101.log`. Existing full core
+characterization passes62/62, including Unicode/CRLF UTF-16 ranges;
+`/tmp/sdk-native-line-index-characterization-20261101.log`.
+
+Use the existing four-parser-worker budget for scoped source-check workers
+inside each existing64-source checking chunk. Join every worker, fail closed
+on read failure/panic, and keep all length/mtime/SHA256 checks, cancellation
+boundaries and progress counts. No retained thread pool or new lifetime owner.
+ASCII line prefixes have identical byte/UTF-16 lengths; use that direct count
+and retain the existing UTF-16 iterator for non-ASCII prefixes.
+
+Public core range, heritage, publication and NDJSON tests pass51/51,1 existing
+ignored gate; `/tmp/sdk-native-input-checks-green-20261101.log`. Strict
+workspace/all-target Clippy and release build pass, exit0;
+`/tmp/sdk-native-input-checks-{clippy,release}-20261101.log`. The original local
+strict gate remains RED at3.910756353s;
+`/tmp/sdk-native-cold-parallel-checks-ascii-20261101.log`.
+
+To decide retention, snapshot two debug binaries with identical16KiB/borrowed
+SQL inputs, varying only these input-check/position changes. Alternate three
+fresh-cache pairs on the same host, unchanged pinned455-file fixture, no other
+build/test load. Every execution verifies ready455/455,225630 committed rows,
+generation1 and all four original deterministic query results.
+Observed protocol-receipt timings, not CPU measurements:
+
+| Pair/variant | Total ms | Discover/parse ms | Checking→publishing ms |
+| --- | ---: | ---: | ---: |
+|1 baseline |4100.467 |914.649 |213.406 |
+|1 optimized |3647.430 |598.664 |85.334 |
+|2 baseline |3871.653 |709.062 |199.504 |
+|2 optimized |3659.198 |613.992 |83.503 |
+|3 baseline |3904.643 |729.111 |214.199 |
+|3 optimized |3672.642 |607.289 |79.883 |
+
+Log: `/tmp/sdk-native-input-paired-probe-20261101.log`, process exit0.
+All six independent catalogs and24 query assertions pass. Retain the scoped
+checks and ASCII fast path on this evidence; OS caches remain uncontrolled
+and this is not a universal latency/memory graduation or a local3s PASS.
+Final release-gate status is tracked by [PR111 checks](https://github.com/liuhui-code/arkts-language-server/pull/111/checks).

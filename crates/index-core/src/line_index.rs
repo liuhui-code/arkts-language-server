@@ -23,7 +23,12 @@ impl<'a> LineIndex<'a> {
             .partition_point(|line_start| *line_start <= byte_offset)
             .saturating_sub(1);
         let line_start = self.line_starts[line];
-        let character = self.text[line_start..byte_offset].encode_utf16().count();
+        let prefix = &self.text[line_start..byte_offset];
+        let character = if prefix.is_ascii() {
+            prefix.len()
+        } else {
+            prefix.encode_utf16().count()
+        };
         Position::new(line as u32, character as u32)
     }
 }
