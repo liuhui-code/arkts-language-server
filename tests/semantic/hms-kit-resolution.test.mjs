@@ -305,4 +305,3 @@ async function queryKit(t, mode = "direct", { session: existingSession, deferIni
   }
   return { response, declaration, entry, session, sdk, params, workspace, source }
 }
-

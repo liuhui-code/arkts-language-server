@@ -79,4 +79,3 @@ function isCompletionWordBoundary(candidate: string, index: number): boolean {
   const nextIsLower = next >= 0x61 && next <= 0x7a
   return previousIsUpper && nextIsLower
 }
-
