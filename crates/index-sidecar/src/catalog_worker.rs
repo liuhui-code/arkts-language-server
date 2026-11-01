@@ -33,6 +33,21 @@ pub struct CatalogProgress {
     pub activity_sequence: u64,
 }
 
+pub(super) type CatalogFailure = Box<(CatalogProgress, String)>;
+
+pub(super) struct Activation<'a> {
+    pub database_path: &'a Path,
+    pub workspace_identity: &'a str,
+    pub generation: u64,
+    pub state: &'a AtomicU8,
+    pub updates: &'a Sender<CatalogUpdate>,
+    pub documents: Vec<DocumentSymbols>,
+    pub rejected_uris: Vec<String>,
+    pub progress: CatalogProgress,
+    pub sources: Vec<super::source::SourceStamp>,
+    pub fingerprint: Option<String>,
+}
+
 #[derive(Debug)]
 pub enum CatalogUpdate {
     Progress {
@@ -126,7 +141,8 @@ pub fn spawn_catalog(
             }));
             match outcome {
                 Ok(Ok(())) => {}
-                Ok(Err((progress, message))) => {
+                Ok(Err(failure)) => {
+                    let (progress, message) = *failure;
                     let _ = updates.send(CatalogUpdate::Failed {
                         generation,
                         progress,
@@ -146,20 +162,21 @@ pub fn spawn_catalog(
     CatalogControl { state }
 }
 
-pub(super) fn activate(
-    database_path: &Path,
-    workspace_identity: &str,
-    generation: u64,
-    state: &AtomicU8,
-    updates: &Sender<CatalogUpdate>,
-    documents: Vec<DocumentSymbols>,
-    rejected_uris: Vec<String>,
-    mut progress: CatalogProgress,
-    sources: Vec<super::source::SourceStamp>,
-    fingerprint: Option<String>,
-) -> Result<(), (CatalogProgress, String)> {
-    let file_gate =
-        activation_file_gate(generation).map_err(|message| (progress.clone(), message))?;
+pub(super) fn activate(input: Activation<'_>) -> Result<(), CatalogFailure> {
+    let Activation {
+        database_path,
+        workspace_identity,
+        generation,
+        state,
+        updates,
+        documents,
+        rejected_uris,
+        mut progress,
+        sources,
+        fingerprint,
+    } = input;
+    let file_gate = activation_file_gate(generation)
+        .map_err(|message| Box::new((progress.clone(), message)))?;
     let activating_state = if file_gate.is_some() {
         TEST_ACTIVATION_WAITING
     } else {
@@ -195,7 +212,7 @@ pub(super) fn activate(
                 });
                 return Ok(());
             }
-            Err(message) => return Err((progress, message)),
+            Err(message) => return Err(Box::new((progress, message))),
         }
         if state
             .compare_exchange(
@@ -316,14 +333,14 @@ pub(super) fn activate(
             });
         }
         Err(error) => {
-            return Err((
+            return Err(Box::new((
                 progress,
                 if source_changed {
                     "workspace sources changed before catalog publication; rebuild required".into()
                 } else {
                     error.to_string()
                 },
-            ));
+            )));
         }
     }
     Ok(())

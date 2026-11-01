@@ -88,7 +88,9 @@ fn parity(actual: &WorkspaceIndex, expected: &WorkspaceIndex) {
         expected.class_heritage(&target).unwrap()
     );
     assert_eq!(
-        actual.class_binding_snapshot(&[target.clone()]).unwrap(),
+        actual
+            .class_binding_snapshot(std::slice::from_ref(&target))
+            .unwrap(),
         expected.class_binding_snapshot(&[target]).unwrap()
     );
 }

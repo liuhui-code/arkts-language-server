@@ -71,7 +71,7 @@ fn scan_workspace(
     force: bool,
     state: &AtomicU8,
     updates: &Sender<CatalogUpdate>,
-) -> Result<(), (CatalogProgress, String)> {
+) -> Result<(), worker::CatalogFailure> {
     let mut progress = CatalogProgress::default();
     let _ = updates.send(CatalogUpdate::Progress {
         generation,
@@ -129,10 +129,10 @@ fn scan_workspace(
         let entries = match fs::read_dir(&directory) {
             Ok(entries) => entries,
             Err(error) if relative_directory.as_os_str().is_empty() => {
-                return Err((
+                return Err(Box::new((
                     progress,
                     format!("failed to read directory {}: {error}", directory.display()),
-                ));
+                )));
             }
             Err(_) => {
                 progress.rejected += 1;
@@ -345,7 +345,7 @@ fn scan_workspace(
         &mut progress,
     );
     progress.total_files = Some(progress.discovered);
-    worker::activate(
+    worker::activate(worker::Activation {
         database_path,
         workspace_identity,
         generation,
@@ -355,8 +355,8 @@ fn scan_workspace(
         rejected_uris,
         progress,
         sources,
-        inputs.map(CatalogInputs::finish).filter(|_| !force),
-    )
+        fingerprint: inputs.map(CatalogInputs::finish).filter(|_| !force),
+    })
 }
 
 fn parse_document_batch(

@@ -18,8 +18,8 @@ static NEXT_BUILD: AtomicU64 = AtomicU64::new(0);
 /// database joins this protocol once a publication control database exists.
 pub(super) fn reader_lease(database: &Path) -> Result<Option<File>, StoreError> {
     let name = database.file_name().and_then(|s| s.to_str()).unwrap_or("");
-    if !generation_database(name)
-        && !(name == "symbols-v2.sqlite3"
+    if !(generation_database(name)
+        || name == "symbols-v2.sqlite3"
             && database.with_file_name("catalog-state.sqlite3").exists())
     {
         return Ok(None);
