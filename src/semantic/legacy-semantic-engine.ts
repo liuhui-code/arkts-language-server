@@ -68,6 +68,7 @@ import { publicReferenceResult } from "./references/reference-result-mapping.js"
 import type { SemanticDocumentStore, SemanticWorkspaceView } from "../core/workspace/document-store.js"
 import type { LocalPackageResolver } from "../core/sdk/local-package-resolver.js"
 import { createSemanticEngineResources } from "./semantic-engine-resources.js"
+import { runNavigationQuery } from "./navigation-query.js"
 import type { StructuredLogger } from "../observability/logger.js"
 import type { SemanticMemoryLevel } from "./coordinator/semantic-coordinator.js"
 import type { LegacySemanticEngineRuntimeOptions } from "./semantic-engine-runtime-options.js"
@@ -278,33 +279,15 @@ export class LegacySemanticEngine implements SemanticEnginePort {
   async define(
     query: SemanticQuery,
   ): Promise<VersionedSemanticResult<SemanticDefinition[]>> {
-    assertActive(query.signal)
-    this.sync(query.document)
-    const prepared = this.prepare(query.document, query.position)
-    let definitions = prepared.engine.define(prepared.position)
-    if (definitions.length === 0) {
-      assertActive(query.signal)
-      const complete = this.prepare(query.document, query.position, true)
-      definitions = complete.engine.define(complete.position)
-    }
-    const value = definitions.map((target) => ({
-      uri: pathToFileURL(target.path).href,
-      range: toPublicRange(target.range),
-    }))
-    return { documentVersion: query.document.version, value }
+    return runNavigationQuery("define", query, { sync: () => this.sync(query.document),
+      prepare: scope => this.prepare(query.document, query.position, scope) })
   }
 
   async typeDefinitions(
     query: SemanticQuery,
   ): Promise<VersionedSemanticResult<SemanticDefinition[]>> {
-    assertActive(query.signal)
-    this.sync(query.document)
-    const prepared = this.prepare(query.document, query.position)
-    const value = prepared.engine.typeDefinitions(prepared.position).map((target) => ({
-      uri: pathToFileURL(target.path).href,
-      range: toPublicRange(target.range),
-    }))
-    return { documentVersion: query.document.version, value }
+    return runNavigationQuery("typeDefinitions", query, { sync: () => this.sync(query.document),
+      prepare: scope => this.prepare(query.document, query.position, scope) })
   }
 
   async implementations(
@@ -676,7 +659,7 @@ export class LegacySemanticEngine implements SemanticEnginePort {
   private prepare(
     document: DocumentSnapshot,
     position: TextPosition,
-    includeWorkspaceFiles = false,
+    includeWorkspaceFiles: boolean | "definition-fallback" = false,
     projectRootProfile = this.interactiveProjectRootProfile,
     additionalSemanticRoots: readonly string[] = [],
     certifyReadiness = true,

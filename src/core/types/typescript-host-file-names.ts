@@ -26,6 +26,10 @@ export class TypeScriptHostRoots {
       this.inferred, this.members, this.sdkPaths)
   }
 
+  hasStableRoot(filePath: string): boolean {
+    return this.semantic?.has(filePath) ?? (this.complete && this.members.has(filePath))
+  }
+
   admit(filePath: string, unchangedCompilerInput: boolean, entryPoint = false): boolean {
     if ((!unchangedCompilerInput || entryPoint) && !this.inferred.has(filePath)) {
       this.inferred.add(filePath); this.combined = undefined

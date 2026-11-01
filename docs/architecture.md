@@ -142,6 +142,23 @@ work only for the same authenticated item, with bounded admission before the ser
 Worker. Inferred semantic roots are owned independently of text-cache residency;
 same-input promotion needs a returned Program, exact snapshot and current disk proof.
 
+The authorized [ADR0037 navigation candidate](adr/0037-navigation-work-and-input-validation.md)
+shares equivalent in-flight navigation with independent consumers. Synchronous preparation hands its original
+input proofs to the existing leased query's fresh final validation; no validity survives between requests.
+Only directory-witnessed capacity failures avoid repeated full-scope preparation. Namespace/configuration changes
+revoke that proof; unavailable-source and enumeration failures still retry. Zed client intent remains ADR0033's boundary.
+
+[ADR0035](adr/0035-unchanged-source-authority-transitions.md) keeps received document revisions separate from compiler
+input clocks: a delivered same-byte resident input in a retained legal root can keep its snapshot and Program.
+Close still revokes overlay authority, old requests and issued semantic handles. Unknown, removed or changed inputs,
+configuration owners, physical boundaries and the per-request fresh publication fence retain their existing behavior.
+
+[ADR0036](adr/0036-compiler-source-namespace-recovery.md) extends namespace recovery to the compiler's own
+load-owned source probes. Only source-origin failures whose other facts and physical workspace/SDK boundaries
+remain valid may retire the existing resolver generation. The failed request still rejects; a later command
+rebuilds its dependent views and unleased LS through the existing lifecycle. SDK/selection-configuration proofs
+retain their original admission rules; healthy edits and hot queries do not invoke this recovery path.
+
 1. LSP `initialize` configures all workspace roots and advertises only tested
    capabilities.
 2. `initialized` opens one sidecar session per root and starts cataloging in the

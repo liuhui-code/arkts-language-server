@@ -1,6 +1,6 @@
 import fs from "node:fs"
 import path from "node:path"
-import { validateRequestInput } from "./request-input-validation.js"
+import { requestConfigurationIdentity, validateRequestInput, type ConfigurationInputIdentity } from "./request-input-validation.js"
 
 const MAX_WITNESS_PATHS = 4096
 const MAX_MISSING_ANCESTORS = 64
@@ -21,9 +21,31 @@ export class LoadedConfigurationWitness {
   private revision = 0
   private resetEpoch = 0
   private unprovable = false
+  private sourceNamespaceDepth = 0
+  private namespaceOnlyFailure = true
+  private readonly namespaceFailures = new Set<string>()
+  private readonly namespaceFacts = new Set<string>()
+  private readonly regularSourceFacts = new Set<string>()
 
   constructor(private readonly onUnprovable?: (failure: ConfigurationWitnessFailure) => void,
-    private readonly ownerCurrent: () => boolean = () => true) {}
+    private readonly ownerCurrent: () => boolean = () => true,
+    private readonly onStale?: (namespacePaths: readonly string[]) => void) {}
+
+  /** The compiler, rather than configuration discovery, owns these source probes. */
+  observeSourceNamespace<T>(filePath: string, load: () => T, presence = false): T {
+    this.sourceNamespaceDepth += 1
+    try { return presence ? this.observePathLoad(filePath, load, true) : this.observe(filePath, load) }
+    finally { this.sourceNamespaceDepth -= 1 }
+  }
+
+  private noteFact(records: Map<string, string>, filePath: string, regularSource: boolean): void {
+    const key = `${records === this.pathIdentities ? 1 : 0}\0${filePath}`
+    if (!this.sourceNamespaceDepth) { this.namespaceFacts.delete(key); this.regularSourceFacts.delete(key) }
+    else if (!records.has(filePath) && this.identities.size + this.pathIdentities.size < MAX_WITNESS_PATHS) {
+      this.namespaceFacts.add(key)
+      if (regularSource) this.regularSourceFacts.add(key)
+    }
+  }
 
   observe<T>(filePath: string, load: () => T): T {
     const resolved = path.resolve(filePath)
@@ -44,6 +66,7 @@ export class LoadedConfigurationWitness {
           ? owner : undefined
         const witnessPath = coveredOwner?.[0] ?? before.witnessPath
         const identity = coveredOwner?.[1] ?? before.identity
+        this.noteFact(this.identities, witnessPath, witnessPath === resolved && before.regularSource && after.regularSource)
         const previous = this.identities.get(witnessPath)
         if (previous !== undefined && previous !== identity) this.rejectLoadedIdentityChange(resolved, witnessPath,
           before.regularSource && after.regularSource)
@@ -89,6 +112,7 @@ export class LoadedConfigurationWitness {
         const records = directory || coveredOwner ? this.identities : this.pathIdentities
         const witnessPath = directory ? resolved : coveredOwner?.[0] ?? before.witnessPath
         const identity = directory ? before.loadGuard : coveredOwner?.[1] ?? before.identity
+        this.noteFact(records, witnessPath, witnessPath === resolved && before.regularSource && after.regularSource)
         const previous = records.get(witnessPath)
         if (previous !== undefined && previous !== identity) this.rejectLoadedIdentityChange(resolved, witnessPath,
           !directory && before.regularSource && after.regularSource)
@@ -101,6 +125,9 @@ export class LoadedConfigurationWitness {
   }
 
   markUnprovable(reason = "caller-invalidated", sourcePath?: string): void {
+    if (!this.sourceNamespaceDepth || !sourcePath || !["loaded-identity-changed", "changed-during-load"].includes(reason)
+      || this.namespaceFailures.size >= MAX_WITNESS_PATHS) this.namespaceOnlyFailure = false
+    else this.namespaceFailures.add(sourcePath)
     if (this.unprovable) return
     this.unprovable = true
     this.revision += 1
@@ -125,6 +152,10 @@ export class LoadedConfigurationWitness {
     this.identities.clear()
     this.pathIdentities.clear()
     this.failedSourceReads.clear()
+    this.namespaceFacts.clear()
+    this.regularSourceFacts.clear()
+    this.namespaceFailures.clear()
+    this.namespaceOnlyFailure = true
     this.unprovable = false
     this.revision += 1
     this.resetEpoch += 1
@@ -138,7 +169,11 @@ export class LoadedConfigurationWitness {
       return !path.isAbsolute(relative) && relative !== ".." && !relative.startsWith(".." + path.sep)
     })
     for (const facts of [this.identities, this.pathIdentities]) {
-      for (const file of facts.keys()) if (affected(file)) facts.delete(file)
+      for (const file of facts.keys()) if (affected(file)) {
+        facts.delete(file)
+        this.namespaceFacts.delete(`${facts === this.pathIdentities ? 1 : 0}\0${file}`)
+        this.regularSourceFacts.delete(`${facts === this.pathIdentities ? 1 : 0}\0${file}`)
+      }
     }
     this.revision += 1
     this.resetEpoch += 1
@@ -170,6 +205,8 @@ export class LoadedConfigurationWitness {
     // This is a new authoritative byte read, not a cache-hit restamp. Other
     // configuration, directory and negative lookup facts retain their original load.
     for (const facts of [this.identities, this.pathIdentities]) {
+      const key = `${facts === this.pathIdentities ? 1 : 0}\0${resolved}`
+      if (this.namespaceFacts.has(key)) this.regularSourceFacts.add(key)
       if (facts.has(resolved) && facts.get(resolved) !== before.identity) {
         facts.set(resolved, before.identity)
         this.revision += 1
@@ -180,41 +217,66 @@ export class LoadedConfigurationWitness {
 
   /** Loaded identities stay fixed; query-local sharing ends in an uncached union scan. */
   freshness(checkpoint: () => void, mode: ConfigurationFreshnessMode = "validate"): (() => boolean) | undefined {
-    if (!this.ownerCurrent() || this.unprovable || this.failedSourceReads.size) return undefined
+    if (!this.ownerCurrent() || this.failedSourceReads.size || this.unprovable && !this.namespaceOnlyFailure) return undefined
     const resetEpoch = this.resetEpoch
     const scan = (): boolean => {
       checkpoint()
-      if (!this.ownerCurrent() || this.unprovable || this.failedSourceReads.size || this.resetEpoch !== resetEpoch) return false
+      if (!this.ownerCurrent() || this.failedSourceReads.size || this.resetEpoch !== resetEpoch
+        || this.unprovable && !this.namespaceOnlyFailure) return false
       // Another root may append actual loads without changing existing inputs.
       // Validate ALL current facts, including additions, and fence this scan.
       const revision = this.revision
       const identities = [...this.identities]
       const pathIdentities = [...this.pathIdentities]
+      const stale = [...this.namespaceFailures]
       for (const [filePath, identity] of identities) {
         checkpoint()
-        if (lookupIdentity(filePath)?.identity !== identity) return false
+        const current = requestConfigurationIdentity(filePath, false, () => lookupIdentity(filePath))
+        if (current?.identity !== identity) {
+          if (!this.canRecoverNamespace(`0\0${filePath}`, current)) return false
+          stale.push(filePath)
+        }
       }
       for (const [filePath, identity] of pathIdentities) {
         checkpoint()
-        if (lookupIdentity(filePath, true)?.identity !== identity) return false
+        const current = requestConfigurationIdentity(filePath, true, () => lookupIdentity(filePath, true))
+        if (current?.identity !== identity) {
+          if (!this.canRecoverNamespace(`1\0${filePath}`, current)) return false
+          stale.push(filePath)
+        }
       }
       checkpoint()
+      if (stale.length) {
+        // All non-source facts passed. Never turn an unknown SDK/configuration
+        // change into permission to replace its original proof.
+        if (this.ownerCurrent() && this.resetEpoch === resetEpoch && this.revision === revision
+          && !this.failedSourceReads.size && (!this.unprovable || this.namespaceOnlyFailure)) this.onStale?.(stale)
+        return false
+      }
       return this.ownerCurrent() && !this.unprovable && this.failedSourceReads.size === 0
         && this.resetEpoch === resetEpoch && this.revision === revision
     }
     const current = (): boolean => {
       checkpoint()
-      if (!this.ownerCurrent() || this.unprovable || this.failedSourceReads.size || this.resetEpoch !== resetEpoch) return false
+      if (!this.ownerCurrent() || this.failedSourceReads.size || this.resetEpoch !== resetEpoch
+        || this.unprovable && !this.namespaceOnlyFailure) return false
       return validateRequestInput(this, resetEpoch, this.revision, scan)
     }
     return mode === "capture" ? current : current() ? current : undefined
   }
+
+  private canRecoverNamespace(key: string, current: ConfigurationInputIdentity | undefined): boolean {
+    // An ordinary positive source delta still belongs to snapshot admission,
+    // including its real read-window guard. It must not retire the LS before
+    // that authoritative read has a chance to reconcile its own retained fact.
+    return current !== undefined && this.namespaceFacts.has(key)
+      && !(this.regularSourceFacts.has(key) && current.regularSource)
+  }
+
 }
 
 /** Include lexical links and genuine absence, including its existing parent owner. */
-function lookupIdentity(filePath: string, directoryIdentityOnly = false): {
-  identity: string; loadGuard: string; witnessPath: string; regularSource: boolean; absenceOwner?: readonly [string, string]
-} | undefined {
+function lookupIdentity(filePath: string, directoryIdentityOnly = false): ConfigurationInputIdentity | undefined {
   let candidate = filePath
   const missing: string[] = []
   for (let depth = 0; depth < MAX_MISSING_ANCESTORS; depth += 1) {

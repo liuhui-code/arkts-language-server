@@ -40,12 +40,20 @@ export class LocalPackageResolutionOwner {
 
   /** A compiler consuming this generation cannot certify itself against a later empty proof set. */
   createInputWitness(rootPath: string, required: boolean,
-    onUnprovable?: (failure: ConfigurationWitnessFailure) => void): LoadedConfigurationWitness | undefined {
+    onUnprovable?: (failure: ConfigurationWitnessFailure) => void,
+    recoverSourceNamespace?: (filePath: string) => boolean): LoadedConfigurationWitness | undefined {
     if (!required && !this.configurationWitness) return undefined
     this.enableConfigurationWitness()
     this.projectFor(rootPath)
     const epoch = this.epoch
-    return new LoadedConfigurationWitness(onUnprovable, () => epoch === this.epoch)
+    return new LoadedConfigurationWitness(onUnprovable, () => epoch === this.epoch, paths => {
+      // Compiler-private lookups are consumers of this same resolution domain.
+      // Reject the current proof; retire values and consumers together so that
+      // the next explicit command can load current inputs without a watcher.
+      if (epoch !== this.epoch || !recoverSourceNamespace || !paths.every(recoverSourceNamespace)) return
+      this.invalidate()
+      noteResolutionInputRebase(this)
+    })
   }
 
   /** Query admission is a safe boundary; never reset a proof halfway through its consumer. */

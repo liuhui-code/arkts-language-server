@@ -8,6 +8,7 @@ import type { SemanticTypeEngineRegistry } from "../core/types/type-engine.js"
 import type { SemanticDocumentPosition } from "../core/protocol.js"
 import type { SemanticDocumentStore, SemanticWorkspaceView } from "../core/workspace/document-store.js"
 import { assertCompleteProjectMembership } from "./workspace-membership-admission.js"
+import { SemanticInputUnavailableError } from "../core/types/typescript-query-inputs.js"
 
 /** Ordinary queries may refresh an existing explicit session, never create a cold one. */
 export function refreshInteractiveReadiness(documents: SemanticDocumentStore,
@@ -20,12 +21,17 @@ export function refreshInteractiveReadiness(documents: SemanticDocumentStore,
 /** Existing query preparation, with complete root certification only for an explicit session. */
 export function prepareInteractiveContext(documents: SemanticDocumentStore, engines: SemanticTypeEngineRegistry,
   projects: ProjectResolverPort, document: DocumentSnapshot, position: TextPosition, options: {
-    readonly includeWorkspaceFiles: boolean
+    readonly includeWorkspaceFiles: boolean | "definition-fallback"
     readonly projectRootProfile: "closure" | "current"
     readonly additionalSemanticRoots: readonly string[]
     readonly certifyReadiness: boolean
   }) {
-  const { includeWorkspaceFiles, projectRootProfile, additionalSemanticRoots, certifyReadiness } = options
+  const { projectRootProfile, additionalSemanticRoots, certifyReadiness } = options
+  const includeWorkspaceFiles = options.includeWorkspaceFiles !== false
+  if (options.includeWorkspaceFiles === "definition-fallback") {
+    const rootUri = document.source?.kind === "disk" ? document.source.rootUri : projects.projectFor(document.uri).rootUri
+    if (documents.hasCurrentCapacityFailure(fileURLToPath(rootUri))) throw new SemanticInputUnavailableError()
+  }
   if (document.source?.kind === "disk") {
     const prepared = prepareSourceWorkspace(documents, { kind: "disk", uri: document.uri,
       text: document.text, workspaceId: document.workspaceId, workspaceRootUri: document.source.rootUri }, position, includeWorkspaceFiles)

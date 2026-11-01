@@ -27,12 +27,40 @@ export class TypeScriptCompilerInputs {
   clear(): void { this.paths.clear(); this.bytes = 0; this.overflow = false }
 }
 
-/** Consume every witnessed file version, while only actual compiler inputs invalidate its project clock. */
+/** Consume every event revision; only changed compiler inputs advance the Host clock.
+ * Same-byte delivered roots retain their snapshot, not any prior request's validity proof. */
 export function applyTypeScriptContentChanges(workspace: SemanticWorkspaceView, versions: TypeScriptContentVersions,
-  invalidate: (filePath: string, relevant: boolean) => void): void {
-  const relevant = workspace.changedPaths && new Set(workspace.changedPaths.map(file => path.resolve(file)))
-  const paths = versions.update(workspace.contentRevision, workspace.changedPaths, workspace.contentChangedPaths)
+  invalidate: (filePath: string, relevant: boolean) => void, retained?: {
+    readonly scripts: ReadonlyMap<string, { readonly sourceContent: string }>
+    readonly stableRoot: (filePath: string) => boolean
+  }): void {
+  const documents = retained && !workspace.resetTypeEngine && workspace.changedPaths?.length
+    ? new Map(workspace.documents.map(document => [path.resolve(document.path), document])) : undefined
+  const unchanged = (filePath: string): boolean => {
+    const file = path.resolve(filePath), document = documents?.get(file), previous = retained?.scripts.get(file)
+    if (!retained || !document || !previous || previous.sourceContent !== document.content || !retained.stableRoot(file)) return false
+    const relative = path.relative(workspace.rootPath, file)
+    return relative !== "" && !path.isAbsolute(relative)
+      && !relative.split(path.sep).some(part => part === ".." || part === "oh_modules")
+  }
+  const changed = workspace.changedPaths?.filter(file => !unchanged(file))
+  const contentChanged = (workspace.contentChangedPaths ?? workspace.changedPaths)?.filter(file => !unchanged(file))
+  const relevant = changed && new Set(changed.map(file => path.resolve(file)))
+  const paths = versions.update(workspace.contentRevision, changed, contentChanged)
   for (const filePath of paths) invalidate(filePath, relevant === undefined || relevant.has(filePath))
+}
+
+/** Removed members lose their compiler clock and resident input together. */
+export function removeTypeScriptProjectInputs(removedPaths: readonly string[] | undefined,
+  members: Set<string>, versions: TypeScriptContentVersions, remove: (filePath: string) => void): boolean {
+  let membershipChanged = false
+  for (const removedPath of removedPaths ?? []) {
+    const filePath = path.resolve(removedPath)
+    membershipChanged = members.delete(filePath) || membershipChanged
+    versions.delete(filePath)
+    remove(filePath)
+  }
+  return membershipChanged
 }
 
 /** Catalog admission may advance independently from the compiler's unchanged root structure. */

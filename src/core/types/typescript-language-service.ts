@@ -43,8 +43,8 @@ import { CooperativeWork } from "./cooperative-work.js"
 import { typescriptProgramStats, measureOfficialCompilerReadiness } from "./typescript-program-stats.js"
 import { OfficialReadinessState, withLoadedReadinessMembership, type ReadinessTrace } from "./typescript-semantic-readiness.js"
 import { TypeScriptContentVersions } from "./typescript-content-versions.js"
-import { applyTypeScriptContentChanges, membershipUpdate, TypeScriptCompilerInputs } from "./typescript-compiler-inputs.js"
-import { observeAdmittedSourceRead, observePreparedSourceRead } from "./typescript-source-witness-updates.js"
+import { applyTypeScriptContentChanges, membershipUpdate, removeTypeScriptProjectInputs, TypeScriptCompilerInputs } from "./typescript-compiler-inputs.js"
+import { createCompilerInputWitness, observeAdmittedSourceRead, observePreparedSourceRead } from "./typescript-source-witness-updates.js"
 import { TypeScriptScriptAdmission } from "./typescript-script-admission.js"
 import { createScriptRecord, type ScriptRecord } from "./typescript-script-record.js"
 import { queryTypeScriptRename } from "./typescript-rename-query.js"
@@ -237,10 +237,9 @@ export class TypeScriptLanguageServiceEngine {
         this.compilerScriptVersion(filePath, undefined, fingerprint)),
       checkpoint: () => this.checkpoint?.(),
     })
-    this.configurationWitness = packageResolver.createInputWitness(rootPath, residentReferenceReuse,
-      onResidentReferenceProofFailure && (failure => onResidentReferenceProofFailure({
-        ...failure, stage: "configuration", reason: `configuration-${failure.reason}`,
-      })))
+    this.configurationWitness = createCompilerInputWitness(packageResolver, rootPath, residentReferenceReuse,
+      onResidentReferenceProofFailure, () => ({ rootPath, workspacePhysicalRoot: this.workspacePhysicalRoot,
+        sdkRoot: this.sdkRoot, sdkPhysicalRoot: this.sdkPhysicalRoot }))
     const sdk = discoverProjectSdk(
       rootPath,
       process.env.ARKLINE_HARMONY_SDK_PATH,
@@ -1692,9 +1691,9 @@ export class TypeScriptLanguageServiceEngine {
         }
         return witnessedFileExists(filePath, this.configurationWitness)
       },
-      getDirectories: directory => witnessedFilesystemLookup(directory, () => ts.sys.getDirectories(directory), this.configurationWitness),
+      getDirectories: directory => witnessedFilesystemLookup(directory, () => ts.sys.getDirectories(directory), this.configurationWitness, true),
       readDirectory: (directory, extensions, exclude, include, depth) => witnessedFilesystemLookup(directory,
-        () => ts.sys.readDirectory(directory, extensions, exclude, include, depth), this.configurationWitness),
+        () => ts.sys.readDirectory(directory, extensions, exclude, include, depth), this.configurationWitness, true),
       readFile: (fileName) => {
         const filePath = path.resolve(fileName)
         const resident = this.scripts.get(filePath)?.content
@@ -1779,16 +1778,11 @@ export class TypeScriptLanguageServiceEngine {
   }
 
   private removeProjectFiles(removedPaths: string[] | undefined): void {
-    let membershipChanged = false
-    for (const removedPath of removedPaths ?? []) {
-      const filePath = path.resolve(removedPath)
+    if (!removeTypeScriptProjectInputs(removedPaths, this.projectMembershipPaths, this.projectContentVersions, filePath => {
       this.scriptAdmission.forget(filePath)
-      membershipChanged = this.projectMembershipPaths.delete(filePath) || membershipChanged
-      this.projectContentVersions.delete(filePath)
       this.removeScript(filePath)
       this.removeLazySnapshot(filePath)
-    }
-    if (!membershipChanged) return
+    })) return
     this.rebuildMembershipFileNames()
     this.generation += 1
   }
@@ -1856,7 +1850,8 @@ export class TypeScriptLanguageServiceEngine {
       observeAdmittedSourceRead(filePath, this.configurationWitness, this.sdkRoot, this.projectFileAccess,
         this.projectMembershipRootId, this.projectMembershipRevision,
         this.projectMembershipStatus === "complete" && this.projectMembershipPaths.has(filePath))
-    })
+    }, { scripts: this.scripts, stableRoot: filePath => filePath === path.resolve(workspace.state.path)
+      || this.hostRoots.hasStableRoot(filePath) })
   }
 
   private loadLazySnapshot(filePath: string): LazySnapshotRecord | undefined {
