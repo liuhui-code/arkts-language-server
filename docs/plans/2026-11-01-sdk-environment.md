@@ -44,7 +44,9 @@ and auto-imports. Decision: [ADR0038](../adr/0038-sdk-component-environment.md).
 | Boundary plus source-witness and SDK cache suite | 36/36 PASS |
 | Full-gate repair convergence | 71/71 PASS; original assertions retained |
 | Shared SDK syntax reuse, initialization and lifetime repair | 90/90 PASS; original one-parse and completeness assertions retained |
-| Native-permission `pnpm check:fast` | Detached286bcca found initialization syntax reuse failures; repair verification in progress |
+| Retained module groups and partial-SDK full-scope owners | 9/9 PASS on unchangedf9c0366; original Program and SDK-parse assertions retained |
+| Atomic fault-counter publication and cleanup ownership | 34/34 PASS; deterministic JSON-publication regression and original fault assertions |
+| Native-permission `pnpm check:fast` | Detachedf9c0366 running; final audit-publication repair will receive its own frozen full run |
 | Source size and `git diff --check` | PASS except declared existing LS migration debt |
 
 The prior full native gate (before target/export integration) finished
@@ -68,7 +70,7 @@ it is not acceptance evidence. Logs and RED/GREEN commands are recorded in
 | Existing cache, cancellation and lifetime owners | Original project recovery, SDK optional failures and actual release-after-effect quarantine: 27/27; full regression pending | FOCUSED PASS |
 | Same-process multi-root SDK replacement | Public two-root HMS facade replacement, first root updated and second root completion/resolve preserved | PASS |
 | ADR and reviewable branch | ADR0038, TDD records, draft PR #111 | DELIVERED; final evidence update pending |
-| Final integration gate | Clean detached286bcca exposed duplicate SDK parses; preserve original one-parse assertions | REPAIRING |
+| Final integration gate | Source repairf9c0366 running; audit snapshot publication fix in focused verification | RUNNING; final tooling snapshot pending |
 
 The added multi-root replacement characterization runs against the unchanged
 final implementation. It strengthens the earlier static isolation case; it does
@@ -79,7 +81,12 @@ gate retains its original test snapshot; production sources remain identical.
 
 Implementation and reviewable branch delivery are complete (draft PR #111);
 final immutable verification after full-gate repairs is pending. The fourteen
-af89166 failures have focused repairs and converged 71-case verification. The a6f7a26 candidate was rejected by
+af89166 failures have focused repairs and converged 71-case verification. The six
+286bcca initialization parse-reuse failures plus two group reuse failures have a
+shared Registry bucket repair and 90/90 plus9/9 unchanged regressions. Its terminal
+result was2195/2204,9failed; the ninth was a concurrent test-counter JSON overwrite,
+repaired with atomic publication and34/34 focused verification. Real API24
+acceptance remains13/13 PASS. The a6f7a26 candidate was rejected by
 a public SDK missing-dependency regression, now fixed. Its worktree shell also
 selected Node21; final validation explicitly fixes Node26.3.0. Keep the 14 absent declarations in the installed API24 distribution
 partial. This plan does not graduate the separate 500ms/memory, Windows runtime

@@ -7,6 +7,28 @@ import { auditFixture, exactDefinition, until } from "../support/worker-recovery
 const effects = process.env.ARKTS_AUDIT_RELEASE_EFFECT ? [process.env.ARKTS_AUDIT_RELEASE_EFFECT] : ["none", "before", "after"]
 assert.ok(effects.every(effect => ["none", "before", "after"].includes(effect)))
 
+test("registry counter snapshots stay complete while the Worker publishes replacement bytes", { timeout: 30000 }, async t => {
+  const f = await auditFixture(t, "counter-publication", { loader: "registry-state-publication.cjs" })
+  await f.initialize()
+  await f.readiness(false)
+  const before = f.read("build-state.json")
+  assert.ok(before.projectRefs > 0, "observe actual retained compiler leases before replacement")
+  fs.writeFileSync(path.join(f.directory, "arm-build-state-publication"), "armed")
+  f.configure()
+  const pending = f.readiness(false)
+  try {
+    await until(() => fs.existsSync(path.join(f.directory, "build-state-publication-entered")),
+      "Worker writing replacement counter bytes")
+    assert.deepEqual(f.read("build-state.json"), before,
+      "the previous complete snapshot remains readable until its replacement is fully written")
+  } finally {
+    fs.writeFileSync(path.join(f.directory, "release-build-state-publication"), "resume")
+    await pending
+  }
+  assert.equal((await f.readiness()).result?.semanticState, "ready")
+  assert.deepEqual((await f.definition("Main.ets", 1)).result, exactDefinition(f, "neverQueried", 0))
+})
+
 for (const effect of effects) {
 test("partial initialization settles ownership after a release exception: " + effect, { timeout: 30000 }, async t => {
   const f = await auditFixture(t, "cleanup-" + effect, { loader: "registry-release-audit.cjs" })

@@ -318,3 +318,54 @@ Log: `/tmp/sdk-registry-reuse-green-20261101.log`. All six full-gate failures no
 pass with the original parse counts, completion completeness and lifetime
 assertions unchanged. Real SDK acceptance is running; a new immutable full gate
 will verify the repair commit separately from the rejected286bcca candidate.
+
+Real API24 acceptance after this repair:13/13 PASS, exit0, zero skipped/cancelled/todo,
+111691ms. Command: `ARKTS_REAL_SDK_PATH=/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony node --test tests/release/real-sdk.acceptance.mjs`, Node26.3.0.
+Log: `/tmp/sdk-registry-reuse-real-20261101.log`.
+
+Replacement immutable full snapshot: `f9c0366179cf7d6c3c0689d9d4b5558e4581b653`,
+clean detached `.bench/sdk-registry-reuse-verification-20261101`. Exact command:
+`PATH=/Users/liuhui/.nvm/versions/node/v26.3.0/bin:$PATH pnpm check:fast`.
+Log: `/tmp/sdk-registry-reuse-check-fast-20261101.log`. Node26.3.0/pnpm8.3.1;
+source-tree SHA256 (sorted project-relative paths, NUL, bytes, NUL):
+`6e01815514330733ddc151709d35a4b09b954bb6ec9b61cb1fb6bd08483723ce`.
+Root and verification sources match; checkout/build inputs remain frozen until
+the full run reaches its terminal result. Final acceptance remains pending.
+
+The continuing286bcca run also reports two retained-group reuse failures in
+`semantic-group-retention.test.mjs`. On the unchangedf9c0366 repair, that entire
+public suite passes9/9, exit0, zero skipped/cancelled/todo, 14414ms. It retains
+the original module Program-sequence and single initialized SDK parse assertions;
+no additional implementation or test changes were needed. Command: Node26.3.0
+`node --test tests/semantic/semantic-group-retention.test.mjs`.
+Log: `/tmp/sdk-registry-reuse-groups-20261101.log`. The replacement immutable full
+run stays on the samef9c0366 inputs.
+
+## Terminal286bcca full gate and audit snapshot publication
+
+The frozen286bcca run is terminal: exit1, 2195/2204 PASS, 9 FAIL,
+zero skipped/cancelled/todo, 3594629ms. No manual process termination was needed.
+The first eight failures all assert one unchanged SDK parse and observe two;
+their original assertions pass onf9c0366 in the90-case and9-case regressions.
+The ninth is `worker-registry-cleanup`'s release-before-effect case: the client
+reads an empty `build-state.json` during a concurrent counter overwrite and
+throws `Unexpected end of JSON input`. This is test evidence publication, not a
+product ownership assertion failure. Full log: `/tmp/sdk-complete-check-fast-20261101.log`.
+
+Parent for the audit-tooling repair: `f9c0366179cf7d6c3c0689d9d4b5558e4581b653`.
+Add a real framed-stdio case that pauses the actual Worker after truncating its
+replacement counter file. While paused, require the prior complete JSON snapshot
+to remain readable; then release, reprepare and assert the exact definition.
+Focused RED: Node26.3.0 `node --test --test-name-pattern='registry counter snapshots stay complete' tests/semantic/worker-registry-cleanup.test.mjs`:
+0/1 PASS, exit1, same `Unexpected end of JSON input` at the public audit reader.
+Log: `/tmp/sdk-registry-publication-red-20261101.log`.
+
+Repair only the private fault observer: write the complete per-thread temporary
+counter snapshot and atomically rename it over the published path. Keep strict
+JSON parsing, original lease counts, before/after-effect faults and cleanup
+assertions. No product source changes. Focused GREEN: Node26.3.0 `node --test`
+with `tests/semantic/{worker-registry-cleanup,failed-build-recovery,worker-ownership-fault-boundaries}.test.mjs`
+and `tests/test-layer-manifest.test.mjs`:34/34 PASS, exit0, zero skipped/cancelled/todo,
+37614ms. Log: `/tmp/sdk-registry-publication-green-20261101.log`.
+Final immutable acceptance will include this regression and observer fix. The
+f9c0366 full run remains frozen separately.

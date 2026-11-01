@@ -26,8 +26,12 @@ if (!isMainThread && process.env.ARKTS_LSP_LOG_DIR) {
         else if (input.sdk) sdkRefs += refs
       }
     }
-    fs.writeFileSync(path.join(directory, "build-state.json"),
-      JSON.stringify({ attempts, completed, projectRefs, sdkRefs, threadId }))
+    const output = path.join(directory, "build-state.json")
+    const temporary = `${output}.${threadId}.tmp`
+    try {
+      fs.writeFileSync(temporary, JSON.stringify({ attempts, completed, projectRefs, sdkRefs, threadId }))
+      fs.renameSync(temporary, output)
+    } finally { fs.rmSync(temporary, { force: true }) }
   }
   setInterval(() => { if (registries.length && fault("exit-idle")) process.exit(17) }, 10).unref()
   globalThis.__failedBuildTest = {
