@@ -9,6 +9,7 @@ import { isWithinRoot } from "../../../core/types/typescript-source-boundary.js"
 import { witnessedModuleResolutionHost } from "../../../core/types/typescript-resolution-witness.js"
 import { isCompilerLibrary } from "./sdk-registry-cache.js"
 import { harmonyCompilerResources } from "../../../core/sdk/compiler-resources.js"
+import { sdkDeclarationInputCheck } from "./sdk-declaration-inputs.js"
 
 /** SDK-only compiler export index. No project sources or additional LanguageService. */
 export function sdkExportIndex(sdk: ProjectSdkSelection, host: ts.LanguageServiceHost, registry: ts.DocumentRegistry) {
@@ -99,9 +100,10 @@ export function sdkExportIndex(sdk: ProjectSdkSelection, host: ts.LanguageServic
       })
       program = ts.createProgram(roots(), options, compilerHost)
       program.getTypeChecker()
+      const declarationInputsComplete = sdkDeclarationInputCheck(program, checkpoint)
       coverageIncomplete ||= program.getOptionsDiagnostics().length > 0 || program.getSourceFiles().some(file => (
         (file as ts.SourceFile & { parseDiagnostics?: readonly ts.Diagnostic[] }).parseDiagnostics?.length
-        || file.referencedFiles.some(reference => !program!.getSourceFile(path.resolve(path.dirname(file.fileName), reference.fileName)))
+        || !declarationInputsComplete(file)
       ))
       return program
     } catch (error) {

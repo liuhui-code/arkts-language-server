@@ -22,6 +22,10 @@ and auto-imports. Decision: [ADR0038](../adr/0038-sdk-component-environment.md).
   registry leases and final request fence. Public Kit routes plus API exports;
   >4096 ambient-entry recovery preserves the generic scan/result limits. Stale
   handles cannot emit old edits. Two workspace SDK indexes remain isolated.
+- Compiler-recorded SDK declaration closure checks cover relative imports, SDK
+  namespace imports, type references and physical file references despite
+  `skipLibCheck`. Actual compiler ambient/wildcard binding stays authoritative;
+  incomplete optional export indexes retain healthy candidates.
 - Gate repairs: child stdin EPIPE rejects pending transport requests; physical
   SDK facts reuse full load observations to preserve the existing validation
   budget. Test-layer assignments/counts include every new executable entry.
@@ -35,15 +39,16 @@ and auto-imports. Decision: [ADR0038](../adr/0038-sdk-component-environment.md).
 | Existing project-model characterization | 27/27 PASS |
 | Input validation budget, cache/lifecycle and cancellation focused checks | PASS; see TDD record |
 | Installed API24 acceptance, all 13 cases | 13/13 PASS; zero skipped/cancelled |
-| Final HMS boundary/export suite | 24/24 PASS |
+| Final HMS boundary/export/declaration-input suite | 30/30 PASS |
+| SDK declaration inputs, runtime globals and input-validation budget | 49/49 PASS |
 | Boundary plus source-witness and SDK cache suite | 36/36 PASS |
-| Native-permission `pnpm check:fast` | Pending immutable-worktree run |
+| Native-permission `pnpm check:fast` | Pending final closure-fix snapshot; Node26.3.0 explicitly pinned |
 | Source size and `git diff --check` | PASS except declared existing LS migration debt |
 
 The prior full native gate (before target/export integration) finished
 2168/2171 with three failures: interrupted transport, duplicate SDK path facts,
 and test-manifest counts. Each received a focused repair; the fresh final gate
-will run at a fixed implementation commit in a detached worktree. An intervening
+uses a fixed final implementation commit in a detached clean worktree. An intervening
 integrated run was interrupted after root commits changed its pinned revision;
 it is not acceptance evidence. Logs and RED/GREEN commands are recorded in
 [TDD evidence](../tdd/sdk-environment-20261101.md).
@@ -51,7 +56,9 @@ it is not acceptance evidence. Logs and RED/GREEN commands are recorded in
 ## Delivery boundary
 
 Implementation and reviewable branch delivery are complete (draft PR #111);
-final immutable verification is pending. Keep the 14 absent declarations in the installed API24 distribution
+final immutable verification is pending. The a6f7a26 candidate was rejected by
+a public SDK missing-dependency regression, now fixed. Its worktree shell also
+selected Node21; final validation explicitly fixes Node26.3.0. Keep the 14 absent declarations in the installed API24 distribution
 partial. This plan does not graduate the separate 500ms/memory, Windows runtime
 or real editor UI acceptance goals. SDK configuration remains available on all
 supported platforms; automatic installation defaults retain their existing scope.

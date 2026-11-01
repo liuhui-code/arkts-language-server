@@ -10,6 +10,7 @@ import type { LocalPackageResolver } from "../sdk/local-package-resolver.js"
 import { harmonyCompilerResources } from "../sdk/compiler-resources.js"
 import { isHarmonySdkModuleSpecifier } from "../sdk/module-resolver.js"
 import { sdkContains } from "../sdk/environment.js"
+import { sdkDeclarationInputCheck } from "../../semantic/backends/ohos-typescript/sdk-declaration-inputs.js"
 import type { ProjectSdkSelection } from "../sdk/project-sdk.js"
 import type { ProjectMembershipSnapshot, SemanticWorkspaceView } from "../workspace/document-store.js"
 import { compilerArtifactIdentity } from "./typescript-compiler-artifact.js"
@@ -166,6 +167,13 @@ export function prepareOfficialReadiness(input: ReadinessPreparation): OfficialR
   // later prevents READY. This seeds facts only, never a readiness certificate.
   if (sdkCoverageProven && initialPreparationActive()) observePreparedInputs(input, program, checkpoint)
   const sources = program.getSourceFiles()
+  const declarationInputsComplete = sdkDeclarationInputCheck(program, checkpoint)
+  for (const source of sources) {
+    checkpoint()
+    if (sdkContains(input.sdk, source.fileName) && !declarationInputsComplete(source)) {
+      return semanticSdkPartial(rootUri, { layer: "sdk", reason: "declaration-not-found" })
+    }
+  }
   const firstMissingInput = (diagnostics: readonly ts.Diagnostic[]) =>
     diagnostics.find(diagnostic => MISSING_INPUT_DIAGNOSTICS.has(diagnostic.code))
   const missingCompilerInput = firstMissingInput(program.getOptionsDiagnostics(cancellation))
@@ -181,14 +189,6 @@ export function prepareOfficialReadiness(input: ReadinessPreparation): OfficialR
   // Complete dependency checking, not position/symbol queries or benchmark answers.
   for (const source of sources) {
     checkpoint()
-    // skipLibCheck hides missing triple-slash declarations. Use the already
-    // parsed directives and actual Program membership, without type-checking
-    // the entire SDK or manufacturing compiler diagnostics.
-    if (input.sdk.path && sdkContains(input.sdk, source.fileName)
-      && source.referencedFiles.some(reference => /\.d\.(?:ts|ets)$/.test(reference.fileName)
-        && !program.getSourceFile(path.resolve(path.dirname(source.fileName), reference.fileName)))) {
-      return semanticSdkPartial(rootUri, { layer: "sdk", reason: "declaration-not-found" })
-    }
     const missing = firstMissingInput(checkInput(program, source, cancellation, input.trace))
     if (missing) {
       const specifier = missingSdkSpecifier(missing, input.sdk)

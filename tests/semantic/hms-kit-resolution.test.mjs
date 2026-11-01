@@ -82,6 +82,36 @@ test("unknown HMS input is transported as partial while healthy Kit queries work
   assert.ok(fixture.response.result?.some(result => result.uri === pathToFileURL(fixture.entry).href))
 })
 
+for (const mode of ["relativeMissing", "namespaceMissing", "typesMissing"]) {
+  test(`a missing HMS declaration dependency remains partial SDK input (${mode})`, { timeout: 30000 }, async t => {
+    const fixture = await queryKit(t, mode)
+    assert.equal(fixture.response.error, undefined)
+    const preparation = await fixture.session.transport.notification("arkts/semanticPreparation",
+      message => message.params.phase === "complete", 15000)
+    assert.equal(preparation.params.report.semanticState, "partial", JSON.stringify(preparation))
+    assert.ok(preparation.params.report.inputIssues.some(issue => issue.layer === "sdk"), JSON.stringify(preparation))
+    assert.deepEqual(preparation.params.report.availableCapabilities,
+      ["definition", "typeDefinition", "hover", "signatureHelp", "completion", "completionResolve"])
+    const local = await fixture.session.request("textDocument/definition", {
+      textDocument: fixture.params.textDocument, position: { line: 3, character: 15 },
+    })
+    assert.equal(local.error, undefined)
+    assert.ok(local.result?.some(result => result.uri === fixture.params.textDocument.uri && result.range.start.line === 2),
+      JSON.stringify(local))
+  })
+}
+
+for (const mode of ["ambient", "ambientWildcard"]) {
+  test(`compiler-bound ambient SDK modules remain complete (${mode})`, { timeout: 30000 }, async t => {
+    const fixture = await queryKit(t, mode)
+    assert.equal(fixture.response.error, undefined)
+    assert.ok(fixture.response.result?.some(result => result.uri === pathToFileURL(fixture.declaration).href), JSON.stringify(fixture.response))
+    const preparation = await fixture.session.transport.notification("arkts/semanticPreparation",
+      message => message.params.phase === "complete", 15000)
+    assert.equal(preparation.params.report.semanticState, "ready", JSON.stringify(preparation))
+  })
+}
+
 test("malformed HMS configuration stays an SDK input issue", { timeout: 30000 }, async t => {
   const fixture = await queryKit(t, "invalid")
   const preparation = await fixture.session.transport.notification("arkts/semanticPreparation",
@@ -198,6 +228,19 @@ test("SDK export discovery survives more than 4096 unrelated ambient entries", {
   assert.equal(response.result.isIncomplete, true)
 })
 
+test("an incomplete SDK-only export closure preserves healthy Kit candidates", { timeout: 30000 }, async t => {
+  const fixture = await queryKit(t, "autoimportIndexMissing")
+  const response = await fixture.session.request("textDocument/completion", {
+    textDocument: fixture.params.textDocument, position: { line: 0, character: 19 },
+  })
+  assert.equal(response.error, undefined)
+  assert.equal(response.result.isIncomplete, true)
+  const item = response.result.items.find(item => item.label === "pushService" && item.detail?.includes("@kit.PushKit"))
+  assert.ok(item, JSON.stringify(response))
+  const resolved = await fixture.session.request("completionItem/resolve", item)
+  assert.ok(resolved.result?.additionalTextEdits?.some(edit => /from ["']@kit\.PushKit["']/.test(edit.newText)), JSON.stringify(resolved))
+})
+
 test("SDK export handles reject changed declarations and refresh to new Kit exports", { timeout: 30000 }, async t => {
   const fixture = await queryKit(t, "autoimport")
   const request = (prefix) => fixture.session.request("textDocument/completion", {
@@ -268,9 +311,17 @@ async function queryKit(t, mode = "direct", { session: existingSession, deferIni
     ? `import service from '${prefix}.core.push.pushService'; export { service as secondService };\n`
     : `import pushService from '${prefix}.core.push.pushService'; export { pushService };\n`)
   const entry = path.join(hms, "api", `${prefix}.core.push.pushService.d.${["dets", "autoimportDets"].includes(mode) ? "ets" : "ts"}`)
-  const declaration = target || mode.startsWith("autoimport") || ["direct", "unknown", "dets", "invalid", "customPrefix", "incompatible"].includes(mode) ? entry : path.join(mode === "nestedEscape" ? workspace : ["relative", "nestedRelative"].includes(mode) ? path.dirname(entry) : root, "service.d.ts")
-  await fs.writeFile(declaration, "declare namespace pushService { function getToken(): string }\nexport default pushService;\n")
+  const declaration = mode.startsWith("ambient") ? path.join(oh, "ets", "component", "common.d.ts") : target || mode.startsWith("autoimport") || ["direct", "unknown", "dets", "invalid", "customPrefix", "incompatible", "typesMissing"].includes(mode) ? entry : path.join(mode === "nestedEscape" ? workspace : ["relative", "nestedRelative"].includes(mode) ? path.dirname(entry) : root, "service.d.ts")
+  await fs.writeFile(declaration, mode.startsWith("ambient")
+    ? `declare module '${mode === "ambientWildcard" ? "*.sdk-ambient" : "sdk-ambient"}' { namespace pushService { function getToken(): string } export default pushService; }\n`
+    : "declare namespace pushService { function getToken(): string }\nexport default pushService;\n")
   if (["relative", "nestedRelative"].includes(mode)) await fs.writeFile(entry, "export { default } from './service';\n")
+  if (mode === "relativeMissing") await fs.writeFile(entry, "export { default } from './absent';\n")
+  if (mode === "namespaceMissing") await fs.writeFile(entry, "export { default } from '@hms.absent';\n")
+  if (mode.startsWith("ambient")) await fs.writeFile(entry, `export { default } from '${mode === "ambientWildcard" ? "platform.sdk-ambient" : "sdk-ambient"}';\n`)
+  if (mode === "typesMissing") await fs.writeFile(entry, '/// <reference types="absent-sdk-types" />\n' + await fs.readFile(entry, "utf8"))
+  if (mode === "autoimportIndexMissing") await fs.writeFile(path.join(hms, "api", "@hms.optional.d.ts"),
+    "export * from './absent';\n")
   if (mode === "nestedEscape") await fs.writeFile(entry, "export { default } from '../../../../service';\n")
   if (mode === "escape") {
     if (process.platform === "win32") {
@@ -302,6 +353,7 @@ async function queryKit(t, mode = "direct", { session: existingSession, deferIni
   const source = (mode === "autoimportSecond" ? "const token = secondS\n" : mode.startsWith("autoimport") ? "const token = pushS\n" : mode === "dets"
     ? "import { pushService as push } from '@kit.PushKit'\nconst token = push.getToken()\n"
     : "import { pushService } from '@kit.PushKit'\nconst token = pushService.getToken()\n")
+    + (["relativeMissing", "namespaceMissing", "typesMissing"].includes(mode) ? "export const localMarker = 1\nconst alias = localMarker\n" : "")
     + (mode === "unknown" ? "import missing from '@hms.missing'; export { missing };\n" : "")
   await fs.writeFile(document, source)
   const uri = pathToFileURL(document).href

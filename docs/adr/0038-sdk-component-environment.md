@@ -52,7 +52,13 @@ types, aliases and declaration navigation.
    and marks completion incomplete; cancellation remains cancellation. The first
    construction is warmed within the existing initial-preparation scope. It does
    not renew that exemption or change runtime pressure/recovery budgets.
-8. Preserve ADR0021: stable missing SDK inputs are partial, whereas changed
+8. Qualify SDK declaration inputs from the pinned compiler's completed
+   module/type-reference tables and actual Program membership, including file
+   references. `skipLibCheck` must not turn absent declaration dependencies into
+   complete readiness. Accept nonphysical ambient/wildcard modules through the
+   compiler's binding of its SDK import literals, without a parallel binder.
+   Apply this input check to both readiness and the SDK-only export Program.
+9. Preserve ADR0021: stable missing SDK inputs are partial, whereas changed
    inputs reject publication. Target mismatch produces an SDK diagnostic without
    disabling healthy queries. Metadata does not certify all ArkTS dialect features.
 

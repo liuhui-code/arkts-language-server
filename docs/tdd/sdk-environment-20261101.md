@@ -116,7 +116,49 @@ a `.d.ets` source explicitly.
   `/tmp/sdk-boundary-final-hms-20261101.log`.
 - Installed SDK after the boundary fix: 13/13 PASS, zero skipped/cancelled,
   exit0; `/tmp/sdk-boundary-real-20261101.log`.
-- Final immutable-worktree `pnpm check:fast`: pending.
+### Declaration-closure follow-up
+
+RED parent: `a6f7a265d5d8ae6100425d9f0dd90200815a5ece`.
+`node --test --test-name-pattern='missing HMS declaration-relative' tests/semantic/hms-kit-resolution.test.mjs`
+reported READY with `dependenciesComplete:true` although an HMS declaration's
+relative import had no source. `/tmp/sdk-relative-missing-audit-20261101.log`.
+`skipLibCheck` hides these declaration diagnostics; namespace missing imports
+and type-reference directives require the same input treatment.
+
+The pinned compiler adapter now reads its completed module/type-reference
+resolution tables and actual Program membership. It checks parsed file
+references as well. Modules without a physical resolution are accepted only
+when the compiler binds that SDK import literal. A literal-name ambient lookup
+was insufficient for wildcard modules: the public wildcard ambient regression
+was RED at `/tmp/sdk-ambient-binding-red-20261101.log`, then GREEN using the
+compiler's actual binding. This does not introduce a second resolver/binder or
+prequery user positions.
+
+Both project-readiness qualification and the SDK-only export index consume this
+check. Stable missing SDK declarations remain partial with all six local
+capabilities; local navigation stays healthy. Known Kit exports survive an
+incomplete optional SDK index, whose completion result is marked incomplete.
+No fake compiler diagnostic is manufactured.
+
+- Type check/build: PASS.
+- Final HMS, SDK runtime globals and input-validation suite: 49/49 PASS,
+  zero skipped/cancelled; `/tmp/sdk-closure-all-focused-20261101.log`.
+  The HMS suite contains 30 cases, including exact/wildcard ambient binding,
+  three missing-dependency forms and SDK-only optional-closure failure.
+- Final installed API24 acceptance after the closure fix: 13/13 PASS, zero
+  skipped/cancelled, exit0; `/tmp/sdk-closure-real-20261101.log`.
+
+The detached a6f7a26 candidate round was explicitly interrupted after the new
+closure regression disproved its completeness. Its diagnostic-barrier test
+passed with an immutable HEAD. It also exposed a worktree shell selecting
+Node21.6.2: three GC-launch tests failed because `--expose-gc` is forbidden in
+that version's NODE_OPTIONS. `/tmp/sdk-immutable-check-fast-20261101.log`.
+No GC assertion was relaxed. The replacement full round explicitly pins the
+same Node26.3.0 toolchain used by the root focused/real-SDK runs and uses the
+clean detached worktree's independent build outputs. Result pending.
+
+Delivery: [draft PR #111](https://github.com/liuhui-code/arkts-language-server/pull/111).
+Root evidence-document updates are outside the immutable verification checkout.
 
 `git diff --check`: PASS. Every changed/new handwritten source, script and test
 is <=500 lines except existing `typescript-language-service.ts`: 3072 -> 2985.
