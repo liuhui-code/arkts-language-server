@@ -23,6 +23,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/class-binding-input-snapshot.test.mjs",
       "tests/l01-soak-suite-generator-cli.test.mjs",
       "tests/local-delivery-config.test.mjs",
+      "tests/release-pipeline.test.mjs",
       "tests/logging.test.mjs",
       "tests/lsp-process-write-error.test.mjs",
       "tests/lsp-cache-isolation.test.mjs",
