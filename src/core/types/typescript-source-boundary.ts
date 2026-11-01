@@ -17,16 +17,20 @@ export function relativeModuleBoundary(containingFile: string, hasScript: boolea
   try {
     physicalContainingFile = hasScript ? prospectiveRealPathSync(containingFile) : fs.realpathSync.native(containingFile)
   } catch { return undefined }
+  // An SDK inside the workspace (or reached through a workspace alias) keeps
+  // its narrower source boundary. A lexical SDK escape cannot inherit workspace authority.
+  for (const component of sdkComponents ?? []) {
+    const physical = isWithinRoot(component.physicalRoot, physicalContainingFile)
+    if (isWithinRoot(component.root, containingFile) || physical) return !component.issue && physical ? component.root : undefined
+  }
+  if (sdkRoot && sdkPhysicalRoot && (isWithinRoot(sdkRoot, containingFile)
+    || isWithinRoot(sdkPhysicalRoot, physicalContainingFile))) {
+    return isWithinRoot(sdkPhysicalRoot, physicalContainingFile) ? sdkRoot : undefined
+  }
   if (isWithinRoot(rootPath, containingFile)) {
     return workspacePhysicalRoot && isWithinRoot(workspacePhysicalRoot, physicalContainingFile) ? rootPath : undefined
   }
   if (workspacePhysicalRoot && isWithinRoot(workspacePhysicalRoot, physicalContainingFile)) return rootPath
-  if (sdkRoot && sdkPhysicalRoot && isWithinRoot(sdkRoot, containingFile)
-    && isWithinRoot(sdkPhysicalRoot, physicalContainingFile)) return sdkRoot
-  for (const component of sdkComponents ?? []) {
-    if (!component.issue && isWithinRoot(component.root, containingFile)
-      && isWithinRoot(component.physicalRoot, physicalContainingFile)) return component.root
-  }
   return undefined
 }
 

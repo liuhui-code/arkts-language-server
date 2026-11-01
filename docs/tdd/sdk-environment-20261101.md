@@ -83,12 +83,40 @@ Final installed acceptance: 13/13 PASS, zero skipped/cancelled, exit0,
 
 ## Final gate and delivery
 
-Production source-tree SHA256 (sorted paths plus bytes):
-`0a29091d84c5e51032b6e8f2b3ba780a557f588100af963bc63d0286d8ba2e3d`.
-The integrated production code is frozen for native-permission `pnpm check:fast`,
-currently running at `/tmp/sdk-final-check-fast-20261101.log`. The only later
-executable edit corrects the excluded real-SDK acceptance assertion above; fast
-source/test entries remain unchanged. Final full PASS is not claimed yet.
+The first integrated gate at `/tmp/sdk-final-check-fast-20261101.log` was
+superseded and explicitly interrupted (exit1), not a completed acceptance run.
+It reported one diagnostic-barrier failure. Its six isolated repetitions passed.
+The harness pins both `serverRevision` and `serverInputSha256`; root commit
+`9353449` at 05:11:35 UTC overlaps the failed test's approximate completion.
+The exact failing assertion was not retained by the interrupted spec reporter,
+so revision drift is a supported diagnosis, not a claimed complete reproduction
+of that assertion. No timing threshold or correctness assertion was relaxed.
+Root source/build changes later also invalidated this round's frozen input.
+Final verification therefore uses a detached worktree at the final implementation
+commit; root documentation commits cannot change its pinned HEAD or sources.
+
+### Nested SDK boundary follow-up
+
+RED parent: `93534495a36cd4f31229da008e3e0867d214531a`.
+Command: `node --test --test-name-pattern='SDK nested' tests/semantic/hms-kit-resolution.test.mjs`.
+An SDK installed inside its workspace resolved a relative declaration outside
+its own component into `workspace/service.d.ts`. Log:
+`/tmp/sdk-nested-boundary-red-20261101.log`.
+
+The relative-boundary selector now checks selected SDK lexical/physical roots
+before workspace roots, including physical aliases. Lexical SDK escapes fail
+closed. Public transcripts protect both rejection and a healthy dependency
+inside the nested component. The native Kit auto-import transcript also covers
+a `.d.ets` source explicitly.
+
+- Type check/build: PASS.
+- HMS plus changed-source witness and SDK reference cache: 36/36 PASS;
+  `/tmp/sdk-nested-inputs-20261101.log`.
+- Final HMS suite including `.d.ets` auto-import: 24/24 PASS;
+  `/tmp/sdk-boundary-final-hms-20261101.log`.
+- Installed SDK after the boundary fix: 13/13 PASS, zero skipped/cancelled,
+  exit0; `/tmp/sdk-boundary-real-20261101.log`.
+- Final immutable-worktree `pnpm check:fast`: pending.
 
 `git diff --check`: PASS. Every changed/new handwritten source, script and test
 is <=500 lines except existing `typescript-language-service.ts`: 3072 -> 2985.

@@ -27,6 +27,8 @@ types, aliases and declaration navigation.
    relative dependency boundaries, syntax retention, source classification,
    readiness digests and reference terminals consume the selected components.
    Lexical and physical checks reject escaping API paths/declaration symlinks.
+   SDK source boundaries take precedence even when the installation is inside
+   the workspace or reached through a workspace alias.
 4. Follow actual public Kit declaration imports/re-exports through the compiler.
    Do not maintain a second symbol binder or execute SDK plugins. Compiler
    resource descriptors expose layout locations; ambient selection, compiler

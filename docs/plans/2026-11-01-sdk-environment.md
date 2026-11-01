@@ -10,7 +10,8 @@ and auto-imports. Decision: [ADR0038](../adr/0038-sdk-component-environment.md).
   digests, actual load witnesses, documented HMS discovery and explicit selection
   precedence. Invalid components and incompatible API versions remain explicit.
 - Ordered OH/HMS module resolution, `.d.ts`/`.d.ets`, actual Kit re-exports and
-  relative dependencies with lexical/physical containment. Component-aware source
+  relative dependencies with lexical/physical containment, including SDKs nested
+  inside a workspace. Component-aware source
   classification, readiness, registry retention and reference consumers.
 - Compiler resource locations behind descriptors; SDK setup extracted from the
   language service. No new asynchronous constructor, Worker or lifecycle owner.
@@ -34,19 +35,23 @@ and auto-imports. Decision: [ADR0038](../adr/0038-sdk-component-environment.md).
 | Existing project-model characterization | 27/27 PASS |
 | Input validation budget, cache/lifecycle and cancellation focused checks | PASS; see TDD record |
 | Installed API24 acceptance, all 13 cases | 13/13 PASS; zero skipped/cancelled |
-| Native-permission `pnpm check:fast` | Running; final result pending |
+| Final HMS boundary/export suite | 24/24 PASS |
+| Boundary plus source-witness and SDK cache suite | 36/36 PASS |
+| Native-permission `pnpm check:fast` | Pending immutable-worktree run |
 | Source size and `git diff --check` | PASS except declared existing LS migration debt |
 
 The prior full native gate (before target/export integration) finished
 2168/2171 with three failures: interrupted transport, duplicate SDK path facts,
 and test-manifest counts. Each received a focused repair; the fresh final gate
-runs on integrated production code. Logs and RED/GREEN commands are recorded in
+will run at a fixed implementation commit in a detached worktree. An intervening
+integrated run was interrupted after root commits changed its pinned revision;
+it is not acceptance evidence. Logs and RED/GREEN commands are recorded in
 [TDD evidence](../tdd/sdk-environment-20261101.md).
 
 ## Delivery boundary
 
-Implementation is complete; final validation and reviewable branch delivery are
-pending. Keep the 14 absent declarations in the installed API24 distribution
+Implementation and reviewable branch delivery are complete (draft PR #111);
+final immutable verification is pending. Keep the 14 absent declarations in the installed API24 distribution
 partial. This plan does not graduate the separate 500ms/memory, Windows runtime
 or real editor UI acceptance goals. SDK configuration remains available on all
 supported platforms; automatic installation defaults retain their existing scope.

@@ -39,6 +39,18 @@ test("HMS declarations cannot escape the SDK through a symlink", { timeout: 3000
   assert.deepEqual(response.result, [])
 })
 
+test("an SDK nested in the workspace retains its component-relative import boundary", { timeout: 30000 }, async t => {
+  const { response } = await queryKit(t, "nestedEscape")
+  assert.equal(response.error, undefined)
+  assert.deepEqual(response.result, [])
+})
+
+test("an SDK nested in the workspace still resolves dependencies inside its component", { timeout: 30000 }, async t => {
+  const { response, declaration } = await queryKit(t, "nestedRelative")
+  assert.equal(response.error, undefined)
+  assert.ok(response.result?.some(result => result.uri === pathToFileURL(declaration).href), JSON.stringify(response))
+})
+
 test("same-SDK refresh observes an HMS declaration created after a negative lookup", { timeout: 30000 }, async t => {
   const fixture = await queryKit(t, "missing")
   assert.deepEqual(fixture.response.result, [])
@@ -156,20 +168,22 @@ test("ordinary configuration refresh clears a repaired SDK target mismatch", { t
   assert.ok(response.result?.some(result => result.uri === pathToFileURL(fixture.entry).href))
 })
 
-test("an unimported HMS symbol is completed and resolved through its public Kit", { timeout: 30000 }, async t => {
-  const fixture = await queryKit(t, "autoimport")
-  const response = await fixture.session.request("textDocument/completion", {
-    textDocument: fixture.params.textDocument,
-    position: { line: 0, character: fixture.source.indexOf("pushS") + 5 },
+for (const mode of ["autoimport", "autoimportDets"]) {
+  test(`an unimported HMS symbol is completed and resolved through its public Kit (${mode})`, { timeout: 30000 }, async t => {
+    const fixture = await queryKit(t, mode)
+    const response = await fixture.session.request("textDocument/completion", {
+      textDocument: fixture.params.textDocument,
+      position: { line: 0, character: fixture.source.indexOf("pushS") + 5 },
+    })
+    assert.equal(response.error, undefined)
+    const items = Array.isArray(response.result) ? response.result : response.result?.items ?? []
+    const item = items.find(item => item.label === "pushService" && item.detail?.includes("@kit.PushKit"))
+    assert.ok(item, JSON.stringify(response))
+    const resolved = await fixture.session.request("completionItem/resolve", item)
+    assert.equal(resolved.error, undefined)
+    assert.ok(resolved.result.additionalTextEdits?.some(edit => /from ["']@kit\.PushKit["']/.test(edit.newText)), JSON.stringify(resolved))
   })
-  assert.equal(response.error, undefined)
-  const items = Array.isArray(response.result) ? response.result : response.result?.items ?? []
-  const item = items.find(item => item.label === "pushService" && item.detail?.includes("@kit.PushKit"))
-  assert.ok(item, JSON.stringify(response))
-  const resolved = await fixture.session.request("completionItem/resolve", item)
-  assert.equal(resolved.error, undefined)
-  assert.ok(resolved.result.additionalTextEdits?.some(edit => /from ["']@kit\.PushKit["']/.test(edit.newText)), JSON.stringify(resolved))
-})
+}
 
 test("SDK export discovery survives more than 4096 unrelated ambient entries", { timeout: 30000 }, async t => {
   const fixture = await queryKit(t, "autoimportNoisy")
@@ -239,7 +253,7 @@ async function queryKit(t, mode = "direct", { session: existingSession, deferIni
   const prefix = mode === "customPrefix" ? "@vendor" : "@hms"
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "arkts-hms-kit-"))
   const workspace = path.join(root, "workspace")
-  const sdk = path.join(root, "sdk")
+  const sdk = path.join(mode.startsWith("nested") ? workspace : root, "sdk")
   const oh = path.join(sdk, "openharmony")
   const hms = path.join(sdk, "hms", "ets")
   for (const directory of [workspace, path.join(oh, "ets", "component"), path.join(oh, "toolchains"),
@@ -253,10 +267,11 @@ async function queryKit(t, mode = "direct", { session: existingSession, deferIni
   await fs.writeFile(path.join(hms, "kits", "@kit.PushKit.d.ts"), mode === "autoimportSecond"
     ? `import service from '${prefix}.core.push.pushService'; export { service as secondService };\n`
     : `import pushService from '${prefix}.core.push.pushService'; export { pushService };\n`)
-  const entry = path.join(hms, "api", `${prefix}.core.push.pushService.d.${mode === "dets" ? "ets" : "ts"}`)
-  const declaration = target || mode.startsWith("autoimport") || ["direct", "unknown", "dets", "invalid", "customPrefix", "incompatible"].includes(mode) ? entry : path.join(mode === "relative" ? path.dirname(entry) : root, "service.d.ts")
+  const entry = path.join(hms, "api", `${prefix}.core.push.pushService.d.${["dets", "autoimportDets"].includes(mode) ? "ets" : "ts"}`)
+  const declaration = target || mode.startsWith("autoimport") || ["direct", "unknown", "dets", "invalid", "customPrefix", "incompatible"].includes(mode) ? entry : path.join(mode === "nestedEscape" ? workspace : ["relative", "nestedRelative"].includes(mode) ? path.dirname(entry) : root, "service.d.ts")
   await fs.writeFile(declaration, "declare namespace pushService { function getToken(): string }\nexport default pushService;\n")
-  if (mode === "relative") await fs.writeFile(entry, "export { default } from './service';\n")
+  if (["relative", "nestedRelative"].includes(mode)) await fs.writeFile(entry, "export { default } from './service';\n")
+  if (mode === "nestedEscape") await fs.writeFile(entry, "export { default } from '../../../../service';\n")
   if (mode === "escape") {
     if (process.platform === "win32") {
       const outside = path.join(root, "outside-api")
