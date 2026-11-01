@@ -59,9 +59,8 @@ export async function replay(t, fixture, strategy, {
   includeDeclarations = [false, true], settleBeforeWarm = false, afterReference,
 } = {}) {
   const { root, sources, uri } = fixture
-  fixture.replayCount = (fixture.replayCount ?? 0) + 1
-  const runId = `${strategy}-${localSeed}-${trace}-${fixture.replayCount}`
-  const logs = path.join(root, `${runId}-logs`)
+  const runtimeDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-reference-runtime-"))
+  const logs = path.join(runtimeDirectory, "logs")
   const session = new LspSession({
     command: process.execPath, args: [path.join(projectRoot, "dist/server.cjs"), "--stdio"],
     cwd: projectRoot, rootUri: pathToFileURL(root).href,
@@ -70,7 +69,7 @@ export async function replay(t, fixture, strategy, {
     env: {
       ARKLINE_HARMONY_SDK_PATH: path.join(root, "missing-sdk"),
       DEVECO_SDK_HOME: path.join(root, "missing-deveco"),
-      ARKTS_INDEX_CACHE_DIR: path.join(root, `${runId}-cache`),
+      ARKTS_INDEX_CACHE_DIR: path.join(runtimeDirectory, "cache"),
       ARKTS_INDEX_SIDECAR_PATH: path.join(projectRoot, "target/release/arkts-index-sidecar"),
       ARKTS_LSP_LOG_DIR: logs, ARKTS_REFERENCES_STRATEGY: strategy,
       ARKTS_REFERENCES_BATCH_ROOTS: "1", ARKTS_REFERENCES_TRACE: trace ? "1" : "0",
@@ -81,7 +80,10 @@ export async function replay(t, fixture, strategy, {
       ...runtimeEnv,
     },
   })
-  t.after(() => session.close().catch(() => {}))
+  t.after(async () => {
+    await session.close().catch(() => {})
+    fs.rmSync(runtimeDirectory, { recursive: true, force: true })
+  })
   await session.initialize({ timeoutMs: 10_000 })
   const create = await session.transport.serverRequest("window/workDoneProgress/create", () => true, 10_000)
   session.transport.send({ jsonrpc: "2.0", id: create.id, result: null })

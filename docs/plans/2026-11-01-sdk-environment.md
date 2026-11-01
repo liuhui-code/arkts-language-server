@@ -46,7 +46,8 @@ and auto-imports. Decision: [ADR0038](../adr/0038-sdk-component-environment.md).
 | Shared SDK syntax reuse, initialization and lifetime repair | 90/90 PASS; original one-parse and completeness assertions retained |
 | Retained module groups and partial-SDK full-scope owners | 9/9 PASS on unchangedf9c0366; original Program and SDK-parse assertions retained |
 | Atomic fault-counter publication and cleanup ownership | 34/34 PASS; deterministic JSON-publication regression and original fault assertions |
-| Native-permission `pnpm check:fast` | Detachedf9c0366 running; final audit-publication repair will receive its own frozen full run |
+| Reference replay runtime/source isolation | 30/30 PASS plus20 rounds/60 case executions; controlled churn and original exact-reference/cancellation assertions |
+| Native-permission `pnpm check:fast` | Detached2ad88c9 running; final reference-fixture isolation snapshot pending |
 | Source size and `git diff --check` | PASS except declared existing LS migration debt |
 
 The prior full native gate (before target/export integration) finished
@@ -70,7 +71,7 @@ it is not acceptance evidence. Logs and RED/GREEN commands are recorded in
 | Existing cache, cancellation and lifetime owners | Original project recovery, SDK optional failures and actual release-after-effect quarantine: 27/27; full regression pending | FOCUSED PASS |
 | Same-process multi-root SDK replacement | Public two-root HMS facade replacement, first root updated and second root completion/resolve preserved | PASS |
 | ADR and reviewable branch | ADR0038, TDD records, draft PR #111 | DELIVERED; final evidence update pending |
-| Final integration gate | Source repairf9c0366 running; audit snapshot publication fix in focused verification | RUNNING; final tooling snapshot pending |
+| Final integration gate | Product sources unchanged; reference fixture isolation is focused GREEN and awaiting final frozen full snapshot | RUNNING; tooling follow-up |
 
 The added multi-root replacement characterization runs against the unchanged
 final implementation. It strengthens the earlier static isolation case; it does

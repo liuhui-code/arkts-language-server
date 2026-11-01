@@ -369,3 +369,50 @@ and `tests/test-layer-manifest.test.mjs`:34/34 PASS, exit0, zero skipped/cancell
 37614ms. Log: `/tmp/sdk-registry-publication-green-20261101.log`.
 Final immutable acceptance will include this regression and observer fix. The
 f9c0366 full run remains frozen separately.
+
+Final implementation plus tooling snapshot: `2ad88c9e9362943a1fcf327ee7152e773cbe6550`.
+The clean detached `.bench/sdk-final-verification-20261101` was switched only
+after its286bcca process exited1; the286bcca log remains unchanged. New command:
+`PATH=/Users/liuhui/.nvm/versions/node/v26.3.0/bin:$PATH pnpm check:fast`.
+New distinct log: `/tmp/sdk-final-audit-check-fast-20261101.log`.
+Node26.3.0/pnpm8.3.1, clean at start; source SHA256 remains
+`6e01815514330733ddc151709d35a4b09b954bb6ec9b61cb1fb6bd08483723ce`.
+Only test fixtures, the controlled public regression and documentation differ
+fromf9c0366; the13/13 real SDK production-source evidence remains applicable.
+This snapshot stays fixed through terminal full verification. Result pending.
+
+## Reference replay runtime/source isolation
+
+The continuingf9c0366 full run reports a resident-cancellation case failure.
+Focused repeats pass initially, then run8 fails in the fresh `legacy` comparison
+at its first references request, after the cancellation itself has succeeded:
+`-32803 References require a complete workspace snapshot`. A diagnostic repeat
+captures the same failure at run2. Its retained runtime log records a partial
+project membership with2 paths despite the ready4-source native catalog.
+Logs: `/tmp/sdk-resident-cancellation-repeat-20261101.log` and
+`/tmp/sdk-resident-cancellation-diagnosis-20261101.log`.
+
+Parent for the fixture repair: `2ad88c9e9362943a1fcf327ee7152e773cbe6550`.
+The reference replay helper stores its live logs and native SQLite cache inside
+the enumerated source workspace. Directory identity changes during enumeration
+correctly invalidate completeness. A private real-Worker directory probe forces
+the cache namespace to change at enumeration EOF. New framed-stdio regression
+`reference replay isolates changing native cache namespaces from source membership`
+then deterministically fails with the same public error:0/1 PASS, exit1.
+RED command: Node26.3.0 `node --test --test-name-pattern='reference replay isolates changing native cache' tests/semantic/references-batch-search-coverage.test.mjs`.
+Log: `/tmp/sdk-reference-cache-isolation-red-20261101.log`.
+
+Put each replay's cache and logs in a unique temporary runtime directory outside
+the source workspace, closing its LSP session before removing runtime outputs.
+Keep production membership guards, request cancellation, exact Locations and
+result-set comparisons unchanged. Remove temporary diagnostic instrumentation.
+GREEN: Node26.3.0 `node --test tests/semantic/references-batch-search-coverage.test.mjs tests/test-layer-manifest.test.mjs`:
+30/30 PASS, exit0, zero skipped/cancelled/todo,155384ms.
+Log: `/tmp/sdk-reference-cache-isolation-green-20261101.log`.
+Twenty serial rounds of the controlled case and both cancellation policies pass:
+20/20 runs,60/60 case executions, exit0, zero skipped/cancelled/todo in each run.
+Log: `/tmp/sdk-reference-cache-repeat-green-20261101.log`. The unused replay ID
+counter was removed after switching to unique runtime directories; this repeated
+characterization covers the final helper. No product sources changed. The
+originalf9c0366 whole-run failure stack is still pending its terminal report;
+the final full tooling snapshot remains pending.
