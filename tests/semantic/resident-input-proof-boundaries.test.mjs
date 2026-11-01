@@ -13,6 +13,9 @@ test("native input hash reuse rejects an old SDK proof and revalidates changed d
       const source = "export class TargetThing {}\n"
       const use = '// op02-pure-input SDK boundary 😀\nimport { TargetThing } from "./Target"\n'
         + "export const thing = new TargetThing()\n"
+      const sessions = []
+      // The native processes must close before the fixture's directory-removal hook.
+      t.after(async () => { for (const session of sessions) await session.close().catch(() => {}) })
       const fixture = await makeQueryLayerFixture(t, { files: { "Target.ets": source, "Use.ets": use },
         target: { kind: "references", file: "Target.ets", symbol: "TargetThing",
           position: { line: 0, character: 14 }, includeDeclaration: false },
@@ -30,9 +33,9 @@ test("native input hash reuse rejects an old SDK proof and revalidates changed d
           ARKTS_INDEX_CACHE_DIR: path.join(fixture.directory, "index"), ARKTS_LSP_LOG_DIR: logs,
           ARKTS_REFERENCES_TRACE: "1", ARKTS_BENCHMARK_CONTROL: "0",
           ARKTS_RESIDENT_INPUT_HASH_REUSE: reuse,
-          NODE_OPTIONS: `--require=${JSON.stringify(path.resolve("tests/fixtures/resident-input-proof-observer.cjs"))}` },
+          NODE_OPTIONS: `--require=${JSON.stringify(path.resolve("tests/fixtures/resident-input-proof-publication.cjs"))} --require=${JSON.stringify(path.resolve("tests/fixtures/resident-input-proof-observer.cjs"))}` },
       })
-      t.after(() => session.close().catch(() => {}))
+      sessions.push(session)
       await session.initialize({ timeoutMs: 10_000,
         initializationOptions: { sdk: { path: fixture.suite.sdk } } })
       for (const [file, text] of [["Target.ets", source], ["Use.ets", use]]) {
@@ -53,6 +56,8 @@ test("native input hash reuse rejects an old SDK proof and revalidates changed d
       const changedSdk = originalSdk + "interface ChangedDuringHash { current: number }\n"
       try {
         const entered = await waitForJson(path.join(fixture.directory, "resident-input-proof-entered.json"))
+        t.diagnostic(JSON.stringify({ reuse: reuse ?? "default", nativeHashRuntime: entered.runtime,
+          nativeHashCaller: entered.caller }))
         assert.equal(entered.pid, session.transport.child.pid)
         assert.ok(entered.threadId > 0, "mutate only after the actual semantic Worker has entered input hashing")
         fs.writeFileSync(sdkSource, changedSdk)
@@ -87,7 +92,7 @@ test("native input hash reuse rejects an old SDK proof and revalidates changed d
           ARKTS_LSP_LOG_DIR: path.join(fixture.directory, "fresh-logs"),
           ARKTS_REFERENCES_STRATEGY: "legacy", ARKTS_REFERENCES_RESIDENT_FAST_PATH: "0" },
       })
-      t.after(() => fresh.close().catch(() => {}))
+      sessions.push(fresh)
       await fresh.initialize({ timeoutMs: 10_000,
         initializationOptions: { sdk: { path: fixture.suite.sdk } } })
       fresh.openDocument({ uri: uri("Target.ets"), version: 1, text: source })
@@ -142,6 +147,9 @@ test("an in-flight native hash cannot publish old parent references after a nest
       const use = '// op02-pure-input nested boundary 😀\nimport { TargetThing } from "./nested/Target"\n'
         + "export const thing = new TargetThing()\n"
       const nestedUse = use.replace('from "./nested/Target"', 'from "./Target"')
+      const sessions = []
+      // The native processes must close before the fixture's directory-removal hook.
+      t.after(async () => { for (const session of sessions) await session.close().catch(() => {}) })
       const fixture = await makeQueryLayerFixture(t, { files: {
         "nested/Target.ets": source, "Use.ets": use, "nested/Use.ets": nestedUse,
       }, target: { kind: "references", file: "Use.ets", symbol: "TargetThing",
@@ -161,9 +169,9 @@ test("an in-flight native hash cannot publish old parent references after a nest
           ARKTS_INDEX_CACHE_DIR: path.join(fixture.directory, "index"), ARKTS_LSP_LOG_DIR: logs,
           ARKTS_REFERENCES_TRACE: "1", ARKTS_BENCHMARK_CONTROL: "0",
           ARKTS_RESIDENT_INPUT_HASH_REUSE: reuse,
-          NODE_OPTIONS: `--require=${JSON.stringify(path.resolve("tests/fixtures/resident-input-proof-observer.cjs"))}` },
+          NODE_OPTIONS: `--require=${JSON.stringify(path.resolve("tests/fixtures/resident-input-proof-publication.cjs"))} --require=${JSON.stringify(path.resolve("tests/fixtures/resident-input-proof-observer.cjs"))}` },
       })
-      t.after(() => session.close().catch(() => {}))
+      sessions.push(session)
       const initializeId = session.nextRequestId++
       session.transport.send({ jsonrpc: "2.0", id: initializeId, method: "initialize", params: {
         processId: process.pid, rootUri, capabilities: session.capabilities,
@@ -190,6 +198,8 @@ test("an in-flight native hash cannot publish old parent references after a nest
       let stale
       try {
         const entered = await waitForJson(path.join(fixture.directory, "resident-input-proof-entered.json"))
+        t.diagnostic(JSON.stringify({ reuse: reuse ?? "default", nativeHashRuntime: entered.runtime,
+          nativeHashCaller: entered.caller }))
         assert.equal(entered.pid, session.transport.child.pid)
         assert.ok(entered.threadId > 0)
         session.changeDocument({ uri: uri("nested/Use.ets"), version: 2, text: changed })

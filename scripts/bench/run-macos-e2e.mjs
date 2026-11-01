@@ -69,6 +69,7 @@ async function main(options) {
   const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-macos-e2e-"))
   const runs = []
   let failure = null
+  let cleanupFailure = null
 
   try {
     const warmCache = path.join(temporaryRoot, "warm")
@@ -84,7 +85,12 @@ async function main(options) {
     runs.push(error.run)
     failure = { message: error.message }
   } finally {
-    fs.rmSync(temporaryRoot, { recursive: true, force: true })
+    try {
+      await fs.promises.rm(temporaryRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+    } catch (error) {
+      cleanupFailure = { name: error.name, code: error.code ?? null, message: error.message }
+      failure ??= { phase: "cleanup", message: error.message }
+    }
   }
 
   if (oracle && !failure) {
@@ -97,6 +103,7 @@ async function main(options) {
     }
   }
   const report = createReport({ options, workflow, workflowSelection, manifest, manifestPath, sdkIdentity, oracle, runs, failure })
+  if (cleanupFailure) report.cleanupFailure = cleanupFailure
   fs.mkdirSync(path.dirname(options.out), { recursive: true })
   fs.writeFileSync(options.out, `${JSON.stringify(report, null, 2)}\n`, { flag: "wx" })
   const status = failure ? "FAIL" : report.measurementStatus === "complete" ? "PASS" : "PARTIAL"

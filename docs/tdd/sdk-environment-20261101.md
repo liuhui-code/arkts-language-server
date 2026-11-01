@@ -155,10 +155,120 @@ Node21.6.2: three GC-launch tests failed because `--expose-gc` is forbidden in
 that version's NODE_OPTIONS. `/tmp/sdk-immutable-check-fast-20261101.log`.
 No GC assertion was relaxed. The replacement full round explicitly pins the
 same Node26.3.0 toolchain used by the root focused/real-SDK runs and uses the
-clean detached worktree's independent build outputs. Result pending.
+clean detached worktree's independent build outputs.
+
+Superseded full candidate: `af891668354a595655c20379ab78f836c1b24d92`, clean detached
+`.bench/sdk-final-verification-20261101`, Node26.3.0, pnpm8.3.1 (the installed
+CLI used by both root and verification runs; packageManager declaration remains
+unchanged). Command: `PATH=/Users/liuhui/.nvm/versions/node/v26.3.0/bin:$PATH pnpm check:fast`.
+Log: `/tmp/sdk-final-node26-check-fast-20261101.log`. This round has observed
+failures and is retained as diagnosis evidence; it is not final acceptance.
+At launch, root and verification production source-tree SHA256 (sorted paths plus bytes):
+`0dc0eeda232ca1e47c93d832194b2f460cb881efb6bb9482fba8b2fa1787e430`. The verification HEAD, sources and build inputs remain frozen. Subsequent
+SDK/harness fixes are made in the root checkout and require a replacement gate.
 
 Delivery: [draft PR #111](https://github.com/liuhui-code/arkts-language-server/pull/111).
 Root evidence-document updates are outside the immutable verification checkout.
+
+### Multi-root replacement completion audit
+
+The original plan named HMS-specific multi-root SDK replacement. Independent
+static SDK isolation and single-root replacement were not sufficient evidence.
+The public two-root transcript now also rewrites the first HMS Kit facade at the
+same SDK path, performs ordinary selected-product configuration refresh, and
+requires the new first-root Kit export while the second root still completes
+and resolves its original public Kit import. Focused PASS:
+`/tmp/sdk-multi-root-replacement-20261101.log` (1/1, zero skipped/cancelled).
+No production source changed after af89166; the immutable integration gate's
+source snapshot remains valid. The strengthened full HMS characterization passed 30/30 separately at
+`/tmp/sdk-multi-root-final-hms-20261101.log`, zero skipped/cancelled, exit0.
+
+### Full-gate repairs after af89166
+
+- Real intermittent macOS RED: the second repeated interrupted workflow lost its
+  report with `ENOTEMPTY` at `run-macos-e2e.mjs:87`, inside final cache cleanup.
+  `/tmp/sdk-macos-interrupted-repeat-20261101.log`. This proves a separate cause
+  from the independently fixed EPIPE case. A deterministic private cleanup fault
+  reproduced the lost admitted report at `/tmp/sdk-workflow-cleanup-red-20261101.log`.
+  The CLI now uses asynchronous recursive removal with maxRetries5/retryDelay100
+  and retains cleanupFailure separately from the original request failure. The
+  original and permanent cleanup-fault cases passed 2/2; the original interrupted
+  case then passed 20/20 serial repetitions. Logs:
+  `/tmp/sdk-workflow-cleanup-green-20261101.log`,
+  `/tmp/sdk-macos-interrupted-stable-20261101.log`.
+  Node's [documented recursive removal retry](https://nodejs.org/docs/latest-v26.x/api/fs.html#fspromisesrmpath-options)
+  covers ENOTEMPTY/EBUSY/EPERM; no correctness threshold or deadline was relaxed.
+- The old project-build fault observer counted the SDK-only Program as a project
+  attempt and could consume a project fault in the wrong owner. The actual root
+  list now selects the intended owner. All original 17 project recovery cases
+  pass with their original attempt/lease assertions. New SDK before/after/checker
+  faults preserve local service, mark completion incomplete, release all leases
+  except the two intentional syntax pins, and recover SDK exports on refresh.
+  A native incomplete-completion hint is not an index availability certificate:
+  the pinned compiler sets it for unresolved auto-import specifiers too. Recovery
+  is proved by the newly offered SDK symbol, not by clearing that unrelated hint.
+- SDK release-after-effect RED: a real SDK index failure followed by an actual
+  Registry release and injected exception never retired the uncertain Worker;
+  `/tmp/sdk-index-cleanup-ownership-red-20261101.log`. The index now reuses
+  ownedDocumentRegistry and quarantineCompilerOwner. Project recovery, optional
+  SDK recovery, shared ownership faults and capability boundary checks pass
+  27/27; `/tmp/sdk-owner-quarantine-green-20261101.log`.
+- The static compiler gate now permits exactly one direct Program factory in the
+  compiler-owned SDK index and still exactly one LanguageService factory. It
+  continues rejecting unproven semantic rule providers and SDK index Workers.
+- Existing public overlap cases were RED: an SDK ancestor widened a project
+  boundary, and a workspace symlink inherited an external SDK boundary;
+  `/tmp/sdk-boundary-overlap-red-20261101.log`. The selector now chooses the
+  narrower physical owner while rejecting lexical workspace escapes. Selection,
+  HMS and native input-proof cases pass 52/52;
+  `/tmp/sdk-boundary-owner-final-20261101.log`.
+- SDK regressions after owned-lease integration: 49/49 PASS;
+  `/tmp/sdk-owned-index-focused-20261101.log`. Real SDK after that integration:
+  13/13 PASS; `/tmp/sdk-owned-index-real-20261101.log`.
+- The final af89166 report finished 2184/2198, exit1, with 14 failed cases:
+  macOS cleanup1, compiler boundary1, project recovery observation7, overlapping
+  source boundaries2, native-hash witness1, pre-Program deadline observation1 and
+  target-switch completion completeness1. Duration4843785ms includes the stalled
+  test-file process and targeted cleanup described above. This failed run is
+  diagnosis evidence, not acceptance.
+- Its native-hash error was `Unexpected end of JSON input` in waitForJson:
+  the witness filename appeared before writeFileSync finished its payload. A
+  private 150ms create-before-write delay reproduces that exact RED at
+  `/tmp/sdk-native-hash-publication-red-20261101.log`. The writer now prepares a
+  complete per-thread temporary file and atomically publishes it with an
+  exclusive hard link. Readers never see a partial record; competing observers
+  cannot overwrite the winner. Session cleanup is registered before directory
+  cleanup. ContentModified -32801 and exact 5/6-location assertions are unchanged.
+- SDK index construction previously inherited implicit @types/node discovery
+  from the repository. Its rejected file produced compiler diagnostic2688 and
+  incorrectly marked a complete ordinary target completion incomplete. The
+  SDK-only Program now sets types/typeRoots to empty, while explicit SDK file
+  and type references remain checked. Temporary diagnostic probes were removed.
+- The index now shares the effective Host passed to the actual LanguageService,
+  including Host wrappers, and its construction uses existing synchronize-phase
+  observation. The original pre-Program watchdog assertions remain unchanged:
+  execution-deadline, synchronize phase, zero Program starts and unchanged-input
+  recovery. No timeout, recovery budget or initial exemption was relaxed.
+- Converged public regressions for all repaired areas passed71/71, zero skipped
+  or cancelled: SDK/HMS, original project and SDK fault recovery, native input
+  publication, pre-Program deadlines and versioned target/overlay behavior.
+  `/tmp/sdk-converged-regressions-20261101.log`.
+- A positive member-completion characterization also confirms that an unrelated
+  optional SDK export gap does not mark an already known member list incomplete.
+
+Final implementation checks:
+
+- SDK contracts, HMS31, globals, input validation, compiler boundary, manifest and
+  EPIPE:57/57 PASS; `/tmp/sdk-final-contracts-20261101.log`.
+- Actual installed API24 SDK:13/13 PASS, zero skipped/cancelled, exit0;
+  `/tmp/sdk-final-owned-host-real-20261101.log`.
+- Interrupted and permanent-cleanup-fault workflows:2/2 PASS;
+  `/tmp/sdk-final-cleanup-20261101.log`.
+- Type check/build:PASS. No temporary SDK diagnostic probes remain.
+
+The replacement immutable full check starts only after this implementation/test
+snapshot is committed. The old failed full run is terminal, not restarted under
+the same log identity.
 
 `git diff --check`: PASS. Every changed/new handwritten source, script and test
 is <=500 lines except existing `typescript-language-service.ts`: 3072 -> 2985.

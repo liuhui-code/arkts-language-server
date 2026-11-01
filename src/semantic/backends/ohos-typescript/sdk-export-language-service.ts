@@ -19,15 +19,16 @@ export function assertSdkExportInputs(service: ts.LanguageService): void { fence
 export function sdkExportLanguageService(host: ts.LanguageServiceHost, sdk: ProjectSdkSelection,
   registry: ts.DocumentRegistry, create: (host: ts.LanguageServiceHost) => ts.LanguageService): ts.LanguageService {
   if (!sdk.ready || sdk.identity?.status !== "identified") return create(host)
-  const index = sdkExportIndex(sdk, host, registry)
+  const enriched = { ...host }
+  const index = sdkExportIndex(sdk, enriched, registry)
   let disabled = false
   let used = false
   let depth = 0
-  const enriched = { ...host, getPackageJsonAutoImportProvider: () => {
+  Object.assign(enriched, { getPackageJsonAutoImportProvider: () => {
     const program = disabled ? undefined : index.getProgram()
     if (program) used = true
     return program
-  } }
+  } })
   const service = create(enriched)
   fences.set(service, { begin() { if (depth++ === 0) used = false }, end() { depth-- },
     assert() { if (used && !index.current()) throw new SemanticInputUnavailableError() } })

@@ -39,10 +39,11 @@ and auto-imports. Decision: [ADR0038](../adr/0038-sdk-component-environment.md).
 | Existing project-model characterization | 27/27 PASS |
 | Input validation budget, cache/lifecycle and cancellation focused checks | PASS; see TDD record |
 | Installed API24 acceptance, all 13 cases | 13/13 PASS; zero skipped/cancelled |
-| Final HMS boundary/export/declaration-input suite | 30/30 PASS |
-| SDK declaration inputs, runtime globals and input-validation budget | 49/49 PASS |
+| Final HMS boundary/export/declaration-input suite | 31/31 PASS |
+| SDK declaration inputs, runtime globals and input-validation budget | 57/57 final combined contracts PASS |
 | Boundary plus source-witness and SDK cache suite | 36/36 PASS |
-| Native-permission `pnpm check:fast` | Pending final closure-fix snapshot; Node26.3.0 explicitly pinned |
+| Full-gate repair convergence | 71/71 PASS; original assertions retained |
+| Native-permission `pnpm check:fast` | af89166 finished2184/2198; final repaired snapshot pending |
 | Source size and `git diff --check` | PASS except declared existing LS migration debt |
 
 The prior full native gate (before target/export integration) finished
@@ -53,10 +54,31 @@ integrated run was interrupted after root commits changed its pinned revision;
 it is not acceptance evidence. Logs and RED/GREEN commands are recorded in
 [TDD evidence](../tdd/sdk-environment-20261101.md).
 
+## Requirement audit
+
+| Requirement | Authoritative evidence | State |
+| --- | --- | --- |
+| Compiler-neutral SDK component boundary | `SdkProvider`/`SdkEnvironment`/`SdkComponent`; immutable discovery public regression | PASS |
+| OH/HMS metadata, configured API paths and namespaces | HMS direct/relative/custom-prefix/`.d.ets` transcripts; incompatible/invalid component cases | PASS |
+| Public Kit semantics and unimported exports | Compiler-native provider; public Kit resolve actions; `.d.ets`, >4096 ambient and optional-closure transcripts | PASS |
+| Selected product/version/runtimeOS view | Project model 3 new plus 27 characterization cases; public mismatch, alias, range and OS transcripts | PASS |
+| Actual input freshness and physical ownership | Negative-to-positive refresh, stale handle, byte replacement, SDK escape/nested boundary and existing source-fence cases | PASS |
+| Stable SDK gaps retain local service | Relative/module/type references are partial; six capabilities and healthy local navigation; ambient/wildcard positive cases | PASS |
+| Existing cache, cancellation and lifetime owners | Original project recovery, SDK optional failures and actual release-after-effect quarantine: 27/27; full regression pending | FOCUSED PASS |
+| Same-process multi-root SDK replacement | Public two-root HMS facade replacement, first root updated and second root completion/resolve preserved | PASS |
+| ADR and reviewable branch | ADR0038, TDD records, draft PR #111 | DELIVERED; final evidence update pending |
+| Final integration gate | af89166 failure report retained; final repaired snapshot gate required | PENDING |
+
+The added multi-root replacement characterization runs against the unchanged
+final implementation. It strengthens the earlier static isolation case; it does
+not substitute that earlier case for replacement acceptance. The immutable full
+gate retains its original test snapshot; production sources remain identical.
+
 ## Delivery boundary
 
 Implementation and reviewable branch delivery are complete (draft PR #111);
-final immutable verification is pending. The a6f7a26 candidate was rejected by
+final immutable verification after full-gate repairs is pending. The fourteen
+af89166 failures have focused repairs and converged 71-case verification. The a6f7a26 candidate was rejected by
 a public SDK missing-dependency regression, now fixed. Its worktree shell also
 selected Node21; final validation explicitly fixes Node26.3.0. Keep the 14 absent declarations in the installed API24 distribution
 partial. This plan does not graduate the separate 500ms/memory, Windows runtime

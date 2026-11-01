@@ -241,6 +241,17 @@ test("an incomplete SDK-only export closure preserves healthy Kit candidates", {
   assert.ok(resolved.result?.additionalTextEdits?.some(edit => /from ["']@kit\.PushKit["']/.test(edit.newText)), JSON.stringify(resolved))
 })
 
+test("an optional SDK export gap does not mark known member completions incomplete", { timeout: 30000 }, async t => {
+  const fixture = await queryKit(t, "partialMember")
+  const response = await fixture.session.request("textDocument/completion", {
+    textDocument: fixture.params.textDocument,
+    position: { line: 1, character: fixture.source.split("\n")[1].indexOf("getToken") + 4 },
+  })
+  assert.equal(response.error, undefined)
+  assert.ok(response.result.items.some(item => item.label === "getToken"), JSON.stringify(response))
+  assert.equal(response.result.isIncomplete, false)
+})
+
 test("SDK export handles reject changed declarations and refresh to new Kit exports", { timeout: 30000 }, async t => {
   const fixture = await queryKit(t, "autoimport")
   const request = (prefix) => fixture.session.request("textDocument/completion", {
@@ -260,7 +271,7 @@ test("SDK export handles reject changed declarations and refresh to new Kit expo
   assert.ok(after.result?.items.some(item => item.label === "freshService" && item.detail?.includes("@kit.PushKit")), JSON.stringify(after))
 })
 
-test("one LSP process isolates HMS export indexes for two workspace SDKs", { timeout: 30000 }, async t => {
+test("one LSP process isolates two workspace SDKs across an HMS replacement", { timeout: 30000 }, async t => {
   const first = await queryKit(t, "autoimport", { deferInitialize: true })
   const second = await queryKit(t, "autoimportSecond", { session: first.session, deferInitialize: true })
   await first.session.initialize({ workspaceFolders: [first, second].map((fixture, i) => ({
@@ -280,6 +291,16 @@ test("one LSP process isolates HMS export indexes for two workspace SDKs", { tim
   assert.ok((await complete(second, "secondS")).some(item => item.label === "secondService" && item.detail?.includes("@kit.PushKit")))
   first.session.changeDocument({ uri: first.params.textDocument.uri, version: 2, text: "const token = secondS\n" })
   assert.ok(!(await complete(first, "secondS")).some(item => item.label === "secondService"))
+  await fs.writeFile(path.join(first.sdk, "hms", "ets", "kits", "@kit.PushKit.d.ts"),
+    "import service from '@hms.core.push.pushService'; export { service as freshService };\n")
+  first.session.transport.send({ jsonrpc: "2.0", method: "workspace/didChangeConfiguration",
+    params: { settings: { arkts: { project: { product: "default" } } } } })
+  first.session.changeDocument({ uri: first.params.textDocument.uri, version: 3, text: "const token = freshS\n" })
+  assert.ok((await complete(first, "freshS")).some(item => item.label === "freshService" && item.detail?.includes("@kit.PushKit")))
+  const retained = (await complete(second, "secondS")).find(item => item.label === "secondService" && item.detail?.includes("@kit.PushKit"))
+  assert.ok(retained)
+  const resolved = await first.session.request("completionItem/resolve", retained)
+  assert.ok(resolved.result?.additionalTextEdits?.some(edit => /from ["']@kit\.PushKit["']/.test(edit.newText)), JSON.stringify(resolved))
 })
 
 const targetModes = {
@@ -311,7 +332,7 @@ async function queryKit(t, mode = "direct", { session: existingSession, deferIni
     ? `import service from '${prefix}.core.push.pushService'; export { service as secondService };\n`
     : `import pushService from '${prefix}.core.push.pushService'; export { pushService };\n`)
   const entry = path.join(hms, "api", `${prefix}.core.push.pushService.d.${["dets", "autoimportDets"].includes(mode) ? "ets" : "ts"}`)
-  const declaration = mode.startsWith("ambient") ? path.join(oh, "ets", "component", "common.d.ts") : target || mode.startsWith("autoimport") || ["direct", "unknown", "dets", "invalid", "customPrefix", "incompatible", "typesMissing"].includes(mode) ? entry : path.join(mode === "nestedEscape" ? workspace : ["relative", "nestedRelative"].includes(mode) ? path.dirname(entry) : root, "service.d.ts")
+  const declaration = mode.startsWith("ambient") ? path.join(oh, "ets", "component", "common.d.ts") : target || mode.startsWith("autoimport") || ["direct", "unknown", "dets", "invalid", "customPrefix", "incompatible", "typesMissing", "partialMember"].includes(mode) ? entry : path.join(mode === "nestedEscape" ? workspace : ["relative", "nestedRelative"].includes(mode) ? path.dirname(entry) : root, "service.d.ts")
   await fs.writeFile(declaration, mode.startsWith("ambient")
     ? `declare module '${mode === "ambientWildcard" ? "*.sdk-ambient" : "sdk-ambient"}' { namespace pushService { function getToken(): string } export default pushService; }\n`
     : "declare namespace pushService { function getToken(): string }\nexport default pushService;\n")
@@ -320,7 +341,7 @@ async function queryKit(t, mode = "direct", { session: existingSession, deferIni
   if (mode === "namespaceMissing") await fs.writeFile(entry, "export { default } from '@hms.absent';\n")
   if (mode.startsWith("ambient")) await fs.writeFile(entry, `export { default } from '${mode === "ambientWildcard" ? "platform.sdk-ambient" : "sdk-ambient"}';\n`)
   if (mode === "typesMissing") await fs.writeFile(entry, '/// <reference types="absent-sdk-types" />\n' + await fs.readFile(entry, "utf8"))
-  if (mode === "autoimportIndexMissing") await fs.writeFile(path.join(hms, "api", "@hms.optional.d.ts"),
+  if (["autoimportIndexMissing", "partialMember"].includes(mode)) await fs.writeFile(path.join(hms, "api", "@hms.optional.d.ts"),
     "export * from './absent';\n")
   if (mode === "nestedEscape") await fs.writeFile(entry, "export { default } from '../../../../service';\n")
   if (mode === "escape") {

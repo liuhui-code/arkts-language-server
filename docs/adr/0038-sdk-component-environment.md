@@ -27,8 +27,8 @@ types, aliases and declaration navigation.
    relative dependency boundaries, syntax retention, source classification,
    readiness digests and reference terminals consume the selected components.
    Lexical and physical checks reject escaping API paths/declaration symlinks.
-   SDK source boundaries take precedence even when the installation is inside
-   the workspace or reached through a workspace alias.
+   The narrower physically owned SDK/workspace boundary wins in either nesting
+   direction. A lexical workspace escape cannot inherit an SDK boundary.
 4. Follow actual public Kit declaration imports/re-exports through the compiler.
    Do not maintain a second symbol binder or execute SDK plugins. Compiler
    resource descriptors expose layout locations; ambient selection, compiler
@@ -36,9 +36,11 @@ types, aliases and declaration navigation.
 5. Discover unimported SDK exports through a separate SDK-only `ts.Program`
    attached to the pinned compiler's native `getPackageJsonAutoImportProvider`.
    The existing language service owns and disposes it. It shares the existing
-   DocumentRegistry through balanced keyed leases and contains SDK declarations
-   and compiler libraries, never project sources. It does not add all SDK files
-   to the project Program's roots or introduce another LS/Worker/scheduler.
+   DocumentRegistry through the existing owned keyed-lease ledger. Its inputs
+   are SDK declarations and compiler libraries, never project sources. Its compiler options disable
+   implicit repository/workspace @types discovery. It uses the effective service
+   Host and existing synchronize-phase observation for SDK construction. It
+   does not add all SDK files to the project Program's roots or introduce another LS/Worker/scheduler.
 6. Use compiler-produced entries/details/actions. A second native completion pass
    excludes direct SDK API routes to recover public Kit facades; merge those Kit
    entries with direct API exports. Keep the generic 4096-entry scan and 128-item
@@ -51,7 +53,9 @@ types, aliases and declaration navigation.
    refresh. Incomplete/optional index construction retains healthy local service
    and marks completion incomplete; cancellation remains cancellation. The first
    construction is warmed within the existing initial-preparation scope. It does
-   not renew that exemption or change runtime pressure/recovery budgets.
+   not renew that exemption or change runtime pressure/recovery budgets. Release
+   uncertainty uses the existing compiler-owner quarantine and physical Worker
+   retirement path; it cannot be swallowed as optional index unavailability.
 8. Qualify SDK declaration inputs from the pinned compiler's completed
    module/type-reference tables and actual Program membership, including file
    references. `skipLibCheck` must not turn absent declaration dependencies into
@@ -70,6 +74,11 @@ The initial framed-stdio regression returned no definition for
 cover this chain, `.d.ets`, relative imports, custom namespaces, physical escape,
 negative creation, same-path replacement, product qualification, >4096 ambient
 entries, stale completion handles and two workspace SDKs in one process.
+
+The capability boundary now permits exactly this SDK-only native Program;
+its single official LanguageService factory and prohibition on unproven rule
+providers remain enforced. Fault injection distinguishes SDK-only and project
+Programs by their actual roots, preserving the original project-failure counts.
 
 The exact pinned `ohos-typescript@4.9.5-r10` implementation in
 `node_modules/typescript/lib/typescript.js` supplies the native provider contract.

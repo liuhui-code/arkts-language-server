@@ -10,16 +10,21 @@ import { witnessedModuleResolutionHost } from "../../../core/types/typescript-re
 import { isCompilerLibrary } from "./sdk-registry-cache.js"
 import { harmonyCompilerResources } from "../../../core/sdk/compiler-resources.js"
 import { sdkDeclarationInputCheck } from "./sdk-declaration-inputs.js"
+import { ownedDocumentRegistry } from "./owned-document-registry.js"
+import { quarantineCompilerOwner } from "./compiler-resource-lifetime.js"
+import { observeCompilerPhase } from "../../semantic-worker-progress.js"
 
 /** SDK-only compiler export index. No project sources or additional LanguageService. */
 export function sdkExportIndex(sdk: ProjectSdkSelection, host: ts.LanguageServiceHost, registry: ts.DocumentRegistry) {
   const inputs = new LoadedConfigurationWitness()
-  const leases = new Map<string, { file: ts.SourceFile; kind: ts.ScriptKind; resolved: ts.Path }>()
+  const owner = ownedDocumentRegistry(registry)
+  const sources = new Map<string, ts.SourceFile>()
   let program: ts.Program | undefined
   let coverageIncomplete = sdk.components?.some(component => component.issue) === true
   let unavailable = !sdk.ready || sdk.identity?.status !== "identified"
     || sdk.targetQualification !== undefined && sdk.targetQualification.status !== "compatible"
-  const options = host.getCompilationSettings()
+  // SDK inputs never inherit the repository/workspace's implicit @types packages.
+  const options = { ...host.getCompilationSettings(), types: [], typeRoots: [] }
   const settingsKey = registry.getKeyForCompilationSettings(options)
   const checkpoint = () => {
     if (host.getCancellationToken?.().isCancellationRequested()) throw new ts.OperationCanceledException()
@@ -37,8 +42,9 @@ export function sdkExportIndex(sdk: ProjectSdkSelection, host: ts.LanguageServic
   }
   const release = () => {
     program = undefined
-    for (const { file, kind, resolved } of leases.values()) registry.releaseDocumentWithKey(resolved, settingsKey, kind, file.impliedNodeFormat)
-    leases.clear()
+    try { owner.releaseRemaining() }
+    catch (error) { throw quarantineCompilerOwner(owner, error) }
+    sources.clear()
   }
   const roots = (): string[] => {
     const modules = new Map<string, string>()
@@ -65,9 +71,7 @@ export function sdkExportIndex(sdk: ProjectSdkSelection, host: ts.LanguageServic
       ...resources.coreAmbientCandidates].map(file => path.resolve(file)) : [])
     return [...host.getScriptFileNames().filter(file => ambient.has(path.resolve(file))), ...modules.values()]
   }
-  const getProgram = (): ts.Program | undefined => {
-    if (unavailable) return undefined
-    if (program) return program
+  const buildProgram = (): ts.Program | undefined => {
     try {
       const compilerHost = ts.createCompilerHost(options)
       const lookup = witnessedModuleResolutionHost(inputs)
@@ -77,17 +81,17 @@ export function sdkExportIndex(sdk: ProjectSdkSelection, host: ts.LanguageServic
         checkpoint()
         const text = compilerHost.readFile(file)
         if (text === undefined) return undefined
-        const previous = leases.get(file)
-        if (previous) return previous.file
+        const previous = sources.get(file)
+        if (previous) return previous
         const kind = file.endsWith(".ets") ? ts.ScriptKind.ETS : ts.ScriptKind.TS
         const normalized = path.resolve(file).split(path.sep).join("/")
         const resolved = (host.useCaseSensitiveFileNames?.() ? normalized : normalized.toLowerCase()) as ts.Path
-        const source = registry.acquireDocumentWithKey(file, resolved, host, settingsKey, ts.ScriptSnapshot.fromString(text), "0", kind)
+        const source = owner.registry.acquireDocumentWithKey(file, resolved, host, settingsKey, ts.ScriptSnapshot.fromString(text), "0", kind)
         if (source.text !== text) {
-          registry.releaseDocumentWithKey(resolved, settingsKey, kind, source.impliedNodeFormat)
+          owner.registry.releaseDocumentWithKey(resolved, settingsKey, kind, source.impliedNodeFormat)
           throw new Error("SDK index bytes changed")
         }
-        leases.set(file, { file: source, kind, resolved })
+        sources.set(file, source)
         return source
       }
       compilerHost.resolveModuleNames = (names, importer) => names.map(name => {
@@ -112,6 +116,11 @@ export function sdkExportIndex(sdk: ProjectSdkSelection, host: ts.LanguageServic
       unavailable = true
       return undefined
     }
+  }
+  const getProgram = (): ts.Program | undefined => {
+    if (unavailable) return undefined
+    if (program) return program
+    return observeCompilerPhase("synchronize", buildProgram)
   }
   return { getProgram, owns, release,
     usable: () => !unavailable,

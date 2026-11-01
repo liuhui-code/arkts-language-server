@@ -86,9 +86,11 @@ export async function macosWorkflow(t, options = {}) {
     ARKTS_TEST_WORKFLOW_CORRUPT_METRICS: options.metricsMalformed ? "1" : "0",
     ARKTS_TEST_WORKFLOW_METRICS_SCHEMA_FAULT: options.metricsSchema ?? "",
   } } : {}), ...(options.interruptedRequest || options.interruptedInitialize ? { env: { ...process.env,
-    NODE_OPTIONS: `--require=${path.join(projectRoot, "tests/fixtures/macos-workflow-interrupted-request.cjs")}`,
+    NODE_OPTIONS: `--require=${path.join(projectRoot, "tests/fixtures/macos-workflow-interrupted-request.cjs")}`
+      + (options.cleanupFault ? ` --require=${path.join(projectRoot, "tests/fixtures/macos-workflow-cleanup-fault.cjs")}` : ""),
     ARKTS_TEST_WORKFLOW_INTERRUPTED_REQUEST_FILE: path.join(root, "interrupted-request.json"),
     ARKTS_TEST_WORKFLOW_INTERRUPTED_METHOD: options.interruptedInitialize ? "initialize" : "textDocument/completion",
+    ...(options.cleanupFault ? { ARKTS_TEST_WORKFLOW_CLEANUP_FAULT_FILE: path.join(root, "cleanup-fault.json") } : {}),
   } } : {}), ...(options.samplerFault ? { env: { ...process.env,
     NODE_OPTIONS: `--require=${path.join(projectRoot, "tests/fixtures/macos-workflow-sampler-fault.cjs")}`,
     ARKTS_TEST_WORKFLOW_SAMPLER_FAULT_FILE: path.join(root, "sampler-fault.json"),

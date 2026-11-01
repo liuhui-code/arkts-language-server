@@ -353,6 +353,23 @@ export function registerMacosWorkflowCases() {
     assert.equal(receipt.failure.message, report.failure.message)
     assert.doesNotMatch(fixture.result.stdout, /MACOS_E2E=PASS/u)
   })
+  test("macOS cleanup failure preserves the interrupted run and its original failure", async t => {
+    const fixture = await macosWorkflow(t, { oracle: true, interruptedRequest: true,
+      cleanupFault: true, expectedStatus: 1 })
+    if (process.platform !== "darwin") return
+    const fault = JSON.parse(fs.readFileSync(path.join(path.dirname(fixture.workspace), "cleanup-fault.json")))
+    t.after(() => fs.rmSync(fault.directory, { recursive: true, force: true, maxRetries: 5 }))
+    assert.ok(fixture.report, `cleanup cannot erase the admitted run; stderr: ${fixture.result.stderr}`)
+    assert.deepEqual(fault.options, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+    assert.equal(fixture.report.measurementStatus, "incomplete")
+    assert.equal(fixture.report.cleanupFailure.code, "ENOTEMPTY")
+    assert.equal(fixture.report.runs.length, 1)
+    assert.equal(fixture.report.runs[0].receipts.length, 1)
+    assert.equal(fixture.report.runs[0].receipts[0].status, "FAILED")
+    assert.equal(fixture.report.runs[0].receipts[0].failure.message, fixture.report.failure.message)
+    assert.notEqual(fixture.report.failure.message, fixture.report.cleanupFailure.message)
+    assert.deepEqual(fixture.report.runs[0].closeResult.exit, { code: null, signal: "SIGKILL" })
+  })
   test("macOS native sampler failure retains partial observations real queries and clean exit", async (t) => {
     const fixture = await macosWorkflow(t, { oracle: true, samplerFault: true, expectedStatus: 1 })
     if (process.platform !== "darwin") return

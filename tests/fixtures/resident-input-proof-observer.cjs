@@ -15,6 +15,14 @@ if (!isMainThread && process.env.ARKTS_LSP_LOG_DIR) {
   let proofStarted = false
   let mutation
   let diskGuards = 0
+  const publish = (file, value) => {
+    const temporary = `${file}.${threadId}.tmp`
+    try {
+      fs.writeFileSync(temporary, JSON.stringify(value), { flag: "wx" })
+      try { fs.linkSync(temporary, file); return true }
+      catch (error) { if (error.code !== "EEXIST") throw error; return false }
+    } finally { fs.rmSync(temporary, { force: true }) }
+  }
   const createHash = crypto.createHash
   crypto.createHash = function (...args) {
     const hash = Reflect.apply(createHash, this, args)
@@ -36,10 +44,12 @@ if (!isMainThread && process.env.ARKTS_LSP_LOG_DIR) {
           if (controls.pause === true && !fs.existsSync(path.join(directory, "resident-input-proof-entered.json"))) {
             const entered = path.join(directory, "resident-input-proof-entered.json")
             const release = path.join(directory, "release-resident-input-proof")
-            fs.writeFileSync(entered, JSON.stringify({ pid: process.pid, threadId }), { flag: "wx" })
+            const published = publish(entered, { pid: process.pid, threadId,
+              runtime: path.basename(process.argv[1] ?? ""), caller: new Error().stack.split("\n").slice(2, 12),
+            })
             const deadline = Date.now() + 5000
             const cell = new Int32Array(new SharedArrayBuffer(4))
-            while (!fs.existsSync(release)) {
+            while (published && !fs.existsSync(release)) {
               if (Date.now() >= deadline) throw new Error("private native hash barrier timed out")
               Atomics.wait(cell, 0, 0, 10)
             }
