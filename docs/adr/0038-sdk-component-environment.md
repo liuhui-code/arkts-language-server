@@ -38,7 +38,8 @@ types, aliases and declaration navigation.
    The existing language service owns and disposes it. It shares the existing
    DocumentRegistry through the existing owned keyed-lease ledger. Its inputs
    are SDK declarations and compiler libraries, never project sources. Its compiler options disable
-   implicit repository/workspace @types discovery. It uses the effective service
+   implicit repository/workspace @types discovery with `types: []`, preserving
+   the shared Registry's original `typeRoots` bucket and preparsed syntax. It uses the effective service
    Host and existing synchronize-phase observation for SDK construction. It
    does not add all SDK files to the project Program's roots or introduce another LS/Worker/scheduler.
 6. Use compiler-produced entries/details/actions. A second native completion pass

@@ -23,8 +23,8 @@ export function sdkExportIndex(sdk: ProjectSdkSelection, host: ts.LanguageServic
   let coverageIncomplete = sdk.components?.some(component => component.issue) === true
   let unavailable = !sdk.ready || sdk.identity?.status !== "identified"
     || sdk.targetQualification !== undefined && sdk.targetQualification.status !== "compatible"
-  // SDK inputs never inherit the repository/workspace's implicit @types packages.
-  const options = { ...host.getCompilationSettings(), types: [], typeRoots: [] }
+  // Disable implicit @types without changing the shared Registry's typeRoots bucket.
+  const options = { ...host.getCompilationSettings(), types: [] }
   const settingsKey = registry.getKeyForCompilationSettings(options)
   const checkpoint = () => {
     if (host.getCancellationToken?.().isCancellationRequested()) throw new ts.OperationCanceledException()

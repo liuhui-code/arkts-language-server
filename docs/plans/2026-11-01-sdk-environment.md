@@ -43,7 +43,8 @@ and auto-imports. Decision: [ADR0038](../adr/0038-sdk-component-environment.md).
 | SDK declaration inputs, runtime globals and input-validation budget | 57/57 final combined contracts PASS |
 | Boundary plus source-witness and SDK cache suite | 36/36 PASS |
 | Full-gate repair convergence | 71/71 PASS; original assertions retained |
-| Native-permission `pnpm check:fast` | af89166 finished2184/2198; final repaired snapshot pending |
+| Shared SDK syntax reuse, initialization and lifetime repair | 90/90 PASS; original one-parse and completeness assertions retained |
+| Native-permission `pnpm check:fast` | Detached286bcca found initialization syntax reuse failures; repair verification in progress |
 | Source size and `git diff --check` | PASS except declared existing LS migration debt |
 
 The prior full native gate (before target/export integration) finished
@@ -67,7 +68,7 @@ it is not acceptance evidence. Logs and RED/GREEN commands are recorded in
 | Existing cache, cancellation and lifetime owners | Original project recovery, SDK optional failures and actual release-after-effect quarantine: 27/27; full regression pending | FOCUSED PASS |
 | Same-process multi-root SDK replacement | Public two-root HMS facade replacement, first root updated and second root completion/resolve preserved | PASS |
 | ADR and reviewable branch | ADR0038, TDD records, draft PR #111 | DELIVERED; final evidence update pending |
-| Final integration gate | af89166 failure report retained; final repaired snapshot gate required | PENDING |
+| Final integration gate | Clean detached286bcca exposed duplicate SDK parses; preserve original one-parse assertions | REPAIRING |
 
 The added multi-root replacement characterization runs against the unchanged
 final implementation. It strengthens the earlier static isolation case; it does

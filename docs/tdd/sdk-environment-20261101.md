@@ -278,3 +278,43 @@ the remaining over-limit file is explicit migration debt.
 No Rust changes. Build invokes the existing release sidecar build. No SDK files,
 missing vendor stubs, plugin execution, new Workers or test skips were added.
 The SDK slice does not certify the independent 500ms/memory or editor UI targets.
+
+## Final immutable verification snapshot
+
+Commit: `286bccae14b51ac29a0b877f2058b6abdc2ba500`.
+Checkout: `.bench/sdk-final-verification-20261101`, detached and clean at start.
+Node26.3.0 explicitly selected; installed pnpm8.3.1. No dependency versions changed.
+Command: `PATH=/Users/liuhui/.nvm/versions/node/v26.3.0/bin:$PATH pnpm check:fast`.
+Log: `/tmp/sdk-complete-check-fast-20261101.log`. This round includes all fourteen
+previous failure repairs, scoped fault observers, SDK ownership quarantine,
+atomic publication under controlled delay and the strengthened multi-root test.
+Source-tree SHA256 (sorted paths plus bytes): `aeec53245cdd626d00902d0159053763f9361a6d84d770b3770e4b561ad6c53b`.
+Root and verification production sources match. This verification checkout's
+HEAD, source/tests and build inputs stay frozen until its terminal result.
+This candidate exposed six initialization syntax-reuse failures and is not final
+acceptance evidence. Its frozen full run continues to collect remaining results.
+
+## Shared SDK syntax bucket repair
+
+Parent: `286bccae14b51ac29a0b877f2058b6abdc2ba500`. Full-gate failures cover partial
+membership preparation and five initialization/references cases. The compiler
+parse observer records two parses of unchanged SDK declarations instead of one;
+public reference payloads remain correct. No count assertion is relaxed.
+
+Focused RED: Node26.3.0 `node --test --test-name-pattern='initialization parses supported|SDK configuration recovery retains|a first references request joins' tests/semantic/project-initialization.test.mjs`:
+0/4 PASS, 4 FAIL, exit1. Log: `/tmp/sdk-initialization-reuse-red-20261101.log`.
+
+The pinned compiler's Registry key includes `typeRoots` because it affects module
+resolution. An SDK-only `typeRoots: []` override therefore cold-parses another
+syntax bucket. `types: []` already suppresses automatic @types enumeration and
+does not change that key. Remove only the redundant `typeRoots` override, retain
+the official key and existing shared pin/lease owners, and keep guarded SDK-only
+reads. Do not invent a custom key or share incompatible parser settings.
+
+Type check/build PASS. Focused GREEN: Node26.3.0 `node --test --test-concurrency=1`
+with `tests/semantic/{project-initialization,partial-project-initialization,versioned-overlay-disk,hms-kit-resolution,failed-build-recovery,worker-ownership-fault-boundaries,request-input-validation,sdk-runtime-globals}.test.mjs`:
+90/90 PASS, zero skipped/cancelled/todo, exit0, 149161ms.
+Log: `/tmp/sdk-registry-reuse-green-20261101.log`. All six full-gate failures now
+pass with the original parse counts, completion completeness and lifetime
+assertions unchanged. Real SDK acceptance is running; a new immutable full gate
+will verify the repair commit separately from the rejected286bcca candidate.
