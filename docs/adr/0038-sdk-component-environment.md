@@ -1,7 +1,8 @@
 # ADR 0038: SDK component environments and compiler-owned semantics
 
-Date: 2026-11-01. Status: implemented on the SDK feature branch; SDK public contracts verified.
-Release-gate status is tracked in [PR111 checks](https://github.com/liuhui-code/arkts-language-server/pull/111/checks).
+Date: 2026-11-01. Status: Accepted; implemented and verified.
+SDK contracts and the canonical release gates pass on `2713d68`; see
+[release CI](https://github.com/liuhui-code/arkts-language-server/actions/runs/41302692118) and [PR111](https://github.com/liuhui-code/arkts-language-server/pull/111).
 
 Harmony SDK declarations span the selected OpenHarmony distribution and its HMS
 extension. A single SDK directory cannot describe all inputs used by a Kit

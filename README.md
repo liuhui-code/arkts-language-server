@@ -109,13 +109,38 @@ location on macOS (verified on the development Mac):
 
 To select an SDK explicitly, create or edit `local.properties` in the business
 project's root directory, alongside its `build-profile.json5`. Set `sdk.dir` to
-the SDK's absolute root path, for example:
+the selected SDK distribution directory, for example:
 
 ```properties
-sdk.dir=/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony
+sdk.dir=/Applications/DevEco-Studio.app/Contents/sdk/default
 ```
 
-Both `ets/` and `toolchains/` must be direct children of the selected SDK root.
+Accepted inputs are the OpenHarmony component itself (`.../openharmony`), its
+distribution directory (`.../default`), or an SDK home containing that distribution
+(`.../sdk`). The server resolves these to the OpenHarmony component, which must
+contain both `ets/` and `toolchains/`. Existing paths ending in `openharmony`
+remain valid. Select the directory containing the intended SDK version; project
+version settings qualify that selection rather than installing or choosing
+another SDK version.
+
+For a complete Harmony SDK, keep the supplied component layout:
+
+```text
+sdk/default/
+  openharmony/
+    ets/
+    toolchains/
+  hms/
+    ets/sdkConfig.json
+    ets/uni-package.json
+```
+
+After selecting `openharmony`, the server discovers its documented sibling
+`hms` component and reads its API paths and namespace from that component's
+metadata. No separate HMS path setting is required. HMS APIs require an actual
+HMS component with a matching API level; an OpenHarmony-only declaration package
+provides only its existing declarations. An OpenHarmony runtimeOS view excludes
+HMS even when the distribution contains it.
 
 Zed can override that selection per project through `.zed/settings.json`:
 
@@ -125,7 +150,7 @@ Zed can override that selection per project through `.zed/settings.json`:
     "arkts-language-server": {
       "initialization_options": {
         "sdk": {
-          "path": "/absolute/path/to/openharmony"
+          "path": "/absolute/path/to/sdk/default"
         }
       }
     }
@@ -147,6 +172,12 @@ existing `ARKLINE_HARMONY_SDK_PATH`/platform fallback remains available. Invalid
 configuration does not silently select another SDK. Imported APIs and ambient
 declarations share one selection; `sdk.selected` logs the selected source and
 API/component metadata separately.
+
+Windows and Linux currently require an explicit SDK selection; automatic
+installation-path discovery is limited to macOS. This server's project selector
+reads `sdk.dir`; `hwsdk.dir` and `DEVECO_SDK_HOME` are not selection inputs here.
+`ARKTS_REAL_SDK_PATH` configures the separate real-SDK acceptance runner, whereas
+the language server's environment fallback is `ARKLINE_HARMONY_SDK_PATH`.
 
 SDK input quality is separate from service availability. An unresolved SDK module
 produces its normal source diagnostic and a `partial` semantic-readiness report,

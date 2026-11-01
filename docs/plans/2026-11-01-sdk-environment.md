@@ -47,9 +47,9 @@ and auto-imports. Decision: [ADR0038](../adr/0038-sdk-component-environment.md).
 | Retained module groups and partial-SDK full-scope owners | 9/9 PASS on unchangedf9c0366; original Program and SDK-parse assertions retained |
 | Atomic fault-counter publication and cleanup ownership | 34/34 PASS; deterministic JSON-publication regression and original fault assertions |
 | Reference replay runtime/source isolation | 30/30 PASS plus20 rounds/60 case executions; controlled churn and original exact-reference/cancellation assertions |
-| Complete `pnpm check:fast` | Frozen3f9c289 local2206/2206 and7ac936b CI2207/2207 PASS; zero skipped/cancelled/todo |
+| Complete `pnpm check:fast` | Final2713d68 CI2208/2208 PASS; zero failed/skipped/cancelled/todo |
 | Live reference-log observer repair | 43/43 plus final strict-reader17/17 PASS; CI partial-JSONL race reproduced and repaired |
-| Canonical native debug cold-catalog gate | Original455-file/3s contract retained; per-revision results in release-gate evidence and [PR111 checks](https://github.com/liuhui-code/arkts-language-server/pull/111/checks) |
+| Canonical native debug cold-catalog gate | PASS on2713d68; original455-file/debug/3s assertion retained; [release CI](https://github.com/liuhui-code/arkts-language-server/actions/runs/41302692118) |
 | Source size and `git diff --check` | PASS except declared existing LS and local-delivery migration debt |
 
 The prior full native gate (before target/export integration) finished
@@ -72,8 +72,8 @@ it is not acceptance evidence. Logs and RED/GREEN commands are recorded in
 | Stable SDK gaps retain local service | Relative/module/type references are partial; six capabilities and healthy local navigation; ambient/wildcard positive cases | PASS |
 | Existing cache, cancellation and lifetime owners | Original project recovery, SDK optional failures and actual release-after-effect quarantine; included in2206/2206 full run | PASS |
 | Same-process multi-root SDK replacement | Public two-root HMS facade replacement, first root updated and second root completion/resolve preserved | PASS |
-| ADR and reviewable branch | ADR0038, TDD records, draft PR #111 | DELIVERED; per-revision evidence linked |
-| Final integration gate | SDK full suites pass; native and release follow-up tracked under original budgets | [PR111 checks](https://github.com/liuhui-code/arkts-language-server/pull/111/checks) |
+| ADR and reviewable branch | ADR0038, TDD records, PR #111 | DELIVERED; per-revision evidence linked |
+| Final integration gate | Linux canonical release and Windows installation both pass on2713d68 | [PASS](https://github.com/liuhui-code/arkts-language-server/actions/runs/41302692118) |
 
 The added multi-root replacement characterization runs against the unchanged
 final implementation. It strengthens the earlier static isolation case; it does
@@ -82,22 +82,25 @@ gate retains its original test snapshot; production sources remain identical.
 
 ## Delivery boundary
 
-Implementation and reviewable branch delivery are complete (draft PR #111);
-frozen3f9c289 full verification passes2206/2206. The live-log observer race is repaired and the7ac936b whole Node CI passes2207/2207. Current canonical release status is tracked by PR111 checks; see [release-gate evidence](../tdd/sdk-release-gates-20261101.md). The fourteen
-af89166 failures have focused repairs and converged 71-case verification. The six
-286bcca initialization parse-reuse failures plus two group reuse failures have a
-shared Registry bucket repair and 90/90 plus9/9 unchanged regressions. Its terminal
-result was2195/2204,9failed; the ninth was a concurrent test-counter JSON overwrite,
-repaired with atomic publication and34/34 focused verification. The f9c0366 full
-run finished2203/2204, with only the changing private-cache namespace in the fresh
-reference oracle failing. Runtime/source isolation passes30 cases plus20 rounds
-of60 controlled/cancellation executions. Real API24 acceptance remains13/13 PASS.
-The a6f7a26 candidate was rejected by
-a public SDK missing-dependency regression, now fixed. Its worktree shell also
-selected Node21; final validation explicitly fixes Node26.3.0. Keep the 14 absent declarations in the installed API24 distribution
-partial. This plan does not graduate the separate 500ms/memory, Windows runtime
-or real editor UI acceptance goals. SDK configuration remains available on all
-supported platforms; automatic installation defaults retain their existing scope.
+Implementation and agreed automated acceptance are complete on
+`2713d68d935d02c1c974f26e488bdcde0f60c69e`. The
+[complete release CI](https://github.com/liuhui-code/arkts-language-server/actions/runs/41302692118) passes: Node2208/2208,
+Rust workspace222 passed plus the separately executed original debug cold-catalog
+gate, artifact7/7, pinned large-workspace1/1 and Windows install/reinstall/stdio.
+The same release source passes all13 actual API24 SDK cases on this Mac.
+
+The user authorised integration through PR111 without rerunning tests.
+Changes after the verified snapshot are documentation only: SDK path guidance,
+ADR status and final evidence. Commit/merge messages skip CI to honour that
+instruction. Actual merge state is recorded by
+[PR111](https://github.com/liuhui-code/arkts-language-server/pull/111).
+
+The installed API24 distribution's14 absent declarations remain partial.
+The supplementary Mac debug cold-catalog run remains over3s; prior failures
+and paired observations stay in the TDD record. This plan does not graduate
+separate500ms/memory, Windows real-SDK runtime or real editor UI goals.
+SDK configuration remains available on supported platforms; automatic
+installation-path discovery remains limited to its existing macOS scope.
 
 The existing language-service source shrinks from 3072 to 2985 physical lines
 and remains explicit migration debt. The release-pipeline extraction also reduces the existing local-delivery test

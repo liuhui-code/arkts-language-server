@@ -242,3 +242,36 @@ All six independent catalogs and24 query assertions pass. Retain the scoped
 checks and ASCII fast path on this evidence; OS caches remain uncontrolled
 and this is not a universal latency/memory graduation or a local3s PASS.
 Final release-gate status is tracked by [PR111 checks](https://github.com/liuhui-code/arkts-language-server/pull/111/checks).
+
+## Final verified snapshot and authorised integration
+
+Snapshot: `2713d68d935d02c1c974f26e488bdcde0f60c69e`.
+[Run41302692118](https://github.com/liuhui-code/arkts-language-server/actions/runs/41302692118) is terminal SUCCESS for both
+validate (job124836738485) and windows-install (job124836738718). The watcher
+exits0. Raw log: `/tmp/sdk-ci-2713d68-raw-job-20261101.log`.
+
+- Node `pnpm check:fast`:2208/2208, zero failed/cancelled/skipped/todo,
+  2399504.19886ms.
+- Rust workspace:222 passed,0 failed,1 pre-existing ignored. That ignored
+  pinned455-file test is then explicitly executed under the original
+  unoptimized/debug profile and3s assertion:1/1 PASS. Its suite reports2.90s;
+  this is not reported as an exact cold-catalog duration.
+- Formatting, strict all-target Clippy, release build, Zed query checks and
+  WebAssembly release build pass. Artifact acceptance7/7 and large acceptance
+  1/1 pass with zero skipped/cancelled/todo. The latter reports release cold
+  catalog1515.23ms, warm first query4.95ms and repeated-queryP95 6.80ms/30samples
+  for the pinned455-file fixture only.
+- Windows source installation, reinstall and framed-stdio smoke pass.
+- Real DevEco API24/ETS6.1.1.125 on the same release source:13/13 PASS, exit0,
+  zero failed/skipped/cancelled/todo,115742ms;
+  `/tmp/sdk-native-input-checks-real-sdk-20261101.log`.
+
+The SDK TypeScript source SHA256 remains
+`6e01815514330733ddc151709d35a4b09b954bb6ec9b61cb1fb6bd08483723ce`.
+The repository is clean at the verified snapshot. The user subsequently
+authorises merging PR111 into main without additional tests. Only README,
+ADR/plan and evidence documentation change afterward; code, tests, scripts,
+build configuration and dependencies remain identical. Documentation and
+merge commits carry `[skip ci]`; no fresh test execution is claimed.
+The earlier Mac performance failure, vendor declaration gaps and independent
+latency/memory/platform/UI boundaries remain documented.
