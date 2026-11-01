@@ -70,3 +70,52 @@ node --test --test-concurrency=1 tests/semantic/navigation-partial-membership.te
 真实 Zed UI、正式耐久、SDK 超时、完整30K引用/重命名及多秒长尾仍未闭环。
 500ms仅体验目标；455冷 catalog 3秒门槛保持用户授权豁免，其他正确性检查不豁免。
 本轮没有日常 Zed 部署、重启用户进程或删除真实缓存。
+
+## 2026-11-01：实际 release 检查收尾
+
+以上“生产 Rust 未改”限定于 `39b800a` 的夹具修正。
+其 [CI 41179730655](https://github.com/liuhui-code/arkts-language-server/actions/runs/41179730655)
+已完整通过 `pnpm check:fast`2163/2163、0失败/取消/跳过/todo；Windows安装检查通过，
+但随后 Clippy 因 PR #109 的 Rust 代码失败。Mac `70a3763` 的完整检查2161/2161通过，
+3525.066秒；这两个收据均不等于最终 release 全绿。
+
+`bd15469` 完成最小整理：数据库租约条件作保留短路顺序的等价化简；
+激活阶段以一个具名结构传递原参数；只有冷错误路径把进度和消息装箱，
+线程仍解包并发送原有失败终态；查询一致性用例改用借用切片。
+不改状态转换、协议、数据库身份、发布/取消次序或错误内容，不增加 lint 豁免。
+`catalog.rs`仍500行、`catalog_worker.rs`347行，无超限增长。
+
+整理前的公开保护：GC/外部SQLite reader1项、发布/取消/重启2项、
+失败后保留旧代1项、完整查询一致性1项均通过。
+`rust-*-characterization-before.log`及`rust-query-parity-before.log`保留原始收据。
+整理后完整 Clippy、Rust普通集221项（0失败、1项默认ignored）、workspace release构建、
+Zed查询文件校验、扩展格式和WASM release构建均通过。
+本地未执行独立455文件冷目录3秒门槛，沿用用户授权豁免；没有豁免正确性检查。
+
+测试准备的失败也保留：
+
+- 嵌套工作树使 Cargo 找到外层workspace，扩展格式检查无法加载；
+  移到`/private/tmp/arkts-navigation-integration-20261101`后通过，2099受管文件哈希零差异，
+  不改产品manifest。证据`worktree-relocation.json`、`zed-fmt-final.log`及`zed-fmt-relocated.log`。
+- 共享`dist`链接被便携产物安全检查正确拒绝，首轮6/7；
+  改用真实产物及隔离冻结依赖后完整7/7、0失败/取消/跳过/todo，42312.827ms。
+  不放宽符号链接/路径安全校验。原拒绝见`artifact-relocated.log`，
+  GREEN见`artifact-materialized-final.log`。
+- 共享依赖曾让安装测试改写主工作树依赖链接及构建路径标签；差异和首次恢复审计失败保留。
+  离线按原冻结依赖恢复后，四个生产入口均与原集成哈希一致、主工作树无受管改动，
+  见`local-build-path-drift.json`、`primary-runtime-restored-audit.json`、`primary-runtime-restored-v2.json`。
+
+大项目发布层1/1通过：固定455文件冷catalog3937.85ms（仅记录），暖查询3.49ms，
+30样本重复查询P95为2.99ms；`large-materialized-final.log`。
+未将3937.85ms称为通过3秒门槛，未为它追加SQL/路径/页缓存优化。
+
+最终本地产物：server `bc877f7d0fbe88e8e312bc22b0518cff42cf17b4b2a8a8b2a99d656e4d08dbe2`；
+Worker `e2a30dd0ab83ad81c25c146d3315aa4ad7666d5a10b7e57e1ae468953b91a3c0`；
+native `39166144329c572f7608c1298e492c212aa6bf3b353cb4610d96c4f68bdaa0c5`。
+Node20.19.5、本地pnpm8.3.1；最终CI按仓库pnpm8.15.9重新验证。
+证据根仍为`.bench/navigation-main-integration-20261031/`，Rust修改本体
+`rust-lint-final.patch`的SHA为`23f039013e2d084b3cbfd15f8d7d84bce17d11dbf34d7f5d1eeb001b28798060`。
+
+最终提交的CI及新增30K串行协议兼容性复核见PR #110后继收据，
+本文件不预报尚未产生的通过；已有30K历史计时身份不改写。
+真实UI、正式耐久、SDK超时、完整引用/重命名、多秒长尾等限制继续保留。
