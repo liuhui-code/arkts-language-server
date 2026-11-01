@@ -89,10 +89,12 @@
 ## 2026-11-01 冷构建性能候选
 
 SDK 分支的发行门禁暴露原生455文件 debug 冷启动回归，详见
-[验证记录](../tdd/sdk-release-gates-20261101.md)。新建私有库采用16KiB页，
+[验证记录](../tdd/sdk-release-gates-20261101.md)。新建私有库当前候选采用32KiB页（首轮16KiB候选的CI仍为3.078秒RED），
 连接使用64MiB建议页缓存目标，并按文档URI主键顺序写入；普通打开/增量连接
 不改变缓存设置。页大小是SQLite原生文件参数，不迁移表结构或启用实验布局。
 force构建跳过不会使用的复用指纹，发布前源码SHA256校验仍保留。
+引用identity保留256行批量SQL，绑定不可变文档的借用值，减少重复字符串分配；
+公开激活分配契约从每identity最多3次收紧为1次，实测4290→477次。
 NORMAL、自动checkpoint、每批PASSIVE及最终FULL/TRUNCATE保持原决策。
 
 该候选已通过Rust workspace221项（1项原有ignored性能门禁另行显式执行），

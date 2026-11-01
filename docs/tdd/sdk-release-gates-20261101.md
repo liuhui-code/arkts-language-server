@@ -122,3 +122,60 @@ through this complete run. `cargo fmt --all --check` passes.
 `cargo build --locked --workspace --release` both pass, exit0;
 `/tmp/sdk-native-clippy-candidate-20261101.log` and
 `/tmp/sdk-native-release-candidate-20261101.log`. Final CI remains pending.
+
+## Follow-up: borrowed identity parameters and32KiB private pages
+
+The7dbdc8f Linux CI is terminal RED:
+[run41300338471](https://github.com/liuhui-code/arkts-language-server/actions/runs/41300338471).
+Windows installation succeeds and fmt/Clippy/workspace tests pass; the original
+strict native gate takes**3.078227705s**, exit101. Node checks intentionally
+have not started under the new fail-fast order. Raw log:
+`/tmp/sdk-ci-7dbdc8f-raw-job-20261101.log`. Separately the7dbdc8f release
+binary plus unchanged SDK sources pass all13 installed API24 cases, exit0,
+zero skipped/cancelled/todo,115531ms;
+`/tmp/sdk-native-candidate-real-sdk-20261101.log`.
+
+Parent for the next slice: `7dbdc8fafdfdc05d75eb5343f8febbb49a20b97f`.
+Before editing, the public allocation/reopen/reference-parity characterization
+passes with4290 Rust allocations for1362 identities;
+`/tmp/sdk-native-identity-borrow-characterization-20261101.log`.
+Tighten its public activation budget from3 to1 allocations per identity,
+retaining the512 fixed allowance and every exact result/reopen assertion.
+RED command: `cargo test --locked -p arkts-index-sqlite --test reference_identity_allocations -- --nocapture`:
+4290 allocations exceed1874, exit101;
+`/tmp/sdk-native-identity-borrow-red-20261101.log`.
+
+Reuse the existing256-row identity SQL/cached statement and buffering, but bind
+borrowed `ToSqlOutput::Borrowed(ValueRef)` views of the immutable document URI,
+name and qualifier instead of cloning Strings. SQLite retains its normal
+parameter-copy and execution behavior; no unsafe code or shared mutable owner
+is introduced. Lifetimes keep original documents alive throughout buffered
+execution. Ordinals, deduplication, SQL conflict policy and diagnostic executed/
+buffered row checkpoints stay unchanged. GREEN with parity, actual-row-count
+and progress contracts:8/8 PASS; allocation count**477**, below1874;
+`/tmp/sdk-native-identity-borrow-green-20261101.log`.
+
+The16KiB borrowed-parameter cold gate remains locally RED at4.010539213s.
+A32KiB private-page candidate reports3.728532259s, still RED locally;
+`/tmp/sdk-native-cold-borrowed-identities{16k,32k}-20261101.log`.
+Independent fresh-cache observations report455 ready documents and225630
+actual rows for each layout:
+
+| Debug sidecar observation | Private DB bytes | Sidecar peak RSS bytes |
+| --- | ---: | ---: |
+|7dbdc8f16KiB |89554944 |149450752 |
+| Borrowed parameters +32KiB |90079232 |153399296 |
+
+Logs: `/tmp/sdk-native-layout{16k,32k}-20261101.log`. These are single
+observations, exclude the Node/compiler process, and are not memory/latency
+graduation. Both private files are sealed before publication; an old legacy
+WAL can still await background retirement. The32KiB candidate keeps the same
+64MiB cache target, disk statement journals, bounded batches, per-batch
+checkpoint and final durability policy.
+
+Final focused publication/parity/row/allocation/progress suite:14/14 PASS,
+exit0; `/tmp/sdk-native-identity-layout32k-focused-20261101.log`.
+Fresh formatting, strict workspace/all-target Clippy and release build pass,
+exit0. Logs: `/tmp/sdk-native-identity-layout32k-clippy-20261101.log` and
+`/tmp/sdk-native-identity-layout32k-release-20261101.log`. CI validation remains
+pending; no local3s PASS is claimed.
