@@ -18,6 +18,7 @@ export class LspSession {
     rootUri = this.rootUri,
     capabilities = this.capabilities,
     initializationOptions,
+    workspaceFolders,
     timeoutMs = 5_000,
   } = {}) {
     if (this.initialization) return this.initialization
@@ -27,7 +28,8 @@ export class LspSession {
       jsonrpc: "2.0",
       id,
       method: "initialize",
-      params: { processId: process.pid, rootUri, capabilities, initializationOptions },
+      params: { processId: process.pid, rootUri, capabilities, initializationOptions,
+        ...(workspaceFolders === undefined ? {} : { workspaceFolders }) },
     })
     this.initialization = this.transport.response(id, timeoutMs).then((response) => {
       if (response.error) throw new Error(`LSP initialize failed: ${JSON.stringify(response.error)}`)

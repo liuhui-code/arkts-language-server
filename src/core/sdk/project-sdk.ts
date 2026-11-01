@@ -28,9 +28,13 @@ import { getProperties } from "properties-file"
 import { discoverHarmonySdk, type HarmonySdkDiscovery } from "./discovery.js"
 import { readSdkConfiguration } from "./configuration-reader.js"
 import type { LoadedConfigurationWitness } from "../../project/loaded-configuration-witness.js"
+import type { HarmonySdkTarget } from "../../project/harmony-sdk-target.js"
+import type { SdkTargetQualification } from "./target-qualification.js"
 
 export interface ProjectSdkSelection extends HarmonySdkDiscovery {
   source: "configuration" | "project" | "environment" | "default"
+  target?: HarmonySdkTarget
+  targetQualification?: SdkTargetQualification
 }
 
 /** Select once per engine generation, never from the module-resolution request loop. */

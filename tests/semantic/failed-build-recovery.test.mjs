@@ -11,8 +11,8 @@ function fixture(t, stage = "snapshot", remaining = 1, env = {}) {
     ...env,
   })
   fs.writeFileSync(path.join(value.workspace, "Spare.ets"), "export const spare = 1\n")
-  const setFault = (stage, remaining = 1) => fs.writeFileSync(path.join(value.directory, "build-fault.json"),
-    JSON.stringify({ stage, remaining }))
+  const setFault = (stage, remaining = 1, target = "project") => fs.writeFileSync(path.join(value.directory, "build-fault.json"),
+    JSON.stringify({ stage, remaining, target }))
   setFault(stage, remaining)
   return { ...value, setFault,
     state: () => JSON.parse(fs.readFileSync(path.join(value.directory, "build-state.json"), "utf8")),
@@ -38,6 +38,52 @@ test("a failed cold Program retries unchanged inputs and releases every failed-o
   assert.ok(f.state().sdkRefs > 0, "SDK cache ownership survives retiring the LS")
   assert.equal((await f.readiness(true)).result.semanticState, "ready")
   assert.deepEqual((await f.session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })
+})
+
+for (const stage of ["before", "after", "checker"]) {
+  test(`an optional SDK index ${stage} failure preserves project service and releases its leases`, { timeout: 30_000 }, async t => {
+    const f = fixture(t, null, 0)
+    const source = "const sdkMainLocal = 1\nconst value = sdkM\n"
+    fs.writeFileSync(path.join(f.workspace, "Main.ets"), source)
+    fs.mkdirSync(path.join(f.sdk, "ets", "api"))
+    fs.writeFileSync(path.join(f.sdk, "ets", "api", "@ohos.health.d.ts"), "export declare const sdkMarker: number;\n")
+    f.setFault(stage, 1, "sdk-index")
+    await initializeReady(f)
+    assert.equal(f.state().attempts, 1)
+    f.session.openDocument({ uri: f.uri("Main.ets"), version: 1, text: source })
+    const complete = () => f.session.request("textDocument/completion", {
+      textDocument: { uri: f.uri("Main.ets") }, position: { line: 1, character: 18 },
+    })
+    const partial = await complete()
+    assert.equal(partial.error, undefined)
+    assert.ok(partial.result.items.some(item => item.label === "sdkMainLocal"))
+    assert.ok(!partial.result.items.some(item => item.label === "sdkMarker"))
+    assert.equal(partial.result.isIncomplete, true)
+    f.configure(); await f.readiness(false)
+    assert.equal(f.state().projectRefs, 0)
+    assert.equal(f.state().sdkRefs, 2, "only the two SDK syntax cache pins survive index and project retirement")
+    assert.equal((await f.readiness(true)).result.semanticState, "ready")
+    const restored = await complete()
+    assert.equal(restored.error, undefined)
+    assert.ok(restored.result.items.some(item => item.label === "sdkMarker"), JSON.stringify(restored))
+    // Native unresolved auto-imports and bounded discovery can still mark the list incomplete.
+    assert.deepEqual((await f.session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })
+  })
+}
+
+test("uncertain SDK index cleanup retires its Worker before unchanged-input recovery", { timeout: 30_000 }, async t => {
+  const f = fixture(t, null, 0)
+  fs.writeFileSync(path.join(f.directory, "build-fault.json"), JSON.stringify({
+    stage: "after", remaining: 1, target: "sdk-index", releaseAfterEffect: true,
+  }))
+  await f.session.initialize({ initializationOptions: { sdk: { path: f.sdk } } })
+  await waitEvent(f, "semantic.worker.recovery.complete")
+  assert.equal((await f.readiness(true)).result?.semanticState, "ready")
+  const response = await f.session.request("textDocument/definition", {
+    textDocument: { uri: f.uri("Main.ets") }, position: { line: 1, character: 23 },
+  })
+  assert.equal(response.result?.[0]?.uri, f.uri("Unopened.ets"), JSON.stringify(response))
+  assert.equal(f.events().filter(event => event.event === "semantic.worker.started").length, 2)
 })
 
 async function waitEvent(f, name, count = 1) {

@@ -10,6 +10,7 @@ import { OHOS_TYPESCRIPT_BACKEND_IDENTITY } from "./identity.js"
 import { isCompilerLibrary, retainSdkDocuments, prepareRetainedSdkDocuments } from "./sdk-registry-cache.js"
 import { enableVerifierSdkLookups } from "../../../core/types/verifier-sdk-lookups.js"
 import { observedDocumentRegistry } from "./observed-document-registry.js"
+import { sdkExportLanguageService } from "./sdk-export-language-service.js"
 import { recoverableLanguageService } from "./recoverable-language-service.js"
 
 let retainVerifierSdk = false
@@ -46,14 +47,14 @@ export function officialDocumentRegistryFor(sdk: ProjectSdkSelection,
     sdk.identity?.status ?? "unavailable",
     sdk.identity?.apiVersion ?? null,
     sdk.identity?.componentVersion ?? null,
-    "ets",
+    sdk.components ?? null, "ets",
   ])
   let registry = registries.get(key)
   if (!registry) {
     registry = ts.createDocumentRegistry(ts.sys.useCaseSensitiveFileNames)
     if (retainVerifierSdk) {
       registries.clear()
-      if (sdk.path) registry = retainSdkDocuments(registry, sdk.path)
+      if (sdk.path) registry = retainSdkDocuments(registry, sdk.path, sdk.components)
     }
     registries.set(key, registry)
   }
@@ -63,7 +64,9 @@ export function officialDocumentRegistryFor(sdk: ProjectSdkSelection,
 export function createOfficialSemanticService(host: ts.LanguageServiceHost, sdk: ProjectSdkSelection,
   observe?: (source: ts.SourceFile) => void, invalidate?: () => void,
   programReturned?: (program: ts.Program | undefined) => void): ts.LanguageService {
-  return recoverableLanguageService(host, officialDocumentRegistryFor(sdk), observe, invalidate, programReturned)
+  const registry = officialDocumentRegistryFor(sdk)
+  return sdkExportLanguageService(host, sdk, registry, enriched =>
+    recoverableLanguageService(enriched, registry, observe, invalidate, programReturned))
 }
 
 /** Recycle the LS at L2: this fork's cleanupSemanticCache drops Program ownership without releasing registry refs. */

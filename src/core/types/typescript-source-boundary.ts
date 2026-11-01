@@ -7,21 +7,37 @@ export interface ModuleBoundary {
   workspacePhysicalRoot: string | undefined
   sdkRoot: string | null
   sdkPhysicalRoot: string | undefined
+  sdkComponents?: readonly import("../sdk/environment.js").SdkComponent[]
 }
 
 /** Lexical and physical roots remain separate; unsaved overlays may lack a disk leaf. */
 export function relativeModuleBoundary(containingFile: string, hasScript: boolean,
-  { rootPath, workspacePhysicalRoot, sdkRoot, sdkPhysicalRoot }: ModuleBoundary): string | undefined {
+  { rootPath, workspacePhysicalRoot, sdkRoot, sdkPhysicalRoot, sdkComponents }: ModuleBoundary): string | undefined {
   let physicalContainingFile: string
   try {
     physicalContainingFile = hasScript ? prospectiveRealPathSync(containingFile) : fs.realpathSync.native(containingFile)
   } catch { return undefined }
+  const workspaceOwns = !!workspacePhysicalRoot && isWithinRoot(workspacePhysicalRoot, physicalContainingFile)
+  if (isWithinRoot(rootPath, containingFile) && !workspaceOwns) return undefined
+  const narrowerWorkspace = (sdkPhysical: string) => workspaceOwns && workspacePhysicalRoot
+    && isWithinRoot(sdkPhysical, workspacePhysicalRoot)
+  // The narrower physical owner wins; lexical escapes never acquire another root's authority.
+  for (const component of sdkComponents ?? []) {
+    const physical = isWithinRoot(component.physicalRoot, physicalContainingFile)
+    if (isWithinRoot(component.root, containingFile) || physical) {
+      if (narrowerWorkspace(component.physicalRoot)) return rootPath
+      return !component.issue && physical ? component.root : undefined
+    }
+  }
+  if (sdkRoot && sdkPhysicalRoot && (isWithinRoot(sdkRoot, containingFile)
+    || isWithinRoot(sdkPhysicalRoot, physicalContainingFile))) {
+    if (narrowerWorkspace(sdkPhysicalRoot)) return rootPath
+    return isWithinRoot(sdkPhysicalRoot, physicalContainingFile) ? sdkRoot : undefined
+  }
   if (isWithinRoot(rootPath, containingFile)) {
     return workspacePhysicalRoot && isWithinRoot(workspacePhysicalRoot, physicalContainingFile) ? rootPath : undefined
   }
   if (workspacePhysicalRoot && isWithinRoot(workspacePhysicalRoot, physicalContainingFile)) return rootPath
-  if (sdkRoot && sdkPhysicalRoot && isWithinRoot(sdkRoot, containingFile)
-    && isWithinRoot(sdkPhysicalRoot, physicalContainingFile)) return sdkRoot
   return undefined
 }
 

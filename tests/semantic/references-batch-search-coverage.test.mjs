@@ -1,5 +1,6 @@
 import assert from "node:assert/strict"
 import fs from "node:fs"
+import os from "node:os"
 import path from "node:path"
 import test from "node:test"
 
@@ -7,6 +8,21 @@ import { assertColdOwnerRecovery } from "../support/semantic-preparation-state.m
 import { assertPackageRetarget } from "../support/package-retarget-replay.mjs"
 
 import { assertKnownReferences, createFixture, createTestSdk, positionAt, replay, waitForEvent } from "../support/reference-coverage-replay.mjs"
+
+test("reference replay isolates changing native cache namespaces from source membership", async t => {
+  const audit = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-reference-cache-probe-"))
+  t.after(() => fs.rmSync(audit, { recursive: true, force: true }))
+  const witness = path.join(audit, "probe.txt")
+  const fixture = createFixture(t)
+  const result = await replay(t, fixture, "legacy", { runtimeEnv: {
+    NODE_OPTIONS: `--require=${JSON.stringify(path.resolve("tests/fixtures/reference-cache-enumeration.cjs"))}`,
+    ARKTS_TEST_REFERENCE_CACHE_WITNESS: witness,
+  } })
+  assertKnownReferences(fixture, result.results)
+  const observations = fs.readFileSync(witness, "utf8").trim().split("\n")
+  assert.ok(observations.includes("loaded"), "the actual semantic Worker must load the cache probe")
+  assert.ok(!observations.includes("churned"), "source enumeration must never enter the private runtime cache")
+})
 
 test("an unchanged complete resident Program answers exact references without verifier batches", async (t) => {
   const fixture = createFixture(t)

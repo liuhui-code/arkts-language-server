@@ -23,7 +23,7 @@ const TEST_NAME: &str =
     "catalog_activation_bounds_rust_allocations_and_preserves_reference_identity";
 const CONSUMERS: usize = 33;
 const MEMBERS_PER_CONSUMER: usize = 31;
-const ALLOCATIONS_PER_IDENTITY: usize = 3;
+const ALLOCATIONS_PER_IDENTITY: usize = 1;
 const FIXED_ACTIVATION_ALLOWANCE: usize = 512;
 const OBSERVER_ENVIRONMENTS: [&str; 5] = [
     "ARKTS_INDEX_CATALOG_STAGE_TRACE_FILE",

@@ -51,6 +51,7 @@ protection checks. Earlier L01/L02 resource-admission verdicts are historical.
 | [0035](0035-unchanged-source-authority-transitions.md) | **Proposed; fast2152/2152 + matched Mac30K verified; historical ADRs preserved; extra existing recovery gap OPEN** | Separate document authority transitions and received revisions from unchanged compiler inputs; preserve original freshness and lifecycle fences |
 | [0036](0036-compiler-source-namespace-recovery.md) | **Proposed; fast2160/2160 and final matched Mac30K/short mixed sessions verified; real UI blocked** | Recover qualified compiler source namespace proofs while retaining ordinary source delta admission, SDK/configuration rejection and the final input fence |
 | [0037](0037-navigation-work-and-input-validation.md) | **Proposed; authorized candidate verified: fast2147/2147, matched Mac30K protocol; Windows/UI open** | Equivalent navigation consumers, witnessed capacity failures and synchronous preparation handed to the leased fresh final fence |
+| [0038](0038-sdk-component-environment.md) | Accepted; SDK contracts and canonical release gates verified | Immutable selected SDK components, product constraints and compiler-native SDK export discovery with load-owned proof |
 
 2026-10-27 [三项根因与ADR审计](../reports/2026-10-27-30k-issues-root-causes-and-adrs.md#adr逐项映射与设计缺口)：
 上表0020–0023的“not merged”及检查数是各切片当时的历史收据，不能作为当前版本判定。

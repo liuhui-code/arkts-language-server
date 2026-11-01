@@ -26,12 +26,21 @@ if (!isMainThread && process.env.ARKTS_LSP_LOG_DIR) {
         else if (input.sdk) sdkRefs += refs
       }
     }
-    fs.writeFileSync(path.join(directory, "build-state.json"),
-      JSON.stringify({ attempts, completed, projectRefs, sdkRefs, threadId }))
+    const output = path.join(directory, "build-state.json")
+    const temporary = `${output}.${threadId}.tmp`
+    try {
+      fs.writeFileSync(temporary, JSON.stringify({ attempts, completed, projectRefs, sdkRefs, threadId }))
+      fs.renameSync(temporary, output)
+    } finally { fs.rmSync(temporary, { force: true }) }
   }
   setInterval(() => { if (registries.length && fault("exit-idle")) process.exit(17) }, 10).unref()
   globalThis.__failedBuildTest = {
-    program(run) {
+    program(input, run) {
+      const roots = Array.isArray(input) ? input : input?.rootNames ?? []
+      const project = roots.some(file => path.resolve(file).startsWith(workspace + path.sep))
+      let target
+      try { target = JSON.parse(fs.readFileSync(controlFile, "utf8")).target } catch {}
+      if (project === (target === "sdk-index")) return run()
       attempts++; sample()
       if (fault("exit")) process.exit(17)
       if (fault("before")) throw Error("test: before Program")
@@ -83,7 +92,13 @@ if (!isMainThread && process.env.ARKTS_LSP_LOG_DIR) {
       }
       const release = registry.releaseDocumentWithKey
       registry.releaseDocumentWithKey = function(...args) {
-        const result = release.apply(this, args); sample(); return result
+        let value
+        try { value = JSON.parse(fs.readFileSync(controlFile, "utf8")) } catch {}
+        const uncertain = value?.releaseAfterEffect && value.remaining === 0 && row.inputs.get(args[0])?.sdk
+        if (uncertain) fs.writeFileSync(controlFile, JSON.stringify({ ...value, releaseAfterEffect: false }))
+        const result = release.apply(this, args); sample()
+        if (uncertain) throw Error("test: SDK Registry release after effect")
+        return result
       }
     },
     observe(source) {
@@ -104,7 +119,7 @@ if (!isMainThread && process.env.ARKTS_LSP_LOG_DIR) {
         source = source.replace(needle, value)
       }
       const program = "function createProgram(rootNamesOrOptions, _options, _host, _oldProgram, _configFileParsingDiagnostics) {"
-      replace(program, program + "return globalThis.__failedBuildTest.program(()=>__testCreateProgram(...arguments)); } function __testCreateProgram(rootNamesOrOptions, _options, _host, _oldProgram, _configFileParsingDiagnostics) {")
+      replace(program, program + "return globalThis.__failedBuildTest.program(rootNamesOrOptions,()=>__testCreateProgram(...arguments)); } function __testCreateProgram(rootNamesOrOptions, _options, _host, _oldProgram, _configFileParsingDiagnostics) {")
       const service = "function createLanguageService(host, documentRegistry = createDocumentRegistry(host.useCaseSensitiveFileNames && host.useCaseSensitiveFileNames(), host.getCurrentDirectory()), syntaxOnlyOrLanguageServiceMode) {"
       replace(service, service + "return globalThis.__failedBuildTest.service(host,()=>__testCreateService(...arguments)); } function __testCreateService(host, documentRegistry, syntaxOnlyOrLanguageServiceMode) {")
       const registry = "return observe ? observedDocumentRegistry(registry, observe) : registry;"

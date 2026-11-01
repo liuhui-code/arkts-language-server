@@ -30,6 +30,23 @@ impl SourceStamp {
     }
 }
 
+pub(super) fn all_current(sources: &[SourceStamp]) -> bool {
+    if sources.len() <= 1 {
+        return sources.iter().all(SourceStamp::is_current);
+    }
+    std::thread::scope(|scope| {
+        let checks: Vec<_> = sources
+            .chunks(sources.len().div_ceil(super::PARSE_WORKERS))
+            .map(|chunk| scope.spawn(move || chunk.iter().all(SourceStamp::is_current)))
+            .collect();
+        // Join every check, including after a failed witness or worker panic.
+        checks
+            .into_iter()
+            .map(|check| check.join().unwrap_or(false))
+            .fold(true, |valid, result| valid & result)
+    })
+}
+
 pub(super) enum SourceRead {
     Text(String),
     PolicySkipped,

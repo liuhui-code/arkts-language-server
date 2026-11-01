@@ -13,6 +13,7 @@ import { verifierSdkFileExists } from "./verifier-sdk-lookups.js"
 interface ModuleResolutionPort {
   readonly rootPath: string
   readonly sdkRoot: string | null
+  readonly sdk?: import("../sdk/discovery.js").HarmonySdkDiscovery
   readonly packageResolver: LocalPackageResolver
   readonly scripts: ReadonlyMap<string, { readonly overlay: boolean }>
   readonly overlayPaths: ReadonlyMap<string, string> | undefined
@@ -37,7 +38,7 @@ export function resolveTypeScriptModule(port: ModuleResolutionPort, name: string
         ? ({ resolvedFileName: local.path, extension: moduleExtension(local.path) } as ts.ResolvedModule)
         : undefined
     }
-    const sdkModule = port.sdkRoot ? resolveHarmonySdkModule(port.sdkRoot, name, port.configurationWitness) : null
+    const sdkModule = port.sdkRoot ? resolveHarmonySdkModule(port.sdk ?? port.sdkRoot, name, port.configurationWitness) : null
     if (sdkModule) {
       return ({
         resolvedFileName: sdkModule,

@@ -6,6 +6,7 @@ import type { TextPosition } from "../../contracts/document.js"
 import type { WorkspaceReferenceCandidateResult, WorkspaceReferenceIndexPort, WorkspaceReferenceSourceResolution } from "../../contracts/workspace-index.js"
 import { LocalPackageResolver } from "../../core/sdk/local-package-resolver.js"
 import { isHarmonySdkModuleSpecifier, resolveHarmonySdkModule } from "../../core/sdk/module-resolver.js"
+import { bindSdkTarget } from "../../core/sdk/target-qualification.js"
 import { discoverProjectSdk, type ProjectSdkSelection } from "../../core/sdk/project-sdk.js"
 import type { StructuredLogger } from "../../observability/logger.js"
 import { isSemanticWorkerUriWithinRoot } from "../semantic-worker-supervisor.js"
@@ -39,11 +40,11 @@ export async function resolveReferenceCandidateSources(
   if (!rootPath) return result
   const packageResolver = new LocalPackageResolver()
   packageResolver.configureProject(options.projectConfiguration)
-  const sdk = discoverProjectSdk(
+  const sdk = bindSdkTarget(discoverProjectSdk(
     rootPath,
     options.environment.ARKLINE_HARMONY_SDK_PATH,
     options.sdkConfiguration,
-  )
+  ), packageResolver.projectFor(rootPath).sdkTarget())
   const sdkTerminals = new Map<string, string | undefined>()
   const resolutions = new Map<string, WorkspaceReferenceSourceResolution>()
   let unresolvedBindings = 0
@@ -55,7 +56,7 @@ export async function resolveReferenceCandidateSources(
   }
   const recordUnresolved = (sourceSpecifier: string): void => {
     unresolvedBindings += 1
-    unresolvedByKind[referenceSourceKind(sourceSpecifier)] += 1
+    unresolvedByKind[referenceSourceKind(sourceSpecifier, sdk)] += 1
   }
   for (const binding of result.bindings ?? []) {
     if (binding.sourceResolution === "unique") continue
@@ -64,7 +65,7 @@ export async function resolveReferenceCandidateSources(
       recordUnresolved(binding.sourceSpecifier)
       continue
     }
-    if (isHarmonySdkModuleSpecifier(binding.sourceSpecifier)) {
+    if (isHarmonySdkModuleSpecifier(binding.sourceSpecifier, sdk)) {
       let externalTerminalIdentity = sdkTerminals.get(binding.sourceSpecifier)
       if (!sdkTerminals.has(binding.sourceSpecifier)) {
         externalTerminalIdentity = sdkExternalTerminalIdentity(sdk, binding.sourceSpecifier)
@@ -129,9 +130,9 @@ export async function resolveReferenceCandidateSources(
 }
 
 export function referenceSourceKind(
-  sourceSpecifier: string,
+  sourceSpecifier: string, sdk?: ProjectSdkSelection,
 ): "sdk" | "package" | "relative" | "other" {
-  if (isHarmonySdkModuleSpecifier(sourceSpecifier)) return "sdk"
+  if (isHarmonySdkModuleSpecifier(sourceSpecifier, sdk)) return "sdk"
   if (sourceSpecifier.startsWith("./") || sourceSpecifier.startsWith("../")) return "relative"
   if (/^(?:@[\w.-]+\/)?[\w.-]+(?:\/[^/\\]+)*$/.test(sourceSpecifier)) return "package"
   return "other"
@@ -141,18 +142,24 @@ function sdkExternalTerminalIdentity(
   sdk: ProjectSdkSelection,
   sourceSpecifier: string,
 ): string | undefined {
-  if (!sdk.ready || !sdk.path || sdk.identity?.status !== "identified") return undefined
+  if (!sdk.ready || !sdk.path || sdk.identity?.status !== "identified"
+    || sdk.targetQualification && sdk.targetQualification.status !== "compatible") return undefined
   try {
     const sdkRoot = fs.realpathSync.native(sdk.path)
-    const candidate = resolveHarmonySdkModule(sdkRoot, sourceSpecifier)
+    const candidate = resolveHarmonySdkModule(sdk, sourceSpecifier)
     if (!candidate) return undefined
     const resolved = fs.realpathSync.native(candidate)
-    const relative = path.relative(sdkRoot, resolved)
+    const component = sdk.components?.find(component => {
+      const relative = path.relative(component.physicalRoot, resolved)
+      return relative && relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)
+    })
+    const componentRoot = component?.physicalRoot ?? sdkRoot
+    const relative = path.relative(componentRoot, resolved)
     if (!relative || relative === ".." || relative.startsWith(`..${path.sep}`)
       || path.isAbsolute(relative) || !fs.statSync(resolved).isFile()) return undefined
     const identity = createHash("sha256")
       .update("arkts-sdk-terminal-v1\0")
-      .update(sdkRoot)
+      .update(componentRoot)
       .update("\0")
       .update(sdk.identity.apiVersion ?? "")
       .update("\0")

@@ -15,7 +15,6 @@ if [ -z "${ARKTS_LARGE_FIXTURE:-}" ]; then
   exit 2
 fi
 
-pnpm check:fast
 cargo fmt --all --check
 cargo clippy --locked --workspace --all-targets -- -D warnings
 cargo test --locked --workspace --all-targets
@@ -23,6 +22,7 @@ cargo test --locked -p arkts-index-sidecar --test ndjson_protocol \
   pinned_large_arkts_fixture_meets_cold_catalog_and_deterministic_query_gates \
   -- --ignored --exact
 cargo build --locked --workspace --release
+pnpm check:fast
 ./scripts/check-zed-queries.sh
 cargo fmt --manifest-path editors/zed/Cargo.toml -- --check
 cargo build --manifest-path editors/zed/Cargo.toml --locked --target wasm32-wasip2 --release

@@ -1,7 +1,10 @@
 use std::time::Instant;
 
 use arkts_index_core::{DocumentSymbols, StoreError, StoreErrorKind};
-use rusqlite::{Transaction, params, params_from_iter, types::Value as SqlValue};
+use rusqlite::{
+    Transaction, params, params_from_iter,
+    types::{ToSqlOutput, ValueRef},
+};
 
 use crate::{map_sqlite_error, reference_binding_kind_to_i64};
 
@@ -136,10 +139,10 @@ fn insert_documents(
         occurrence_identities.dedup();
         for (name, qualification, qualifier) in occurrence_identities {
             occurrence_identity_values.extend([
-                SqlValue::Text(document.uri.clone()),
-                SqlValue::Text(name.to_owned()),
-                SqlValue::Integer(qualification),
-                SqlValue::Text(qualifier.to_owned()),
+                ToSqlOutput::Borrowed(ValueRef::Text(document.uri.as_bytes())),
+                ToSqlOutput::Borrowed(ValueRef::Text(name.as_bytes())),
+                ToSqlOutput::Borrowed(ValueRef::Integer(qualification)),
+                ToSqlOutput::Borrowed(ValueRef::Text(qualifier.as_bytes())),
             ]);
             occurrence_identity_count += 1;
             if occurrence_identity_count == OCCURRENCE_IDENTITIES_PER_INSERT {
@@ -255,7 +258,7 @@ fn add_elapsed(started: Option<Instant>, total_ms: &mut f64) {
 fn insert_occurrence_identity_values(
     transaction: &Transaction<'_>,
     row_count: usize,
-    values: &[SqlValue],
+    values: &[ToSqlOutput<'_>],
     full_identity_sql: &mut Option<String>,
     ignore_identity_conflicts: bool,
 ) -> Result<usize, StoreError> {

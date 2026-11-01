@@ -2,7 +2,21 @@ use super::*;
 
 impl SqliteStore {
     pub fn open(path: impl AsRef<Path>, workspace_identity: &str) -> Result<Self, StoreError> {
-        let path = path.as_ref();
+        Self::open_with_page_size(path.as_ref(), workspace_identity, None)
+    }
+
+    pub(super) fn open_private_catalog(
+        path: &Path,
+        workspace_identity: &str,
+    ) -> Result<Self, StoreError> {
+        Self::open_with_page_size(path, workspace_identity, Some(16384))
+    }
+
+    fn open_with_page_size(
+        path: &Path,
+        workspace_identity: &str,
+        page_size: Option<u32>,
+    ) -> Result<Self, StoreError> {
         let cache_lease =
             cache_gc::lease::CacheLease::acquire(path, workspace_identity).map_err(|error| {
                 StoreError::new(
@@ -27,6 +41,11 @@ impl SqliteStore {
             | OpenFlags::SQLITE_OPEN_CREATE
             | OpenFlags::SQLITE_OPEN_NO_MUTEX;
         let mut connection = Connection::open_with_flags(path, flags).map_err(map_sqlite_error)?;
+        if let Some(page_size) = page_size {
+            connection
+                .pragma_update(None, "page_size", page_size)
+                .map_err(map_sqlite_error)?;
+        }
         connection
             .busy_timeout(Duration::from_secs(5))
             .map_err(map_sqlite_error)?;

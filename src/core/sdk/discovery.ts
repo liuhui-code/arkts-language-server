@@ -2,7 +2,9 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 
+import { harmonyCompilerResources } from "./compiler-resources.js"
 import { readSdkConfiguration } from "./configuration-reader.js"
+import { harmonySdkProvider, type SdkComponent } from "./environment.js"
 import type { LoadedConfigurationWitness } from "../../project/loaded-configuration-witness.js"
 
 export interface HarmonySdkIdentity {
@@ -19,6 +21,7 @@ export interface HarmonySdkDiscovery {
   ready: boolean
   path: string | null
   identity?: HarmonySdkIdentity
+  components?: readonly SdkComponent[]
 }
 
 export function discoverHarmonySdk(
@@ -31,10 +34,13 @@ export function discoverHarmonySdk(
       : discoverDefaultSdk(process.platform, witness)
 
   if (resolvedPath) {
+    const identity = discoverSdkIdentity(resolvedPath, witness)
     return {
       ready: true,
       path: resolvedPath,
-      identity: discoverSdkIdentity(resolvedPath, witness),
+      identity,
+      components: harmonySdkProvider.open(resolvedPath, witness,
+        { baseApiVersion: identity.status === "identified" ? identity.apiVersion : undefined }).components,
     }
   }
 
@@ -45,7 +51,7 @@ export function discoverHarmonySdk(
 }
 
 function discoverSdkIdentity(sdkRoot: string, witness?: LoadedConfigurationWitness): HarmonySdkIdentity {
-  const metadataPath = path.join(sdkRoot, "ets", "oh-uni-package.json")
+  const metadataPath = harmonyCompilerResources(sdkRoot).apiMetadata
   const boundary = { metadataPath, dialectCompatibility: "unverified", declarationSupport: "typescript-compatible-only" } as const
   try {
     const metadata: unknown = JSON.parse(readSdkConfiguration(metadataPath, witness))

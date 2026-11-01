@@ -62,10 +62,13 @@ pub fn build_catalog(
 pub fn build_catalog_with_fingerprint(
     base: &Path,
     identity: &str,
-    batch: FullCatalogBatch,
+    mut batch: FullCatalogBatch,
     fingerprint: Option<&str>,
     mut observe: impl FnMut(CatalogBuildProgress) -> bool,
 ) -> Result<CommitReceipt, StoreError> {
+    batch
+        .documents
+        .sort_unstable_by(|left, right| left.uri.cmp(&right.uri));
     let mut control = Control::open(base, identity)?;
     let guard = control.shared()?;
     let parent = control.active()?;
@@ -102,7 +105,12 @@ pub fn build_catalog_with_fingerprint(
         if reuse {
             emit(&mut observe, &mut progress, CatalogStage::Reusing)?;
         } else {
-            let mut store = SqliteStore::open(path.as_ref().unwrap(), identity)?;
+            let mut store = SqliteStore::open_private_catalog(path.as_ref().unwrap(), identity)?;
+            // Target 64 MiB of page cache for bounded, unpublished bulk writes.
+            store
+                .connection
+                .execute_batch("PRAGMA cache_size=-65536;")
+                .map_err(map_sqlite_error)?;
             write_documents(&mut store, &batch, &mut progress, &mut observe)?;
             emit(&mut observe, &mut progress, CatalogStage::Validating)?;
             validate(&store)?;

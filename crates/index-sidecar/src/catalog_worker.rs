@@ -282,7 +282,7 @@ pub(super) fn activate(input: Activation<'_>) -> Result<(), CatalogFailure> {
                     if state.load(Ordering::Acquire) == CATALOG_CANCELLED {
                         return false;
                     }
-                    source_changed = chunk.iter().any(|source| !source.is_current());
+                    source_changed = !super::source::all_current(chunk);
                     if source_changed {
                         return false;
                     }

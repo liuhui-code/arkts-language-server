@@ -1,5 +1,5 @@
 import fs from "node:fs"
-import path from "node:path"
+import { harmonyCompilerResources } from "../../../core/sdk/compiler-resources.js"
 
 import JSON5 from "json5"
 import type ts from "typescript"
@@ -13,8 +13,9 @@ export function officialEtsCompilerOptions(sdkRoot: string | null, witness?: Loa
   if (!sdkRoot) return {}
   const sdkOptions = sdkFeatureOptions(sdkRoot, witness)
   const fallback = () => ({ ...sdkOptions, ...sdkComponentOptions(sdkRoot, witness) })
-  const loaderRoot = path.join(sdkRoot, "ets", "build-tools", "ets-loader")
-  const configPath = path.join(loaderRoot, "tsconfig.json")
+  const resources = harmonyCompilerResources(sdkRoot)
+  const loaderRoot = resources.loaderRoot
+  const configPath = resources.loaderConfiguration
   let source: string
   try {
     const contents = readOptionsFile(configPath, MAX_ETS_CONFIG_BYTES, witness)
@@ -36,7 +37,7 @@ export function officialEtsCompilerOptions(sdkRoot: string | null, witness?: Loa
 /** Declaration-only SDKs still own the names that select the fork's UI grammar. */
 function sdkComponentOptions(sdkRoot: string, witness?: LoadedConfigurationWitness): ts.CompilerOptions {
   try {
-    const contents = readOptionsFile(path.join(sdkRoot, "ets", "component", "component_config.json"),
+    const contents = readOptionsFile(harmonyCompilerResources(sdkRoot).componentConfiguration,
       MAX_ETS_CONFIG_BYTES, witness)
     if (contents === undefined) return {}
     const parsed: unknown = JSON.parse(contents)
@@ -66,7 +67,7 @@ function withEtsDefaults(ets: Partial<ts.EtsOptions>): ts.EtsOptions {
 }
 
 function sdkFeatureOptions(sdkRoot: string, witness?: LoadedConfigurationWitness): ts.CompilerOptions {
-  const metadataPath = path.join(sdkRoot, "ets", "oh-uni-package.json")
+  const metadataPath = harmonyCompilerResources(sdkRoot).apiMetadata
   try {
     const contents = readOptionsFile(metadataPath, MAX_SDK_METADATA_BYTES, witness)
     if (contents === undefined) return {}

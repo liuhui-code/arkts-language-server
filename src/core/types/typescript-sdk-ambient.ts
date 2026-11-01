@@ -1,6 +1,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import ts from "typescript"
+import { harmonyCompilerResources } from "../sdk/compiler-resources.js"
 import type { LoadedConfigurationWitness } from "../../project/loaded-configuration-witness.js"
 
 export type TypeScriptSdkAmbientProfile = "full" | "core" | "common"
@@ -15,31 +16,20 @@ export function discoverSdkAmbientDeclarations(
     ? witness.observe(candidate, () => fs.existsSync(candidate)) : fs.existsSync(candidate)
   // The SDK's exported API module is not a global script. Its loader ships the
   // generated ambient declarations separately from the component index.
-  const runtime = [
-    path.join(sdkRoot, "ets", "build-tools", "ets-loader", "declarations", "global.d.ts"),
-    path.join(sdkRoot, "ets", "component", "global.d.ts"),
-  ].find(exists)
+  const resources = harmonyCompilerResources(sdkRoot)
+  const runtime = resources.runtimeAmbientCandidates.find(exists)
   const withRuntime = (paths: string[]): string[] => runtime && !paths.includes(runtime)
     ? [...paths, runtime] : paths
   if (profile === "core") {
-    const core = [
-      path.join(sdkRoot, "ets", "component", "common.d.ts"),
-      path.join(sdkRoot, "ets", "component", "units.d.ts"),
-      path.join(sdkRoot, "ets", "component", "common_ts_ets_api.d.ts"),
-      path.join(sdkRoot, "ets", "component", "enums.d.ts"),
-    ]
+    const core = [...resources.coreAmbientCandidates]
     if (core.every(exists) && fullSdkIndexOnlyReferences(sdkRoot, core, witness)) return withRuntime(core)
   }
   if (profile === "common") {
-    const common = path.join(sdkRoot, "ets", "component", "common.d.ts")
+    const common = resources.coreAmbientCandidates[0]
     if (!exists(common)) throw new Error(`SDK common ambient declaration is unavailable: ${common}`)
     return withRuntime([common])
   }
-  const prelude = [
-    path.join(sdkRoot, "ets", "component", "index-full.d.ts"),
-    path.join(sdkRoot, "ets", "component", "common.d.ts"),
-    path.join(sdkRoot, "ets", "component", "arkui.d.ts"),
-  ].find(exists)
+  const prelude = resources.componentAmbientCandidates.find(exists)
   return withRuntime(prelude ? [prelude] : [])
 }
 
@@ -48,7 +38,7 @@ function fullSdkIndexOnlyReferences(
   expectedPaths: readonly string[],
   witness?: LoadedConfigurationWitness,
 ): boolean {
-  const indexPath = path.join(sdkRoot, "ets", "component", "index-full.d.ts")
+  const indexPath = harmonyCompilerResources(sdkRoot).componentAmbientCandidates[0]
   try {
     const read = () => fs.readFileSync(indexPath, "utf8")
     const contents = witness ? witness.observe(indexPath, read) : read()
