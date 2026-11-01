@@ -7,6 +7,7 @@ import { pathToFileURL } from "node:url"
 import { LspSession } from "./lsp-session.mjs"
 import { projectRoot } from "./lsp-process.mjs"
 import { releasePreparedOwner } from "./semantic-preparation-state.mjs"
+import { completeLogEvents } from "./complete-log-events.mjs"
 
 export function createFixture(t, { disconnected = false, namedPackage = false, installedPackage = false } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-reference-coverage-"))
@@ -169,8 +170,7 @@ export async function waitForEvent(logs, event, timeoutMs = 10_000) {
   const file = path.join(logs, "server.log")
   const deadline = performance.now() + timeoutMs
   while (performance.now() < deadline) {
-    if (fs.existsSync(file) && fs.readFileSync(file, "utf8").split("\n")
-      .filter(Boolean).some(line => JSON.parse(line).event === event)) return
+    if (fs.existsSync(file) && completeLogEvents(file).some(row => row.event === event)) return
     await new Promise(resolve => setTimeout(resolve, 2))
   }
   throw new Error(`timed out waiting for ${event}`)

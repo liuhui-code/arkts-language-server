@@ -413,6 +413,33 @@ Twenty serial rounds of the controlled case and both cancellation policies pass:
 20/20 runs,60/60 case executions, exit0, zero skipped/cancelled/todo in each run.
 Log: `/tmp/sdk-reference-cache-repeat-green-20261101.log`. The unused replay ID
 counter was removed after switching to unique runtime directories; this repeated
-characterization covers the final helper. No product sources changed. The
-originalf9c0366 whole-run failure stack is still pending its terminal report;
-the final full tooling snapshot remains pending.
+characterization covers the final helper. No product sources changed.
+
+The frozenf9c0366 full run is now terminal:2203/2204 PASS,1 FAIL, exit1,
+zero skipped/cancelled/todo,3848601ms. Its only failure stack is the first fresh
+`legacy` comparison at `reference-coverage-replay.mjs:125`, called from the
+cancellation test's fresh oracle at line389. It is the same public incomplete-
+snapshot error reproduced above; the cancelled resident session completed its
+cancel/recovery assertions. All original SDK single-parse assertions pass in
+this whole run. Log: `/tmp/sdk-registry-reuse-check-fast-20261101.log`.
+The final current tooling snapshot still requires its own whole-run PASS.
+
+Current complete SDK/tooling snapshot: `3f9c28955a82955a8b3075d263d3e45918b2cee9`.
+Clean detached `.bench/sdk-oracle-final-verification-20261101`, fixed Node26.3.0
+and pnpm8.3.1. Command:
+`PATH=/Users/liuhui/.nvm/versions/node/v26.3.0/bin:$PATH pnpm check:fast`.
+Distinct log: `/tmp/sdk-oracle-final-check-fast-20261101.log`.
+Root and verification source SHA256 both remain
+`6e01815514330733ddc151709d35a4b09b954bb6ec9b61cb1fb6bd08483723ce`;
+`git diff f9c0366 HEAD -- src` is empty. No real-SDK production evidence changed.
+All source/test/build inputs in this checkout stay frozen through its terminal
+result. Earlier f9c0366/2ad88c9 runs remain separate; no aggregate PASS is claimed.
+
+The3f9c289 immutable run is terminal: **2206/2206 PASS**, exit0,
+zero failed/cancelled/skipped/todo,3766557.653752ms. The frozen2ad88c9 run
+finishes2204/2205, exit1, with the same fresh legacy-oracle incomplete-snapshot
+failure repaired in3f9c289. Their logs remain separate.
+This verifies all SDK production sources and the3f9c289 test snapshot.
+Later CI log-observer repairs and native performance investigation are tracked
+in [release-gate evidence](sdk-release-gates-20261101.md); this PASS does not
+certify subsequent uncommitted Rust experiments.

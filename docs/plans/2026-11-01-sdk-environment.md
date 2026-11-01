@@ -47,7 +47,9 @@ and auto-imports. Decision: [ADR0038](../adr/0038-sdk-component-environment.md).
 | Retained module groups and partial-SDK full-scope owners | 9/9 PASS on unchangedf9c0366; original Program and SDK-parse assertions retained |
 | Atomic fault-counter publication and cleanup ownership | 34/34 PASS; deterministic JSON-publication regression and original fault assertions |
 | Reference replay runtime/source isolation | 30/30 PASS plus20 rounds/60 case executions; controlled churn and original exact-reference/cancellation assertions |
-| Native-permission `pnpm check:fast` | Detached2ad88c9 running; final reference-fixture isolation snapshot pending |
+| Native-permission `pnpm check:fast` | 2206/2206 PASS, exit0 on frozen3f9c289, Node26.3.0; zero skipped/cancelled/todo |
+| Live reference-log observer repair | 43/43 plus final strict-reader17/17 PASS; CI partial-JSONL race reproduced and repaired |
+| Canonical native debug cold-catalog gate | FAIL: unchanged455-file/3s gate; independent SQLite writing bottleneck under diagnosis |
 | Source size and `git diff --check` | PASS except declared existing LS migration debt |
 
 The prior full native gate (before target/export integration) finished
@@ -68,10 +70,10 @@ it is not acceptance evidence. Logs and RED/GREEN commands are recorded in
 | Selected product/version/runtimeOS view | Project model 3 new plus 27 characterization cases; public mismatch, alias, range and OS transcripts | PASS |
 | Actual input freshness and physical ownership | Negative-to-positive refresh, stale handle, byte replacement, SDK escape/nested boundary and existing source-fence cases | PASS |
 | Stable SDK gaps retain local service | Relative/module/type references are partial; six capabilities and healthy local navigation; ambient/wildcard positive cases | PASS |
-| Existing cache, cancellation and lifetime owners | Original project recovery, SDK optional failures and actual release-after-effect quarantine: 27/27; full regression pending | FOCUSED PASS |
+| Existing cache, cancellation and lifetime owners | Original project recovery, SDK optional failures and actual release-after-effect quarantine; included in2206/2206 full run | PASS |
 | Same-process multi-root SDK replacement | Public two-root HMS facade replacement, first root updated and second root completion/resolve preserved | PASS |
 | ADR and reviewable branch | ADR0038, TDD records, draft PR #111 | DELIVERED; final evidence update pending |
-| Final integration gate | Product sources unchanged; reference fixture isolation is focused GREEN and awaiting final frozen full snapshot | RUNNING; tooling follow-up |
+| Final integration gate | Frozen3f9c289 full Node suite passes; new log-observer repair needs fresh CI; native debug performance gate remains RED | PENDING |
 
 The added multi-root replacement characterization runs against the unchanged
 final implementation. It strengthens the earlier static isolation case; it does
@@ -81,13 +83,16 @@ gate retains its original test snapshot; production sources remain identical.
 ## Delivery boundary
 
 Implementation and reviewable branch delivery are complete (draft PR #111);
-final immutable verification after full-gate repairs is pending. The fourteen
+frozen3f9c289 full verification passes2206/2206. The latest CI exposes an additional live-log observer race, now repaired with deterministic RED/GREEN evidence. Fresh CI and the native performance gate remain pending; see [release-gate evidence](../tdd/sdk-release-gates-20261101.md). The fourteen
 af89166 failures have focused repairs and converged 71-case verification. The six
 286bcca initialization parse-reuse failures plus two group reuse failures have a
 shared Registry bucket repair and 90/90 plus9/9 unchanged regressions. Its terminal
 result was2195/2204,9failed; the ninth was a concurrent test-counter JSON overwrite,
-repaired with atomic publication and34/34 focused verification. Real API24
-acceptance remains13/13 PASS. The a6f7a26 candidate was rejected by
+repaired with atomic publication and34/34 focused verification. The f9c0366 full
+run finished2203/2204, with only the changing private-cache namespace in the fresh
+reference oracle failing. Runtime/source isolation passes30 cases plus20 rounds
+of60 controlled/cancellation executions. Real API24 acceptance remains13/13 PASS.
+The a6f7a26 candidate was rejected by
 a public SDK missing-dependency regression, now fixed. Its worktree shell also
 selected Node21; final validation explicitly fixes Node26.3.0. Keep the 14 absent declarations in the installed API24 distribution
 partial. This plan does not graduate the separate 500ms/memory, Windows runtime

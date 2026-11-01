@@ -7,6 +7,26 @@ import { pathToFileURL } from "node:url"
 
 import { LspSession } from "../support/lsp-session.mjs"
 import { projectRoot } from "../support/lsp-process.mjs"
+import { waitForEvent } from "../support/reference-coverage-replay.mjs"
+import { completeLogEvents } from "../support/complete-log-events.mjs"
+
+test("reference batch observers wait for complete JSONL and reject complete corrupt records", async t => {
+  const logs = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-reference-log-observer-"))
+  t.after(() => fs.rmSync(logs, { recursive: true, force: true }))
+  const file = path.join(logs, "server.log")
+  fs.writeFileSync(file, '{"event":"references.batch.start","requestId":')
+  const writer = setTimeout(() => fs.appendFileSync(file, '500}\n'), 25)
+  try {
+    const [batch] = await Promise.all([waitForBatch(logs), waitForEvent(logs, "references.batch.start")])
+    assert.deepEqual(batch, { event: "references.batch.start", requestId: 500 })
+  } finally { clearTimeout(writer) }
+  fs.writeFileSync(file, '{"event":')
+  assert.throws(() => readEvents(logs), SyntaxError, "closed-log reads retain strict truncation checks")
+  fs.writeFileSync(file, '{"event":\n')
+  assert.throws(() => readEvents(logs), SyntaxError)
+  await assert.rejects(waitForBatch(logs), SyntaxError)
+  await assert.rejects(waitForEvent(logs, "references.batch.start"), SyntaxError)
+})
 
 test("an empty external module permits fewer constructor batches without losing exact references", async (t) => {
   const fixture = createFixture(t)
@@ -318,7 +338,7 @@ async function waitForBatch(logs, eventName = "references.batch.start") {
   const deadline = performance.now() + 10_000
   while (performance.now() < deadline) {
     if (fs.existsSync(path.join(logs, "server.log"))) {
-      const batch = readEvents(logs).find(event => event.event === eventName)
+      const batch = completeLogEvents(path.join(logs, "server.log")).find(event => event.event === eventName)
       if (batch) return batch
     }
     await new Promise(resolve => setTimeout(resolve, 2))
