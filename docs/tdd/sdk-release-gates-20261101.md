@@ -66,3 +66,59 @@ statements and bounded multirow occurrence writes have not achieved3s.
 Unhelpful SQL rewrites are removed. The original debug budget, foreign keys,
 indexes/FTS, NORMAL/auto-checkpoint and final FULL/TRUNCATE publication stay
 required. Native investigation remains open; no release or merge is claimed.
+
+## Fail native checks before the long Node suite
+
+Parent: `7ac936bf1ed97282254ade3b67195e61cd99d46d`. Existing local
+delivery characterization passes11/11 before extraction:
+`/tmp/sdk-release-driver-characterization-20261101.log`. A public shell-driver
+regression injects native exit71, verifies exact status propagation, and requires
+Node commands not to start. Its success control still requires every Node,
+artifact, large-project and query gate once. RED:0/1, exit1, the command log
+contains `pnpm check:fast` before the failed native gate;
+`/tmp/sdk-release-driver-failfast-red-20261101.log`.
+
+Move `pnpm check:fast` after Rust fmt/Clippy/workspace tests, the unchanged
+ignored debug455-file gate and the release build. All checks remain serialized
+and mandatory. Extract release/toolchain/workflow contracts into
+`tests/release-pipeline.test.mjs`, preserving the original assertions and
+updating only their intended gate order. Local delivery test shrinks644→526
+lines; its remaining over-limit size is migration debt. New release test174
+lines. Explicit test manifest:284 entries,117 unit contracts. GREEN:
+Node26.3.0 `node --test tests/local-delivery-config.test.mjs tests/release-pipeline.test.mjs tests/test-layer-manifest.test.mjs`,
+16/16 PASS, exit0, zero skipped/cancelled/todo,18092ms;
+`/tmp/sdk-release-driver-failfast-green-20261101.log`.
+
+## Bounded private writer candidate
+
+Skip producer/source reuse-fingerprint construction only for `force` builds,
+which already discard that fingerprint. Preserve per-source length/mtime/SHA256
+capture and final revalidation. Sort private documents by their unchanged URI
+primary key before writing, preserving per-document ordinals. Only a new
+private catalog uses16KiB pages before WAL/schema creation and a64MiB suggested
+page-cache target. Normal open/reopen/incremental connections retain their
+existing settings; this is not a hard RSS cap. Existing schema, foreign keys,
+indexes/FTS triggers, bounded batches, per-batch PASSIVE, NORMAL/auto-checkpoint
+and final FULL/TRUNCATE/directory synchronization remain intact.
+
+Do not retain64KiB page or memory temporary-journal experiments: larger pages
+amplify small-store/WAL footprint, and temporary memory storage adds an
+unnecessary memory policy. Also remove single-row identity and multirow
+occurrence rewrites; neither yielded useful gate improvement. Existing opt-in
+WITHOUT ROWID remains unpromoted.
+
+Final conservative candidate on this Mac still fails the strict gate at
+**3.939127243s**, exit101;
+`/tmp/sdk-native-cold-ordered-pages16k-disk-journal-20261101.log`. Timing asserts
+first; this failed test does not certify its later ready/count/query assertions.
+The original3s/debug contract is unchanged; a Linux CI result remains required.
+Separately `cargo test --locked --workspace --all-targets` completes
+**221 passed,0 failed,1 existing ignored** across36 suites, exit0, covering
+publication, cancellation/races, force/reuse, migrations, allocation bounds,
+reference identity/progress and query parity. Log:
+`/tmp/sdk-native-workspace-candidate-20261101.log`. Rust inputs stayed fixed
+through this complete run. `cargo fmt --all --check` passes.
+`cargo clippy --locked --workspace --all-targets -- -D warnings` and
+`cargo build --locked --workspace --release` both pass, exit0;
+`/tmp/sdk-native-clippy-candidate-20261101.log` and
+`/tmp/sdk-native-release-candidate-20261101.log`. Final CI remains pending.

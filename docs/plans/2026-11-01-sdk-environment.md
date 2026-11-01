@@ -100,6 +100,7 @@ or real editor UI acceptance goals. SDK configuration remains available on all
 supported platforms; automatic installation defaults retain their existing scope.
 
 The existing language-service source shrinks from 3072 to 2985 physical lines
-and remains explicit migration debt. All other changed/new handwritten source,
-test and script files stay at or below 500 lines. Delivery uses a branch and PR;
+and remains explicit migration debt. The release-pipeline extraction also reduces the existing local-delivery test
+from644 to526 lines; its remainder is migration debt. All other changed/new
+handwritten source, test and script files stay at or below500 lines. Delivery uses a branch and PR;
 no direct main merge or release is included.

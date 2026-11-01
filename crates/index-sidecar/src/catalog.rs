@@ -86,7 +86,7 @@ fn scan_workspace(
     }
     let mut documents = Vec::new();
     let mut sources = Vec::new();
-    let mut inputs = CatalogInputs::new().ok();
+    let mut inputs = (!force).then(CatalogInputs::new).and_then(Result::ok);
     let mut rejected_uris = Vec::new();
     let mut document_batch = Vec::with_capacity(PROGRESS_FILE_BATCH);
     let mut document_batch_bytes = 0usize;
