@@ -1,5 +1,61 @@
 # References / semantic Feature Ledger
 
+## Current review receipt — 2026-11-01
+
+**Group 1 local implementation/review complete; fresh full CI pending:** [recursive IDE correctness review](../reports/2026-11-01-recursive-ide-review.md)
+on parent `b57ad075`, at most four review/research/correct/review rounds, stopping
+earlier only when a completed round finds no new confirmed issue. Round 1 covers
+plain-text completion insertion (R-26 / ADR0022), call-hierarchy final freshness
+(R-28, R-13/R-31 / ADR0037), cross-file diagnostic invalidation (R-29, R-13/R-31 /
+ADR0010), and Windows UNC URI correctness (R-34 plus affected capability IDs).
+Focused public completion 14/14 and call hierarchy 12/12 pass after preserved
+REDs; scripted semantic fixtures do not establish real-compiler/UI coverage.
+Frozen round 1 diagnostics now pass 12/12 (five new actual-compiler cases);
+partial parallel round 2 now passes focused 15/15 after cross-workspace debounce
+and expected-invalidation logging corrections. Round 3 independent frozen-diff
+review found no additional confirmed must-fix issue within its diff; subsequent
+aggregate failures triggered round 4 sampler portability work (R-02/R-34, ADR0013). Authorized workspace Rust 1.95.0 is installed/hash-verified; Linux-hosted
+UNC helper/public and full crate checks pass, but native Windows is NOT_RUN and
+release library validation passes. Protocol 92/92, final manifest 4/4 and strict
+Clippy pass. Original frozen full check:fast terminated exit 1: 2222 tests,
+2134 pass / 88 fail, zero skips/cancellations/todo, 4306278.564141ms; 935/935 frozen
+inputs match. Failures classify as 86 sampler-related plus navigation and
+oversized-readiness fixture preconditions, one each. All original failures remain.
+All three round 4 patches are integrated: bounded sampler fallback/visibility
+proofs, deterministic Main-first navigation, and anchored oversized-readiness
+fixture. Prior separate checks preserve 46+29+1 sampler, 3/3 navigation baseline/
+candidate and 1/1 readiness baseline/candidate plus candidate full 16/16 receipts.
+Manifest is now 289 (unit 118 / protocol 14 / bundle 149). Integrated revalidation
+of all 19 original failing files plus related changes, 34 complete files,
+passed 263/263, exit 0, zero failed/skipped/cancelled/todo, 341678.5413ms after
+passing typecheck/build. Final frozen inputs all match (FINAL_INPUTS_UNCHANGED=1).
+This does not mean 2222/2222 passed; the original full FAIL remains. Fresh complete verification
+is planned in the draft PR's locked-toolchain CI, not replaced by this subset.
+No aggregate GREEN or resource graduation is claimed.
+Baseline install/check/build passes do not prove these fixes. The initial full-check attempt was
+BLOCKED by missing cargo, not a confirmed product regression. Installation
+resolved that environment blocker; no aggregate full pass is claimed.
+
+Current policy precedence: [ADR0007's 2026-10-28 revision](../adr/0007-semantic-readiness-and-500ms-slo.md)
+sets a 500ms experience target, not a per-request or replacement 550ms/P95 hard
+line. [ADR0029](../adr/0029-opt-in-rss-memory-budget.md) sets the default RSS
+budget to null, retaining explicit positive-budget pressure semantics and normal
+cleanup/fault recovery. Earlier latency thresholds, fixed default budgets,
+counts, failures and stage statuses below are **dated historical receipts**, not
+current-policy overrides. No approval status or product graduation is inferred
+from this review. Full-scan optimization remains unimplemented/unmeasured here.
+
+Queued continuation (user instruction, 2026-11-01 17:07:30 UTC): current rounds
+are **group 1**, at most four rounds. After its current validation and draft PR
+complete and group 1 PR validation reaches a terminal outcome, execute **group 2**, again at most four rounds or stop earlier when a
+completed review finds no new confirmed issue. Group 2 has **not started** and
+will have a separate grouped receipt; current Round 4 is not Round 5. No merge
+into main is authorized by this continuation, and pending current gates remain
+pending. The user authorized independent-branch push and draft PR at 17:05 UTC;
+merging main remains unauthorized.
+
+## Historical authorized work and progress receipts
+
 Current authorized work (2026-10-19, parent `3add6970`):
 [ADR 0019](../adr/0019-stable-programs-and-request-inputs.md) adopts stable semantic
 groups with retained LS/Programs, pressure-managed residency, shared request

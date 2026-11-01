@@ -58,9 +58,20 @@ pub fn path_to_file_uri(path: &Path) -> String {
 
 #[cfg(windows)]
 pub fn path_to_file_uri(path: &Path) -> String {
-    let mut normalized = path.to_string_lossy().replace('\\', "/");
-    if let Some(without_prefix) = normalized.strip_prefix("//?/") {
+    windows_path_to_file_uri(&path.to_string_lossy())
+}
+
+#[cfg(any(windows, test))]
+fn windows_path_to_file_uri(path: &str) -> String {
+    let mut normalized = path.replace('\\', "/");
+    if let Some(unc) = normalized.strip_prefix("//?/UNC/") {
+        normalized = format!("//{unc}");
+    } else if let Some(without_prefix) = normalized.strip_prefix("//?/") {
         normalized = without_prefix.to_owned();
+    }
+    // UNC hosts are URI authorities, not a directory named `UNC` on a drive.
+    if normalized.starts_with("//") {
+        return format!("file:{}", percent_encode_path(normalized.as_bytes()));
     }
     if normalized.as_bytes().get(1) == Some(&b':') {
         let normalized_drive = normalized[0..1].to_ascii_lowercase();
@@ -79,4 +90,44 @@ fn percent_encode_path(bytes: &[u8]) -> String {
         }
     }
     encoded
+}
+
+#[cfg(test)]
+mod tests {
+    use super::windows_path_to_file_uri;
+
+    #[test]
+    fn windows_drive_uri_characterization() {
+        let vectors = include_str!("../../../tests/fixtures/path-identity-vectors.tsv");
+        for row in vectors.lines() {
+            let fields: Vec<_> = row.split('\t').collect();
+            if fields[0] != "windows" || fields[1].starts_with(r"\\") {
+                continue;
+            }
+            assert_eq!(windows_path_to_file_uri(fields[1]), fields[2]);
+            assert_eq!(
+                windows_path_to_file_uri(&format!(r"\\?\{}", fields[1])),
+                fields[2]
+            );
+        }
+    }
+
+    #[test]
+    fn windows_unc_uris_preserve_authority_and_path_spelling() {
+        let vectors = include_str!("../../../tests/fixtures/path-identity-vectors.tsv");
+        for row in vectors.lines() {
+            let fields: Vec<_> = row.split('\t').collect();
+            if fields[0] != "windows" {
+                continue;
+            }
+            let Some(unc) = fields[1].strip_prefix(r"\\") else {
+                continue;
+            };
+            assert_eq!(
+                windows_path_to_file_uri(&format!(r"\\?\UNC\{unc}")),
+                fields[2]
+            );
+            assert_eq!(windows_path_to_file_uri(fields[1]), fields[2]);
+        }
+    }
 }

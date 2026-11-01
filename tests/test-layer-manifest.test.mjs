@@ -17,7 +17,12 @@ const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 test("classifies every executable test entry exactly once in an explicit layer", () => {
   const audit = validateTestLayerManifest({ root: projectRoot, manifest: TEST_LAYER_MANIFEST })
 
-  assert.equal(audit.entryCount, 284)
+  assert.equal(audit.entryCount, 289)
+  assert.equal(audit.assignments["tests/process-resource-probe-portability.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/lsp-diagnostic-invalidation-errors.test.mjs"], "protocol")
+  assert.equal(audit.assignments["tests/lsp-completion-text.test.mjs"], "protocol")
+  assert.equal(audit.assignments["tests/lsp-call-hierarchy-publication.test.mjs"], "protocol")
+  assert.equal(audit.assignments["tests/lsp-dependent-diagnostics.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/project-sdk-target.test.mjs"], "unit-contract")
   assert.equal(audit.assignments["tests/semantic/hms-kit-resolution.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/semantic/catalog-storage-progress.test.mjs"], "bundle-e2e")
@@ -336,9 +341,9 @@ test("classifies every executable test entry exactly once in an explicit layer",
     "bundle-e2e",
   )
   assert.deepEqual(audit.layerCounts, {
-    "unit-contract": 117,
-    protocol: 11,
-    "bundle-e2e": 148,
+    "unit-contract": 118,
+    protocol: 14,
+    "bundle-e2e": 149,
     "artifact-e2e": 4,
     "sealed-artifact-e2e": 1,
     large: 1,

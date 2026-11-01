@@ -101,3 +101,17 @@ governed by [semantic-ready acceptance](../benchmarks/semantic-ready-acceptance.
 The [Ledger](../plans/references-feature-ledger.md) and [MoSCoW](../plans/references-moscow.md)
 hold current feature status and priority. Stage IDs refer to the local execution
 plan, not existing GitHub issue numbers.
+
+## 2026-11-01 corrective review evidence
+
+The [recursive IDE correctness review](../reports/2026-11-01-recursive-ide-review.md)
+completed group 1's four local implementation/review rounds on `b57ad075`.
+Integrated focused validation is 263/263 PASS across 34 complete files, not a
+fresh full-suite pass; original full 2134/2222 FAIL remains, and fresh full CI
+is pending on the authorized draft PR. Completion insertion,
+call-hierarchy freshness, dependent diagnostics and UNC URI handling are being
+checked against existing contracts. No new ADR or Accepted status is inferred;
+all historical failures and approval states above remain unchanged. Current
+latency interpretation follows ADR0007's 2026-10-28 revision and default RSS
+policy follows ADR0029. The existing [Ledger](../plans/references-feature-ledger.md)
+links the current per-feature status; focused and full verification remain distinct.

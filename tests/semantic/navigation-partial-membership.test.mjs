@@ -7,6 +7,8 @@ import { createReadinessFixture } from "../support/semantic-readiness-lsp.mjs"
 test("missing definitions do not rescan an unchanged capacity-partial catalog and recover after unnotified deletion",
   { timeout: 60_000 }, async t => {
     const f = createReadinessFixture(t, { ARKTS_BENCHMARK_CONTROL: "0", ARKTS_MEMORY_BUDGET_MB: undefined,
+      // Keep initialization anchored outside noise; filesystem enumeration order is unspecified.
+      ARKTS_TEST_MEMBERSHIP_FIRST_SOURCE: "Main.ets",
       ARKTS_SEMANTIC_QUEUE_TRACE: "1",
       NODE_OPTIONS: `--require=${JSON.stringify(path.resolve("tests/fixtures/partial-initialization-observation.cjs"))}` })
     const source = f.sources["Main.ets"] + "unknownMember()\n"

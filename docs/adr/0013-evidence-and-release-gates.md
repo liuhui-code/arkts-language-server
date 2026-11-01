@@ -48,3 +48,39 @@
 candidate-ready并不认证semantic-ready；50条已有cache hits与未缓存/编辑慢请求分桶，
 缺桶/样本/就绪保持BLOCKED。harness实现不使本ADR的发布技术提案自动Accepted，
 也不关闭原内存/新500ms门禁。
+
+## 2026-11-01 measurement portability evidence — local verified, full CI pending
+
+The [recursive IDE review, round 4](../reports/2026-11-01-recursive-ide-review.md)
+identified a pre-existing Linux sampler assumption during aggregate validation:
+a missing procfs children file was treated as a missing process even when the
+process remained live, preventing the first measurement sample. Original test
+failures and the affected scripts' equality with HEAD are preserved. A separate
+worktree now verifies a bounded fallback with PID identity and mount visibility
+proofs: 46 probe/boundary, 29 prepared and one façade check, explicit exit 0.
+Closing review's hidden-child gap and its corrective RED/GREEN remain recorded.
+The frozen patch is now integrated after the original aggregate failed; its
+focused results do not qualify the original failing aggregate or combined inputs. No aggregate GREEN or
+resource acceptance is claimed. This implements evidence integrity/portability,
+not a new product policy or approval status.
+
+The same round separately confirms a baseline-reproduced navigation test ordering
+assumption. Existing Main.ets-first fixture control restores deterministic initial
+preparation; baseline and candidate each pass 3/3 with the original zero-read,
+capacity and recovery assertions intact. This test-only patch is integrated and
+covered by the final focused pass below; fresh full CI is still pending. It is
+not a product performance improvement.
+
+A separate oversized-readiness test also depended on an unstated enumeration
+order: baseline and candidate safely degraded without generation/capabilities,
+but reached a different no-anchor reason. Existing Main-first setup makes the
+intended anchored branch deterministic (focused 1/1 on each; candidate full file
+16/16). Original assertions/scale/timeouts remain; this independent test-only
+patch is now integrated and is not described as a readiness product defect.
+
+The original aggregate terminated 2134/2222, 88 failures, exit 1, with all 935
+frozen inputs matching. All three corrections are now integrated; a frozen
+34-file combination passes 263/263, zero failed/skipped/cancelled/todo, exit 0,
+341678.5413ms; typecheck/build pass and final frozen inputs match. Fresh complete
+qualification belongs to the draft PR's locked-toolchain CI. No subset result
+overwrites the original FAIL or constitutes 2222/2222.
