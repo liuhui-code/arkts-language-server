@@ -20,6 +20,14 @@ buildSync({
 })
 const driver = createRequire(import.meta.url)(output)
 
+test("SDK component descriptors cannot be mutated after discovery", t => {
+  const root = sdkFixture(t)
+  const components = driver.discoverHarmonySdk(root).components
+  assert.throws(() => components.push({ root: "/outside" }), TypeError)
+  assert.throws(() => components[0].apiPaths.push("/outside"), TypeError)
+  assert.throws(() => { components[0].root = "/outside" }, TypeError)
+})
+
 test("derives the per-user DevEco SDK candidate from the current home directory", () => {
   const candidates = driver.candidatesForDarwinHome("/Users/another-developer")
 

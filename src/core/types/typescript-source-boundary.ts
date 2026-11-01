@@ -7,11 +7,12 @@ export interface ModuleBoundary {
   workspacePhysicalRoot: string | undefined
   sdkRoot: string | null
   sdkPhysicalRoot: string | undefined
+  sdkComponents?: readonly import("../sdk/environment.js").SdkComponent[]
 }
 
 /** Lexical and physical roots remain separate; unsaved overlays may lack a disk leaf. */
 export function relativeModuleBoundary(containingFile: string, hasScript: boolean,
-  { rootPath, workspacePhysicalRoot, sdkRoot, sdkPhysicalRoot }: ModuleBoundary): string | undefined {
+  { rootPath, workspacePhysicalRoot, sdkRoot, sdkPhysicalRoot, sdkComponents }: ModuleBoundary): string | undefined {
   let physicalContainingFile: string
   try {
     physicalContainingFile = hasScript ? prospectiveRealPathSync(containingFile) : fs.realpathSync.native(containingFile)
@@ -22,6 +23,10 @@ export function relativeModuleBoundary(containingFile: string, hasScript: boolea
   if (workspacePhysicalRoot && isWithinRoot(workspacePhysicalRoot, physicalContainingFile)) return rootPath
   if (sdkRoot && sdkPhysicalRoot && isWithinRoot(sdkRoot, containingFile)
     && isWithinRoot(sdkPhysicalRoot, physicalContainingFile)) return sdkRoot
+  for (const component of sdkComponents ?? []) {
+    if (!component.issue && isWithinRoot(component.root, containingFile)
+      && isWithinRoot(component.physicalRoot, physicalContainingFile)) return component.root
+  }
   return undefined
 }
 

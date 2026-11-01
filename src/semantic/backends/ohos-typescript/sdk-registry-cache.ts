@@ -1,5 +1,7 @@
 import path from "node:path"
 import ts from "typescript"
+import type { SdkComponent } from "../../../core/sdk/environment.js"
+import { harmonyCompilerResources } from "../../../core/sdk/compiler-resources.js"
 import { SemanticInputUnavailableError } from "../../../core/types/typescript-query-inputs.js"
 import { initialPreparationActive } from "../../coordinator/initial-preparation.js"
 import { prepareSdkDeclarations } from "./sdk-preparation.js"
@@ -20,8 +22,10 @@ export function isCompilerLibrary(file: string): boolean {
 }
 
 /** Used only by the serial verifier isolate. All project leases belong to its current LS. */
-export function retainSdkDocuments(registry: ts.DocumentRegistry, sdkPath: string): ts.DocumentRegistry {
-  const root = path.resolve(sdkPath)
+export function retainSdkDocuments(registry: ts.DocumentRegistry, sdkPath: string, components?: readonly SdkComponent[]): ts.DocumentRegistry {
+  const sources = components?.filter(component => !component.issue)
+    ?? [{ root: sdkPath, apiPaths: harmonyCompilerResources(sdkPath).declarationDirectories }]
+  const componentRoots = sources.map(component => component.root)
   const pins = new Map<string, Pin>()
   const retained = { ...registry }
   const acquire = registry.acquireDocumentWithKey.bind(registry)
@@ -34,7 +38,10 @@ export function retainSdkDocuments(registry: ts.DocumentRegistry, sdkPath: strin
     const args = latestAcquisition
     if (!args || warming || !initialPreparationActive() || warmedSettingsKey === args[3]) return
     warming = true
-    try { prepareSdkDeclarations(root, args, retained); warmedSettingsKey = args[3] }
+    try {
+      for (const source of sources) prepareSdkDeclarations(source.root, args, retained, source.apiPaths)
+      warmedSettingsKey = args[3]
+    }
     finally { warming = false }
   }
   initializers.set(retained, initialize)
@@ -42,8 +49,10 @@ export function retainSdkDocuments(registry: ts.DocumentRegistry, sdkPath: strin
     pin.resolvedPath, pin.key, pin.kind, pin.file.impliedNodeFormat,
   )
   const sdkKey = (args: Acquisition): string | undefined => {
-    const relative = path.relative(root, path.resolve(args[0]))
-    const sdk = relative && relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)
+    const sdk = componentRoots.some(componentRoot => {
+      const part = path.relative(componentRoot, path.resolve(args[0]))
+      return part && part !== ".." && !part.startsWith(`..${path.sep}`) && !path.isAbsolute(part)
+    })
     const library = isCompilerLibrary(args[0])
     if (!sdk && !library) return
     return JSON.stringify([args[1], args[3], args[6],

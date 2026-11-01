@@ -333,7 +333,7 @@ export function registerMacosWorkflowCases() {
     const fixture = await macosWorkflow(t, { oracle: true, interruptedRequest: true, expectedStatus: 1 })
     if (process.platform !== "darwin") return
     const sent = JSON.parse(fs.readFileSync(path.join(path.dirname(fixture.workspace), "interrupted-request.json")))
-    assert.ok(fixture.report, "interrupted request must retain its admitted run")
+    assert.ok(fixture.report, `interrupted request must retain its admitted run; stderr: ${fixture.result.stderr}`)
     const report = fixture.report
     assert.equal(report.measurementStatus, "incomplete")
     assert.deepEqual(report.workflowExecution,

@@ -11,6 +11,35 @@ import { projectRoot } from "../support/lsp-process.mjs"
 const SDK_API_VERSION = "24"
 const SDK_COMPONENT_VERSION = "6.1.1.125"
 
+test("API 24 offers an unimported HMS namespace through PushKit", { timeout: 90_000 }, async t => {
+  const source = "const token = pushS\n"
+  const fixture = await sdkSession(t, source)
+  const response = await fixture.session.request("textDocument/completion", {
+    textDocument: { uri: fixture.uri }, position: { line: 0, character: source.indexOf("pushS") + 5 },
+  }, { timeoutMs: 60_000 })
+  assert.equal(response.error, undefined)
+  const items = Array.isArray(response.result) ? response.result : response.result?.items ?? []
+  const item = items.find(item => item.label === "pushService" && item.detail?.includes("@kit.PushKit"))
+  assert.ok(item, JSON.stringify(response))
+  const resolved = await fixture.session.request("completionItem/resolve", item, { timeoutMs: 30_000 })
+  assert.equal(resolved.error, undefined)
+  assert.ok(resolved.result.additionalTextEdits?.some(edit => /from ["']@kit\.PushKit["']/.test(edit.newText)), JSON.stringify(resolved))
+})
+
+test("API 24 resolves the installed HMS PushKit through its public facade", { timeout: 60_000 }, async t => {
+  const source = "import { pushService as push } from '@kit.PushKit'\nconst token = push.getToken()\n"
+  const fixture = await sdkSession(t, source)
+  const declaration = path.join(path.dirname(fixture.sdkRoot), "hms", "ets", "api", "@hms.core.push.pushService.d.ts")
+  const definition = await fixture.session.request("textDocument/definition", {
+    textDocument: { uri: fixture.uri }, position: rangeInAnchor(source, "push.getToken()", "getToken").start,
+  }, { timeoutMs: 30_000 })
+  assert.equal(definition.error, undefined)
+  assert.ok(definition.result?.some(result => result.uri === pathToFileURL(declaration).href), JSON.stringify(definition))
+  const preparation = await fixture.session.transport.notification("arkts/semanticPreparation",
+    message => message.params.phase === "complete", 30_000)
+  assert.equal(preparation.params.report.semanticState, "partial", "installed ambient gaps must remain explicit")
+})
+
 test("API 24 official runtime globals survive an unrelated missing SDK module", { timeout: 60_000 }, async t => {
   const source = [
     'const timer = setTimeout(() => console.info("ready"), 10)',
@@ -149,7 +178,15 @@ test("API 24 excludes browser DOM globals from diagnostics and completion", { ti
   }, { timeoutMs: 30_000 })
   assert.equal(completion.error, undefined)
   const items = Array.isArray(completion.result) ? completion.result : completion.result?.items ?? []
-  assert.deepEqual(items.filter(({ label }) => label === "document"), [])
+  const documents = items.filter(({ label }) => label === "document")
+  assert.ok(documents.length > 0, "the SDK document module remains available as an auto-import")
+  for (const item of documents) {
+    assert.ok(item.detail?.endsWith("@ohos.document"), JSON.stringify(item))
+    const resolved = await fixture.session.request("completionItem/resolve", item)
+    assert.equal(resolved.error, undefined)
+    assert.ok(resolved.result.additionalTextEdits?.some(edit => /from ["']@ohos\.document["']/.test(edit.newText)),
+      JSON.stringify(resolved))
+  }
 })
 
 test("API 24 resolves official Kit exports for hilog completion definition and diagnostics", { timeout: 60_000 }, async (t) => {

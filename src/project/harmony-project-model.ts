@@ -6,6 +6,7 @@ import { readHarmonyProfile } from "./harmony-profile-reader.js"
 import { LoadedConfigurationWitness, type ConfigurationFreshnessMode } from "./loaded-configuration-witness.js"
 import { containsResolvedPath } from "./resolved-path-containment.js"
 import { resolvedPathIdentity } from "./path-identity.js"
+import { readHarmonySdkTarget, type HarmonySdkTarget } from "./harmony-sdk-target.js"
 
 const MAX_MODULES = 256
 
@@ -66,6 +67,7 @@ export class HarmonyProjectModel {
   private snapshot?: ProjectSnapshot
   private graph?: HarmonySemanticGraph
   private configurationWitness?: LoadedConfigurationWitness
+  private sdkTargetSnapshot?: HarmonySdkTarget
 
   constructor(rootPath: string, selection?: unknown) {
     this.rootPath = path.resolve(rootPath)
@@ -75,7 +77,7 @@ export class HarmonyProjectModel {
   enableConfigurationWitness(): void {
     if (this.configurationWitness) return
     this.configurationWitness = new LoadedConfigurationWitness()
-    if (this.snapshot || this.graph) this.configurationWitness.markUnprovable()
+    if (this.snapshot || this.graph || this.sdkTargetSnapshot) this.configurationWitness.markUnprovable()
   }
 
   configurationFreshness(checkpoint: () => void, mode: ConfigurationFreshnessMode = "validate"): (() => boolean) | undefined {
@@ -139,9 +141,14 @@ export class HarmonyProjectModel {
     )
   }
 
+  sdkTarget(): HarmonySdkTarget {
+    return this.sdkTargetSnapshot ??= readHarmonySdkTarget(this.rootPath, this.selection?.product, this.configurationWitness)
+  }
+
   invalidate(): void {
     this.snapshot = undefined
     this.graph = undefined
+    this.sdkTargetSnapshot = undefined
     this.configurationWitness?.reset()
   }
 

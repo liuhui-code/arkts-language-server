@@ -1,10 +1,15 @@
+import { normalizeCompletionEdit } from "./typescript-completion-import.js"
+import { publicSdkSpecifier } from "../sdk/module-resolver.js"
+import { sdkExportCompletionEntries, withSdkExportQuery, assertSdkExportInputs } from "../../semantic/backends/ohos-typescript/sdk-export-language-service.js"
+import { COMPLETION_PREFIX_MATCH, COMPLETION_CAMEL_MATCH, COMPLETION_SUBSEQUENCE_MATCH,
+  completionMatchQuality, type CompletionMatchQuality } from "./typescript-completion-ranking.js"
 import { createHash } from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 
 import ts from "typescript"
 
-import { discoverProjectSdk, type ProjectSdkSelection } from "../sdk/project-sdk.js"
+import { type ProjectSdkSelection } from "../sdk/project-sdk.js"
 import { LocalPackageResolver } from "../sdk/local-package-resolver.js"
 import { compilerCompletionData, completionNamespaceCurrent } from "./completion-resolution-inputs.js"
 import type {
@@ -57,13 +62,13 @@ import { normalizedDefinitionSpan } from "./typescript-definition-span.js"
 import { TypeScriptResidentReferenceState, type ResidentReferenceProofFailure } from "./typescript-resident-reference-state.js"
 import { TypeScriptHostRoots } from "./typescript-host-file-names.js"
 import { LoadedConfigurationWitness } from "../../project/loaded-configuration-witness.js"
-import { discoverSdkAmbientDeclarations } from "./typescript-sdk-ambient.js"
+import { sdkConfigurationDiagnostic } from "./typescript-sdk-diagnostics.js"
+import { loadCompilerSdk } from "./typescript-sdk-environment.js"
 import { witnessedDirectoryExists, witnessedFileExists, witnessedFilesystemLookup } from "./typescript-resolution-witness.js"
 import { relativeModuleBoundary, isWithinRoot, canonicalExistingPath, callHierarchyPathFailure } from "./typescript-source-boundary.js"
 import { QueryModuleResolution } from "./typescript-query-module-resolution.js"
 import { resolveTypeScriptModule } from "./typescript-module-resolution.js"
 import { assertVerifierSdkLookupsCurrent } from "./verifier-sdk-lookups.js"
-import { arktsLanguageServiceOptions } from "./arkts-language-service-options.js"
 import { TypeScriptLazySnapshots, type LazySnapshotRecord } from "./typescript-lazy-snapshots.js"
 import { compilerScriptSnapshot } from "./compiler-source-snapshots.js"
 import { safeRead } from "./typescript-safe-source-read.js"
@@ -95,14 +100,6 @@ const MAX_CALL_HIERARCHY_TOTAL_RANGES = 2_048
 const MIN_MODULE_EXPORT_PREFIX_LENGTH = 2
 const ENGINE_VERSION = `typescript-${ts.version}-arkts-v2`
 
-const COMPLETION_PREFIX_MATCH = 0
-const COMPLETION_CAMEL_MATCH = 1
-const COMPLETION_SUBSEQUENCE_MATCH = 2
-
-type CompletionMatchQuality =
-  | typeof COMPLETION_PREFIX_MATCH
-  | typeof COMPLETION_CAMEL_MATCH
-  | typeof COMPLETION_SUBSEQUENCE_MATCH
 
 interface CompletionCandidate {
   entry: CompletionEntryCompat
@@ -239,20 +236,16 @@ export class TypeScriptLanguageServiceEngine {
     })
     this.configurationWitness = createCompilerInputWitness(packageResolver, rootPath, residentReferenceReuse,
       onResidentReferenceProofFailure, () => ({ rootPath, workspacePhysicalRoot: this.workspacePhysicalRoot,
-        sdkRoot: this.sdkRoot, sdkPhysicalRoot: this.sdkPhysicalRoot }))
-    const sdk = discoverProjectSdk(
-      rootPath,
-      process.env.ARKLINE_HARMONY_SDK_PATH,
-      sdkConfiguration,
-      this.configurationWitness,
-    )
-    this.options = arktsLanguageServiceOptions(sdk.path, this.configurationWitness)
+        sdkRoot: this.sdkRoot, sdkPhysicalRoot: this.sdkPhysicalRoot, sdkComponents: this.sdkSelection?.components }))
+    const loaded = loadCompilerSdk(rootPath, sdkConfiguration, this.configurationWitness, sdkAmbientProfile, packageResolver.projectFor(rootPath).sdkTarget())
+    const sdk = loaded.selection
+    this.options = loaded.options
     this.moduleResolution = new QueryModuleResolution(rootPath, this.options)
     this.sdkSelection = sdk
     this.sdkRoot = sdk.path
-    this.sdkPhysicalRoot = this.sdkRoot ? canonicalExistingPath(this.sdkRoot) : undefined
+    this.sdkPhysicalRoot = loaded.physicalRoot
     onSdkSelected?.(rootPath, sdk)
-    this.sdkDeclarationPaths = discoverSdkAmbientDeclarations(this.sdkRoot, sdkAmbientProfile, this.configurationWitness)
+    this.sdkDeclarationPaths = loaded.ambientPaths
     this.sdkAmbientProfile = sdkAmbientProfile
     this.hostRoots = new TypeScriptHostRoots(rootPath, this.sdkDeclarationPaths)
     this.host = this.createHost(hostCancellationToken)
@@ -272,12 +265,13 @@ export class TypeScriptLanguageServiceEngine {
   }
 
   withRequestModuleResolution<Result>(run: () => Result): Result {
-    return this.moduleResolution.query(run)
+    return withSdkExportQuery(this.service, () => this.moduleResolution.query(run))
   }
 
   assertCurrentInputs(checkpoint = () => this.checkpoint?.()): void {
     assertCurrentQueryInputs(this.configurationWitness, this.packageResolver, this.rootPath, checkpoint)
     assertVerifierSdkLookupsCurrent(this.configurationWitness)
+    assertSdkExportInputs(this.service)
   }
 
   prepare(workspace: SemanticWorkspaceView): SemanticTypeEngineState {
@@ -301,7 +295,7 @@ export class TypeScriptLanguageServiceEngine {
         document.overlay || filePath === path.resolve(workspace.state.path),
       )
       observePreparedSourceRead(document, this.configurationWitness, { rootPath: this.rootPath,
-        workspacePhysicalRoot: this.workspacePhysicalRoot, sdkRoot: this.sdkRoot, sdkPhysicalRoot: this.sdkPhysicalRoot })
+        workspacePhysicalRoot: this.workspacePhysicalRoot, sdkRoot: this.sdkRoot, sdkPhysicalRoot: this.sdkPhysicalRoot, sdkComponents: this.sdkSelection?.components })
     }
     this.evict(protectedPaths)
     this.scriptAdmission.complete(this.scripts.size, this.generation)
@@ -356,7 +350,7 @@ export class TypeScriptLanguageServiceEngine {
       cancellation: this.host.getCancellationToken?.(), residentProofOwner: this.residentProofOwner, trace }
   }
 
-  programFileStats() { return typescriptProgramStats(this.service.getProgram(), this.rootPath, this.sdkRoot) }
+  programFileStats() { return typescriptProgramStats(this.service.getProgram(), this.rootPath, this.sdkRoot, this.sdkSelection.components) }
 
   compilerInputPaths(): ReadonlySet<string> | undefined { return this.compilerInputs.knownPaths() }
   private readonly observeCompilerProgram = (program: ts.Program | undefined): void => {
@@ -514,6 +508,23 @@ export class TypeScriptLanguageServiceEngine {
       }
     }
     if (!stoppedEarly && hasTier) flushTier()
+    const sdkRetained = new Set(candidates.map(({ entry }) => completionEntryIdentity(entry)))
+    for (const entry of sdkExportCompletionEntries(info)) {
+      work.item()
+      const identity = completionEntryIdentity(entry)
+      if (sdkRetained.has(identity)) continue
+      const quality = completionMatchQuality(entry.name, normalizedPrefix)
+      if (quality === undefined) continue
+      const candidate: CompletionCandidate = { entry, filterText: undefined, providerIndex: completionEntries.length, quality }
+      if (candidates.length < MAX_COMPLETIONS) candidates.push(candidate)
+      else {
+        const weaker = candidates.map(existing => existing.quality > quality).lastIndexOf(true)
+        matchingOverflow = true
+        if (weaker < 0) continue
+        candidates[weaker] = candidate
+      }
+      sdkRetained.add(identity)
+    }
     if (position.completionDiscovery) {
       const discovered = this.validatedDiscoveryEntries(
         filePath,
@@ -1383,16 +1394,8 @@ export class TypeScriptLanguageServiceEngine {
       work,
     )
     this.assertCurrentInputs(() => work.boundary())
-    if (this.sdkSelection.source === "configuration" && !this.sdkSelection.ready) {
-      diagnostics.unshift({
-        source: "language",
-        severity: "error",
-        code: "arkts.sdk.configuration",
-        path: filePath,
-        range: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 },
-        message: "The configured ArkTS SDK path is invalid. Set initializationOptions.sdk.path or arkts.sdk.path to an absolute OpenHarmony SDK directory.",
-      })
-    }
+    const sdkDiagnostic = sdkConfigurationDiagnostic(this.sdkSelection, filePath)
+    if (sdkDiagnostic) diagnostics.unshift(sdkDiagnostic)
     return work.finish(diagnostics)
   }
 
@@ -1709,7 +1712,7 @@ export class TypeScriptLanguageServiceEngine {
         const boundaryRoot = names.some((name) => name.startsWith("."))
           ? relativeModuleBoundary(resolvedContainingFile, this.scripts.has(resolvedContainingFile), {
               rootPath: this.rootPath, workspacePhysicalRoot: this.workspacePhysicalRoot,
-              sdkRoot: this.sdkRoot, sdkPhysicalRoot: this.sdkPhysicalRoot,
+              sdkRoot: this.sdkRoot, sdkPhysicalRoot: this.sdkPhysicalRoot, sdkComponents: this.sdkSelection?.components,
             })
           : undefined
         return names.map((name) => this.resolveModule(
@@ -1722,7 +1725,7 @@ export class TypeScriptLanguageServiceEngine {
   }
 
   private resolveModule(name: string, containingFile: string, relativeBoundaryRoot?: string): ts.ResolvedModule | undefined {
-    return resolveTypeScriptModule({ rootPath: this.rootPath, sdkRoot: this.sdkRoot,
+    return resolveTypeScriptModule({ rootPath: this.rootPath, sdkRoot: this.sdkRoot, sdk: this.sdkSelection,
       packageResolver: this.packageResolver, scripts: this.scripts, overlayPaths: this.overlayPaths,
       configurationWitness: this.configurationWitness, moduleResolution: this.moduleResolution,
       checkpoint: this.checkpoint, relativeResolutionCheckpoint: this.relativeResolutionCheckpoint,
@@ -1849,7 +1852,7 @@ export class TypeScriptLanguageServiceEngine {
       this.removeLazySnapshot(filePath)
       observeAdmittedSourceRead(filePath, this.configurationWitness, this.sdkRoot, this.projectFileAccess,
         this.projectMembershipRootId, this.projectMembershipRevision,
-        this.projectMembershipStatus === "complete" && this.projectMembershipPaths.has(filePath))
+        this.projectMembershipStatus === "complete" && this.projectMembershipPaths.has(filePath), this.sdkSelection.components)
     }, { scripts: this.scripts, stableRoot: filePath => filePath === path.resolve(workspace.state.path)
       || this.hostRoots.hasStableRoot(filePath) })
   }
@@ -1912,6 +1915,7 @@ export class TypeScriptLanguageServiceEngine {
             currentPath,
             sourcePath,
             documentEol(script.sourceContent),
+            publicSdkSpecifier(this.sdkSelection, sourcePath, this.configurationWitness),
           ),
           expectedVersion: documentVersion,
         })
@@ -1982,25 +1986,6 @@ function defaultCompletionCommitCharacters(kind: ts.ScriptElementKind): string[]
   return kind === ts.ScriptElementKind.memberFunctionElement ? [".", ",", ";"] : undefined
 }
 
-function normalizeCompletionEdit(
-  text: string,
-  currentPath: string,
-  sourcePath: string | undefined,
-  eol: string,
-): string {
-  let normalized = text.replace(/\r\n?|\n/gu, eol)
-  if (!sourcePath || !path.isAbsolute(sourcePath)) return normalized
-  const sourceWithExtension = path.extname(sourcePath)
-    ? sourcePath
-    : [".ets", ".ts", ".d.ets", ".d.ts"]
-      .map((extension) => sourcePath + extension)
-      .find((candidate) => fs.existsSync(candidate)) ?? sourcePath
-  let specifier = path.relative(path.dirname(currentPath), sourceWithExtension).replace(/\\/gu, "/")
-  if (!specifier.startsWith(".")) specifier = `./${specifier}`
-  normalized = normalized.replace(/(\bfrom\s+["'])[^"']+(["'])/u, `$1${specifier}$2`)
-  return normalized
-}
-
 function hasMinimumCodePointLength(value: string, minimum: number): boolean {
   let length = 0
   for (const _codePoint of value) {
@@ -2010,78 +1995,6 @@ function hasMinimumCodePointLength(value: string, minimum: number): boolean {
   return false
 }
 
-function completionMatchQuality(
-  candidate: string,
-  normalizedPrefix: string,
-): CompletionMatchQuality | undefined {
-  if (normalizedPrefix.length === 0) return COMPLETION_PREFIX_MATCH
-  const normalizedCandidate = candidate.toLowerCase()
-  if (normalizedCandidate.startsWith(normalizedPrefix)) return COMPLETION_PREFIX_MATCH
-  let prefixIndex = 0
-  for (let candidateIndex = 0; candidateIndex < normalizedCandidate.length; candidateIndex += 1) {
-    if (
-      normalizedCandidate.charCodeAt(candidateIndex)
-      !== normalizedPrefix.charCodeAt(prefixIndex)
-    ) continue
-    prefixIndex += 1
-    if (prefixIndex === normalizedPrefix.length) {
-      return matchesCamelCompletion(candidate, normalizedCandidate, normalizedPrefix)
-        ? COMPLETION_CAMEL_MATCH
-        : COMPLETION_SUBSEQUENCE_MATCH
-    }
-  }
-  return undefined
-}
-
-function matchesCamelCompletion(
-  candidate: string,
-  normalizedCandidate: string,
-  normalizedPrefix: string,
-): boolean {
-  let searchStart = 0
-  let previousMatch = -2
-  for (let prefixIndex = 0; prefixIndex < normalizedPrefix.length; prefixIndex += 1) {
-    let match = -1
-    for (let candidateIndex = searchStart; candidateIndex < normalizedCandidate.length; candidateIndex += 1) {
-      if (
-        normalizedCandidate.charCodeAt(candidateIndex)
-          !== normalizedPrefix.charCodeAt(prefixIndex)
-        || (
-          prefixIndex === 0
-            ? !isCompletionWordBoundary(candidate, candidateIndex)
-            : candidateIndex !== previousMatch + 1
-              && !isCompletionWordBoundary(candidate, candidateIndex)
-        )
-      ) continue
-      match = candidateIndex
-      break
-    }
-    if (match < 0) return false
-    previousMatch = match
-    searchStart = match + 1
-  }
-  return true
-}
-
-function isCompletionWordBoundary(candidate: string, index: number): boolean {
-  if (index === 0) return true
-  const previous = candidate.charCodeAt(index - 1)
-  const current = candidate.charCodeAt(index)
-  if (previous === 0x5f || previous === 0x2d || previous === 0x2e || previous === 0x2f) {
-    return true
-  }
-  const previousIsLower = previous >= 0x61 && previous <= 0x7a
-  const previousIsUpper = previous >= 0x41 && previous <= 0x5a
-  const previousIsDigit = previous >= 0x30 && previous <= 0x39
-  const currentIsLower = current >= 0x61 && current <= 0x7a
-  const currentIsUpper = current >= 0x41 && current <= 0x5a
-  if (previousIsDigit && (currentIsLower || currentIsUpper)) return true
-  if (!currentIsUpper) return false
-  if (previousIsLower) return true
-  const next = candidate.charCodeAt(index + 1)
-  const nextIsLower = next >= 0x61 && next <= 0x7a
-  return previousIsUpper && nextIsLower
-}
 
 function completionKind(
   kind: ts.ScriptElementKind,

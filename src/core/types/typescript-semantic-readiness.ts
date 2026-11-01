@@ -7,12 +7,15 @@ import { SEMANTIC_READY_CAPABILITIES, semanticSdkPartial, semanticUnprepared,
   type SemanticReadinessReport } from "../../contracts/semantic-readiness.js"
 import type { LoadedConfigurationWitness } from "../../project/loaded-configuration-witness.js"
 import type { LocalPackageResolver } from "../sdk/local-package-resolver.js"
+import { harmonyCompilerResources } from "../sdk/compiler-resources.js"
+import { isHarmonySdkModuleSpecifier } from "../sdk/module-resolver.js"
+import { sdkContains } from "../sdk/environment.js"
 import type { ProjectSdkSelection } from "../sdk/project-sdk.js"
 import type { ProjectMembershipSnapshot, SemanticWorkspaceView } from "../workspace/document-store.js"
 import { compilerArtifactIdentity } from "./typescript-compiler-artifact.js"
 import { TypeScriptResidentReferenceState } from "./typescript-resident-reference-state.js"
 import { initialPreparationActive } from "../../semantic/coordinator/initial-preparation.js"
-import { relativeResourcePath, sameResolvedPath } from "../../project/path-identity.js"
+import { sameResolvedPath } from "../../project/path-identity.js"
 
 const programIds = new WeakMap<ts.Program, string>()
 const MISSING_INPUT_DIAGNOSTICS = new Set([2307, 2318, 2688, 2792, 6053, 5083])
@@ -143,11 +146,12 @@ export function prepareOfficialReadiness(input: ReadinessPreparation): OfficialR
   if (workspace.projectMembership?.status !== "complete") return unavailable("project-membership-incomplete")
   const sdkCoverageProven = input.sdk.ready && input.sdk.identity?.status === "identified"
     && input.sdkAmbientProfile === "full" && input.sdkRoots.some(root =>
-      ["index-full.d.ts", "common.d.ts", "arkui.d.ts"].some(name =>
-        sameResolvedPath(root, path.join(input.sdk.path!, "ets", "component", name))))
+      harmonyCompilerResources(input.sdk.path!).componentAmbientCandidates.some(candidate =>
+        sameResolvedPath(root, candidate)))
   // SDK qualification may be unknown before a complete-root Program exists.
   // Keep ordinary queries available without introducing new global build work.
-  if (!sdkCoverageProven) return semanticSdkPartial(rootUri, { layer: "sdk", reason: "coverage-unproven" })
+  if (input.sdk.targetQualification && input.sdk.targetQualification.status !== "compatible"
+    || input.sdk.components?.some(component => component.issue) || !sdkCoverageProven) return semanticSdkPartial(rootUri, { layer: "sdk", reason: "coverage-unproven" })
   if (!compilerArtifactIdentity) return unavailable("backend-artifact-unproven")
   const graph = input.resolver.projectFor(workspace.rootPath).semanticGraph()
   if (graph.status === "unavailable" || (graph.status === "ready" && !graph.complete)) {
@@ -168,7 +172,7 @@ export function prepareOfficialReadiness(input: ReadinessPreparation): OfficialR
     ?? firstMissingInput(program.getGlobalDiagnostics(cancellation))
   if (missingCompilerInput) {
     if (missingCompilerInput.file && input.sdk.path
-      && relativeResourcePath(input.sdk.path, missingCompilerInput.file.fileName) !== undefined) {
+      && sdkContains(input.sdk, missingCompilerInput.file.fileName)) {
       return semanticSdkPartial(rootUri, { layer: "sdk", reason: "declaration-not-found" },
         diagnosticInput(missingCompilerInput))
     }
@@ -180,14 +184,14 @@ export function prepareOfficialReadiness(input: ReadinessPreparation): OfficialR
     // skipLibCheck hides missing triple-slash declarations. Use the already
     // parsed directives and actual Program membership, without type-checking
     // the entire SDK or manufacturing compiler diagnostics.
-    if (input.sdk.path && relativeResourcePath(input.sdk.path, source.fileName) !== undefined
+    if (input.sdk.path && sdkContains(input.sdk, source.fileName)
       && source.referencedFiles.some(reference => /\.d\.(?:ts|ets)$/.test(reference.fileName)
         && !program.getSourceFile(path.resolve(path.dirname(source.fileName), reference.fileName)))) {
       return semanticSdkPartial(rootUri, { layer: "sdk", reason: "declaration-not-found" })
     }
     const missing = firstMissingInput(checkInput(program, source, cancellation, input.trace))
     if (missing) {
-      const specifier = missingSdkSpecifier(missing)
+      const specifier = missingSdkSpecifier(missing, input.sdk)
       return specifier ? semanticSdkPartial(rootUri, specifier.length <= 4096 && !specifier.includes("\0")
         ? { layer: "sdk", reason: "module-not-found", specifier }
         : { layer: "sdk", reason: "coverage-unproven" }, diagnosticInput(missing))
@@ -213,7 +217,7 @@ export function prepareOfficialReadiness(input: ReadinessPreparation): OfficialR
       [path.resolve(document.path), document.documentVersion ?? null, sha256(document.content)])
       .sort((left, right) => String(left[0]).localeCompare(String(right[0])))),
     optionsSha256: digest(input.compilerOptions), projectGraphSha256: digest(graph),
-    sdkSha256: digest([input.sdk, manifest(sources.filter(source => inside(input.sdk.path!, source.fileName)))]),
+    sdkSha256: digest([input.sdk, manifest(sources.filter(source => sdkContains(input.sdk, source.fileName)))]),
     standardLibrarySha256: digest(manifest(standardLibrary)), backend: compilerArtifactIdentity,
   }
   const programId = programIds.get(program) ?? randomUUID()
@@ -222,7 +226,7 @@ export function prepareOfficialReadiness(input: ReadinessPreparation): OfficialR
     readyCapabilities: SEMANTIC_READY_CAPABILITIES, unavailableReasons: [], unavailableInput: null,
     inputIdentity: { ...identity, sha256: digest(identity) },
     coverage: { projectSources: workspace.projectMembership.paths.length,
-      sdkSources: sources.filter(source => inside(input.sdk.path!, source.fileName)).length,
+      sdkSources: sources.filter(source => sdkContains(input.sdk, source.fileName)).length,
       standardLibrarySources: standardLibrary.length, programSources: sources.length, dependenciesComplete: true },
   }
   // Construct every returned field first; this is the real final input fence,
@@ -235,11 +239,12 @@ export function prepareOfficialReadiness(input: ReadinessPreparation): OfficialR
   return { proof, report }
 }
 
-function missingSdkSpecifier(diagnostic: ts.Diagnostic): string | undefined {
+function missingSdkSpecifier(diagnostic: ts.Diagnostic, sdk: ProjectSdkSelection): string | undefined {
   if ((diagnostic.code !== 2307 && diagnostic.code !== 2792) || !diagnostic.file
     || diagnostic.start === undefined || diagnostic.length === undefined) return
   const token = diagnostic.file.text.slice(diagnostic.start, diagnostic.start + diagnostic.length)
-  return /^["'](@(?:ohos|system|kit|arkts)\.[^"'\r\n]+)["']$/.exec(token)?.[1]
+  const specifier = /^["'](@[^"'\r\n]+)["']$/.exec(token)?.[1]
+  return specifier && isHarmonySdkModuleSpecifier(specifier, sdk) ? specifier : undefined
 }
 
 function observePreparedInputs(input: ReadinessPreparation, program: ts.Program, checkpoint: () => void) {

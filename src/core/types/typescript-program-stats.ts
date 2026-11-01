@@ -1,5 +1,6 @@
 import path from "node:path"
 import ts from "typescript"
+import { sdkContains, type SdkComponent } from "../sdk/environment.js"
 
 const observedPrograms = new WeakMap<ts.Program, number>()
 let nextProgramSequence = 0
@@ -31,7 +32,8 @@ export function measureOfficialCompilerReadiness(service: ts.LanguageService): {
 }
 
 /** Counts the existing Program only; does not create a second semantic owner. */
-export function typescriptProgramStats(program: ts.Program | undefined, rootPath: string, sdkRoot?: string | null) {
+export function typescriptProgramStats(program: ts.Program | undefined, rootPath: string, sdkRoot?: string | null, components?: readonly SdkComponent[]) {
+  const sdk = { path: sdkRoot ?? null, components }
   const sourceFiles = program?.getSourceFiles() ?? []
   const rootFileNames = program?.getRootFileNames() ?? []
   const observeSourceFileIdentity = process.env.ARKTS_REFERENCES_TRACE === "1"
@@ -51,7 +53,7 @@ export function typescriptProgramStats(program: ts.Program | undefined, rootPath
     const reused = observeSourceFileIdentity && observedSourceFiles.has(sourceFile)
     if (observeSourceFileIdentity && !reused) observedSourceFiles.add(sourceFile)
     const filePath = path.resolve(sourceFile.fileName)
-    if (sdkRoot && within(sdkRoot, filePath)) {
+    if (sdkContains(sdk, filePath)) {
       counts.sdkSourceFiles += 1
       if (observeSourceFileIdentity) {
         if (reused) counts.sdkSourceFilesReused += 1
@@ -72,7 +74,7 @@ export function typescriptProgramStats(program: ts.Program | undefined, rootPath
   }
   for (const rootFileName of rootFileNames) {
     const filePath = path.resolve(rootFileName)
-    if (sdkRoot && within(sdkRoot, filePath)) counts.sdkRootFiles += 1
+    if (sdkContains(sdk, filePath)) counts.sdkRootFiles += 1
     else if (within(rootPath, filePath)) counts.programProjectRootFiles += 1
     else counts.otherRootFiles += 1
   }

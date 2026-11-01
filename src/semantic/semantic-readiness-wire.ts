@@ -58,7 +58,7 @@ function assertSdkIssues(value: unknown, invalid: () => Error): void {
     if (["coverage-unproven", "declaration-not-found"].includes(issue.reason as string)
       && !("specifier" in issue)) return
     if (issue.reason !== "module-not-found" || typeof issue.specifier !== "string"
-      || issue.specifier.length > 4096 || !/^@(?:ohos|system|kit|arkts)\.[^\0\r\n]+$/.test(issue.specifier)) throw invalid()
+      || issue.specifier.length > 4096 || !/^@\w+\.[^\0\r\n]+$/.test(issue.specifier)) throw invalid()
   } catch { throw invalid() }
 }
 

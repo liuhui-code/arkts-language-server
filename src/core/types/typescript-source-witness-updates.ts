@@ -15,11 +15,13 @@ export function createCompilerInputWitness(resolver: LocalPackageResolver, rootP
   })), filePath => {
     const scope = boundary()
     if (!scope.workspacePhysicalRoot || !isWithinRoot(rootPath, filePath)
-      || scope.sdkRoot && isWithinRoot(scope.sdkRoot, filePath)) return false
+      || scope.sdkRoot && isWithinRoot(scope.sdkRoot, filePath)
+      || scope.sdkComponents?.some(component => isWithinRoot(component.root, filePath))) return false
     try {
       const physical = prospectiveRealPathSync(filePath)
       return isWithinRoot(scope.workspacePhysicalRoot, physical)
         && !(scope.sdkPhysicalRoot && isWithinRoot(scope.sdkPhysicalRoot, physical))
+        && !scope.sdkComponents?.some(component => isWithinRoot(component.physicalRoot, physical))
     } catch { return false }
   })
 }
@@ -27,8 +29,9 @@ export function createCompilerInputWitness(resolver: LocalPackageResolver, rootP
 /** Preserve the catalog token and stable read that own a known closed-source delta. */
 export function observeAdmittedSourceRead(filePath: string, witness: LoadedConfigurationWitness | undefined,
   sdkRoot: string | null, access: ProjectFileAccessPort | undefined, rootId: string,
-  revision: number, admitted: boolean): void {
-  if (!admitted || !access || sdkRoot && isWithinRoot(sdkRoot, filePath)) return
+  revision: number, admitted: boolean, components?: ModuleBoundary["sdkComponents"]): void {
+  if (!admitted || !access || sdkRoot && isWithinRoot(sdkRoot, filePath)
+    || components?.some(component => isWithinRoot(component.root, filePath))) return
   witness?.observeChangedSourceRead(filePath, () => {
     const token = access.tokenFor(rootId, revision, filePath)
     return token === undefined ? null : access.read(rootId, revision, filePath, token)
@@ -40,11 +43,13 @@ export function observePreparedSourceRead(document: SemanticWorkspaceView["docum
   witness: LoadedConfigurationWitness | undefined, boundary: {
     rootPath: string; workspacePhysicalRoot: string | undefined
     sdkRoot: string | null; sdkPhysicalRoot: string | undefined
+    sdkComponents?: ModuleBoundary["sdkComponents"]
   }): void {
   const filePath = path.resolve(document.path)
   if (!witness || !boundary.workspacePhysicalRoot || !/\.(?:ets|ts)$/.test(filePath)
     || !isWithinRoot(boundary.rootPath, filePath)
-    || boundary.sdkRoot && isWithinRoot(boundary.sdkRoot, filePath)) return
+    || boundary.sdkRoot && isWithinRoot(boundary.sdkRoot, filePath)
+    || boundary.sdkComponents?.some(component => isWithinRoot(component.root, filePath))) return
   // Only a previously loaded positive source fact can change. The witness still
   // checks both sides of this actual bounded byte read; cache hits never restamp it.
   witness.observeChangedSourceRead(filePath, () => {

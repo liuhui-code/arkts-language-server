@@ -1,6 +1,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import ts from "typescript"
+import { harmonyCompilerResources } from "../../../core/sdk/compiler-resources.js"
 import { safeRead } from "../../../core/types/typescript-safe-source-read.js"
 import { isWithinRoot } from "../../../core/types/typescript-source-boundary.js"
 import { SemanticInputUnavailableError } from "../../../core/types/typescript-query-inputs.js"
@@ -9,12 +10,12 @@ import { initialPreparationCheckpoint } from "../../coordinator/initial-preparat
 type Acquisition = Parameters<ts.DocumentRegistry["acquireDocumentWithKey"]>
 
 /** Preparse the supported SDK declaration catalog; never add these files as Program roots. */
-export function prepareSdkDeclarations(root: string, actual: Acquisition, registry: ts.DocumentRegistry): void {
+export function prepareSdkDeclarations(root: string, actual: Acquisition, registry: ts.DocumentRegistry,
+  directories = harmonyCompilerResources(root).declarationDirectories): void {
   const physicalRoot = fs.realpathSync.native(root)
   // Preacquire the same canonical paths as the actual LanguageService host.
   const caseSensitive = (actual[2] as ts.LanguageServiceHost).useCaseSensitiveFileNames?.() ?? false
-  const pending = ["ets/component", "ets/api", "ets/kits", "ets/arkts", "js/api"]
-    .map(directory => path.join(root, directory))
+  const pending = [...directories]
   while (pending.length) {
     initialPreparationCheckpoint()
     const directory = pending.pop()!

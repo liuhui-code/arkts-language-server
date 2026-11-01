@@ -95,6 +95,8 @@ export class LspProcess {
     this.child.stdout.on("data", (chunk) => this.acceptSafely(chunk))
     this.child.stdout.on("end", () => this.handleStdoutEnd())
     this.child.stderr.on("data", (chunk) => this.acceptStderr(chunk))
+    this.child.stdin.on("error", error => this.failTransport(new Error(
+      `LSP transport write failure: ${error.message}`, { cause: error })))
     this.child.on("close", (code, signal) => this.rejectPendingOnClose(code, signal))
   }
 
