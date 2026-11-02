@@ -20,7 +20,8 @@ impl TestDir {
         let path =
             std::env::temp_dir().join(format!("arkts-sidecar-{name}-{}-{nonce}", process::id()));
         fs::create_dir_all(&path).expect("test directory should be created");
-        Self(path)
+        // Native initialize canonicalizes its root before issuing source identities.
+        Self(fs::canonicalize(path).expect("test directory should have a physical identity"))
     }
 
     pub(crate) fn path(&self) -> &Path {

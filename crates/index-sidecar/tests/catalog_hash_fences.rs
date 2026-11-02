@@ -174,3 +174,37 @@ fn cancelling_a_hash_hit_never_creates_parser_workers_or_advances_old_generation
     assert_old(&mut process, 5);
     process.shutdown(6);
 }
+
+#[cfg(unix)]
+#[test]
+fn an_aliased_workspace_uses_physical_source_identity_for_the_parser_gate() {
+    let temp = TestDir::new("hash-alias-gate");
+    let physical = temp.path().join("physical");
+    let alias = temp.path().join("alias");
+    let cache = temp.path().join("cache");
+    let trace = temp.path().join("trace.jsonl");
+    let gate = temp.path().join("release");
+    create(&physical, 8);
+    std::os::unix::fs::symlink(&physical, &alias).unwrap();
+    seed(&alias, &cache);
+    fs::write(alias.join("0000.ets"), "export class HashLater0 {}").unwrap();
+    let source = alias.join("0007.ets");
+    let uri = arkts_index_sqlite::path_to_file_uri(&fs::canonicalize(&source).unwrap());
+    assert_ne!(uri, arkts_index_sqlite::path_to_file_uri(&source));
+    let mut process = SidecarProcess::spawn_with_environment(&[
+        ("ARKTS_INDEX_TEST_STREAM_TRACE", trace.as_os_str()),
+        ("ARKTS_INDEX_TEST_STREAM_FIRST_URI", OsStr::new(&uri)),
+        ("ARKTS_INDEX_TEST_STREAM_FIRST_GATE", gate.as_os_str()),
+    ]);
+    assert_eq!(initialize(&mut process, &alias, &cache, 1)["ok"], true);
+    start(&mut process, 2);
+    wait_trace(&trace, "first_wait");
+    assert_old(&mut process, 3);
+    fs::write(&gate, "release").unwrap();
+    let (status, _) = terminal(&mut process);
+    assert_eq!(status["phase"], "ready", "{status}");
+    assert_eq!(status["committedGeneration"], 2);
+    assert_eq!(parsed(&trace), 8);
+    assert_eq!(count(&trace, "first_wait"), 1);
+    process.shutdown(4);
+}
