@@ -101,3 +101,40 @@ check/build and29-file376/376PASS, zero fail/skip/cancel/todo, exit0,
 including the unexplained/non-reproduced initialization timeout. Fresh full CI
 on the authorized draft PR112 update remains pending; scoped sums are not a
 replacement whole-suite pass. No merge or approval-status change is implied.
+
+## 2026-11-02 index protocol corrective evidence — scoped verified
+
+The [authorized follow-up](../reports/2026-11-02-authorized-ide-follow-up.md)
+corrects malformed successful search payloads being treated as ordinary business
+errors. SidecarProtocolError now invokes existing session fail-closed behavior;
+genuine busy errors remain nonfatal and explicit close/open recovery is covered.
+Public-contract RED1/2→GREEN2/2, existing characterization20/20, extracted22/22,
+manifest4/4, Node20typecheck and independent26/26 pass. No complete follow-up gate,
+storage/recovery policy change or approval-status promotion is implied. Published
+CI and the separate unfinished owner-churn slice retain their own evidence.
+
+Final follow-up local validation: Node20check/build and ten complete files
+123/123PASS, exit0, zero fail/skip/cancel/todo,56958.721ms;1403/1403 frozen inputs
+match. This does not certify a complete suite or the separate OPEN/design-gated
+resource optimization. Published a11 CI is still awaiting its terminal outcome;
+fresh follow-up-head CI remains pending. No approval or policy change.
+
+## 2026-11-02 01:24 UTC — published a11 CI terminal PASS
+
+[Run41368012421](https://github.com/liuhui-code/arkts-language-server/actions/runs/41368012421)
+completed SUCCESS for exact published head
+`a11cdbc87b5223aae806f79d624b180df8f9d3c4`, base `b57ad075`, with validation
+checkouts on merge commit `a175ae2314973689a22fb6b029ecb025b2759305`.
+Complete fast2267/2267, artifact E2E7/7 and large E2E1/1 pass with zero
+failures/skips/cancellations. Rust records224 passing tests plus one explicitly
+executed initially ignored fixture (225 executions). Zed query tests2/2 and
+four SCM query validations, WASM release, Windows install/reinstall and framed
+LSP smoke pass. Raw local receipts:
+`/workspace/shared/pr112-batch2-ci-evidence/validate.log` and `windows-install.log`.
+
+This closes the published second-group CI gate, not a real editor UI/native
+Windows network-share or general resource qualification. Earlier full2260/2264
+and CI2233/2234 failures remain historical failures; the original startup timeout
+is still unexplained/non-reproduced, not retroactively assigned a cause.
+The separately authorized unpublished index follow-up has scoped123/123 PASS;
+it requires fresh CI on its own future head and cannot inherit this full PASS.

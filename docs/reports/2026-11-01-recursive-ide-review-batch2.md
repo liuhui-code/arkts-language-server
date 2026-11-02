@@ -3,7 +3,8 @@
 ## Scope and current status
 
 **Group 2 four-round implementation/review complete. Final local scoped gate
-376/376 PASS; original full 2260/2264 FAIL retained; fresh complete PR CI pending.** The user's 17:07:30 UTC instruction authorizes a second
+376/376 PASS; published a11 complete CI now PASS (fast2267/2267); original
+full2260/2264 FAIL retained. See the 2026-11-02 terminal receipt below.** The user's 17:07:30 UTC instruction authorizes a second
 group of at most four review/research/correct/review rounds after group 1 reaches
 its PR-validation terminal outcome; a completed review with no new confirmed
 issue may stop earlier. This is not round 5 of group 1. No merge is authorized.
@@ -17,7 +18,8 @@ All confirmed source-reset, replacement-load, namespace-retirement and source-
 repair corrections are integrated. The final state is Node20 check/build and
 29-file376/376 PASS, with1400/1400 inputs matching; manifest291 (unit119,
 protocol15, bundle149). The initialization timeout remains unexplained and
-non-reproduced. Fresh complete CI is pending after the authorized PR112 update. Group 1's original
+non-reproduced. Published a11 CI has now passed; the dated terminal receipt below supersedes
+earlier pending-CI checkpoints. Group 1's original
 local 2134/2222 FAIL and subsequent focused 263/263 PASS remain separate evidence
 in its [report](2026-11-01-recursive-ide-review.md).
 
@@ -388,3 +390,23 @@ Remaining touched handwritten over-limit debt was counted directly against HEAD:
 
 Cohesive extractions reduce but do not erase this migration debt. No performance,
 real installed-SDK/UI, native Windows or endurance graduation is inferred.
+
+## 2026-11-02 01:24 UTC — published a11 CI terminal PASS
+
+[Run41368012421](https://github.com/liuhui-code/arkts-language-server/actions/runs/41368012421)
+completed SUCCESS for exact published head
+`a11cdbc87b5223aae806f79d624b180df8f9d3c4`, base `b57ad075`, with validation
+checkouts on merge commit `a175ae2314973689a22fb6b029ecb025b2759305`.
+Complete fast2267/2267, artifact E2E7/7 and large E2E1/1 pass with zero
+failures/skips/cancellations. Rust records224 passing tests plus one explicitly
+executed initially ignored fixture (225 executions). Zed query tests2/2 and
+four SCM query validations, WASM release, Windows install/reinstall and framed
+LSP smoke pass. Raw local receipts:
+`/workspace/shared/pr112-batch2-ci-evidence/validate.log` and `windows-install.log`.
+
+This closes the published second-group CI gate, not a real editor UI/native
+Windows network-share or general resource qualification. Earlier full2260/2264
+and CI2233/2234 failures remain historical failures; the original startup timeout
+is still unexplained/non-reproduced, not retroactively assigned a cause.
+The separately authorized unpublished index follow-up has scoped123/123 PASS;
+it requires fresh CI on its own future head and cannot inherit this full PASS.

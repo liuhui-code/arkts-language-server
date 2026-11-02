@@ -1,6 +1,39 @@
 # References / semantic Feature Ledger
 
-## Current group 2 status — finalized for PR update, 2026-11-02
+## Current authorized follow-up — 2026-11-02
+
+Published baseline CI is now **SUCCESS**: run41368012421/head a11cdbc, complete
+fast2267/2267 and release/E2E/Windows smoke pass (01:24UTC). The new index
+follow-up has only its own scoped123/123 PASS; new-head complete CI remains
+pending. Resource optimization remains OPEN/design-gated. Original failures and
+unexplained startup timeout remain preserved; no UI/native-UNC graduation.
+
+**Index locally verified; publication/CI pending; resource OPEN**, [two-finding follow-up](../reports/2026-11-02-authorized-ide-follow-up.md),
+separately authorized at01:04UTC after the second four-round group; no retroactive
+extra round or change to published group2 history. Index malformed-success
+response classification now fails closed while preserving business errors and
+explicit recovery: characterization20/20, RED1/2→GREEN2/2, combined22/22,
+manifest4/4, Node20typecheck and independent26/26 PASS (R-07/R-08/R-34,
+ADR0005/0013). Remaining source/test line debt1066/761 is recorded.
+Owner/revision churn remains OPEN/design-gated (R-20/R-22/R-26/R-30/R-31):
+fresh-view16/19 and reorder-only17/19 alternatives are REJECTED; advance-only19/19
+lacks proof of advance-window mutations and is NOT ACCEPTED. The refreshed256-doc
+view omits the original ZZModel dependency; context4→2 is not a general benefit.
+No resource source integration or ADR policy change. Index final Node20check/build
+and ten complete files pass123/123, exit0, zero failed/skipped/cancelled/todo,
+56958.721ms;1403/1403 inputs match. This is scoped, not complete-suite acceptance;
+published a11 CI41368012421 is now SUCCESS at01:24UTC: fast2267/2267, artifact7/7,
+large1/1, Rust224+explicitfixture1, Zed2/2/fourSCM, WASM and Windows smoke pass.
+Exact head a11cdbc87b5223aae806f79d624b180df8f9d3c4, merge checkout
+a175ae2314973689a22fb6b029ecb025b2759305. This does not qualify unpublished changes. Follow-up fresh CI is pending;
+no complete-suite follow-up gate,
+Accepted promotion or merge is claimed. Prior group2 summaries below remain dated.
+
+
+## Historical group 2 pre-publication summary — 2026-11-02
+
+This summary preceded published a11 CI SUCCESS at01:24UTC recorded above;
+its pending-CI wording is historical, not current status.
 
 **Four-round implementation/review complete; all confirmed corrections integrated.**
 [Second-group report](../reports/2026-11-01-recursive-ide-review-batch2.md).

@@ -18,6 +18,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/harmony-project-model.test.mjs",
       "tests/project-sdk-target.test.mjs",
       "tests/index-adapter.test.mjs",
+      "tests/index-search-protocol-lifecycle.test.mjs",
       "tests/index-catalog-adapter.test.mjs",
       "tests/index-class-binding-discovery.test.mjs",
       "tests/class-binding-input-snapshot.test.mjs",
