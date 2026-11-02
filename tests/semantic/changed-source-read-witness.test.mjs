@@ -1,8 +1,10 @@
 import assert from "node:assert/strict"
+import { createHash } from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 import test from "node:test"
 import { createReadinessFixture } from "../support/semantic-readiness-lsp.mjs"
+import { withContextFailureEvidence } from "../support/context-failure-evidence.mjs"
 import { positionAt } from "../support/resident-interactive-lsp.mjs"
 
 for (const mutation of [null, "sdk-config", "read-window", "read-window-drift", "read-window-drift-sdk-config", "read-window-namespace"]) {
@@ -53,7 +55,8 @@ for (const mutation of [null, "sdk-config", "read-window", "read-window-drift", 
       const response = await complete(main("markerNew"))
       if (mutation === null) {
         assertMarker(response, "markerNew", "markerOld")
-        assert.equal(contexts(), beforeContexts, "known semantic source changes update the original LS")
+        withContextFailureEvidence(t, events, () =>
+          assert.equal(contexts(), beforeContexts, "known semantic source changes update the original LS"))
       } else {
         assert.equal(response.error?.code, -32803, JSON.stringify(response))
         if (readWindow) {
@@ -295,3 +298,100 @@ for (const sdkMutation of [false, true]) {
       assert.deepEqual((await session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })
     })
 }
+
+
+// Failure observability only: these tiny contracts do not launch an LSP child.
+const ownerAssertionError = () => {
+  try { assert.equal(2, 1, "known semantic source changes update the original LS") }
+  catch (error) { return error }
+}
+
+test("context failure evidence emits bounded allowlisted events and preserves the original error", () => {
+  const original = ownerAssertionError(), diagnostics = []
+  const events = Array.from({ length: 100 }, (_, index) => ({
+    event: "semantic.context.create", contextSequence: index, reason: "missing", ts: "2026-11-02T00:00:00Z",
+    sourcePath: "/private/source.ets", content: "PRIVATE_SOURCE", env: "PRIVATE_ENV",
+  }))
+  events[97].event = "semantic.context.evict"
+  events[98].event = "semantic.prepare.complete"
+  events[99] = { ...events[99], event: "references.resident.proof.rejected", reason: "x".repeat(500),
+    resetReason: null, newEntry: false, leaseCount: Infinity, stage: { content: "PRIVATE_SOURCE" },
+    pid: 42, monotonicNs: "123456789", residentScriptsBefore: 256, residentScriptsAfter: 257 }
+  events.push({ event: "unrelated", content: "PRIVATE_SOURCE" })
+  assert.throws(() => withContextFailureEvidence({ diagnostic: text => diagnostics.push(text) }, () => events,
+    () => { throw original }), error => error === original)
+  assert.equal(diagnostics.length, 1)
+  const report = JSON.parse(diagnostics[0])
+  assert.equal(report.event, "test.context-retention.failure")
+  assert.equal(report.matchedEvents, 100)
+  assert.equal(report.omittedEvents, 20)
+  assert.equal(report.events.length, 80)
+  assert.equal(report.events[0].contextSequence, 20)
+  assert.equal(report.events.at(-1).reason.length, 160)
+  assert.equal(report.events.at(-1).resetReason, null)
+  assert.equal(report.events.at(-1).newEntry, false)
+  assert.equal(report.events.at(-1).leaseCount, undefined)
+  assert.equal(report.events.at(-1).stage, undefined)
+  assert.deepEqual(report.events.slice(-3).map(row => row.event), [
+    "semantic.context.evict", "semantic.prepare.complete", "references.resident.proof.rejected"])
+  assert.ok(!diagnostics[0].includes("PRIVATE"))
+  assert.ok(!diagnostics[0].includes("/private/source.ets"))
+  assert.equal(report.events.at(-1).sourcePath, undefined)
+  assert.equal(report.events.at(-1).sourcePathSha256, createHash("sha256").update("/private/source.ets").digest("hex"))
+  assert.equal(report.events.at(-1).pid, 42)
+  assert.equal(report.events.at(-1).monotonicNs, "123456789")
+  assert.equal(report.events.at(-1).residentScriptsBefore, 256)
+  assert.equal(report.events.at(-1).residentScriptsAfter, 257)
+  assert.equal(report.events[0].sourcePathSha256, undefined)
+  assert.equal(original.actual, 2); assert.equal(original.expected, 1)
+  assert.equal(original.code, "ERR_ASSERTION")
+})
+
+test("context failure evidence leaves successful assertions lazy", () => {
+  assert.equal(withContextFailureEvidence({ diagnostic: () => assert.fail("unexpected output") },
+    () => assert.fail("unexpected collection"), () => 7), 7)
+})
+
+test("context failure evidence retains the assertion when collection fails", () => {
+  const original = ownerAssertionError(), diagnostics = []
+  assert.throws(() => withContextFailureEvidence({ diagnostic: text => diagnostics.push(text) },
+    () => { throw Error("PRIVATE_PATH") }, () => { throw original }), error => error === original)
+  assert.deepEqual(JSON.parse(diagnostics[0]), { event: "test.context-retention.failure", evidence: "unavailable" })
+})
+
+test("context failure evidence retains the assertion when output fails", () => {
+  const original = ownerAssertionError()
+  assert.throws(() => withContextFailureEvidence({ diagnostic: () => { throw Error("output failed") } },
+    () => [], () => { throw original }), error => error === original)
+})
+
+
+test("context failure evidence correlates only the three known Worker lifecycle events", () => {
+  const original = ownerAssertionError(), diagnostics = []
+  const context = { event: "semantic.context.create", contextSequence: 1, residentContextCount: 1, pid: 42 }
+  const events = [
+    { event: "semantic.worker.started", threadId: 1, semanticWorkerCount: 1, pid: 42 }, context,
+    { event: "semantic.worker.recovery.retired", oldThreadId: 1, pid: 42 },
+    { event: "semantic.worker.started", threadId: 2, semanticWorkerCount: Infinity, pid: 42 },
+    { event: "semantic.worker.recovery.complete", oldThreadId: 1, newThreadId: 2, documents: 3, pid: 42,
+      ts: "x".repeat(500), reason: "/PRIVATE_ERROR_PATH", error: "PRIVATE_ERROR", sourcePath: "/PRIVATE_SOURCE" },
+    context,
+    { event: "semantic.worker.failure", reason: "PRIVATE_ERROR" },
+    { event: "semantic.worker.recovery.failed", reason: "PRIVATE_ERROR" },
+  ]
+  assert.throws(() => withContextFailureEvidence({ diagnostic: text => diagnostics.push(text) }, () => events,
+    () => { throw original }), error => error === original)
+  const report = JSON.parse(diagnostics[0])
+  assert.equal(report.matchedEvents, 6)
+  assert.equal(report.omittedEvents, 0)
+  assert.deepEqual(report.events.filter(row => row.event === "semantic.worker.started").map(row => row.threadId), [1, 2])
+  assert.equal(report.events[2].oldThreadId, 1)
+  assert.equal(report.events[3].semanticWorkerCount, undefined)
+  assert.equal(report.events[4].oldThreadId, 1)
+  assert.equal(report.events[4].newThreadId, 2)
+  assert.equal(report.events[4].documents, 3)
+  assert.equal(report.events[4].ts.length, 160)
+  assert.ok(report.events.every(row => row.pid === 42))
+  assert.ok(!diagnostics[0].includes("PRIVATE"))
+  assert.equal(original.actual, 2); assert.equal(original.expected, 1)
+})
