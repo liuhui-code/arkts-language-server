@@ -80,6 +80,7 @@ async function systemProbe() {
       platform: "linux",
       now: () => Date.now(),
       readFile: fs.promises.readFile,
+      readDirectory: fs.promises.readdir,
       clockTicksPerSecond: clockTicks,
     })
   }

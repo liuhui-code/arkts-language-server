@@ -19,12 +19,14 @@ import { classifyWatchedSourceChanges } from "./watched-source-notifications.js"
 import { invalidateClosedDocument } from "./closed-document-invalidation.js"
 import { extractImportSpecifiers } from "./import-specifiers.js"
 import { prepareInitialWorkspace } from "./initial-workspace-preparation.js"
-import { WorkspaceResolutionInputs, invalidateCreatedResolutionClosures, RESOLUTION_INPUT_GENERATION } from "./workspace-resolution-inputs.js"
+import { WorkspaceResolutionInputs, invalidateCreatedResolutionClosures } from "./workspace-resolution-inputs.js"
 
 import type { ProjectMembershipSnapshot, ProjectFileAdmissionToken, ProjectFileAccessPort, SemanticWorkspaceView } from "./semantic-workspace-view.js"
+import { createSemanticWorkspaceView } from "./workspace-view-projection.js"
 import { SEMANTIC_SOURCE_SNAPSHOT_LIMITS } from "./semantic-workspace-view.js"
 export type { ProjectMembershipSnapshot, ProjectFileAdmissionToken, ProjectFileAccessPort, SemanticWorkspaceView } from "./semantic-workspace-view.js"
 
+export { WORKSPACE_CATALOG_STAMP } from "./semantic-workspace-view.js"
 export { MAX_DISK_SNAPSHOT_BYTES } from "./workspace-disk-source.js"
 
 const MAX_CACHED_DOCUMENTS = 512
@@ -961,36 +963,14 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
     this.evict(currentPath, new Set(documents.map((document) => document.path)))
     const changes = this.contentChanges.take(canonicalRoot)
 
-    const view: SemanticWorkspaceView = {
-      rootPath,
-      [RESOLUTION_INPUT_GENERATION]: resolutionGeneration,
-      canonicalRootId: canonicalRoot,
-      overlayPaths,
-      typeEngineResetEpoch: changes.typeEngineResetEpoch,
-      documents,
-      projectMembership,
-      removedPaths: [...new Set([
-        ...changes.removedPaths,
-        ...closureResult.removedPaths,
-        ...excludedOverlayPaths,
-      ])],
-      changedPaths: changes.changedPaths,
-      contentDelta: changes.contentDelta,
-      contentDeltas: this.contentChanges.history(canonicalRoot),
-      contentRevision: changes.contentRevision,
-      resetTypeEngine: changes.resetTypeEngine,
-      state: {
-        path: currentPath,
-        contentGeneration: current.contentGeneration,
-        documentVersion: current.documentVersion,
-        dependencyGeneration,
-        documentCacheHit,
-        dependencyClosureCacheHit: closureResult.cacheHit && !closureAuthorityChanged,
-        queryCacheHit: false,
-        loadedDocumentCount: documents.length,
-        syntaxReady: current.available,
-      },
-    }
+    const view = createSemanticWorkspaceView({
+      rootPath, canonicalRoot, resolutionGeneration, overlayPaths, documents, projectMembership,
+      catalogRevision: this.projectFileSets.get(canonicalRoot)?.revision ?? null,
+      changes, contentDeltas: this.contentChanges.history(canonicalRoot),
+      removedPaths: [...closureResult.removedPaths, ...excludedOverlayPaths],
+      currentPath, current, dependencyGeneration, documentCacheHit,
+      dependencyClosureCacheHit: closureResult.cacheHit && !closureAuthorityChanged,
+    })
     observePreparePhase(observer, "finalize", finalizeStarted)
     return view
   }

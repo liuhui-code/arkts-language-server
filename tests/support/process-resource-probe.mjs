@@ -1,3 +1,5 @@
+import { linuxProcessChildren } from "./linux-process-children.mjs"
+
 const DARWIN_PS_LINE = /^\s*(\d+)\s+(\d+)\s+(\S+\s+\S+\s+\d+\s+\d{2}:\d{2}:\d{2}\s+\d{4})\s+(\d+)\s+([0-9]+(?:\.[0-9]+)?)\s+(.+?)\s*$/
 
 export const PROCESS_RESOURCE_PROBE_CAPABILITIES = Object.freeze({
@@ -120,11 +122,13 @@ export function createProcessResourceProbe({
   now,
   runPs,
   readFile,
+  readDirectory,
   procRoot = "/proc",
   clockTicksPerSecond,
   maxProcesses = 64,
   maxPsBytes = 1024 * 1024,
   maxPsProcesses = 8_192,
+  maxProcProcesses = 8_192,
   maxProcBytes = 64 * 1_024,
 }) {
   requiredFunction(now, "now")
@@ -135,6 +139,8 @@ export function createProcessResourceProbe({
     return createLinuxProbe({
       now,
       readFile,
+      readDirectory,
+      maxProcProcesses,
       procRoot,
       clockTicksPerSecond,
       maxProcesses,
@@ -177,12 +183,15 @@ export function createProcessResourceProbe({
 function createLinuxProbe({
   now,
   readFile,
+  readDirectory,
+  maxProcProcesses,
   procRoot,
   clockTicksPerSecond,
   maxProcesses,
   maxProcBytes,
 }) {
   positiveInteger(clockTicksPerSecond, "Linux clock ticks per second")
+  positiveInteger(maxProcProcesses, "Linux proc process limit")
   const root = String(procRoot).replace(/\/+$/u, "") || "/"
 
   async function readProc(relativePath) {
@@ -252,9 +261,12 @@ function createLinuxProbe({
       const queue = [{ pid: serverPid, expectedParentPid: undefined }]
       const visited = new Set([serverPid])
       const processes = []
+      const children = linuxProcessChildren({ readProc, readStat, readDirectory, root,
+        maxProcesses: maxProcProcesses, parseChildren: parseLinuxProcChildren,
+        isExited: linuxProcessExited, error: probeError })
 
       while (queue.length > 0 && processes.length < maxProcesses) {
-        const { pid, expectedParentPid } = queue.shift()
+        const { pid, expectedParentPid, expectedStartTimeTicks } = queue.shift()
         let stat
         let rssBytes
         let childPids
@@ -263,10 +275,11 @@ function createLinuxProbe({
           if (linuxProcessExited(stat)) {
             throw probeError("EPROCESS_NOT_FOUND", `process ${pid} has exited`)
           }
+          if (expectedStartTimeTicks !== undefined && stat.startTimeTicks !== expectedStartTimeTicks) {
+            throw probeError("EPROCESS_IDENTITY_CHANGED", `process ${pid} start identity changed`)
+          }
           rssBytes = await readRss(pid, stat)
-          childPids = parseLinuxProcChildren(
-            await readProcessFile(pid, `task/${pid}/children`),
-          )
+          childPids = await children(stat)
         } catch (error) {
           if (pid !== serverPid && error?.code === "EPROCESS_NOT_FOUND") continue
           throw error
@@ -301,10 +314,10 @@ function createLinuxProbe({
           ...process,
         }))
 
-        for (const childPid of childPids) {
-          if (visited.has(childPid)) continue
-          visited.add(childPid)
-          queue.push({ pid: childPid, expectedParentPid: pid })
+        for (const child of childPids) {
+          if (visited.has(child.pid)) continue
+          visited.add(child.pid)
+          queue.push({ ...child, expectedParentPid: pid })
         }
       }
 

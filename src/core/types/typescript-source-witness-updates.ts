@@ -12,18 +12,21 @@ export function createCompilerInputWitness(resolver: LocalPackageResolver, rootP
   boundary: () => ModuleBoundary): LoadedConfigurationWitness | undefined {
   return resolver.createInputWitness(rootPath, required, onFailure && (failure => onFailure({
     ...failure, stage: "configuration", reason: `configuration-${failure.reason}`,
-  })), filePath => {
-    const scope = boundary()
-    if (!scope.workspacePhysicalRoot || !isWithinRoot(rootPath, filePath)
-      || scope.sdkRoot && isWithinRoot(scope.sdkRoot, filePath)
-      || scope.sdkComponents?.some(component => isWithinRoot(component.root, filePath))) return false
-    try {
-      const physical = prospectiveRealPathSync(filePath)
-      return isWithinRoot(scope.workspacePhysicalRoot, physical)
-        && !(scope.sdkPhysicalRoot && isWithinRoot(scope.sdkPhysicalRoot, physical))
-        && !scope.sdkComponents?.some(component => isWithinRoot(component.physicalRoot, physical))
-    } catch { return false }
-  })
+  })), filePath => canRecoverCompilerSourceNamespace(filePath, boundary()))
+}
+
+/** Lexical and physical SDK exclusion also protects source-only owner replacement. */
+export function canRecoverCompilerSourceNamespace(filePath: string, scope: ModuleBoundary): boolean {
+
+  if (!scope.workspacePhysicalRoot || !isWithinRoot(scope.rootPath, filePath)
+    || scope.sdkRoot && isWithinRoot(scope.sdkRoot, filePath)
+    || scope.sdkComponents?.some(component => isWithinRoot(component.root, filePath))) return false
+  try {
+    const physical = prospectiveRealPathSync(filePath)
+    return isWithinRoot(scope.workspacePhysicalRoot, physical)
+      && !(scope.sdkPhysicalRoot && isWithinRoot(scope.sdkPhysicalRoot, physical))
+      && !scope.sdkComponents?.some(component => isWithinRoot(component.physicalRoot, physical))
+  } catch { return false }
 }
 
 /** Preserve the catalog token and stable read that own a known closed-source delta. */

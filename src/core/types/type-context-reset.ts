@@ -12,7 +12,8 @@ import { resolutionInputWasRebased } from "../../project/resolution-input-admiss
 
 /** Validate load-owned resolution input before choosing the consumer's ordinary reset cause. */
 export function reconcileResolutionOwner(workspace: SemanticWorkspaceView, contextId: string,
-  resolver: LocalPackageResolver, coordinator: SemanticCoordinator<WorkspaceEngineEntry>, checkpoint: () => void) {
+  resolver: LocalPackageResolver, coordinator: SemanticCoordinator<WorkspaceEngineEntry>, checkpoint: () => void,
+  beforeSourceRetirement?: (previous: WorkspaceEngineEntry | undefined) => void) {
   const recoveredUnnotifiedInput = resolver.refreshInputGeneration(workspace.rootPath, checkpoint)
   const inputs = workspace[RESOLUTION_INPUT_GENERATION]
   const previous = coordinator.peek(contextId)
@@ -21,6 +22,7 @@ export function reconcileResolutionOwner(workspace: SemanticWorkspaceView, conte
   // silently rebase its prepared proof; observed source deltas already open a new input.
   if ((recoveredUnnotifiedInput || inputs?.recoveredUnnotifiedInput || resolutionInputWasRebased(resolver)) && !workspace.resetTypeEngine
     && !ownerChanged && !workspace.changedPaths?.length && !workspace.removedPaths?.length) {
+    beforeSourceRetirement?.(previous)
     coordinator.remove(contextId, "unnotified-resolution-change")
     throw new SemanticInputUnavailableError()
   }

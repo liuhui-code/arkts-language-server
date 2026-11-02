@@ -210,6 +210,8 @@ test("overlay synchronization cannot reuse an owner evicted by actual level3 pre
     const { session, uri, use, references, events, known, declaration } = await startOverlayFixture(t, {
       warm: true, benchmark: true,
     })
+    // Settle the real open-document diagnoses before defining a cold foreground interval.
+    await settleInitialOverlayDiagnostics(session, uri)
     const pressureAt = events().length
     const pressure = await session.request("arkts/benchmark/applyMemoryPressure", { level: "level3" })
     assert.deepEqual(pressure.result, { applied: "level3" }, JSON.stringify(pressure.error))
@@ -294,6 +296,49 @@ test("overlay synchronization cannot hide an unwatched same-size disk edit behin
       assert.deepEqual((await session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })
     }
   })
+
+test("diagnostics may rebuild a fresh post-eviction owner before edited references", { timeout: 60_000 }, async t => {
+  const { session, uri, use, references, events, known, declaration } = await startOverlayFixture(t, { warm: true })
+  await settleInitialOverlayDiagnostics(session, uri)
+  const pressureAt = events().length
+  const pressure = await session.request("arkts/benchmark/applyMemoryPressure", { level: "level3" })
+  assert.deepEqual(pressure.result, { applied: "level3" }, JSON.stringify(pressure))
+  const retiredOwner = () => events().slice(pressureAt).find(event => event.event === "semantic.context.evict"
+    && event.reason === "memory-level3" && event.residentContextCount === 0)
+  const deadline = performance.now() + 10_000
+  while (!retiredOwner() && performance.now() < deadline) await new Promise(resolve => setTimeout(resolve, 10))
+  const retired = retiredOwner()
+  assert.ok(retired, "the old owner must actually be released")
+  const first = events().length
+  session.changeDocument({ uri: uri("Use.ets"), version: 2,
+    text: use + "export const extra = new TargetThing()\n" })
+  const diagnostic = await session.transport.notification("textDocument/publishDiagnostics",
+    message => message.params.uri === uri("Use.ets") && message.params.version === 2, 10_000)
+  assert.deepEqual(diagnostic.params.diagnostics, [])
+  const created = events().slice(first).filter(event => event.event === "semantic.context.create")
+  assert.ok(created.length > 0, "diagnosis must establish a new owner before the foreground queries")
+  assert.ok(created.every(event => event.contextSequence !== retired.contextSequence))
+  const changed = [...known, location(uri("Use.ets"), 2, 25, 36)]
+  for (const includeDeclaration of [false, true]) {
+    const response = await references(includeDeclaration)
+    assert.equal(response.error, undefined, JSON.stringify(response))
+    assert.deepEqual(response.result, includeDeclaration ? [declaration, ...changed] : changed)
+  }
+  const actual = events().slice(first)
+  assert.ok(!actual.some(event => event.event === "semantic.context.reuse"
+    && event.contextSequence === retired.contextSequence), "the retired owner cannot be reused")
+  assert.equal(actual.filter(event => event.event === "semantic.worker.started").length, 0,
+    "normal diagnosis and references recover within the existing Worker")
+  assert.deepEqual((await session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })
+})
+
+async function settleInitialOverlayDiagnostics(session, uri) {
+  for (const file of ["Target.ets", "Use.ets"]) {
+    const report = await session.transport.notification("textDocument/publishDiagnostics",
+      message => message.params.uri === uri(file) && message.params.version === 1, 10_000)
+    assert.deepEqual(report.params.diagnostics, [])
+  }
+}
 
 function assertFreshOwnerRecovery(actual, projectFiles) {
   const queryAt = actual.findIndex(event => event.event === "semantic.references.complete")

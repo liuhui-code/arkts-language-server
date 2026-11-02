@@ -45,11 +45,11 @@ import type {
   SemanticWorkspaceView,
 } from "../workspace/document-store.js"
 import { CooperativeWork } from "./cooperative-work.js"
-import { typescriptProgramStats, measureOfficialCompilerReadiness } from "./typescript-program-stats.js"
+import { typescriptProgramStats, typescriptCacheStats, measureOfficialCompilerReadiness } from "./typescript-program-stats.js"
 import { OfficialReadinessState, withLoadedReadinessMembership, type ReadinessTrace } from "./typescript-semantic-readiness.js"
 import { TypeScriptContentVersions } from "./typescript-content-versions.js"
 import { applyTypeScriptContentChanges, membershipUpdate, removeTypeScriptProjectInputs, TypeScriptCompilerInputs } from "./typescript-compiler-inputs.js"
-import { createCompilerInputWitness, observeAdmittedSourceRead, observePreparedSourceRead } from "./typescript-source-witness-updates.js"
+import { createCompilerInputWitness, canRecoverCompilerSourceNamespace, observeAdmittedSourceRead, observePreparedSourceRead } from "./typescript-source-witness-updates.js"
 import { TypeScriptScriptAdmission } from "./typescript-script-admission.js"
 import { createScriptRecord, type ScriptRecord } from "./typescript-script-record.js"
 import { queryTypeScriptRename } from "./typescript-rename-query.js"
@@ -274,6 +274,12 @@ export class TypeScriptLanguageServiceEngine {
     assertSdkExportInputs(this.service)
   }
 
+  captureConfigurationBeforeSourceReset(checkpoint = () => this.checkpoint?.()) {
+    return this.configurationWitness?.captureConfigurationBeforeSourceReset(checkpoint,
+      file => canRecoverCompilerSourceNamespace(file, { rootPath: this.rootPath, workspacePhysicalRoot: this.workspacePhysicalRoot,
+        sdkRoot: this.sdkRoot, sdkPhysicalRoot: this.sdkPhysicalRoot, sdkComponents: this.sdkSelection?.components }))
+  }
+
   prepare(workspace: SemanticWorkspaceView): SemanticTypeEngineState {
     this.overlayPaths = workspace.overlayPaths
     this.projectMembershipRootId = workspace.canonicalRootId ?? path.resolve(workspace.rootPath)
@@ -312,21 +318,9 @@ export class TypeScriptLanguageServiceEngine {
   }
 
   cacheState() {
-    return {
-      projectMembership: {
-        status: this.projectMembershipStatus,
-        ...(this.projectMembershipReason ? { reason: this.projectMembershipReason } : {}),
-        revision: this.projectMembershipRevision,
-        paths: this.projectMembershipPaths.size,
-      },
-      residentScripts: {
-        files: this.scripts.size,
-        bytes: this.scriptBytes,
-        maxFiles: MAX_SCRIPTS,
-        maxBytes: MAX_SCRIPT_BYTES,
-      },
-      lazySnapshots: this.lazySnapshots.state(),
-    }
+    return typescriptCacheStats({ membership: { status: this.projectMembershipStatus, reason: this.projectMembershipReason,
+      revision: this.projectMembershipRevision, paths: this.projectMembershipPaths }, scripts: this.scripts,
+      scriptBytes: this.scriptBytes, maxFiles: MAX_SCRIPTS, maxBytes: MAX_SCRIPT_BYTES, lazySnapshots: this.lazySnapshots.state() })
   }
 
   measureCompilerReadiness(): ReturnType<typeof measureOfficialCompilerReadiness> {

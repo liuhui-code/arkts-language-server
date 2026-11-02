@@ -366,6 +366,7 @@ export interface VersionedSemanticResult<T> {
 export interface SemanticWorkspaceFileChangeBatch {
   rootUri: DocumentUri
   rootDirty: boolean
+  configurationChanged?: boolean
   resourceDirty?: boolean
   resourceChanged?: boolean
   changes: Array<{

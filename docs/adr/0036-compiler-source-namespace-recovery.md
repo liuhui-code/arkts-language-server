@@ -99,3 +99,50 @@ package resolver 原有配置事实恢复路径不变。本决定不承诺所有
 75声明构建产物及输入/SDK/原30000源码最终复核一致；三个已核实测试driver重建及初版审计误分类保留。
 未知namespace重载约3.1秒、64有效请求最大3783.785ms，未解决的成本/UI/索引/完整范围限制见最终报告。
 证据`.bench/nav-input-recovery-v2-20261031/`，原13e90ee7日志/产物不删除或追认为合格。
+
+## 2026-11-01 group 2 SDK reset evidence — IN_PROGRESS
+
+The [second-group review](../reports/2026-11-01-recursive-ide-review-batch2.md)
+reproduces SDK load-witness loss across source content-revision owner disposal
+on baseline and candidate. A non-source-input admission guard before that reset
+passes six files 51/51 plus typecheck/build on Node20.19.5, with healthy source
+and explicit configuration recovery controls. Original RED and an intermediate
+incorrect old-epoch guard remain recorded. Independent round 2 then confirms a
+watched source deletion can reset via other source-driven reasons and bypass the
+first guard; correction is in progress. The first slice is not overall SDK
+qualification. This enforces the existing configuration boundary and does not
+change this ADR's status or relax final query/lease input validation.
+
+Round 2 additionally confirms mutation during replacement SDK loading, after the
+first pre-disposal check; a before-only proof is insufficient. Explicit
+configuration authority propagation now passes 97/97 across six files on Node20
+plus typecheck, after RED3/8. Only actual configuration events set the bounded,
+drain-scoped marker; source overflow does not. A facts-only old non-source proof
+capsule and post-load recheck are still being finalized. The intended sequence
+retires the old LS before constructing its replacement, carries no old Program,
+and preserves load-owned identities and explicit-configuration recovery. These
+scoped receipts are not final SDK correctness or a change to this ADR's status.
+
+The round 2 candidate is now integrated: a frozen facts-only capsule retains old
+non-source denial across retire-first replacement, with checks before retirement,
+after construction and after preparation. A further namespace-retirement RED
+led to the shared admission callback before reconcileResolutionOwner. Pending
+facts are bounded to 4096 units and never retain an old LS/Program/context.
+Closing independent review passes SDK10/10/config12/12 with no new must-fix;
+the authoritative frozen cohort subsequently passes88/88 on Node20 plus
+typecheck/build. Round 3 independent review found no new confirmed must-fix
+(public/protocol21/21 on Node20), ending implementation review under the early
+stop rule. Full check:fast/CI remain pending; no full PASS.
+The source-driven callsite/explicit-authority audit and non-authoritative earlier
+runs are recorded separately in the group 2 report. No new ADR or status change.
+
+Group 2 round 4 final validation also confirms a guard regression against f280:
+repaired dangling compiler-source lookup could not replace its invalid old owner.
+The narrow integrated correction permits only qualified source-reset failures
+to retire under current non-source proofs; ordinary resident validity and SDK/
+configuration rejection remain unchanged. New healthy-repair/silent-SDK controls,
+Node20 five-file91/91 and independent selected3/3 pass. Original full2260/2264 FAIL
+remains; final29-file combined validation passes376/376, exit0, with Node20
+typecheck/buildPASS and1400/1400 frozen inputs matching. Fresh full PR CI is pending. See the second-group report
+for retained REDs, filtered-selection counts and the separately unexplained
+initialization timeout. This is not new architecture or a changed approval status.

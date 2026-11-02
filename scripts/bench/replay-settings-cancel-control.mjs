@@ -6,6 +6,7 @@ import os from "node:os"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
 
+import { waitForSamplerExit } from "./sampler-shutdown.mjs"
 import { LspSession } from "../../tests/support/lsp-session.mjs"
 import {
   comparableLocations, loadOracle, normalizeReferences, validateLocations,
@@ -14,7 +15,7 @@ import {
   gitValue, projectRoot, sha256File, validateBenchmarkManifest, validateInputs,
 } from "./reference-replay-input.mjs"
 import {
-  attachNearestRss, childExit, maxNullable, readJsonLines, readStructuredLogs,
+  attachNearestRss, maxNullable, readJsonLines, readStructuredLogs,
   waitForCatalog, waitForSample,
 } from "./reference-replay-evidence.mjs"
 import {
@@ -344,8 +345,7 @@ async function replayClone(options, input) {
       return { error: error.message }
     })
     mark("server-process-closed", { closeResult })
-    sampler.kill("SIGINT")
-    await childExit(sampler)
+    await waitForSamplerExit(sampler, options.sampleIntervalMs)
     samplerExit = { code: sampler.exitCode, signal: sampler.signalCode }
   }
   return makeReport(options, input, {

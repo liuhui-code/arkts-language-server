@@ -211,6 +211,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
         kind: "workspaceFilesChanged",
         rootUri: batch.rootUri,
         rootDirty: batch.rootDirty,
+        ...(batch.configurationChanged === true ? { configurationChanged: true } : {}),
         resourceDirty: batch.resourceDirty === true,
         resourceChanged: batch.resourceChanged === true,
         changes: batch.changes,

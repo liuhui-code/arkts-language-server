@@ -1,3 +1,4 @@
+import { decodeWorkspaceFilesChangedMutation } from "./semantic-worker-workspace-mutation-codec.js"
 import { canonicalWorkerFileUri, workerUriWithinRoot as isUriWithinRoot } from "./semantic-worker-uri.js"
 import { admitsWorkerDiskSource, decodeWorkerDiskSource, type SemanticWorkerDiskSource } from "./semantic-worker-disk-source.js"
 import { readOwnDataRecord } from "./semantic-worker-record.js"
@@ -110,6 +111,7 @@ export interface SemanticWorkerWorkspaceFilesChangedMutation {
   readonly kind: "workspaceFilesChanged"
   readonly rootUri: string
   readonly rootDirty: boolean
+  readonly configurationChanged?: boolean
   readonly resourceDirty: boolean
   readonly resourceChanged: boolean
   readonly changes: readonly SemanticWorkerWorkspaceFileChange[]
@@ -465,12 +467,18 @@ export function decodeSemanticWorkerMutation(value: unknown): SemanticWorkerMuta
     "text",
     "rootUri",
     "rootDirty",
+    "configurationChanged",
     "resourceDirty",
     "resourceChanged",
     "changes",
   ])
   if (!input) throw invalidMutation()
-  if (input.kind === "workspaceFilesChanged") return decodeWorkspaceFilesChangedMutation(input)
+  if (input.kind === "workspaceFilesChanged") return decodeWorkspaceFilesChangedMutation(input, {
+    SEMANTIC_WORKER_PROTOCOL_VERSION, MAX_SEMANTIC_WORKER_FILE_CHANGES, MAX_SEMANTIC_WORKER_MESSAGE_BYTES,
+    hasExactKeys, isPositiveSafeInteger, isCanonicalSemanticWorkerFileUri, isUriWithinRoot,
+    invalidMutation, messageTooLarge, ownDataRecord, assertMessageEnvelope, numberWireBytes,
+    booleanWireBytes, messageStringWireBytes, jsonObjectWireBytes,
+  })
   const kind = input.kind
   const expectedKeys = kind === "close"
     ? ["protocol", "epoch", "revision", "kind", "uri", "documentVersion"]
@@ -995,104 +1003,6 @@ function invalidMutation(): SemanticWorkerProtocolError {
 
 function documentTextTooLarge(): SemanticWorkerProtocolError {
   return new SemanticWorkerProtocolError("Semantic worker document text exceeds byte limit")
-}
-
-function decodeWorkspaceFilesChangedMutation(
-  input: Record<string, unknown>,
-): SemanticWorkerWorkspaceFilesChangedMutation {
-  if (
-    !hasExactKeys(input, [
-      "protocol",
-      "epoch",
-      "revision",
-      "kind",
-      "rootUri",
-      "rootDirty",
-      "resourceDirty",
-      "resourceChanged",
-      "changes",
-    ])
-    || input.protocol !== SEMANTIC_WORKER_PROTOCOL_VERSION
-    || !isPositiveSafeInteger(input.epoch)
-    || !isPositiveSafeInteger(input.revision)
-    || !isCanonicalSemanticWorkerFileUri(input.rootUri)
-    || typeof input.rootDirty !== "boolean"
-    || typeof input.resourceDirty !== "boolean"
-    || typeof input.resourceChanged !== "boolean"
-    || (input.resourceDirty === true && input.resourceChanged !== true)
-  ) throw invalidMutation()
-  const decodedChanges = decodeWorkspaceFileChanges(input.changes, input.rootUri)
-  if (!input.rootDirty && !input.resourceChanged && decodedChanges.value.length === 0) {
-    throw invalidMutation()
-  }
-  const mutation: SemanticWorkerWorkspaceFilesChangedMutation = {
-    protocol: SEMANTIC_WORKER_PROTOCOL_VERSION,
-    epoch: input.epoch,
-    revision: input.revision,
-    kind: "workspaceFilesChanged",
-    rootUri: input.rootUri,
-    rootDirty: input.rootDirty,
-    resourceDirty: input.resourceDirty,
-    resourceChanged: input.resourceChanged,
-    changes: decodedChanges.value,
-  }
-  assertMessageEnvelope([
-    ["protocol", numberWireBytes(SEMANTIC_WORKER_PROTOCOL_VERSION)],
-    ["epoch", numberWireBytes(mutation.epoch)],
-    ["revision", numberWireBytes(mutation.revision)],
-    ["kind", messageStringWireBytes(mutation.kind)],
-    ["rootUri", messageStringWireBytes(mutation.rootUri)],
-    ["rootDirty", booleanWireBytes(mutation.rootDirty)],
-    ["resourceDirty", booleanWireBytes(mutation.resourceDirty)],
-    ["resourceChanged", booleanWireBytes(mutation.resourceChanged)],
-    ["changes", decodedChanges.wireBytes],
-  ])
-  return Object.freeze(mutation)
-}
-
-interface DecodedWorkspaceFileChanges {
-  readonly value: readonly SemanticWorkerWorkspaceFileChange[]
-  readonly wireBytes: number
-}
-
-function decodeWorkspaceFileChanges(
-  value: unknown,
-  rootUri: string,
-): DecodedWorkspaceFileChanges {
-  if (
-    !Array.isArray(value)
-    || Object.getPrototypeOf(value) !== Array.prototype
-    || value.length > MAX_SEMANTIC_WORKER_FILE_CHANGES
-  ) throw invalidMutation()
-  const keys = Reflect.ownKeys(value)
-  if (
-    keys.length !== value.length + 1
-    || keys.some((key, index) => index < value.length
-      ? key !== String(index)
-      : key !== "length")
-  ) throw invalidMutation()
-  const changes: SemanticWorkerWorkspaceFileChange[] = []
-  let wireBytes = 2 + Math.max(0, value.length - 1)
-  for (let index = 0; index < value.length; index += 1) {
-    const descriptor = Object.getOwnPropertyDescriptor(value, String(index))
-    if (!descriptor?.enumerable || !("value" in descriptor)) throw invalidMutation()
-    const change = ownDataRecord(descriptor.value, ["uri", "kind"])
-    if (
-      !change
-      || !hasExactKeys(change, ["uri", "kind"])
-      || !isCanonicalSemanticWorkerFileUri(change.uri)
-      || !isUriWithinRoot(change.uri, rootUri)
-      || (change.kind !== "created" && change.kind !== "changed" && change.kind !== "deleted")
-    ) throw invalidMutation()
-    const decoded = Object.freeze({ uri: change.uri, kind: change.kind })
-    changes.push(decoded)
-    wireBytes += jsonObjectWireBytes([
-      ["uri", messageStringWireBytes(decoded.uri)],
-      ["kind", messageStringWireBytes(decoded.kind)],
-    ], MAX_SEMANTIC_WORKER_MESSAGE_BYTES - wireBytes, messageTooLarge)
-    if (wireBytes > MAX_SEMANTIC_WORKER_MESSAGE_BYTES) throw messageTooLarge()
-  }
-  return Object.freeze({ value: Object.freeze(changes), wireBytes })
 }
 
 function invalidRequest(): SemanticWorkerProtocolError {

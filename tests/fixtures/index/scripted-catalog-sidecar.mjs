@@ -46,7 +46,7 @@ input.on("line", (line) => {
       if (process.env.ARKTS_INDEX_TEST_SCENARIO === "storage-stages") {
         catalogTimer = storageCatalog(status, progress, generation, () => { committedGeneration = generation }); break
       }
-      if ((process.env.ARKTS_INDEX_TEST_SCENARIO === "reference-generation-race"
+      if ((["reference-generation-race", "semantic-units"].includes(process.env.ARKTS_INDEX_TEST_SCENARIO)
         && generation > 1) || process.env.ARKTS_INDEX_TEST_SCENARIO === "reference-preopen-stale") {
         progress(status("activating", "ready", "ready", generation))
         const release = `${process.env.ARKTS_INDEX_TEST_AUDIT}.release-${generation}`
@@ -441,7 +441,7 @@ input.on("line", (line) => {
     }
     case "status":
       respond(request.id, status("ready", "ready", "ready",
-        ["reference-generation-race", "reference-preopen-stale"].includes(process.env.ARKTS_INDEX_TEST_SCENARIO)
+        ["reference-generation-race", "reference-preopen-stale", "semantic-units"].includes(process.env.ARKTS_INDEX_TEST_SCENARIO)
           && generation > committedGeneration ? generation : null))
       break
     case "shutdown":

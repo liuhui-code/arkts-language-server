@@ -17,9 +17,25 @@ const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 test("classifies every executable test entry exactly once in an explicit layer", () => {
   const audit = validateTestLayerManifest({ root: projectRoot, manifest: TEST_LAYER_MANIFEST })
 
-  assert.equal(audit.entryCount, 286)
+  assert.equal(audit.entryCount, 303)
   assert.equal(audit.assignments["tests/index-cache-directory.test.mjs"], "unit-contract")
   assert.equal(audit.assignments["tests/lsp-index-storage.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/sampler-shutdown.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/semantic/references-semantic-units.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/workspace-catalog-stamp.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/semantic/readiness-catalog-ordering.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/readiness-catalog-input-windows.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/readiness-catalog-cancellation.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/readiness-catalog-dirty-namespace.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/readiness-catalog-eviction.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/readiness-catalog-call-hierarchy.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/index-search-protocol-lifecycle.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/process-resource-probe-portability.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/lsp-diagnostic-invalidation-errors.test.mjs"], "protocol")
+  assert.equal(audit.assignments["tests/lsp-workspace-symbol-freshness.test.mjs"], "protocol")
+  assert.equal(audit.assignments["tests/lsp-completion-text.test.mjs"], "protocol")
+  assert.equal(audit.assignments["tests/lsp-call-hierarchy-publication.test.mjs"], "protocol")
+  assert.equal(audit.assignments["tests/lsp-dependent-diagnostics.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/project-sdk-target.test.mjs"], "unit-contract")
   assert.equal(audit.assignments["tests/semantic/hms-kit-resolution.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/semantic/catalog-storage-progress.test.mjs"], "bundle-e2e")
@@ -338,9 +354,9 @@ test("classifies every executable test entry exactly once in an explicit layer",
     "bundle-e2e",
   )
   assert.deepEqual(audit.layerCounts, {
-    "unit-contract": 118,
-    protocol: 11,
-    "bundle-e2e": 149,
+    "unit-contract": 123,
+    protocol: 15,
+    "bundle-e2e": 157,
     "artifact-e2e": 4,
     "sealed-artifact-e2e": 1,
     large: 1,

@@ -25,20 +25,18 @@ use rusqlite::{
 };
 
 pub mod cache_gc;
+mod catalog_api;
 mod catalog_build;
 mod catalog_control;
 mod catalog_document;
 mod catalog_files;
 mod catalog_inputs;
 mod catalog_insert;
-pub use catalog_inputs::CatalogInputs;
 mod catalog_store;
+mod catalog_stream;
 mod catalog_trace;
 mod store_open;
-pub use catalog_build::{
-    CatalogBuildProgress, CatalogStage, build_catalog, build_catalog_with_fingerprint,
-};
-pub use catalog_store::CatalogStore;
+pub use catalog_api::*;
 mod catalog_replace;
 mod class_binding_migration;
 mod class_binding_storage;

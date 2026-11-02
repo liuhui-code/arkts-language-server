@@ -20,7 +20,8 @@ impl TestDir {
         let path =
             std::env::temp_dir().join(format!("arkts-sidecar-{name}-{}-{nonce}", process::id()));
         fs::create_dir_all(&path).expect("test directory should be created");
-        Self(path)
+        // Native initialize canonicalizes its root before issuing source identities.
+        Self(fs::canonicalize(path).expect("test directory should have a physical identity"))
     }
 
     pub(crate) fn path(&self) -> &Path {
@@ -87,6 +88,22 @@ impl SidecarProcess {
                 delay.as_millis().to_string(),
             );
         }
+        Self::from_command(command)
+    }
+
+    pub(crate) fn spawn_with_environment(environment: &[(&str, &std::ffi::OsStr)]) -> Self {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_arkts-index-sidecar"));
+        command
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        for (key, value) in environment {
+            command.env(key, value);
+        }
+        Self::from_command(command)
+    }
+
+    fn from_command(mut command: Command) -> Self {
         let mut child = command.spawn().expect("sidecar should spawn");
         let stdin = child.stdin.take().expect("sidecar stdin should be piped");
         let stdout = child.stdout.take().expect("sidecar stdout should be piped");

@@ -22,11 +22,11 @@ pub struct CatalogStore {
 
 impl CatalogStore {
     pub fn open(base: impl AsRef<Path>, identity: &str) -> Result<Self, StoreError> {
-        let control = Control::open(base.as_ref(), identity)?;
+        let (control, initial_store) = Control::open(base.as_ref(), identity)?;
         let guard = control.shared()?;
         let publication = control.active()?;
         let path = control.path(&publication);
-        let store = open_published(&path, identity, &publication)?;
+        let store = open_published(&path, identity, &publication, initial_store)?;
         drop(guard);
         Ok(Self {
             current: RefCell::new((path, store)),
@@ -45,7 +45,7 @@ impl CatalogStore {
         let path = self.control.path(&publication);
         let mut current = self.current.borrow_mut();
         if current.0 != path {
-            let store = open_published(&path, &self.identity, &publication)?;
+            let store = open_published(&path, &self.identity, &publication, None)?;
             let old = std::mem::replace(&mut *current, (path, store));
             crate::catalog_files::retire(old.1, self.control.base.clone(), self.identity.clone());
         }
@@ -64,12 +64,16 @@ pub(super) fn open_published(
     path: &Path,
     identity: &str,
     publication: &Publication,
+    initial_store: Option<SqliteStore>,
 ) -> Result<SqliteStore, StoreError> {
     crate::catalog_control::safe_file(path)?;
-    if publication.database != "symbols-v2.sqlite3" && !path.is_file() {
+    if !path.is_file() {
         return Err(incompatible("published catalog database is missing"));
     }
-    let store = SqliteStore::open(path, identity)?;
+    let store = match initial_store {
+        Some(store) if publication.database == "symbols-v2.sqlite3" => store,
+        _ => SqliteStore::open_existing(path, identity)?,
+    };
     if store.metadata()?.committed_generation < publication.generation {
         return Err(incompatible("published catalog generation is incomplete"));
     }

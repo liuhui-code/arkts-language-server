@@ -1,5 +1,302 @@
 # References / semantic Feature Ledger
 
+## Bounded catalog streaming implementation — 2026-11-02
+
+R-01/R-02/R-20：[ADR0042](../adr/0042-bounded-catalog-streaming.md)仍 **Proposed**；
+[执行清单](2026-11-02-streaming-catalog-execution.md)与[实现/TDD报告](../reports/2026-11-02-streaming-catalog-implementation.md)。
+**最终主仓native259PASS/1FAIL/1原ignored，失败保留；诊断已收口，仅允许draft待fresh完整CI**：100K原replacement-cost测试
+cold32679.111ms、warm removal113042.933ms违反removal≤cold，原因及与512miss关联未知。只读确认旧replace_all路径未改；唯一一次child隔离诊断
+cold48485.075ms/warm removal7660.407ms通过，原full失败不覆盖，不继续重跑，不称ready-to-merge。
+Node20 check/build与14完整文件38/38、fmt/clippy通过；1447源与84runtime pins末次一致。
+完整local check:fast/目标HEAD CI未跑，不能称整合全绿；独立candidate旧通过不能覆盖最终失败。
+M1 force四单项槽→单writer与M3cold流写/hash-first完整键热命中0parser、miss二读fence已实现；
+固定parent session、Complete+EOF、旧lease与全部SQL/source/发布校验保留。
+首次candidate cache_gc protected≠observing未知失败仍保留，后续通过不称修复。
+M1单对30K全进程采样最大RSS3,015,224→104,096KiB（约102MiB），但READY慢34.31s，不称硬界/整体提速。
+M3的512十runs通过但miss1.958→7.778s更慢；30K cold/hot四runs计数/查询/hash/exit0通过，
+cold289.835→247.097s、hot14.949→1.750s仅单对，cold主要差额在校验；未跑30Kmiss/force。
+固定512 AB/BA12进程通过但miss方向混合（46.655/6.945与5.983/2.859s），不称一致回归/修复。
+R-02采样native内存不代表总LSP/Worker或精确初始化峰。完整Node/CI、Windows/真实UI均未验收。
+M4本轮明确defer文件级缓存/变更集/分片，先定位成本；范围决定不等于M4交付完成。
+ADR0029预算null、ADR0034完整代、ADR0041会话根不变；不新建ledger、不改R项毕业状态。
+
+## Current 30K catalog diagnostic candidate — 2026-11-02
+
+R-01/R-02/R-20：[分层证据与候选报告](../reports/2026-11-02-dense-30k-catalog-diagnosis.md)。
+现有私有分批路径已不同于历史Windows巨事务。Linux合成30K冷/复用/force
+269.919/6.721/314.982s均READY、exit0、四查询一致；仍有96–106s校验。
+独立探针定位quick_check/FK和返回尾部，控制提交仅约15ms；非真实Windows/UI验收。
+已集成最小候选提前释放已写documents，保留全部校验/源码证明/锁/复用/持久化。
+经公开Rust构建API的分配器观测RED→GREEN、三对6/6 READY/exit0/查询与输入一致；中位READY
+253.891→231.497s仅为观测，第二对quick_check变慢且释放前已有18.832s差异。
+校验期RSS和返回尾部降低，峰值未实质改善，不全归因于drop或外推Windows。
+局部集成exit0/987输入全匹配：Rust235PASS/0FAIL/1原有ignored外部455fixture，
+fmt/strictClippy/release、pnpmcheck/build、7完整Node文件24/24零fail/skip/cancel。
+非完整check:fast，外部fixture待CI显式执行；新的完整CI待发布，原PR112绿CI不覆盖本候选。
+不新建ledger，不改既有R项优先级/毕业状态；ADR0034仍Proposed，历史失败保留。
+
+## Current c462 CI correction — 2026-11-02
+
+**Complete CI41389230974 FAILED2281/2284; reviewed three-file correction
+integrated; full local check:fast FAILED2283/2286 retained; follow-on fixes
+integrated; ready for existing draft PR and fresh CI; instrumented canonical
+gate FAILED2294/2295 retained.** Rust235 and Windows
+pass; later Linux gates were not reached. The prior401/401 local selection
+omitted navigation-close-reopen. Independent review confirms unconditional
+post-capture guard rejected legitimate late catch-up when early preparation
+never ran; optional performed-object gating preserves the prior lazy path while
+still guarding performed `{changed:false}`. Source/SDK/namespace and final
+proofs are not relaxed. Separately the pre/source fixture assumed filesystem
+order; target-native-lstat before/after tests replace that assumption without
+production sorting. Unchanged navigation inverse2RED; focused50/50 and final
+window7/7 PASS. Forced native reverse order3PASS/4name skips. Earlier changed-only
+variants were GREEN, not mutation-kill proof. Manifest300/bundle156 unchanged.
+Evidence and retained CI/local failure history: [current report](../reports/2026-11-02-continuous-ide-review.md#current-follow-on-c462-ci-failure-and-integrated-correction--2026-11-02).
+Full local gate:3fail,0skip/cancel/todo,3561406.298545ms;953/953 frozen inputs
+match. Original three CI failures pass, but new failures are cancellation CLI
+cases118/169 (exit1/FAIL vs NOT_CANCELLED) and resident incoming-call package
+retarget case203 ([] vs -32803). Fake-server CLI cases do not execute the
+three-file correction; cleanup removed their report and no cause is inferred.
+Subsequent original tracing confirms background diagnosis recovered the package
+before incoming; a two-line v1-diagnostic precondition preserves the original
+error/watcher-oracle assertions, current/unconditional variants each8/8. Added
+v2 analogue is separate, not original sequence or b129 baseline. Cancel/mixed
+now share natural sampler exit plus polling-aware cooperative TERM grace; one
+retained real late-SIGINT false FAIL is proven, not retrospective attribution
+of cleaned-up original reports. Final Node20 five-file42/42 PASS; old SIGINT and
+fixed5s grace RED, earlier Node24 40/42 and Node20 41/42 retained. Timing-aware
+assertions keep budgets/exit0/PID/RSS; actual100-edit mixed CLI not run. Manifest
+now301(unit122/bundle156). Instrumented canonical full gate2294/2295,exit1,
+0skip/cancel/todo,4118031.704339ms;986/986 hashes match. Prior confirmed failures
+pass, but rename-completeness:97 explicit barrel alias id2rename hits original5s
+deadline; cause unknown and not fixed. Same-deadline Node20 paired diagnosis
+completed: current/b129 each three selected passes (each1PASS/5name skips),
+then each original complete file6/6 without skips. Baseline4961.657ms does not
+prove load causality; shared logging ENOENT in passes establishes no cause.
+556 fixtures saved/copyerror0/unexpectedpreload0;6071 directly observed child
+launches omit evidence preload (not exhaustive grandchildren). External evidence
+shim/bridge/test-parent hook are unshipped; production/deadlines unchanged.
+This is instrumented, not an uninstrumented receipt. Maintainer-local evidence
+paths are not repository links. Reviewed corrections ready for publication on the same draft PR and fresh
+complete CI; no new confirmed must-fix. No complete acceptance yet; b129 remains
+last full-green revision and separate gate/scoped counts are not summed;
+no Accepted promotion or authority relaxation. Following summaries are historical
+checkpoints.
+
+## Historical continuous review — 2026-11-02, pre-c462-CI local verification
+
+**Implemented and locally verified; fresh complete candidate CI pending publication.**
+[Continuous report](../reports/2026-11-02-continuous-ide-review.md).
+Publishedb129d3e04e71a6b5fd68293d9153f6264d309c7e CI41372738816 nowSUCCESS:
+fast2269/2269, artifact7/7, large1/1, Rust224+explicitfixture1, query2/2/SCM4,
+WASM and Windows smoke. This does not qualify the newer combined candidate.
+Native recovery six reviewed files integrated: isolated234PASS/1existingignored,
+release/Clippy/recovery smoke,98/98 inputs and independent malformed-control/
+12concurrentbootstrap probes. Original STALE results were not semantic READY.
+Resource15files+manifest2 now integrated: eligible dirty prescan before first raw
+capture, cached canonical-root/catalog stamp, post-refresh guard before compiler
+update; original source/disk/target inputs retained, cache absence uses legacy
+path. No new proof-capsule/API adoption. Independent32/32 plus ordering4/SDK19
+pass; controlled4→2 owner counts retain two-scan cost, no general performance
+claim. Current-profile prewarm failures make two-probe comparison inconclusive.
+Current manifest300(unit121/bundle156/protocol15), after reviewed fixture
+integration04:11UTC. Earlier joint gate terminal exit1 at Node:
+399/401PASS, two original-deadline timeouts, zero skip/cancel/todo,890904.056ms;
+Rust234PASS/1existingignored,fmt/Clippy/release,Node20check/buildPASS. All1415
+inputs match. Third-restart readiness5s and first conservative reference run30s
+are under serial baselineb129/current three-pair diagnosis; cause unassigned,
+main source edits paused. Later same41-file diagnostic rerun400/401FAIL(exit1,
+681291.856ms), observer0, all1415source and runtime hashes match. Originaltimeouts
+pass there and paired12/12 plus completefiles34/34each, but remain unexplained/
+non-reproduced, not fixed. New sole rerunfailure is scoped-request count2vs1;
+deterministic legitimate generation2 reproduces the old assertion on both revisions.
+The lost original fixture prevents reconstructing its actual generation. A test-only
+hold/release correction preserves immediate watched-change→query ordering, old
+count1/fallback/no-recovery while held, then new roots/full results after release.
+Strengthened paired6/6 and six completefiles21/21 PASS; final independent order
+review approved, all six artifact hashes matched at integration. Production and
+deadlines unchanged. Final local gate exits0: pnpm check PASS and42 complete Node files401/401
+PASS, zero fail/skip/cancel/todo,698669.119535ms. All1416 frozen source inputs
+and production dist/native-runtime hashes match (continuous-integration final
+receipts). Same production input already passed Rust234/1existingignored,
+fmt/strictClippy/release and Node20 build; only six test files changed afterward.
+All confirmed defects corrected; independent scoped review found no new must-fix.
+Local scoped acceptance is not complete CI or continuous-review completion. Evidence: continuous-recovery-timeout/UNITS-RESULT.md
+and units-fix-artifact. Fresh combined-head CI awaits publication. Static
+cross-layer review found no new confirmed must-fix, not a whole execution pass.
+No completion/merge/Accepted promotion. Original rejected designs, failures,
+UI/nativeUNC/30K/endurance limits remain in the detailed report and prior receipts.
+
+## Previous authorized follow-up receipts
+
+## Current authorized follow-up — 2026-11-02
+
+Published baseline CI is now **SUCCESS**: run41368012421/head a11cdbc, complete
+fast2267/2267 and release/E2E/Windows smoke pass (01:24UTC). The new index
+follow-up has only its own scoped123/123 PASS; new-head complete CI remains
+pending. Resource optimization remains OPEN/design-gated. Original failures and
+unexplained startup timeout remain preserved; no UI/native-UNC graduation.
+
+**Index locally verified; publication/CI pending; resource OPEN**, [two-finding follow-up](../reports/2026-11-02-authorized-ide-follow-up.md),
+separately authorized at01:04UTC after the second four-round group; no retroactive
+extra round or change to published group2 history. Index malformed-success
+response classification now fails closed while preserving business errors and
+explicit recovery: characterization20/20, RED1/2→GREEN2/2, combined22/22,
+manifest4/4, Node20typecheck and independent26/26 PASS (R-07/R-08/R-34,
+ADR0005/0013). Remaining source/test line debt1066/761 is recorded.
+Owner/revision churn remains OPEN/design-gated (R-20/R-22/R-26/R-30/R-31):
+fresh-view16/19 and reorder-only17/19 alternatives are REJECTED; advance-only19/19
+lacks proof of advance-window mutations and is NOT ACCEPTED. The refreshed256-doc
+view omits the original ZZModel dependency; context4→2 is not a general benefit.
+No resource source integration or ADR policy change. Index final Node20check/build
+and ten complete files pass123/123, exit0, zero failed/skipped/cancelled/todo,
+56958.721ms;1403/1403 inputs match. This is scoped, not complete-suite acceptance;
+published a11 CI41368012421 is now SUCCESS at01:24UTC: fast2267/2267, artifact7/7,
+large1/1, Rust224+explicitfixture1, Zed2/2/fourSCM, WASM and Windows smoke pass.
+Exact head a11cdbc87b5223aae806f79d624b180df8f9d3c4, merge checkout
+a175ae2314973689a22fb6b029ecb025b2759305. This does not qualify unpublished changes. Follow-up fresh CI is pending;
+no complete-suite follow-up gate,
+Accepted promotion or merge is claimed. Prior group2 summaries below remain dated.
+
+
+## Historical group 2 pre-publication summary — 2026-11-02
+
+This summary preceded published a11 CI SUCCESS at01:24UTC recorded above;
+its pending-CI wording is historical, not current status.
+
+**Four-round implementation/review complete; all confirmed corrections integrated.**
+[Second-group report](../reports/2026-11-01-recursive-ide-review-batch2.md).
+Node20.19.5 typecheck/build and29 complete files pass376/376, exit0, zero
+failures/skips/cancellations/todo,577502.642ms;1400/1400 final inputs match.
+Manifest291: unit119, protocol15, bundle149. This is a scoped result, not a fresh
+complete-suite PASS. Original local full2260/2264FAIL (four failures, exit1) and
+first-group CI2233/2234FAIL on f280c9bb remain retained, as do all prior receipts.
+
+Integrated work: workspace-symbol overlay identity/member publication fence;
+retire-first bounded SDK/configuration proof capsules; explicit configuration
+event authority; qualified source-only repaired-identity recovery; atomic marker
+and deterministic replacement-constructor test fixtures. R-13/R-31/R-26/R-34
+remain mapped to ADR0010/0013/0036 with ADR0025/0038 constraints preserved.
+No ADR approval state changes. Initialization-response timeout remains
+unexplained/non-reproduced; no timeout extension or claimed cause fix.
+
+The authorized same draftPR112 update and fresh complete locked-toolchain CI are
+next. No merge, fifth round, performance/real-SDK/UI/native-network-share or
+endurance graduation. The following group-2 paragraphs are historical checkpoints,
+not present RUNNING or unintegrated status; original measurements remain intact.
+
+## Historical group 2 checkpoints — 2026-11-01
+
+**Group 2 four-round implementation/review complete; scoped376/376 PASS, fresh full CI pending**, [second-group receipt](../reports/2026-11-01-recursive-ide-review-batch2.md).
+Group 1 CI on `f280c9bb`, run41335246739, is terminal Linux2233/2234 FAIL,
+Windows smoke PASS; original local2134/2222 FAIL and focused263/263 PASS remain.
+SDK-config source-reset witness loss (R-13/R-31, R-26; ADR0025/0036/0038) has
+deterministic baseline/candidate RED and a first guard slice passing six files
+51/51, typecheck/build on Node20.19.5. Round 2 independently confirms a watched
+source-deletion reset reason bypass plus late replacement-load SDK mutation;
+retire-first facts-only proof capsule is now integrated, including a third
+namespace-retirement RED/fix. Pending facts bounded4096; denial survives failed
+replacement. Closing review SDK10/10/config12/12 passes with no new must-fix;
+authoritative frozen cohort88/88 plus typecheck/build pass on Node20; this is
+not an overall SDK/full aggregate GREEN.
+Explicit drain-scoped configuration authority now crosses the bounded wire/event
+paths without granting source-overflow authority: RED3/8→Node20 six-file97/97,
+typecheck and independent new12/12 PASS. Manifest291/unit119/protocol15.
+A separate workspace-symbol overlay publication defect (R-13/R-31, R-34;
+ADR0010) is publicly RED4/9→focusedGREEN30/30: final snapshot identity/membership
+fence, -32801 for obsolete results, cancellation priority preserved. Scripted
+semantic/index providers are not real-compiler/UI qualification. Final combined
+checks remain pending; independent workspace-symbol review passes new9/existing21
+on Node20.19.5 with no must-fix in that scope. Node20.19.5 is installed
+for next gates, not retroactive validation of prior Node24 evidence.
+Second group is at most four rounds or earlier no-new-confirmed-issue stop;
+round3 independent full-diff review found no new confirmed must-fix, with
+Node20 independent21/21/no skips. Early-stop condition reached: no artificial
+round4/new-feature work; full validation and any confirmed gate failures remain. Full pnpm check:fast is RUNNING since19:34UTC on1399 frozen inputs, not passed. At19:39UTC
+one call-hierarchy reopen marker assertion has failed (empty string versus true).
+Round4 confirms async marker creation-before-content on baseline and candidate.
+Atomic pending-file rename correction passes Node20check/build and fivefiles89/89;
+reverting only rename gives0/4RED; independent closing review4/4 passes. A second
+Round4 failure confirms a late-constructor fixture precondition gap: one isolated reproduction never entered the hook, SDK stayedAPI24, healthy in-place update succeeded.
+Isolated constructor full file17/17 and20 late-pair repeats40/40 pass; round1
+counterfactual healthy1pass/late2fail/14filtered, independent3/3 with14filtered.
+Node exits0; repeat shellwrapper1 was a trailing false guard, not test failure.
+Both corrections are reviewed without new must-fix but remain unintegrated while
+the original full run continues; frozen main unchanged. At20:24UTC it has four
+observed failures: the two fixture cases plus unprovable-lookup diagnostic recovery
+and pre-query initialize timeouts. Both new causes remain unconfirmed; static
+triage only, no source changes/reruns until terminal full receipt.
+Four-round limit reached; these are validation corrections, not a fifth round.
+Terminal20:35UTC full receipt:2264tests/2260pass/4fail, zero skip/cancel/todo,
+exit1,3533772.229ms; all1399 frozen inputs match. Verified hierarchy patch and
+final SDK17-case fixture are now integrated, diffcheckPASS. Two remaining
+reference recovery is now a confirmed guard regression (f280PASS/round1FAIL),
+narrowly corrected to permit source-only repaired-identity retirement without
+weakening config/resident validity. Integrated19-case SDK/source coverage, Node20
+five-file91/91 and independent3/3 with42filtered pass. Initialization timeout is
+unexplained/non-reproduced; no timeout change or claimed fix. Final check/build+
+29 complete files terminated376/376PASS, exit0, zero failed/skipped/cancelled/todo,
+577502.642ms; Node20check/buildPASS,1400/1400 final inputsMATCH. Original full
+2260/2264FAIL remains unchanged. Authorized same draftPR112 update and fresh
+complete locked-toolchain CI are next; no merge or fresh full PASS claimed. Prior running/
+unintegrated statements in detailed receipts are historical checkpoints. No merge and no speculative catalog rewrite.
+
+## Historical group 1 review receipt — 2026-11-01
+
+**Group 1 local implementation/review complete; fresh full CI pending:** [recursive IDE correctness review](../reports/2026-11-01-recursive-ide-review.md)
+on parent `b57ad075`, at most four review/research/correct/review rounds, stopping
+earlier only when a completed round finds no new confirmed issue. Round 1 covers
+plain-text completion insertion (R-26 / ADR0022), call-hierarchy final freshness
+(R-28, R-13/R-31 / ADR0037), cross-file diagnostic invalidation (R-29, R-13/R-31 /
+ADR0010), and Windows UNC URI correctness (R-34 plus affected capability IDs).
+Focused public completion 14/14 and call hierarchy 12/12 pass after preserved
+REDs; scripted semantic fixtures do not establish real-compiler/UI coverage.
+Frozen round 1 diagnostics now pass 12/12 (five new actual-compiler cases);
+partial parallel round 2 now passes focused 15/15 after cross-workspace debounce
+and expected-invalidation logging corrections. Round 3 independent frozen-diff
+review found no additional confirmed must-fix issue within its diff; subsequent
+aggregate failures triggered round 4 sampler portability work (R-02/R-34, ADR0013). Authorized workspace Rust 1.95.0 is installed/hash-verified; Linux-hosted
+UNC helper/public and full crate checks pass, but native Windows is NOT_RUN and
+release library validation passes. Protocol 92/92, final manifest 4/4 and strict
+Clippy pass. Original frozen full check:fast terminated exit 1: 2222 tests,
+2134 pass / 88 fail, zero skips/cancellations/todo, 4306278.564141ms; 935/935 frozen
+inputs match. Failures classify as 86 sampler-related plus navigation and
+oversized-readiness fixture preconditions, one each. All original failures remain.
+All three round 4 patches are integrated: bounded sampler fallback/visibility
+proofs, deterministic Main-first navigation, and anchored oversized-readiness
+fixture. Prior separate checks preserve 46+29+1 sampler, 3/3 navigation baseline/
+candidate and 1/1 readiness baseline/candidate plus candidate full 16/16 receipts.
+Manifest is now 289 (unit 118 / protocol 14 / bundle 149). Integrated revalidation
+of all 19 original failing files plus related changes, 34 complete files,
+passed 263/263, exit 0, zero failed/skipped/cancelled/todo, 341678.5413ms after
+passing typecheck/build. Final frozen inputs all match (FINAL_INPUTS_UNCHANGED=1).
+This does not mean 2222/2222 passed; the original full FAIL remains. Fresh complete verification
+is planned in the draft PR's locked-toolchain CI, not replaced by this subset.
+No aggregate GREEN or resource graduation is claimed.
+Baseline install/check/build passes do not prove these fixes. The initial full-check attempt was
+BLOCKED by missing cargo, not a confirmed product regression. Installation
+resolved that environment blocker; no aggregate full pass is claimed.
+
+Current policy precedence: [ADR0007's 2026-10-28 revision](../adr/0007-semantic-readiness-and-500ms-slo.md)
+sets a 500ms experience target, not a per-request or replacement 550ms/P95 hard
+line. [ADR0029](../adr/0029-opt-in-rss-memory-budget.md) sets the default RSS
+budget to null, retaining explicit positive-budget pressure semantics and normal
+cleanup/fault recovery. Earlier latency thresholds, fixed default budgets,
+counts, failures and stage statuses below are **dated historical receipts**, not
+current-policy overrides. No approval status or product graduation is inferred
+from this review. Full-scan optimization remains unimplemented/unmeasured here.
+
+Queued continuation (user instruction, 2026-11-01 17:07:30 UTC): current rounds
+are **group 1**, at most four rounds. After its current validation and draft PR
+complete and group 1 PR validation reaches a terminal outcome, execute **group 2**, again at most four rounds or stop earlier when a
+completed review finds no new confirmed issue. Group 2 has **not started** and
+will have a separate grouped receipt; current Round 4 is not Round 5. No merge
+into main is authorized by this continuation, and pending current gates remain
+pending. The user authorized independent-branch push and draft PR at 17:05 UTC;
+merging main remains unauthorized.
+
+## Historical authorized work and progress receipts
+
 Current authorized work (2026-10-19, parent `3add6970`):
 [ADR 0019](../adr/0019-stable-programs-and-request-inputs.md) adopts stable semantic
 groups with retained LS/Programs, pressure-managed residency, shared request

@@ -1,4 +1,4 @@
-import { pathToFileURL } from "node:url"
+import { fileURLToPath, pathToFileURL } from "node:url"
 
 import {
   CodeActionKind,
@@ -25,8 +25,8 @@ import type {
   SemanticResolvedCodeAction,
 } from "../contracts/semantic-engine.js"
 import type { ProjectResolverPort } from "../contracts/project-resolver.js"
-import type {
-  WorkspaceSymbolServicePort,
+import { WorkspaceSymbolContentModifiedError,
+  type WorkspaceSymbolServicePort,
 } from "../contracts/workspace-symbol-service.js"
 import { ARKUI_STRING_RESOURCE_GLOB, ARKUI_CONFIGURED_STRING_RESOURCE_GLOB } from "../core/arkui/resource-path.js"
 import { SingleRootProjectResolver } from "../project/single-root-project-resolver.js"
@@ -113,6 +113,8 @@ export function runLanguageServer(services?: LanguageServerServices): void {
   })
   const completionHandlers = registerCompletionHandlers({ connection, documents, semantic, requests, assertRunning })
   const diagnostics = createDocumentDiagnostics({
+    onWorkspaceRefresh: (workspaceCount, documentCount) =>
+      logger.info("diagnostics.project.refresh.scheduled", { workspaceCount, documentCount }),
     connection,
     documents,
     semantic,
@@ -200,7 +202,7 @@ export function runLanguageServer(services?: LanguageServerServices): void {
     freshness.cancelWorkspace(opened.workspaceId)
     semantic.sync(opened)
     workspaceSymbols?.sync(opened)
-    diagnostics.update(document)
+    // TextDocuments emits onDidChangeContent for opens as well.
   })
   connection.onDidChangeConfiguration(({ settings }) => {
     const configured = settings?.arkts
@@ -215,7 +217,10 @@ export function runLanguageServer(services?: LanguageServerServices): void {
       rootUri, rootDirty: true, changes: [],
     })))
     workspaceSymbols?.workspaceFilesChanged(workspaceRoots.map(({ id }) => id))
-    for (const document of documents.all()) diagnostics.update(document)
+    for (const workspaceId of new Set([
+      ...workspaceRoots.map(workspace => workspace.id),
+      ...documents.all().map(document => projects.projectFor(document.uri).id),
+    ])) diagnostics.refreshWorkspace(workspaceId)
     if (projectChanged) {
       logger.info("project.selection.changed", { workspaceCount: workspaceRoots.length })
     }
@@ -238,23 +243,24 @@ export function runLanguageServer(services?: LanguageServerServices): void {
           .map((batch) => projects.projectFor(batch.rootUri).id),
       )
       const dirtyWorkspaceIds = new Set(
-        batches.filter((batch) => batch.rootDirty).map((batch) => projects.projectFor(batch.rootUri).id),
+        batches.filter((batch) => batch.rootDirty
+          || batch.changes.some(change => /\.(?:ets|ts)$/i.test(fileURLToPath(change.uri)))).map((batch) => projects.projectFor(batch.rootUri).id),
       )
-      if (resourceWorkspaceIds.size > 0 || dirtyWorkspaceIds.size > 0) {
+      for (const workspaceId of dirtyWorkspaceIds) diagnostics.refreshWorkspace(workspaceId)
+      if (resourceWorkspaceIds.size > 0) {
         let scheduledDocuments = 0
         for (const document of documents.all()) {
           const workspaceId = projects.projectFor(document.uri).id
           if (
-            dirtyWorkspaceIds.has(workspaceId)
-            || (document.getText().includes("$r") && resourceWorkspaceIds.has(workspaceId))
+            !dirtyWorkspaceIds.has(workspaceId)
+            && document.getText().includes("$r") && resourceWorkspaceIds.has(workspaceId)
           ) {
             scheduledDocuments += 1
             diagnostics.update(document)
           }
         }
-        logger.info(dirtyWorkspaceIds.size > 0
-          ? "diagnostics.project.refresh.scheduled" : "diagnostics.resource.refresh.scheduled", {
-          workspaceCount: new Set([...resourceWorkspaceIds, ...dirtyWorkspaceIds]).size,
+        logger.info("diagnostics.resource.refresh.scheduled", {
+          workspaceCount: resourceWorkspaceIds.size,
           documentCount: scheduledDocuments,
         })
       }
@@ -267,7 +273,7 @@ export function runLanguageServer(services?: LanguageServerServices): void {
     codeActionResolutions.forgetDocument(document.uri)
     semantic.sync(changed)
     workspaceSymbols?.sync(changed)
-    diagnostics.update(document)
+    diagnostics.refreshWorkspace(changed.workspaceId)
   })
   documents.onDidClose(({ document }) => {
     freshness.cancelDocument(document.uri)
@@ -276,6 +282,7 @@ export function runLanguageServer(services?: LanguageServerServices): void {
     semantic.close(document.uri)
     workspaceSymbols?.closeDocument(document.uri)
     diagnostics.close(document.uri)
+    diagnostics.refreshWorkspace(projects.projectFor(document.uri).id)
   })
   connection.onCodeAction(async (params, token) => {
     if (!includesQuickFix(params.context.only)) return []
@@ -428,6 +435,8 @@ export function runLanguageServer(services?: LanguageServerServices): void {
         outcome = "superseded"
         return []
       }
+      if (error instanceof WorkspaceSymbolContentModifiedError)
+        throw new ResponseError(LSPErrorCodes.ContentModified, error.message)
       throw error
     } finally {
       request.finish()

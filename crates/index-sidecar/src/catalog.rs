@@ -3,15 +3,14 @@ use std::{
     fs,
     path::{Path, PathBuf},
     sync::{
+        Arc,
         atomic::{AtomicU8, Ordering},
         mpsc::Sender,
     },
-    thread,
     time::{Duration, Instant},
 };
 
-use arkts_index_core::{Document, DocumentSymbols, parse_document_symbols};
-use arkts_index_sqlite::{CatalogInputs, path_to_file_uri};
+use arkts_index_sqlite::path_to_file_uri;
 use ignore::{
     Match,
     gitignore::{Gitignore, GitignoreBuilder},
@@ -21,7 +20,10 @@ use ignore::{
 mod source;
 #[path = "catalog_test_gate.rs"]
 mod test_gate;
-use source::{SourceRead, SourceStamp, read_source};
+
+#[path = "catalog_discovery.rs"]
+mod discovery;
+use discovery::{is_gitignored, is_hard_excluded_directory, is_source_path, load_ignore_file};
 
 use self::test_gate::{test_entry_delay, wait_at_test_catalog_gate, wait_for_test_entry_delay};
 
@@ -48,6 +50,16 @@ const HARD_EXCLUDED_DIRECTORIES: &[&str] = &[
     "target",
 ];
 
+#[path = "catalog_hash.rs"]
+mod hash;
+#[path = "catalog_observer.rs"]
+mod observer;
+#[path = "catalog_scan_test_gate.rs"]
+mod scan_gate;
+#[path = "catalog_stream_test_gate.rs"]
+mod stream_gate;
+#[path = "catalog_streaming.rs"]
+mod streaming;
 #[path = "catalog_worker.rs"]
 mod worker;
 use worker::CATALOG_CANCELLED;
@@ -69,7 +81,7 @@ fn scan_workspace(
     workspace_identity: &str,
     generation: u64,
     force: bool,
-    state: &AtomicU8,
+    state: &Arc<AtomicU8>,
     updates: &Sender<CatalogUpdate>,
 ) -> Result<(), worker::CatalogFailure> {
     let mut progress = CatalogProgress::default();
@@ -84,12 +96,16 @@ fn scan_workspace(
         });
         return Ok(());
     }
-    let mut documents = Vec::new();
-    let mut sources = Vec::new();
-    let mut inputs = (!force).then(CatalogInputs::new).and_then(Result::ok);
+    let mut manifest = Vec::new();
+    let mut planner = if force {
+        None
+    } else {
+        Some(
+            hash::Planner::begin(database_path, workspace_identity, generation)
+                .map_err(|error| Box::new((progress.clone(), error.to_string())))?,
+        )
+    };
     let mut rejected_uris = Vec::new();
-    let mut document_batch = Vec::with_capacity(PROGRESS_FILE_BATCH);
-    let mut document_batch_bytes = 0usize;
     let mut last_progress = Instant::now();
     let mut entries_since_progress = 0usize;
     let mut files_since_progress = 0usize;
@@ -98,6 +114,7 @@ fn scan_workspace(
     let mut root_matchers = Vec::new();
     let loaded = load_ignore_file(workspace_root, &workspace_root.join(".git/info/exclude"));
     if loaded.had_error {
+        hash::invalidate(&mut planner, hash::Issue::IgnoreRules);
         progress.rejected += 1;
     }
     if let Some(matcher) = loaded.matcher {
@@ -121,12 +138,13 @@ fn scan_workspace(
         let mut ignore_matchers = task.ignore_matchers;
         let loaded = load_ignore_file(&directory, &directory.join(".gitignore"));
         if loaded.had_error {
+            hash::invalidate(&mut planner, hash::Issue::IgnoreRules);
             progress.rejected += 1;
         }
         if let Some(matcher) = loaded.matcher {
             ignore_matchers.push(matcher);
         }
-        let entries = match fs::read_dir(&directory) {
+        let entries = match scan_gate::io("directory", &directory, || fs::read_dir(&directory)) {
             Ok(entries) => entries,
             Err(error) if relative_directory.as_os_str().is_empty() => {
                 return Err(Box::new((
@@ -135,6 +153,7 @@ fn scan_workspace(
                 )));
             }
             Err(_) => {
+                hash::invalidate(&mut planner, hash::Issue::Directory);
                 progress.rejected += 1;
                 maybe_emit_progress(
                     generation,
@@ -157,9 +176,10 @@ fn scan_workspace(
                 });
                 return Ok(());
             }
-            let entry = match entry {
+            let entry = match scan_gate::io("entry", &directory, || entry) {
                 Ok(entry) => entry,
                 Err(_) => {
+                    hash::invalidate(&mut planner, hash::Issue::Entry);
                     progress.rejected += 1;
                     entries_since_progress += 1;
                     maybe_emit_progress(
@@ -184,9 +204,10 @@ fn scan_workspace(
             entries_since_progress += 1;
             let path = entry.path();
             let relative = relative_directory.join(entry.file_name());
-            let file_type = match entry.file_type() {
+            let file_type = match scan_gate::io("file-type", &path, || entry.file_type()) {
                 Ok(file_type) => file_type,
                 Err(_) => {
+                    hash::invalidate(&mut planner, hash::Issue::FileType);
                     progress.rejected += 1;
                     maybe_emit_progress(
                         generation,
@@ -276,9 +297,10 @@ fn scan_workspace(
             progress.discovered += 1;
             files_since_progress += 1;
             let uri = path_to_file_uri(&path);
-            let metadata = match entry.metadata() {
+            let metadata = match scan_gate::io("source-metadata", &path, || entry.metadata()) {
                 Ok(metadata) => metadata,
                 Err(_) => {
+                    hash::invalidate(&mut planner, hash::Issue::SourceMetadata);
                     progress.rejected += 1;
                     rejected_uris.push(uri);
                     maybe_emit_progress(
@@ -296,35 +318,16 @@ fn scan_workspace(
             bytes_since_progress = bytes_since_progress.saturating_add(metadata.len());
             if metadata.len() > MAX_SOURCE_BYTES {
                 progress.policy_skipped += 1;
+            } else if force {
+                manifest.push((uri, path));
             } else {
-                match read_source(&path) {
-                    Ok(SourceRead::Text(text)) => {
-                        sources.push(SourceStamp::capture(&path, &metadata, &text));
-                        if let Some(inputs) = &mut inputs {
-                            inputs.record(&uri, &text);
-                        }
-                        document_batch_bytes = document_batch_bytes.saturating_add(text.len());
-                        document_batch.push(Document::new(uri, text));
-                        if document_batch.len() >= PROGRESS_FILE_BATCH
-                            || document_batch_bytes >= PROGRESS_BYTE_BATCH as usize
-                        {
-                            parse_document_batch(
-                                &mut document_batch,
-                                &mut documents,
-                                &mut rejected_uris,
-                                &mut progress,
-                            );
-                            document_batch_bytes = 0;
-                        }
-                    }
-                    Ok(SourceRead::PolicySkipped) => {
-                        progress.policy_skipped += 1;
-                    }
-                    Err(_) => {
-                        rejected_uris.push(uri);
-                        progress.rejected += 1;
-                    }
-                }
+                planner.as_mut().unwrap().admit(
+                    uri,
+                    path,
+                    metadata,
+                    &mut progress,
+                    &mut rejected_uris,
+                );
             }
             maybe_emit_progress(
                 generation,
@@ -338,122 +341,22 @@ fn scan_workspace(
         }
     }
 
-    parse_document_batch(
-        &mut document_batch,
-        &mut documents,
-        &mut rejected_uris,
-        &mut progress,
-    );
     progress.total_files = Some(progress.discovered);
-    worker::activate(worker::Activation {
-        database_path,
-        workspace_identity,
-        generation,
-        state,
-        updates,
-        documents,
-        rejected_uris,
-        progress,
-        sources,
-        fingerprint: inputs.map(CatalogInputs::finish).filter(|_| !force),
-    })
-}
-
-fn parse_document_batch(
-    batch: &mut Vec<Document>,
-    documents: &mut Vec<DocumentSymbols>,
-    rejected_uris: &mut Vec<String>,
-    progress: &mut CatalogProgress,
-) {
-    if batch.is_empty() {
-        return;
+    if force {
+        return streaming::build(streaming::ForceBuild {
+            database_path,
+            workspace_identity,
+            generation,
+            state,
+            updates,
+            manifest,
+            rejected_uris,
+            progress,
+        });
     }
-    let batch = std::mem::take(batch);
-    let worker_count = PARSE_WORKERS.min(batch.len());
-    let chunk_size = batch.len().div_ceil(worker_count);
-    let mut parsed_chunks = thread::scope(|scope| {
-        let handles: Vec<_> = batch
-            .chunks(chunk_size)
-            .enumerate()
-            .map(|(chunk_index, chunk)| {
-                scope.spawn(move || {
-                    (
-                        chunk_index,
-                        chunk.iter().map(parse_document_symbols).collect::<Vec<_>>(),
-                    )
-                })
-            })
-            .collect();
-        handles
-            .into_iter()
-            .map(|handle| {
-                handle
-                    .join()
-                    .expect("catalog parser worker should not panic")
-            })
-            .collect::<Vec<_>>()
-    });
-    parsed_chunks.sort_by_key(|(chunk_index, _)| *chunk_index);
-    let results = parsed_chunks.into_iter().flat_map(|(_, results)| results);
-    for (document, result) in batch.into_iter().zip(results) {
-        match result {
-            Ok(document) => {
-                documents.push(document);
-                progress.indexed += 1;
-            }
-            Err(_) => {
-                rejected_uris.push(document.uri);
-                progress.rejected += 1;
-            }
-        }
-    }
-}
-
-fn load_ignore_file(root: &Path, path: &Path) -> LoadedIgnore {
-    let metadata = match path.symlink_metadata() {
-        Ok(metadata) => metadata,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return LoadedIgnore {
-                matcher: None,
-                had_error: false,
-            };
-        }
-        Err(_) => {
-            return LoadedIgnore {
-                matcher: None,
-                had_error: true,
-            };
-        }
-    };
-    if !metadata.file_type().is_file() {
-        return LoadedIgnore {
-            matcher: None,
-            had_error: false,
-        };
-    }
-    let mut builder = GitignoreBuilder::new(root);
-    let had_error = builder.add(path).is_some();
-    match builder.build() {
-        Ok(matcher) => LoadedIgnore {
-            matcher: Some(matcher),
-            had_error,
-        },
-        Err(_) => LoadedIgnore {
-            matcher: None,
-            had_error: true,
-        },
-    }
-}
-
-fn is_gitignored(matchers: &[Gitignore], path: &Path, is_directory: bool) -> bool {
-    for matcher in matchers.iter().rev() {
-        match matcher.matched(path, is_directory) {
-            Match::Ignore(_) => return true,
-            Match::Whitelist(_) => return false,
-            Match::None => {}
-        }
-    }
-    false
+    planner
+        .unwrap()
+        .build(state, updates, generation, progress, rejected_uris)
 }
 
 fn is_cancelled(state: &AtomicU8) -> bool {
@@ -485,16 +388,4 @@ fn maybe_emit_progress(
     *entries_since_progress = 0;
     *files_since_progress = 0;
     *bytes_since_progress = 0;
-}
-
-fn is_hard_excluded_directory(path: &Path) -> bool {
-    path.file_name()
-        .and_then(|name| name.to_str())
-        .is_some_and(|name| HARD_EXCLUDED_DIRECTORIES.contains(&name))
-}
-
-fn is_source_path(path: &Path) -> bool {
-    path.extension()
-        .and_then(|extension| extension.to_str())
-        .is_some_and(|extension| matches!(extension, "ets" | "ts"))
 }

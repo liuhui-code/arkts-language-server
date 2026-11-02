@@ -205,7 +205,11 @@ test("malformed, foreign-root and target-bearing readiness requests cannot force
 
 test("an unnotified oversized source makes full membership partial instead of publishing a ready Program",
   { timeout: 30_000 }, async t => {
-    const { session, rootUri, workspace } = await startReadinessFixture(t)
+    const { session, rootUri, workspace } = await startReadinessFixture(t, {
+      // Exercise partial membership with an available anchor, independent of directory order.
+      ARKTS_TEST_MEMBERSHIP_FIRST_SOURCE: "Main.ets",
+      NODE_OPTIONS: `--require=${JSON.stringify(path.resolve("tests/fixtures/partial-initialization-observation.cjs"))}`,
+    })
     fs.writeFileSync(path.join(workspace, "Oversized.ets"), "//" + "x".repeat(4 * 1024 * 1024))
     const response = await session.request("arkts/semanticReadiness", { rootUri, prepare: true }, { timeoutMs: 20_000 })
     assert.equal(response.error, undefined, JSON.stringify(response.error))

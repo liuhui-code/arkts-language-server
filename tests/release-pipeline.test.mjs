@@ -138,12 +138,16 @@ test("the release driver reports native gate failure before starting Node checks
   const scripts = path.join(fixture, "scripts")
   const bin = path.join(fixture, "bin")
   const log = path.join(fixture, "commands.log")
+  const policyLog = path.join(fixture, "policies.log")
   fs.mkdirSync(scripts)
   fs.mkdirSync(bin)
   fs.copyFileSync(releaseDriverPath, path.join(scripts, "check-release.sh"))
   for (const command of ["cargo", "pnpm"]) {
     fs.writeFileSync(path.join(bin, command), `#!/bin/sh
 printf '%s\\n' '${command} '"$*" >> "$ARKTS_RELEASE_TEST_LOG"
+gate_policy="$ARKTS_TEST_455_COLD_CATALOG_POLICY"
+[ -n "$gate_policy" ] || gate_policy=unset
+printf '%s\\t%s\\n' '${command} '"$*" "$gate_policy" >> "$ARKTS_RELEASE_TEST_POLICY_LOG"
 case "$*" in
   *pinned_large_arkts_fixture_meets_cold_catalog_and_deterministic_query_gates*)
     if [ "$ARKTS_RELEASE_TEST_FAIL_NATIVE" = "1" ]; then exit 71; fi ;;
@@ -156,6 +160,8 @@ esac
     cwd: os.tmpdir(), encoding: "utf8",
     env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}`,
       ARKTS_INDEX_REAL_FIXTURE: fixture, ARKTS_LARGE_FIXTURE: fixture,
+      ARKTS_TEST_455_COLD_CATALOG_POLICY: undefined,
+      ARKTS_RELEASE_TEST_POLICY_LOG: policyLog,
       ARKTS_RELEASE_TEST_LOG: log, ARKTS_RELEASE_TEST_FAIL_NATIVE: failNative ? "1" : "0" },
   })
   assert.equal(run(true).status, 71, "native failure must propagate unchanged")
@@ -165,10 +171,17 @@ esac
   assert.match(failed, /cargo test --locked --workspace --all-targets/)
   assert.doesNotMatch(failed, /pnpm /, "Node checks must not start after a failed native gate")
   fs.writeFileSync(log, "")
+  fs.writeFileSync(policyLog, "")
   assert.equal(run(false).status, 0)
   const completed = fs.readFileSync(log, "utf8").trim().split("\n")
   for (const command of ["pnpm check:fast", "pnpm test:e2e:artifact", "pnpm test:e2e:large", "queries"]) {
     assert.equal(completed.filter(line => line === command).length, 1, `${command} must still execute once`)
   }
   assert.ok(completed.findIndex(line => line.includes("pinned_large_arkts_fixture")) < completed.indexOf("pnpm check:fast"))
+  const policies = fs.readFileSync(policyLog, "utf8").trim().split("\n").map(line => line.split("\t"))
+  const fixturePolicy = policies.filter(([command]) => command.includes("pinned_large_arkts_fixture"))
+  assert.deepEqual(fixturePolicy.map(([, policy]) => policy), ["waive-3s-user-authorized"],
+    "the release driver must apply the user's cold-timing waiver to the fixture only")
+  assert.ok(policies.filter(([command]) => !command.includes("pinned_large_arkts_fixture"))
+    .every(([, policy]) => policy === "unset"), "the waiver must not leak into any other gate")
 })

@@ -99,3 +99,23 @@ the store or only the fallback would reintroduce the invalid-params path or brea
 the forged-item contract. Protocol and real-Worker tests cover expiration,
 interleavings, cancellation, bounded eviction, forged fields, old enriched items,
 disk input identity, genuine backend faults and applied auto-import correctness.
+
+## 2026-11-01 corrective evidence — local verified, full CI pending
+
+PlainText insertion containing literal `$1` is being checked against the existing
+immutable-list-field and insert-text-format contract. The intended correction
+distinguishes plain text from snippets; it does not alter ticket authentication,
+resolve lifetimes or original-item ownership.
+
+See the [recursive review receipt](../reports/2026-11-01-recursive-ide-review.md).
+Completion adapter RED 0/2 became focused GREEN 14/14; TypeScript check passed.
+Scripted semantic fixtures exercise real framed stdio, not real-compiler/UI
+qualification. The missing Rust toolchain blocker is now resolved; fresh complete CI
+remains pending.
+This addendum does not change the decision status, historical verification
+counts or remaining acceptance limits.
+
+Final integrated local validation passes 263/263 across 34 complete files,
+including all 19 previously failing files; typecheck/build pass and frozen inputs
+match. Original full 2134/2222 FAIL is preserved; fresh full locked-toolchain CI
+remains pending on the authorized draft PR. No approval status is changed.

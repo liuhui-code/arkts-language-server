@@ -228,6 +228,8 @@ test("L07 unnotified package retarget cannot retain stale incoming callers on an
     assert.deepEqual(before.result, [{ from: packageCallerItem(fixture), fromRanges: [{
       start: positionAt(fixture.caller, fixture.caller.lastIndexOf("work()")),
       end: positionAt(fixture.caller, fixture.caller.lastIndexOf("work()") + "work".length) }] }])
+    // The discovering query must not race the diagnostics scheduled by opening First.
+    await diagnostic(session, uri, 1)
     fs.writeFileSync(fixture.manifest, "{ main: 'Second.ets' }")
     const stale = await session.request("callHierarchy/incomingCalls", { item }, { timeoutMs: 20_000 })
     assert.equal(stale.error?.code, -32803, JSON.stringify(stale))

@@ -737,3 +737,21 @@ This closes standalone snapshot/overlay discovery, not constructor coverage
 or candidate exclusion. Compiler-backed inheritance/factory/own-constructor
 proof and fixed Settings/API24 exact public differential remain mandatory.
 No second TypeChecker, schema/default/SDK/Worker/memory-policy change.
+
+## 2026-11-02 index protocol corrective evidence — scoped verified
+
+The [authorized follow-up](../reports/2026-11-02-authorized-ide-follow-up.md)
+corrects malformed successful search payloads being treated as ordinary business
+errors. SidecarProtocolError now invokes existing session fail-closed behavior;
+genuine busy errors remain nonfatal and explicit close/open recovery is covered.
+Public-contract RED1/2→GREEN2/2, existing characterization20/20, extracted22/22,
+manifest4/4, Node20typecheck and independent26/26 pass. No complete follow-up gate,
+storage/recovery policy change or approval-status promotion is implied. Published
+CI and the separate unfinished owner-churn slice retain their own evidence.
+
+Final follow-up local validation: Node20check/build and ten complete files
+123/123PASS, exit0, zero fail/skip/cancel/todo,56958.721ms;1403/1403 frozen inputs
+match. This does not certify a complete suite or the separate OPEN/design-gated
+resource optimization. Published a11 CI subsequently completed SUCCESS at01:24UTC (run41368012421);
+it does not certify the unpublished index correction. Fresh follow-up-head CI
+remains pending. No approval or policy change.

@@ -14,9 +14,10 @@ import type {
   WorkspaceSymbol,
   WorkspaceSymbolSearchResult,
 } from "../contracts/workspace-index.js"
-import type {
-  WorkspaceIndexProgress,
-  WorkspaceSymbolServicePort,
+import {
+  WorkspaceSymbolContentModifiedError,
+  type WorkspaceIndexProgress,
+  type WorkspaceSymbolServicePort,
 } from "../contracts/workspace-symbol-service.js"
 
 interface DefaultWorkspaceSymbolServiceDependencies {
@@ -130,6 +131,13 @@ export class DefaultWorkspaceSymbolService implements WorkspaceSymbolServicePort
       }
     })), signal)
     assertActive(signal)
+
+    // Versions can repeat after close/reopen; validate identity and membership only
+    // after every provider has settled, including previously resolved overlays.
+    if (this.openDocuments.size !== snapshots.length
+      || snapshots.some(document => this.openDocuments.get(document.uri) !== document)) {
+      throw new WorkspaceSymbolContentModifiedError()
+    }
 
     const availablePersisted = persistedResults.filter(isSearchResult)
     const candidates = [

@@ -241,7 +241,9 @@ export class SemanticRequestRunner {
         outcome = resultFailure
         return request.incomplete(resultFailure)
       }
-      if (!await this.dependencies.callHierarchySources.isCurrent(resolution)) {
+      const sourceCurrent = await this.dependencies.callHierarchySources.isCurrent(resolution)
+      if (freshRequest.clientCancelled()) throw requestCancelled()
+      if (!freshRequest.isCurrent() || !sourceCurrent) {
         outcome = "stale"
         return request.fallback
       }

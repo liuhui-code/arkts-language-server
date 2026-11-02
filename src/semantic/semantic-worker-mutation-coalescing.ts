@@ -34,3 +34,38 @@ export function mergeDocumentMutations(epoch: number,
     text: next.text,
   })
 }
+
+export function mergeWorkspaceInvalidations(
+  epoch: number,
+  previous: Extract<RootSemanticWorkerMutationInput, { kind: "workspaceFilesChanged" }>,
+  next: Extract<RootSemanticWorkerMutationInput, { kind: "workspaceFilesChanged" }>,
+): RootSemanticWorkerMutationInput {
+  const changes = new Map(previous.changes.map(change => [change.uri, change.kind]))
+  for (const change of next.changes) {
+    const prior = changes.get(change.uri)
+    const merged = mergeWorkspaceFileChange(prior, change.kind)
+    if (merged) changes.set(change.uri, merged)
+    else changes.delete(change.uri)
+  }
+  return canonicalMutationInput(epoch, {
+    kind: "workspaceFilesChanged",
+    rootUri: previous.rootUri,
+    rootDirty: previous.rootDirty || next.rootDirty,
+    ...(previous.configurationChanged === true || next.configurationChanged === true ? { configurationChanged: true } : {}),
+    resourceDirty: previous.resourceDirty || next.resourceDirty,
+    resourceChanged: previous.resourceChanged || next.resourceChanged,
+    changes: [...changes].map(([uri, kind]) => ({ uri, kind })),
+  })
+}
+
+function mergeWorkspaceFileChange(
+  previous: "created" | "changed" | "deleted" | undefined,
+  next: "created" | "changed" | "deleted",
+): "created" | "changed" | "deleted" | undefined {
+  if (!previous) return next
+  if (previous === "created") {
+    return next === "changed" ? "created" : next
+  }
+  if (previous === "deleted") return next === "created" ? "changed" : next
+  return next === "created" ? "changed" : next
+}

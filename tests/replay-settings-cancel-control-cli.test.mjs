@@ -12,12 +12,14 @@ import { digestSdk } from "../scripts/semantic/lock-toolchain.mjs"
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const runner = path.join(root, "scripts/bench/replay-settings-cancel-control.mjs")
 
-function invoke(...args) {
+function invoke(...args) { return invokeWithEnvironment({}, ...args) }
+
+function invokeWithEnvironment(extraEnvironment, ...args) {
   const env = Object.fromEntries(Object.entries(process.env).filter(
     ([key]) => !key.startsWith("ARKTS_"),
   ))
   return spawnSync(process.execPath, [runner, ...args], {
-    cwd: root, encoding: "utf8", timeout: 10_000, env,
+    cwd: root, encoding: "utf8", timeout: 10_000, env: { ...env, ...extraEnvironment },
   })
 }
 
@@ -118,8 +120,8 @@ test("Settings cancel control observes a legacy queue start before cancellation"
 test("Settings cancel control requires an interrupted compiler query for the in-flight gate", async t => {
   const fixture = await makeFixture(t, "compiler-cancel")
   const result = invoke(...fixture.args, "--strategy", "legacy", "--cancel-stage", "compiler-query")
-  assert.equal(result.status, 0, `${result.stderr}\n${result.stdout}`)
   const report = JSON.parse(fs.readFileSync(fixture.output, "utf8"))
+  assert.equal(result.status, 0, JSON.stringify({ stderr: result.stderr, ...reportSummary(report) }))
   assert.equal(report.status, "PASS")
   assert.equal(report.cancellation.stage.state, "find-references-start")
   assert.equal(report.cancellation.stage.event.event, "references.find-references.start")
@@ -131,6 +133,74 @@ test("Settings cancel control requires an interrupted compiler query for the in-
   assert.equal(report.recovery.definition.exact, true)
   assert.equal(report.diagnostic.exact, true)
 })
+
+for (const [mode, expected] of [["compiler-cancel", "PASS"], ["completed", "NOT_CANCELLED"]]) {
+  test(`Settings cancel control preserves ${expected} when the sampler is already exiting`, async t => {
+    const fixture = await makeFixture(t, mode)
+    const marker = path.join(path.dirname(fixture.output), "sampler-exiting.json")
+    const result = invokeWithEnvironment({ RSS_TEST_CLOSE_RACE: marker,
+      NODE_OPTIONS: `--require=${JSON.stringify(path.join(root, "tests/fixtures/rss-sampler-close-race.cjs"))}` },
+      ...fixture.args, ...(mode === "compiler-cancel" ? ["--strategy", "legacy", "--cancel-stage", "compiler-query"] : []))
+    const report = JSON.parse(fs.readFileSync(fixture.output, "utf8"))
+    assert.equal(report.status, expected, JSON.stringify({ status: report.status, cancellation: report.cancellation,
+      samplerExit: report.samplerExit, samplerStderr: report.samplerStderr, failure: report.failure }))
+    assert.equal(result.status, expected === "PASS" ? 0 : 1, result.stderr)
+    assert.equal(JSON.parse(fs.readFileSync(marker, "utf8")).phase, "flushed-exiting")
+    assert.deepEqual(report.samplerExit, { code: 0, signal: null })
+    assert.throws(() => process.kill(report.samplerPid, 0), { code: "ESRCH" })
+    assert.equal(report.samplerStderr, "")
+    assert.ok(report.memory.sampleCount > 0)
+    assert.equal(report.recovery.references.validation.pass, true)
+    assert.equal(report.recovery.definition.exact, true)
+    assert.equal(report.sourcePreserved, true)
+  })
+}
+
+test("Settings cancel control lets a longer configured sample interval finish naturally", async t => {
+  const fixture = await makeFixture(t, "completed")
+  const marker = path.join(path.dirname(fixture.output), "sampler-exiting.json")
+  const result = invokeWithEnvironment({ RSS_TEST_CLOSE_RACE: marker, RSS_TEST_CLOSE_OUTCOME: "interval",
+    NODE_OPTIONS: `--require=${JSON.stringify(path.join(root, "tests/fixtures/rss-sampler-close-race.cjs"))}` },
+    ...fixture.args, "--sample-interval-ms", "6000")
+  const report = JSON.parse(fs.readFileSync(fixture.output, "utf8"))
+  assert.equal(report.status, "NOT_CANCELLED", JSON.stringify({ samplerExit: report.samplerExit,
+    samplerStderr: report.samplerStderr, failure: report.failure }))
+  assert.equal(result.status, 1, result.stderr)
+  assert.equal(report.memory.sampleIntervalMs, 6000)
+  const signals = fs.existsSync(`${marker}.signal-times`)
+    ? fs.readFileSync(`${marker}.signal-times`, "utf8").trim().split("\n").map(JSON.parse) : []
+  const cleanup = report.timeline.find(event => event.phase === "server-process-closed")
+  assert.ok(cleanup?.monotonicNs, "cleanup boundary must be observable")
+  const elapsedMs = signals.map(event => Number(BigInt(event.monotonicNs) - BigInt(cleanup.monotonicNs)) / 1e6)
+  // A delayed child may legitimately need fallback; never signal before its
+  // configured grace (allow only Node's at-most-1ms timer rounding).
+  assert.ok(signals.length <= 1 && signals.every((event, index) =>
+    event.signal === "SIGTERM" && elapsedMs[index] + 1 >= 7000), JSON.stringify({ signals, elapsedMs }))
+  const recorded = fs.existsSync(`${marker}.signals`)
+    ? fs.readFileSync(`${marker}.signals`, "utf8").trim().split("\n") : []
+  assert.deepEqual(recorded, signals.map(event => event.signal))
+  assert.deepEqual(report.samplerExit, { code: 0, signal: null })
+  assert.ok(report.memory.sampleCount > 0)
+  assert.throws(() => process.kill(report.samplerPid, 0), { code: "ESRCH" })
+})
+
+for (const outcome of ["error", "hang"]) {
+  test(`Settings cancel control still fails when sampler teardown reports ${outcome}`, async t => {
+    const fixture = await makeFixture(t, "completed")
+    const marker = path.join(path.dirname(fixture.output), "sampler-exiting.json")
+    const result = invokeWithEnvironment({ RSS_TEST_CLOSE_RACE: marker, RSS_TEST_CLOSE_OUTCOME: outcome,
+      NODE_OPTIONS: `--require=${JSON.stringify(path.join(root, "tests/fixtures/rss-sampler-close-race.cjs"))}` }, ...fixture.args)
+    assert.equal(result.status, 1, result.stderr)
+    const report = JSON.parse(fs.readFileSync(fixture.output, "utf8"))
+    assert.equal(report.cancellation.outcome, "NOT_CANCELLED")
+    assert.equal(report.status, "FAIL")
+    assert.deepEqual(report.samplerExit, outcome === "error" ? { code: 9, signal: null } : { code: null, signal: "SIGTERM" })
+    assert.equal(JSON.parse(fs.readFileSync(marker, "utf8")).phase, "flushed-exiting")
+    assert.ok(report.memory.sampleCount > 0)
+    assert.equal(report.recovery.references.validation.pass, true)
+    assert.throws(() => process.kill(report.samplerPid, 0), { code: "ESRCH" })
+  })
+}
 
 test("Settings cancel control rejects a protocol cancel after the compiler query completes", async t => {
   const fixture = await makeFixture(t, "compiler-completed-after-cancel")
@@ -171,7 +241,7 @@ test("Settings cancel control classifies a completed response as NOT_CANCELLED",
   const result = invoke(...fixture.args)
   assert.equal(result.status, 1, `${result.stderr}\n${result.stdout}`)
   const report = JSON.parse(fs.readFileSync(fixture.output, "utf8"))
-  assert.equal(report.status, "NOT_CANCELLED")
+  assert.equal(report.status, "NOT_CANCELLED", JSON.stringify(reportSummary(report)))
   assert.equal(report.cancellation.sent, false)
   assert.equal(report.cancellation.response.result.length, 9)
   assert.equal(report.recovery.references.validation.pass, true)
@@ -219,6 +289,12 @@ test("Settings cancel control rejects a recovered response carrying error and re
   assert.equal(report.recovery.references.response.error.code, -32603)
   assert.equal(report.recovery.references.validation.pass, true)
 })
+
+function reportSummary(report) {
+  return { status: report.status, cancellationOutcome: report.cancellation?.outcome,
+    samplerExit: report.samplerExit, samplerStderr: report.samplerStderr,
+    closeResult: report.closeResult, failure: report.failure }
+}
 
 const consumerFile = "product/phone/src/main/ets/Setting/Home/controller/HomePageMenuManager.ets"
 const declarationFile = "common/src/main/ets/sendable/HomeInitData.ets"

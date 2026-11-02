@@ -4,3 +4,6 @@ windows	E:\My Photos\中文#%.ts	file:///e:/My%20Photos/%E4%B8%AD%E6%96%87%23%25
 unix	/Photos/MixedCase.ts	file:///Photos/MixedCase.ts
 unix	/Photos/mixedcase.ts	file:///Photos/mixedcase.ts
 unix	/My Photos/中文#%.ts	file:///My%20Photos/%E4%B8%AD%E6%96%87%23%25.ts
+windows	\\server\Share\MixedCase.ts	file://server/Share/MixedCase.ts
+windows	\\server\Share\mixedcase.ts	file://server/Share/mixedcase.ts
+windows	\\server\My Share\中文#%.ts	file://server/My%20Share/%E4%B8%AD%E6%96%87%23%25.ts

@@ -126,3 +126,24 @@ Windows/真实Zed UI未重验，ADR0033仍OPEN；此实施收据不等于独立�
 
 后续[ADR0035](0035-unchanged-source-authority-transitions.md)专门处理关闭重开时的同输入compiler版本；
 不改变本记录的独立消费者/旧生命周期失效、容量证明及每请求最终围栏。上述2147收据仅覆盖原冻结候选。
+
+## 2026-11-01 corrective evidence — local verified, full CI pending
+
+The final await in call-hierarchy preparation is being checked against existing
+request freshness and source-authority fences. The intended correction adds the
+missing publication-time check; it does not move compiler input validation out
+of its lease or change request coalescing and cancellation ownership.
+
+See the [recursive review receipt](../reports/2026-11-01-recursive-ide-review.md).
+Corrected public fixture RED 1/4 became focused GREEN 12/12; TypeScript check
+passed. The initial fixture assertion defect remains separately recorded.
+This is final-publication fence evidence, not real-compiler/UI qualification;
+the missing Rust toolchain blocker is now resolved, with fresh complete CI
+still pending.
+This addendum does not change the decision status, historical verification
+counts or remaining acceptance limits.
+
+Final integrated local validation passes 263/263 across 34 complete files,
+including all 19 previously failing files; typecheck/build pass and frozen inputs
+match. Original full 2134/2222 FAIL is preserved; fresh full locked-toolchain CI
+remains pending on the authorized draft PR. No approval status is changed.

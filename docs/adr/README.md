@@ -55,6 +55,7 @@ protection checks. Earlier L01/L02 resource-admission verdicts are historical.
 | [0039](0039-validation-directory-observations.md) | Rejected after matched experiments; evidence retained | Directory-content proof prototype gives about 10% and adds compatibility assumptions; original server validation retained |
 | [0040](0040-client-context-request-backpressure.md) | Proposed; component/release and six 30K protocol rounds verified, deployment/UI pending | Lazily bound automatic context requests; preserve all answers, source/refresh ownership, foreground independence and terminal outcomes |
 | [0041](0041-windows-index-storage-location.md) | Proposed; build/typecheck and targeted83/83 verified; Windows real machine pending | Prefer D-drive index storage on Windows with explicit configuration, visible fallback, workspace isolation and one session-owned root for index/GC |
+| [0042](0042-bounded-catalog-streaming.md) | Proposed; authorized plan, implementation/verification pending | Bounded catalog parse/write ownership; force first, proven hash-first reuse next; preserve full private publication and no default RSS budget |
 
 2026-10-27 [三项根因与ADR审计](../reports/2026-10-27-30k-issues-root-causes-and-adrs.md#adr逐项映射与设计缺口)：
 上表0020–0023的“not merged”及检查数是各切片当时的历史收据，不能作为当前版本判定。
@@ -104,3 +105,17 @@ governed by [semantic-ready acceptance](../benchmarks/semantic-ready-acceptance.
 The [Ledger](../plans/references-feature-ledger.md) and [MoSCoW](../plans/references-moscow.md)
 hold current feature status and priority. Stage IDs refer to the local execution
 plan, not existing GitHub issue numbers.
+
+## 2026-11-01 corrective review evidence
+
+The [recursive IDE correctness review](../reports/2026-11-01-recursive-ide-review.md)
+completed group 1's four local implementation/review rounds on `b57ad075`.
+Integrated focused validation is 263/263 PASS across 34 complete files, not a
+fresh full-suite pass; original full 2134/2222 FAIL remains, and fresh full CI
+is pending on the authorized draft PR. Completion insertion,
+call-hierarchy freshness, dependent diagnostics and UNC URI handling are being
+checked against existing contracts. No new ADR or Accepted status is inferred;
+all historical failures and approval states above remain unchanged. Current
+latency interpretation follows ADR0007's 2026-10-28 revision and default RSS
+policy follows ADR0029. The existing [Ledger](../plans/references-feature-ledger.md)
+links the current per-feature status; focused and full verification remain distinct.

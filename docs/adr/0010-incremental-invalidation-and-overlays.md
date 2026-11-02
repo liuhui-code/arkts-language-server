@@ -26,3 +26,44 @@
 R-13 的保守增量变为 Must，进一步细粒度优化仍为 Should。此提案衔接 [ADR 0004](0004-reference-result-cache-validity.md)、[0006](0006-semantic-request-scheduling.md) 和 [0009](0009-semantic-generation-and-publication.md)，不重建第二套文档权威或取消机制。
 
 边界见[设计契约](../plans/semantic-ready/design-contracts.md)；门禁见[验收协议](../benchmarks/semantic-ready-acceptance.md)；顺序见[执行计划](../plans/2026-09-29-semantic-ready-execution-plan.md)。
+
+## 2026-11-01 corrective evidence — local verified, full CI pending
+
+A settled diagnostic for source A after a dependency B change is being checked
+against the existing conservative cross-file invalidation contract. The intended
+correction restores current publication without suppressing diagnostics or
+introducing a new compiler owner.
+
+See the [recursive review receipt](../reports/2026-11-01-recursive-ide-review.md).
+Three actual-compiler RED cases were followed by a frozen focused 12/12 PASS,
+including five new cases. Partial parallel round 2 corrected cross-workspace
+debounce starvation and false error logs for expected invalidation: focused
+15/15 and typecheck pass; genuine error logging remains covered. Full qualification
+remains open; round 3 independent review found no additional confirmed must-fix
+issue in the frozen diff. Conservative workspace open-document re-diagnosis
+cost remains performance-unqualified. Original RED logs and separate
+round 1/2 source/hash snapshots are retained.
+This addendum does not change the decision status, historical verification
+counts or remaining acceptance limits.
+
+Final integrated local validation passes 263/263 across 34 complete files,
+including all 19 previously failing files; typecheck/build pass and frozen inputs
+match. Original full 2134/2222 FAIL is preserved; fresh full locked-toolchain CI
+remains pending on the authorized draft PR. No approval status is changed.
+
+## 2026-11-01 group 2 workspace-symbol corrective evidence — IN_PROGRESS
+
+The [second-group review](../reports/2026-11-01-recursive-ide-review-batch2.md)
+confirms that version-only per-overlay checks missed same-version close/reopen
+and mutations across asynchronous workspace-symbol providers. Final complete
+overlay membership and exact snapshot identity now fence combined publication;
+obsolete searches return -32801, cancellation retains -32800 precedence, and
+other errors remain -32603. Exact-parent public RED4/9 becomes focusedGREEN30/30.
+Scripted provider timing runs through real framed stdio, not real-compiler/UI
+qualification. Final combined gates remain pending. This corrects the existing
+capture/overlay contract; ADR0009 and this ADR retain their approval statuses.
+
+Group 2's final combined local gate is376/376 across29 complete files, exit0,
+Node20check/buildPASS,1400/1400 inputs matching. This closes local scoped
+implementation/review only; original full2260/2264FAIL and fresh complete PR CI
+remain separate. The workspace-symbol fixture is not real SDK/UI certification.

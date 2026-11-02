@@ -39,9 +39,9 @@ export function toLspCompletionItem(
 
 function clientInsertText(item: SemanticCompletion, profile: CompletionClientProfile): string {
   const insertText = item.insertText ?? item.label
-  return profile.snippets && item.isSnippet === true
-    ? insertText
-    : stripSnippetPlaceholders(insertText)
+  return item.isSnippet === true && !profile.snippets
+    ? stripSnippetPlaceholders(insertText)
+    : insertText
 }
 
 function stripSnippetPlaceholders(text: string): string {

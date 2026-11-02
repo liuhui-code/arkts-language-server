@@ -1,15 +1,13 @@
 use crate::{
     SqliteStore,
-    catalog_control::{Control, incompatible},
-    catalog_files,
+    catalog_control::incompatible,
     catalog_insert::{insert_catalog_documents, insert_export_documents, insert_symbol_documents},
-    catalog_store::open_published,
-    class_heritage_storage, invalid_generation, map_sqlite_error, read_rejected_documents,
+    class_heritage_storage, map_sqlite_error,
     reference_insert::insert_reference_documents,
     sqlite_generation, validate_replacement,
 };
 use arkts_index_core::{
-    CommitReceipt, DocumentSymbols, FullCatalogBatch, StoreError, StoreErrorKind, SymbolStore,
+    CommitReceipt, DocumentSymbols, FullCatalogBatch, StoreError, StoreErrorKind,
 };
 use rusqlite::TransactionBehavior;
 use std::{path::Path, time::Instant};
@@ -64,135 +62,47 @@ pub fn build_catalog_with_fingerprint(
     identity: &str,
     mut batch: FullCatalogBatch,
     fingerprint: Option<&str>,
-    mut observe: impl FnMut(CatalogBuildProgress) -> bool,
+    observe: impl FnMut(CatalogBuildProgress) -> bool,
 ) -> Result<CommitReceipt, StoreError> {
     batch
         .documents
         .sort_unstable_by(|left, right| left.uri.cmp(&right.uri));
-    let mut control = Control::open(base, identity)?;
-    let guard = control.shared()?;
-    let parent = control.active()?;
-    let mut old = open_published(&control.path(&parent), identity, &parent)?;
-    let expected = old.metadata()?.committed_generation;
-    if batch.generation <= expected {
-        drop(guard);
-        catalog_files::retire(old, base.to_owned(), identity.into());
-        return Err(invalid_generation(batch.generation, expected));
-    }
-    let reuse = expected > 0
-        && batch.rejected_uris.is_empty()
-        && fingerprint.is_some()
-        && control.fingerprint()?.as_deref() == fingerprint;
-    let path = if reuse {
-        None
-    } else {
-        Some(catalog_files::new_database(base)?)
-    };
-    // Reserve the build's reader lease while still holding the publication lock.
-    let reservation = path
-        .as_ref()
-        .map(|path| catalog_files::reader_lease(path))
-        .transpose()?;
-    drop(guard);
-    let mut progress = CatalogBuildProgress {
-        stage: CatalogStage::Writing,
-        written_documents: 0,
-        written_rows: 0,
-        checkpointed_frames: 0,
-        wal_frames: 0,
-    };
-    let result = (|| {
-        if reuse {
-            emit(&mut observe, &mut progress, CatalogStage::Reusing)?;
-        } else {
-            let mut store = SqliteStore::open_private_catalog(path.as_ref().unwrap(), identity)?;
-            // Target 64 MiB of page cache for bounded, unpublished bulk writes.
-            store
-                .connection
-                .execute_batch("PRAGMA cache_size=-65536;")
-                .map_err(map_sqlite_error)?;
-            write_documents(&mut store, &batch, &mut progress, &mut observe)?;
-            emit(&mut observe, &mut progress, CatalogStage::Validating)?;
-            validate(&store)?;
-            emit(&mut observe, &mut progress, CatalogStage::Checkpointing)?;
-            // Publish only a sealed DB. FULL also syncs the final WAL commit; TRUNCATE
-            // finishes persistence before the short control transaction exposes it.
-            store
-                .connection
-                .execute_batch("PRAGMA synchronous=FULL;")
-                .map_err(map_sqlite_error)?;
-            finish_metadata(&mut store, batch.generation, &batch.rejected_uris)?;
-            checkpoint(&store, "TRUNCATE", &mut progress)?;
-            emit(&mut observe, &mut progress, CatalogStage::Checkpointing)?;
-            drop(store);
-            catalog_files::sync_parent(path.as_ref().unwrap())?;
-        }
-        emit(&mut observe, &mut progress, CatalogStage::Checking)?;
-        let guard = control.exclusive()?;
-        if control.active()? != parent || old.metadata()?.committed_generation != expected {
-            return Err(StoreError::new(
-                StoreErrorKind::InvalidGeneration,
-                "catalog base changed while building; unpublished result discarded",
-            ));
-        }
-        // The observer may claim the non-cancellable publishing boundary here.
-        emit(&mut observe, &mut progress, CatalogStage::Publishing)?;
-        let database = if let Some(path) = &path {
-            path.file_name()
-                .and_then(|s| s.to_str())
-                .ok_or_else(|| incompatible("invalid build path"))?
-        } else {
-            &parent.database
-        };
-        let rejected_documents = if reuse {
-            old.connection
-                .execute_batch("PRAGMA synchronous=FULL;")
-                .map_err(map_sqlite_error)?;
-            finish_metadata(&mut old, batch.generation, &[])?;
-            read_rejected_documents(&old.connection)?
-        } else {
-            batch
-                .rejected_uris
-                .iter()
-                .cloned()
-                .collect::<std::collections::BTreeSet<_>>()
-                .into_iter()
-                .collect()
-        };
-        // Reuse changes only metadata in the already-published DB. Its single
-        // commit is the publication point; a second control commit could fail
-        // after the active generation had already advanced.
-        if !reuse {
-            control.publish(
-                database,
-                batch.generation,
-                if batch.rejected_uris.is_empty() {
-                    fingerprint
-                } else {
-                    None
-                },
-            )?;
-        }
-        drop(guard);
-        Ok(CommitReceipt {
-            committed_generation: batch.generation,
-            rejected_documents,
-        })
-    })();
-    catalog_files::retire(old, base.to_owned(), identity.into());
-    drop(reservation);
-    if let Ok(_guard) = control.exclusive() {
-        catalog_files::prune(&control);
-    }
-    result
+    build_catalog_using(base, identity, batch, fingerprint, observe, write_documents)
 }
 
-fn write_documents(
+pub(super) fn build_catalog_using<F: FnMut(CatalogBuildProgress) -> bool>(
+    base: &Path,
+    identity: &str,
+    batch: FullCatalogBatch,
+    fingerprint: Option<&str>,
+    observe: F,
+    write: impl FnOnce(
+        &mut SqliteStore,
+        &mut FullCatalogBatch,
+        &mut CatalogBuildProgress,
+        &mut F,
+    ) -> Result<(), StoreError>,
+) -> Result<CommitReceipt, StoreError> {
+    let session = crate::CatalogBuildSession::begin_for(
+        base,
+        identity,
+        batch.generation,
+        fingerprint.is_some() && batch.rejected_uris.is_empty(),
+    )?;
+    let reuse = batch.rejected_uris.is_empty() && session.legacy_reuse(fingerprint);
+    session.run(batch, reuse, observe, |store, batch, progress, observe| {
+        write(store, batch, progress, observe)?;
+        Ok(fingerprint.map(crate::catalog_api::fingerprint::legacy_encode))
+    })
+}
+
+pub(super) fn write_documents(
     store: &mut SqliteStore,
-    batch: &FullCatalogBatch,
+    batch: &mut FullCatalogBatch,
     progress: &mut CatalogBuildProgress,
     observe: &mut impl FnMut(CatalogBuildProgress) -> bool,
 ) -> Result<(), StoreError> {
+    let offset = progress.written_documents;
     let mut start = 0;
     while start < batch.documents.len() {
         emit(observe, progress, CatalogStage::Writing)?;
@@ -219,7 +129,7 @@ fn write_documents(
                 progress,
                 observe,
             )?;
-            progress.written_documents = end;
+            progress.written_documents = offset + end;
             emit(observe, progress, CatalogStage::Writing)?;
             start = end;
             continue;
@@ -252,7 +162,7 @@ fn write_documents(
             + references.binding_rows;
         emit(observe, progress, CatalogStage::Committing)?;
         tx.commit().map_err(map_sqlite_error)?;
-        progress.written_documents = end;
+        progress.written_documents = offset + end;
         progress.written_rows = progress.written_rows.saturating_add(actual_rows);
         trace(batch.generation, progress, started.elapsed().as_millis());
         emit(observe, progress, CatalogStage::Checkpointing)?;
@@ -263,7 +173,7 @@ fn write_documents(
     Ok(())
 }
 
-fn finish_metadata(
+pub(super) fn finish_metadata(
     store: &mut SqliteStore,
     generation: u64,
     rejected: &[String],
@@ -290,7 +200,7 @@ fn finish_metadata(
         .map_err(map_sqlite_error)
 }
 
-fn validate(store: &SqliteStore) -> Result<(), StoreError> {
+pub(super) fn validate(store: &SqliteStore) -> Result<(), StoreError> {
     let check: String = store
         .connection
         .query_row("PRAGMA quick_check", [], |r| r.get(0))
@@ -356,7 +266,7 @@ pub(super) fn emit(
 }
 
 // Estimates choose batches; an oversized document uses bounded row chunks instead.
-fn document_cost(document: &DocumentSymbols) -> (usize, usize) {
+pub(super) fn document_cost(document: &DocumentSymbols) -> (usize, usize) {
     let rows = 1
         + document.symbols.len()
         + document.exports.len()

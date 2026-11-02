@@ -8,6 +8,7 @@ use std::{
 };
 const READ_CHUNK_BYTES: usize = 64 * 1024;
 
+#[derive(Clone)]
 pub(super) struct SourceStamp {
     path: PathBuf,
     length: u64,
@@ -22,6 +23,15 @@ impl SourceStamp {
             modified: metadata.modified().ok(),
             digest: CatalogInputs::source_digest(source),
         }
+    }
+    pub fn digest(&self) -> [u8; 32] {
+        self.digest
+    }
+    pub fn same_input(&self, other: &Self) -> bool {
+        self.path == other.path
+            && self.length == other.length
+            && self.modified == other.modified
+            && self.digest == other.digest
     }
     pub fn is_current(&self) -> bool {
         fs::metadata(&self.path)
@@ -53,7 +63,8 @@ pub(super) enum SourceRead {
 }
 
 pub(super) fn read_source(path: &Path) -> Result<SourceRead, ()> {
-    let mut file = File::open(path).map_err(|_| ())?;
+    let mut file =
+        super::scan_gate::io("source-read", path, || File::open(path)).map_err(|_| ())?;
     let mut bytes = Vec::new();
     let mut chunk = [0u8; READ_CHUNK_BYTES];
     loop {
