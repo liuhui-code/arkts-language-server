@@ -19,6 +19,7 @@ export interface WorkspaceFileChange {
 export interface WorkspaceFileChangeBatch {
   rootUri: string
   rootDirty: boolean
+  configurationChanged?: boolean
   resourceDirty?: boolean
   resourceChanged?: boolean
   changes: WorkspaceFileChange[]
@@ -52,6 +53,7 @@ export class WorkspaceFileChangeCoordinator {
   private readonly maxPendingPaths: number
   private readonly pending = new Map<string, PendingChange>()
   private readonly sourceDirtyRoots = new Set<string>()
+  private readonly configurationChangedRoots = new Set<string>()
   private readonly resourceDirtyRoots = new Set<string>()
   private readonly isResourceFile: WorkspaceFileChangeCoordinatorOptions["isResourceFile"]
 
@@ -86,6 +88,7 @@ export class WorkspaceFileChangeCoordinator {
       batches.set(root.canonicalPath, {
         rootUri: root.uri,
         rootDirty,
+        ...(this.configurationChangedRoots.has(root.canonicalPath) ? { configurationChanged: true } : {}),
         ...(resourceDirty ? { resourceDirty: true } : {}),
         ...(resourceDirty ? { resourceChanged: true } : {}),
         changes: [],
@@ -114,6 +117,7 @@ export class WorkspaceFileChangeCoordinator {
       .map(([, batch]) => batch)
     this.pending.clear()
     this.sourceDirtyRoots.clear()
+    this.configurationChangedRoots.clear()
     this.resourceDirtyRoots.clear()
     return result
   }
@@ -133,15 +137,16 @@ export class WorkspaceFileChangeCoordinator {
         ?? this.roots.find((entry) => isInside(entry.canonicalPath,
           path.join(canonicalPath(path.dirname(candidateLexicalPath)), path.basename(candidateLexicalPath))))
       : this.roots.find((entry) => isInside(entry.canonicalPath, candidateCanonicalPath))
-    if (!root || this.isDirty(root, domain)) return
-    if (domain === "arkui-resource" && !(this.isResourceFile
-      ? this.isResourceFile(root.uri, event.uri)
-      : isArkUIStringResourcePath(candidatePath))) return
-
+    if (!root) return
     if (isProjectConfiguration(candidatePath)) {
+      this.configurationChangedRoots.add(root.canonicalPath)
       this.markRootDirty(root, "source")
       return
     }
+    if (this.isDirty(root, domain)) return
+    if (domain === "arkui-resource" && !(this.isResourceFile
+      ? this.isResourceFile(root.uri, event.uri)
+      : isArkUIStringResourcePath(candidatePath))) return
 
     const key = `${root.canonicalPath}\0${candidateLexicalPath}`
     const existing = this.pending.get(key)

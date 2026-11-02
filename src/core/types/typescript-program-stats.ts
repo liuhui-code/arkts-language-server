@@ -1,5 +1,6 @@
 import path from "node:path"
 import ts from "typescript"
+import type { ProjectMembershipSnapshot } from "../workspace/semantic-workspace-view.js"
 import { sdkContains, type SdkComponent } from "../sdk/environment.js"
 
 const observedPrograms = new WeakMap<ts.Program, number>()
@@ -108,4 +109,25 @@ function checkerSequenceFor(program: ts.Program | undefined): number {
 function within(rootPath: string, filePath: string) {
   const relative = path.relative(path.resolve(rootPath), path.resolve(filePath))
   return relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)
+}
+
+/** Snapshot the existing compiler owner's bounded caches without changing their ownership. */
+export function typescriptCacheStats(input: {
+  membership: { status: ProjectMembershipSnapshot["status"] | "none"; reason: ProjectMembershipSnapshot["reason"];
+    revision: number; paths: ReadonlySet<string> }
+  scripts: ReadonlyMap<string, unknown>; scriptBytes: number; maxFiles: number; maxBytes: number
+  lazySnapshots: { files: number; bytes: number; maxFiles: number; maxBytes: number }
+}) {
+  return {
+    projectMembership: {
+      status: input.membership.status,
+      ...(input.membership.reason ? { reason: input.membership.reason } : {}),
+      revision: input.membership.revision,
+      paths: input.membership.paths.size,
+    },
+    residentScripts: {
+      files: input.scripts.size, bytes: input.scriptBytes, maxFiles: input.maxFiles, maxBytes: input.maxBytes,
+    },
+    lazySnapshots: input.lazySnapshots,
+  }
 }

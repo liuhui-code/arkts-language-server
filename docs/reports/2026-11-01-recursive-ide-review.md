@@ -344,3 +344,15 @@ bounded caches, original input fences, cancellation, complete semantic scope and
 fault recovery remain. No new RSS limit, timeout extension or truncated success
 is authorized by these corrections. Historical failed gates, open Windows/UI
 items and ADR approval states are not rewritten.
+
+## Group 1 PR validation terminal receipt — group 2 begins
+
+At exact head `f280c9bb85513b10b5149c6a7b398af75f72f597`,
+[CI run 41335246739](https://github.com/liuhui-code/arkts-language-server/actions/runs/41335246739)
+terminated Linux fast 2233/2234, one failure, while Windows smoke passed.
+The sole failing SDK-config changed-source-read-witness case expected -32803 but
+received markerNew completion; root cause remains under investigation. This
+terminal FAIL supersedes the above pending-CI status, not its historical local
+receipts. Original 2134/2222 FAIL and focused 263/263 PASS remain unchanged.
+The authorized [second group](2026-11-01-recursive-ide-review-batch2.md) now starts
+at round 1, separately bounded to four rounds or no new confirmed issue. No merge.

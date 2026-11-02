@@ -43,3 +43,8 @@ export interface WorkspaceSymbolServicePort {
   ): Promise<WorkspaceSymbolSearchResult>
   dispose(): void | Promise<void>
 }
+
+/** The authoritative overlay set changed during a workspace symbol query. */
+export class WorkspaceSymbolContentModifiedError extends Error {
+  constructor() { super("Workspace symbol inputs changed during the request") }
+}

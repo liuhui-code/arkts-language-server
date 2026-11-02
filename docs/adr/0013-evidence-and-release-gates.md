@@ -84,3 +84,20 @@ frozen inputs matching. All three corrections are now integrated; a frozen
 341678.5413ms; typecheck/build pass and final frozen inputs match. Fresh complete
 qualification belongs to the draft PR's locked-toolchain CI. No subset result
 overwrites the original FAIL or constitutes 2222/2222.
+
+## 2026-11-01 group 2 round 4 marker determinism — integration pending
+
+The [second-group report](../reports/2026-11-01-recursive-ide-review-batch2.md)
+records a baseline/candidate-reproduced fixture race: file existence preceded
+completed marker contents. Isolated pending-file/rename publication preserves
+all four public call-hierarchy assertions and timeouts; reverting only that change
+is RED0/4, candidate Node20 check/build and five-file89/89 pass. The patch is not
+yet integrated and closing review is active while the original full gate runs.
+No production freshness contract or ADR approval status changes.
+
+Group 2 terminal local evidence: all round4 corrections integrated, Node20
+check/build and29-file376/376PASS, zero fail/skip/cancel/todo, exit0,
+577502.642ms;1400/1400 frozen inputs match. Original full2260/2264FAIL is retained,
+including the unexplained/non-reproduced initialization timeout. Fresh full CI
+on the authorized draft PR112 update remains pending; scoped sums are not a
+replacement whole-suite pass. No merge or approval-status change is implied.

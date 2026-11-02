@@ -1,6 +1,85 @@
 # References / semantic Feature Ledger
 
-## Current review receipt — 2026-11-01
+## Current group 2 status — finalized for PR update, 2026-11-02
+
+**Four-round implementation/review complete; all confirmed corrections integrated.**
+[Second-group report](../reports/2026-11-01-recursive-ide-review-batch2.md).
+Node20.19.5 typecheck/build and29 complete files pass376/376, exit0, zero
+failures/skips/cancellations/todo,577502.642ms;1400/1400 final inputs match.
+Manifest291: unit119, protocol15, bundle149. This is a scoped result, not a fresh
+complete-suite PASS. Original local full2260/2264FAIL (four failures, exit1) and
+first-group CI2233/2234FAIL on f280c9bb remain retained, as do all prior receipts.
+
+Integrated work: workspace-symbol overlay identity/member publication fence;
+retire-first bounded SDK/configuration proof capsules; explicit configuration
+event authority; qualified source-only repaired-identity recovery; atomic marker
+and deterministic replacement-constructor test fixtures. R-13/R-31/R-26/R-34
+remain mapped to ADR0010/0013/0036 with ADR0025/0038 constraints preserved.
+No ADR approval state changes. Initialization-response timeout remains
+unexplained/non-reproduced; no timeout extension or claimed cause fix.
+
+The authorized same draftPR112 update and fresh complete locked-toolchain CI are
+next. No merge, fifth round, performance/real-SDK/UI/native-network-share or
+endurance graduation. The following group-2 paragraphs are historical checkpoints,
+not present RUNNING or unintegrated status; original measurements remain intact.
+
+## Historical group 2 checkpoints — 2026-11-01
+
+**Group 2 four-round implementation/review complete; scoped376/376 PASS, fresh full CI pending**, [second-group receipt](../reports/2026-11-01-recursive-ide-review-batch2.md).
+Group 1 CI on `f280c9bb`, run41335246739, is terminal Linux2233/2234 FAIL,
+Windows smoke PASS; original local2134/2222 FAIL and focused263/263 PASS remain.
+SDK-config source-reset witness loss (R-13/R-31, R-26; ADR0025/0036/0038) has
+deterministic baseline/candidate RED and a first guard slice passing six files
+51/51, typecheck/build on Node20.19.5. Round 2 independently confirms a watched
+source-deletion reset reason bypass plus late replacement-load SDK mutation;
+retire-first facts-only proof capsule is now integrated, including a third
+namespace-retirement RED/fix. Pending facts bounded4096; denial survives failed
+replacement. Closing review SDK10/10/config12/12 passes with no new must-fix;
+authoritative frozen cohort88/88 plus typecheck/build pass on Node20; this is
+not an overall SDK/full aggregate GREEN.
+Explicit drain-scoped configuration authority now crosses the bounded wire/event
+paths without granting source-overflow authority: RED3/8→Node20 six-file97/97,
+typecheck and independent new12/12 PASS. Manifest291/unit119/protocol15.
+A separate workspace-symbol overlay publication defect (R-13/R-31, R-34;
+ADR0010) is publicly RED4/9→focusedGREEN30/30: final snapshot identity/membership
+fence, -32801 for obsolete results, cancellation priority preserved. Scripted
+semantic/index providers are not real-compiler/UI qualification. Final combined
+checks remain pending; independent workspace-symbol review passes new9/existing21
+on Node20.19.5 with no must-fix in that scope. Node20.19.5 is installed
+for next gates, not retroactive validation of prior Node24 evidence.
+Second group is at most four rounds or earlier no-new-confirmed-issue stop;
+round3 independent full-diff review found no new confirmed must-fix, with
+Node20 independent21/21/no skips. Early-stop condition reached: no artificial
+round4/new-feature work; full validation and any confirmed gate failures remain. Full pnpm check:fast is RUNNING since19:34UTC on1399 frozen inputs, not passed. At19:39UTC
+one call-hierarchy reopen marker assertion has failed (empty string versus true).
+Round4 confirms async marker creation-before-content on baseline and candidate.
+Atomic pending-file rename correction passes Node20check/build and fivefiles89/89;
+reverting only rename gives0/4RED; independent closing review4/4 passes. A second
+Round4 failure confirms a late-constructor fixture precondition gap: one isolated reproduction never entered the hook, SDK stayedAPI24, healthy in-place update succeeded.
+Isolated constructor full file17/17 and20 late-pair repeats40/40 pass; round1
+counterfactual healthy1pass/late2fail/14filtered, independent3/3 with14filtered.
+Node exits0; repeat shellwrapper1 was a trailing false guard, not test failure.
+Both corrections are reviewed without new must-fix but remain unintegrated while
+the original full run continues; frozen main unchanged. At20:24UTC it has four
+observed failures: the two fixture cases plus unprovable-lookup diagnostic recovery
+and pre-query initialize timeouts. Both new causes remain unconfirmed; static
+triage only, no source changes/reruns until terminal full receipt.
+Four-round limit reached; these are validation corrections, not a fifth round.
+Terminal20:35UTC full receipt:2264tests/2260pass/4fail, zero skip/cancel/todo,
+exit1,3533772.229ms; all1399 frozen inputs match. Verified hierarchy patch and
+final SDK17-case fixture are now integrated, diffcheckPASS. Two remaining
+reference recovery is now a confirmed guard regression (f280PASS/round1FAIL),
+narrowly corrected to permit source-only repaired-identity retirement without
+weakening config/resident validity. Integrated19-case SDK/source coverage, Node20
+five-file91/91 and independent3/3 with42filtered pass. Initialization timeout is
+unexplained/non-reproduced; no timeout change or claimed fix. Final check/build+
+29 complete files terminated376/376PASS, exit0, zero failed/skipped/cancelled/todo,
+577502.642ms; Node20check/buildPASS,1400/1400 final inputsMATCH. Original full
+2260/2264FAIL remains unchanged. Authorized same draftPR112 update and fresh
+complete locked-toolchain CI are next; no merge or fresh full PASS claimed. Prior running/
+unintegrated statements in detailed receipts are historical checkpoints. No merge and no speculative catalog rewrite.
+
+## Historical group 1 review receipt — 2026-11-01
 
 **Group 1 local implementation/review complete; fresh full CI pending:** [recursive IDE correctness review](../reports/2026-11-01-recursive-ide-review.md)
 on parent `b57ad075`, at most four review/research/correct/review rounds, stopping

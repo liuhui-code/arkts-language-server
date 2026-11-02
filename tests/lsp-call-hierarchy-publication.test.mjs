@@ -21,7 +21,8 @@ for (const mutation of ["unchanged", "cancel", "edit", "reopen"]) {
       bundle: true, platform: "node", target: "node20", format: "cjs", outfile: serverPath,
       logLevel: "silent",
     })
-    const server = new LspProcess({ serverPath, env: { ARKTS_TEST_PUBLICATION_BARRIER: directory } })
+    const server = new LspProcess({ serverPath, env: { ARKTS_TEST_PUBLICATION_BARRIER: directory,
+      NODE_OPTIONS: `--require=${path.join(projectRoot, "tests/fixtures/publication-marker-write-window.cjs")}` } })
     t.after(() => server.close())
     server.send({ jsonrpc: "2.0", id: 1, method: "initialize", params: {
       processId: process.pid, rootUri: pathToFileURL(projectRoot).href, capabilities: {},
@@ -35,6 +36,8 @@ for (const mutation of ["unchanged", "cancel", "edit", "reopen"]) {
     await waitForBarrier(directory)
     assert.equal(await fs.readFile(path.join(directory, "entered"), "utf8"), "true",
       "the real source authority must have accepted the source before the final await settles")
+    assert.equal(await fs.readFile(path.join(directory, "write-window-completed"), "utf8"), "true",
+      "the real marker create-before-write interval must be exercised")
     if (mutation === "cancel") notify(server, "$/cancelRequest", { id: 10 })
     if (mutation === "edit") notify(server, "textDocument/didChange", {
       textDocument: { uri: documentUri, version: 2 }, contentChanges: [{ text: "// UPDATED" }],

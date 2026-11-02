@@ -11,7 +11,7 @@ import { mergeDefinitions, mergeDiagnostics } from "./type-result-merge.js"
 import { withProjectFileIdentities } from "./type-project-file-identities.js"
 import { retainedReferenceOwnerAllowed, withResidentReferenceContext, queryRetainedReferenceContext, completeReferenceScope } from "./resident-context-lease.js"
 import { queryResidentReferences } from "./resident-reference-query.js"
-import { canonicalTypeEngineOwner, typeContextResetReason, synchronizeContextDelta, reconcileResolutionOwner } from "./type-context-reset.js"
+import { canonicalTypeEngineOwner, typeContextResetReason } from "./type-context-reset.js"
 import { SemanticInputUnavailableError } from "./typescript-query-inputs.js"
 import { traceCompilerQuery, traceImplementationQuery, traceReferenceQuery, traceSemanticQuery } from "./compiler-query-timing.js"
 import { runWithSemanticLease } from "./semantic-query-lease.js"
@@ -33,6 +33,9 @@ import { referenceWorkerOptions, verifyReferenceBatchInWorker, type ReferenceBat
 import { resolveIsolatedReferenceAnchor } from "../../semantic/references/reference-anchor.js"
 import { isConstructorModuleCurrent } from "../../semantic/references/reference-constructor-scope.js"
 import type { TransientSemanticWorkerObserver } from "../../semantic/transient-worker-lifecycle.js"
+
+import { SourceResetAdmissions } from "./source-reset-admission.js"
+import { prepareContextEntry } from "./prepare-context-entry.js"
 
 export type {
   SemanticTypeStatus,
@@ -56,6 +59,7 @@ import type {
 export class SemanticTypeEngineRegistry {
   private readonly coordinator: SemanticCoordinator<WorkspaceEngineEntry>
   private readonly referenceSearch: ReferenceSearchExecutor | undefined
+  private readonly sourceResets = new SourceResetAdmissions()
   private readonly referenceVerifier = new ReferenceVerifierClient()
   private readonly groups: SemanticGroups
   private accessClock = 0
@@ -164,6 +168,7 @@ export class SemanticTypeEngineRegistry {
   }
 
   configureSdk(selection: unknown): void {
+    this.sourceResets.clear()
     this.referenceVerifier.dispose()
     this.groups.clear()
     this.sdkConfiguration = selection
@@ -171,6 +176,7 @@ export class SemanticTypeEngineRegistry {
   }
 
   configureProject(selection: unknown): void {
+    this.sourceResets.clear()
     this.referenceVerifier.dispose()
     this.groups.clear()
     this.coordinator.dispose("project-configuration")
@@ -198,34 +204,14 @@ export class SemanticTypeEngineRegistry {
 
   prepare(workspace: SemanticWorkspaceView, contextId = this.groups.root(workspace), promoteRecency = true): SemanticTypeQueryContext {
     const rootPath = contextId
-    const previous = reconcileResolutionOwner(workspace, rootPath, this.packageResolver, this.coordinator,
-      referenceCheckpoint(this.options.hostCancellationToken) ?? (() => {}))
-    workspace = synchronizeContextDelta(workspace, previous?.appliedContentRevision, this.projectFileAccess, previous?.engine.compilerInputPaths())
-    const resolutionChanged = previous !== undefined && previous.resolutionGeneration !== this.packageResolver.generation
-    const resetReason = typeContextResetReason(workspace, previous,
-      contextId !== path.resolve(workspace.rootPath) || this.options.references?.residentFastPath === true || this.options.references?.sessionReuse === "experimental")
-      ?? (resolutionChanged ? "resolution-generation-change" : undefined)
-    const refreshReadiness = resetReason === "content-revision-change" && previous?.engine.hasReadinessRefreshIntent() === true
-    if (resetReason) {
-      if (resetReason === "canonical-owner-change") this.packageResolver.projectFor(workspace.rootPath).invalidate()
-      if (!this.coordinator.remove(rootPath, resetReason) && resolutionChanged) throw new SemanticInputUnavailableError()
-    }
-    const lease = this.coordinator.acquire(rootPath, promoteRecency)
-    const entry = lease.context
-    const newEntry = previous !== entry
-    const prepareStartedAt = this.options.references?.trace ? performance.now() : undefined
-    let state: SemanticTypeEngineState
-    try {
-      state = entry.engine.prepare(workspace)
-      if (newEntry && refreshReadiness) entry.engine.restoreReadinessRefreshIntent()
-      if (prepareStartedAt !== undefined) this.referenceTrace("semantic.prepare.complete", {
-        durationMs: performance.now() - prepareStartedAt, newEntry, resetReason: resetReason ?? null,
-      })
-    } catch (error) {
-      lease.release()
-      if (newEntry) this.coordinator.remove(rootPath, "prepare-failed")
-      throw error
-    }
+    const prepared = prepareContextEntry(workspace, contextId, promoteRecency, {
+      resolver: this.packageResolver, coordinator: this.coordinator, admissions: this.sourceResets, access: this.projectFileAccess,
+      reuse: this.options.references?.residentFastPath === true || this.options.references?.sessionReuse === "experimental",
+      checkpoint: referenceCheckpoint(this.options.hostCancellationToken) ?? (() => {}),
+      trace: this.options.references?.trace ? (event, fields) => this.referenceTrace(event, fields) : undefined,
+    })
+    workspace = prepared.workspace
+    const { lease, entry, state } = prepared
     const activeEntry = entry
     const scope = updateWorkspaceEngineEntry(activeEntry, workspace, ++this.accessClock)
     const sourceContent = workspace.documents.find(document => document.path === workspace.state.path)?.content
@@ -465,6 +451,8 @@ export class SemanticTypeEngineRegistry {
     this.memoryLevel = this.coordinator.applyMemoryPressure(level)
   }
 
+  configurationFilesChanged(rootPath: string): void { this.sourceResets.configurationChanged(rootPath, this.coordinator) }
+
   invalidateArkUIResources(rootPath: string): void {
     const lexicalRoot = path.resolve(rootPath)
     const ownerId = canonicalTypeEngineOwner(rootPath)
@@ -474,6 +462,7 @@ export class SemanticTypeEngineRegistry {
   }
 
   dispose(): void {
+    this.sourceResets.clear()
     this.referenceVerifier.dispose()
     this.coordinator.dispose()
   }

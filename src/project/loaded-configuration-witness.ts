@@ -7,6 +7,11 @@ const MAX_MISSING_ANCESTORS = 64
 
 export type ConfigurationFreshnessMode = "validate" | "capture"
 
+export interface RetainedConfigurationProof {
+  readonly factCount: number
+  current(checkpoint: () => void): boolean
+}
+
 export interface ConfigurationWitnessFailure {
   readonly reason: string
   readonly sourcePath?: string
@@ -23,6 +28,7 @@ export class LoadedConfigurationWitness {
   private unprovable = false
   private sourceNamespaceDepth = 0
   private namespaceOnlyFailure = true
+  private sourceResetOnlyFailure = true
   private readonly namespaceFailures = new Set<string>()
   private readonly namespaceFacts = new Set<string>()
   private readonly regularSourceFacts = new Set<string>()
@@ -125,9 +131,14 @@ export class LoadedConfigurationWitness {
   }
 
   markUnprovable(reason = "caller-invalidated", sourcePath?: string): void {
-    if (!this.sourceNamespaceDepth || !sourcePath || !["loaded-identity-changed", "changed-during-load"].includes(reason)
-      || this.namespaceFailures.size >= MAX_WITNESS_PATHS) this.namespaceOnlyFailure = false
+    const sourceFailure = this.sourceNamespaceDepth > 0 && sourcePath !== undefined
+      && ["loaded-identity-changed", "changed-during-load", "identity-unavailable"].includes(reason)
+      && this.namespaceFailures.size < MAX_WITNESS_PATHS
+    if (!sourceFailure) this.sourceResetOnlyFailure = false
     else this.namespaceFailures.add(sourcePath)
+    // An unavailable lookup never repairs this resident proof. Only retire-first
+    // replacement may discard its source failure while retaining all non-source facts.
+    if (!sourceFailure || reason === "identity-unavailable") this.namespaceOnlyFailure = false
     if (this.unprovable) return
     this.unprovable = true
     this.revision += 1
@@ -156,6 +167,7 @@ export class LoadedConfigurationWitness {
     this.regularSourceFacts.clear()
     this.namespaceFailures.clear()
     this.namespaceOnlyFailure = true
+    this.sourceResetOnlyFailure = true
     this.unprovable = false
     this.revision += 1
     this.resetEpoch += 1
@@ -213,6 +225,35 @@ export class LoadedConfigurationWitness {
       }
     }
     if (this.failedSourceReads.delete(resolved)) this.revision += 1
+  }
+
+  /** Copy only bounded original facts; the capsule retains no compiler, resolver or witness owner. */
+  captureConfigurationBeforeSourceReset(checkpoint: () => void,
+    sourceNamespace: (filePath: string) => boolean): RetainedConfigurationProof {
+    checkpoint()
+    const epoch = this.resetEpoch, revision = this.revision
+    let valid = !(this.unprovable && !this.sourceResetOnlyFailure)
+      && [...this.namespaceFailures, ...this.failedSourceReads].every(file => sourceNamespace(file))
+    const facts: { filePath: string; identity: string; directoryOnly: boolean }[] = []
+    for (const [kind, records] of [this.identities, this.pathIdentities].entries()) {
+      for (const [filePath, identity] of records) {
+        checkpoint()
+        if (this.namespaceFacts.has(`${kind}\0${filePath}`) && sourceNamespace(filePath)) continue
+        facts.push(Object.freeze({ filePath, identity, directoryOnly: kind === 1 }))
+      }
+    }
+    valid &&= this.resetEpoch === epoch && this.revision === revision
+    Object.freeze(facts)
+    return Object.freeze({ factCount: facts.length, current: (boundary: () => void): boolean => {
+      boundary()
+      if (!valid) return false
+      for (const fact of facts) {
+        boundary()
+        if (lookupIdentity(fact.filePath, fact.directoryOnly)?.identity !== fact.identity) return false
+      }
+      boundary()
+      return true
+    } })
   }
 
   /** Loaded identities stay fixed; query-local sharing ends in an uncached union scan. */

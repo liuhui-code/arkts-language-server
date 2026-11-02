@@ -57,17 +57,16 @@ import type {
   SemanticDocumentPosition,
   SemanticDocumentSymbolInfo,
 } from "../core/protocol.js"
-import { isArkUIStringResourcePath } from "../core/arkui/resource-path.js"
+import { toFilePath } from "./semantic-worker-file-identity.js"
 import { formatArktsDocument } from "../core/formatting/arkts-document-formatter.js"
 import { FoldingRangeProvider } from "../core/syntax/folding-range-provider.js"
 import type { SemanticTypeEngineRegistry } from "../core/types/type-engine.js"
-import { toFilePath } from "./semantic-worker-file-identity.js"
 import { completionQueryPlan, semanticRootFingerprints, completionItemIdentity,
   completionItemDiscoveryProjectRoots, memberCompletionScope } from "./completion-batch-planning.js"
 import { publicReferenceResult } from "./references/reference-result-mapping.js"
 import type { SemanticDocumentStore, SemanticWorkspaceView } from "../core/workspace/document-store.js"
 import type { LocalPackageResolver } from "../core/sdk/local-package-resolver.js"
-import { createSemanticEngineResources } from "./semantic-engine-resources.js"
+import { createSemanticEngineResources, applySemanticWorkspaceChanges } from "./semantic-engine-resources.js"
 import { runNavigationQuery } from "./navigation-query.js"
 import type { StructuredLogger } from "../observability/logger.js"
 import type { SemanticMemoryLevel } from "./coordinator/semantic-coordinator.js"
@@ -148,28 +147,7 @@ export class LegacySemanticEngine implements SemanticEnginePort {
   }
 
   workspaceFilesChanged(batches: readonly SemanticWorkspaceFileChangeBatch[]): void {
-    for (const batch of batches) {
-      const rootPath = toFilePath(batch.rootUri)
-      if (!rootPath) continue
-      const changes = batch.changes.flatMap((change) => {
-        const changedPath = toFilePath(change.uri)
-        return changedPath ? [{ path: changedPath, kind: change.kind }] : []
-      })
-      if (batch.resourceChanged || batch.resourceDirty || changes.some(({ path: changedPath }) => (
-        isArkUIStringResourcePath(changedPath)
-      ))) {
-        this.engines.invalidateArkUIResources(rootPath)
-      }
-      const sourceChanges = changes.filter(({ path: changedPath }) => (
-        changedPath.endsWith(".ets") || changedPath.endsWith(".ts")
-      ))
-      if (!batch.rootDirty && sourceChanges.length === 0) continue
-      this.documents.workspaceFilesChanged({
-        rootPath,
-        rootDirty: batch.rootDirty,
-        changes: sourceChanges,
-      })
-    }
+    applySemanticWorkspaceChanges(batches, this.documents, this.engines)
   }
 
   async complete(

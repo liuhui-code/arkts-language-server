@@ -13,7 +13,10 @@ CallHierarchySourceAuthority.prototype.isCurrent = async function (resolution) {
   const directory = process.env.ARKTS_TEST_PUBLICATION_BARRIER
   if (!paused && directory) {
     paused = true
-    await fs.writeFile(path.join(directory, "entered"), String(current))
+    // Publish the payload atomically; file existence alone is not write completion.
+    const pending = path.join(directory, "entered.pending")
+    await fs.writeFile(pending, String(current))
+    await fs.rename(pending, path.join(directory, "entered"))
     const deadline = Date.now() + 10_000
     while (true) {
       try {

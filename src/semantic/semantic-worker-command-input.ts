@@ -17,6 +17,7 @@ export type RootSemanticWorkerMutationInput =
       readonly kind: "workspaceFilesChanged"
       readonly rootUri: string
       readonly rootDirty: boolean
+      readonly configurationChanged?: boolean
       readonly resourceDirty: boolean
       readonly resourceChanged: boolean
       readonly changes: readonly {

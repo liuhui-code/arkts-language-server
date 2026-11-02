@@ -1,3 +1,6 @@
+import type { SemanticWorkspaceFileChangeBatch } from "../contracts/semantic-engine.js"
+import { isArkUIStringResourcePath } from "../core/arkui/resource-path.js"
+import { toFilePath } from "./semantic-worker-file-identity.js"
 import { SemanticTypeEngineRegistry } from "../core/types/type-engine.js"
 import { SemanticDocumentStore } from "../core/workspace/document-store.js"
 import { LocalPackageResolver } from "../core/sdk/local-package-resolver.js"
@@ -27,4 +30,32 @@ export function createSemanticEngineResources(logger: StructuredLogger | undefin
       onReferenceTrace: logger ? (event, fields) => logger.info(event, fields) : undefined,
     })
   return { packageResolver, documents, engines }
+}
+
+/** Watched-file orchestration; only explicit configuration provenance authorizes reload. */
+export function applySemanticWorkspaceChanges(batches: readonly SemanticWorkspaceFileChangeBatch[],
+  documents: SemanticDocumentStore, engines: SemanticTypeEngineRegistry): void {
+    for (const batch of batches) {
+      const rootPath = toFilePath(batch.rootUri)
+      if (!rootPath) continue
+      const changes = batch.changes.flatMap((change) => {
+        const changedPath = toFilePath(change.uri)
+        return changedPath ? [{ path: changedPath, kind: change.kind }] : []
+      })
+      if (batch.resourceChanged || batch.resourceDirty || changes.some(({ path: changedPath }) => (
+        isArkUIStringResourcePath(changedPath)
+      ))) {
+        engines.invalidateArkUIResources(rootPath)
+      }
+      if (batch.configurationChanged === true) engines.configurationFilesChanged(rootPath)
+      const sourceChanges = changes.filter(({ path: changedPath }) => (
+        changedPath.endsWith(".ets") || changedPath.endsWith(".ts")
+      ))
+      if (!batch.rootDirty && sourceChanges.length === 0) continue
+      documents.workspaceFilesChanged({
+        rootPath,
+        rootDirty: batch.rootDirty,
+        changes: sourceChanges,
+      })
+    }
 }

@@ -50,3 +50,20 @@ Final integrated local validation passes 263/263 across 34 complete files,
 including all 19 previously failing files; typecheck/build pass and frozen inputs
 match. Original full 2134/2222 FAIL is preserved; fresh full locked-toolchain CI
 remains pending on the authorized draft PR. No approval status is changed.
+
+## 2026-11-01 group 2 workspace-symbol corrective evidence — IN_PROGRESS
+
+The [second-group review](../reports/2026-11-01-recursive-ide-review-batch2.md)
+confirms that version-only per-overlay checks missed same-version close/reopen
+and mutations across asynchronous workspace-symbol providers. Final complete
+overlay membership and exact snapshot identity now fence combined publication;
+obsolete searches return -32801, cancellation retains -32800 precedence, and
+other errors remain -32603. Exact-parent public RED4/9 becomes focusedGREEN30/30.
+Scripted provider timing runs through real framed stdio, not real-compiler/UI
+qualification. Final combined gates remain pending. This corrects the existing
+capture/overlay contract; ADR0009 and this ADR retain their approval statuses.
+
+Group 2's final combined local gate is376/376 across29 complete files, exit0,
+Node20check/buildPASS,1400/1400 inputs matching. This closes local scoped
+implementation/review only; original full2260/2264FAIL and fresh complete PR CI
+remain separate. The workspace-symbol fixture is not real SDK/UI certification.

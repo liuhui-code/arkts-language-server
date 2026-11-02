@@ -47,6 +47,8 @@ export function assertOverboundWorkspaceMutationStructure(
     input.rootUri !== rootUri
     || !isCanonicalSemanticWorkerFileUri(input.rootUri)
     || typeof input.rootDirty !== "boolean"
+    || (Object.hasOwn(input, "configurationChanged") && typeof input.configurationChanged !== "boolean")
+    || (input.configurationChanged === true && !input.rootDirty)
     || typeof input.resourceDirty !== "boolean"
     || typeof input.resourceChanged !== "boolean"
     || (input.resourceDirty && !input.resourceChanged)

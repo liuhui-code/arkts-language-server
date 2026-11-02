@@ -25,8 +25,8 @@ import type {
   SemanticResolvedCodeAction,
 } from "../contracts/semantic-engine.js"
 import type { ProjectResolverPort } from "../contracts/project-resolver.js"
-import type {
-  WorkspaceSymbolServicePort,
+import { WorkspaceSymbolContentModifiedError,
+  type WorkspaceSymbolServicePort,
 } from "../contracts/workspace-symbol-service.js"
 import { ARKUI_STRING_RESOURCE_GLOB, ARKUI_CONFIGURED_STRING_RESOURCE_GLOB } from "../core/arkui/resource-path.js"
 import { SingleRootProjectResolver } from "../project/single-root-project-resolver.js"
@@ -435,6 +435,8 @@ export function runLanguageServer(services?: LanguageServerServices): void {
         outcome = "superseded"
         return []
       }
+      if (error instanceof WorkspaceSymbolContentModifiedError)
+        throw new ResponseError(LSPErrorCodes.ContentModified, error.message)
       throw error
     } finally {
       request.finish()

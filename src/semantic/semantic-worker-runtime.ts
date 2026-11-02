@@ -220,6 +220,7 @@ function applyMutation(mutation: SemanticWorkerMutation): void {
     engine.workspaceFilesChanged([{
       rootUri: mutation.rootUri,
       rootDirty: mutation.rootDirty,
+      ...(mutation.configurationChanged === true ? { configurationChanged: true } : {}),
       resourceDirty: mutation.resourceDirty,
       resourceChanged: mutation.resourceChanged,
       changes: [...mutation.changes],
