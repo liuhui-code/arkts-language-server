@@ -435,6 +435,10 @@ export class SemanticTypeEngineRegistry {
     })
   }
 
+  needsReadinessCatalogRefresh(rootPath: string): boolean {
+    return this.coordinator.peek(path.resolve(rootPath))?.engine.hasReadinessRefreshIntent(true) === true
+  }
+
   needsReadinessRootRefresh(workspace: SemanticWorkspaceView): boolean {
     const entry = this.coordinator.peek(path.resolve(workspace.rootPath))
     return entry?.engine.hasReadinessRefreshIntent() === true && (entry.engine.hasReadinessRefreshIntent(true) || entry.engine.cacheState().projectMembership.status !== "complete"

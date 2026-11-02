@@ -6,6 +6,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
   schemaVersion: 1,
   layers: Object.freeze([
     layer("unit-contract", true, [
+      "tests/workspace-catalog-stamp.test.mjs",
       "tests/arkts-document-formatter.test.mjs",
       "tests/artifact-manifest.test.mjs",
       "tests/build-test-server.test.mjs",
@@ -145,6 +146,12 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/semantic-worker-test-harness.test.mjs",
     ]),
     layer("bundle-e2e", true, [
+      "tests/semantic/readiness-catalog-ordering.test.mjs",
+      "tests/semantic/readiness-catalog-input-windows.test.mjs",
+      "tests/semantic/readiness-catalog-cancellation.test.mjs",
+      "tests/semantic/readiness-catalog-dirty-namespace.test.mjs",
+      "tests/semantic/readiness-catalog-eviction.test.mjs",
+      "tests/semantic/readiness-catalog-call-hierarchy.test.mjs",
       "tests/index-cache-cli.test.mjs",
       "tests/conformance-scenario.test.mjs",
       "tests/lsp-capability-contract.test.mjs",
@@ -222,6 +229,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/semantic/references-completeness.test.mjs",
       "tests/semantic/references-sdk-cache.test.mjs",
       "tests/semantic/references-batching.test.mjs",
+      "tests/semantic/references-semantic-units.test.mjs",
       "tests/semantic/references-batch-transcript.test.mjs",
       "tests/semantic/references-batch-search-coverage.test.mjs",
       "tests/semantic/resident-session-references.test.mjs",

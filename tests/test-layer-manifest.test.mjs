@@ -17,7 +17,15 @@ const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 test("classifies every executable test entry exactly once in an explicit layer", () => {
   const audit = validateTestLayerManifest({ root: projectRoot, manifest: TEST_LAYER_MANIFEST })
 
-  assert.equal(audit.entryCount, 292)
+  assert.equal(audit.entryCount, 300)
+  assert.equal(audit.assignments["tests/semantic/references-semantic-units.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/workspace-catalog-stamp.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/semantic/readiness-catalog-ordering.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/readiness-catalog-input-windows.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/readiness-catalog-cancellation.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/readiness-catalog-dirty-namespace.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/readiness-catalog-eviction.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/readiness-catalog-call-hierarchy.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/index-search-protocol-lifecycle.test.mjs"], "unit-contract")
   assert.equal(audit.assignments["tests/process-resource-probe-portability.test.mjs"], "unit-contract")
   assert.equal(audit.assignments["tests/lsp-diagnostic-invalidation-errors.test.mjs"], "protocol")
@@ -343,9 +351,9 @@ test("classifies every executable test entry exactly once in an explicit layer",
     "bundle-e2e",
   )
   assert.deepEqual(audit.layerCounts, {
-    "unit-contract": 120,
+    "unit-contract": 121,
     protocol: 15,
-    "bundle-e2e": 149,
+    "bundle-e2e": 156,
     "artifact-e2e": 4,
     "sealed-artifact-e2e": 1,
     large: 1,

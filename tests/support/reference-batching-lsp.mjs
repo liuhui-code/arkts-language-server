@@ -21,6 +21,7 @@ async function runSingleReferenceRequest(t, {
   batchRoots = "2",
   runId = strategy,
   afterFirstRequest,
+  afterRepeatedRequest,
   sdkPath,
   sdkAmbientProfile,
   dependencyProfile,
@@ -61,6 +62,7 @@ async function runSingleReferenceRequest(t, {
       ...(strategy ? { ARKTS_REFERENCES_STRATEGY: strategy } : {}),
       ARKTS_REFERENCES_BATCH_ROOTS: batchRoots,
       ARKTS_REFERENCES_TRACE: "1",
+      ...(afterRepeatedRequest ? { ARKTS_INDEX_CATALOG_TRACE: "1" } : {}),
       ...(sdkAmbientProfile ? {
         ARKTS_REFERENCES_SDK_AMBIENT_PROFILE: sdkAmbientProfile,
       } : {}),
@@ -134,6 +136,7 @@ async function runSingleReferenceRequest(t, {
     }, { timeoutMs: 30_000 })
     assert.equal(repeated.error, undefined, JSON.stringify(repeated.error))
     assert.deepEqual(sortedLocations(repeated.result), sortedLocations(response.result))
+    await afterRepeatedRequest?.(session, response.result)
   }
   await session.close({ timeoutMs: 5_000 })
   const logs = fs.readFileSync(path.join(logDirectory, "server.log"), "utf8")

@@ -32,7 +32,15 @@ export interface ProjectFileAccessPort {
   ): string | null
 }
 
+/** Local store-owned catalog identity; not serialized as cross-worker authority. */
+export const WORKSPACE_CATALOG_STAMP = Symbol("workspaceCatalogStamp")
+export interface WorkspaceCatalogStamp {
+  readonly canonicalRootId: string
+  readonly revision: number | null
+}
+
 export interface SemanticWorkspaceView {
+  readonly [WORKSPACE_CATALOG_STAMP]?: WorkspaceCatalogStamp
   rootPath: string
   /** Resolver generation used to build membership and dependency input projections. */
   [RESOLUTION_INPUT_GENERATION]?: ResolutionInputGeneration

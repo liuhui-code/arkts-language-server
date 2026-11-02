@@ -89,3 +89,33 @@ Windows连接超时，无真实UI或长时验收；455独立门槛按授权不�
 
 2026-10-31后继：[ADR0036](0036-compiler-source-namespace-recovery.md)已定位私有源码 namespace proof
 未接入恢复入口，实施来源区分与保留 SDK/配置合同的候选；其最终检查独立记录，以上历史收据不改写。
+
+## 2026-11-02 owner-churn corrective evidence — integrated, gates pending
+
+The [continuous review](../reports/2026-11-02-continuous-ide-review.md) integrates
+eligible dirty catalog reconciliation before the first raw query capture, plus
+cached immutable canonical-root/catalog stamp and a post-refresh/pre-compiler
+update guard. Original query views, disk bytes and target scope remain; cache
+absence uses the original path. No new all-source proof capsule, second LS or
+proof-handoff API is introduced. Independent32/32 and ordering4/SDK19 pass;
+controlled4→2 owners retains two catalog scans and is not a general speed claim.
+Rejected alternatives and inconclusive baseline-prewarm controls remain recorded.
+Joint Rust/Node20/41-file gate is running on1415 frozen inputs; fresh CI pending.
+No existing status, source-recovery, SDK/configuration proof or resource policy
+is changed. Published b129 CI SUCCESS covers only its earlier input, not this fix.
+
+## 2026-11-02 04:27 UTC local verification terminal
+
+The [continuous candidate](../reports/2026-11-02-continuous-ide-review.md) is
+implemented and locally verified: final42 complete Node files401/401 PASS,
+zero fail/skip/cancel/todo, `pnpm check` exit0;1416/1416 source inputs and all
+production runtime hashes match. Rust234PASS/0FAIL/1 original ignored external455
+fixture, fmt/strictClippy/release and Node20 build passed on the same production
+input. Only the six-file generation-fixture correction followed the failed
+joint gate. Independent review found no new confirmed must-fix in scope.
+
+Fresh complete candidate CI awaits publication. Original joint399/401 FAIL and
+rerun400/401 FAIL are retained; the two historical timeouts remain unexplained,
+non-reproduced observations, not fixed. Lost original fixture generation is not
+reconstructed. No ADR approval change, whole-suite pass, UI/native-UNC/30K/
+endurance qualification or general performance claim follows from local scope.

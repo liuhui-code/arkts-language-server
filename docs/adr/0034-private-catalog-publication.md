@@ -108,3 +108,37 @@ join后返回；任何读取失败或panic仍拒绝发布，长度/mtime/SHA256�
 前缀直接使用字节长度，非ASCII仍走原换算。三对同机固定二进制对照均保留
 455文件、225630行与四个确定性查询，并显示校验阶段缩短；不据此宣称本地
 3秒门禁、30K、总内存或跨平台性能毕业。
+
+## 2026-11-02 catalog-open corrective evidence — integrated, joint gates pending
+
+The [continuous review](../reports/2026-11-02-continuous-ide-review.md) confirms
+existing missing/truncated legacy data and malformed control could be silently
+reinitialized, including rollback to surviving legacygen1 while namedgen2 exists.
+Observed empty/rolled-back results were STALE, not falsely READY. Absent-control
+bootstrap/import remains; existing control/data open without CREATE and reject
+missing schema/row/empty data. Bootstrap connection handoff preserves original
+WAL close behavior; its intermediate failed candidate is retained. No incremental
+control-generation writes, globally immutable DB policy or automatic deletion.
+
+Six reviewed files integrated02:05UTC with matching hashes. Final isolated Rust
+workspace234PASS/0FAIL/1existingignored external455 fixture, strictClippy/release
+and real release recovery smoke PASS;98/98 inputs match. Independent malformed-
+control and12concurrentbootstrap probes pass. Original RED4/7 and stronger
+controlRED7/9 remain. Joint integrated gates/fresh CI are pending; publishedb129
+CI is separate. No status promotion, nativeWindows/UI or resource graduation.
+
+## 2026-11-02 04:27 UTC local verification terminal
+
+The [continuous candidate](../reports/2026-11-02-continuous-ide-review.md) is
+implemented and locally verified: final42 complete Node files401/401 PASS,
+zero fail/skip/cancel/todo, `pnpm check` exit0;1416/1416 source inputs and all
+production runtime hashes match. Rust234PASS/0FAIL/1 original ignored external455
+fixture, fmt/strictClippy/release and Node20 build passed on the same production
+input. Only the six-file generation-fixture correction followed the failed
+joint gate. Independent review found no new confirmed must-fix in scope.
+
+Fresh complete candidate CI awaits publication. Original joint399/401 FAIL and
+rerun400/401 FAIL are retained; the two historical timeouts remain unexplained,
+non-reproduced observations, not fixed. Lost original fixture generation is not
+reconstructed. No ADR approval change, whole-suite pass, UI/native-UNC/30K/
+endurance qualification or general performance claim follows from local scope.

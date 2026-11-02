@@ -69,10 +69,10 @@ pub fn build_catalog_with_fingerprint(
     batch
         .documents
         .sort_unstable_by(|left, right| left.uri.cmp(&right.uri));
-    let mut control = Control::open(base, identity)?;
+    let (mut control, initial_store) = Control::open(base, identity)?;
     let guard = control.shared()?;
     let parent = control.active()?;
-    let mut old = open_published(&control.path(&parent), identity, &parent)?;
+    let mut old = open_published(&control.path(&parent), identity, &parent, initial_store)?;
     let expected = old.metadata()?.committed_generation;
     if batch.generation <= expected {
         drop(guard);

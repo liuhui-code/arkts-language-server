@@ -2,7 +2,8 @@
 
 ## Current status and scope
 
-**Index correction locally verified; publication/CI pending. Resource issue OPEN.**
+**Published index correction complete CI PASS at b129; resource work continued
+in the separate continuous-review report.**
 At01:04UTC the user authorized correcting two additional
 findings and appending their evidence to draft PR112. This is a new bounded
 follow-up, not a retroactive fifth round or rewrite of the completed second group.
@@ -113,3 +114,13 @@ and CI2233/2234 failures remain historical failures; the original startup timeou
 is still unexplained/non-reproduced, not retroactively assigned a cause.
 The separately authorized unpublished index follow-up has scoped123/123 PASS;
 it requires fresh CI on its own future head and cannot inherit this full PASS.
+
+## 2026-11-02 published b129 CI terminal SUCCESS
+
+[Run41372738816](https://github.com/liuhui-code/arkts-language-server/actions/runs/41372738816)
+completed SUCCESS for exact head `b129d3e04e71a6b5fd68293d9153f6264d309c7e`:
+fast2269/2269, artifact E2E7/7, large E2E1/1, Rust224 plus one explicitly
+executed initially ignored fixture, query2/2/four SCM validations, WASM release
+and Windows install/reinstall/LSP smoke PASS. This qualifies that published
+index correction, not the newer native/resource candidates. Original earlier
+FAIL receipts remain; no real UI/native network-share/endurance claim follows.

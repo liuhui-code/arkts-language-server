@@ -8,13 +8,29 @@ import type { SemanticTypeEngineRegistry } from "../core/types/type-engine.js"
 import type { SemanticDocumentPosition } from "../core/protocol.js"
 import type { SemanticDocumentStore, SemanticWorkspaceView } from "../core/workspace/document-store.js"
 import { assertCompleteProjectMembership } from "./workspace-membership-admission.js"
+import { WORKSPACE_CATALOG_STAMP } from "../core/workspace/semantic-workspace-view.js"
 import { SemanticInputUnavailableError } from "../core/types/typescript-query-inputs.js"
+
+/** Metadata reconciliation precedes the first raw snapshot; it creates no compiler owner. */
+export function prepareReadinessCatalog(documents: SemanticDocumentStore, engines: SemanticTypeEngineRegistry,
+  rootPath: string, eligible: boolean): boolean {
+  return eligible && engines.needsReadinessCatalogRefresh(rootPath)
+    ? documents.refreshProjectMembership(rootPath).changed : false
+}
 
 /** Ordinary queries may refresh an existing explicit session, never create a cold one. */
 export function refreshInteractiveReadiness(documents: SemanticDocumentStore,
-  engines: SemanticTypeEngineRegistry, workspace: SemanticWorkspaceView): void {
+  engines: SemanticTypeEngineRegistry, workspace: SemanticWorkspaceView, catalogChangedBeforeCapture = false): void {
   if (!engines.needsReadinessRootRefresh(workspace)) return
+  const original = workspace[WORKSPACE_CATALOG_STAMP]
+  const captured = original !== undefined && original.revision !== null
+  // A live compiler can outlive the bounded catalog cache. With no early change,
+  // preserve its conservative existing path rather than creating a permanent denial.
+  if (!captured && catalogChangedBeforeCapture) throw new SemanticInputUnavailableError()
   const complete = documents.prepareRoot(workspace.rootPath)
+  const refreshed = complete?.[WORKSPACE_CATALOG_STAMP]
+  if (captured && (!refreshed || original.canonicalRootId !== refreshed.canonicalRootId
+    || original.revision !== refreshed.revision)) throw new SemanticInputUnavailableError()
   if (complete?.projectMembership?.status === "complete") engines.semanticReadiness(complete, "query")
 }
 
@@ -34,20 +50,25 @@ export function prepareInteractiveContext(documents: SemanticDocumentStore, engi
   }
   if (document.source?.kind === "disk") {
     const prepared = prepareSourceWorkspace(documents, { kind: "disk", uri: document.uri,
-      text: document.text, workspaceId: document.workspaceId, workspaceRootUri: document.source.rootUri }, position, includeWorkspaceFiles)
+      text: document.text, workspaceId: document.workspaceId, workspaceRootUri: document.source.rootUri }, position, includeWorkspaceFiles,
+      root => prepareReadinessCatalog(documents, engines, root, certifyReadiness
+        && (includeWorkspaceFiles || projectRootProfile === "current" || !engines.hasSemanticGroups(root))))
     const workspace = interactiveWorkspace(prepared.workspace, prepared.position.path,
       includeWorkspaceFiles, projectRootProfile, additionalSemanticRoots)
     if (certifyReadiness && (includeWorkspaceFiles || projectRootProfile === "current"
-      || !engines.hasSemanticGroups(workspace.rootPath))) refreshInteractiveReadiness(documents, engines, workspace)
+      || !engines.hasSemanticGroups(workspace.rootPath))) refreshInteractiveReadiness(documents, engines, workspace, prepared.catalogChangedBeforeCapture)
     return { engine: includeWorkspaceFiles || projectRootProfile === "current" ? engines.prepare(workspace)
       : engines.prepareInteractive(workspace, () => documents.membershipFor(workspace.rootPath), certifyReadiness), position: prepared.position }
   }
   const workspace = projects.projectFor(document.uri)
   const legacyPosition = toLegacyPosition(document, position, workspace)
+  const catalogChangedBeforeCapture = prepareReadinessCatalog(documents, engines, legacyPosition.workspaceRoot!,
+    certifyReadiness && (includeWorkspaceFiles || projectRootProfile === "current"
+      || !engines.hasSemanticGroups(legacyPosition.workspaceRoot!)))
   const prepared = prepareInteractiveWorkspace(documents, legacyPosition,
     includeWorkspaceFiles, projectRootProfile, additionalSemanticRoots)
   if (certifyReadiness && (includeWorkspaceFiles || projectRootProfile === "current"
-    || !engines.hasSemanticGroups(prepared.rootPath))) refreshInteractiveReadiness(documents, engines, prepared)
+    || !engines.hasSemanticGroups(prepared.rootPath))) refreshInteractiveReadiness(documents, engines, prepared, catalogChangedBeforeCapture)
   const engine = includeWorkspaceFiles || projectRootProfile === "current" ? engines.prepare(prepared)
     : engines.prepareInteractive(prepared, () => documents.membershipFor(prepared.rootPath), certifyReadiness)
   return { engine, position: legacyPosition }
@@ -67,22 +88,20 @@ export function toLegacyPosition(document: DocumentSnapshot, position: TextPosit
 
 /** Existing open/disk source ownership, independent of any compiler context. */
 export function prepareSourceWorkspace(documents: SemanticDocumentStore, source: SemanticCallHierarchySource,
-  position: TextPosition, includeWorkspaceFiles: boolean) {
+  position: TextPosition, includeWorkspaceFiles: boolean, beforeCapture?: (rootPath: string) => boolean) {
   const documentUri = source.kind === "open" ? source.document.uri : source.uri
   const workspaceRoot = fileURLToPath(source.workspaceRootUri)
   const legacyPosition: SemanticDocumentPosition = {
     path: fileURLToPath(documentUri), line: position.line + 1, column: position.character + 1,
     workspaceRoot, ...(source.kind === "open" ? { documentVersion: source.document.version } : {}),
   }
-  const workspace = source.kind === "open"
-    ? (() => {
-        documents.sync({ path: legacyPosition.path, content: source.document.text,
-          documentVersion: source.document.version, workspaceRoot })
-        return documents.prepare(legacyPosition, includeWorkspaceFiles)
-      })()
+  if (source.kind === "open") documents.sync({ path: legacyPosition.path, content: source.document.text,
+    documentVersion: source.document.version, workspaceRoot })
+  const catalogChangedBeforeCapture = beforeCapture?.(workspaceRoot) ?? false
+  const workspace = source.kind === "open" ? documents.prepare(legacyPosition, includeWorkspaceFiles)
     : documents.prepareDiskSnapshot(legacyPosition, source.text, includeWorkspaceFiles)
   if (includeWorkspaceFiles) assertCompleteProjectMembership(workspace)
-  return { workspace, position: legacyPosition }
+  return { workspace, position: legacyPosition, catalogChangedBeforeCapture }
 }
 
 /** Retry unknown full scope through its existing owner before projecting interactive roots. */
@@ -120,4 +139,19 @@ export function interactiveWorkspace(
   }
   for (const root of additionalSemanticRoots) roots.add(path.resolve(root))
   return { ...workspace, semanticRootPaths: [...roots].sort() }
+}
+
+/** Call hierarchy retains its existing unconditional readiness-refresh eligibility. */
+export function prepareCallHierarchyContext(documents: SemanticDocumentStore, engines: SemanticTypeEngineRegistry,
+  source: SemanticCallHierarchySource, position: TextPosition, includeWorkspaceFiles: boolean,
+  projectRootProfile: "closure" | "current") {
+  const prepared = prepareSourceWorkspace(documents, source, position, includeWorkspaceFiles,
+    root => prepareReadinessCatalog(documents, engines, root, true))
+  refreshInteractiveReadiness(documents, engines, prepared.workspace, prepared.catalogChangedBeforeCapture)
+  return {
+    engine: includeWorkspaceFiles || projectRootProfile === "current" ? engines.prepare(interactiveWorkspace(
+      prepared.workspace, prepared.position.path, includeWorkspaceFiles, projectRootProfile))
+      : engines.prepareInteractive(prepared.workspace, () => documents.membershipFor(prepared.workspace.rootPath)),
+    position: prepared.position,
+  }
 }

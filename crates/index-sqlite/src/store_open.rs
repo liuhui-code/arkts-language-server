@@ -2,20 +2,26 @@ use super::*;
 
 impl SqliteStore {
     pub fn open(path: impl AsRef<Path>, workspace_identity: &str) -> Result<Self, StoreError> {
-        Self::open_with_page_size(path.as_ref(), workspace_identity, None)
+        Self::open_with_page_size(path.as_ref(), workspace_identity, None, true)
     }
 
     pub(super) fn open_private_catalog(
         path: &Path,
         workspace_identity: &str,
     ) -> Result<Self, StoreError> {
-        Self::open_with_page_size(path, workspace_identity, Some(16384))
+        Self::open_with_page_size(path, workspace_identity, Some(16384), true)
+    }
+
+    /// A published database must already exist and carry an initialized index schema.
+    pub(super) fn open_existing(path: &Path, workspace_identity: &str) -> Result<Self, StoreError> {
+        Self::open_with_page_size(path, workspace_identity, None, false)
     }
 
     fn open_with_page_size(
         path: &Path,
         workspace_identity: &str,
         page_size: Option<u32>,
+        create: bool,
     ) -> Result<Self, StoreError> {
         let cache_lease =
             cache_gc::lease::CacheLease::acquire(path, workspace_identity).map_err(|error| {
@@ -28,7 +34,7 @@ impl SqliteStore {
                     error.to_string(),
                 )
             })?;
-        if let Some(parent) = path.parent() {
+        if create && let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|error| {
                 StoreError::new(
                     StoreErrorKind::Io,
@@ -37,10 +43,21 @@ impl SqliteStore {
             })?;
         }
         let generation_lease = catalog_files::reader_lease(path)?;
-        let flags = OpenFlags::SQLITE_OPEN_READ_WRITE
-            | OpenFlags::SQLITE_OPEN_CREATE
-            | OpenFlags::SQLITE_OPEN_NO_MUTEX;
+        let mut flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX;
+        if create {
+            flags |= OpenFlags::SQLITE_OPEN_CREATE;
+        }
         let mut connection = Connection::open_with_flags(path, flags).map_err(map_sqlite_error)?;
+        if !create {
+            let application_id: i64 = connection
+                .pragma_query_value(None, "application_id", |row| row.get(0))
+                .map_err(map_sqlite_error)?;
+            if application_id != APPLICATION_ID {
+                return Err(catalog_control::incompatible(
+                    "published catalog schema is missing",
+                ));
+            }
+        }
         if let Some(page_size) = page_size {
             connection
                 .pragma_update(None, "page_size", page_size)

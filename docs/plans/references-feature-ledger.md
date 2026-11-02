@@ -1,5 +1,51 @@
 # References / semantic Feature Ledger
 
+## Current continuous review — 2026-11-02, integrated verification
+
+**Implemented and locally verified; fresh complete candidate CI pending publication.**
+[Continuous report](../reports/2026-11-02-continuous-ide-review.md).
+Publishedb129d3e04e71a6b5fd68293d9153f6264d309c7e CI41372738816 nowSUCCESS:
+fast2269/2269, artifact7/7, large1/1, Rust224+explicitfixture1, query2/2/SCM4,
+WASM and Windows smoke. This does not qualify the newer combined candidate.
+Native recovery six reviewed files integrated: isolated234PASS/1existingignored,
+release/Clippy/recovery smoke,98/98 inputs and independent malformed-control/
+12concurrentbootstrap probes. Original STALE results were not semantic READY.
+Resource15files+manifest2 now integrated: eligible dirty prescan before first raw
+capture, cached canonical-root/catalog stamp, post-refresh guard before compiler
+update; original source/disk/target inputs retained, cache absence uses legacy
+path. No new proof-capsule/API adoption. Independent32/32 plus ordering4/SDK19
+pass; controlled4→2 owner counts retain two-scan cost, no general performance
+claim. Current-profile prewarm failures make two-probe comparison inconclusive.
+Current manifest300(unit121/bundle156/protocol15), after reviewed fixture
+integration04:11UTC. Earlier joint gate terminal exit1 at Node:
+399/401PASS, two original-deadline timeouts, zero skip/cancel/todo,890904.056ms;
+Rust234PASS/1existingignored,fmt/Clippy/release,Node20check/buildPASS. All1415
+inputs match. Third-restart readiness5s and first conservative reference run30s
+are under serial baselineb129/current three-pair diagnosis; cause unassigned,
+main source edits paused. Later same41-file diagnostic rerun400/401FAIL(exit1,
+681291.856ms), observer0, all1415source and runtime hashes match. Originaltimeouts
+pass there and paired12/12 plus completefiles34/34each, but remain unexplained/
+non-reproduced, not fixed. New sole rerunfailure is scoped-request count2vs1;
+deterministic legitimate generation2 reproduces the old assertion on both revisions.
+The lost original fixture prevents reconstructing its actual generation. A test-only
+hold/release correction preserves immediate watched-change→query ordering, old
+count1/fallback/no-recovery while held, then new roots/full results after release.
+Strengthened paired6/6 and six completefiles21/21 PASS; final independent order
+review approved, all six artifact hashes matched at integration. Production and
+deadlines unchanged. Final session19792 exits0: pnpm check PASS and42 complete Node files401/401
+PASS, zero fail/skip/cancel/todo,698669.119535ms. All1416 frozen source inputs
+and production dist/native-runtime hashes match (continuous-integration final
+receipts). Same production input already passed Rust234/1existingignored,
+fmt/strictClippy/release and Node20 build; only six test files changed afterward.
+All confirmed defects corrected; independent scoped review found no new must-fix.
+Local scoped acceptance is not complete CI or continuous-review completion. Evidence: continuous-recovery-timeout/UNITS-RESULT.md
+and units-fix-artifact. Fresh combined-head CI awaits publication. Static
+cross-layer review found no new confirmed must-fix, not a whole execution pass.
+No completion/merge/Accepted promotion. Original rejected designs, failures,
+UI/nativeUNC/30K/endurance limits remain in the detailed report and prior receipts.
+
+## Previous authorized follow-up receipts
+
 ## Current authorized follow-up — 2026-11-02
 
 Published baseline CI is now **SUCCESS**: run41368012421/head a11cdbc, complete

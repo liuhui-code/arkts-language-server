@@ -63,7 +63,10 @@ impl Control {
         })
     }
 
-    pub fn open(base: &Path, identity: &str) -> Result<Self, StoreError> {
+    pub fn open(
+        base: &Path,
+        identity: &str,
+    ) -> Result<(Self, Option<crate::SqliteStore>), StoreError> {
         if base
             .file_name()
             .is_none_or(|name| name != "symbols-v2.sqlite3")
@@ -79,7 +82,8 @@ impl Control {
         let guard = lock(base, true)?;
         let path = base.with_file_name("catalog-state.sqlite3");
         safe_file(&path)?;
-        if !path.exists()
+        let bootstrap = !path.exists();
+        if bootstrap
             && fs::read_dir(base.parent().unwrap())
                 .map_err(io_error)?
                 .filter_map(Result::ok)
@@ -89,25 +93,33 @@ impl Control {
                 "catalog publication state is missing; refusing to expose or discard unowned generations",
             ));
         }
-        let connection = Connection::open(path).map_err(map_sqlite_error)?;
+        let mut flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX;
+        if bootstrap {
+            flags |= OpenFlags::SQLITE_OPEN_CREATE;
+        }
+        let connection = Connection::open_with_flags(path, flags).map_err(map_sqlite_error)?;
         connection
             .busy_timeout(Duration::from_secs(5))
             .map_err(map_sqlite_error)?;
         connection
-            .execute_batch(
-                "PRAGMA synchronous=FULL;\
-             CREATE TABLE IF NOT EXISTS catalog_state(\
-               id INTEGER PRIMARY KEY CHECK(id=1), workspace_identity TEXT NOT NULL,\
-               database_name TEXT NOT NULL, published_generation INTEGER NOT NULL,\
-               fingerprint TEXT);",
-            )
+            .execute_batch("PRAGMA synchronous=FULL;")
             .map_err(map_sqlite_error)?;
-        connection
-            .execute(
-                "INSERT OR IGNORE INTO catalog_state VALUES(1,?1,'symbols-v2.sqlite3',0,NULL)",
-                [identity],
-            )
-            .map_err(map_sqlite_error)?;
+        if bootstrap {
+            connection
+                .execute_batch(
+                    "CREATE TABLE catalog_state(\
+                     id INTEGER PRIMARY KEY CHECK(id=1), workspace_identity TEXT NOT NULL,\
+                     database_name TEXT NOT NULL, published_generation INTEGER NOT NULL,\
+                     fingerprint TEXT);",
+                )
+                .map_err(map_sqlite_error)?;
+            connection
+                .execute(
+                    "INSERT INTO catalog_state VALUES(1,?1,'symbols-v2.sqlite3',0,NULL)",
+                    [identity],
+                )
+                .map_err(map_sqlite_error)?;
+        }
         let actual: String = connection
             .query_row(
                 "SELECT workspace_identity FROM catalog_state WHERE id=1",
@@ -121,6 +133,14 @@ impl Control {
                 "catalog control identity mismatch",
             ));
         }
+        let initial_store = if bootstrap {
+            // Keep this connection for the caller: closing the last connection here
+            // would add an unsolicited WAL checkpoint to ordinary initialization.
+            safe_file(base)?;
+            Some(crate::SqliteStore::open(base, identity)?)
+        } else {
+            None
+        };
         drop(guard);
         let control = Self {
             connection,
@@ -128,7 +148,7 @@ impl Control {
             _lease: lease,
         };
         control.active()?;
-        Ok(control)
+        Ok((control, initial_store))
     }
 
     pub fn shared(&self) -> Result<PublicationGuard, StoreError> {

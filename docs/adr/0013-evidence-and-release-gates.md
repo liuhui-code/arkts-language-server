@@ -138,3 +138,92 @@ and CI2233/2234 failures remain historical failures; the original startup timeou
 is still unexplained/non-reproduced, not retroactively assigned a cause.
 The separately authorized unpublished index follow-up has scoped123/123 PASS;
 it requires fresh CI on its own future head and cannot inherit this full PASS.
+
+## 2026-11-02 catalog-open corrective evidence — integrated, joint gates pending
+
+The [continuous review](../reports/2026-11-02-continuous-ide-review.md) confirms
+existing missing/truncated legacy data and malformed control could be silently
+reinitialized, including rollback to surviving legacygen1 while namedgen2 exists.
+Observed empty/rolled-back results were STALE, not falsely READY. Absent-control
+bootstrap/import remains; existing control/data open without CREATE and reject
+missing schema/row/empty data. Bootstrap connection handoff preserves original
+WAL close behavior; its intermediate failed candidate is retained. No incremental
+control-generation writes, globally immutable DB policy or automatic deletion.
+
+Six reviewed files integrated02:05UTC with matching hashes. Final isolated Rust
+workspace234PASS/0FAIL/1existingignored external455 fixture, strictClippy/release
+and real release recovery smoke PASS;98/98 inputs match. Independent malformed-
+control and12concurrentbootstrap probes pass. Original RED4/7 and stronger
+controlRED7/9 remain. Joint integrated gates/fresh CI are pending; publishedb129
+CI is separate. No status promotion, nativeWindows/UI or resource graduation.
+
+## 2026-11-02 owner-churn corrective evidence — integrated, gates pending
+
+The [continuous review](../reports/2026-11-02-continuous-ide-review.md) integrates
+eligible dirty catalog reconciliation before the first raw query capture, plus
+cached immutable canonical-root/catalog stamp and a post-refresh/pre-compiler
+update guard. Original query views, disk bytes and target scope remain; cache
+absence uses the original path. No new all-source proof capsule, second LS or
+proof-handoff API is introduced. Independent32/32 and ordering4/SDK19 pass;
+controlled4→2 owners retains two catalog scans and is not a general speed claim.
+Rejected alternatives and inconclusive baseline-prewarm controls remain recorded.
+Joint Rust/Node20/41-file gate is running on1415 frozen inputs; fresh CI pending.
+No existing status, source-recovery, SDK/configuration proof or resource policy
+is changed. Published b129 CI SUCCESS covers only its earlier input, not this fix.
+
+## 2026-11-02 integrated gate failure receipt
+
+The continuous candidate's joint gate terminates exit1: Node399/401, two
+timeouts, zero skipped/cancelled/todo,890904.056ms. Rust234PASS/1existingignored,
+fmt/strictClippy/release and Node20check/build pass;1415/1415 frozen inputs match.
+Third-restart readiness5s and the first conservative reference query30s retain
+original deadlines. Paired baseline/current diagnosis is active; no root cause
+or fix is inferred from progress logs, earlier independent review or stage passes.
+Main edits pause until attribution. This full joint FAIL remains separate from
+published b129 CI PASS and any future candidate/CI receipt; no approval change.
+
+## 2026-11-02 diagnostic rerun and isolated fixture correction
+
+The same41-file rerun fails exit1 with400/401 PASS, zero skip/cancel/todo;
+all1415 source and captured runtime hashes match. Original two timeouts pass
+this run and paired/full-file controls, but remain unexplained and unfixed.
+The new scoped-request-count assertion is reproduced on baseline and candidate
+by allowing a legitimate newer catalog generation; this confirms an invalid
+fixture timing assumption, not stale-result production behavior. The original
+failed fixture was not retained, so its exact generation is not reconstructed.
+
+An isolated hold/release test preserves immediate watched-change/query order,
+old-generation fallback/count/no-recovery and released new-generation results.
+Strengthened paired6/6 and six completefiles21/21 pass; independent final review
+and main integration remain pending. No production or timeout changes. See the
+[continuous report](../reports/2026-11-02-continuous-ide-review.md) and its
+UNITS-RESULT.md evidence receipt. Joint399/401 FAIL and rerun400/401 FAIL are
+retained separately; no aggregate PASS or ADR status change follows from this
+isolated correction.
+
+### 04:11 UTC integration checkpoint
+
+The reviewed six-file fixture correction is integrated with matching artifact
+hashes. Independent final review confirms watched notification→immediate query;
+activation is awaited only after the repeated response. Current manifest300/
+bundle156 includes the extracted test. Final `pnpm check` plus42 complete Node
+files runs on1416 frozen inputs; no terminal result or fresh complete CI yet.
+No production or timeout changes; the original joint Rust234/Clippy/release/
+Node20check/build passes remain scoped to their inputs. Both failed Node gates,
+unexplained timeouts and unreconstructed original generation remain retained.
+
+## 2026-11-02 04:27 UTC local verification terminal
+
+The [continuous candidate](../reports/2026-11-02-continuous-ide-review.md) is
+implemented and locally verified: final42 complete Node files401/401 PASS,
+zero fail/skip/cancel/todo, `pnpm check` exit0;1416/1416 source inputs and all
+production runtime hashes match. Rust234PASS/0FAIL/1 original ignored external455
+fixture, fmt/strictClippy/release and Node20 build passed on the same production
+input. Only the six-file generation-fixture correction followed the failed
+joint gate. Independent review found no new confirmed must-fix in scope.
+
+Fresh complete candidate CI awaits publication. Original joint399/401 FAIL and
+rerun400/401 FAIL are retained; the two historical timeouts remain unexplained,
+non-reproduced observations, not fixed. Lost original fixture generation is not
+reconstructed. No ADR approval change, whole-suite pass, UI/native-UNC/30K/
+endurance qualification or general performance claim follows from local scope.

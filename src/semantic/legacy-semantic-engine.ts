@@ -72,7 +72,7 @@ import type { StructuredLogger } from "../observability/logger.js"
 import type { SemanticMemoryLevel } from "./coordinator/semantic-coordinator.js"
 import type { LegacySemanticEngineRuntimeOptions } from "./semantic-engine-runtime-options.js"
 import { prepareReferenceAnchor, prepareReferenceSearchWorkspace, runOwnerReferenceQuery } from "./references/reference-anchor-preparation.js"
-import { interactiveWorkspace, prepareInteractiveContext, prepareSourceWorkspace, refreshInteractiveReadiness, toLegacyPosition } from "./interactive-workspace.js"
+import { prepareCallHierarchyContext, prepareInteractiveContext, toLegacyPosition } from "./interactive-workspace.js"
 import { toPublicCompletion, toLegacyCompletion, toPublicCallHierarchyItem,
   toLegacyCallHierarchyItem, toPublicRange, toLegacyRange, toPublicDocumentSymbol } from "./legacy-result-mappers.js"
 
@@ -651,17 +651,8 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     position: TextPosition,
     includeWorkspaceFiles = false,
   ) {
-    const prepared = prepareSourceWorkspace(this.documents, source, position, includeWorkspaceFiles)
-    refreshInteractiveReadiness(this.documents, this.engines, prepared.workspace)
-    return {
-      engine: includeWorkspaceFiles || this.interactiveProjectRootProfile === "current" ? this.engines.prepare(interactiveWorkspace(
-        prepared.workspace,
-        prepared.position.path,
-        includeWorkspaceFiles,
-        this.interactiveProjectRootProfile,
-      )) : this.engines.prepareInteractive(prepared.workspace, () => this.documents.membershipFor(prepared.workspace.rootPath)),
-      position: prepared.position,
-    }
+    return prepareCallHierarchyContext(this.documents, this.engines, source, position,
+      includeWorkspaceFiles, this.interactiveProjectRootProfile)
   }
 
 }
