@@ -1,4 +1,4 @@
-import type { Connection } from "vscode-languageserver/node.js"
+import { MessageType, ShowMessageNotification, type Connection } from "vscode-languageserver/node.js"
 import type { WorkspaceIndexProgress, WorkspaceSymbolServicePort } from "../contracts/workspace-symbol-service.js"
 import type { StructuredLogger } from "../observability/logger.js"
 
@@ -15,9 +15,19 @@ export async function startWorkspaceIndex(connection: Connection, workspaceSymbo
   let lastStorageLog = 0
   let lastStorageStage: string | undefined
   let finished = false
+  const warnings = new Set<string>()
   progress.begin("ArkTS workspace index", undefined, "Discovering project files", true)
   const report = (status: WorkspaceIndexProgress) => {
     if (finished) return
+    if (status.warning && !warnings.has(status.warning)) {
+      warnings.add(status.warning)
+      logger.info("index.cache.directory.warning", { message: status.warning })
+      void Promise.resolve().then(() => shuttingDown() ? undefined : connection.sendNotification(
+        ShowMessageNotification.type, { type: MessageType.Warning, message: status.warning! },
+      )).catch(error => {
+        if (!shuttingDown()) logger.error("index.cache.warning.delivery.failed", { reason: String(error) })
+      })
+    }
     if (status.phase === "discovering") {
       if (status.discoveredFiles > 0) {
         progress.report(discoveryMessage(status))

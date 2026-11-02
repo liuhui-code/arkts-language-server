@@ -276,6 +276,12 @@ On macOS the defaults are:
 - index: `~/Library/Caches/arkts-language-server/index`
 
 `ARKTS_LSP_LOG_DIR` and `ARKTS_INDEX_CACHE_DIR` override those directories.
+On Windows the index now prefers `D:\arkts-language-server\index`. If D is
+missing or unwritable, LSP warns and uses the previous `%LOCALAPPDATA%` cache.
+An explicitly configured directory never silently falls back. Set
+`lsp.arkts-language-server.binary.env.ARKTS_INDEX_CACHE_DIR` in Zed (using nested
+JSON objects), then restart the language server. See [index storage configuration](docs/configuration/index-storage.md)
+for examples, workspace isolation, failure behavior and read-only cache administration.
 Logs are NDJSON, rotate at 5 MiB, never use stdout, and include lifecycle,
 request timing, and aggregate catalog terminal counters. Each
 `request.completed` event includes `rssBytes` (whole Node process, including

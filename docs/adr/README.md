@@ -54,6 +54,7 @@ protection checks. Earlier L01/L02 resource-admission verdicts are historical.
 | [0038](0038-sdk-component-environment.md) | Accepted; SDK contracts and canonical release gates verified | Immutable selected SDK components, product constraints and compiler-native SDK export discovery with load-owned proof |
 | [0039](0039-validation-directory-observations.md) | Rejected after matched experiments; evidence retained | Directory-content proof prototype gives about 10% and adds compatibility assumptions; original server validation retained |
 | [0040](0040-client-context-request-backpressure.md) | Proposed; component/release and six 30K protocol rounds verified, deployment/UI pending | Lazily bound automatic context requests; preserve all answers, source/refresh ownership, foreground independence and terminal outcomes |
+| [0041](0041-windows-index-storage-location.md) | Proposed; build/typecheck and targeted83/83 verified; Windows real machine pending | Prefer D-drive index storage on Windows with explicit configuration, visible fallback, workspace isolation and one session-owned root for index/GC |
 
 2026-10-27 [三项根因与ADR审计](../reports/2026-10-27-30k-issues-root-causes-and-adrs.md#adr逐项映射与设计缺口)：
 上表0020–0023的“not merged”及检查数是各切片当时的历史收据，不能作为当前版本判定。

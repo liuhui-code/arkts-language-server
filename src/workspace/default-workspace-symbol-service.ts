@@ -23,7 +23,7 @@ interface DefaultWorkspaceSymbolServiceDependencies {
   index: WorkspaceIndexPort
   catalog: WorkspaceCatalogPort
   semantic: SemanticEnginePort
-  cacheDirectory: string
+  cacheDirectory: string | ((reportWarning: (message: string) => void) => Promise<string>)
   maintenance?: { start(): void; dispose(): Promise<void> }
 }
 
@@ -174,7 +174,15 @@ export class DefaultWorkspaceSymbolService implements WorkspaceSymbolServicePort
     signal?: AbortSignal,
   ): Promise<void> {
     try {
-      await this.dependencies.index.open(workspace, this.dependencies.cacheDirectory)
+      const configured = this.dependencies.cacheDirectory
+      const directory = typeof configured === "string" ? configured : await configured(warning => {
+        if (!this.disposed && !signal?.aborted) {
+          this.report?.({ ...aggregateProgress([...this.progress.values()]), warning })
+        }
+      })
+      if (this.disposed) return
+      assertActive(signal)
+      await this.dependencies.index.open(workspace, directory)
       if (this.disposed) {
         await this.dependencies.index.close(workspace.id)
         return

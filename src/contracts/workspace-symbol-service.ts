@@ -25,6 +25,8 @@ export interface WorkspaceIndexProgress {
   skippedEntries: number
   totalFiles?: number
   storage?: WorkspaceCatalogStorage
+  /** Actionable index-storage notice; does not change semantic readiness or request results. */
+  warning?: string
 }
 
 export interface WorkspaceSymbolServicePort {
