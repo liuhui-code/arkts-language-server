@@ -1,0 +1,1388 @@
+diff --git a/README.md b/README.md
+--- a/README.md
++++ b/README.md
+@@ -1,3 +1,6 @@
++> [!IMPORTANT]
++> Remove this line to confirm you've reviewed this PR before submitting.
++
+ # Zed
+ 
+ [![Zed](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/zed-industries/zed/main/assets/badge/v0.json)](https://zed.dev)
+diff --git a/crates/edit_prediction/src/context_retrieval_debug.rs b/crates/edit_prediction/src/context_retrieval_debug.rs
+new file mode 100644
+--- /dev/null
++++ b/crates/edit_prediction/src/context_retrieval_debug.rs
+@@ -0,0 +1,73 @@
++use super::*;
++
++impl EditPredictionStore {
++    pub(super) fn handle_excerpt_store_event(
++        &mut self,
++        project_entity_id: EntityId,
++        event: &RelatedExcerptStoreEvent,
++    ) {
++        if let Some(project_state) = self.projects.get(&project_entity_id) {
++            if let Some(debug_tx) = project_state.debug_tx.clone() {
++                match event {
++                    RelatedExcerptStoreEvent::StartedRefresh => {
++                        debug_tx
++                            .unbounded_send(DebugEvent::ContextRetrievalStarted(
++                                ContextRetrievalStartedDebugEvent {
++                                    project_entity_id: project_entity_id,
++                                    timestamp: Instant::now(),
++                                    search_prompt: String::new(),
++                                },
++                            ))
++                            .ok();
++                    }
++                    RelatedExcerptStoreEvent::FinishedRefresh {
++                        superseded,
++                        cache_hit_count,
++                        cache_miss_count,
++                        mean_definition_latency,
++                        max_definition_latency,
++                    } => {
++                        debug_tx
++                            .unbounded_send(DebugEvent::ContextRetrievalFinished(
++                                ContextRetrievalFinishedDebugEvent {
++                                    project_entity_id: project_entity_id,
++                                    timestamp: Instant::now(),
++                                    metadata: vec![
++                                        (
++                                            "Outcome",
++                                            if *superseded {
++                                                "superseded"
++                                            } else {
++                                                "completed"
++                                            }
++                                            .into(),
++                                        ),
++                                        (
++                                            "Cache Hits",
++                                            format!(
++                                                "{}/{}",
++                                                cache_hit_count,
++                                                cache_hit_count + cache_miss_count
++                                            )
++                                            .into(),
++                                        ),
++                                        (
++                                            "Max LSP Time",
++                                            format!("{} ms", max_definition_latency.as_millis())
++                                                .into(),
++                                        ),
++                                        (
++                                            "Mean LSP Time",
++                                            format!("{} ms", mean_definition_latency.as_millis())
++                                                .into(),
++                                        ),
++                                    ],
++                                },
++                            ))
++                            .ok();
++                    }
++                }
++            }
++        }
++    }
++}
+diff --git a/crates/edit_prediction/src/edit_prediction.rs b/crates/edit_prediction/src/edit_prediction.rs
+--- a/crates/edit_prediction/src/edit_prediction.rs
++++ b/crates/edit_prediction/src/edit_prediction.rs
+@@ -76,6 +76,7 @@
+ use thiserror::Error;
+ use util::{ResultExt as _, rel_path::RelPath};
+ 
++mod context_retrieval_debug;
+ pub mod cursor_excerpt;
+ pub mod data_collection;
+ pub mod example_spec;
+@@ -1461,66 +1462,6 @@
+ 
+     pub fn remove_project(&mut self, project: &Entity<Project>) {
+         self.projects.remove(&project.entity_id());
+-    }
+-
+-    fn handle_excerpt_store_event(
+-        &mut self,
+-        project_entity_id: EntityId,
+-        event: &RelatedExcerptStoreEvent,
+-    ) {
+-        if let Some(project_state) = self.projects.get(&project_entity_id) {
+-            if let Some(debug_tx) = project_state.debug_tx.clone() {
+-                match event {
+-                    RelatedExcerptStoreEvent::StartedRefresh => {
+-                        debug_tx
+-                            .unbounded_send(DebugEvent::ContextRetrievalStarted(
+-                                ContextRetrievalStartedDebugEvent {
+-                                    project_entity_id: project_entity_id,
+-                                    timestamp: Instant::now(),
+-                                    search_prompt: String::new(),
+-                                },
+-                            ))
+-                            .ok();
+-                    }
+-                    RelatedExcerptStoreEvent::FinishedRefresh {
+-                        cache_hit_count,
+-                        cache_miss_count,
+-                        mean_definition_latency,
+-                        max_definition_latency,
+-                    } => {
+-                        debug_tx
+-                            .unbounded_send(DebugEvent::ContextRetrievalFinished(
+-                                ContextRetrievalFinishedDebugEvent {
+-                                    project_entity_id: project_entity_id,
+-                                    timestamp: Instant::now(),
+-                                    metadata: vec![
+-                                        (
+-                                            "Cache Hits",
+-                                            format!(
+-                                                "{}/{}",
+-                                                cache_hit_count,
+-                                                cache_hit_count + cache_miss_count
+-                                            )
+-                                            .into(),
+-                                        ),
+-                                        (
+-                                            "Max LSP Time",
+-                                            format!("{} ms", max_definition_latency.as_millis())
+-                                                .into(),
+-                                        ),
+-                                        (
+-                                            "Mean LSP Time",
+-                                            format!("{} ms", mean_definition_latency.as_millis())
+-                                                .into(),
+-                                        ),
+-                                    ],
+-                                },
+-                            ))
+-                            .ok();
+-                    }
+-                }
+-            }
+-        }
+     }
+ 
+     pub fn debug_info(
+diff --git a/crates/edit_prediction_context/src/context_backpressure_tests.rs b/crates/edit_prediction_context/src/context_backpressure_tests.rs
+new file mode 100644
+--- /dev/null
++++ b/crates/edit_prediction_context/src/context_backpressure_tests.rs
+@@ -0,0 +1,347 @@
++use super::*;
++use futures::channel::oneshot;
++use gpui::TestAppContext;
++use language::rust_lang;
++use lsp::FakeLanguageServer;
++use parking_lot::Mutex;
++use project::FakeFs;
++use serde_json::json;
++use util::path;
++
++#[derive(Default)]
++struct Requests {
++    automatic: Vec<(&'static str, lsp::Position)>,
++    pending: Vec<oneshot::Sender<()>>,
++    manual_armed: bool,
++    manual_seen: bool,
++}
++
++#[gpui::test]
++async fn background_context_bounds_admission_preserves_all_results_and_manual_navigation(
++    cx: &mut TestAppContext,
++) {
++    let (project, buffer, server, _document_lsp) = fixture(cx).await;
++    let requests = Arc::new(Mutex::new(Requests::default()));
++    handlers(&server, requests.clone());
++    let store = refresh(&project, &buffer, cx);
++    assert_eq!(
++        requests.lock().automatic.len(),
++        2,
++        "background context must admit one identifier pair, not all 32 pairs eagerly"
++    );
++
++    requests.lock().manual_armed = true;
++    let manual = project.update(cx, |project, cx| project.definitions(&buffer, 4usize, cx));
++    cx.run_until_parked();
++    assert!(
++        requests.lock().manual_seen,
++        "manual navigation must reach the server while the automatic pair is pending"
++    );
++    assert_eq!(
++        requests.lock().automatic.len(),
++        2,
++        "later speculative positions must remain unissued"
++    );
++    assert!(
++        manual
++            .await
++            .expect("manual request")
++            .expect("capable server")
++            .is_empty()
++    );
++    requests.lock().manual_armed = false;
++
++    for _ in 0..32 {
++        let pending = std::mem::take(&mut requests.lock().pending);
++        assert!(!pending.is_empty() && pending.len() <= 2);
++        for response in pending {
++            response.send(()).expect("one response per live request");
++        }
++        cx.run_until_parked();
++    }
++    let actual = requests.lock().automatic.clone();
++    assert_eq!(
++        actual.len(),
++        64,
++        "backpressure must not truncate identifiers or omit type definitions"
++    );
++    let distinct: std::collections::BTreeSet<_> = actual
++        .iter()
++        .map(|(method, position)| (*method, position.line, position.character))
++        .collect();
++    assert_eq!(distinct.len(), 64);
++    assert!(requests.lock().pending.is_empty());
++    assert!(
++        store
++            .update(cx, |store, cx| store.related_files(cx))
++            .is_empty(),
++        "the server returned no locations"
++    );
++
++    let position = buffer.read_with(cx, |buffer, _| buffer.anchor_before(buffer.len() - 3));
++    store.update(cx, |store, cx| store.refresh(buffer.clone(), position, cx));
++    cx.executor().advance_clock(DEBOUNCE_DURATION);
++    cx.run_until_parked();
++    assert_eq!(
++        requests.lock().automatic.len(),
++        64,
++        "unchanged warm context retains every cache hit"
++    );
++}
++
++#[gpui::test]
++async fn disposing_context_does_not_create_the_rest_of_its_speculative_requests(
++    cx: &mut TestAppContext,
++) {
++    let (project, buffer, server, _document_lsp) = fixture(cx).await;
++    let requests = Arc::new(Mutex::new(Requests::default()));
++    handlers(&server, requests.clone());
++    let store = refresh(&project, &buffer, cx);
++    assert_eq!(requests.lock().automatic.len(), 2);
++    drop(store);
++    for response in std::mem::take(&mut requests.lock().pending) {
++        response
++            .send(())
++            .expect("finish the already admitted request");
++    }
++    cx.run_until_parked();
++    assert_eq!(
++        requests.lock().automatic.len(),
++        2,
++        "a dead context cannot issue its remaining identifiers"
++    );
++    assert!(requests.lock().pending.is_empty());
++}
++
++#[gpui::test]
++async fn a_new_refresh_stops_old_unissued_positions_without_publishing_a_partial_cache(
++    cx: &mut TestAppContext,
++) {
++    obsolete_context(Invalidation::Cursor, cx).await;
++}
++
++#[gpui::test]
++async fn a_source_edit_stops_old_unissued_positions_without_publishing_a_partial_cache(
++    cx: &mut TestAppContext,
++) {
++    obsolete_context(Invalidation::Source, cx).await;
++}
++
++#[gpui::test]
++async fn a_context_policy_change_stops_old_unissued_positions(cx: &mut TestAppContext) {
++    obsolete_context(Invalidation::Policy, cx).await;
++}
++
++enum Invalidation {
++    Cursor,
++    Source,
++    Policy,
++}
++
++#[gpui::test]
++async fn an_identical_refresh_does_not_starve_the_active_context(cx: &mut TestAppContext) {
++    let (project, buffer, server, _document_lsp) = fixture(cx).await;
++    let requests = Arc::new(Mutex::new(Requests::default()));
++    handlers(&server, requests.clone());
++    let store = refresh(&project, &buffer, cx);
++    let position = buffer.read_with(cx, |buffer, _| buffer.anchor_before(buffer.len() - 3));
++    store.update(cx, |store, cx| store.refresh(buffer.clone(), position, cx));
++    for _ in 0..32 {
++        let pending = std::mem::take(&mut requests.lock().pending);
++        assert!(!pending.is_empty() && pending.len() <= 2);
++        for response in pending {
++            response.send(()).expect("continue the identical input");
++        }
++        cx.run_until_parked();
++    }
++    cx.executor().advance_clock(DEBOUNCE_DURATION);
++    cx.run_until_parked();
++    assert_eq!(requests.lock().automatic.len(), 64);
++    assert!(requests.lock().pending.is_empty());
++}
++
++async fn obsolete_context(change: Invalidation, cx: &mut TestAppContext) {
++    let (project, buffer, server, _document_lsp) = fixture(cx).await;
++    let requests = Arc::new(Mutex::new(Requests::default()));
++    handlers(&server, requests.clone());
++    let store = refresh(&project, &buffer, cx);
++    let outcomes = cx.new(|_| Vec::<bool>::new());
++    let _subscription = outcomes.update(cx, |_, cx| {
++        cx.subscribe(&store, |outcomes, _, event, _| {
++            if let RelatedExcerptStoreEvent::FinishedRefresh { superseded, .. } = event {
++                outcomes.push(*superseded);
++            }
++        })
++    });
++    assert_eq!(requests.lock().automatic.len(), 2);
++    match change {
++        Invalidation::Source => {
++            buffer.update(cx, |buffer, cx| {
++                buffer.edit([(0..0, "// user edit\n")], None, cx)
++            });
++        }
++        Invalidation::Cursor => {
++            let position = buffer.read_with(cx, |buffer, _| buffer.anchor_before(buffer.len() - 5));
++            store.update(cx, |store, cx| store.refresh(buffer.clone(), position, cx));
++        }
++        Invalidation::Policy => store.update(cx, |store, _| store.set_identifier_line_count(1)),
++    }
++    for response in std::mem::take(&mut requests.lock().pending) {
++        response.send(()).expect("finish the old pair");
++    }
++    cx.run_until_parked();
++    assert_eq!(
++        requests.lock().automatic.len(),
++        2,
++        "superseded work must not start a second pair"
++    );
++    assert!(requests.lock().pending.is_empty());
++    assert_eq!(
++        outcomes.read_with(cx, |outcomes, _| outcomes.clone()),
++        vec![true]
++    );
++    if !matches!(change, Invalidation::Cursor) {
++        let position = buffer.read_with(cx, |buffer, _| buffer.anchor_before(buffer.len() - 3));
++        store.update(cx, |store, cx| store.refresh(buffer.clone(), position, cx));
++    }
++    cx.executor().advance_clock(DEBOUNCE_DURATION);
++    cx.run_until_parked();
++    for _ in 0..32 {
++        let pending = std::mem::take(&mut requests.lock().pending);
++        assert!(!pending.is_empty() && pending.len() <= 2);
++        for response in pending {
++            response.send(()).expect("finish a current pair");
++        }
++        cx.run_until_parked();
++    }
++    assert_eq!(
++        requests.lock().automatic.len(),
++        66,
++        "the current context needs all 64 fresh replies; no old partial cache can certify it"
++    );
++    if matches!(change, Invalidation::Source) {
++        let requests = requests.lock();
++        assert!(
++            requests.automatic[..2]
++                .iter()
++                .all(|(_, position)| position.line == 0)
++        );
++        assert!(
++            requests.automatic[2..]
++                .iter()
++                .all(|(_, position)| position.line == 1),
++            "the unsaved inserted line must be reflected in every newly issued request"
++        );
++    }
++    assert!(requests.lock().pending.is_empty());
++    assert_eq!(
++        outcomes.read_with(cx, |outcomes, _| outcomes.clone()),
++        vec![true, false],
++        "obsolete and current refreshes must each end once with distinguishable outcomes"
++    );
++}
++
++fn refresh(
++    project: &Entity<Project>,
++    buffer: &Entity<Buffer>,
++    cx: &mut TestAppContext,
++) -> Entity<RelatedExcerptStore> {
++    let store = cx.new(|cx| RelatedExcerptStore::new(project, cx));
++    let position = buffer.read_with(cx, |buffer, _| buffer.anchor_before(buffer.len() - 3));
++    store.update(cx, |store, cx| {
++        store.set_identifier_line_count(0);
++        store.refresh(buffer.clone(), position, cx);
++    });
++    cx.executor().advance_clock(DEBOUNCE_DURATION);
++    cx.run_until_parked();
++    store
++}
++
++fn handlers(server: &FakeLanguageServer, requests: Arc<Mutex<Requests>>) {
++    server.set_request_handler::<lsp::request::GotoDefinition, _, _>({
++        let requests = requests.clone();
++        move |params, _| {
++            let release = admitted(
++                &requests,
++                "definition",
++                params.text_document_position_params.position,
++            );
++            async move {
++                if let Some(release) = release {
++                    release.await?;
++                }
++                Ok(None)
++            }
++        }
++    });
++    server.set_request_handler::<lsp::request::GotoTypeDefinition, _, _>(move |params, _| {
++        let release = admitted(
++            &requests,
++            "typeDefinition",
++            params.text_document_position_params.position,
++        );
++        async move {
++            if let Some(release) = release {
++                release.await?;
++            }
++            Ok(None)
++        }
++    });
++}
++
++fn admitted(
++    requests: &Mutex<Requests>,
++    method: &'static str,
++    position: lsp::Position,
++) -> Option<oneshot::Receiver<()>> {
++    let mut requests = requests.lock();
++    if requests.manual_armed && method == "definition" && position == lsp::Position::new(0, 4) {
++        requests.manual_seen = true;
++        return None;
++    }
++    let (release, waiting) = oneshot::channel();
++    requests.automatic.push((method, position));
++    requests.pending.push(release);
++    Some(waiting)
++}
++
++async fn fixture(
++    cx: &mut TestAppContext,
++) -> (
++    Entity<Project>,
++    Entity<Buffer>,
++    FakeLanguageServer,
++    Box<dyn std::any::Any>,
++) {
++    let settings = cx.update(|cx| settings::SettingsStore::test(cx));
++    cx.set_global(settings);
++    let fs = FakeFs::new(cx.executor());
++    let arguments = (0..40)
++        .map(|index| format!("name{index:02}"))
++        .collect::<Vec<_>>()
++        .join(", ");
++    fs.insert_tree(
++        path!("/root"),
++        json!({ "main.rs": format!("fn inspect() {{ choose({arguments}); }}") }),
++    )
++    .await;
++    let project = Project::test(fs, [path!("/root").as_ref()], cx).await;
++    let (registry, fs) = project.read_with(cx, |project, _| {
++        (project.languages().clone(), project.fs().clone())
++    });
++    let language = rust_lang();
++    registry.add(language.clone());
++    let mut servers = fake_definition_lsp::register_fake_definition_server(&registry, language, fs);
++    let (buffer, handle) = project
++        .update(cx, |project, cx| {
++            project.open_local_buffer_with_lsp(path!("/root/main.rs"), cx)
++        })
++        .await
++        .expect("open synchronized buffer");
++    let server = servers
++        .next()
++        .await
++        .expect("real project language-server connection");
++    cx.run_until_parked();
++    (project, buffer, server, Box::new(handle))
++}
+diff --git a/crates/edit_prediction_context/src/edit_prediction_context.rs b/crates/edit_prediction_context/src/edit_prediction_context.rs
+--- a/crates/edit_prediction_context/src/edit_prediction_context.rs
++++ b/crates/edit_prediction_context/src/edit_prediction_context.rs
+@@ -1,32 +1,29 @@
+ use crate::assemble_excerpts::assemble_excerpt_ranges;
+ use anyhow::Result;
+ use collections::HashMap;
+-use futures::{FutureExt, StreamExt as _, channel::mpsc, future};
++use futures::{FutureExt, StreamExt as _, channel::mpsc};
+ use gpui::{
+-    App, AppContext, AsyncApp, Context, Entity, EntityId, EventEmitter, Task, TaskExt, WeakEntity,
++    App, AppContext, AsyncApp, Context, Entity, EntityId, EventEmitter, TaskExt, WeakEntity,
+ };
+ use language::{Anchor, Bias, Buffer, BufferSnapshot, OffsetRangeExt as _, Point, ToOffset as _};
+ use project::{EditPredictionDefinition, Project, ProjectPath};
+ use smallvec::SmallVec;
+-use std::{
+-    collections::hash_map,
+-    ops::Range,
+-    path::Path,
+-    sync::Arc,
+-    time::{Duration, Instant},
+-};
++use std::{ops::Range, path::Path, sync::Arc, time::Duration};
+ use util::paths::PathStyle;
+ use util::rel_path::RelPath;
+ use util::{RangeExt as _, ResultExt};
+ 
+ mod assemble_excerpts;
+ mod bm25_context;
++#[cfg(test)]
++mod context_backpressure_tests;
+ #[cfg(test)]
+ mod edit_prediction_context_tests;
+ mod editable_context;
+ #[cfg(test)]
+ mod fake_definition_lsp;
+ mod git_log_context;
++mod related_excerpt_fetch;
+ 
+ pub use editable_context::{
+     EditHistoryContextEntry, OracleTarget, collect_editable_context,
+@@ -44,6 +41,8 @@
+     cache: HashMap<Identifier, Arc<CacheEntry>>,
+     update_tx: mpsc::UnboundedSender<(Entity<Buffer>, Anchor)>,
+     identifier_line_count: u32,
++    refresh_id: Arc<()>,
++    refresh_input: Option<(EntityId, clock::Global, Anchor)>,
+ }
+ 
+ struct RelatedBuffer {
+@@ -62,6 +61,7 @@
+ pub enum RelatedExcerptStoreEvent {
+     StartedRefresh,
+     FinishedRefresh {
++        superseded: bool,
+         cache_hit_count: usize,
+         cache_miss_count: usize,
+         mean_definition_latency: Duration,
+@@ -73,14 +73,6 @@
+ struct Identifier {
+     pub name: String,
+     pub range: Range<Anchor>,
+-}
+-
+-enum DefinitionTask {
+-    CacheHit(Arc<CacheEntry>),
+-    CacheMiss {
+-        project: WeakEntity<Project>,
+-        task: Task<Result<Vec<EditPredictionDefinition>>>,
+-    },
+ }
+ 
+ #[derive(Debug)]
+@@ -133,14 +125,30 @@
+             related_buffers: Vec::new(),
+             cache: Default::default(),
+             identifier_line_count: IDENTIFIER_LINE_COUNT,
++            refresh_id: Arc::new(()),
++            refresh_input: None,
+         }
+     }
+ 
+     pub fn set_identifier_line_count(&mut self, count: u32) {
+-        self.identifier_line_count = count;
+-    }
+-
+-    pub fn refresh(&mut self, buffer: Entity<Buffer>, position: Anchor, _: &mut Context<Self>) {
++        if self.identifier_line_count != count {
++            self.identifier_line_count = count;
++            self.refresh_id = Arc::new(());
++            self.refresh_input = None;
++        }
++    }
++
++    pub fn refresh(&mut self, buffer: Entity<Buffer>, position: Anchor, cx: &mut Context<Self>) {
++        let input = (
++            buffer.entity_id(),
++            buffer.read(cx).version().clone(),
++            position,
++        );
++        // Duplicate notifications must not starve the lookup for the same input.
++        if self.refresh_input.as_ref() != Some(&input) {
++            self.refresh_id = Arc::new(());
++            self.refresh_input = Some(input);
++        }
+         self.update_tx.unbounded_send((buffer, position)).ok();
+     }
+ 
+@@ -205,348 +213,6 @@
+             })
+             .collect();
+     }
+-
+-    async fn fetch_excerpts(
+-        this: WeakEntity<Self>,
+-        buffer: Entity<Buffer>,
+-        position: Anchor,
+-        cx: &mut AsyncApp,
+-    ) -> Result<()> {
+-        let (project, snapshot, file_extension, identifier_line_count) =
+-            this.read_with(cx, |this, cx| {
+-                let snapshot = buffer.read(cx).snapshot();
+-                let file_extension = snapshot
+-                    .file()
+-                    .and_then(|file| {
+-                        Some(
+-                            Path::new(file.file_name(cx))
+-                                .extension()?
+-                                .to_string_lossy()
+-                                .into_owned(),
+-                        )
+-                    })
+-                    .unwrap_or_default();
+-                (
+-                    this.project.upgrade(),
+-                    snapshot,
+-                    file_extension,
+-                    this.identifier_line_count,
+-                )
+-            })?;
+-        let Some(project) = project else {
+-            return Ok(());
+-        };
+-
+-        let file = snapshot.file().cloned();
+-        if let Some(file) = &file {
+-            log::debug!("retrieving_context buffer:{}", file.path().as_unix_str());
+-        }
+-        let (lsp_store, is_via_ssh) = project.read_with(cx, |project, _| {
+-            (project.lsp_store(), project.is_via_remote_server())
+-        });
+-        let lsp_names = lsp_store.update(cx, |lsp_store, cx| {
+-            buffer.update(cx, |buffer, cx| {
+-                lsp_store
+-                    .running_language_servers_for_local_buffer(buffer, cx)
+-                    .map(|(_, server)| server.name().to_string())
+-                    .collect::<Vec<_>>()
+-            })
+-        });
+-
+-        this.update(cx, |_, cx| {
+-            cx.emit(RelatedExcerptStoreEvent::StartedRefresh);
+-        })?;
+-
+-        let identifiers_with_ranks = cx
+-            .background_spawn(async move {
+-                let cursor_offset = position.to_offset(&snapshot);
+-                let identifiers =
+-                    identifiers_for_position(&snapshot, position, identifier_line_count);
+-
+-                // Compute byte distance from cursor to each identifier, then sort by
+-                // distance so we can assign ordinal ranks. Identifiers at the same
+-                // distance share the same rank.
+-                let mut identifiers_with_distance: Vec<(Identifier, usize)> = identifiers
+-                    .into_iter()
+-                    .map(|id| {
+-                        let start = id.range.start.to_offset(&snapshot);
+-                        let end = id.range.end.to_offset(&snapshot);
+-                        let distance = if cursor_offset < start {
+-                            start - cursor_offset
+-                        } else if cursor_offset > end {
+-                            cursor_offset - end
+-                        } else {
+-                            0
+-                        };
+-                        (id, distance)
+-                    })
+-                    .collect();
+-                // Only the closest `MAX_CONTEXT_IDENTIFIER_COUNT` identifiers are
+-                // used below, so select that prefix instead of fully sorting.
+-                util::truncate_to_bottom_n_sorted_by(
+-                    &mut identifiers_with_distance,
+-                    MAX_CONTEXT_IDENTIFIER_COUNT,
+-                    &|(_, a), (_, b)| a.cmp(b),
+-                );
+-
+-                let mut cursor_distances: HashMap<Identifier, usize> = HashMap::default();
+-                let mut current_rank = 0;
+-                let mut previous_distance = None;
+-                for (identifier, distance) in &identifiers_with_distance {
+-                    if previous_distance != Some(*distance) {
+-                        current_rank = cursor_distances.len();
+-                        previous_distance = Some(*distance);
+-                    }
+-                    cursor_distances.insert(identifier.clone(), current_rank);
+-                }
+-
+-                (identifiers_with_distance, cursor_distances)
+-            })
+-            .await;
+-
+-        let (identifiers_with_distance, cursor_distances) = identifiers_with_ranks;
+-
+-        let async_cx = cx.clone();
+-        let start_time = Instant::now();
+-        let futures = this.update(cx, |this, cx| {
+-            identifiers_with_distance
+-                .into_iter()
+-                .map(|(identifier, _)| {
+-                    let task = if let Some(entry) = this.cache.get(&identifier) {
+-                        DefinitionTask::CacheHit(entry.clone())
+-                    } else {
+-                        let project = this.project.clone();
+-                        let task = project
+-                            .update(cx, |project, cx| {
+-                                // tombi LSP for toml will open a scratch buffer with the JSON schema of
+-                                // the toml file when a goto type definition is requested
+-                                let include_type_definitions =
+-                                    !is_tombi_lsp_in_toml(project, &buffer, cx);
+-                                project.edit_prediction_definitions(
+-                                    &buffer,
+-                                    identifier.range.start,
+-                                    include_type_definitions,
+-                                    cx,
+-                                )
+-                            })
+-                            .unwrap_or_else(|_| Task::ready(Ok(Vec::new())));
+-                        DefinitionTask::CacheMiss { project, task }
+-                    };
+-
+-                    let cx = async_cx.clone();
+-                    async move {
+-                        match task {
+-                            DefinitionTask::CacheHit(cache_entry) => {
+-                                Some((identifier, cache_entry, None))
+-                            }
+-                            DefinitionTask::CacheMiss { project, task } => {
+-                                let definition_locations = task.await.log_err().unwrap_or_default();
+-                                let duration = start_time.elapsed();
+-
+-                                let definitions: SmallVec<[CachedDefinition; 1]> =
+-                                    future::join_all(definition_locations.into_iter().map(
+-                                        |definition| {
+-                                            let project = project.clone();
+-                                            let mut cx = cx.clone();
+-                                            async move {
+-                                                process_definition(definition, &project, &mut cx)
+-                                                    .await
+-                                            }
+-                                        },
+-                                    ))
+-                                    .await
+-                                    .into_iter()
+-                                    .flatten()
+-                                    .collect();
+-
+-                                Some((
+-                                    identifier,
+-                                    Arc::new(CacheEntry { definitions }),
+-                                    Some(duration),
+-                                ))
+-                            }
+-                        }
+-                    }
+-                })
+-                .collect::<Vec<_>>()
+-        })?;
+-
+-        let mut cache_hit_count = 0;
+-        let mut cache_miss_count = 0;
+-        let mut mean_definition_latency = Duration::ZERO;
+-        let mut max_definition_latency = Duration::ZERO;
+-        let mut new_cache = HashMap::default();
+-        new_cache.reserve(futures.len());
+-        for (identifier, entry, duration) in future::join_all(futures).await.into_iter().flatten() {
+-            new_cache.insert(identifier, entry);
+-            if let Some(duration) = duration {
+-                cache_miss_count += 1;
+-                mean_definition_latency += duration;
+-                max_definition_latency = max_definition_latency.max(duration);
+-            } else {
+-                cache_hit_count += 1;
+-            }
+-        }
+-        let lsp_fetch_latency_ms = start_time.elapsed().as_millis();
+-        mean_definition_latency /= cache_miss_count.max(1) as u32;
+-
+-        let (new_cache, related_buffers) =
+-            rebuild_related_files(&project, new_cache, &cursor_distances, cx).await?;
+-        let latency_ms = start_time.elapsed().as_millis();
+-        let returned_excerpt_count = related_buffers
+-            .iter()
+-            .map(|related_buffer| related_buffer.anchor_ranges.len())
+-            .sum::<usize>();
+-        telemetry::event!(
+-            "Edit Prediction LSP Context Retrieved",
+-            lsp_names,
+-            file_extension,
+-            latency_ms,
+-            lsp_fetch_latency_ms,
+-            returned_excerpt_count,
+-            is_via_ssh
+-        );
+-
+-        if let Some(file) = &file {
+-            log::debug!(
+-                "finished retrieving context buffer:{}, latency:{:?}",
+-                file.path().as_unix_str(),
+-                start_time.elapsed()
+-            );
+-        }
+-
+-        this.update(cx, |this, cx| {
+-            this.cache = new_cache;
+-            this.related_buffers = related_buffers;
+-            cx.emit(RelatedExcerptStoreEvent::FinishedRefresh {
+-                cache_hit_count,
+-                cache_miss_count,
+-                mean_definition_latency,
+-                max_definition_latency,
+-            });
+-        })?;
+-
+-        anyhow::Ok(())
+-    }
+-}
+-
+-async fn rebuild_related_files(
+-    project: &Entity<Project>,
+-    mut new_entries: HashMap<Identifier, Arc<CacheEntry>>,
+-    cursor_distances: &HashMap<Identifier, usize>,
+-    cx: &mut AsyncApp,
+-) -> Result<(HashMap<Identifier, Arc<CacheEntry>>, Vec<RelatedBuffer>)> {
+-    let mut snapshots = HashMap::default();
+-    let mut worktree_root_names = HashMap::default();
+-    for entry in new_entries.values() {
+-        for definition in entry.definitions.iter() {
+-            if let hash_map::Entry::Vacant(e) = snapshots.entry(definition.buffer.entity_id()) {
+-                definition
+-                    .buffer
+-                    .read_with(cx, |buffer, _| buffer.parsing_idle())
+-                    .await;
+-                e.insert(
+-                    definition
+-                        .buffer
+-                        .read_with(cx, |buffer, _| buffer.snapshot()),
+-                );
+-            }
+-            let worktree_id = definition.path.worktree_id;
+-            if let hash_map::Entry::Vacant(e) =
+-                worktree_root_names.entry(definition.path.worktree_id)
+-            {
+-                project.read_with(cx, |project, cx| {
+-                    if let Some(worktree) = project.worktree_for_id(worktree_id, cx) {
+-                        e.insert(worktree.read(cx).root_name().as_unix_str().to_string());
+-                    }
+-                });
+-            }
+-        }
+-    }
+-
+-    let cursor_distances = cursor_distances.clone();
+-    Ok(cx
+-        .background_spawn(async move {
+-            let mut ranges_by_buffer =
+-                HashMap::<EntityId, (Entity<Buffer>, Vec<(Range<Point>, usize)>)>::default();
+-            let mut paths_by_buffer = HashMap::default();
+-            let mut min_rank_by_buffer = HashMap::<EntityId, usize>::default();
+-            for (identifier, entry) in new_entries.iter_mut() {
+-                let rank = cursor_distances
+-                    .get(identifier)
+-                    .copied()
+-                    .unwrap_or(usize::MAX);
+-                for definition in entry.definitions.iter() {
+-                    let Some(snapshot) = snapshots.get(&definition.buffer.entity_id()) else {
+-                        continue;
+-                    };
+-                    paths_by_buffer.insert(definition.buffer.entity_id(), definition.path.clone());
+-
+-                    let buffer_rank = min_rank_by_buffer
+-                        .entry(definition.buffer.entity_id())
+-                        .or_insert(usize::MAX);
+-                    *buffer_rank = (*buffer_rank).min(rank);
+-
+-                    ranges_by_buffer
+-                        .entry(definition.buffer.entity_id())
+-                        .or_insert_with(|| (definition.buffer.clone(), Vec::new()))
+-                        .1
+-                        .push((definition.anchor_range.to_point(snapshot), rank));
+-                }
+-            }
+-
+-            let mut related_buffers: Vec<RelatedBuffer> = ranges_by_buffer
+-                .into_iter()
+-                .filter_map(|(entity_id, (buffer, ranges))| {
+-                    let snapshot = snapshots.get(&entity_id)?;
+-                    let project_path = paths_by_buffer.get(&entity_id)?;
+-                    let assembled = assemble_excerpt_ranges(snapshot, ranges);
+-                    let root_name = worktree_root_names.get(&project_path.worktree_id)?;
+-
+-                    let path: Arc<Path> = Path::new(&format!(
+-                        "{}/{}",
+-                        root_name,
+-                        project_path.path.as_unix_str()
+-                    ))
+-                    .into();
+-
+-                    let mut anchor_ranges = Vec::with_capacity(assembled.len());
+-                    let mut excerpt_orders = Vec::with_capacity(assembled.len());
+-                    for (row_range, order) in assembled {
+-                        let start = snapshot.anchor_before(Point::new(row_range.start, 0));
+-                        let end_col = snapshot.line_len(row_range.end);
+-                        let end = snapshot.anchor_after(Point::new(row_range.end, end_col));
+-                        anchor_ranges.push(start..end);
+-                        excerpt_orders.push(order);
+-                    }
+-
+-                    let mut related_buffer = RelatedBuffer {
+-                        buffer,
+-                        path,
+-                        anchor_ranges,
+-                        excerpt_orders,
+-                        cached_file: None,
+-                    };
+-                    related_buffer.fill_cache(snapshot);
+-                    Some(related_buffer)
+-                })
+-                .collect();
+-
+-            related_buffers.sort_by(|a, b| {
+-                let rank_a = min_rank_by_buffer
+-                    .get(&a.buffer.entity_id())
+-                    .copied()
+-                    .unwrap_or(usize::MAX);
+-                let rank_b = min_rank_by_buffer
+-                    .get(&b.buffer.entity_id())
+-                    .copied()
+-                    .unwrap_or(usize::MAX);
+-                rank_a.cmp(&rank_b).then_with(|| a.path.cmp(&b.path))
+-            });
+-
+-            (new_entries, related_buffers)
+-        })
+-        .await)
+ }
+ 
+ impl RelatedBuffer {
+diff --git a/crates/edit_prediction_context/src/related_excerpt_fetch.rs b/crates/edit_prediction_context/src/related_excerpt_fetch.rs
+new file mode 100644
+--- /dev/null
++++ b/crates/edit_prediction_context/src/related_excerpt_fetch.rs
+@@ -0,0 +1,407 @@
++use super::*;
++use futures::{TryStreamExt as _, future, stream};
++use gpui::{EntityId, Task};
++use std::{collections::hash_map, time::Instant};
++
++enum DefinitionTask {
++    CacheHit(Arc<CacheEntry>),
++    CacheMiss {
++        project: WeakEntity<Project>,
++        task: Task<Result<Vec<EditPredictionDefinition>>>,
++    },
++}
++
++impl RelatedExcerptStore {
++    pub(super) async fn fetch_excerpts(
++        this: WeakEntity<Self>,
++        buffer: Entity<Buffer>,
++        position: Anchor,
++        cx: &mut AsyncApp,
++    ) -> Result<()> {
++        let (project, snapshot, file_extension, identifier_line_count, refresh_id, requested) =
++            this.read_with(cx, |this, cx| {
++                let snapshot = buffer.read(cx).snapshot();
++                let file_extension = snapshot
++                    .file()
++                    .and_then(|file| {
++                        Some(
++                            Path::new(file.file_name(cx))
++                                .extension()?
++                                .to_string_lossy()
++                                .into_owned(),
++                        )
++                    })
++                    .unwrap_or_default();
++                (
++                    this.project.upgrade(),
++                    snapshot,
++                    file_extension,
++                    this.identifier_line_count,
++                    this.refresh_id.clone(),
++                    this.refresh_input.as_ref()
++                        == Some(&(
++                            buffer.entity_id(),
++                            buffer.read(cx).version().clone(),
++                            position,
++                        )),
++                )
++            })?;
++        if !requested {
++            return Ok(());
++        }
++        let Some(project) = project else {
++            return Ok(());
++        };
++
++        let source_version = snapshot.version().clone();
++        let file = snapshot.file().cloned();
++        if let Some(file) = &file {
++            log::debug!("retrieving_context buffer:{}", file.path().as_unix_str());
++        }
++        let (lsp_store, is_via_ssh) = project.read_with(cx, |project, _| {
++            (project.lsp_store(), project.is_via_remote_server())
++        });
++        let lsp_names = lsp_store.update(cx, |lsp_store, cx| {
++            buffer.update(cx, |buffer, cx| {
++                lsp_store
++                    .running_language_servers_for_local_buffer(buffer, cx)
++                    .map(|(_, server)| server.name().to_string())
++                    .collect::<Vec<_>>()
++            })
++        });
++
++        this.update(cx, |_, cx| {
++            cx.emit(RelatedExcerptStoreEvent::StartedRefresh);
++        })?;
++
++        let identifiers_with_ranks = cx
++            .background_spawn(async move {
++                let cursor_offset = position.to_offset(&snapshot);
++                let identifiers =
++                    identifiers_for_position(&snapshot, position, identifier_line_count);
++
++                // Compute byte distance from cursor to each identifier, then sort by
++                // distance so we can assign ordinal ranks. Identifiers at the same
++                // distance share the same rank.
++                let mut identifiers_with_distance: Vec<(Identifier, usize)> = identifiers
++                    .into_iter()
++                    .map(|id| {
++                        let start = id.range.start.to_offset(&snapshot);
++                        let end = id.range.end.to_offset(&snapshot);
++                        let distance = if cursor_offset < start {
++                            start - cursor_offset
++                        } else if cursor_offset > end {
++                            cursor_offset - end
++                        } else {
++                            0
++                        };
++                        (id, distance)
++                    })
++                    .collect();
++                // Only the closest `MAX_CONTEXT_IDENTIFIER_COUNT` identifiers are
++                // used below, so select that prefix instead of fully sorting.
++                util::truncate_to_bottom_n_sorted_by(
++                    &mut identifiers_with_distance,
++                    MAX_CONTEXT_IDENTIFIER_COUNT,
++                    &|(_, a), (_, b)| a.cmp(b),
++                );
++
++                let mut cursor_distances: HashMap<Identifier, usize> = HashMap::default();
++                let mut current_rank = 0;
++                let mut previous_distance = None;
++                for (identifier, distance) in &identifiers_with_distance {
++                    if previous_distance != Some(*distance) {
++                        current_rank = cursor_distances.len();
++                        previous_distance = Some(*distance);
++                    }
++                    cursor_distances.insert(identifier.clone(), current_rank);
++                }
++
++                (identifiers_with_distance, cursor_distances)
++            })
++            .await;
++
++        let (identifiers_with_distance, cursor_distances) = identifiers_with_ranks;
++
++        let async_cx = cx.clone();
++        let start_time = Instant::now();
++        // Spawn the Project tasks only when their identifier is admitted. Buffering
++        // already spawned tasks would still flood each server with all 32 pairs.
++        let results = stream::iter(identifiers_with_distance)
++            .map(|(identifier, _)| {
++                let this = this.clone();
++                let buffer = buffer.clone();
++                let refresh_id = refresh_id.clone();
++                let source_version = source_version.clone();
++                let mut cx = async_cx.clone();
++                async move {
++                    let task = this.update(&mut cx, |this, cx| {
++                        if !context_is_current(this, &buffer, &refresh_id, &source_version, cx) {
++                            return None;
++                        }
++                        Some(if let Some(entry) = this.cache.get(&identifier) {
++                            DefinitionTask::CacheHit(entry.clone())
++                        } else {
++                            let project = this.project.clone();
++                            let task = project
++                                .update(cx, |project, cx| {
++                                    let include_type_definitions =
++                                        !is_tombi_lsp_in_toml(project, &buffer, cx);
++                                    project.edit_prediction_definitions(
++                                        &buffer,
++                                        identifier.range.start,
++                                        include_type_definitions,
++                                        cx,
++                                    )
++                                })
++                                .unwrap_or_else(|_| Task::ready(Ok(Vec::new())));
++                            DefinitionTask::CacheMiss { project, task }
++                        })
++                    })?;
++                    let Some(task) = task else {
++                        return anyhow::Ok(None);
++                    };
++                    anyhow::Ok(match task {
++                        DefinitionTask::CacheHit(entry) => Some((identifier, entry, None)),
++                        DefinitionTask::CacheMiss { project, task } => {
++                            let locations = task.await.log_err().unwrap_or_default();
++                            if !this.read_with(&cx, |this, cx| {
++                                context_is_current(this, &buffer, &refresh_id, &source_version, cx)
++                            })? {
++                                return anyhow::Ok(None);
++                            }
++                            let duration = start_time.elapsed();
++                            let definitions: SmallVec<[CachedDefinition; 1]> =
++                                future::join_all(locations.into_iter().map(|definition| {
++                                    let project = project.clone();
++                                    let mut cx = cx.clone();
++                                    async move {
++                                        process_definition(definition, &project, &mut cx).await
++                                    }
++                                }))
++                                .await
++                                .into_iter()
++                                .flatten()
++                                .collect();
++                            Some((
++                                identifier,
++                                Arc::new(CacheEntry { definitions }),
++                                Some(duration),
++                            ))
++                        }
++                    })
++                }
++            })
++            .buffered(1)
++            .try_collect::<Vec<_>>()
++            .await?;
++
++        let mut cache_hit_count = 0;
++        let mut cache_miss_count = 0;
++        let mut mean_definition_latency = Duration::ZERO;
++        let mut max_definition_latency = Duration::ZERO;
++        let mut new_cache = HashMap::default();
++        new_cache.reserve(results.len());
++        for (identifier, entry, duration) in results.into_iter().flatten() {
++            new_cache.insert(identifier, entry);
++            if let Some(duration) = duration {
++                cache_miss_count += 1;
++                mean_definition_latency += duration;
++                max_definition_latency = max_definition_latency.max(duration);
++            } else {
++                cache_hit_count += 1;
++            }
++        }
++        let lsp_fetch_latency_ms = start_time.elapsed().as_millis();
++        mean_definition_latency /= cache_miss_count.max(1) as u32;
++
++        if !this.read_with(cx, |this, cx| {
++            context_is_current(this, &buffer, &refresh_id, &source_version, cx)
++        })? {
++            this.update(cx, |_, cx| {
++                cx.emit(RelatedExcerptStoreEvent::FinishedRefresh {
++                    superseded: true,
++                    cache_hit_count,
++                    cache_miss_count,
++                    mean_definition_latency,
++                    max_definition_latency,
++                })
++            })?;
++            return Ok(());
++        }
++
++        let (new_cache, related_buffers) =
++            rebuild_related_files(&project, new_cache, &cursor_distances, cx).await?;
++        let latency_ms = start_time.elapsed().as_millis();
++        let returned_excerpt_count = related_buffers
++            .iter()
++            .map(|related_buffer| related_buffer.anchor_ranges.len())
++            .sum::<usize>();
++        let committed = this.update(cx, |this, cx| {
++            let superseded = !context_is_current(this, &buffer, &refresh_id, &source_version, cx);
++            if !superseded {
++                this.cache = new_cache;
++                this.related_buffers = related_buffers;
++            }
++            cx.emit(RelatedExcerptStoreEvent::FinishedRefresh {
++                superseded,
++                cache_hit_count,
++                cache_miss_count,
++                mean_definition_latency,
++                max_definition_latency,
++            });
++            !superseded
++        })?;
++        if !committed {
++            return Ok(());
++        }
++        telemetry::event!(
++            "Edit Prediction LSP Context Retrieved",
++            lsp_names,
++            file_extension,
++            latency_ms,
++            lsp_fetch_latency_ms,
++            returned_excerpt_count,
++            is_via_ssh
++        );
++
++        if let Some(file) = &file {
++            log::debug!(
++                "finished retrieving context buffer:{}, latency:{:?}",
++                file.path().as_unix_str(),
++                start_time.elapsed()
++            );
++        }
++
++        anyhow::Ok(())
++    }
++}
++
++fn context_is_current(
++    store: &RelatedExcerptStore,
++    buffer: &Entity<Buffer>,
++    refresh_id: &Arc<()>,
++    source_version: &clock::Global,
++    cx: &App,
++) -> bool {
++    Arc::ptr_eq(&store.refresh_id, refresh_id) && buffer.read(cx).version() == *source_version
++}
++
++async fn rebuild_related_files(
++    project: &Entity<Project>,
++    mut new_entries: HashMap<Identifier, Arc<CacheEntry>>,
++    cursor_distances: &HashMap<Identifier, usize>,
++    cx: &mut AsyncApp,
++) -> Result<(HashMap<Identifier, Arc<CacheEntry>>, Vec<RelatedBuffer>)> {
++    let mut snapshots = HashMap::default();
++    let mut worktree_root_names = HashMap::default();
++    for entry in new_entries.values() {
++        for definition in entry.definitions.iter() {
++            if let hash_map::Entry::Vacant(e) = snapshots.entry(definition.buffer.entity_id()) {
++                definition
++                    .buffer
++                    .read_with(cx, |buffer, _| buffer.parsing_idle())
++                    .await;
++                e.insert(
++                    definition
++                        .buffer
++                        .read_with(cx, |buffer, _| buffer.snapshot()),
++                );
++            }
++            let worktree_id = definition.path.worktree_id;
++            if let hash_map::Entry::Vacant(e) =
++                worktree_root_names.entry(definition.path.worktree_id)
++            {
++                project.read_with(cx, |project, cx| {
++                    if let Some(worktree) = project.worktree_for_id(worktree_id, cx) {
++                        e.insert(worktree.read(cx).root_name().as_unix_str().to_string());
++                    }
++                });
++            }
++        }
++    }
++
++    let cursor_distances = cursor_distances.clone();
++    Ok(cx
++        .background_spawn(async move {
++            let mut ranges_by_buffer =
++                HashMap::<EntityId, (Entity<Buffer>, Vec<(Range<Point>, usize)>)>::default();
++            let mut paths_by_buffer = HashMap::default();
++            let mut min_rank_by_buffer = HashMap::<EntityId, usize>::default();
++            for (identifier, entry) in new_entries.iter_mut() {
++                let rank = cursor_distances
++                    .get(identifier)
++                    .copied()
++                    .unwrap_or(usize::MAX);
++                for definition in entry.definitions.iter() {
++                    let Some(snapshot) = snapshots.get(&definition.buffer.entity_id()) else {
++                        continue;
++                    };
++                    paths_by_buffer.insert(definition.buffer.entity_id(), definition.path.clone());
++
++                    let buffer_rank = min_rank_by_buffer
++                        .entry(definition.buffer.entity_id())
++                        .or_insert(usize::MAX);
++                    *buffer_rank = (*buffer_rank).min(rank);
++
++                    ranges_by_buffer
++                        .entry(definition.buffer.entity_id())
++                        .or_insert_with(|| (definition.buffer.clone(), Vec::new()))
++                        .1
++                        .push((definition.anchor_range.to_point(snapshot), rank));
++                }
++            }
++
++            let mut related_buffers: Vec<RelatedBuffer> = ranges_by_buffer
++                .into_iter()
++                .filter_map(|(entity_id, (buffer, ranges))| {
++                    let snapshot = snapshots.get(&entity_id)?;
++                    let project_path = paths_by_buffer.get(&entity_id)?;
++                    let assembled = assemble_excerpt_ranges(snapshot, ranges);
++                    let root_name = worktree_root_names.get(&project_path.worktree_id)?;
++
++                    let path: Arc<Path> = Path::new(&format!(
++                        "{}/{}",
++                        root_name,
++                        project_path.path.as_unix_str()
++                    ))
++                    .into();
++
++                    let mut anchor_ranges = Vec::with_capacity(assembled.len());
++                    let mut excerpt_orders = Vec::with_capacity(assembled.len());
++                    for (row_range, order) in assembled {
++                        let start = snapshot.anchor_before(Point::new(row_range.start, 0));
++                        let end_col = snapshot.line_len(row_range.end);
++                        let end = snapshot.anchor_after(Point::new(row_range.end, end_col));
++                        anchor_ranges.push(start..end);
++                        excerpt_orders.push(order);
++                    }
++
++                    let mut related_buffer = RelatedBuffer {
++                        buffer,
++                        path,
++                        anchor_ranges,
++                        excerpt_orders,
++                        cached_file: None,
++                    };
++                    related_buffer.fill_cache(snapshot);
++                    Some(related_buffer)
++                })
++                .collect();
++
++            related_buffers.sort_by(|a, b| {
++                let rank_a = min_rank_by_buffer
++                    .get(&a.buffer.entity_id())
++                    .copied()
++                    .unwrap_or(usize::MAX);
++                let rank_b = min_rank_by_buffer
++                    .get(&b.buffer.entity_id())
++                    .copied()
++                    .unwrap_or(usize::MAX);
++                rank_a.cmp(&rank_b).then_with(|| a.path.cmp(&b.path))
++            });
++
++            (new_entries, related_buffers)
++        })
++        .await)
++}
