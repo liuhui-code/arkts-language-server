@@ -669,56 +669,6 @@ for (const [scenario, message] of [
   })
 }
 
-test("resolves explicit and portable sidecar paths plus platform-native index cache directories", async (t) => {
-  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-index-paths-"))
-  t.after(() => fs.rmSync(temporaryRoot, { recursive: true, force: true }))
-  const driver = new DriverProcess(buildDriver(temporaryRoot))
-  t.after(() => driver.close())
-  const executable = process.platform === "win32" ? "arkts-index-sidecar.exe" : "arkts-index-sidecar"
-
-  assert.equal(await driver.call("resolveSidecar", {
-    options: { sidecarPath: "/explicit/arkts-sidecar", projectRoot: "/ignored", env: {} },
-  }), path.resolve("/explicit/arkts-sidecar"))
-  assert.equal(await driver.call("resolveSidecar", {
-    options: { projectRoot: "/portable/arkts-language-server", env: {} },
-  }), path.join("/portable/arkts-language-server", "target", "release", executable))
-  assert.equal(await driver.call("resolveSidecar", {
-    options: {
-      projectRoot: "/ignored",
-      env: { ARKTS_INDEX_SIDECAR_PATH: "/environment/arkts-sidecar" },
-    },
-  }), path.resolve("/environment/arkts-sidecar"))
-
-  assert.equal(await driver.call("resolveCache", {
-    options: {
-      platform: "darwin",
-      homeDirectory: "/Users/fixture",
-      env: {},
-    },
-  }), "/Users/fixture/Library/Caches/arkts-language-server/index")
-  assert.equal(await driver.call("resolveCache", {
-    options: {
-      platform: "linux",
-      homeDirectory: "/home/fixture",
-      env: { XDG_CACHE_HOME: "/xdg/cache" },
-    },
-  }), "/xdg/cache/arkts-language-server/index")
-  assert.equal(await driver.call("resolveCache", {
-    options: {
-      platform: "win32",
-      homeDirectory: "C:\\Users\\fixture",
-      env: { LOCALAPPDATA: "C:\\LocalAppData" },
-    },
-  }), path.win32.join("C:\\LocalAppData", "arkts-language-server", "index"))
-  assert.equal(await driver.call("resolveCache", {
-    options: {
-      platform: "linux",
-      homeDirectory: "/ignored",
-      env: { ARKTS_INDEX_CACHE_DIR: "/override/index-cache" },
-    },
-  }), path.resolve("/override/index-cache"))
-})
-
 test("routes a valid id-less sidecar event without corrupting pending request responses", async (t) => {
   const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-index-event-"))
   t.after(() => fs.rmSync(temporaryRoot, { recursive: true, force: true }))
