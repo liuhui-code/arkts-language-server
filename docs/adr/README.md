@@ -52,6 +52,10 @@ protection checks. Earlier L01/L02 resource-admission verdicts are historical.
 | [0036](0036-compiler-source-namespace-recovery.md) | **Proposed; fast2160/2160 and final matched Mac30K/short mixed sessions verified; real UI blocked** | Recover qualified compiler source namespace proofs while retaining ordinary source delta admission, SDK/configuration rejection and the final input fence |
 | [0037](0037-navigation-work-and-input-validation.md) | **Proposed; authorized candidate verified: fast2147/2147, matched Mac30K protocol; Windows/UI open** | Equivalent navigation consumers, witnessed capacity failures and synchronous preparation handed to the leased fresh final fence |
 | [0038](0038-sdk-component-environment.md) | Accepted; SDK contracts and canonical release gates verified | Immutable selected SDK components, product constraints and compiler-native SDK export discovery with load-owned proof |
+| [0039](0039-validation-directory-observations.md) | Rejected after matched experiments; evidence retained | Directory-content proof prototype gives about 10% and adds compatibility assumptions; original server validation retained |
+| [0040](0040-client-context-request-backpressure.md) | Proposed; component/release and six 30K protocol rounds verified, deployment/UI pending | Lazily bound automatic context requests; preserve all answers, source/refresh ownership, foreground independence and terminal outcomes |
+| [0041](0041-windows-index-storage-location.md) | Proposed; build/typecheck and targeted83/83 verified; Windows real machine pending | Prefer D-drive index storage on Windows with explicit configuration, visible fallback, workspace isolation and one session-owned root for index/GC |
+| [0042](0042-bounded-catalog-streaming.md) | Proposed; authorized plan, implementation/verification pending | Bounded catalog parse/write ownership; force first, proven hash-first reuse next; preserve full private publication and no default RSS budget |
 
 2026-10-27 [三项根因与ADR审计](../reports/2026-10-27-30k-issues-root-causes-and-adrs.md#adr逐项映射与设计缺口)：
 上表0020–0023的“not merged”及检查数是各切片当时的历史收据，不能作为当前版本判定。

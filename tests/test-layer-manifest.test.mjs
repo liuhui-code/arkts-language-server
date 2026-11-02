@@ -17,7 +17,9 @@ const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 test("classifies every executable test entry exactly once in an explicit layer", () => {
   const audit = validateTestLayerManifest({ root: projectRoot, manifest: TEST_LAYER_MANIFEST })
 
-  assert.equal(audit.entryCount, 301)
+  assert.equal(audit.entryCount, 303)
+  assert.equal(audit.assignments["tests/index-cache-directory.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/lsp-index-storage.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/sampler-shutdown.test.mjs"], "unit-contract")
   assert.equal(audit.assignments["tests/semantic/references-semantic-units.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/workspace-catalog-stamp.test.mjs"], "unit-contract")
@@ -352,9 +354,9 @@ test("classifies every executable test entry exactly once in an explicit layer",
     "bundle-e2e",
   )
   assert.deepEqual(audit.layerCounts, {
-    "unit-contract": 122,
+    "unit-contract": 123,
     protocol: 15,
-    "bundle-e2e": 156,
+    "bundle-e2e": 157,
     "artifact-e2e": 4,
     "sealed-artifact-e2e": 1,
     large: 1,

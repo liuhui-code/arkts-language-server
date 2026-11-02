@@ -1,5 +1,19 @@
 # References / semantic Feature Ledger
 
+## Authorized bounded catalog streaming plan — 2026-11-02
+
+R-01/R-02/R-20：[ADR0042](../adr/0042-bounded-catalog-streaming.md) **Proposed**，
+[执行清单](2026-11-02-streaming-catalog-execution.md) M0–M4待执行；首片force
+TDD在独立工作区准备中，未集成、未取得RED/GREEN或性能验收收据。
+先验证有界解析payload所有权，再覆盖取消/完整发布与冷热启动；优先验证完整键
+hash-first热命中免解析、不全量写库，扫描完整性新域资格仍是提案，未实施迁移。
+正常ignore/policy skip不等于扫描失败；不声明已证明现产品错误复用。
+R-01观察须覆盖在途/reorder/writer，R-02分别记录峰RSS与校验保留RSS，
+R-20保持完整初始化、热复用及source/final publication fences。
+ADR0029默认RSS预算null、ADR0034全私有库校验/原子发布、ADR0041会话存储根不变。
+本次仅增加设计/计划文档，不把此前整合候选Node20 check/build、11完整文件79/79、
+2181输入hash匹配的收据当作新流式实现通过；不新建ledger，不改变R项毕业状态。
+
 ## Current 30K catalog diagnostic candidate — 2026-11-02
 
 R-01/R-02/R-20：[分层证据与候选报告](../reports/2026-11-02-dense-30k-catalog-diagnosis.md)。
