@@ -1,5 +1,20 @@
 # References / semantic Feature Ledger
 
+## Current 30K catalog diagnostic candidate — 2026-11-02
+
+R-01/R-02/R-20：[分层证据与候选报告](../reports/2026-11-02-dense-30k-catalog-diagnosis.md)。
+现有私有分批路径已不同于历史Windows巨事务。Linux合成30K冷/复用/force
+269.919/6.721/314.982s均READY、exit0、四查询一致；仍有96–106s校验。
+独立探针定位quick_check/FK和返回尾部，控制提交仅约15ms；非真实Windows/UI验收。
+已集成最小候选提前释放已写documents，保留全部校验/源码证明/锁/复用/持久化。
+经公开Rust构建API的分配器观测RED→GREEN、三对6/6 READY/exit0/查询与输入一致；中位READY
+253.891→231.497s仅为观测，第二对quick_check变慢且释放前已有18.832s差异。
+校验期RSS和返回尾部降低，峰值未实质改善，不全归因于drop或外推Windows。
+局部集成exit0/987输入全匹配：Rust235PASS/0FAIL/1原有ignored外部455fixture，
+fmt/strictClippy/release、pnpmcheck/build、7完整Node文件24/24零fail/skip/cancel。
+非完整check:fast，外部fixture待CI显式执行；新的完整CI待发布，原PR112绿CI不覆盖本候选。
+不新建ledger，不改既有R项优先级/毕业状态；ADR0034仍Proposed，历史失败保留。
+
 ## Current c462 CI correction — 2026-11-02
 
 **Complete CI41389230974 FAILED2281/2284; reviewed three-file correction

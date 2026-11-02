@@ -142,3 +142,26 @@ rerun400/401 FAIL are retained; the two historical timeouts remain unexplained,
 non-reproduced observations, not fixed. Lost original fixture generation is not
 reconstructed. No ADR approval change, whole-suite pass, UI/native-UNC/30K/
 endurance qualification or general performance claim follows from local scope.
+
+## 2026-11-02 合成30K归因与输入生命周期候选（局部集成PASS，完整CI待发布）
+
+[本轮诊断报告](../reports/2026-11-02-dense-30k-catalog-diagnosis.md)区分旧Windows
+巨事务与当前私有分批路径。当前Linux release合成30K/72MB、1050万occurrence
+冷/复用/force均READY和exit0，四查询一致；耗时269.919/6.721/314.982s。
+这不是用户现场日志、真实项目、Windows或语义30K验收；96–106s校验仍明显慢。
+独立探针quick_check92.729s、FK14.651s、FTS0.605s、控制提交0.015s、
+隐式返回尾部12.320s；不能把尾部都算作控制事务或未经验证的特定析构。
+
+已集成的最小候选仅在写完后、校验前释放已不再借用的documents payload，独立源码证明
+仍保留。三项完整校验、源码SHA256/mtime/长度、锁/代际fence、复用、FULL/TRUNCATE、
+发布与取消契约不变。经公开Rust构建API的分配器观测RED→GREEN和配对性能观察不是完整验收。第二对候选quick_check
+反而变慢，其总READY差额主要已有写完前的差异，不能全归因于其后的释放；
+直接证据为生命周期/校验期保留RSS/发布后返回尾部，不承诺每次校验加速。
+三对6/6均READY/exit0、计数/查询/源码哈希一致；中位READY253.891→231.497s、
+写完至Complete104.798→72.353s、返回尾部6.889057→0.001744s均是观察值，
+非随机顺序/页缓存控制实验。校验期保留RSS降低，峰值仍约300万KiB。
+987/987冻结输入一致，局部集成exit0：Rust235PASS/0FAIL/1原有ignored外部455
+fixture，fmt/strictClippy/release及pnpmcheck/build通过，7完整Node文件24/24、
+零fail/skip/cancel；非完整check:fast，外部fixture留待CI显式执行。
+新的完整CI待发布，不以原PR112绿CI覆盖本候选，不宣称跨平台收益。
+原Proposed状态、历史NOT RUN/失败收据和Windows遗留WAL恢复风险保持原样。

@@ -112,6 +112,8 @@ pub fn build_catalog_with_fingerprint(
                 .execute_batch("PRAGMA cache_size=-65536;")
                 .map_err(map_sqlite_error)?;
             write_documents(&mut store, &batch, &mut progress, &mut observe)?;
+            // Persisted rows and independent source witnesses no longer borrow this payload.
+            drop(std::mem::take(&mut batch.documents));
             emit(&mut observe, &mut progress, CatalogStage::Validating)?;
             validate(&store)?;
             emit(&mut observe, &mut progress, CatalogStage::Checkpointing)?;
