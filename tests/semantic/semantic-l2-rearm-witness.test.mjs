@@ -7,6 +7,22 @@ import { pathToFileURL } from "node:url"
 
 import { LspSession } from "../support/lsp-session.mjs"
 import { projectRoot } from "../support/lsp-process.mjs"
+import { completeLogEvents } from "../support/complete-log-events.mjs"
+
+test("L2 observations wait for complete JSONL records and reject complete corrupt records", t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-l2-log-framing-"))
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const file = path.join(directory, "server.log")
+  const event = { event: "semantic.context.trim", reason: "memory-level2" }
+  fs.writeFileSync(file, '{"event":"semantic.context.')
+  assert.deepEqual(readEvents(directory), [], "an unfinished record is not an observation")
+  fs.appendFileSync(file, 'trim","reason":"memory-level2"}\n')
+  assert.deepEqual(readEvents(directory), [event])
+  fs.appendFileSync(file, '{"event":')
+  assert.deepEqual(readEvents(directory), [event], "a new partial tail cannot hide completed records")
+  fs.appendFileSync(file, '\n')
+  assert.throws(() => readEvents(directory), SyntaxError, "a completed corrupt record must still fail")
+})
 
 test("L2 is rearmed only after a compiler query rebuilds a Program", { timeout: 60_000 }, async t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-l2-witness-"))
@@ -428,5 +444,5 @@ function trimCount(logDirectory) {
 function readEvents(logDirectory) {
   const logFile = path.join(logDirectory, "server.log")
   if (!fs.existsSync(logFile)) return []
-  return fs.readFileSync(logFile, "utf8").split("\n").filter(Boolean).map(JSON.parse)
+  return completeLogEvents(logFile)
 }
