@@ -308,3 +308,26 @@ draft PR and fresh complete CI, not merge or final acceptance. Rename cause
 remains unknown/non-reproduced, not fixed. Instrumented2294/2295 FAIL and all
 prior failures remain separate from selected/file passes; no summed full-pass
 claim. Published b129 remains the last complete green. ADR status unchanged.
+
+## 2026-11-03: standing455-file cold-target waiver
+
+The maintainer explicitly excluded the455-file cold catalog3-second target from
+the required integration criteria, while retaining indexing and every other
+correctness/integrity check. That existing user authorization supersedes this
+one timing criterion; it does not promote this or any other ADR status.
+
+CI41496045454 on f49809f stopped at3.02023698s before Node; that failure remains
+recorded. The canonical driver now scopes a test-only explicit policy to the
+extracted pinned-fixture command. It records actual duration, target and waiver
+instead of claiming a strict timing pass. Manual direct cargo calls remain
+strict by default; an unknown policy fails. All pinned data/query assertions and
+all other release gates, including the legacy100K cost contract, remain required.
+No product timeout, memory threshold, indexing function or cold-build optimization
+is changed to meet this excluded target.
+
+[TDD and preserved measurements](../tdd/2026-11-03-pr112-cold-target-waiver.md)
+include driver/policy RED→GREEN and a real Mac fixture:3954.833488ms against3000ms,
+explicitly waived, with all other fixture assertions passing. Scoped tests do
+not qualify the full new head. Complete CI after this change must be reported
+with its authorized waiver, not as an unmodified all-gates pass; earlier failures,
+unexplained timeouts and open real UI/UNC/30K/endurance limits remain separate.

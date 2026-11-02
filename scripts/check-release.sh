@@ -18,9 +18,11 @@ fi
 cargo fmt --all --check
 cargo clippy --locked --workspace --all-targets -- -D warnings
 cargo test --locked --workspace --all-targets
-cargo test --locked -p arkts-index-sidecar --test ndjson_protocol \
+# Standing user waiver covers only this cold timing target, not fixture correctness.
+ARKTS_TEST_455_COLD_CATALOG_POLICY=waive-3s-user-authorized \
+cargo test --locked -p arkts-index-sidecar --test pinned_catalog_fixture \
   pinned_large_arkts_fixture_meets_cold_catalog_and_deterministic_query_gates \
-  -- --ignored --exact
+  -- --ignored --exact --nocapture
 cargo build --locked --workspace --release
 pnpm check:fast
 ./scripts/check-zed-queries.sh
