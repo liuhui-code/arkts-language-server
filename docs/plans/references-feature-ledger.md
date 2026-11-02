@@ -1,18 +1,24 @@
 # References / semantic Feature Ledger
 
-## Authorized bounded catalog streaming plan — 2026-11-02
+## Bounded catalog streaming implementation — 2026-11-02
 
-R-01/R-02/R-20：[ADR0042](../adr/0042-bounded-catalog-streaming.md) **Proposed**，
-[执行清单](2026-11-02-streaming-catalog-execution.md) M0–M4待执行；首片force
-TDD在独立工作区准备中，未集成、未取得RED/GREEN或性能验收收据。
-先验证有界解析payload所有权，再覆盖取消/完整发布与冷热启动；优先验证完整键
-hash-first热命中免解析、不全量写库，扫描完整性新域资格仍是提案，未实施迁移。
-正常ignore/policy skip不等于扫描失败；不声明已证明现产品错误复用。
-R-01观察须覆盖在途/reorder/writer，R-02分别记录峰RSS与校验保留RSS，
-R-20保持完整初始化、热复用及source/final publication fences。
-ADR0029默认RSS预算null、ADR0034全私有库校验/原子发布、ADR0041会话存储根不变。
-本次仅增加设计/计划文档，不把此前整合候选Node20 check/build、11完整文件79/79、
-2181输入hash匹配的收据当作新流式实现通过；不新建ledger，不改变R项毕业状态。
+R-01/R-02/R-20：[ADR0042](../adr/0042-bounded-catalog-streaming.md)仍 **Proposed**；
+[执行清单](2026-11-02-streaming-catalog-execution.md)与[实现/TDD报告](../reports/2026-11-02-streaming-catalog-implementation.md)。
+**最终主仓native259PASS/1FAIL/1原ignored，失败保留；诊断已收口，仅允许draft待fresh完整CI**：100K原replacement-cost测试
+cold32679.111ms、warm removal113042.933ms违反removal≤cold，原因及与512miss关联未知。只读确认旧replace_all路径未改；唯一一次child隔离诊断
+cold48485.075ms/warm removal7660.407ms通过，原full失败不覆盖，不继续重跑，不称ready-to-merge。
+Node20 check/build与14完整文件38/38、fmt/clippy通过；1447源与84runtime pins末次一致。
+完整local check:fast/目标HEAD CI未跑，不能称整合全绿；独立candidate旧通过不能覆盖最终失败。
+M1 force四单项槽→单writer与M3cold流写/hash-first完整键热命中0parser、miss二读fence已实现；
+固定parent session、Complete+EOF、旧lease与全部SQL/source/发布校验保留。
+首次candidate cache_gc protected≠observing未知失败仍保留，后续通过不称修复。
+M1单对30K全进程采样最大RSS3,015,224→104,096KiB（约102MiB），但READY慢34.31s，不称硬界/整体提速。
+M3的512十runs通过但miss1.958→7.778s更慢；30K cold/hot四runs计数/查询/hash/exit0通过，
+cold289.835→247.097s、hot14.949→1.750s仅单对，cold主要差额在校验；未跑30Kmiss/force。
+固定512 AB/BA12进程通过但miss方向混合（46.655/6.945与5.983/2.859s），不称一致回归/修复。
+R-02采样native内存不代表总LSP/Worker或精确初始化峰。完整Node/CI、Windows/真实UI均未验收。
+M4本轮明确defer文件级缓存/变更集/分片，先定位成本；范围决定不等于M4交付完成。
+ADR0029预算null、ADR0034完整代、ADR0041会话根不变；不新建ledger、不改R项毕业状态。
 
 ## Current 30K catalog diagnostic candidate — 2026-11-02
 

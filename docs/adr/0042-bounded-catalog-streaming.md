@@ -1,14 +1,14 @@
 # ADR 0042：有界 catalog 解析—写入流水线
 
 - 日期：2026-11-02。
-- 状态：**Proposed；用户已授权记录 ADR 并推进方案，尚未实现或验证，不宣称 Accepted。**
+- 状态：**Proposed；M1 force 与 M3 hash-first 已实现并有独立 Rust 功能验证，最终主仓100K成本门禁失败保留、固定诊断已收口，仅允许draft发布待fresh完整CI；性能/完整产品门禁未完成，不宣称 Accepted。**
 - 整合输入：PR112 `5e9ecf0b7b2bd72f6853649fb7c8ec92c8b7a060` 与 main `c5577bb11900d7871d8c8e0ee9e1fb87eb1c169b`；解析调用链静态审查基线为前者。
 - 执行跟踪：[M0–M4清单](../plans/2026-11-02-streaming-catalog-execution.md)；状态回写既有[Feature Ledger](../plans/references-feature-ledger.md)，不另建ledger。
 - 保留 ADR0034 的完整私有库发布以及 ADR0029 的默认 `memoryBudgetBytes:null`。新队列额度仅控制工作所有权与生产速度，不是产品默认RSS预算、拒绝完整请求或驱逐热状态的策略。
 
 ## 问题和已有证据
 
-当前 scanner 每批最多64文档或约1MiB源码，以最多4个worker解析；结果仍全部追加到 `Vec<DocumentSymbols>`，直到扫描结束才进入storage。
+改动前 scanner 每批最多64文档或约1MiB源码，以最多4个worker解析；结果仍全部追加到 `Vec<DocumentSymbols>`，直到扫描结束才进入storage。
 现有storage普通事务最多64文档、32,768估算行、8MiB估算数据；超大文档每块最多4,096元素、4MiB。上述写入分批没有约束扫描阶段全部解析结果的驻留。
 
 `catalog_build.rs` 已在写完后、校验前释放documents；三对云Linux合成30K/72MB源码、1050万occurrence探针显示校验期RSS由约2.88GiB降到约1.59–1.84GiB，返回尾部由5–12s到毫秒，但全程采样峰仍约2.88GiB。B2写完前已存在明显差异且quick_check变慢。三对非随机顺序、无统一页缓存控制；不能把READY差额全部归因于释放，不推导速度百分比或Windows/UI收益。
@@ -77,7 +77,7 @@
 
 **旧指纹迁移资格：** 优先对fingerprint输入域做版本升级（例如从当前`arkts-catalog-inputs-v1`提升到声明complete-scan资格的新域；具体名称由实现固定），不迁移数据库schema。只有本版本完整扫描、无文档拒绝、完整构建验证成功的路径可以持久化该新域fingerprint；hash-first仅消费该域生成的匹配值。旧字符串不兼容时完整重建一次后建立新资格，不因旧fingerprint非空就信任；producer二进制SHA本来也会随实现改变，但不能用这一偶然失配代替明确的资格契约。公开适配入口不得用未证明scan-complete的任意fingerprint冒充新域。
 
-分阶段候选如下，第一阶段仍只改force：
+既定分阶段选路如下：首片仅改force，后继M3现已接入非force（已执行范围见状态记录）：
 
 1. **force**：不计算不会使用的复用指纹；按manifest顺序流式读取/解析/写入，保留源码最终fence。
 2. **没有可用复用指纹的冷启动**：固定parent后确定不能reuse；单次解析流式写，记录实际输入身份，结束才生成fingerprint写入最终控制发布。Fingerprint只能描述真正写入的源码。
@@ -100,7 +100,7 @@
 
 ## 里程碑与退出条件
 
-所有行为改动遵守AGENTS：最近稳定公开API先RED，记录命令/父revision；一片一GREEN。LSP必须真实子进程framed stdio。源码/测试≤500物理行；已有超限文件不增长并提取内聚职责。以下均为计划，未执行。
+所有行为改动遵守AGENTS：最近稳定公开API先RED，记录命令/父revision；一片一GREEN。LSP必须真实子进程framed stdio。源码/测试≤500物理行；已有超限文件不增长并提取内聚职责。以下是完整退出合同；当前已执行范围与未完成项见下节，不能把代码落地等同里程碑全部验收。
 
 ### M0：冻结合同与观察基线
 
@@ -133,6 +133,41 @@
 - 不可变shard只在全量私有DB写入/校验仍为有证据瓶颈时立新ADR；本轮以完整SQLite代为发布单位，不把待研究分片算已完成。
 - 最终同一生产输入跑focused Rust、release、fmt/strictClippy、`pnpm check:fast`及相关公开协议回归；保留RED/失败/重跑收据。仅在目标HEAD完整CI终态明确后报告该范围验收。
 - 云Linux合成/真实项目、Windows/native路径/UI分别标状态；未测平台不能借Linux通过升级。完成报告区分机制成立、性能观察、产品验收，未过门禁不称方案全部完成。
+
+## 实现与验收状态（2026-11-02）
+
+详细实现/TDD、输入身份和保留失败见[整合报告](../reports/2026-11-02-streaming-catalog-implementation.md)。
+M1→M3候选从5e9ecf0独立开发，累计patch静态应用到e69c7eb，124个native/Cargo输入逐项匹配；
+主仓Node scoped14完整文件38/38、check/build/fmt/clippy通过；最终native259PASS/1FAIL/1原ignored。
+100K原replacement-cost测试cold32679.111ms、warm removal113042.933ms，违反removal≤cold；
+只读确认100K走未改旧activate_catalog→replace_all→clear_documents，不走M3。
+唯一一次既有test binary持久child诊断PASS：cold48485.075ms/warm removal7660.407ms，无build/改阈值；
+原full失败仍保留且未解释。诊断收口，允许draft发布待fresh完整CI，不称ready-to-merge/全绿。完整local check:fast/目标HEAD CI未跑，不沿用旧绿CI。
+
+- `CatalogInput::{Document,Rejected,Complete}`懒消费；Complete必须随后正常EOF，错误/断开/尾随事件不发布。
+  每次poll（包括Complete后EOF探测）前检查取消。旧FullCatalog/stream入口保留。
+- 实际M1采用4个persistent单项交付槽、按URI pull，不在worker收集64文档。
+  有界writer+lookahead之外，明确允许4个源码/完整解析或待交付单项；紧凑manifest/witness O(N)。
+  这不是精确heap credit或总RSS硬cap；进度仍复用合并/节流，既有update通道不是有界通道。
+  所有结果消费且worker join后进入Activating，发布仍须Complete+EOF；提前写入只报告storage子进度。
+- `CatalogBuildSession`固定parent/expected generation和旧lease；懒factory保证命中不创建parser workers或私有库。
+  新资格格式固定为`arkts-complete-scan-v2:<producer64hex>:<sources64hex>`，legacy opaque写入隔离到
+  `arkts-legacy-fingerprint-v2:`；历史普通raw值仍兼容，reserved域不能由旧adapter误冒充。
+  类型是调用者的完整扫描声明，不是防恶意Rust调用的安全边界。
+- 非force无合格候选时实际read/parse一次并流写；有候选时hash/UTF-8/准入扫描，命中0 parser调用且同physical小事务，
+  miss二读必须匹配length/mtime/SHA且每文件只parse一次；仍保留最终SHA fence。
+  ignore/目录/entry/file-type/metadata/read错误显式禁用资格，正常exclude/policy skip不粗暴禁用。
+- 独立候选全量Rust重跑259PASS/0FAIL/1原ignored；后加hot取消与dense oracle focused4PASS；
+  fmt/strictClippy/release及130源release cold→hot烟测通过。首次全量既有cache_gc protected≠observing失败原因未知，
+  单独及全量重跑通过但不宣称已修复。具体作用域/重复计数见报告。
+- M1仅一对30K force观察：全进程采样最大RSS3,015,224→104,096KiB（约102MiB），但READY293.040→327.349s慢34.31s。
+  不是普遍102MiB上界、不是整体提速、不是M3性能证据。M3的512资格10runs已通过；其中miss单次1.958→7.778s更慢且未归因。M3的30K cold/hot四runs计数/查询/hash/exit0通过；cold289.835→247.097s、hot14.949→1.750s仅单对，
+  cold主要差额在未改SQL的校验区间，不全归因pipeline；30Kmiss/force未跑，不能覆盖最终100K门禁失败。
+- 固定512 AB/BA复核12进程全通过，但miss A1/B1=46.655/6.945s、B2/A2=5.983/2.859s方向混合；
+  保留全部慢样本，性能不稳定，不称一致回归或修复，不继续加跑。
+- M2已有公开取消/旧代/源变更/竞争/恢复回归，但不可复现平台故障、Windows/真实项目/UI未验收。
+  M4本轮明确defer文件级缓存/事实复制/变更集增量/分片，先定位100K和512miss成本；
+  范围决定不等于M4交付，完整Node/目标HEAD CI与最终产品验收仍未完成。
 
 ## 风险与回退
 

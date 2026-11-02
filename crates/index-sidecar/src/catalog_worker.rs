@@ -1,8 +1,8 @@
 use super::{scan_workspace, test_gate};
-use arkts_index_core::{DocumentSymbols, FullCatalogBatch, IndexState, RefreshReport};
-use arkts_index_sqlite::{CatalogBuildProgress, CatalogStage, build_catalog_with_fingerprint};
+use arkts_index_core::RefreshReport;
+use arkts_index_sqlite::CatalogBuildProgress;
 use std::{
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::{
         Arc,
         atomic::{AtomicU8, Ordering},
@@ -11,14 +11,10 @@ use std::{
     thread,
     time::Instant,
 };
-use test_gate::{
-    ActivationGateResult, TEST_ACTIVATION_WAITING, activation_file_gate,
-    wait_at_test_activation_gate,
-};
+use test_gate::TEST_ACTIVATION_WAITING;
 pub(super) const CATALOG_RUNNING: u8 = 0;
 pub(super) const CATALOG_CANCELLED: u8 = 1;
-const CATALOG_ACTIVATING: u8 = 2;
-const CATALOG_PUBLISHING: u8 = 4;
+use super::observer::CATALOG_ACTIVATING;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct CatalogProgress {
@@ -34,19 +30,6 @@ pub struct CatalogProgress {
 }
 
 pub(super) type CatalogFailure = Box<(CatalogProgress, String)>;
-
-pub(super) struct Activation<'a> {
-    pub database_path: &'a Path,
-    pub workspace_identity: &'a str,
-    pub generation: u64,
-    pub state: &'a AtomicU8,
-    pub updates: &'a Sender<CatalogUpdate>,
-    pub documents: Vec<DocumentSymbols>,
-    pub rejected_uris: Vec<String>,
-    pub progress: CatalogProgress,
-    pub sources: Vec<super::source::SourceStamp>,
-    pub fingerprint: Option<String>,
-}
 
 #[derive(Debug)]
 pub enum CatalogUpdate {
@@ -160,188 +143,4 @@ pub fn spawn_catalog(
         })
         .expect("catalog worker thread should spawn");
     CatalogControl { state }
-}
-
-pub(super) fn activate(input: Activation<'_>) -> Result<(), CatalogFailure> {
-    let Activation {
-        database_path,
-        workspace_identity,
-        generation,
-        state,
-        updates,
-        documents,
-        rejected_uris,
-        mut progress,
-        sources,
-        fingerprint,
-    } = input;
-    let file_gate = activation_file_gate(generation)
-        .map_err(|message| Box::new((progress.clone(), message)))?;
-    let activating_state = if file_gate.is_some() {
-        TEST_ACTIVATION_WAITING
-    } else {
-        CATALOG_ACTIVATING
-    };
-    if state
-        .compare_exchange(
-            CATALOG_RUNNING,
-            activating_state,
-            Ordering::AcqRel,
-            Ordering::Acquire,
-        )
-        .is_err()
-    {
-        let _ = updates.send(CatalogUpdate::Cancelled {
-            generation,
-            progress,
-        });
-        return Ok(());
-    }
-    let _ = updates.send(CatalogUpdate::Activating {
-        generation,
-        progress: progress.clone(),
-    });
-    if let Some(file_gate) = file_gate {
-        match file_gate.wait_for_release(state, CATALOG_CANCELLED) {
-            Ok(ActivationGateResult::Released) => {}
-            #[cfg(debug_assertions)]
-            Ok(ActivationGateResult::Cancelled) => {
-                let _ = updates.send(CatalogUpdate::Cancelled {
-                    generation,
-                    progress,
-                });
-                return Ok(());
-            }
-            Err(message) => return Err(Box::new((progress, message))),
-        }
-        if state
-            .compare_exchange(
-                TEST_ACTIVATION_WAITING,
-                CATALOG_ACTIVATING,
-                Ordering::AcqRel,
-                Ordering::Acquire,
-            )
-            .is_err()
-        {
-            let _ = updates.send(CatalogUpdate::Cancelled {
-                generation,
-                progress,
-            });
-            return Ok(());
-        }
-    }
-    wait_at_test_activation_gate();
-    let mut source_changed = false;
-    let mut last_log_stage = None;
-    let mut last_log: Option<Instant> = None;
-    let outcome = build_catalog_with_fingerprint(
-        database_path,
-        workspace_identity,
-        FullCatalogBatch {
-            generation,
-            documents,
-            rejected_uris,
-        },
-        fingerprint.as_deref(),
-        |storage| {
-            if state.load(Ordering::Acquire) == CATALOG_CANCELLED {
-                return false;
-            }
-            if progress
-                .storage
-                .is_none_or(|previous| previous.stage != storage.stage)
-            {
-                progress.stage_started = Some(Instant::now());
-            }
-            let log_stage = match storage.stage {
-                CatalogStage::Writing | CatalogStage::Committing | CatalogStage::Checkpointing => {
-                    "persisting"
-                }
-                other => other.as_str(),
-            };
-            if last_log_stage != Some(log_stage)
-                || last_log.is_none_or(|started| started.elapsed().as_secs() >= 10)
-            {
-                eprintln!(
-                    "{{\"event\":\"index.catalog.storage-stage\",\"generation\":{generation},\"stage\":\"{}\",\"writtenDocuments\":{},\"writtenRows\":{}}}",
-                    storage.stage.as_str(),
-                    storage.written_documents,
-                    storage.written_rows
-                );
-                last_log_stage = Some(log_stage);
-                last_log = Some(Instant::now());
-            }
-            progress.storage = Some(storage);
-            progress.activity_sequence += 1;
-            let _ = updates.send(CatalogUpdate::Activating {
-                generation,
-                progress: progress.clone(),
-            });
-            if storage.stage == CatalogStage::Checking {
-                for chunk in sources.chunks(64) {
-                    if state.load(Ordering::Acquire) == CATALOG_CANCELLED {
-                        return false;
-                    }
-                    source_changed = !super::source::all_current(chunk);
-                    if source_changed {
-                        return false;
-                    }
-                    progress.activity_sequence += 1;
-                    let _ = updates.send(CatalogUpdate::Activating {
-                        generation,
-                        progress: progress.clone(),
-                    });
-                }
-            }
-            if storage.stage == CatalogStage::Publishing
-                && state
-                    .compare_exchange(
-                        CATALOG_ACTIVATING,
-                        CATALOG_PUBLISHING,
-                        Ordering::AcqRel,
-                        Ordering::Acquire,
-                    )
-                    .is_err()
-            {
-                return false;
-            }
-            true
-        },
-    );
-    match outcome {
-        Ok(receipt) => {
-            let report = RefreshReport {
-                indexed_documents: progress.indexed,
-                committed_generation: receipt.committed_generation,
-                state: if receipt.rejected_documents.is_empty() {
-                    IndexState::Ready
-                } else {
-                    IndexState::Degraded
-                },
-                rejected_documents: receipt.rejected_documents,
-            };
-            let _ = updates.send(CatalogUpdate::Complete {
-                generation,
-                report,
-                progress,
-            });
-        }
-        Err(_) if state.load(Ordering::Acquire) == CATALOG_CANCELLED => {
-            let _ = updates.send(CatalogUpdate::Cancelled {
-                generation,
-                progress,
-            });
-        }
-        Err(error) => {
-            return Err(Box::new((
-                progress,
-                if source_changed {
-                    "workspace sources changed before catalog publication; rebuild required".into()
-                } else {
-                    error.to_string()
-                },
-            )));
-        }
-    }
-    Ok(())
 }

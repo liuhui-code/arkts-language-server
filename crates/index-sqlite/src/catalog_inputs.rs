@@ -12,19 +12,7 @@ pub struct CatalogInputs {
 
 impl CatalogInputs {
     pub fn new() -> Result<Self, StoreError> {
-        let mut producer = Sha256::new();
-        producer.update(b"arkts-catalog-inputs-v1\0");
-        producer.update(crate::SCHEMA_VERSION.to_le_bytes());
-        let mut binary =
-            File::open(std::env::current_exe().map_err(io_error)?).map_err(io_error)?;
-        let mut buffer = [0u8; 64 * 1024];
-        loop {
-            let size = binary.read(&mut buffer).map_err(io_error)?;
-            if size == 0 {
-                break;
-            }
-            producer.update(&buffer[..size]);
-        }
+        let producer = producer_digest(b"arkts-catalog-inputs-v1\0")?;
         Ok(Self {
             producer,
             sources: BTreeMap::new(),
@@ -74,4 +62,20 @@ impl CatalogInputs {
         }
         format!("{:x}", hash.finalize())
     }
+}
+
+pub(super) fn producer_digest(domain: &[u8]) -> Result<Sha256, StoreError> {
+    let mut producer = Sha256::new();
+    producer.update(domain);
+    producer.update(crate::SCHEMA_VERSION.to_le_bytes());
+    let mut binary = File::open(std::env::current_exe().map_err(io_error)?).map_err(io_error)?;
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let size = binary.read(&mut buffer).map_err(io_error)?;
+        if size == 0 {
+            break;
+        }
+        producer.update(&buffer[..size]);
+    }
+    Ok(producer)
 }
