@@ -1,6 +1,54 @@
 # References / semantic Feature Ledger
 
-## Current continuous review — 2026-11-02, integrated verification
+## Current c462 CI correction — 2026-11-02
+
+**Complete CI41389230974 FAILED2281/2284; reviewed three-file correction
+integrated; full local check:fast FAILED2283/2286 retained; follow-on fixes
+integrated; ready for existing draft PR and fresh CI; instrumented canonical
+gate FAILED2294/2295 retained.** Rust235 and Windows
+pass; later Linux gates were not reached. The prior401/401 local selection
+omitted navigation-close-reopen. Independent review confirms unconditional
+post-capture guard rejected legitimate late catch-up when early preparation
+never ran; optional performed-object gating preserves the prior lazy path while
+still guarding performed `{changed:false}`. Source/SDK/namespace and final
+proofs are not relaxed. Separately the pre/source fixture assumed filesystem
+order; target-native-lstat before/after tests replace that assumption without
+production sorting. Unchanged navigation inverse2RED; focused50/50 and final
+window7/7 PASS. Forced native reverse order3PASS/4name skips. Earlier changed-only
+variants were GREEN, not mutation-kill proof. Manifest300/bundle156 unchanged.
+Evidence and retained CI/local failure history: [current report](../reports/2026-11-02-continuous-ide-review.md#current-follow-on-c462-ci-failure-and-integrated-correction--2026-11-02).
+Full local gate:3fail,0skip/cancel/todo,3561406.298545ms;953/953 frozen inputs
+match. Original three CI failures pass, but new failures are cancellation CLI
+cases118/169 (exit1/FAIL vs NOT_CANCELLED) and resident incoming-call package
+retarget case203 ([] vs -32803). Fake-server CLI cases do not execute the
+three-file correction; cleanup removed their report and no cause is inferred.
+Subsequent original tracing confirms background diagnosis recovered the package
+before incoming; a two-line v1-diagnostic precondition preserves the original
+error/watcher-oracle assertions, current/unconditional variants each8/8. Added
+v2 analogue is separate, not original sequence or b129 baseline. Cancel/mixed
+now share natural sampler exit plus polling-aware cooperative TERM grace; one
+retained real late-SIGINT false FAIL is proven, not retrospective attribution
+of cleaned-up original reports. Final Node20 five-file42/42 PASS; old SIGINT and
+fixed5s grace RED, earlier Node24 40/42 and Node20 41/42 retained. Timing-aware
+assertions keep budgets/exit0/PID/RSS; actual100-edit mixed CLI not run. Manifest
+now301(unit122/bundle156). Instrumented canonical full gate2294/2295,exit1,
+0skip/cancel/todo,4118031.704339ms;986/986 hashes match. Prior confirmed failures
+pass, but rename-completeness:97 explicit barrel alias id2rename hits original5s
+deadline; cause unknown and not fixed. Same-deadline Node20 paired diagnosis
+completed: current/b129 each three selected passes (each1PASS/5name skips),
+then each original complete file6/6 without skips. Baseline4961.657ms does not
+prove load causality; shared logging ENOENT in passes establishes no cause.
+556 fixtures saved/copyerror0/unexpectedpreload0;6071 directly observed child
+launches omit evidence preload (not exhaustive grandchildren). External evidence
+shim/bridge/test-parent hook are unshipped; production/deadlines unchanged.
+This is instrumented, not an uninstrumented receipt. Maintainer-local evidence
+paths are not repository links. Reviewed corrections ready for publication on the same draft PR and fresh
+complete CI; no new confirmed must-fix. No complete acceptance yet; b129 remains
+last full-green revision and separate gate/scoped counts are not summed;
+no Accepted promotion or authority relaxation. Following summaries are historical
+checkpoints.
+
+## Historical continuous review — 2026-11-02, pre-c462-CI local verification
 
 **Implemented and locally verified; fresh complete candidate CI pending publication.**
 [Continuous report](../reports/2026-11-02-continuous-ide-review.md).
@@ -32,7 +80,7 @@ hold/release correction preserves immediate watched-change→query ordering, old
 count1/fallback/no-recovery while held, then new roots/full results after release.
 Strengthened paired6/6 and six completefiles21/21 PASS; final independent order
 review approved, all six artifact hashes matched at integration. Production and
-deadlines unchanged. Final session19792 exits0: pnpm check PASS and42 complete Node files401/401
+deadlines unchanged. Final local gate exits0: pnpm check PASS and42 complete Node files401/401
 PASS, zero fail/skip/cancel/todo,698669.119535ms. All1416 frozen source inputs
 and production dist/native-runtime hashes match (continuous-integration final
 receipts). Same production input already passed Rust234/1existingignored,

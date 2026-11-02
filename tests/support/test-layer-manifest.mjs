@@ -72,6 +72,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/replay-settings-mixed-ops-cli.test.mjs",
       "tests/release-artifact-topology.test.mjs",
       "tests/resource-sampler.test.mjs",
+      "tests/sampler-shutdown.test.mjs",
       "tests/resource-sampler-boundary-cli.test.mjs",
       "tests/sdk-discovery.test.mjs",
       "tests/semantic-cancellation-scope.test.mjs",

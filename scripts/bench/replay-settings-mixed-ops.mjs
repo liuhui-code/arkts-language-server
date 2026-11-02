@@ -6,12 +6,13 @@ import path from "node:path"
 import { pathToFileURL } from "node:url"
 import { isDeepStrictEqual } from "node:util"
 
+import { waitForSamplerExit } from "./sampler-shutdown.mjs"
 import { LspSession } from "../../tests/support/lsp-session.mjs"
 import {
   comparableLocations, loadOracle, normalizeReferences, validateLocations,
 } from "./reference-location-oracle.mjs"
 import { projectRoot, sha256File } from "./reference-replay-input.mjs"
-import { childExit, delay, waitForCatalog, waitForSample } from "./reference-replay-evidence.mjs"
+import { delay, waitForCatalog, waitForSample } from "./reference-replay-evidence.mjs"
 import {
   consumerFile, declarationFile, guardOutputScope, makeSchedule, parseOptions,
   position, prepareInput, secondaryFile, secondaryPosition, sourcePreserved, symbol,
@@ -375,8 +376,7 @@ async function replayClone(options, input, schedule) {
     })
     if (catalogPromise) await catalogPromise
     mark("server-process-closed", { closeResult })
-    sampler.kill("SIGINT")
-    await childExit(sampler)
+    await waitForSamplerExit(sampler, options.sampleIntervalMs)
   }
   return { environment, targetPid, samplerPid: sampler.pid, samplerExitCode: sampler.exitCode,
     samplerSignal: sampler.signalCode, samplesPath, logDir, events, requests, operations,

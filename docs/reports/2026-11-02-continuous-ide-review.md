@@ -2,7 +2,9 @@
 
 ## Current scope and status
 
-**Implemented and locally verified; fresh complete candidate CI awaits publication.** The user has removed the earlier
+**Current: reviewed corrections ready for publication to the existing draft PR
+and fresh complete CI. Instrumented full gate2294/2295 FAIL remains; rename
+cause unknown and not fixed; paired diagnosis completed without reproduction.** The user has removed the earlier
 four-round cap and authorized continued review/correction. This is a separate
 continuation, not a relabeling of completed groups or an acceptance claim.
 Published baseline:
@@ -11,6 +13,173 @@ Published baseline:
 [CI41372738816](https://github.com/liuhui-code/arkts-language-server/actions/runs/41372738816)
 is now terminal SUCCESS for that published input (fast2269/2269 and
 release/E2E/Windows checks). Its result does not qualify newer candidates. Prior reports, failed gates and ADR statuses remain.
+
+## Current follow-on: c462 CI failure and integrated correction — 2026-11-02
+
+Published `c462ddade68e4e1b398503c53a83de4e96d4c8c4`,
+[CI41389230974](https://github.com/liuhui-code/arkts-language-server/actions/runs/41389230974):
+Linux fast **2281/2284, FAIL**. Rust235 and Windows checks pass; subsequent
+Linux gates were not reached. Earlier local42-file401/401 did not include
+navigation-close-reopen: this coverage gap is retained, not rewritten as full
+acceptance. All sections below this follow-on remain chronological historical
+receipts unless explicitly updated.
+
+Independent review separates two causes:
+
+- **Production availability regression:** unchanged close/reopen navigation
+  tests show no early catalog preparation when the existing compiler is not
+  dirty. Ordinary late catch-up after the first capture changes revision/catalog;
+  the newly unconditional guard wrongly rejects that legacy path. An optional
+  per-command preparation object now records whether early reconciliation
+  actually ran. Undefined preserves prior lazy catch-up; object presence applies
+  the additional guard even when `changed:false`. `changed` only controls the
+  absent-stamp check. Original source/SDK/namespace/cancellation/final authority
+  fences, raw target and lease ordering remain. Reverting only this performed
+  restriction restores both unchanged navigation failures:0pass/2fail/3 name
+  skips. No timeout increase, retry, blanket scan or second compiler is added.
+- **Fixture observation-order defect:** the old pre/source fixture assumed
+  Filler0000 was enumerated before ZZModel. Forcing actual native Dirent objects
+  into ZZ-first order reproduces its failure; production enumeration is not
+  sorted. The corrected fixture mutates at the target's own native lstat before
+  observation (success), with a new mutation after the actual stat observation
+  requiring rejection. Existing SDK/late-byte/physical-retarget negatives remain.
+
+Performed-but-unchanged trace independently records `{changed:false}` followed
+by rejected late retarget. Two earlier changed-only-gate variants stayed GREEN;
+these are retained non-discriminating attempts, **not mutation kills**. The final
+case explicitly asserts readiness before proceeding. Final clean focused50/50,
+then strengthened complete window file7/7, all without skips. Forced reverse
+native order passes selected3 cases with4 name-filtered skips. These scopes are
+not summed into a full-suite result.
+
+Exactly three files are integrated: `src/semantic/interactive-workspace.ts`,
+`tests/fixtures/readiness-catalog-scan-window.cjs`, and
+`tests/semantic/readiness-catalog-input-windows.test.mjs`. Final artifact hashes
+are pinned in `../iteration-evidence/ci-catalog-recovery/final-artifact/manifest.json`;
+root-cause traces, counterfactuals and limitations are indexed in its parent
+`README.md`. The artifact's earlier isolated/main-unchanged wording is historical;
+root has integrated the reviewed files. No test-layer entries change (manifest300,
+bundle156); two cases were added. Full local `pnpm check:fast` is now **FAILED2283/2286**, with3 failures and
+zero skips/cancellations/todo,3561406.298545ms;953/953 frozen inputs match.
+The original CI three failures pass in this run, but that is not overall GREEN.
+Log `ci-catalog-recovery/joint-fast.log` is maintainer-retained local evidence,
+not a repository-accessible link. Replacement publication is paused.
+
+### Latest full local failure receipt — 2026-11-02
+
+Three new failures remain under investigation; no cause is assigned:
+
+- `tests/replay-settings-cancel-control-cli.test.mjs`, definitions at118/169
+  (assertions121/174): actual exit1 / FAIL instead of expected NOT_CANCELLED.
+  These cases use a fake server and do not execute the three-file correction.
+  Cleanup removed the original generated report, so no causal conclusion is
+  drawn from that missing artifact or from code-path separation alone.
+- `tests/semantic/resident-session-edit-call-inputs.test.mjs`, definition203
+  (assertion233): incoming-call package retarget returned `[]` instead of
+  expected `-32803`. Paired baseline/candidate reproduction is pending; neither
+  a production regression nor a fixture issue is declared yet.
+
+The complete2283/2286 FAIL and earlier c462 CI2281/2284 FAIL remain separate
+receipts. Original CI cases passing does not establish acceptance of this
+candidate. No publication, timeout change, authority relaxation or speculative
+fix follows from this result. Evidence paths in this follow-on are local files
+retained by the maintainer, not downloadable repository links.
+
+### Integrated follow-on corrections — 2026-11-02 07:12 UTC
+
+The preceding investigation checkpoint is superseded by these scoped findings,
+not by a full acceptance result. A new complete fast gate is still required.
+Manifest is now301 entries (unit122, bundle156); no aggregate test-case total is
+inferred from entry counts. Evidence below is maintainer-local, not repository links.
+
+**Incoming-call discovery boundary (test-only):** original-test tracing shows
+background diagnosis first discovered/rejected the changed package manifest,
+then later diagnosis recovered current inputs before incomingCalls. Its `[]`
+was the current graph, not a stale edge; the extra catalog guard was not entered.
+The integrated two-line change awaits the existing First.ets v1 diagnostic
+before retargeting. Original `-32803`/no-result assertion, query order, deadlines,
+configuration-watcher recovery and latest cold-oracle `[]` remain. Corrected
+complete files pass8/8 on current and unconditional-guard variants. The latter
+is not a full b129 baseline. An extra didChange-v2 background-first analogue
+reproduces `[]` on both, but is **not** the original command sequence; the
+unmodified original trace is separate evidence. See
+`incoming-retarget-recovery/README.md`.
+
+**Sampler shutdown (cancel and mixed drivers):** a retained real reproduction
+shows semantic work PASS but late SIGINT kills a sampler after flush and before
+native exit, producing false FAIL under the strict exit0 gate. This does not
+retroactively attribute the original failures whose reports were cleaned up.
+Both drivers now share natural-exit cleanup with grace
+`max(5000, min(interval, 2147482647) + 1000)` and cooperative SIGTERM fallback.
+Exit evidence is never rewritten; this is not a guaranteed hard wall-clock
+termination bound. Three other drivers are unchanged, with no proven incorrect
+resource PASS from this race. Query budgets and timeouts are not inflated.
+
+Final pinned Node20.19.5 five complete files pass42/42, zero fail/skip/cancel/todo,
+84627.872001ms. Old SIGINT is RED; fixed5s grace is separately RED with actual
+TERM5003.609486ms despite exit0. Preserve earlier Node24 40/42 and Node20 41/42:
+the latter overstrong no-signal assertion lacked the actual kill timestamp and
+is not retrospectively classified early/on-time. Corrected tests record cleanup
+and signal times, require signal no earlier than6999ms for a6000ms interval
+(one-millisecond timer tolerance), and retain exit0/PID/RSS checks. No runtime
+causality is inferred merely from version differences.
+
+Evidence: `mixed-sampler-shutdown/review.md` and `final-receipt.json`; all eight
+final file hashes match. Real sampler/helper and existing mixed CLI parameter/
+report tests ran; the actual100-edit mixed CLI did **not** run because the pinned
+fixture was unavailable. Previous failure receipts, including2283/2286, remain;
+focused42 is not complete fast or fresh CI success. No new ADR approval.
+
+### Latest instrumented canonical full gate — 2026-11-02 08:28 UTC
+
+Canonical `check:fast` under external evidence instrumentation terminates
+**2294/2295 PASS, exit1**, zero skip/cancel/todo,4118031.704339ms. All986/986
+frozen input hashes match. Prior confirmed failures pass in this run; the whole
+result nevertheless remains FAIL. The sole failure is
+`tests/semantic/rename-completeness.test.mjs:97`, explicit barrel alias: id2
+rename exceeds its original5s response deadline. Cause is unknown. The completed current and
+published b129 paired diagnosis used the same5s deadline; no regression, load,
+infrastructure or fixture explanation is assigned yet.
+
+Evidence capture preserved556 fixtures with zero copy errors and zero unexpected
+preload observations. All6071 directly observed child launches omitted the
+evidence preload; this is **not** exhaustive proof about grandchildren. The
+external shim, bridge and test-parent hook are not repository changes. Production
+and test deadlines are unchanged. This is explicitly an **instrumented** canonical
+gate, not an uninstrumented/native receipt. Earlier2283/2286 and other failed
+runs remain separate. No full acceptance or speculative timeout fix follows; publication readiness
+is recorded in the subsequent checkpoint.
+
+### Publication-ready checkpoint after paired diagnosis — 2026-11-02
+
+Node20 paired diagnosis is complete: b129 and current each pass three selected
+runs (each1PASS/5 name-filtered skips), then each passes the original complete
+rename file6/6 with zero skips. Original assertions and5s deadline are unchanged.
+One baseline response takes4961.657ms, close to its deadline; that observation
+establishes neither load causality nor a fix. `logging.degraded` ENOENT also
+occurs in successful runs on both sides, without establishing a necessary cause
+of the original timeout. No missing original transcript is reconstructed.
+
+Maintainer-retained evidence: `final-followon-gate/rename-paired/RESULT.md`,
+results, protocol-summary and input-hashes; original limitations in
+`rename-timeout-diagnosis/FINDINGS.md`. Source comparison has no current/main
+mismatch before or after replays. Both sides rebuilt on Node20.19.5; four current
+bundles match main only after normalizing dependency module-label relative
+prefixes, not byte-for-byte. Native baseline SHA256 is
+`eebaa0c66ec5c685f71bf04c9c2bd95c9f03e7829c8d1cf3a54fad02b77e2015`;
+current is `48d050f610fa91c233f6635036973721643c34a175d3f47fe2aed0ee6dbe71e0`.
+Original hashes are retained. These controls are scoped diagnosis, not additional
+full-suite passes or performance benchmarks.
+
+Reviewed corrections are ready to publish on the same draft PR for fresh
+complete CI. No additional confirmed must-fix emerged from this review; the
+rename timeout remains an unexplained/non-reproduced observation, **not fixed**.
+The instrumented2294/2295 FAIL, earlier2283/2286 FAIL and c462 CI2281/2284 FAIL
+remain. Counts from complete and selected runs are not added together. Published
+b129 remains the last complete green revision. This is publication readiness,
+not CI acceptance, continuous-review completion, merge or approval.
+
+## Historical implementation and validation receipts
 
 ## A. Missing active legacy database — confirmed recovery-contract defect
 
@@ -132,7 +301,7 @@ completeness, cancellation and fault recovery remain unchanged.
 
 ## Historical joint-gate start — 02:35 UTC (terminal receipt below)
 
-Root session41828 validates the frozen combined candidate: Rust formatting,
+The joint gate validates the frozen combined candidate: Rust formatting,
 workspace tests, strict Clippy, release build, Node20check/build and41 complete
 Node files. Evidence: `../iteration-evidence/continuous-integration/joint.log`;
 1415 code/test/configuration inputs are frozen. No source/build edits during the
@@ -241,7 +410,7 @@ is now300 entries/bundle156, with the extracted207-line test and original
 references file1149→995. The preceding isolated/pending statements are historical
 checkpoints, not current integration status.
 
-Root final session19792 runs `pnpm check` plus42 complete Node test files (the
+The final local gate runs `pnpm check` plus42 complete Node test files (the
 previous41 plus the extracted case), against1416 frozen inputs. Evidence is
 `../iteration-evidence/continuous-integration/final-node.log`. It is **RUNNING**,
 not accepted or green. No production changes occurred since the original joint
@@ -252,7 +421,7 @@ CI for this candidate awaits publication.
 
 ## Current local verification terminal — 2026-11-02 04:27 UTC
 
-Root verified session19792 exit0 and `pnpm check` exit0: **42 complete Node
+The final local gate has verified exit0 and `pnpm check` exit0: **42 complete Node
 files,401/401 PASS**, zero fail/skip/cancel/todo,698669.119535ms. All1416/1416
 frozen source inputs and all production dist/native-runtime hashes match.
 `continuous-integration/final-node-exit.json`, `final-node.log`,

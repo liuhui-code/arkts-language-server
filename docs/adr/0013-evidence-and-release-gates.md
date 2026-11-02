@@ -227,3 +227,84 @@ rerun400/401 FAIL are retained; the two historical timeouts remain unexplained,
 non-reproduced observations, not fixed. Lost original fixture generation is not
 reconstructed. No ADR approval change, whole-suite pass, UI/native-UNC/30K/
 endurance qualification or general performance claim follows from local scope.
+
+## 2026-11-02 c462 CI correction — integrated, full gate failed
+
+CI41389230974 on c462 fails Linux fast2281/2284; Rust235 and Windows pass,
+subsequent Linux gates not reached. Earlier local401/401 omitted the existing
+close/reopen navigation tests. The [continuous report](../reports/2026-11-02-continuous-ide-review.md)
+preserves this coverage gap and separates a production availability regression
+from a native-enumeration-order fixture assumption.
+
+The extra post-refresh guard now applies only if early catalog reconciliation
+actually ran, represented by object presence rather than its `changed` flag.
+Performed `{changed:false}` remains guarded; undefined preserves prior lazy
+catch-up. Original source/SDK/namespace/final authority proofs and raw target
+remain. Unchanged navigation tests supply inverse2RED when the restriction is
+reverted. The fixture tests mutations before/after the target's actual native
+stat observation; production is not sorted. Performed-unchanged tracing supports
+the intended branch, but two changed-gate variants survived and are explicitly
+not mutation-kill evidence.
+
+Reviewed three-file artifact integrated; focused50/50 and final window7/7 pass,
+forced-order selected3pass/4name skips. Full frozen `pnpm check:fast` terminates2283/2286 PASS,3FAIL, zero skip/cancel/
+todo,3561406.298545ms;953/953 inputs match. Original CI failures pass, but new
+CLI cancellation cases return exit1/FAIL rather than NOT_CANCELLED, and incoming
+package retarget returns [] rather than -32803. Causes are under investigation.
+The CLI fake server does not execute this correction, but cleanup removed its
+report and no causality is inferred. Semantic paired reproduction is pending.
+Publication is paused; no complete success or replacement CI receipt. Evidence
+`iteration-evidence/ci-catalog-recovery/README.md`, joint-fast.log and artifact
+manifest are maintainer-retained local paths, not repository links.
+No ADR status/approval change, weakened authority or inflated timeout.
+
+### 07:12 UTC follow-on integrated, complete validation pending
+
+Original incoming-test tracing establishes background diagnosis discovered and
+then recovered the package change before incomingCalls returned current [].
+The two-line test precondition now awaits First v1 diagnostics before retarget;
+original error, watcher recovery and cold oracle remain. Corrected current and
+unconditional-guard files each8/8; the latter is not b129. Added-v2 analogue is
+separate from the original trace. No authority guard is relaxed.
+
+A retained real sampler reproduction establishes late SIGINT false FAIL after
+semantic PASS; original cleaned-up reports remain unattributed. Cancel/mixed
+share polling-aware natural-exit grace with cooperative TERM fallback, not a
+hard termination bound; strict exit status and budgets remain. Final Node20
+five-file42/42 PASS, old SIGINT and fixed5s grace RED. Earlier Node24 40/42 and
+Node20 41/42 remain, without reconstructed signal timing or version causality.
+Actual100-edit mixed CLI is unrun; real sampler/helper and existing CLI contracts
+are scoped evidence. See maintainer-local incoming-retarget-recovery/README.md
+and mixed-sampler-shutdown/review.md, final-receipt.json. Manifest301/unit122/
+bundle156; new complete gate pending. Prior2283/2286 FAIL is not overwritten.
+No ADR status change or complete-success claim.
+
+### 08:28 UTC instrumented canonical gate terminal failure
+
+Canonical check:fast with external evidence instrumentation terminates2294/2295,
+exit1, zero skip/cancel/todo,4118031.704339ms;986/986 frozen inputs match. Prior
+confirmed failures pass; sole rename-completeness:97 explicit barrel alias id2
+rename hits its original5s deadline. Cause unknown; current/b129 same-deadline
+paired diagnosis subsequently completed (receipt below). No timeout relaxation
+or authority change follows.
+
+556 fixtures preserved, zero copy errors/unexpected preload observations;6071
+directly observed child launches omit evidence preload, not exhaustive evidence
+about grandchildren. External shim/bridge/test-parent hook are not shipped.
+This instrumented gate is not labeled native/uninstrumented. Previous failures
+remain; publication and complete acceptance remain blocked pending diagnosis.
+
+### Publication-ready checkpoint after completed paired diagnosis
+
+Node20 current/b129 each pass three selected rename runs (each1PASS/5 name
+skips), then each original complete file6/6 with zero skips; unchanged5s deadline
+and assertions. Baseline4961.657ms near the limit is not a load explanation or
+fix. Logging ENOENT appears in successful controls on both sides without proving
+timeout causality. Source inputs match main before/after and normalized runtime
+comparisons match; maintainer-local rename-paired receipts retain the scope.
+
+No new confirmed must-fix emerged. Reviewed corrections are ready for the same
+draft PR and fresh complete CI, not merge or final acceptance. Rename cause
+remains unknown/non-reproduced, not fixed. Instrumented2294/2295 FAIL and all
+prior failures remain separate from selected/file passes; no summed full-pass
+claim. Published b129 remains the last complete green. ADR status unchanged.
