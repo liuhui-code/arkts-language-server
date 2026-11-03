@@ -332,3 +332,103 @@ test("a newer edit during synchronization cannot publish the old completion or r
     assert.equal(f.state().projectRefs, 0)
     assert.equal(f.events().filter(event => event.event === "semantic.worker.started").length, 1)
   })
+
+
+async function startFailedConstruction(t) {
+  const f = fixture(t)
+  await f.session.initialize({ initializationOptions: { sdk: { path: f.sdk } } })
+  await f.session.transport.notification("arkts/semanticPreparation", m => m.params.phase === "failed", 10_000)
+  assert.equal(f.state().projectRefs, 0)
+  f.configure() // Retire the healthy SDK index retained by the failed project's registered context.
+  assert.notEqual((await f.readiness(false)).result.semanticState, "ready")
+  assert.equal(f.state().sdkRefs, 1, "normal retirement leaves only the SDK syntax pin")
+  return f
+}
+
+async function cancelSdkConstruction(f, releaseAfterEffect = false) {
+  for (const name of ["sdk-warmup-checkpoint.json", "sdk-warmup-error.json", "sdk-warmup-cancel-observed.json"]) {
+    fs.rmSync(path.join(f.directory, name), { force: true })
+  }
+  const before = f.state()
+  fs.writeFileSync(path.join(f.directory, "build-fault.json"), JSON.stringify({
+    stage: "sdk-warmup-pause", remaining: 1, target: "sdk-index", releaseAfterEffect,
+  }))
+  const id = await cancelEntered(f, "arkts/semanticReadiness", { rootUri: f.rootUri, prepare: true })
+  const deadline = Date.now() + 5_000
+  const read = name => JSON.parse(fs.readFileSync(path.join(f.directory, name), "utf8"))
+  while (!fs.existsSync(path.join(f.directory, "sdk-warmup-error.json"))) {
+    if (Date.now() > deadline) throw Error("SDK construction did not unwind its original cancellation checkpoint")
+    await new Promise(resolve => setTimeout(resolve, 10))
+  }
+  const entered = read("build-entered.json"), checkpoint = read("sdk-warmup-checkpoint.json")
+  const outcome = read("sdk-warmup-error.json"), observed = read("sdk-warmup-cancel-observed.json")
+  assert.equal(observed.cancelled, true)
+  assert.equal(observed.threadId, entered.threadId)
+  assert.equal(entered.stage, "sdk-warmup")
+  assert.equal(entered.completed, before.completed + 1, "the real SDK Program returned before cancellation")
+  assert.ok(entered.sources.some(file => file.endsWith("common.d.ts")))
+  assert.ok(entered.sources.every(file => !file.startsWith(f.workspace + path.sep)))
+  assert.ok(entered.sdkRefs > before.sdkRefs, "the constructed index owns additional SDK references at the gate")
+  assert.equal(checkpoint.cancelled, true, "the original current() checkpoint reads the real shared cancellation token")
+  assert.equal(checkpoint.threadId, entered.threadId)
+  return { id, entered, outcome }
+}
+
+function assertSingleTerminal(f, id) {
+  assert.equal(f.session.transport.transcriptEntries.filter(({ entry }) =>
+    entry.direction === "receive" && entry.id === id && entry.method === null).length, 1)
+}
+
+test("SDK construction cancellation rolls back only the unpublished owner before same-input retry", { timeout: 30_000 }, async t => {
+  const f = await startFailedConstruction(t)
+  const baseline = f.state(), creates = f.events().filter(e => e.event === "semantic.context.create").length
+  for (let i = 0; i < 3; i++) {
+    const { id, entered, outcome } = await cancelSdkConstruction(f)
+    const status = await f.readiness(false) // The serial command proves the cancelled construction has settled.
+    t.diagnostic(JSON.stringify({ baseline, entered: { ...entered, sources: entered.sources.length }, outcome, settled: f.state() }))
+    assert.equal(f.events().filter(e => e.event === "semantic.worker.started").length, 1)
+    assert.notEqual(status.result.semanticState, "ready")
+    assert.match(outcome.error.type, /OperationCanceledException$/)
+    assert.equal(f.events().filter(e => e.event === "semantic.context.create").length, creates,
+      "construction fails before a coordinator entry or request lease is handed out")
+    assert.equal(f.state().projectRefs, 0)
+    assert.equal(f.state().sdkRefs, baseline.sdkRefs, "only normal SDK pins survive construction rollback")
+    assertSingleTerminal(f, id)
+  }
+  assert.equal((await f.readiness(true)).result.semanticState, "ready")
+  const result = await f.session.request("textDocument/definition", {
+    textDocument: { uri: f.uri("Main.ets") }, position: { line: 1, character: 23 } })
+  assert.deepEqual(result.result, [{ uri: f.uri("Unopened.ets"), range: {
+    start: { line: 0, character: 16 }, end: { line: 0, character: 28 } } }])
+  f.configure(); await f.readiness(false)
+  assert.equal(f.state().projectRefs, 0)
+  assert.equal(f.state().sdkRefs, baseline.sdkRefs, "the successful retry releases its index on ordinary retirement")
+  assert.equal(f.events().filter(e => e.event === "semantic.worker.started").length, 1)
+  assert.deepEqual((await f.session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })
+})
+
+test("SDK construction cancellation can close cleanly without a successful retry", { timeout: 30_000 }, async t => {
+  const f = await startFailedConstruction(t)
+  const baseline = f.state()
+  const { id } = await cancelSdkConstruction(f)
+  await f.readiness(false)
+  assert.equal(f.state().projectRefs, 0)
+  assert.equal(f.state().sdkRefs, baseline.sdkRefs)
+  assertSingleTerminal(f, id)
+  assert.deepEqual((await f.session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })
+})
+
+test("uncertain SDK construction rollback preserves cancellation and quarantines before recovery", { timeout: 30_000 }, async t => {
+  const f = await startFailedConstruction(t)
+  const { id, outcome } = await cancelSdkConstruction(f, true)
+  assert.equal(outcome.error.type, "AggregateError")
+  assert.equal(outcome.error.errors.length, 2)
+  assert.match(outcome.error.errors[0].type, /OperationCanceledException$/)
+  assert.equal(outcome.error.errors[1].type, "CompilerOwnershipUncertainError")
+  assert.equal(outcome.error.errors[1].cause.message, "test: SDK Registry release after effect")
+  await waitEvent(f, "semantic.worker.recovery.complete")
+  assert.equal((await f.readiness(true)).result.semanticState, "ready")
+  assert.equal(f.events().filter(e => e.event === "semantic.worker.started").length, 2)
+  assertSingleTerminal(f, id)
+  assert.deepEqual((await f.session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })
+})

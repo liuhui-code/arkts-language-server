@@ -69,8 +69,15 @@ export function sdkExportLanguageService(host: ts.LanguageServiceHost, sdk: Proj
   }
   service.dispose = () => { try { dispose() } finally { fences.delete(service); index.release() } }
   if (initialPreparationActive()) {
-    index.getProgram()
-    if (!index.current()) { disabled = true; index.revoke() }
+    try {
+      index.getProgram()
+      if (!index.current()) { disabled = true; index.revoke() }
+    } catch (error) {
+      // No coordinator entry owns this service until construction returns.
+      try { service.dispose() }
+      catch (cleanup) { throw new AggregateError([error, cleanup], "Failed to clean up SDK service construction") }
+      throw error
+    }
   }
   return service
 }
