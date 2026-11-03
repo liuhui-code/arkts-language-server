@@ -38,7 +38,7 @@ if (!isMainThread) {
       const pending = mode.startsWith("pending")
       const needle = pending ? "var MAX_PENDING_BYTES = MAX_WITNESS_BYTES;" : "constructor(limit = MAX_WITNESS_BYTES) {"
       if (source.split(needle).length !== 2) throw Error("exact witness budget declaration required")
-      source = source.replace(needle, pending ? `var MAX_PENDING_BYTES = ${mode === "pending-aggregate" ? 12288 : mode === "pending-copy" ? 4096 : 128};`
+      source = source.replace(needle, pending ? `var MAX_PENDING_BYTES = ${mode === "pending-aggregate" ? "MAX_WITNESS_BYTES" : mode === "pending-copy" ? 4096 : 128};`
         : needle + ' if ((new Error().stack ?? "").includes("createInputWitness")) limit = 32 * 1024;')
       if (mode === "pending-copy" || mode === "pending-aggregate") {
         const overflow = "this.failed = true;\n      throw new ExactEvidenceCapacityError();"
@@ -55,9 +55,26 @@ if (!isMainThread) {
         }
       }
       if (mode === "pending-aggregate") {
+        const budgetFile = JSON.stringify(path.join(directory, "witness-pending-budget.json"))
+        const capture = "const available = MAX_PENDING_BYTES - this.bytes - entryBytes;"
+        if (source.split(capture).length !== 2) throw Error("exact pending capture boundary required")
+        source = source.replace(capture, `
+          if (!globalThis.__pendingBudgetFrozen && require("node:fs").existsSync(${budgetFile})) {
+            const limit = JSON.parse(require("node:fs").readFileSync(${budgetFile}, "utf8")).limit;
+            if (!Number.isSafeInteger(limit) || limit <= 128 || limit >= MAX_WITNESS_BYTES)
+              throw Error("invalid calibrated pending budget");
+            MAX_PENDING_BYTES = limit;
+            globalThis.__pendingBudgetFrozen = true;
+          }
+          ${capture}`)
+        const finish = "this.sealed = true;"
+        if (source.split(finish).length !== 2) throw Error("exact capsule finish boundary required")
+        source = source.replace(finish, finish + `
+          globalThis.__finishedPendingCapsule = { firstFactBytes: this.facts.length
+            ? witnessFactBytes(this.facts[0].filePath, this.facts[0].identity) : 0 };`)
         for (const [needle, event, fields] of [
-          ["const available = MAX_PENDING_BYTES - this.bytes - entryBytes;", "capture", "contextId, bytes: this.bytes, available, entryBytes"],
-          ["this.bytes += cost;", "retain", "contextId, bytes: this.bytes, cost, count: this.pending.size"],
+          ["const available = MAX_PENDING_BYTES - this.bytes - entryBytes;", "capture", "contextId, bytes: this.bytes, available, entryBytes, limit: MAX_PENDING_BYTES"],
+          ["this.bytes += cost;", "retain", "contextId, bytes: this.bytes, cost, count: this.pending.size, entryBytes, proofBytes: proof.accountedBytes, factCount: proof.factCount, ...globalThis.__finishedPendingCapsule"],
           ["this.bytes -= retained.cost;", "release", "contextId, bytes: this.bytes, cost: retained.cost, count: this.pending.size - 1"],
           ["this.pending.clear();\n    this.bytes = 0;", "clear", "bytes: this.bytes, count: this.pending.size"],
         ]) {
@@ -67,10 +84,13 @@ if (!isMainThread) {
               JSON.stringify({ event: ${JSON.stringify(event)}, ${fields} }) + "\\n");`)
         }
       }
-      if (mode === "pending-aggregate" && process.env.ARKTS_TEST_WITNESS_SKIP_RELEASE === "1") {
+      if (mode === "pending-aggregate" && (process.env.ARKTS_TEST_WITNESS_SKIP_RELEASE === "1"
+        || process.env.ARKTS_TEST_WITNESS_SKIP_FROZEN_RELEASE === "1")) {
         const release = "this.bytes -= retained.cost;"
         if (source.split(release).length !== 2) throw Error("exact pending release boundary required")
-        source = source.replace(release, "/* counterfactual: byte release removed */")
+        source = source.replace(release, process.env.ARKTS_TEST_WITNESS_SKIP_RELEASE === "1"
+          ? "/* counterfactual: byte release removed */"
+          : "if (!globalThis.__pendingBudgetFrozen) this.bytes -= retained.cost;")
       }
       const observe = 'markUnprovable(reason2 = "caller-invalidated", sourcePath) {'
       if (source.split(observe).length !== 2) throw Error("exact witness failure boundary required")

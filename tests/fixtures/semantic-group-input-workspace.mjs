@@ -4,9 +4,9 @@ import { createReadinessFixture } from "../support/semantic-readiness-lsp.mjs"
 import { positionAt } from "../support/resident-interactive-lsp.mjs"
 
 /** Real public LSP workspace with independent module manifests and configurable source inputs. */
-export async function groupInputWorkspace(t, files, env = {}) {
+export async function groupInputWorkspace(t, files, env = {}, fixtureOptions = {}) {
   const fixture = createReadinessFixture(t, { ARKTS_MEMORY_BUDGET_MB: "4096", ARKTS_BENCHMARK_CONTROL: "0",
-    ARKTS_REFERENCES_RESIDENT_FAST_PATH: "1", ...env })
+    ARKTS_REFERENCES_RESIDENT_FAST_PATH: "1", ...env }, fixtureOptions)
   const { workspace, session, sdk, rootUri, uri } = fixture
   const modules = [...new Set(Object.keys(files).map(file => file.split("/")[0]))]
   fs.writeFileSync(path.join(workspace, "build-profile.json5"), JSON.stringify({

@@ -142,7 +142,7 @@ validation package. No failed attempt was overwritten or automatically rerun.
   or attributed by this integration.
 
 
-## Authorized publication preparation: native Windows gate
+## Authorized publication preparation: first head45657b6 native Windows gate
 
 The user subsequently authorized a new draft PR plus full CI and Windows checks.
 The candidate adds an independent `windows-stage12` job; the existing installation
@@ -179,3 +179,65 @@ This is a pre-CI receipt. Actual new-head Linux release, original Windows smoke
 and dedicated Windows outcomes must be read from the new PR's exact-head CI;
 no previous PR/run qualifies this candidate. CI failures must be retained and
 diagnosed before any corrective new head; do not loop reruns until green.
+
+
+## First native Windows failure and portable test-cost correction
+
+First published head `45657b6c9ad81ae49eb6c7c016a366c791649216`,
+[run41663508692](https://github.com/liuhui-code/arkts-language-server/actions/runs/41663508692),
+attempt1: the unchanged Windows install/reinstall/smoke passes. The dedicated
+native job is **22/23**, zero skips/cancellations/todos,154945.9598ms. Its sole
+failure is aggregate overflow's `assert.ok(retained)`: four captures have bytes0,
+entry782/available11506 under the injected12288-byte **test** allowance. The6002
+closure,4200 SDK, observation cases and other four capacity modes all pass.
+The complete original log is retained; this run was not rerun or cancelled.
+
+An independent Linux real-LSP reproduction changes only TMP length using the same
+runtime. Original short-root aggregate passes with first cost7770; original long
+root fails at the same missing-retain assertion, with7 copied facts/10552 bytes
+and next1286 exceeding available11066. This confirms a nonportable fixed-test-cost
+assumption, not a reason to change either production64MiB allowance. The Windows
+log did not record complete capsule costs; attributing its failure to the same
+path-cost mechanism remains an inference pending the corrective native run.
+
+The test-only correction adds a dedicated Calibration.ets to each of two modules.
+Healthy source deletions first execute real capture→retain→release under the normal
+allowance. Numeric observation records complete costs C_a/C_b, entry E_b and the
+first fact size; it neither retains proof objects nor refreshes/grants authority.
+The fixture computes L=C_a+E_b+floor(proof_b/2), hard-checks
+max(C_a,C_b)<L<C_a+C_b and nonempty-prefix room, then writes a private limit file.
+The preload reads it once and freezes L. All subsequent captures must show that
+same limit. Original silent-SDK denial, distinct-owner competition, partial-copy
+failure, explicit configuration recovery, clear/release, single Worker and normal
+close remain. Actual post-recovery costs again prove one fits but two cannot.
+
+The ordinary case remains; a second case only extends the temporary parent toward
+workspace length115. No source root is shortened. The final Linux case's longest
+created path is232, including cache and initial Calibration paths; this avoids
+introducing a deliberate Windows MAX_PATH stress test. Shared fixture defaults and
+close-before-parent-removal ordering are unchanged. The six-file native cohort
+now contains24 tests, not23; no test-name filter is used in CI.
+
+Fresh final evidence, all original/initial attempts retained:
+- Original12288 with the final extended-root case: complete file5/6, zero skips;
+  only the missing-retain assertion fails. Corrected complete file6/6 passes.
+- Final same six-file CI command on Linux:24/24, zero fail/skip/cancel/todo,
+  exit0,42430.083665ms;958 frozen inputs unchanged. After applying the exact patch,
+  the publication worktree repeats the same complete cohort24/24, zero other
+  outcomes, exit0,36624.974676ms. Three other complete shared
+  helper-consumer files pass21/21. Neither is native Windows certification.
+- Short-root L11927 is smaller than the old12288. Extended-root L19376 is derived
+  from actual complete costs, not an arbitrary capacity increase.
+- Original missing-release counterfactual fails during calibration; a separate
+  **only-after-freeze** missing-release counterfactual passes calibration and
+  fails on the second healthy replacement after configuration recovery with-32803.
+  Each is1FAIL/5 explicit name-filter skips. These REDs prove calibration did not
+  mask the original terminal release assertion.
+
+Only four test/fixture files change executable behavior; two documents record
+the evidence. Production source, built runtime, both64MiB
+allowances, watchdogs, deadlines and short-path qualification are unchanged.
+Independent source/receipt review found no required correction. A corrective
+new head requires its own complete Linux release and native Windows CI; the
+first head's failures and results must remain separate. At this local receipt,
+the first Linux job is still running and the corrective native job is NOT_RUN.
