@@ -14,6 +14,13 @@ if (!isMainThread && process.env.ARKTS_LSP_LOG_DIR) {
     fs.writeFileSync(controlFile, JSON.stringify({ ...value, remaining: value.remaining - 1 }))
     return true
   }
+  const publish = (name, value) => {
+    const output = path.join(directory, name), temporary = `${output}.${threadId}.tmp`
+    try {
+      fs.writeFileSync(temporary, JSON.stringify(value))
+      fs.renameSync(temporary, output)
+    } finally { fs.rmSync(temporary, { force: true }) }
+  }
   const sample = () => {
     let projectRefs = 0, sdkRefs = 0
     for (const row of registries) {
@@ -26,15 +33,44 @@ if (!isMainThread && process.env.ARKTS_LSP_LOG_DIR) {
         else if (input.sdk) sdkRefs += refs
       }
     }
-    const output = path.join(directory, "build-state.json")
-    const temporary = `${output}.${threadId}.tmp`
-    try {
-      fs.writeFileSync(temporary, JSON.stringify({ attempts, completed, projectRefs, sdkRefs, threadId }))
-      fs.renameSync(temporary, output)
-    } finally { fs.rmSync(temporary, { force: true }) }
+    const state = { attempts, completed, projectRefs, sdkRefs, threadId }
+    publish("build-state.json", state)
+    return state
   }
   setInterval(() => { if (registries.length && fault("exit-idle")) process.exit(17) }, 10).unref()
+  const summarize = error => ({ type: error?.constructor?.name, message: error?.message,
+    ...(error?.cause ? { cause: summarize(error.cause) } : {}),
+    ...(error instanceof AggregateError ? { errors: error.errors.map(summarize) } : {}) })
   globalThis.__failedBuildTest = {
+    afterSdkWarmup(program, host) {
+      if (!fault("sdk-warmup-pause")) return program
+      if (!program) throw Error("SDK warmup must have returned a real Program")
+      const getToken = host.getCancellationToken, token = getToken.call(host)
+      const started = performance.now(), deadline = Date.now() + 5_000
+      publish("build-entered.json", { stage: "sdk-warmup", ...sample(),
+        roots: program.getRootFileNames(), sources: program.getSourceFiles().map(file => file.fileName) })
+      const wait = new Int32Array(new SharedArrayBuffer(4))
+      while (!token.isCancellationRequested()) {
+        if (Date.now() > deadline) throw Error("SDK warmup fixture did not observe real cancellation")
+        Atomics.wait(wait, 0, 0, 10)
+      }
+      publish("sdk-warmup-cancel-observed.json", { cancelled: true, threadId, waitedMs: performance.now() - started })
+      // Observe separately when production current() reads the same original token.
+      host.getCancellationToken = function() {
+        return { isCancellationRequested() {
+          const cancelled = getToken.call(host).isCancellationRequested()
+          publish("sdk-warmup-checkpoint.json", { cancelled, threadId })
+          host.getCancellationToken = getToken
+          return cancelled
+        } }
+      }
+      return program
+    },
+    warmupError(error) {
+      if (fs.existsSync(path.join(directory, "sdk-warmup-checkpoint.json"))) {
+        publish("sdk-warmup-error.json", { ...sample(), error: summarize(error) })
+      }
+    },
     program(input, run) {
       const roots = Array.isArray(input) ? input : input?.rootNames ?? []
       const project = roots.some(file => path.resolve(file).startsWith(workspace + path.sep))
@@ -118,6 +154,14 @@ if (!isMainThread && process.env.ARKTS_LSP_LOG_DIR) {
         if (source.split(needle).length !== 2) throw Error("unique failed-build hook required: " + needle)
         source = source.replace(needle, value)
       }
+      const warmup = source.match(/  if \(initialPreparationActive\(\)\) \{[\s\S]*?\n  \}\n  return service;/g)
+      if (warmup?.length !== 1 || warmup[0].split("index.getProgram();").length !== 2) {
+        throw Error("unique SDK construction warmup hook required")
+      }
+      const body = warmup[0].slice("  if (initialPreparationActive()) {".length, -"\n  }\n  return service;".length)
+        .replace("index.getProgram();", "globalThis.__failedBuildTest.afterSdkWarmup(index.getProgram(), enriched);")
+      replace(warmup[0], "  if (initialPreparationActive()) { try {" + body
+        + "\n  } catch (error) { globalThis.__failedBuildTest.warmupError(error); throw error; } }\n  return service;")
       const program = "function createProgram(rootNamesOrOptions, _options, _host, _oldProgram, _configFileParsingDiagnostics) {"
       replace(program, program + "return globalThis.__failedBuildTest.program(rootNamesOrOptions,()=>__testCreateProgram(...arguments)); } function __testCreateProgram(rootNamesOrOptions, _options, _host, _oldProgram, _configFileParsingDiagnostics) {")
       const service = "function createLanguageService(host, documentRegistry = createDocumentRegistry(host.useCaseSensitiveFileNames && host.useCaseSensitiveFileNames(), host.getCurrentDirectory()), syntaxOnlyOrLanguageServiceMode) {"

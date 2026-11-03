@@ -56,6 +56,7 @@ protection checks. Earlier L01/L02 resource-admission verdicts are historical.
 | [0040](0040-client-context-request-backpressure.md) | Proposed; component/release and six 30K protocol rounds verified, deployment/UI pending | Lazily bound automatic context requests; preserve all answers, source/refresh ownership, foreground independence and terminal outcomes |
 | [0041](0041-windows-index-storage-location.md) | Proposed; build/typecheck and targeted83/83 verified; Windows real machine pending | Prefer D-drive index storage on Windows with explicit configuration, visible fallback, workspace isolation and one session-owned root for index/GC |
 | [0042](0042-bounded-catalog-streaming.md) | Proposed; authorized plan, implementation/verification pending | Bounded catalog parse/write ownership; force first, proven hash-first reuse next; preserve full private publication and no default RSS budget |
+| [0043](0043-semantic-working-set-evidence.md) | Proposed; construction-cleanup slice RED/GREEN and 101/101 scoped regression verified; full CI/resource qualification pending | Evidence-first semantic working-set review; minimal passive attribution before any residency-policy revision |
 
 2026-10-27 [三项根因与ADR审计](../reports/2026-10-27-30k-issues-root-causes-and-adrs.md#adr逐项映射与设计缺口)：
 上表0020–0023的“not merged”及检查数是各切片当时的历史收据，不能作为当前版本判定。

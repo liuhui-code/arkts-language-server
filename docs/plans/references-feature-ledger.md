@@ -1,5 +1,23 @@
 # References / semantic Feature Ledger
 
+## Semantic working-set evidence review — 2026-11-03
+
+R-02/R-20/R-22/R-30/R-31，兼顾R-13/R-26/R-34：
+[ADR0043](../adr/0043-semantic-working-set-evidence.md)仍 **Proposed**；[清单](2026-11-03-semantic-working-set-review.md)及
+[M1 TDD](../tdd/2026-11-03-sdk-construction-cleanup.md)基于 `298d65f5d7f796c347fe8be5c739e428066489d8`。
+SDK export Program完整返回、factory尚未交付时的原Host取消checkpoint确认Registry所有权缺口：
+最终真实framedLSP/token门RED为清算后sdkRefs2 != 正常pin1、projectRefs0、context-create未增，11ms响应且无恢复。
+最小initial warmup回滚净增7行，安全清理保留原取消，清理不确定性保留AggregateError/quarantine/Worker退役。
+三新增例3PASS/21名称过滤skip；另九完整相关文件101/101、0fail/skip/cancel/todo、169450.868539ms、exit0，
+Node20check/build/diffcheck通过，2216/2216输入一致；三改动83/175/434行。不是完整check:fast或目标HEAD CI。
+原始baseline20/21首case10s未知超时保留，后续一次21/21不覆盖；错误前置refs2属旧健康index正常保留，不是RED。
+1009ms的response-before-release握手与其GREEN失败已废弃并保留，最终原token门不改生产deadline。
+M2被动工作集归因、M3策略及真实内存/性能未执行；用户现场版本/PID/SDK/曲线仍缺，不称现场根因或RSS收益。
+提交前验证快照：本地缺editors/zed/grammars/arkts.wasm，完整check:fast/新headCI未跑；发布/CI以新PR收据为准，不称完整验证checkout。
+ADR0019全组主动准备/完整根READY、ADR0038每LS附属SDK语义状态、主Worker1/maxResidentContexts null/RSS预算null不变。
+未来按需/有限热集合/SDK export复用仍须证据与对应ADR显式修订；不新建telemetry框架作为本片前置。
+完整引用/rename、ambient、SDK身份、overlay、联合freshness、取消和lease不弱化；455豁免、历史失败和R项毕业状态不变。
+
 ## Bounded catalog streaming implementation — 2026-11-02
 
 R-01/R-02/R-20：[ADR0042](../adr/0042-bounded-catalog-streaming.md)仍 **Proposed**；
