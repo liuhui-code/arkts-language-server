@@ -1,5 +1,19 @@
 # References / semantic Feature Ledger
 
+## Windows source-path identity — 2026-11-03
+
+R-13/R-24/R-34：[TDD](../tdd/2026-11-03-windows-source-path-identity.md)保留
+PR116/head a311fab、run41611920609 attempt1 Windows 首轮FAIL：安装/重装/installed smoke PASS，
+完整恢复文件1PASS/4FAIL、0skip、14635.9864ms；未rerun，09:44/09:49UTC Linux validate仍运行。
+跨文件初次定义已落在Main import、既有readiness已degraded，不归因于后续压缩事件恢复。
+Linux真实framed-LSP短/长realpath模拟RED→三处native补丁GREEN；强化unsaved call-hierarchy断言杀死helper-only半修复。
+初版9完整文件131/131、强化3完整文件15/15分别通过，check/build与各轮8项输入SHA一致；不求和冒充全套。
+发布整合Node20check/build、相同3文件15/15通过，23027.377985ms，2225/2225输入一致。
+源/根/最近已存在祖先物理身份一致；不lowercase、不绕过链接/SDK/overlay边界。
+Windows步骤扩展为恢复/LSP路径/物理路径3完整文件；合同定向RED→GREEN，新完整5/6缺WASM的FAIL保留。
+新head完整CI及原生Windows尚未取得，不以Linux诊断或局部通过宣称原生修复。
+不改ADR状态、期限、预算、默认内存或R项毕业；不宣称解决用户23,787-member大闭包首故障。
+
 ## Installed diagnostic-worker delivery — 2026-11-03
 
 R-13/R-24/R-34，沿用[ADR0013](../adr/0013-evidence-and-release-gates.md)分层证据与ADR0029显式压力语义。

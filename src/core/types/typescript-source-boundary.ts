@@ -55,8 +55,8 @@ export function callHierarchyPathFailure(rootPath: string, filePath: string,
   allowMissingSource: boolean): SemanticCallHierarchyFailureReason | undefined {
   if (!isWithinRoot(rootPath, filePath)) return "source-outside-workspace"
   try {
-    const realRoot = fs.realpathSync(rootPath)
-    const realSource = allowMissingSource ? prospectiveRealPathSync(filePath) : fs.realpathSync(filePath)
+    const realRoot = fs.realpathSync.native(rootPath)
+    const realSource = allowMissingSource ? prospectiveRealPathSync(filePath) : fs.realpathSync.native(filePath)
     return isWithinRoot(realRoot, realSource) ? undefined : "source-outside-workspace"
   } catch { return "source-unavailable" }
 }
@@ -65,7 +65,7 @@ export function prospectiveRealPathSync(filePath: string): string {
   let cursor = filePath
   const suffix: string[] = []
   while (true) {
-    try { return path.join(fs.realpathSync(cursor), ...suffix) }
+    try { return path.join(fs.realpathSync.native(cursor), ...suffix) }
     catch {
       const parent = path.dirname(cursor)
       if (parent === cursor) throw new Error(`No existing ancestor for ${filePath}`)

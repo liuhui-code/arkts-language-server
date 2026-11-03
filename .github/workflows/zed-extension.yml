@@ -119,4 +119,4 @@ jobs:
 
       - name: Validate native Windows recovery
         shell: pwsh
-        run: node --test --test-concurrency=1 tests/semantic/worker-recovery-configuration.test.mjs
+        run: node --test --test-concurrency=1 tests/semantic/worker-recovery-configuration.test.mjs tests/lsp-path-identity.test.mjs tests/path-identity.test.mjs

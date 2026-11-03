@@ -93,3 +93,6 @@ node --test --test-concurrency=1 \
 完整命令、portable安装、缺WASM限制及独立Windows步骤TDD见[安装验证补记](2026-11-03-installed-diagnostic-worker.md#independent-main-integration)。
 Windows job在安装与installed smoke后，使用原期限运行本恢复文件全部5例，无名称过滤；
 这一步验证构建目录中的真实bundle，前一步则验证已安装bundle。发布前只有Linux预验，原生结果须以目标head CI为准。
+
+首轮原生 CI 的独立路径身份失败及后续最小修复证据见[Windows 路径 TDD](2026-11-03-windows-source-path-identity.md)；
+该记录保留原失败，不把故障前的跨文件解析异常归因于本恢复逻辑。
