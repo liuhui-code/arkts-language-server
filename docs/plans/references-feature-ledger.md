@@ -11,7 +11,10 @@ Linux真实framed-LSP短/长realpath模拟RED→三处native补丁GREEN；强化
 发布整合Node20check/build、相同3文件15/15通过，23027.377985ms，2225/2225输入一致。
 源/根/最近已存在祖先物理身份一致；不lowercase、不绕过链接/SDK/overlay边界。
 Windows步骤扩展为恢复/LSP路径/物理路径3完整文件；合同定向RED→GREEN，新完整5/6缺WASM的FAIL保留。
-新head完整CI及原生Windows尚未取得，不以Linux诊断或局部通过宣称原生修复。
+新head5c61bb/run41615220013 attempt1原生14/15FAIL、0skip、26928.5882ms；安装smoke、恢复5/5、LSP3/3、新物理边界PASS。
+真实root/Main普通8.3/native长名配对证实机制；唯一既有TSV向量因CRLF遗留CR而FAIL，不写整任务全绿。
+test-only补LF/CRLF双输入精确断言，拆行RED→GREEN各6过滤skip；独立审查及Linux同3完整文件15/15通过，2226输入一致。
+产品/runtime与5c61bb相同，无新build；修正后新head完整Linux/native CI仍pending，原两轮FAIL均保留。
 不改ADR状态、期限、预算、默认内存或R项毕业；不宣称解决用户23,787-member大闭包首故障。
 
 ## Installed diagnostic-worker delivery — 2026-11-03

@@ -10,8 +10,12 @@ from the passing installed smoke. Linux framed-LSP emulation of short/long
 realpath spelling reproduces degraded relative-import resolution before fault
 injection; the three-call native-identity patch restores the exact declaration.
 Public RED/GREEN also rejects a helper-only half-fix at unsaved call-hierarchy
-preparation. Linux adjacent131/131 and strengthened complete15/15 pass separately;
-new-head native Windows validation is still pending, not inferred from Linux.
+preparation. Linux adjacent131/131 and strengthened complete15/15 pass separately.
+Published5c61bb's native root/Main observations confirm ordinary8.3/native long-name
+identity divergence; recovery5/5, LSP path3/3 and the physical-boundary case pass.
+The whole Windows job remains14/15 FAIL because the existing TSV-vector test
+retains CR from CRLF lines. A test-only LF/CRLF parsing RED/GREEN and local15/15
+preserve exact URI assertions; corrected-head full/native CI remains pending.
 Use consistent physical identity for source, root and nearest existing ancestor;
 keep lexical/physical containment, unsaved-suffix handling and escape rejection.
 Neither unconditional lowercasing nor relaxed source/SDK/overlay proof is admitted.

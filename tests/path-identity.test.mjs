@@ -77,13 +77,15 @@ test("Node accepts shared native URI vectors without changing filename case", as
   const windows = await buildPathIdentityDriver(t, true)
   const native = await buildPathIdentityDriver(t)
   const vectors = fs.readFileSync(new URL("./fixtures/path-identity-vectors.tsv", import.meta.url), "utf8")
-  for (const row of vectors.trim().split("\n")) {
-    const [platform, filePath, uri] = row.split("\t")
-    if (platform === "unix" && process.platform === "win32") continue
-    const api = platform === "windows" ? windows : native
-    assert.equal(api.isEquivalentWorkspaceIdentity(uri, filePath), true, row)
-    const roundtrip = api.tryClientWorkspaceUri({ clientRootUri: uri, workspaceIdentity: uri }, uri)
-    assert.equal(roundtrip, uri)
+  for (const source of [vectors.replace(/\r\n/g, "\n"), vectors.replace(/\r?\n/g, "\r\n")]) {
+    for (const row of source.trim().split(/\r?\n/)) {
+      const [platform, filePath, uri] = row.split("\t")
+      if (platform === "unix" && process.platform === "win32") continue
+      const api = platform === "windows" ? windows : native
+      assert.equal(api.isEquivalentWorkspaceIdentity(uri, filePath), true, row)
+      const roundtrip = api.tryClientWorkspaceUri({ clientRootUri: uri, workspaceIdentity: uri }, uri)
+      assert.equal(roundtrip, uri)
+    }
   }
 })
 

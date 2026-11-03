@@ -1,7 +1,8 @@
 # Windows source-path physical identity
 
 日期：2026-11-03。父版本：`a311fab4eec5af4229f220f98c60a51cc3d57ad7`。
-状态：首轮原生失败已保留；最小补丁 Linux 公开 RED/GREEN 与局部验证完成，新 head 原生验证待运行。
+状态：5c61bb 原生路径与恢复子集通过，Windows 整任务14/15FAIL因既有向量CRLF解析；
+test-only修正局部验证完成，修正后新head完整CI/原生结果待取得。此前失败全部保留。
 依据：[ADR0005](../adr/0005-index-proof-trust-boundary.md) 的物理源证明与
 [ADR0013](../adr/0013-evidence-and-release-gates.md) 的分层证据；不改变任何 ADR 状态。
 
@@ -121,7 +122,7 @@ node --test --test-concurrency=1 \
 日志在证据根 `path-workflow-{red,green,complete}.log`。
 路径测试记录真实 root/Main 普通/native 值，覆盖根内未保存/嵌套缺失源与真实链接逃逸；
 Windows使用junction、Linux使用directory symlink。未保存源call-hierarchy有上述公开精确断言。
-未取得新 head 原生实跑前，不称 Windows 已修复或 CI 全绿；
+以上为发布5c61bb前收据，原生后续结果见下节，不以局部结果预先宣称CI全绿；
 完整 Linux gate、原生 Windows 和正式局部结果各自记账，互不替代。
 
 证据目录（维护者本地，非仓库下载链接）：
@@ -137,6 +138,45 @@ SHA256为 `af86fec5356f7e33d85c5deb84058e2d7998db1831c685cb075da2cbdbec88e7`；
 最终产品源码SHA256为 `2c8351659025feba5d0d8e33bfb69044ea3f9bf13f3542f91a91c416172213c9`。
 发布整合收据在证据根 `path-main-{check,build}.log`、`path-main-three-files.log`、
 `path-main-before-pins.json` / `path-main-postflight.json`。
+
+## 5c61bb 原生结果与 CRLF 向量修正
+
+发布head `5c61bb0b250c9d4eb121eafb7c72c7d2b947dd78` 的
+[run41615220013](https://github.com/liuhui-code/arkts-language-server/actions/runs/41615220013)，
+attempt1、Windows job125846873397，实际checkout `a64ecece9fd40eb735dbe1ebd774107d9b5358f0`。
+安装、重装、installed pressure/LSP smoke PASS；同3完整文件 **14PASS/1FAIL、0skip/cancel/todo**，
+26928.5882ms，exit1，整任务仍为FAIL。
+
+分层结果：原恢复5例全部通过，LSP路径3例全部通过，新物理边界例也通过；
+真实root/Main的普通realpath保留 `C:\Users\RUNNER~1\...`，native返回
+`C:\Users\runneradmin\...`，resident边界正确接受。该原生配对证实此前身份差异机制，
+路径修复与原恢复用例已有原生证据，不再仅凭Linux模拟；仍不等于整体CI或产品门禁通过。
+
+唯一失败是既有 `Node accepts shared native URI vectors without changing filename case`：
+实际URI为 `file:///d:/Photos/MixedCase.ts`，期望字段却多出末尾 `\r`。
+TSV的CRLF输入被旧 `split("\n")` 拆行后将CR保留在URI字段，属于测试输入解析错误。
+修正只改 `tests/path-identity.test.mjs`：先构造LF和CRLF两组相同原向量，
+逐项运行既有身份与URI roundtrip精确断言，再将拆行改为 `split(/\r?\n/)`。
+原平台规则不变；无新增skip、URI trim、向量内容改写或产品代码变更。
+
+```sh
+node --test --test-name-pattern='Node accepts shared native URI vectors' tests/path-identity.test.mjs
+```
+
+两种换行输入在旧拆行下RED0PASS/1FAIL、6名称过滤skip，127.022903ms，exit1；
+最小修正后GREEN1PASS/0FAIL、6名称过滤skip，119.483344ms，exit0。
+独立审查接受。相同Windows入口的3完整文件在Linux15/15PASS、0fail/skip/cancel/todo，
+22297.577757ms，exit0；2226/2226输入前后一致。
+产品源码/runtime与已发布5c61bb相同，本test-only修正未重新build，不将旧build写成新build。
+5c61bb的原生产品与相关子集PASS只覆盖其输入；修正后新head完整Linux/native CI仍待运行，
+原a311fab的1/5和5c61bb的14/15整任务FAIL均保留，不用局部GREEN替换。
+
+证据根仍为 `/workspace/shared/windows-fixes-publication/`；原生完整日志
+`path-repair-publication/ci-windows-full.log` 的SHA256为
+`63f69597cd535c6d02806eaa90d3dcb52721ad95b7b9a05ad1331fcb88770982`。
+原生分层摘要在 `path-repair-publication/ci-windows-summary.json`。
+测试修正收据：`crlf-vector-fix/{red,green,three-files}.log`、
+`crlf-vector-fix/before-pins.json` / `crlf-vector-fix/postflight.json`。
 
 ## 不外推的结论
 
