@@ -5,6 +5,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
 import { LspSession } from "../../tests/support/lsp-session.mjs"
+import { assertInstalledPressureDiagnostics } from "../../tests/support/installed-pressure-diagnostics.mjs"
 
 if (process.platform !== "win32") throw new Error("This smoke test requires Windows")
 const profile = process.argv[2]
@@ -43,6 +44,10 @@ try {
   assert.ok(symbols.result.some((symbol) => symbol.name === "SmokeClass"))
   const closed = await session.close({ timeoutMs: 5_000 })
   assert.equal(closed.exit.code, 0)
+  await assertInstalledPressureDiagnostics({ node, server,
+    sidecar: path.resolve(server, "../..", "target/release/arkts-index-sidecar.exe"),
+    directory: path.join(root, "pressure diagnostics"),
+  })
   process.stdout.write("WINDOWS_ZED_INSTALL=PASS\n")
 } finally {
   await session.close().catch(() => {})

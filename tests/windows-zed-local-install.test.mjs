@@ -45,7 +45,7 @@ if [ "$1" = "install" ] && [ "$npm_config_lockfile" = "false" ] && [ "$3" != "--
 fi
 if [ "$1" = "build" ]; then
   mkdir -p dist
-  for file in server semantic-worker reference-verifier-worker; do printf 'process.stdin.resume()\\n' > "dist/$file.cjs"; done
+  for file in server semantic-worker reference-verifier-worker diagnostic-verifier-worker; do printf 'process.stdin.resume()\\n' > "dist/$file.cjs"; done
   printf '%s\\n' '{"schema":"arkts-language-server.standard-library","schemaVersion":1,"files":["lib.d.ts"]}' > dist/arkts-standard-library.json
   printf '%s\\n' 'interface Object {}' > dist/lib.d.ts
 fi
@@ -78,6 +78,9 @@ esac
     assert.equal(marker, "arkts-language-server-zed-node-v1")
     assert.equal(node, fs.realpathSync(process.execPath))
     assert.ok(fs.statSync(server).isFile())
+    const diagnosticWorker = path.join(path.dirname(server), "diagnostic-verifier-worker.cjs")
+    assert.deepEqual(fs.readFileSync(diagnosticWorker),
+      fs.readFileSync(path.join(fixture, "dist", "diagnostic-verifier-worker.cjs")))
     assert.equal(fs.readFileSync(path.join(path.dirname(server), "lib.d.ts"), "utf8"), "interface Object {}\n")
     const previousLink = fs.realpathSync(installed)
     const previousLaunch = fs.readFileSync(launch, "utf8")
@@ -92,6 +95,11 @@ esac
     assert.notEqual(rejectedLibrary.status, 0)
     assert.equal(fs.readFileSync(launch, "utf8"), previousLaunch)
     fs.writeFileSync(installedLibrary, libraryBytes)
+    const diagnosticBytes = fs.readFileSync(diagnosticWorker)
+    fs.appendFileSync(diagnosticWorker, "// damaged\n")
+    assert.notEqual(install().status, 0, "corrupt diagnostic worker must reject reuse")
+    assert.equal(fs.readFileSync(launch, "utf8"), previousLaunch)
+    fs.writeFileSync(diagnosticWorker, diagnosticBytes)
     const installedDist = path.dirname(server)
     fs.renameSync(installedDist, `${installedDist}-original`)
     fs.symlinkSync(`${installedDist}-original`, installedDist)

@@ -77,13 +77,15 @@ test("Node accepts shared native URI vectors without changing filename case", as
   const windows = await buildPathIdentityDriver(t, true)
   const native = await buildPathIdentityDriver(t)
   const vectors = fs.readFileSync(new URL("./fixtures/path-identity-vectors.tsv", import.meta.url), "utf8")
-  for (const row of vectors.trim().split("\n")) {
-    const [platform, filePath, uri] = row.split("\t")
-    if (platform === "unix" && process.platform === "win32") continue
-    const api = platform === "windows" ? windows : native
-    assert.equal(api.isEquivalentWorkspaceIdentity(uri, filePath), true, row)
-    const roundtrip = api.tryClientWorkspaceUri({ clientRootUri: uri, workspaceIdentity: uri }, uri)
-    assert.equal(roundtrip, uri)
+  for (const source of [vectors.replace(/\r\n/g, "\n"), vectors.replace(/\r?\n/g, "\r\n")]) {
+    for (const row of source.trim().split(/\r?\n/)) {
+      const [platform, filePath, uri] = row.split("\t")
+      if (platform === "unix" && process.platform === "win32") continue
+      const api = platform === "windows" ? windows : native
+      assert.equal(api.isEquivalentWorkspaceIdentity(uri, filePath), true, row)
+      const roundtrip = api.tryClientWorkspaceUri({ clientRootUri: uri, workspaceIdentity: uri }, uri)
+      assert.equal(roundtrip, uri)
+    }
   }
 })
 
@@ -91,4 +93,40 @@ test("resolved Windows scopes do not merge differently cased directories without
   const api = await buildPathIdentityDriver(t, true)
   assert.equal(api.containsResolvedPath("D:\\Root\\Case", "d:\\Root\\Case\\Member.ts"), true)
   assert.equal(api.containsResolvedPath("D:\\Root\\Case", "d:\\Root\\case\\Member.ts"), false)
+})
+
+test("native physical source boundaries preserve unsaved paths and reject escaping links", t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-source-boundary-"))
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }))
+  const outfile = path.join(directory, "boundary.cjs")
+  buildSync({ entryPoints: ["src/core/types/typescript-source-boundary.ts"],
+    bundle: true, platform: "node", format: "cjs", outfile })
+  const api = createRequire(import.meta.url)(outfile)
+  const root = path.join(directory, "Workspace"), outside = path.join(directory, "Outside")
+  fs.mkdirSync(root); fs.mkdirSync(outside); fs.mkdirSync(path.join(root, "Inside"))
+  fs.writeFileSync(path.join(root, "Main.ets"), "")
+  fs.writeFileSync(path.join(outside, "Main.ets"), "")
+  const linkType = process.platform === "win32" ? "junction" : "dir"
+  fs.symlinkSync(outside, path.join(root, "Escape"), linkType)
+  fs.symlinkSync(path.join(root, "Inside"), path.join(root, "Internal"), linkType)
+  const boundary = { rootPath: root, workspacePhysicalRoot: api.canonicalExistingPath(root),
+    sdkRoot: null, sdkPhysicalRoot: undefined }
+  t.diagnostic(JSON.stringify({ platform: process.platform, root: { lexical: root,
+    realpath: fs.realpathSync(root), nativeRealpath: fs.realpathSync.native(root) },
+    source: { lexical: path.join(root, "Main.ets"), realpath: fs.realpathSync(path.join(root, "Main.ets")),
+      nativeRealpath: fs.realpathSync.native(path.join(root, "Main.ets")) },
+    residentBoundary: api.relativeModuleBoundary(path.join(root, "Main.ets"), true, boundary) }))
+  for (const name of ["Main.ets", "Unsaved.ets", "Missing/Unsaved.ets", "Internal/Unsaved.ets"]) {
+    const file = path.join(root, name)
+    assert.equal(api.relativeModuleBoundary(file, true, boundary), root, name)
+    assert.equal(api.callHierarchyPathFailure(root, file, true), undefined, name)
+  }
+  assert.equal(api.callHierarchyPathFailure(root, path.join(root, "Unsaved.ets"), false), "source-unavailable")
+  for (const name of ["Escape/Main.ets", "Escape/Unsaved.ets"]) {
+    const file = path.join(root, name)
+    assert.equal(api.relativeModuleBoundary(file, true, boundary), undefined, name)
+    assert.equal(api.callHierarchyPathFailure(root, file, true), "source-outside-workspace", name)
+  }
+  assert.equal(api.relativeModuleBoundary(path.join(directory, "Main.ets"), true, boundary), undefined)
+  assert.equal(api.relativeModuleBoundary(path.join(root + "2", "Main.ets"), true, boundary), undefined)
 })

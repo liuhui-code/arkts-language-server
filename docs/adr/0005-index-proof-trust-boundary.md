@@ -2,6 +2,26 @@
 
 Status: **Accepted; resynchronization recovery implemented**.
 
+## Windows source-path identity checkpoint (2026-11-03)
+
+The [public diagnostic record](../tdd/2026-11-03-windows-source-path-identity.md)
+retains PR116's first native Windows recovery FAIL (1/5 PASS) and separates it
+from the passing installed smoke. Linux framed-LSP emulation of short/long
+realpath spelling reproduces degraded relative-import resolution before fault
+injection; the three-call native-identity patch restores the exact declaration.
+Public RED/GREEN also rejects a helper-only half-fix at unsaved call-hierarchy
+preparation. Linux adjacent131/131 and strengthened complete15/15 pass separately.
+Published5c61bb's native root/Main observations confirm ordinary8.3/native long-name
+identity divergence; recovery5/5, LSP path3/3 and the physical-boundary case pass.
+The whole Windows job remains14/15 FAIL because the existing TSV-vector test
+retains CR from CRLF lines. A test-only LF/CRLF parsing RED/GREEN and local15/15
+preserve exact URI assertions; corrected-head full/native CI remains pending.
+Use consistent physical identity for source, root and nearest existing ancestor;
+keep lexical/physical containment, unsaved-suffix handling and escape rejection.
+Neither unconditional lowercasing nor relaxed source/SDK/overlay proof is admitted.
+Original CI FAIL, the separately retained missing-WASM contract failure and
+existing ADR/product gates are not promoted by these local receipts.
+
 ## Declared local package aliases (2026-10-04)
 
 A dependency key may be an import alias for a declared relative/`file:` package;

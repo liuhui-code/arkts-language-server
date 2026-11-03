@@ -6,7 +6,7 @@ import path from "node:path"
 
 const MANIFEST_FILE = "artifact-manifest.json"
 const MANIFEST_SCHEMA = "arkts-language-server.artifact-manifest"
-const MANIFEST_SCHEMA_VERSION = 1
+const MANIFEST_SCHEMA_VERSION = 2
 
 try {
   if (process.argv.length !== 4) {
@@ -45,6 +45,7 @@ async function installFromManifest({ artifactRoot, binDirectory }) {
     "config/semantic-runtime.json",
     "dist/semantic-worker.cjs",
     "dist/reference-verifier-worker.cjs",
+    "dist/diagnostic-verifier-worker.cjs",
     "dist/server.cjs",
     standardLibraryPath,
     ...standardLibrary.files.map((name) => `dist/${name}`),

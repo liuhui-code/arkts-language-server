@@ -190,6 +190,7 @@ release_fingerprint=$(node -e '
 ' "$source_command" "$project_root/config/semantic-runtime.json" \
   "$project_root/dist/semantic-worker.cjs" \
   "$project_root/dist/reference-verifier-worker.cjs" "$project_root/dist/server.cjs" \
+  "$project_root/dist/diagnostic-verifier-worker.cjs" \
   "$project_root/target/release/arkts-index-sidecar" "$project_root/dist")
 release_id=$package_version-$release_fingerprint
 release_dir=$libexec_root/$release_id
@@ -208,6 +209,8 @@ cp "$project_root/config/semantic-runtime.json" "$staging_dir/config/semantic-ru
 cp "$project_root/dist/semantic-worker.cjs" "$staging_dir/dist/semantic-worker.cjs"
 cp "$project_root/dist/reference-verifier-worker.cjs" \
   "$staging_dir/dist/reference-verifier-worker.cjs"
+cp "$project_root/dist/diagnostic-verifier-worker.cjs" \
+  "$staging_dir/dist/diagnostic-verifier-worker.cjs"
 cp "$project_root/dist/server.cjs" "$staging_dir/dist/server.cjs"
 cp "$project_root/dist/arkts-standard-library.json" "$staging_dir/dist/arkts-standard-library.json"
 node -e '
@@ -236,7 +239,7 @@ node -e '
   const distStat = fs.lstatSync(installed)
   if (!distStat.isDirectory() || distStat.isSymbolicLink()) throw new Error(`unsafe runtime directory: ${installed}`)
   const { files } = JSON.parse(fs.readFileSync(path.join(source, "arkts-standard-library.json"), "utf8"))
-  for (const name of ["arkts-standard-library.json", ...files]) {
+  for (const name of ["diagnostic-verifier-worker.cjs", "arkts-standard-library.json", ...files]) {
     const target = path.join(installed, name)
     const stat = fs.lstatSync(target)
     if (!stat.isFile() || stat.isSymbolicLink()

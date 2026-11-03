@@ -1,5 +1,46 @@
 # References / semantic Feature Ledger
 
+## Windows source-path identity — 2026-11-03
+
+R-13/R-24/R-34：[TDD](../tdd/2026-11-03-windows-source-path-identity.md)保留
+PR116/head a311fab、run41611920609 attempt1 Windows 首轮FAIL：安装/重装/installed smoke PASS，
+完整恢复文件1PASS/4FAIL、0skip、14635.9864ms；未rerun，09:44/09:49UTC Linux validate仍运行。
+跨文件初次定义已落在Main import、既有readiness已degraded，不归因于后续压缩事件恢复。
+Linux真实framed-LSP短/长realpath模拟RED→三处native补丁GREEN；强化unsaved call-hierarchy断言杀死helper-only半修复。
+初版9完整文件131/131、强化3完整文件15/15分别通过，check/build与各轮8项输入SHA一致；不求和冒充全套。
+发布整合Node20check/build、相同3文件15/15通过，23027.377985ms，2225/2225输入一致。
+源/根/最近已存在祖先物理身份一致；不lowercase、不绕过链接/SDK/overlay边界。
+Windows步骤扩展为恢复/LSP路径/物理路径3完整文件；合同定向RED→GREEN，新完整5/6缺WASM的FAIL保留。
+新head5c61bb/run41615220013 attempt1原生14/15FAIL、0skip、26928.5882ms；安装smoke、恢复5/5、LSP3/3、新物理边界PASS。
+真实root/Main普通8.3/native长名配对证实机制；唯一既有TSV向量因CRLF遗留CR而FAIL，不写整任务全绿。
+test-only补LF/CRLF双输入精确断言，拆行RED→GREEN各6过滤skip；独立审查及Linux同3完整文件15/15通过，2226输入一致。
+产品/runtime与5c61bb相同，无新build；修正后新head完整Linux/native CI仍pending，原两轮FAIL均保留。
+不改ADR状态、期限、预算、默认内存或R项毕业；不宣称解决用户23,787-member大闭包首故障。
+
+## Installed diagnostic-worker delivery — 2026-11-03
+
+R-13/R-24/R-34，沿用[ADR0013](../adr/0013-evidence-and-release-gates.md)分层证据与ADR0029显式压力语义。
+[TDD](../tdd/2026-11-03-installed-diagnostic-worker.md)记录Windows/Unix/portable清单漏诊断worker；
+安装后真实L3诊断RED，精确definition对照仍可成功，不将它归因为主worker unavailable。
+修复既有指纹/复制/校验清单；artifact manifest v2阻止旧安装器验证后静默漏装新角色。
+冻结旧v1安装器×新artifact真实RED→拒绝，保留已有activation；新安装器完整安装后通过压力语义。
+最终Node20八完整文件37/37、0fail/skip/cancel，portable实际安装1PASS/3名称过滤skip；
+测试保留poison PATH/隔离HOME。Linux Windows布局测试不冒充原生Windows，原生smoke已接公共检查。
+额外18/19保留缺grammar WASM的ENOENT；以上为提交前局部收据，不改R项毕业或ADR状态。
+
+## Collapsed file-event recovery — 2026-11-03
+
+R-13/R-23/R-24，沿用[ADR0020](../adr/0020-failed-semantic-build-recovery.md)：
+当前c0a6da0在熔断后丢失配置/1025路径批次的真实输入修订，正确磁盘定义仍-32603；
+只重发同一文件通知即可恢复，公开对照与[RED/GREEN](../tdd/2026-11-03-worker-file-event-recovery.md)保留。
+最小入口来源标记保持压缩batch意义，同值LSP配置合成rootDirty仍不解锁；不改协议/预算/期限/默认内存。
+两新公开例2FAIL→2PASS（各2名称过滤skip），Node20check/build通过；最终8完整文件84/84PASS，零fail/skip/cancel，exit0。
+覆盖3次/180秒预算、只读不启动、一次半开、精确新范围/物理退出，以及空/无效/根外通知不解锁；8项源码/构建SHA前后一致。
+以上为提交前局部收据，非完整check:fast/Windows/真实用户首故障或大依赖闭包验收，R项与L08毕业状态不变。
+独立main298d65f整合不带PR115：Node20check/build、17完整文件142/142、2224输入一致；portable1PASS/3名称过滤skip。
+补Windows完整5例恢复步骤及合同RED→GREEN；完整合同5/6缺grammar失败保留，末次Linux恢复+manifest9/9。
+[整合收据](../tdd/2026-11-03-installed-diagnostic-worker.md#independent-main-integration)区分历史与新输入；发布/完整Linux及原生Windows结果以新PR为准。
+
 ## Bounded catalog streaming implementation — 2026-11-02
 
 R-01/R-02/R-20：[ADR0042](../adr/0042-bounded-catalog-streaming.md)仍 **Proposed**；

@@ -385,7 +385,8 @@ export interface SemanticEnginePort {
   isResourceFile?(rootUri: string, fileUri: string): boolean
   sync(document: DocumentSnapshot): void
   close(documentUri: DocumentUri): void
-  workspaceFilesChanged?(batches: readonly SemanticWorkspaceFileChangeBatch[]): void
+  /** File-event provenance survives collapsed batches; a settings refresh leaves it absent. */
+  workspaceFilesChanged?(batches: readonly SemanticWorkspaceFileChangeBatch[], origin?: "file-events"): void
   indexCatalog?(workspaceId: string, phase: "starting" | "ready"): Promise<void> | void
   complete(query: SemanticQuery): Promise<VersionedSemanticResult<SemanticCompletionList>>
   resolveCompletion(

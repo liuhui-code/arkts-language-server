@@ -132,3 +132,11 @@ Mac/Windows Photos 受控同步不返回＋真实取消中，旧 Worker exit 后
 2026-10-26：父端取消宽限由 [ADR0024](0024-partial-initialization-and-progressing-synchronization.md)补充活动观测，
 避免普通close/open退役仍在安全同步的线程；绝对截止、失败租约清算、共享恢复预算和物理exit前不得创建替代线程的规则不变。
 新证据单列，不将自然degraded、原始OOM和受控同步不返回归为同一种故障。
+
+2026-11-03实现补证：当前 `c0a6da0` 丢失压缩文件事件的恢复输入修订。
+配置文件通知或超过1024路径的真实文件批次会成为空列表的rootDirty，旧父端误认没有新输入，
+使磁盘修复后仍不能半开。公开stdio两类RED及最小修复见
+[文件事件恢复TDD](../tdd/2026-11-03-worker-file-event-recovery.md)。
+入口保留真实文件事件来源，不把同值LSP配置的合成rootDirty当作变化；来源不进入Worker协议。
+三次/180秒预算、仅显式工作半开、失败即停止、物理退出和实际成功证明保持原决定。
+此为本ADR的实现修正，不证明用户Windows首次故障、初始大项目时延或完整产品资格。

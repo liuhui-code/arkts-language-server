@@ -20,6 +20,7 @@ function portableSourceFiles() {
     ["config/semantic-runtime.json", "{}\n"],
     ["dist/semantic-worker.cjs", "// source-root worker marker\n"],
     ["dist/reference-verifier-worker.cjs", "// source-root verifier marker\n"],
+    ["dist/diagnostic-verifier-worker.cjs", "// source-root diagnostic verifier marker\n"],
     ["dist/server.cjs", "// source-root server marker\n"],
     ["dist/arkts-standard-library.json", JSON.stringify({
       schema: "arkts-language-server.standard-library",
@@ -123,6 +124,57 @@ test("rejects a standard-library declaration missing from the built source", (t)
   assert.equal(fs.existsSync(path.join(output, "artifact-manifest.json")), false)
 })
 
+test("rejects a missing diagnostic worker before building or installing an incomplete artifact", (t) => {
+  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-portable-missing-diagnostic-"))
+  t.after(() => fs.rmSync(temporaryRoot, { recursive: true, force: true }))
+  const sourceRoot = path.join(temporaryRoot, "source"), output = path.join(temporaryRoot, "artifact")
+  const diagnosticPath = "dist/diagnostic-verifier-worker.cjs"
+  const files = writePortableSource(sourceRoot, { without: diagnosticPath })
+  const missing = buildArtifact({ sourceRoot, output })
+  assert.notEqual(missing.status, 0, "builder must reject a missing diagnostic worker")
+  assert.match(missing.stderr, /diagnostic-verifier-worker\.cjs/)
+  assert.equal(fs.existsSync(output), false)
+  writeSourceFile(sourceRoot, diagnosticPath, files.get(diagnosticPath))
+  assert.equal(buildArtifact({ sourceRoot, output }).status, 0)
+  const manifestPath = path.join(output, "artifact-manifest.json")
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"))
+  manifest.files = manifest.files.filter(file => file.path !== diagnosticPath)
+  fs.writeFileSync(manifestPath, JSON.stringify(manifest))
+  fs.rmSync(path.join(output, diagnosticPath))
+  const bin = path.join(temporaryRoot, "prefix", "bin")
+  const rejected = spawnSync(process.execPath, [artifactInstaller, output, bin], { encoding: "utf8" })
+  assert.notEqual(rejected.status, 0, "installer must reject an incomplete old manifest")
+  assert.match(rejected.stderr, /missing runtime file: dist\/diagnostic-verifier-worker\.cjs/)
+  assert.equal(fs.existsSync(bin), false)
+})
+
+test("the frozen v1 installer rejects a new artifact before creating or replacing an activation", (t) => {
+  const legacyInstaller = path.join(projectRoot, "tests/fixtures/install-from-manifest-v1.mjs")
+  // Exact installer from c0a6da0db115de563c41de0f959b0f60aad9538c, not a model of its behavior.
+  assert.equal(createHash("sha256").update(fs.readFileSync(legacyInstaller)).digest("hex"),
+    "2b5d988e86a93fce322e74bc8c105b8e6035df3953fa080e562b64f76e68f10d")
+  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-portable-v1-consumer-"))
+  t.after(() => fs.rmSync(temporaryRoot, { recursive: true, force: true }))
+  const sourceRoot = path.join(temporaryRoot, "source"), output = path.join(temporaryRoot, "artifact")
+  writePortableSource(sourceRoot)
+  assert.equal(buildArtifact({ sourceRoot, output }).status, 0)
+  const prefix = path.join(temporaryRoot, "prefix"), bin = path.join(prefix, "bin")
+  const attempt = () => spawnSync(process.execPath, [legacyInstaller, output, bin], { encoding: "utf8" })
+  const fresh = attempt()
+  assert.notEqual(fresh.status, 0, "old installer silently accepted an incomplete runtime")
+  assert.match(fresh.stderr, /artifact manifest schema is not supported/)
+  assert.equal(fs.existsSync(prefix), false, "incompatible input must fail before staging")
+  fs.mkdirSync(bin, { recursive: true })
+  const activation = path.join(bin, "arkts-language-server")
+  fs.writeFileSync(activation, "existing activation must remain unchanged\n")
+  const previous = fs.readFileSync(activation)
+  const replacement = attempt()
+  assert.notEqual(replacement.status, 0)
+  assert.match(replacement.stderr, /artifact manifest schema is not supported/)
+  assert.deepEqual(fs.readFileSync(activation), previous)
+  assert.equal(fs.existsSync(path.join(prefix, "libexec")), false)
+})
+
 test("installs every sealed standard-library declaration without source dependencies", { skip: process.platform === "win32" }, (t) => {
   const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-portable-installed-stdlib-"))
   t.after(() => fs.rmSync(temporaryRoot, { recursive: true, force: true }))
@@ -140,7 +192,7 @@ test("installs every sealed standard-library declaration without source dependen
   const installedRoot = path.resolve(path.dirname(fs.realpathSync(
     path.join(binDirectory, "arkts-language-server"),
   )), "..")
-  for (const name of ["arkts-standard-library.json", "lib.d.ts", "lib.es5.d.ts"]) {
+  for (const name of ["arkts-standard-library.json", "lib.d.ts", "lib.es5.d.ts", "diagnostic-verifier-worker.cjs"]) {
     assert.equal(fs.readFileSync(path.join(installedRoot, "dist", name), "utf8"), files.get(`dist/${name}`))
   }
   fs.renameSync(path.join(installedRoot, "dist"), path.join(installedRoot, "dist-original"))

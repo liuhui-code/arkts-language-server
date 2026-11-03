@@ -201,7 +201,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
     })
   }
 
-  workspaceFilesChanged(batches: readonly Contract.SemanticWorkspaceFileChangeBatch[]): void {
+  workspaceFilesChanged(batches: readonly Contract.SemanticWorkspaceFileChangeBatch[], origin?: "file-events"): void {
     if (batches.length > 0) this.#referenceResults.clear()
     for (const batch of batches) {
       this.#referenceIndexFreshness.workspaceFilesChanged(batch, this.#referenceIndex)
@@ -215,7 +215,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
         resourceDirty: batch.resourceDirty === true,
         resourceChanged: batch.resourceChanged === true,
         changes: batch.changes,
-      })
+      }, origin === "file-events")
     }
   }
 
@@ -474,8 +474,8 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
     })
   }
 
-  #mutate(rootUri: string, mutation: RootSemanticWorkerMutationInput): void {
-    if (mutation.kind !== "workspaceFilesChanged" || mutation.changes.length) this.#recovery.inputChanged()
+  #mutate(rootUri: string, mutation: RootSemanticWorkerMutationInput, fileEvent = false): void {
+    if (fileEvent || mutation.kind !== "workspaceFilesChanged" || mutation.changes.length) this.#recovery.inputChanged()
     for (const knownRoot of this.#referenceInputs.changed(rootUri)) {
       this.#referenceResults.invalidateRoot(knownRoot)
     }
