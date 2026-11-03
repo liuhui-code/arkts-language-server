@@ -49,7 +49,7 @@ import { typescriptProgramStats, typescriptCacheStats, measureOfficialCompilerRe
 import { OfficialReadinessState, withLoadedReadinessMembership, type ReadinessTrace } from "./typescript-semantic-readiness.js"
 import { TypeScriptContentVersions } from "./typescript-content-versions.js"
 import { applyTypeScriptContentChanges, membershipUpdate, removeTypeScriptProjectInputs, TypeScriptCompilerInputs } from "./typescript-compiler-inputs.js"
-import { createCompilerInputWitness, canRecoverCompilerSourceNamespace, observeAdmittedSourceRead, observePreparedSourceRead } from "./typescript-source-witness-updates.js"
+import { createCompilerInputWitness, captureCompilerConfiguration, observeAdmittedSourceRead, observePreparedSourceRead } from "./typescript-source-witness-updates.js"
 import { TypeScriptScriptAdmission } from "./typescript-script-admission.js"
 import { createScriptRecord, type ScriptRecord } from "./typescript-script-record.js"
 import { queryTypeScriptRename } from "./typescript-rename-query.js"
@@ -274,10 +274,10 @@ export class TypeScriptLanguageServiceEngine {
     assertSdkExportInputs(this.service)
   }
 
-  captureConfigurationBeforeSourceReset(checkpoint = () => this.checkpoint?.()) {
-    return this.configurationWitness?.captureConfigurationBeforeSourceReset(checkpoint,
-      file => canRecoverCompilerSourceNamespace(file, { rootPath: this.rootPath, workspacePhysicalRoot: this.workspacePhysicalRoot,
-        sdkRoot: this.sdkRoot, sdkPhysicalRoot: this.sdkPhysicalRoot, sdkComponents: this.sdkSelection?.components }))
+  captureConfigurationBeforeSourceReset(checkpoint = () => this.checkpoint?.(), maxBytes?: number) {
+    return captureCompilerConfiguration(this.configurationWitness, { rootPath: this.rootPath,
+      workspacePhysicalRoot: this.workspacePhysicalRoot, sdkRoot: this.sdkRoot, sdkPhysicalRoot: this.sdkPhysicalRoot,
+      sdkComponents: this.sdkSelection?.components }, checkpoint, maxBytes)
   }
 
   prepare(workspace: SemanticWorkspaceView): SemanticTypeEngineState {

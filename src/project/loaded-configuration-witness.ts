@@ -2,13 +2,16 @@ import fs from "node:fs"
 import path from "node:path"
 import { requestConfigurationIdentity, validateRequestInput, type ConfigurationInputIdentity } from "./request-input-validation.js"
 
-const MAX_WITNESS_PATHS = 4096
+import { ExactEvidenceBudget, ExactWitnessFacts, ExactWitnessPaths, ExactWitnessCapsule,
+  MAX_WITNESS_BYTES, type ExactWitnessFact } from "./exact-witness-facts.js"
+
 const MAX_MISSING_ANCESTORS = 64
 
 export type ConfigurationFreshnessMode = "validate" | "capture"
 
 export interface RetainedConfigurationProof {
   readonly factCount: number
+  readonly accountedBytes: number
   current(checkpoint: () => void): boolean
 }
 
@@ -16,22 +19,23 @@ export interface ConfigurationWitnessFailure {
   readonly reason: string
   readonly sourcePath?: string
   readonly retainedPaths: number
+  readonly retainedBytes: number
+  readonly byteLimit: number
 }
 
 /** Evidence belongs to the actual load/lookup, never to a later cache hit. */
 export class LoadedConfigurationWitness {
-  private readonly identities = new Map<string, string>()
-  private readonly pathIdentities = new Map<string, string>()
-  private readonly failedSourceReads = new Set<string>()
+  private readonly budget = new ExactEvidenceBudget()
+  private readonly identities = new ExactWitnessFacts(this.budget)
+  private readonly pathIdentities = new ExactWitnessFacts(this.budget)
+  private readonly failedSourceReads = new ExactWitnessPaths(this.budget)
   private revision = 0
   private resetEpoch = 0
   private unprovable = false
   private sourceNamespaceDepth = 0
   private namespaceOnlyFailure = true
   private sourceResetOnlyFailure = true
-  private readonly namespaceFailures = new Set<string>()
-  private readonly namespaceFacts = new Set<string>()
-  private readonly regularSourceFacts = new Set<string>()
+  private readonly namespaceFailures = new ExactWitnessPaths(this.budget)
 
   constructor(private readonly onUnprovable?: (failure: ConfigurationWitnessFailure) => void,
     private readonly ownerCurrent: () => boolean = () => true,
@@ -44,12 +48,15 @@ export class LoadedConfigurationWitness {
     finally { this.sourceNamespaceDepth -= 1 }
   }
 
-  private noteFact(records: Map<string, string>, filePath: string, regularSource: boolean): void {
-    const key = `${records === this.pathIdentities ? 1 : 0}\0${filePath}`
-    if (!this.sourceNamespaceDepth) { this.namespaceFacts.delete(key); this.regularSourceFacts.delete(key) }
-    else if (!records.has(filePath) && this.identities.size + this.pathIdentities.size < MAX_WITNESS_PATHS) {
-      this.namespaceFacts.add(key)
-      if (regularSource) this.regularSourceFacts.add(key)
+  private retainFact(records: ExactWitnessFacts, filePath: string, identity: string,
+    sourcePath: string, regularSource: boolean): void {
+    if (!this.sourceNamespaceDepth) records.configurationConsumed(filePath)
+    const previous = records.get(filePath)
+    if (previous && previous.identity !== identity) this.rejectLoadedIdentityChange(sourcePath, filePath, regularSource)
+    else if (!previous) {
+      if (!records.add(filePath, identity, this.sourceNamespaceDepth > 0, regularSource)) {
+        this.markUnprovable("witness-capacity", sourcePath)
+      } else this.revision += 1
     }
   }
 
@@ -68,18 +75,12 @@ export class LoadedConfigurationWitness {
         // stamp on both sides. Retain that load-owned namespace epoch, not an
         // invented listing. Missing ancestor facts still use their own path.
         const negativeLeaf = result === false && before.witnessPath === resolved
-        const coveredOwner = owner && (this.identities.get(owner[0]) === owner[1] || negativeLeaf)
+        const coveredOwner = owner && (this.identities.get(owner[0])?.identity === owner[1] || negativeLeaf)
           ? owner : undefined
         const witnessPath = coveredOwner?.[0] ?? before.witnessPath
         const identity = coveredOwner?.[1] ?? before.identity
-        this.noteFact(this.identities, witnessPath, witnessPath === resolved && before.regularSource && after.regularSource)
-        const previous = this.identities.get(witnessPath)
-        if (previous !== undefined && previous !== identity) this.rejectLoadedIdentityChange(resolved, witnessPath,
-          before.regularSource && after.regularSource)
-        else if (previous === undefined) {
-          if (this.identities.size + this.pathIdentities.size >= MAX_WITNESS_PATHS) this.markUnprovable("witness-capacity", resolved)
-          else { this.identities.set(witnessPath, identity); this.revision += 1 }
-        }
+        this.retainFact(this.identities, witnessPath, identity, resolved,
+          witnessPath === resolved && before.regularSource && after.regularSource)
       }
     }
   }
@@ -114,28 +115,23 @@ export class LoadedConfigurationWitness {
         const directory = presence && result === true && !before.absenceOwner
           && before.identity !== before.loadGuard && after.loadGuard === before.loadGuard
         const owner = before.absenceOwner
-        const coveredOwner = presence && owner && this.identities.get(owner[0]) === owner[1] ? owner : undefined
+        const coveredOwner = presence && owner && this.identities.get(owner[0])?.identity === owner[1] ? owner : undefined
         const records = directory || coveredOwner ? this.identities : this.pathIdentities
         const witnessPath = directory ? resolved : coveredOwner?.[0] ?? before.witnessPath
         const identity = directory ? before.loadGuard : coveredOwner?.[1] ?? before.identity
-        this.noteFact(records, witnessPath, witnessPath === resolved && before.regularSource && after.regularSource)
-        const previous = records.get(witnessPath)
-        if (previous !== undefined && previous !== identity) this.rejectLoadedIdentityChange(resolved, witnessPath,
-          !directory && before.regularSource && after.regularSource)
-        else if (previous === undefined) {
-          if (this.identities.size + this.pathIdentities.size >= MAX_WITNESS_PATHS) this.markUnprovable("witness-capacity", resolved)
-          else { records.set(witnessPath, identity); this.revision += 1 }
-        }
+        this.retainFact(records, witnessPath, identity, resolved,
+          !directory && witnessPath === resolved && before.regularSource && after.regularSource)
       }
     }
   }
 
   markUnprovable(reason = "caller-invalidated", sourcePath?: string): void {
-    const sourceFailure = this.sourceNamespaceDepth > 0 && sourcePath !== undefined
+    let sourceFailure = this.sourceNamespaceDepth > 0 && sourcePath !== undefined
       && ["loaded-identity-changed", "changed-during-load", "identity-unavailable"].includes(reason)
-      && this.namespaceFailures.size < MAX_WITNESS_PATHS
+    if (sourceFailure && !this.namespaceFailures.add(sourcePath!)) {
+      sourceFailure = false; reason = "witness-capacity"
+    }
     if (!sourceFailure) this.sourceResetOnlyFailure = false
-    else this.namespaceFailures.add(sourcePath)
     // An unavailable lookup never repairs this resident proof. Only retire-first
     // replacement may discard its source failure while retaining all non-source facts.
     if (!sourceFailure || reason === "identity-unavailable") this.namespaceOnlyFailure = false
@@ -155,7 +151,8 @@ export class LoadedConfigurationWitness {
   }
 
   private reportFailure(reason: string, sourcePath?: string): void {
-    try { this.onUnprovable?.({ reason, sourcePath, retainedPaths: this.identities.size + this.pathIdentities.size }) }
+    try { this.onUnprovable?.({ reason, sourcePath, retainedPaths: this.identities.size + this.pathIdentities.size,
+      retainedBytes: this.budget.bytes, byteLimit: this.budget.limit }) }
     catch { /* Observability must never change admission or the complete fallback. */ }
   }
 
@@ -163,8 +160,6 @@ export class LoadedConfigurationWitness {
     this.identities.clear()
     this.pathIdentities.clear()
     this.failedSourceReads.clear()
-    this.namespaceFacts.clear()
-    this.regularSourceFacts.clear()
     this.namespaceFailures.clear()
     this.namespaceOnlyFailure = true
     this.sourceResetOnlyFailure = true
@@ -183,8 +178,6 @@ export class LoadedConfigurationWitness {
     for (const facts of [this.identities, this.pathIdentities]) {
       for (const file of facts.keys()) if (affected(file)) {
         facts.delete(file)
-        this.namespaceFacts.delete(`${facts === this.pathIdentities ? 1 : 0}\0${file}`)
-        this.regularSourceFacts.delete(`${facts === this.pathIdentities ? 1 : 0}\0${file}`)
       }
     }
     this.revision += 1
@@ -208,7 +201,7 @@ export class LoadedConfigurationWitness {
       // witness bound. Only a later authoritative read of this same source can
       // recover it; unknown configuration failures remain globally unprovable.
       if (!this.failedSourceReads.has(resolved)) {
-        this.failedSourceReads.add(resolved)
+        if (!this.failedSourceReads.add(resolved)) { this.markUnprovable("witness-capacity", resolved); return }
         this.revision += 1
         this.reportFailure("changed-source-read-unproven", resolved)
       }
@@ -217,11 +210,11 @@ export class LoadedConfigurationWitness {
     // This is a new authoritative byte read, not a cache-hit restamp. Other
     // configuration, directory and negative lookup facts retain their original load.
     for (const facts of [this.identities, this.pathIdentities]) {
-      const key = `${facts === this.pathIdentities ? 1 : 0}\0${resolved}`
-      if (this.namespaceFacts.has(key)) this.regularSourceFacts.add(key)
-      if (facts.has(resolved) && facts.get(resolved) !== before.identity) {
-        facts.set(resolved, before.identity)
-        this.revision += 1
+      const fact = facts.get(resolved)
+      if (fact) {
+        const changed = fact.identity !== before.identity
+        if (!facts.replace(resolved, before.identity, true)) { this.markUnprovable("witness-capacity", resolved); return }
+        if (changed) this.revision += 1
       }
     }
     if (this.failedSourceReads.delete(resolved)) this.revision += 1
@@ -229,22 +222,22 @@ export class LoadedConfigurationWitness {
 
   /** Copy only bounded original facts; the capsule retains no compiler, resolver or witness owner. */
   captureConfigurationBeforeSourceReset(checkpoint: () => void,
-    sourceNamespace: (filePath: string) => boolean): RetainedConfigurationProof {
+    sourceNamespace: (filePath: string) => boolean, maxBytes = MAX_WITNESS_BYTES): RetainedConfigurationProof {
     checkpoint()
     const epoch = this.resetEpoch, revision = this.revision
     let valid = !(this.unprovable && !this.sourceResetOnlyFailure)
       && [...this.namespaceFailures, ...this.failedSourceReads].every(file => sourceNamespace(file))
-    const facts: { filePath: string; identity: string; directoryOnly: boolean }[] = []
+    const capsule = new ExactWitnessCapsule(maxBytes)
     for (const [kind, records] of [this.identities, this.pathIdentities].entries()) {
-      for (const [filePath, identity] of records) {
+      for (const [filePath, fact] of records) {
         checkpoint()
-        if (this.namespaceFacts.has(`${kind}\0${filePath}`) && sourceNamespace(filePath)) continue
-        facts.push(Object.freeze({ filePath, identity, directoryOnly: kind === 1 }))
+        if (fact.sourceNamespace && sourceNamespace(filePath)) continue
+        capsule.append(filePath, fact.identity, kind === 1)
       }
     }
     valid &&= this.resetEpoch === epoch && this.revision === revision
-    Object.freeze(facts)
-    return Object.freeze({ factCount: facts.length, current: (boundary: () => void): boolean => {
+    const { facts, accountedBytes } = capsule.finish()
+    return Object.freeze({ factCount: facts.length, accountedBytes, current: (boundary: () => void): boolean => {
       boundary()
       if (!valid) return false
       for (const fact of facts) {
@@ -267,22 +260,22 @@ export class LoadedConfigurationWitness {
       // Another root may append actual loads without changing existing inputs.
       // Validate ALL current facts, including additions, and fence this scan.
       const revision = this.revision
-      const identities = [...this.identities]
-      const pathIdentities = [...this.pathIdentities]
+      const identities = this.identities.snapshot()
+      const pathIdentities = this.pathIdentities.snapshot()
       const stale = [...this.namespaceFailures]
-      for (const [filePath, identity] of identities) {
+      for (const [filePath, fact] of identities) {
         checkpoint()
         const current = requestConfigurationIdentity(filePath, false, () => lookupIdentity(filePath))
-        if (current?.identity !== identity) {
-          if (!this.canRecoverNamespace(`0\0${filePath}`, current)) return false
+        if (current?.identity !== fact.identity) {
+          if (!this.canRecoverNamespace(this.identities.get(filePath), current)) return false
           stale.push(filePath)
         }
       }
-      for (const [filePath, identity] of pathIdentities) {
+      for (const [filePath, fact] of pathIdentities) {
         checkpoint()
         const current = requestConfigurationIdentity(filePath, true, () => lookupIdentity(filePath, true))
-        if (current?.identity !== identity) {
-          if (!this.canRecoverNamespace(`1\0${filePath}`, current)) return false
+        if (current?.identity !== fact.identity) {
+          if (!this.canRecoverNamespace(this.pathIdentities.get(filePath), current)) return false
           stale.push(filePath)
         }
       }
@@ -306,12 +299,12 @@ export class LoadedConfigurationWitness {
     return mode === "capture" ? current : current() ? current : undefined
   }
 
-  private canRecoverNamespace(key: string, current: ConfigurationInputIdentity | undefined): boolean {
+  private canRecoverNamespace(fact: ExactWitnessFact | undefined, current: ConfigurationInputIdentity | undefined): boolean {
     // An ordinary positive source delta still belongs to snapshot admission,
     // including its real read-window guard. It must not retire the LS before
     // that authoritative read has a chance to reconcile its own retained fact.
-    return current !== undefined && this.namespaceFacts.has(key)
-      && !(this.regularSourceFacts.has(key) && current.regularSource)
+    return current !== undefined && fact?.sourceNamespace === true
+      && !(fact.regularSource && current.regularSource)
   }
 
 }

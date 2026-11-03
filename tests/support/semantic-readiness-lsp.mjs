@@ -32,8 +32,8 @@ export async function initializeReadinessFixture(fixture) {
 }
 
 /** Same production fixture, before its public initialize transcript. */
-export function createReadinessFixture(t, env = {}) {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-semantic-ready-"))
+export function createReadinessFixture(t, env = {}, { temporaryParent = os.tmpdir() } = {}) {
+  const directory = fs.mkdtempSync(path.join(temporaryParent, "arkts-semantic-ready-"))
   const workspace = path.join(directory, "workspace")
   const sdk = path.join(directory, "sdk")
   const sources = {

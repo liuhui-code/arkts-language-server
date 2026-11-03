@@ -6,6 +6,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
   schemaVersion: 1,
   layers: Object.freeze([
     layer("unit-contract", true, [
+      "tests/closure-observation-report.test.mjs",
       "tests/workspace-catalog-stamp.test.mjs",
       "tests/arkts-document-formatter.test.mjs",
       "tests/artifact-manifest.test.mjs",
@@ -15,6 +16,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/document-store-cancellation.test.mjs",
       "tests/discover-semantic-oracle-cli.test.mjs",
       "tests/folding-range-provider.test.mjs",
+      "tests/exact-witness-facts.test.mjs",
       "tests/harmony-project-model-budget.test.mjs",
       "tests/harmony-project-model.test.mjs",
       "tests/project-sdk-target.test.mjs",
@@ -148,6 +150,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/semantic-worker-test-harness.test.mjs",
     ]),
     layer("bundle-e2e", true, [
+      "tests/closure-baseline-cli.test.mjs",
       "tests/semantic/readiness-catalog-ordering.test.mjs",
       "tests/semantic/readiness-catalog-input-windows.test.mjs",
       "tests/semantic/readiness-catalog-cancellation.test.mjs",
@@ -244,6 +247,9 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/semantic/retained-source-evidence.test.mjs",
       "tests/semantic/retained-lazy-source-evidence.test.mjs",
       "tests/semantic/changed-source-read-witness.test.mjs",
+      "tests/semantic/large-closure-witness-budget.test.mjs",
+      "tests/semantic/large-sdk-witness-budget.test.mjs",
+      "tests/semantic/witness-budget-overflow.test.mjs",
       "tests/semantic/group-closed-input-delivery.test.mjs",
       "tests/semantic/sdk-relative-input-guard.test.mjs",
       "tests/semantic/package-json-presence-guard.test.mjs",

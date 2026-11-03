@@ -146,3 +146,12 @@ remains; final29-file combined validation passes376/376, exit0, with Node20
 typecheck/buildPASS and1400/1400 frozen inputs matching. Fresh full PR CI is pending. See the second-group report
 for retained REDs, filtered-selection counts and the separately unexplained
 initialization timeout. This is not new architecture or a changed approval status.
+
+## 2026-11-03 proposed capacity-accounting migration
+
+[ADR0045](0045-exact-witness-byte-budget.md) proposes replacing both historical
+4096-fact limits with bounded exact metadata accounting, preserving every recovery
+qualification, sticky capacity denial and pre/post replacement proof. The earlier
+local candidate was lost after environment restart and is being independently
+reconstructed with new receipts; old summaries do not qualify the new build.
+This does not change this ADR's approval status or rewrite historical acceptance.

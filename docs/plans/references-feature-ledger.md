@@ -1,5 +1,44 @@
 # References / semantic Feature Ledger
 
+## Stage 1 + 2 integration — 2026-11-03
+
+[Combined TDD receipt](../tdd/2026-11-03-closure-witness-integration.md): isolated main298d65f plus rebuilt stages b38cb645/6538c6be; no PR115/116 or stage3 prototype. ADR0044/0045 remain Proposed and ADR0036 authority is unchanged.
+Fresh combined runtime: check/build PASS; 19 complete files107/107 and four shared-consumer files67/67, all zero skips. Actual inventory309; original inventory RED retained. Same physical23787 input returns exact Target twice, one Worker/no watchdog/normal close, membership-incomplete preserved;2311 input hashes unchanged.
+All earlier failures remain; full check:fast/release NOT_RUN because original grammar WASM is absent and wasm target unavailable. NativeWindows/realSDK, process RSS, performance distributions and the900s/90s incident remain unqualified. New local evidence does not qualify prior or future PR heads; no publication or R-item graduation.
+
+First-head45657b6 user-authorized publication preparation adds a separate native Windows23-case stage1/2 job, retaining the original default-TEMP install smoke. Its test step explicitly uses native long-path TEMP/TMP to isolate PR116's still-unmerged8.3 repair; it does not qualify short paths. Linux precheck23/23 and workflow RED/GREEN are recorded; complete local workflow file retains the missing-WASM failure. New-head full CI/native results remain pending and must come from the new PR, not historical runs.
+
+First native Windows run41663508692 preserves22/23 (aggregate fixture failed before its first retained capsule); original install smoke passes. A real-LSP long-root reproduction establishes the fixed12288 test-cost assumption is nonportable. Four test/fixture files now calibrate and freeze an exact strict two-owner boundary, retain all denial/release assertions, and add an extended-root case: Linux24/24, shared consumers21/21, both missing-release counterfactuals RED. Production64MiB unchanged. New-head complete CI/native Windows remains pending; do not erase the first failure or claim the900-second incident solved.
+
+## Exact witness budget reconstruction — 2026-11-03
+
+[ADR0045](../adr/0045-exact-witness-byte-budget.md) remains **Proposed**.
+The earlier local 5b729f candidate and raw receipts were lost after restart;
+[this fresh TDD record](../tdd/2026-11-03-exact-witness-byte-budget.md) certifies
+only the isolated reconstruction based on main298d65f. Two 4096-count admission
+limits become bounded exact metadata budgets, with ADR0036 authority and denial
+boundaries preserved. Resident and pending migration must remain one slice.
+New public REDs, 43/43 original characterization, final 80/80 focused regression,
+three deliberate safety counterfactual failures and 3/3 bounded metadata probes
+are retained. The representation cohort's original42/43 context-retention failure
+remains unexplained; later passes and reproduction on main do not erase it.
+Same newly frozen23787-file input: phase1 baseline twice-32803; candidate twice
+exact Target, one Worker/no watchdog/exit0, unchanged inputs and artifacts, still
+membership-incomplete. This is not proof of solving900s Program/90s navigation.
+Fresh full check:fast **NOT_RUN**; original grammar WASM is absent, nativeWindows,
+officialSDK, whole-process memory, latency distributions and release gates remain
+unqualified. No changes to defaultRSS, membership limits, watchdogs or R-item
+priority/graduation; no publication/merge implied. Integration must reconcile the
+shared manifest counts, ADR index and this existing ledger with other slices.
+
+## Compiler closure stage 1 rebuild — 2026-11-03
+
+环境回滚后明确重新构建，非原始制品恢复；[ADR0044](../adr/0044-compiler-closure-baseline.md)及[TDD](../tdd/2026-11-03-compiler-closure-baseline.md)。
+独立main298d65f树，仅bench/tests/docs，无src/witness/范围/期限/内存策略修改。旧patch和执行证据丢失，不借历史结果认证本轮。
+新公开CLI先RED；六脚本初次重写匹配历史SHA，新畸形shutdown回归触发最小判定修正，helper摘要随之变化。
+新七文件31/31PASS，shutdown/marker判定RED及测试选择错误的失败均保留。新23K宽图digest复核匹配历史内容，但为新物理输入/收据：256roots→6002sources、off/on相同freshness失败、0watchdog。
+本轮完整check:fast未跑，原始grammar资产仍缺失，Windows及现场900秒均未认证。不修改R项毕业或既有waiver。
+
 ## Bounded catalog streaming implementation — 2026-11-02
 
 R-01/R-02/R-20：[ADR0042](../adr/0042-bounded-catalog-streaming.md)仍 **Proposed**；
