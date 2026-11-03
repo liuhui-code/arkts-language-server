@@ -185,3 +185,37 @@ esac
   assert.ok(policies.filter(([command]) => !command.includes("pinned_large_arkts_fixture"))
     .every(([, policy]) => policy === "unset"), "the waiver must not leak into any other gate")
 })
+
+
+test("stage 1 and 2 have an independent native Windows closure and witness gate", () => {
+  const workflow = fs.readFileSync(zedWorkflowPath, "utf8")
+  for (const input of ["scripts/bench/closure-*", "scripts/bench/measure-compiler-closure.mjs",
+    "scripts/build-runtime.mjs", "scripts/compiler-observation-plugin.mjs", "scripts/measure-witness-budget.mjs"]) {
+    assert.equal(workflow.split(`- "${input}"`).length - 1, 2, `${input} must trigger PR and main validation`)
+  }
+  const job = workflow.split("  windows-stage12:\n")[1]?.split(/\n  [A-Za-z0-9_-]+:\n/u)[0]
+  assert.ok(job, "the stage 1/2 native gate must be separate from installation smoke")
+  assert.match(job, /runs-on: windows-2022/)
+  assert.match(job, /corepack enable\r?\n\s+if \(\$LASTEXITCODE -ne 0\)/)
+  for (const command of ["pnpm install --frozen-lockfile", "pnpm check", "pnpm build",
+    "cargo build --locked --package arkts-index-sidecar --release --target-dir target"]) {
+    assert.ok(job.includes(command), command)
+  }
+  const steps = job.indexOf("Run stage 1 and 2 on native Windows paths")
+  assert.ok(steps > job.indexOf("cargo build --locked"))
+  const native = job.slice(steps)
+  assert.match(native, /realpathSync\.native/)
+  assert.match(native, /\$env:TEMP = \$nativeTemp/)
+  assert.match(native, /\$env:TMP = \$nativeTemp/)
+  assert.match(native, /if \(\$LASTEXITCODE -ne 0\)/)
+  assert.match(native, /node --test --test-concurrency=1/)
+  for (const file of ["tests/closure-baseline-cli.test.mjs", "tests/closure-observation-report.test.mjs",
+    "tests/exact-witness-facts.test.mjs", "tests/semantic/large-closure-witness-budget.test.mjs",
+    "tests/semantic/large-sdk-witness-budget.test.mjs", "tests/semantic/witness-budget-overflow.test.mjs"]) {
+    assert.equal(native.split(file).length - 1, 1, file)
+  }
+  assert.doesNotMatch(job, /test-name-pattern|continue-on-error|ARKTS_MEMORY_BUDGET_MB|ARKTS_TEST_WITNESS_BUDGET_MODE/)
+  const originalSmoke = workflow.split("  windows-install:\n")[1].split("  windows-stage12:\n")[0]
+  assert.match(originalSmoke, /windows-zed-smoke\.mjs/)
+  assert.doesNotMatch(originalSmoke, /nativeTemp|realpathSync|\$env:TEMP\s*=|\$env:TMP\s*=/)
+})

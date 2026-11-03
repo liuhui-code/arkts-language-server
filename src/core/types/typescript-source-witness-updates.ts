@@ -6,6 +6,13 @@ import { safeRead } from "./typescript-safe-source-read.js"
 import type { LocalPackageResolver } from "../sdk/local-package-resolver.js"
 import type { ResidentReferenceProofFailure } from "./typescript-resident-reference-state.js"
 
+/** Carry only bounded original non-source facts across a source-driven owner replacement. */
+export function captureCompilerConfiguration(witness: LoadedConfigurationWitness | undefined,
+  boundary: ModuleBoundary, checkpoint: () => void, maxBytes?: number) {
+  return witness?.captureConfigurationBeforeSourceReset(checkpoint,
+    file => canRecoverCompilerSourceNamespace(file, boundary), maxBytes)
+}
+
 /** Only compiler source namespaces may request recovery; configuration remains load-owned. */
 export function createCompilerInputWitness(resolver: LocalPackageResolver, rootPath: string, required: boolean,
   onFailure: ((failure: ResidentReferenceProofFailure) => void) | undefined,
