@@ -331,3 +331,22 @@ explicitly waived, with all other fixture assertions passing. Scoped tests do
 not qualify the full new head. Complete CI after this change must be reported
 with its authorized waiver, not as an unmodified all-gates pass; earlier failures,
 unexplained timeouts and open real UI/UNC/30K/endurance limits remain separate.
+
+## 2026-11-03 installed diagnostic-worker delivery
+
+The [installed-runtime TDD](../tdd/2026-11-03-installed-diagnostic-worker.md)
+records missing diagnostic-worker delivery through Windows, local and portable
+installation. Actual installed bundles now exercise L3 diagnosis and exact
+before/after definition; a 1 MiB test budget is a functional intervention, not a
+resource measurement. Linux Windows-layout staging is separate from native
+Windows execution, whose CI smoke now runs the same public check.
+
+Artifact manifest v2 makes the newly mandatory runtime role incompatible with
+v1 installers, which otherwise silently omit it despite verifying its bytes.
+A frozen original installer rejects v2 before staging or replacing activation;
+new installers require the complete v2 runtime. Standard-library and sealed-output
+schemas remain unchanged. This is a delivery compatibility gate, not completion
+of managed runtime identity/update/GC architecture or a diagnosis of the user's
+main-worker failure. Final scoped37/37 and installed portable1PASS/3name skips
+remain distinct from the missing-grammar18/19 failure, full fast and native
+Windows/UI gates. No ADR status or release qualification is promoted.

@@ -106,6 +106,7 @@ exit 97
     "config/semantic-runtime.json",
     "dist/semantic-worker.cjs",
     "dist/reference-verifier-worker.cjs",
+    "dist/diagnostic-verifier-worker.cjs",
     "dist/server.cjs",
     "dist/arkts-standard-library.json",
     ...JSON.parse(fs.readFileSync(path.join(artifactRoot, "dist", "arkts-standard-library.json"), "utf8"))

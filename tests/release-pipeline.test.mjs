@@ -22,6 +22,12 @@ test("Windows Zed installation has a native build path and host acceptance job",
   assert.match(workflow, /pnpm zed:install/)
   assert.match(workflow, /Install into an isolated Zed profile\n[\s\S]*?npm_config_lockfile: 'false'[\s\S]*?pnpm zed:install/)
   assert.match(workflow, /windows-zed-smoke\.mjs/)
+  const windowsJob = workflow.slice(workflow.indexOf("  windows-install:"))
+  const installedSmoke = windowsJob.indexOf("run: node scripts/bench/windows-zed-smoke.mjs")
+  const recoveryCommand = "run: node --test --test-concurrency=1 tests/semantic/worker-recovery-configuration.test.mjs"
+  assert.ok(installedSmoke >= 0 && windowsJob.indexOf(recoveryCommand) > installedSmoke,
+    "native Windows recovery must run the complete public regression after installed smoke")
+  assert.match(windowsJob, /Validate native Windows recovery\n\s+shell: pwsh\n\s+run: node --test --test-concurrency=1 tests\/semantic\/worker-recovery-configuration\.test\.mjs/)
 })
 
 test("the reviewed ArkTS grammar artifact matches the manifest pin", () => {

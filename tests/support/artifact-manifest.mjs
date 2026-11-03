@@ -3,7 +3,8 @@ import fs from "node:fs/promises"
 import path from "node:path"
 
 const SCHEMA = "arkts-language-server.artifact-manifest"
-const SCHEMA_VERSION = 1
+// v2 requires the diagnostic worker; v1 installers silently omit unknown runtime roles.
+const SCHEMA_VERSION = 2
 
 export async function createArtifactManifest({
   root,

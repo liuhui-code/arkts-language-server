@@ -30,7 +30,7 @@ test("describes a staging tree with stable artifact metadata and file identities
 
   assert.deepEqual(manifest, {
     schema: "arkts-language-server.artifact-manifest",
-    schemaVersion: 1,
+    schemaVersion: 2,
     version: "0.1.0-local-beta.1",
     commit: "0123456789abcdef",
     platform: { arch: "arm64", os: "darwin" },

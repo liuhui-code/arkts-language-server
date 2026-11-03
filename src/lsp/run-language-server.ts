@@ -235,7 +235,7 @@ export function runLanguageServer(services?: LanguageServerServices): void {
       for (const batch of batches) {
         freshness.cancelWorkspace(projects.projectFor(batch.rootUri).id)
       }
-      semantic.workspaceFilesChanged?.(batches)
+      semantic.workspaceFilesChanged?.(batches, "file-events")
       workspaceSymbols?.workspaceFilesChanged([...new Set(batches.map((batch) => projects.projectFor(batch.rootUri).id))])
       const resourceWorkspaceIds = new Set(
         batches

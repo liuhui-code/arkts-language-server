@@ -9,6 +9,7 @@ import test from "node:test"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
 import { assertInstalledSemanticSmoke } from "../support/installed-semantic-smoke.mjs"
+import { assertInstalledPressureDiagnostics } from "../support/installed-pressure-diagnostics.mjs"
 import {
   assertExactVerifiedArtifactClaims,
   CURRENT_LSP_FEATURE_MATRIX,
@@ -37,6 +38,7 @@ function makeCheckout(temporaryRoot) {
   copy("config/semantic-runtime.json")
   copy("dist/semantic-worker.cjs")
   copy("dist/reference-verifier-worker.cjs")
+  copy("dist/diagnostic-verifier-worker.cjs")
   copy("dist/server.cjs")
   copy("dist/arkts-standard-library.json")
   for (const name of JSON.parse(fs.readFileSync(path.join(projectRoot, "dist", "arkts-standard-library.json"), "utf8")).files) {
@@ -98,6 +100,7 @@ test("installs one verified artifact without source dependencies or a rebuild", 
     "config/semantic-runtime.json",
     "dist/semantic-worker.cjs",
     "dist/reference-verifier-worker.cjs",
+    "dist/diagnostic-verifier-worker.cjs",
     "dist/server.cjs",
     "dist/arkts-standard-library.json",
     ...JSON.parse(fs.readFileSync(path.join(projectRoot, "dist", "arkts-standard-library.json"), "utf8"))
@@ -327,6 +330,8 @@ test("installs one verified artifact without source dependencies or a rebuild", 
     semanticEvidence.workspaceSymbolKindUriNameRange.expected,
     "installed workspace/symbol must preserve exact kinds, URIs, and name ranges",
   )
+  await assertInstalledPressureDiagnostics({ server: path.join(releaseRoot, "dist/server.cjs"),
+    sidecar: installedSidecar, directory: path.join(temporaryRoot, "pressure-smoke"), env: environment })
   assert.equal(
     fs.existsSync(invocationLog),
     false,

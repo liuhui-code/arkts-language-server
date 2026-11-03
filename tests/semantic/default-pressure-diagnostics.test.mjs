@@ -8,6 +8,8 @@ import { pathToFileURL } from "node:url"
 import { LspSession } from "../support/lsp-session.mjs"
 import { projectRoot } from "../support/lsp-process.mjs"
 import { diagnostic, waitForEvent } from "../support/semantic-recycle-lsp.mjs"
+import { assertInstalledPressureDiagnostics } from "../support/installed-pressure-diagnostics.mjs"
+import { installWindowsRuntimeFixture } from "../support/windows-runtime-fixture.mjs"
 
 test("persistent pressure uses default transient diagnosis without benchmark opt-in",
   { timeout: 60_000 }, async t => {
@@ -61,4 +63,12 @@ test("persistent pressure uses default transient diagnosis without benchmark opt
     assert.ok(!events().some(event => event.event === "semantic.worker.pressure-recycle.complete"))
     assert.deepEqual((await session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })
     assert.doesNotMatch(session.transport.stderr, /semantic worker fatal/)
+  })
+
+test("Windows-layout installed runtime preserves L3 diagnostics and exact definition without its build input",
+  { timeout: 60_000 }, async t => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-installed-pressure-"))
+    t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+    const installed = installWindowsRuntimeFixture(directory)
+    await assertInstalledPressureDiagnostics({ ...installed, directory: path.join(directory, "运行 smoke") })
   })

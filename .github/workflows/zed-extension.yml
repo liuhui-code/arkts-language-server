@@ -10,6 +10,7 @@ on:
       - "scripts/check-release.sh"
       - "scripts/install-local.sh"
       - "scripts/install-zed-local.mjs"
+      - "scripts/install-zed-windows-runtime.mjs"
       - "scripts/bench/windows-zed-smoke.mjs"
       - "src/**"
       - "tests/**"
@@ -31,6 +32,7 @@ on:
       - "scripts/check-release.sh"
       - "scripts/install-local.sh"
       - "scripts/install-zed-local.mjs"
+      - "scripts/install-zed-windows-runtime.mjs"
       - "scripts/bench/windows-zed-smoke.mjs"
       - "src/**"
       - "tests/**"
@@ -114,3 +116,7 @@ jobs:
       - name: Validate installed extension and LSP process
         shell: pwsh
         run: node scripts/bench/windows-zed-smoke.mjs "$env:RUNNER_TEMP\Zed"
+
+      - name: Validate native Windows recovery
+        shell: pwsh
+        run: node --test --test-concurrency=1 tests/semantic/worker-recovery-configuration.test.mjs
