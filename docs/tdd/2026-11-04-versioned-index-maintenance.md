@@ -2449,3 +2449,15 @@ GREEN `primitive-configuration-stamp-unit-green.log`31/31、扩大67/67零跳过
 64独立诊断实测同Native owner89985=3×29995叶子检查，准备1+最终2轮；
 配置身份热调用56964但不同路径/总体IO未测。进一步终检优化未实施，
 不删除新鲜度检查。当前新全量未跑，旧2550不能沿用；20K原5s最终复验进行中。
+
+
+## 2026-11-17 PR118跨平台夹具修订
+
+父415f84b，首次Linux完整2560项2557PASS/3FAIL/0skip保留。
+CI-PORT-001原stream.write固定false在Linux实际true；改为记录同次实际底层返回值，
+严格核对观察器透明性，真实Native数据/回调/退出断言保留。
+CI-PORT-002规范TMPDIR的Mac原公开用例复现102≠101（1FAIL/16名称过滤），
+改为显式外部包目录+node_modules链接，保留全部原101/5和155/58断言。
+两整个文件规范路径19/19PASS、常规路径19/19PASS，均零跳过；最终Linux CI另验。
+仅测试/文档，未改产品或阈值，原Mac完整门禁在未改写的415工作树继续。
+详细见`2026-11-17-integration-portability-regressions.md`与PR118实际CI记录。

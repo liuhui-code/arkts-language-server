@@ -446,10 +446,13 @@ test("automatic ambient type packages alone do not force a full SDK-partial sema
     fs.mkdirSync(dir, { recursive: true })
     fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ name: "@types/scope-ambient", version: "1.0.0", types: "index.d.ts" }))
     fs.writeFileSync(path.join(dir, "index.d.ts"), "declare class AmbientOnly {}\n")
-    const nativeDir = path.join(f.workspace, "node_modules/scope-native")
+    const nativeDir = path.join(f.directory, "external-native")
     fs.mkdirSync(nativeDir, { recursive: true })
     fs.writeFileSync(path.join(nativeDir, "package.json"), JSON.stringify({ name: "scope-native", version: "1.0.0", types: "index.d.ts" }))
     fs.writeFileSync(path.join(nativeDir, "index.d.ts"), "export declare class NativeOnly {}\n")
+    // This case exercises a physically external dependency on every platform.
+    fs.symlinkSync(nativeDir, path.join(f.workspace, "node_modules/scope-native"),
+      process.platform === "win32" ? "junction" : "dir")
     const text = main + "\nexport const automatic = new AmbientOnly()\n"
     fs.writeFileSync(path.join(sourceRoot, "Main.ets"), text)
     await f.session.initialize({ initializationOptions: { sdk: { path: f.sdk } } })
