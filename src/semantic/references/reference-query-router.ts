@@ -61,6 +61,7 @@ async function publishReferenceResult(query: SemanticReferencesQuery,
   response: VersionedSemanticResult<SemanticReferencesOutcome>, route: ReferenceQueryRoute) {
   if (query.signal?.aborted || response.value.status !== "complete") return response
   const inputProof = route.cacheAdmission ? await route.cacheAdmission() : undefined
+  route.assertCurrent()
   if (!query.signal?.aborted && (!route.cacheAdmission || inputProof !== undefined)
     && route.cache.set(query, response.value, inputProof)) {
     logReferenceCache(route.logger, route.cache, "references.cache.store", route.traceId,

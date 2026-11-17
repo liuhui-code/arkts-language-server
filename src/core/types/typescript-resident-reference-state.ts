@@ -1,13 +1,21 @@
+import { normalizedSourcePaths as normalizedPaths } from "../../project/normalized-source-paths.js"
 import { createHash } from "node:crypto"
 import path from "node:path"
 import type ts from "typescript"
 
+import { WORKSPACE_SOURCE_DIRECTORIES } from "../workspace/semantic-workspace-view.js"
 import type { SemanticWorkspaceView } from "../workspace/document-store.js"
+import { observedSourceIdentity } from "../../project/validated-source-directory.js"
 import { diskIdentity } from "../../project/source-file-identity.js"
 import { compilerSourceReadFacts, type CompilerSourceReadFacts, type SourceTextEvidence } from "./compiler-source-snapshots.js"
-import { requestFileIdentity, validateRequestInput } from "../../project/request-input-validation.js"
+import { validateRequestInput } from "../../project/request-input-validation.js"
+
+// Actual read evidence owns this content fact. Neither a disk identity nor a
+// cached digest can admit a Program; the enclosing current/final guards still do.
+const sourceDigests = new WeakMap<SourceTextEvidence, string>()
 
 interface ResidentInputs {
+  readonly directories: SemanticWorkspaceView[typeof WORKSPACE_SOURCE_DIRECTORIES]
   readonly signature: string
   readonly owner: string
   readonly requiredPaths: readonly string[]
@@ -18,6 +26,7 @@ interface ResidentInputs {
 
 interface ResidentObservation {
   readonly program: ts.Program
+  readonly sourcePaths: ReadonlySet<string>
   readonly signature: string
   /** Metadata only: no second source/AST cache or compiler residency. */
   readonly diskIdentities: readonly (readonly [string, string])[]
@@ -78,6 +87,28 @@ export class TypeScriptResidentReferenceState {
     return observation && this.prepared ? this.admitInputs(observation, this.prepared, fingerprint) : undefined
   }
 
+  /** Only an enclosing admitted Program lease may borrow these actual disk bytes.
+   * No text or digest is retained here beyond the existing compiler read facts. */
+  diskSourceDigest(program: ts.Program, filePath: string): string | undefined {
+    if (this.observation?.program !== program || this.observation.signature !== this.prepared?.signature) return undefined
+    const source = program.getSourceFile(filePath)
+    if (!source || this.prepared.documents.get(path.resolve(source.fileName))?.overlay) return undefined
+    const known = this.sourceEvidence.get(source)
+    if (!known || known.text !== source.text) return undefined
+    const identity = JSON.parse(known.stamp) as unknown[]
+    if (!Array.isArray(identity) || identity.length !== 6 || typeof identity[0] !== "string"
+      || !Number.isSafeInteger(identity[1]) || (identity[1] as number) < 0
+      || !Number.isSafeInteger(identity[2]) || (identity[2] as number) <= 0) return undefined
+    // Any open physical alias owns overlay authority; Native needs disk bytes.
+    if (this.prepared.aliases.has(identity[0])) return undefined
+    let digest = sourceDigests.get(known)
+    if (digest === undefined) {
+      digest = createHash("sha256").update(known.text).digest("hex")
+      sourceDigests.set(known, digest)
+    }
+    return digest
+  }
+
   /** Copy immutable proof metadata only; admission and invalidation stay independent. */
   adoptValidatedProof(proof: TypeScriptResidentReferenceState | undefined): void {
     this.observation = undefined
@@ -131,7 +162,8 @@ export class TypeScriptResidentReferenceState {
     const prepared = this.prepared
     if (!program) return this.rejectObservation("program-unavailable")
     if (!prepared) return this.rejectObservation("inputs-incomplete")
-    if (!covers(program, prepared.requiredPaths)) return this.rejectObservation("program-coverage-incomplete")
+    const sourcePaths = new Set(program.getSourceFiles().map(source => path.resolve(source.fileName)))
+    if (!covers(sourcePaths, prepared.requiredPaths)) return this.rejectObservation("program-coverage-incomplete")
     if (!samePaths(program.getRootFileNames(), prepared.roots)) return this.rejectObservation("program-roots-mismatch")
     if (this.observation?.program === program && this.observation.signature === prepared.signature) {
       if (!this.observation.configurationCurrent()) this.rejectObservation("configuration-changed")
@@ -148,7 +180,8 @@ export class TypeScriptResidentReferenceState {
         return this.rejectObservation("overlay-content-mismatch", filePath)
       }
       if (document?.overlay) continue
-      const before = requestFileIdentity(filePath, () => diskIdentity(filePath))
+      const known = this.sourceEvidence.get(source)
+      const before = observedSourceIdentity(filePath, known?.stamp, this.checkpoint, prepared.directories)
       if (!before) return this.rejectObservation("disk-source-unavailable", filePath)
       if (prepared.aliases.has(before.physicalPath)
         && prepared.aliases.get(before.physicalPath) !== filePath) {
@@ -156,7 +189,6 @@ export class TypeScriptResidentReferenceState {
       }
       // Only the exact SourceFile/text previously read between matching disk
       // identities can reuse that evidence. A current stat alone proves nothing.
-      const known = this.sourceEvidence.get(source)
       if (!known || known.stamp !== before.stamp || known.text !== source.text) {
         const currentText = this.readSourceFile(filePath)
         this.checkpoint()
@@ -170,7 +202,7 @@ export class TypeScriptResidentReferenceState {
     }
     this.checkpoint()
     if (!configurationCurrent()) return this.rejectObservation("configuration-changed")
-    this.observation = { program, signature: prepared.signature, diskIdentities: identities, configurationCurrent }
+    this.observation = { program, sourcePaths, signature: prepared.signature, diskIdentities: identities, configurationCurrent }
   }
 
   admit(workspace: SemanticWorkspaceView, generation: number, roots: readonly string[],
@@ -206,7 +238,7 @@ export class TypeScriptResidentReferenceState {
       this.observationFailure = "inputs-changed"
       return undefined
     }
-    if (!covers(observation.program, current.requiredPaths)) {
+    if (!covers(observation.sourcePaths, current.requiredPaths)) {
       this.reject("admit", "program-coverage-incomplete")
       return undefined
     }
@@ -227,7 +259,7 @@ export class TypeScriptResidentReferenceState {
   private diskInputsCurrent(observation: ResidentObservation): boolean {
     for (const [filePath, stamp] of observation.diskIdentities) {
       this.checkpoint()
-      if (requestFileIdentity(filePath, () => diskIdentity(filePath))?.stamp !== stamp) {
+      if (observedSourceIdentity(filePath, stamp, this.checkpoint, this.prepared?.directories)?.stamp !== stamp) {
         this.observation = undefined
         this.reject("admit", "disk-source-changed", filePath)
         return false
@@ -276,25 +308,23 @@ function inputsFor(
     [...aliases].sort((left, right) => left[0].localeCompare(right[0])), rootPaths, sdkPaths,
   ]))
   return {
+    directories: workspace[WORKSPACE_SOURCE_DIRECTORIES],
     signature, owner: JSON.stringify([path.resolve(workspace.rootPath), workspace.canonicalRootId,
       workspace.typeEngineResetEpoch, workspace.contentRevision]), roots: rootPaths, aliases, documents,
-    requiredPaths: normalizedPaths([...memberPaths, ...overlays.map(overlay => String(overlay[0])),
-      workspace.state.path, ...sdkPaths]),
+    requiredPaths: [...new Set([...memberPaths, ...overlays.map(overlay => String(overlay[0])),
+      path.resolve(workspace.state.path), ...sdkPaths])].sort(),
   }
 }
 
-function covers(program: ts.Program, requiredPaths: readonly string[]): boolean {
-  const sources = new Set(program.getSourceFiles().map(source => path.resolve(source.fileName)))
-  return requiredPaths.every(filePath => sources.has(filePath))
+function covers(observedSources: ReadonlySet<string>, requiredPaths: readonly string[]): boolean {
+  // The observed Program owns its source list. New inputs still require this
+  // exact coverage test, and never inherit another Program's observed names.
+  return requiredPaths.every(filePath => observedSources.has(filePath))
 }
 
 function samePaths(left: readonly string[], right: readonly string[]): boolean {
   const normalized = normalizedPaths(left)
   return normalized.length === right.length && normalized.every((filePath, index) => filePath === right[index])
-}
-
-function normalizedPaths(paths: readonly string[]): string[] {
-  return [...new Set(paths.map(filePath => path.resolve(filePath)))].sort()
 }
 
 function fingerprint(content: string): string {

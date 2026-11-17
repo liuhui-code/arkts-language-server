@@ -31,9 +31,13 @@ pub(super) fn prove(root: &Path, identity: &str) -> Result<Source, String> {
             Ok(Source::Present)
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            let mut anchors = vec![std::env::temp_dir()];
+            let anchors = vec![std::env::temp_dir()];
             #[cfg(unix)]
-            anchors.extend([PathBuf::from("/tmp"), PathBuf::from("/var/tmp")]);
+            let anchors = {
+                let mut anchors = anchors;
+                anchors.extend([PathBuf::from("/tmp"), PathBuf::from("/var/tmp")]);
+                anchors
+            };
             for anchor in anchors {
                 let Ok(canonical) = fs::canonicalize(&anchor) else {
                     continue;

@@ -1,3 +1,4 @@
+import { normalizedSourcePaths } from "../../project/normalized-source-paths.js"
 import type ts from "typescript"
 import { containsResolvedPath } from "../../project/resolved-path-containment.js"
 import { diskIdentity } from "../../project/source-file-identity.js"
@@ -13,6 +14,7 @@ export class TypeScriptHostRoots {
   private complete = false
   private base: string[]
   private combined: string[] | undefined
+  private metadata: readonly string[] | undefined
   private program: WeakRef<ts.Program> | undefined
   private programVersion: string | undefined
   private snapshots = new WeakMap<ts.IScriptSnapshot, { path: string; stamp: string; version: string }>()
@@ -26,19 +28,24 @@ export class TypeScriptHostRoots {
       this.inferred, this.members, this.sdkPaths)
   }
 
+  /** Owner-produced metadata; the compiler continues to receive its original ordered roots. */
+  metadataNames(): readonly string[] {
+    return this.metadata ??= normalizedSourcePaths(Object.freeze([...this.names()]))
+  }
+
   hasStableRoot(filePath: string): boolean {
     return this.semantic?.has(filePath) ?? (this.complete && this.members.has(filePath))
   }
 
   admit(filePath: string, unchangedCompilerInput: boolean, entryPoint = false): boolean {
     if ((!unchangedCompilerInput || entryPoint) && !this.inferred.has(filePath)) {
-      this.inferred.add(filePath); this.combined = undefined
+      this.inferred.add(filePath); this.invalidateNames()
       return this.semantic === undefined && !this.members.has(filePath) && !this.sdkPaths.includes(filePath)
     }
     return false
   }
 
-  remove(filePath: string): void { if (this.inferred.delete(filePath)) this.combined = undefined }
+  remove(filePath: string): void { if (this.inferred.delete(filePath)) this.invalidateNames() }
 
   updateMembership(complete: boolean, members: ReadonlySet<string>): void {
     this.complete = complete; this.members = members; this.rebuild()
@@ -51,9 +58,11 @@ export class TypeScriptHostRoots {
     this.semantic = next; this.rebuild(); return true
   }
 
+  private invalidateNames(): void { this.combined = undefined; this.metadata = undefined }
+
   private rebuild(): void {
     this.base = membershipHostFileNames(this.semantic, this.complete, this.members, this.sdkPaths)
-    this.combined = undefined
+    this.invalidateNames()
   }
 
   observeProgram(program: ts.Program | undefined, version: string): void {

@@ -33,6 +33,11 @@ async function runSingleReferenceRequest(t, {
   completionPosition,
   completionLabel,
 }) {
+  const nativeScenarios = new Set([undefined, "reference-disjoint-reexport",
+    "reference-direct-import-anchor", "reference-package-entry-barrel", "reference-package-resolutions",
+    "reference-package-subpath-resolutions", "reference-sdk-terminal",
+    "reference-disjoint-reexport-broken-chain", "reference-source-classification", "semantic-units"])
+  const native = nativeScenarios.has(indexScenario)
   const logDirectory = path.join(root, `logs-${runId}`)
   const indexAuditPath = path.join(root, `index-audit-${runId}.ndjson`)
   const session = new LspSession({
@@ -53,7 +58,7 @@ async function runSingleReferenceRequest(t, {
           "tests",
           "fixtures",
           "index",
-          "scripted-catalog-sidecar.mjs",
+          native ? "native-reference-batching.mjs" : "scripted-catalog-sidecar.mjs",
         ),
         ARKTS_INDEX_TEST_AUDIT: indexAuditPath,
         ...(indexScenario ? { ARKTS_INDEX_TEST_SCENARIO: indexScenario } : {}),

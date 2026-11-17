@@ -1,5 +1,6 @@
 import fs from "node:fs"
 import path from "node:path"
+import { resolutionSourcePhysicalPath } from "../../project/configuration-source-identity.js"
 
 import { readHarmonyProfile } from "../../project/harmony-profile-reader.js"
 import type { LoadedConfigurationWitness } from "../../project/loaded-configuration-witness.js"
@@ -8,7 +9,7 @@ import { clientWorkspaceRoot, findInstalledPackage } from "./local-package-insta
 const MAX_CACHED_MANIFESTS = 128
 const MAX_CACHED_DIRECTORY_OWNERS = 256
 const MAX_CACHED_INSTALLATIONS = 256
-// The type-engine registry admits four workspaces and each may select one SDK.
+// Bounded physical workspace/SDK/package identities; eviction repeats guarded lookup.
 const MAX_CACHED_ROOTS = 8
 const MAX_ANCESTORS = 64
 
@@ -93,8 +94,10 @@ export class LocalPackageResolver extends LocalPackageResolutionOwner {
         try {
           const physicalRoot = this.canonicalRoot(root)
           if (physicalRoot === undefined) return { path: null }
-          physicalPackageRoot = this.observed(packageRoot, () => fs.realpathSync.native(packageRoot))
-          if (!inside(physicalRoot, physicalPackageRoot)) return { path: null }
+          const packageIdentity = this.configurationWitness ? this.canonicalRoot(packageRoot)
+            : fs.realpathSync.native(packageRoot)
+          if (!packageIdentity || !inside(physicalRoot, packageIdentity)) return { path: null }
+          physicalPackageRoot = packageIdentity
         } catch { return { path: null } }
         checkpoint()
         const target = this.readManifest(path.join(packageRoot, "oh-package.json5"))
@@ -262,7 +265,7 @@ export class LocalPackageResolver extends LocalPackageResolutionOwner {
     let physicalSource: string
     let sourceExists = true
     try {
-      physicalSource = fs.realpathSync.native(candidate)
+      physicalSource = resolutionSourcePhysicalPath(candidate, checkpoint) ?? fs.realpathSync.native(candidate)
     } catch {
       sourceExists = false
       try {

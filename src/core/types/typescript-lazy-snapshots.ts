@@ -2,11 +2,15 @@ import { createHash } from "node:crypto"
 import path from "node:path"
 import ts from "typescript"
 import type { ProjectFileAccessPort, ProjectFileAdmissionToken } from "../workspace/document-store.js"
+import { observedSourceIdentity } from "../../project/validated-source-directory.js"
+import type { SemanticWorkspaceView } from "../workspace/semantic-workspace-view.js"
+import { WORKSPACE_SOURCE_DIRECTORIES } from "../workspace/semantic-workspace-view.js"
 import { diskIdentity } from "../../project/source-file-identity.js"
 import { requestFileIdentity, validateRequestInput } from "../../project/request-input-validation.js"
 import { cacheLimit, MAX_LAZY_SNAPSHOTS, MAX_LAZY_SNAPSHOT_BYTES } from "./typescript-cache-limits.js"
 import { createSourceDocument, type SourceDocument } from "./source-document.js"
 import { isRegularBoundedFile } from "./typescript-safe-source-read.js"
+import { compilerSourceReadFacts } from "./compiler-source-snapshots.js"
 
 export interface LazySnapshotRecord {
   path: string
@@ -29,7 +33,7 @@ interface Hooks {
   readonly checkpoint: () => void
 }
 
-interface OwnedSnapshot { readonly record: LazySnapshotRecord; readonly stamp: string }
+interface OwnedSnapshot { readonly record: LazySnapshotRecord; readonly stamp: string; readonly physicalPath: string }
 
 /** Strong LRU stays bounded; weak records live only while the compiler owns their snapshot. */
 export class TypeScriptLazySnapshots {
@@ -47,6 +51,9 @@ export class TypeScriptLazySnapshots {
     this.maxFiles = cacheLimit(hooks.limits.maxFiles, MAX_LAZY_SNAPSHOTS, "lazy snapshot files")
     this.maxBytes = cacheLimit(hooks.limits.maxBytes, MAX_LAZY_SNAPSHOT_BYTES, "lazy snapshot bytes")
   }
+
+  private directories: SemanticWorkspaceView[typeof WORKSPACE_SOURCE_DIRECTORIES]
+  setSourceDirectories(workspace: SemanticWorkspaceView): void { this.directories = workspace[WORKSPACE_SOURCE_DIRECTORIES] }
 
   state() { return { files: this.records.size, bytes: this.bytes, maxFiles: this.maxFiles, maxBytes: this.maxBytes } }
   *keys(): IterableIterator<string> { yield* new Set([...this.records.keys(), ...this.paths.keys()]) }
@@ -85,15 +92,20 @@ export class TypeScriptLazySnapshots {
     const retained = this.compilerOwned(filePath, admissionToken)
     if (retained) return retained
     if (!this.projectFileAccess && !isRegularBoundedFile(filePath)) return undefined
-    const identity = this.projectFileAccess ? requestFileIdentity(filePath, () => diskIdentity(filePath)) : undefined
-    const sourceContent = this.projectFileAccess ? this.projectFileAccess.read(
-      rootId, revision, filePath, admissionToken!,
-    ) : this.hooks.readSourceFile(filePath)
+    // The authority port can supply its original descriptor-guarded load proof.
+    // A failed proved read never falls back to a second, differently timed load.
+    const proved = this.projectFileAccess?.readSnapshot
+    const admitted = proved?.call(this.projectFileAccess, rootId, revision, filePath, admissionToken!)
+    const identity = proved ? admitted?.identity
+      : this.projectFileAccess ? requestFileIdentity(filePath, () => diskIdentity(filePath)) : undefined
+    const sourceContent = proved ? admitted?.content ?? null
+      : this.projectFileAccess ? this.projectFileAccess.read(rootId, revision, filePath, admissionToken!)
+      : this.hooks.readSourceFile(filePath)
     if (sourceContent === null) {
       if (this.projectFileAccess) this.hooks.unavailable("read")
       return undefined
     }
-    const afterRead = identity ? diskIdentity(filePath) : undefined
+    const afterRead = proved ? identity : identity ? diskIdentity(filePath) : undefined
     this.hooks.checkpoint()
     const virtualDocument = createSourceDocument(sourceContent), content = virtualDocument.generatedContent
     const record: LazySnapshotRecord = { path: filePath, content, virtualDocument,
@@ -104,7 +116,7 @@ export class TypeScriptLazySnapshots {
     this.hooks.observed(filePath, record.sourceFingerprint)
     if (record.bytes <= this.maxBytes && this.maxFiles > 0) {
       if (identity && afterRead?.stamp === identity.stamp) {
-        this.owned.set(record.snapshot, { record, stamp: identity.stamp })
+        this.owned.set(record.snapshot, { record, stamp: identity.stamp, physicalPath: identity.physicalPath })
         this.paths.set(filePath, new WeakRef(record.snapshot))
       }
       this.records.set(filePath, record)
@@ -124,7 +136,7 @@ export class TypeScriptLazySnapshots {
     if (!input || input.record.admissionToken !== token) { this.forget(filePath); return undefined }
     const current = () => {
       this.hooks.checkpoint()
-      return requestFileIdentity(filePath, () => diskIdentity(filePath))?.stamp === input.stamp
+      return observedSourceIdentity(filePath, input.stamp, this.hooks.checkpoint, this.directories)?.stamp === input.stamp
     }
     if (!validateRequestInput(snapshot, 0, 0, current)) { this.forget(filePath); return undefined }
     return input.record
@@ -136,10 +148,18 @@ export class TypeScriptLazySnapshots {
     const offered = this.paths.get(filePath)?.deref()
     const input = offered && this.owned.get(offered)
     const snapshot = (source as ts.SourceFile & { scriptSnapshot?: ts.IScriptSnapshot }).scriptSnapshot
-    if (!input || !snapshot || snapshot === offered || source.text !== input.record.content
+    if (!input || !snapshot || source.text !== input.record.content
       || snapshot.getText(0, snapshot.getLength()) !== input.record.content) return
+    // Transfer the original guarded read fact only to the actual registry-owned
+    // SourceFile/snapshot with identical raw text. This is provenance, never a
+    // current validity answer: readiness and publication retain their own fences.
+    if (source.text === input.record.virtualDocument.sourceContent) {
+      compilerSourceReadFacts(this.hooks.readSourceFile).remember(source,
+        { physicalPath: input.physicalPath, stamp: input.stamp })
+    }
+    if (snapshot === offered) return
     const record = { ...input.record, snapshot }
-    this.owned.set(snapshot, { record, stamp: input.stamp })
+    this.owned.set(snapshot, { record, stamp: input.stamp, physicalPath: input.physicalPath })
     this.paths.set(filePath, new WeakRef(snapshot))
     if (this.records.get(filePath) === input.record) this.records.set(filePath, record)
     this.owned.delete(offered!)
@@ -160,5 +180,5 @@ export class TypeScriptLazySnapshots {
   }
 
   clearCompilerOwned(): void { this.owned = new WeakMap(); this.paths.clear(); this.offeredFingerprint = undefined }
-  clear(): void { this.records.clear(); this.bytes = 0; this.clearCompilerOwned() }
+  clear(): void { this.directories = undefined; this.records.clear(); this.bytes = 0; this.clearCompilerOwned() }
 }

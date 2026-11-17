@@ -42,23 +42,25 @@ export function isActiveProjectSource(
 export function createProjectSourceEligibility(project: HarmonyProjectModel, checkpoint: () => void) {
   const containers = new Map<string, string>()
   let pathBytes = 0
+  let retainable = true
   const resolveContainer = (containerPath: string): string => {
     const cached = containers.get(containerPath)
     if (cached !== undefined) return cached
     let physicalContainer: string
     try { physicalContainer = fs.realpathSync.native(containerPath) }
-    catch { return canonicalSourcePath(containerPath) }
+    catch { retainable = false; return canonicalSourcePath(containerPath) }
     const bytes = Buffer.byteLength(containerPath) + Buffer.byteLength(physicalContainer)
     if (containers.size < 512 && pathBytes + bytes <= 64 * 1024) {
       containers.set(containerPath, physicalContainer)
       pathBytes += bytes
-    }
+    } else retainable = false
     return physicalContainer
   }
   return {
     includes(sourcePath: string, directoryTraversal = false, physicalPath?: string): boolean {
       return isActiveProjectSource(project, sourcePath, directoryTraversal, physicalPath, resolveContainer)
     },
+    retainable(): boolean { return retainable },
     validate(): void {
       for (const [containerPath, physicalContainer] of containers) {
         checkpoint()

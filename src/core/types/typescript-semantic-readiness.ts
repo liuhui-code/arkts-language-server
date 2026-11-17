@@ -7,7 +7,7 @@ import { SEMANTIC_READY_CAPABILITIES, semanticSdkPartial, semanticUnprepared,
   type SemanticReadinessReport } from "../../contracts/semantic-readiness.js"
 import type { LoadedConfigurationWitness } from "../../project/loaded-configuration-witness.js"
 import type { LocalPackageResolver } from "../sdk/local-package-resolver.js"
-import { harmonyCompilerResources } from "../sdk/compiler-resources.js"
+import { sdkReadinessCoverage } from "./sdk-readiness-coverage.js"
 import { isHarmonySdkModuleSpecifier } from "../sdk/module-resolver.js"
 import { sdkContains } from "../sdk/environment.js"
 import { sdkDeclarationInputCheck } from "../../semantic/backends/ohos-typescript/sdk-declaration-inputs.js"
@@ -16,12 +16,16 @@ import type { ProjectMembershipSnapshot, SemanticWorkspaceView } from "../worksp
 import { compilerArtifactIdentity } from "./typescript-compiler-artifact.js"
 import { TypeScriptResidentReferenceState } from "./typescript-resident-reference-state.js"
 import { initialPreparationActive } from "../../semantic/coordinator/initial-preparation.js"
+import { withRequestInputValidation } from "../../project/request-input-validation.js"
+import { SemanticInputUnavailableError } from "./typescript-query-inputs.js"
 import { sameResolvedPath } from "../../project/path-identity.js"
 
 const programIds = new WeakMap<ts.Program, string>()
 const MISSING_INPUT_DIAGNOSTICS = new Set([2307, 2318, 2688, 2792, 6053, 5083])
 
 type TraceFields = Readonly<Record<string, string | number | boolean | null | undefined>>
+export type ReadinessSourceVisitor = (digest: (filePath: string) => string | undefined,
+  report: SemanticReadinessReport) => NonNullable<SemanticReadinessReport["sourceNamespace"]>
 export type ReadinessTrace = (event: string, fields: TraceFields) => void
 
 interface ReadinessPreparation {
@@ -63,6 +67,12 @@ export class OfficialReadinessState {
       ? this.observation.report.inputIdentity?.engineGeneration : undefined
   }
 
+  /** Matching Host generations do not restore a rejected Program observation. */
+  hasRefreshIntent(generation: number, onlyStale = false): boolean {
+    return this.queryRefreshEnabled && (!onlyStale || this.preparedGeneration !== generation
+      || !this.observation || !("proof" in this.observation) || !this.observation.proof.hasObservedProgram)
+  }
+
   /** Transfers intent only; replacement owners still have no prepared observation. */
   restoreQueryRefresh(): void { this.queryRefreshEnabled = true }
 
@@ -88,7 +98,18 @@ export class OfficialReadinessState {
       prepared ? { ...input.workspace, resetTypeEngine: false } : input.workspace, input.generation, input.roots)
   }
 
-  status(input: ReadinessPreparation, mode: boolean | "query" | "query-prepare"): SemanticReadinessReport {
+  status(input: ReadinessPreparation, mode: boolean | "query" | "query-prepare", sourceNamespace?: ReadinessSourceVisitor): SemanticReadinessReport {
+    const report = this.report(input, mode)
+    if (!sourceNamespace) return report
+    const observation = this.observation && "proof" in this.observation ? this.observation : undefined
+    const workspace = { ...input.workspace, resetTypeEngine: false }
+    const program = report.semanticState === "ready" ? observation?.proof.admit(workspace, input.generation, input.roots) : undefined
+    const namespace = sourceNamespace(file => program && observation?.proof.diskSourceDigest(program, file), report)
+    if (program && observation?.proof.admit(workspace, input.generation, input.roots) !== program) throw new SemanticInputUnavailableError()
+    return { ...report, sourceNamespace: namespace }
+  }
+
+  private report(input: ReadinessPreparation, mode: boolean | "query" | "query-prepare"): SemanticReadinessReport {
     if (mode === true) return this.prepare(input)
     if (mode === "query-prepare") return this.prepareQuery(input)
     if (mode === "query") {
@@ -114,6 +135,17 @@ export class OfficialReadinessState {
     this.queryRefreshEnabled = true
     return refreshed
   }
+}
+
+/** Normalize the owner's loaded scope in one place; optional source borrowing
+ * remains inside the existing leased module query and its independent final union. */
+export function queryOfficialReadiness(state: OfficialReadinessState, input: ReadinessPreparation,
+  membership: { status: ProjectMembershipSnapshot["status"] | "none"; revision: number; paths: ReadonlySet<string> },
+  mode: boolean | "query" | "query-prepare", sourceNamespace?: ReadinessSourceVisitor): SemanticReadinessReport {
+  const prepared = { ...input, workspace: withLoadedReadinessMembership(input.workspace,
+    membership.status, membership.revision, membership.paths) }
+  return sourceNamespace ? withRequestInputValidation(() => state.status(prepared, mode, sourceNamespace),
+    () => { throw new SemanticInputUnavailableError() }) : state.status(prepared, mode)
 }
 
 /** Reuse loaded membership facts; status still admits against the Store's fresh complete scope. */
@@ -145,14 +177,11 @@ export function prepareOfficialReadiness(input: ReadinessPreparation): OfficialR
   } : undefined
   checkpoint()
   if (workspace.projectMembership?.status !== "complete") return unavailable("project-membership-incomplete")
-  const sdkCoverageProven = input.sdk.ready && input.sdk.identity?.status === "identified"
-    && input.sdkAmbientProfile === "full" && input.sdkRoots.some(root =>
-      harmonyCompilerResources(input.sdk.path!).componentAmbientCandidates.some(candidate =>
-        sameResolvedPath(root, candidate)))
   // SDK qualification may be unknown before a complete-root Program exists.
   // Keep ordinary queries available without introducing new global build work.
-  if (input.sdk.targetQualification && input.sdk.targetQualification.status !== "compatible"
-    || input.sdk.components?.some(component => component.issue) || !sdkCoverageProven) return semanticSdkPartial(rootUri, { layer: "sdk", reason: "coverage-unproven" })
+  if (!sdkReadinessCoverage(input.sdk, input.sdkAmbientProfile, input.sdkRoots)) {
+    return semanticSdkPartial(rootUri, { layer: "sdk", reason: "coverage-unproven" })
+  }
   if (!compilerArtifactIdentity) return unavailable("backend-artifact-unproven")
   const graph = input.resolver.projectFor(workspace.rootPath).semanticGraph()
   if (graph.status === "unavailable" || (graph.status === "ready" && !graph.complete)) {
@@ -165,7 +194,7 @@ export function prepareOfficialReadiness(input: ReadinessPreparation): OfficialR
   input.onProgramPrepared?.()
   // Initial preparation owns loaded-byte validation even if a missing input
   // later prevents READY. This seeds facts only, never a readiness certificate.
-  if (sdkCoverageProven && initialPreparationActive()) observePreparedInputs(input, program, checkpoint)
+  if (initialPreparationActive()) observePreparedInputs(input, program, checkpoint)
   const sources = program.getSourceFiles()
   const declarationInputsComplete = sdkDeclarationInputCheck(program, checkpoint)
   for (const source of sources) {

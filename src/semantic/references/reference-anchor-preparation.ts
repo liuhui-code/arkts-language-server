@@ -1,3 +1,5 @@
+import { withRequestInputValidation } from "../../project/request-input-validation.js"
+import { SemanticInputUnavailableError } from "../../core/types/typescript-query-inputs.js"
 import { pathToFileURL } from "node:url"
 
 import type { DocumentSnapshot } from "../../contracts/document.js"
@@ -9,7 +11,7 @@ import type { StructuredLogger } from "../../observability/logger.js"
 import type { SemanticWorkerReferencesArgs } from "../worker-protocol.js"
 import { toFilePath } from "../semantic-worker-file-identity.js"
 import { publicReferenceResult } from "./reference-result-mapping.js"
-import { assertCompleteProjectMembership } from "../workspace-membership-admission.js"
+import { prepareCompleteProjectWorkspace } from "../workspace-membership-admission.js"
 
 export function prepareReferenceSearchWorkspace(
   position: SemanticDocumentPosition,
@@ -22,16 +24,15 @@ export function prepareReferenceSearchWorkspace(
     ? (phase, durationMs, details) => trace.info("references.search.document-prepare.phase", {
       phase, durationMs, ...details,
     }) : undefined
-  const workspace = document?.source?.kind === "disk"
+  const workspace = prepareCompleteProjectWorkspace(documents, () => document?.source?.kind === "disk"
     ? documents.prepareDiskSnapshot(position, document.text, true)
-    : documents.prepare(position, true, observer)
+    : documents.prepare(position, true, observer))
   try {
     trace?.info("references.search.document-prepare.complete", {
       durationMs: performance.now() - started,
       preparedDocuments: workspace.documents.length,
     })
   } catch { /* Tracing must not change references. */ }
-  assertCompleteProjectMembership(workspace)
   return workspace
 }
 
@@ -44,8 +45,14 @@ export async function runOwnerReferenceQuery(query: SemanticReferencesQuery,
     const filePath = toFilePath(uri)
     return filePath ? [filePath] : []
   })
-  const workspace = prepareReferenceSearchWorkspace(position, documents, trace, query.document)
-  engines.semanticReadiness(workspace, "query")
+  // The isolated verifier owns the semantic query. Refresh a stale explicit root
+  // session, but do not recertify an unchanged Program just to discard its report.
+  // Preparation keeps its own fresh final union before crossing await.
+  const workspace = withRequestInputValidation(() => {
+    const captured = prepareReferenceSearchWorkspace(position, documents, trace, query.document)
+    if (engines.needsReadinessRootRefresh(captured)) engines.semanticReadiness(captured, "query")
+    return captured
+  }, () => { throw new SemanticInputUnavailableError() })
   const result = await engines.references(workspace,
     position, query.includeDeclaration, paths(candidates.candidateUris), candidates.candidateIdentityComplete === true,
     candidates.candidateAnchorUri ? toFilePath(candidates.candidateAnchorUri) : undefined,
@@ -63,13 +70,12 @@ export async function prepareReferenceAnchor(
   document?: DocumentSnapshot,
 ): Promise<VersionedSemanticResult<SemanticDefinition[]>> {
   const prepareStarted = performance.now()
-  const workspace = document?.source?.kind === "disk"
-    ? documents.prepareDiskSnapshot(position, document.text, true) : documents.prepare(position, true)
+  const workspace = prepareCompleteProjectWorkspace(documents, () => document?.source?.kind === "disk"
+    ? documents.prepareDiskSnapshot(position, document.text, true) : documents.prepare(position, true))
   trace?.info("references.anchor.document-prepare.complete", {
     durationMs: performance.now() - prepareStarted,
     preparedDocuments: workspace.documents.length,
   })
-  assertCompleteProjectMembership(workspace)
   const resolveStarted = performance.now()
   const definitions = await engines.referenceAnchor(workspace, position)
   trace?.info("references.anchor.resolve.complete", {

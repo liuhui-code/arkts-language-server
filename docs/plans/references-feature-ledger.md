@@ -1,301 +1,248 @@
+> **CI-EXEC-001（2026-11-17）**：73第二轮Linux由GitHub60分钟总作业上限取消，三项原失败全部通过，停止前仍连续通过；未跑完不算PASS。Mac同产品源码完整2560/2560PASS（72.6min），安装7/7与455大项目1/1PASS。仅把Linux CI总预算60→90，保留所有门禁、产品及单测试截止/性能断言；最终完整CI以PR118为准。原30K性能/SDK/UI缺口仍OPEN。[证据](../reports/2026-11-17-integration-portability-regressions.md#ci-exec-001完整门禁超过ci总作业预算)。
+
+> **集成收据（2026-11-17）**：[PR118](https://github.com/liuhui-code/arkts-language-server/pull/118)首次Linux2560项2557PASS/3FAIL/零跳过，Windows安装PASS；三项为已复现的跨平台夹具假设（CI-PORT-001/002），不是用旧全绿覆盖。修订保持所有精确结果/完整性/新鲜度断言，最终门禁以PR检查为准。**OBS-PROJECT-COUNT-001 OPEN**：词法root别名可能改变project/other统计分类，总Program数不因此改变。[原因、RED与验证](../reports/2026-11-17-integration-portability-regressions.md)。下方新全量未完成等为各切片当时状态，最终CI在合入PR记录。
+
+> **NAV-REPEAT-001（2026-11-17，OPEN）**：30K重复跳转8.46秒，取消检查路径耦合、派生影响重复计算及身份格式分配已优化。严格同条件各单会话3重复：旧adad中位8.896s/max9.369→dff5.172/5.804→6d4.223/4.373→c4283.893/4.239→当前b19f3.795/4.122s；仍严重慢。当前67/67扩大回归零跳过，类型检查/构建通过；63四次结果精确、Native/SQLitePASS、单Worker正常关闭。新全量未完成；20K原5s当前b19f单次3/3PASS、大项目4.794s贴近截止；旧adad/6d2PASS1FAIL保留，稳定性仍OPEN。62 CPU证据仍是输入证明热点，64确认同Native owner准备1+终检2轮，89985叶子检查/次，仍需治理。拒绝违反独立校验的实验已回滚。前2550仅旧adad。协议非UI，无合并部署。[根因与实施](../reports/2026-11-17-repeated-definition-checkpoint-cost.md)、[ADR0045](../adr/0045-complete-membership-and-source-resource-budgets.md)。
+
+> **本轮已验证切片（2026-11-16，总目标仍OPEN）**：adad28ac完整2550/2550PASS零跳过、2525输入/产物直到最后未变；修复同代次失效Program观察不刷新、同owner重置丢失查询刷新意图。30K冷56单会话401.577秒、Native30000/30000ready、0skip、全部DB完整性/外键PASS、单Worker正常关闭；定义12.044/8.461s仍慢。暖55原SQLite60sFAIL及复核FAIL保留，独立同SQL26秒PASS，波动原因未证实。原/副本30000源码逐字节哈希未变。用户确认Mac没有匹配API20SDK，实际24/目标20partial；完整引用重命名、最早查询47、UI/Windows/新两小时仍OPEN。无合并部署。[最终切片报告](../reports/2026-11-16-final-gate-closure.md)。
+
+> **最新完整门禁（2026-11-16）**：冻结adad28ac `pnpm check:fast` **2550/2550PASS、0skip/cancel/todo**；2525输入及Worker/Native前后未变，12:47:59Z–13:55:36Z。原七条失败完整复验通过；20K原5s也通过。30K55查询12.67/8.83s正确但整轮因SQLite原60s收尾检查超时FAIL，保留并独立复核；SDK20/24partial、早期请求47、长尾、完整引用重命名与UI/正式耐久仍OPEN。无合并部署。[报告](../reports/2026-11-16-final-gate-closure.md)。下方完整门禁RUNNING/7FAIL等为保留的历史快照。
+
+> **当前续修（2026-11-16，优先于下方历史）**：冻结769全量2550项2543PASS/7FAIL/0skip，2525输入未变。7项原因已定位：缓存就绪刷新遗漏、同owner重置丢失刷新意图、失效摘要探针及无Native时额外取消点。当前修复后原四文件23/23PASS零跳过；扩大回归与新全量尚待完成。769原20K5s三轮9/9PASS，引用中位4760.94ms/max4827.32ms；30K受控后段取消53首跳30.043s成功，相比52外部45s失败不再重扫已做事实，但跟随跳转24.904s含15.889s在途诊断等待，热9.340s仍OPEN。最早冷请求47外部45s失败、SDK20/24partial、完整引用重命名和UI/正式耐久未闭环。无合并/部署。[报告](../reports/2026-11-16-final-gate-closure.md)。
+
+> **本次初始化复现（2026-11-16）**：组合134/134PASS；真实30K初始化中打开picker并查询，45s诊断保护停测失败，未见产品OOM/换代。独立49准备113.36s，角色准备49.24s、依赖图48.39s，后两次定义12.99/8.86s正确但慢；不能用49替代47失败。CPU热点取证进行中，20K原5s仍FAIL。[报告](../reports/2026-11-16-final-gate-closure.md)。
+
+> **全量后续修（2026-11-16，仍OPEN）**：冻结9aa全量2527/2542PASS、15FAIL保留。其后已修：SDK旧探针3/3、负全局角色重试/缓存失效状态及成员读取提取70/70、包解析epoch误伤成员资格原整文件26/26PASS，均零跳过。长路径8351源保持2身份守卫且0逐叶realpath。Catalog原8个真实阶段公开场景已8/8PASS零跳过；20K原5s引用仍FAIL；后续组合未再全量，不把上述定向数相加为新门禁。无UI/合并/部署。[证据及边界](../reports/2026-11-16-final-gate-closure.md)。
+
+> **最新完整检查（2026-11-16）**：2542项，2527PASS/15FAIL/0skip/0cancel，约68.8分钟；2517输入前后哈希一致。候选明确未通过。15条按根因归组复现中（20K5s、负全局角色重试、catalog窗口、包身份及旧SDK/身份观测探针），不能视作15个独立缺陷或改标签跳过。30K46协议短测正确和157定向绿色仍只是其各自范围。未合并/部署。[最新报告](../reports/2026-11-16-final-gate-closure.md)。下方RUNNING等为历史状态。
+
+> 最新有效状态（2026-11-16）：**OPEN**。正文角色复用候选157/157扩大回归PASS；原30K协议46编辑/撤销/快速撤销/关重开定义及完整catalog类核验PASS，未换Worker，DB integrityPASS。编辑首跳13.62→9.49s、撤销13.62→8.91s（单次对照）；热仍8.70s。一次24.19s长尾中15.44s父端等待在途诊断已实测，补全23.82s仍OPEN。普通20K原5s引用仍2PASS/1FAIL。当前冻结候选完整check:fast **RUNNING**，历史2480/22不作新结果。SDK20/24 mismatch、完整引用/重命名及UI/正式耐久缺口保留；无合并部署。[报告](../reports/2026-11-16-final-gate-closure.md)。
+
+> 当前有效续进（2026-11-16）：**OPEN**。完整Native冷43已30000/30000 ready、0skip且全库integrity PASS；
+> 热44/混合45仍SDK目标20/24 mismatch partial。45精确编辑/撤销/关重开跳转正确、未换Worker，但热8.79s、编辑13.62s、补全23.96s、一次重复25.13s仍严重慢。
+> 图组合候选扩大156/156PASS零跳过；新定位正文编辑不改依赖仍重建图，公开RED累计2/3/4，修复后13/13PASS且2/2/2，类型实时number/string/number。
+> 新候选扩大回归157/157PASS零跳过；30K测量待完成；普通20K原5s引用仍FAIL，完整门禁仍历史2480/22。非UI/正式耐久，无合并/部署。
+> [当前报告](../reports/2026-11-16-final-gate-closure.md)、[ADR0045](../adr/0045-complete-membership-and-source-resource-budgets.md)。下方状态按历史保留。
+
+> 当前进度（2026-11-16）：**OPEN**。最新候选扩大回归184/184PASS、零跳过；
+> SDK3536文件与原基线一致，但真实Photos目标API20/选中SDK24，完整READY前置拒绝已证实。
+> 最新候选已冻结并启动30K冷启动35，尚未形成该候选冷/热结果。普通20K引用原5s仍失败；
+> 完整check:fast仍为历史2480PASS/22FAIL，不以扩大回归替代。无UI/合并/部署声明。
+
+> **最新续修（2026-11-16）**：IDX-V1-INIT-001/SCALE-004仍OPEN。Worker日志有界批量保留732条事件，append732→17；Native实际观察须确认后才可借用，准备→租约内最终union衔接后96noise的lstat576→384，相关43/43PASS。原20K完整引用仍5s失败，未放宽。当前最后Host根路径metadata切片仅8项单位/manifestPASS，公开与全量待验；不能沿用前73为当前全绿。已跑30K34仍SDKpartial、初始化107.10s/跳转14.59与10.96s，属于这几项最新改动之前候选。旧全量2480/22FAIL保留。[报告](../reports/2026-11-16-final-gate-closure.md)、[ADR0045](../adr/0045-complete-membership-and-source-resource-budgets.md)、[ADR0046](../adr/0046-bounded-worker-observation-delivery.md)。未合并/部署。
+
+> **最新实施续进（2026-11-16）**：新鲜度/目录/字节证据扩大回归70/70PASS、零跳过；旧完整门禁2480/22尚未被新全量结果替代。已保留原不重复枚举合同，复用原始native目录收据；完整98源公开引用准入实际源码重读96→0，未保存overlay仍raw，借用期间同长度/mtime修改令旧请求-32803且同会话恢复READY。完整20K仍在引用候选验证超过原5s等待，正在拆主/验证Worker阶段。30K32局部定义14.87/11.20s正确但SDK-partial，且属于这些最新改动前候选，须重验；未合并/部署。[当前续修报告](../reports/2026-11-16-final-gate-closure.md)。
+
+> **当前续进（2026-11-16）**：IDX-V1-INIT-001仍OPEN。原嵌套路径30K普通31精确定义19.07s/13.99s返回，初始化136.20s、SDK真实partial；不等于性能或完整功能验收。最新完整check:fast为2480PASS/22FAIL/0skip（2502条，冻结输入未变），正逐根因修复；旧核心适配器13/13回归通过，默认auto-import补全/详情新回归通过，同名候选协议共享数组问题已定位并回归中。其余失败及完整Native/引用重命名/UI缺口保留。未合并/部署。[当前失败续修记录](../reports/2026-11-16-final-gate-closure.md)。下列历史运行状态按各自日期保留。
+
+> **Continuation 2026-11-15:** IDX-V1-INIT-001 OPEN. Latest SDK-source-hash candidate64/64 focused PASS, not whole acceptance. Original-path30K28 still fails first definition30s after Program/checker return; cold preparation135.56s, SDK-partial. Exact dependency evidence:21825 retained roots all reach mandatory SDK navigation globals. Disjoint-name/full-original-input proof and preparation handoff implemented; full navigation profiling29 is running. Full SDK qualification, Native DB postflight timeout, whole-gate failures and full references/rename gaps remain. [Evidence](../reports/2026-11-15-30k-initialization-follow-through.md). No merge/deploy.
+
+> **Latest 2026-11-15**: Initialization remains OPEN. Targeted95/95, zero skipped; tsc/build PASS. Automatic ambient-package case101->5; dependency additions revoke and removals restore the proof. Real30K cold preparation54.02s, exact definitions4104.84/1785.69ms. Warm preparation49.73s, definitions4268.10/1787.83ms; Native ready30000, but full DB integrity60s timeout: overall FAIL. Nested unit28902 has25420 excluded dependency-bearing inputs without a complete influence proof. Old whole2470/7 is not current whole acceptance. [Current report](../reports/2026-11-15-30k-initialization-follow-through.md), [ADR0045](../adr/0045-complete-membership-and-source-resource-budgets.md). No merge/deploy.
+
+> **最新续进（2026-11-12）**：30K初始化专项仍OPEN。SDK已知拒绝先于项目Program准备；未保存全局overlay及Worker换代后范围元数据重建已修，公开回归53/53、零跳过，非全量。固定嵌套路径首次定义仍30s失败：诊断确认继承父仓库`@types/node`触发原生包完整范围保护；未删保护。逐文件字节一致的独立父目录30K对照：初始化39.37s，首次/重复定义3983.61/1725.23ms，精确位置正确，Node峰值1022.78MiB；不是原固定路径通过或性能已达标。冻结最终候选冷Native到终态与缓存重开正在补证。历史2470/7、完整引用/重命名及其他失败保留。[完整证据](../reports/2026-11-12-30k-initialization-unavailability.md)。未合并/部署。
+
+> **30K优先项最新（2026-11-12）**：IDX-V1-INIT-001仍OPEN。原输入冷启动抓到真实ERR_WORKER_OUT_OF_MEMORY（96.4s，Program未返回），替代Worker首次定义30.67s产品截止；不是RSS推断。已修重复fallback探测660→11，10/10定向回归；三项目录竞态驱动已恢复有效注入，整文件17/17。20K补全区间修正后暴露60s取消，保留失败；其余全量行未闭环。全量2470PASS/7FAIL为历史候选失败，当前不能宣称全绿。[原始阶段与修复边界](../reports/2026-11-12-30k-initialization-unavailability.md)。
+
+> **当前有效状态（2026-11-12）**：完整 check:fast 于09:38结束，2470PASS/7FAIL/0skip，2477输入未变；下方RUNNING/旧全绿均为历史。当前集中修复30K初始化不可用；新增通用回退解析见证复用回归10/10PASS、类型检查PASS，仅定向结果，不代替全量或30K验收。[阶段拆解及根因](../reports/2026-11-12-30k-initialization-unavailability.md)。未合并、部署。
+
 # References / semantic Feature Ledger
 
-## Bounded catalog streaming implementation — 2026-11-02
-
-R-01/R-02/R-20：[ADR0042](../adr/0042-bounded-catalog-streaming.md)仍 **Proposed**；
-[执行清单](2026-11-02-streaming-catalog-execution.md)与[实现/TDD报告](../reports/2026-11-02-streaming-catalog-implementation.md)。
-**最终主仓native259PASS/1FAIL/1原ignored，失败保留；诊断已收口，仅允许draft待fresh完整CI**：100K原replacement-cost测试
-cold32679.111ms、warm removal113042.933ms违反removal≤cold，原因及与512miss关联未知。只读确认旧replace_all路径未改；唯一一次child隔离诊断
-cold48485.075ms/warm removal7660.407ms通过，原full失败不覆盖，不继续重跑，不称ready-to-merge。
-Node20 check/build与14完整文件38/38、fmt/clippy通过；1447源与84runtime pins末次一致。
-完整local check:fast/目标HEAD CI未跑，不能称整合全绿；独立candidate旧通过不能覆盖最终失败。
-M1 force四单项槽→单writer与M3cold流写/hash-first完整键热命中0parser、miss二读fence已实现；
-固定parent session、Complete+EOF、旧lease与全部SQL/source/发布校验保留。
-首次candidate cache_gc protected≠observing未知失败仍保留，后续通过不称修复。
-M1单对30K全进程采样最大RSS3,015,224→104,096KiB（约102MiB），但READY慢34.31s，不称硬界/整体提速。
-M3的512十runs通过但miss1.958→7.778s更慢；30K cold/hot四runs计数/查询/hash/exit0通过，
-cold289.835→247.097s、hot14.949→1.750s仅单对，cold主要差额在校验；未跑30Kmiss/force。
-固定512 AB/BA12进程通过但miss方向混合（46.655/6.945与5.983/2.859s），不称一致回归/修复。
-R-02采样native内存不代表总LSP/Worker或精确初始化峰。完整Node/CI、Windows/真实UI均未验收。
-M4本轮明确defer文件级缓存/变更集/分片，先定位成本；范围决定不等于M4交付完成。
-ADR0029预算null、ADR0034完整代、ADR0041会话根不变；不新建ledger、不改R项毕业状态。
-
-## Current 30K catalog diagnostic candidate — 2026-11-02
-
-R-01/R-02/R-20：[分层证据与候选报告](../reports/2026-11-02-dense-30k-catalog-diagnosis.md)。
-现有私有分批路径已不同于历史Windows巨事务。Linux合成30K冷/复用/force
-269.919/6.721/314.982s均READY、exit0、四查询一致；仍有96–106s校验。
-独立探针定位quick_check/FK和返回尾部，控制提交仅约15ms；非真实Windows/UI验收。
-已集成最小候选提前释放已写documents，保留全部校验/源码证明/锁/复用/持久化。
-经公开Rust构建API的分配器观测RED→GREEN、三对6/6 READY/exit0/查询与输入一致；中位READY
-253.891→231.497s仅为观测，第二对quick_check变慢且释放前已有18.832s差异。
-校验期RSS和返回尾部降低，峰值未实质改善，不全归因于drop或外推Windows。
-局部集成exit0/987输入全匹配：Rust235PASS/0FAIL/1原有ignored外部455fixture，
-fmt/strictClippy/release、pnpmcheck/build、7完整Node文件24/24零fail/skip/cancel。
-非完整check:fast，外部fixture待CI显式执行；新的完整CI待发布，原PR112绿CI不覆盖本候选。
-不新建ledger，不改既有R项优先级/毕业状态；ADR0034仍Proposed，历史失败保留。
-
-## Current c462 CI correction — 2026-11-02
-
-**Complete CI41389230974 FAILED2281/2284; reviewed three-file correction
-integrated; full local check:fast FAILED2283/2286 retained; follow-on fixes
-integrated; ready for existing draft PR and fresh CI; instrumented canonical
-gate FAILED2294/2295 retained.** Rust235 and Windows
-pass; later Linux gates were not reached. The prior401/401 local selection
-omitted navigation-close-reopen. Independent review confirms unconditional
-post-capture guard rejected legitimate late catch-up when early preparation
-never ran; optional performed-object gating preserves the prior lazy path while
-still guarding performed `{changed:false}`. Source/SDK/namespace and final
-proofs are not relaxed. Separately the pre/source fixture assumed filesystem
-order; target-native-lstat before/after tests replace that assumption without
-production sorting. Unchanged navigation inverse2RED; focused50/50 and final
-window7/7 PASS. Forced native reverse order3PASS/4name skips. Earlier changed-only
-variants were GREEN, not mutation-kill proof. Manifest300/bundle156 unchanged.
-Evidence and retained CI/local failure history: [current report](../reports/2026-11-02-continuous-ide-review.md#current-follow-on-c462-ci-failure-and-integrated-correction--2026-11-02).
-Full local gate:3fail,0skip/cancel/todo,3561406.298545ms;953/953 frozen inputs
-match. Original three CI failures pass, but new failures are cancellation CLI
-cases118/169 (exit1/FAIL vs NOT_CANCELLED) and resident incoming-call package
-retarget case203 ([] vs -32803). Fake-server CLI cases do not execute the
-three-file correction; cleanup removed their report and no cause is inferred.
-Subsequent original tracing confirms background diagnosis recovered the package
-before incoming; a two-line v1-diagnostic precondition preserves the original
-error/watcher-oracle assertions, current/unconditional variants each8/8. Added
-v2 analogue is separate, not original sequence or b129 baseline. Cancel/mixed
-now share natural sampler exit plus polling-aware cooperative TERM grace; one
-retained real late-SIGINT false FAIL is proven, not retrospective attribution
-of cleaned-up original reports. Final Node20 five-file42/42 PASS; old SIGINT and
-fixed5s grace RED, earlier Node24 40/42 and Node20 41/42 retained. Timing-aware
-assertions keep budgets/exit0/PID/RSS; actual100-edit mixed CLI not run. Manifest
-now301(unit122/bundle156). Instrumented canonical full gate2294/2295,exit1,
-0skip/cancel/todo,4118031.704339ms;986/986 hashes match. Prior confirmed failures
-pass, but rename-completeness:97 explicit barrel alias id2rename hits original5s
-deadline; cause unknown and not fixed. Same-deadline Node20 paired diagnosis
-completed: current/b129 each three selected passes (each1PASS/5name skips),
-then each original complete file6/6 without skips. Baseline4961.657ms does not
-prove load causality; shared logging ENOENT in passes establishes no cause.
-556 fixtures saved/copyerror0/unexpectedpreload0;6071 directly observed child
-launches omit evidence preload (not exhaustive grandchildren). External evidence
-shim/bridge/test-parent hook are unshipped; production/deadlines unchanged.
-This is instrumented, not an uninstrumented receipt. Maintainer-local evidence
-paths are not repository links. Reviewed corrections ready for publication on the same draft PR and fresh
-complete CI; no new confirmed must-fix. No complete acceptance yet; b129 remains
-last full-green revision and separate gate/scoped counts are not summed;
-no Accepted promotion or authority relaxation. Following summaries are historical
-checkpoints.
-
-## Historical continuous review — 2026-11-02, pre-c462-CI local verification
-
-**Implemented and locally verified; fresh complete candidate CI pending publication.**
-[Continuous report](../reports/2026-11-02-continuous-ide-review.md).
-Publishedb129d3e04e71a6b5fd68293d9153f6264d309c7e CI41372738816 nowSUCCESS:
-fast2269/2269, artifact7/7, large1/1, Rust224+explicitfixture1, query2/2/SCM4,
-WASM and Windows smoke. This does not qualify the newer combined candidate.
-Native recovery six reviewed files integrated: isolated234PASS/1existingignored,
-release/Clippy/recovery smoke,98/98 inputs and independent malformed-control/
-12concurrentbootstrap probes. Original STALE results were not semantic READY.
-Resource15files+manifest2 now integrated: eligible dirty prescan before first raw
-capture, cached canonical-root/catalog stamp, post-refresh guard before compiler
-update; original source/disk/target inputs retained, cache absence uses legacy
-path. No new proof-capsule/API adoption. Independent32/32 plus ordering4/SDK19
-pass; controlled4→2 owner counts retain two-scan cost, no general performance
-claim. Current-profile prewarm failures make two-probe comparison inconclusive.
-Current manifest300(unit121/bundle156/protocol15), after reviewed fixture
-integration04:11UTC. Earlier joint gate terminal exit1 at Node:
-399/401PASS, two original-deadline timeouts, zero skip/cancel/todo,890904.056ms;
-Rust234PASS/1existingignored,fmt/Clippy/release,Node20check/buildPASS. All1415
-inputs match. Third-restart readiness5s and first conservative reference run30s
-are under serial baselineb129/current three-pair diagnosis; cause unassigned,
-main source edits paused. Later same41-file diagnostic rerun400/401FAIL(exit1,
-681291.856ms), observer0, all1415source and runtime hashes match. Originaltimeouts
-pass there and paired12/12 plus completefiles34/34each, but remain unexplained/
-non-reproduced, not fixed. New sole rerunfailure is scoped-request count2vs1;
-deterministic legitimate generation2 reproduces the old assertion on both revisions.
-The lost original fixture prevents reconstructing its actual generation. A test-only
-hold/release correction preserves immediate watched-change→query ordering, old
-count1/fallback/no-recovery while held, then new roots/full results after release.
-Strengthened paired6/6 and six completefiles21/21 PASS; final independent order
-review approved, all six artifact hashes matched at integration. Production and
-deadlines unchanged. Final local gate exits0: pnpm check PASS and42 complete Node files401/401
-PASS, zero fail/skip/cancel/todo,698669.119535ms. All1416 frozen source inputs
-and production dist/native-runtime hashes match (continuous-integration final
-receipts). Same production input already passed Rust234/1existingignored,
-fmt/strictClippy/release and Node20 build; only six test files changed afterward.
-All confirmed defects corrected; independent scoped review found no new must-fix.
-Local scoped acceptance is not complete CI or continuous-review completion. Evidence: continuous-recovery-timeout/UNITS-RESULT.md
-and units-fix-artifact. Fresh combined-head CI awaits publication. Static
-cross-layer review found no new confirmed must-fix, not a whole execution pass.
-No completion/merge/Accepted promotion. Original rejected designs, failures,
-UI/nativeUNC/30K/endurance limits remain in the detailed report and prior receipts.
-
-## Previous authorized follow-up receipts
-
-## Current authorized follow-up — 2026-11-02
-
-Published baseline CI is now **SUCCESS**: run41368012421/head a11cdbc, complete
-fast2267/2267 and release/E2E/Windows smoke pass (01:24UTC). The new index
-follow-up has only its own scoped123/123 PASS; new-head complete CI remains
-pending. Resource optimization remains OPEN/design-gated. Original failures and
-unexplained startup timeout remain preserved; no UI/native-UNC graduation.
-
-**Index locally verified; publication/CI pending; resource OPEN**, [two-finding follow-up](../reports/2026-11-02-authorized-ide-follow-up.md),
-separately authorized at01:04UTC after the second four-round group; no retroactive
-extra round or change to published group2 history. Index malformed-success
-response classification now fails closed while preserving business errors and
-explicit recovery: characterization20/20, RED1/2→GREEN2/2, combined22/22,
-manifest4/4, Node20typecheck and independent26/26 PASS (R-07/R-08/R-34,
-ADR0005/0013). Remaining source/test line debt1066/761 is recorded.
-Owner/revision churn remains OPEN/design-gated (R-20/R-22/R-26/R-30/R-31):
-fresh-view16/19 and reorder-only17/19 alternatives are REJECTED; advance-only19/19
-lacks proof of advance-window mutations and is NOT ACCEPTED. The refreshed256-doc
-view omits the original ZZModel dependency; context4→2 is not a general benefit.
-No resource source integration or ADR policy change. Index final Node20check/build
-and ten complete files pass123/123, exit0, zero failed/skipped/cancelled/todo,
-56958.721ms;1403/1403 inputs match. This is scoped, not complete-suite acceptance;
-published a11 CI41368012421 is now SUCCESS at01:24UTC: fast2267/2267, artifact7/7,
-large1/1, Rust224+explicitfixture1, Zed2/2/fourSCM, WASM and Windows smoke pass.
-Exact head a11cdbc87b5223aae806f79d624b180df8f9d3c4, merge checkout
-a175ae2314973689a22fb6b029ecb025b2759305. This does not qualify unpublished changes. Follow-up fresh CI is pending;
-no complete-suite follow-up gate,
-Accepted promotion or merge is claimed. Prior group2 summaries below remain dated.
+> 历史检查点 2026-11-09：ABI3冻结2433输入后生产Worker/恢复8PASS，原失败重放33PASS/19FAIL/82过滤，输入未变；完整check:fast尚未GREEN。最终ABI协议/公开缓存80PASS，拆分旧720行测试后相关85PASS；证明/重复组装/诊断阶段另有39/40/19定向PASS（重叠不相加）。Photos15/density16未执行，旧H13不替代当前验收。19项根因仍逐项定位；SDK/完整30K引用重命名、UI/Windows限制保留，455仅冷目录3秒计时豁免。[本轮根因与证据](../reports/2026-11-09-input-proof-purpose-and-diagnostic-handoff.md)。
 
 
-## Historical group 2 pre-publication summary — 2026-11-02
 
-This summary preceded published a11 CI SUCCESS at01:24UTC recorded above;
-its pending-CI wording is historical, not current status.
+## IDX-V1 Feature Ledger
 
-**Four-round implementation/review complete; all confirmed corrections integrated.**
-[Second-group report](../reports/2026-11-01-recursive-ide-review-batch2.md).
-Node20.19.5 typecheck/build and29 complete files pass376/376, exit0, zero
-failures/skips/cancellations/todo,577502.642ms;1400/1400 final inputs match.
-Manifest291: unit119, protocol15, bundle149. This is a scoped result, not a fresh
-complete-suite PASS. Original local full2260/2264FAIL (four failures, exit1) and
-first-group CI2233/2234FAIL on f280c9bb remain retained, as do all prior receipts.
+2026-11-03原生索引专项最新记录：**DESIGN_READY / Proposed；IX-00/01/02/03/04/05 IN_PROGRESS；默认128/No-op链路局部GREEN、整体未完成**。
+2026-11-04已实施存储、同快照资格/查询、owner/GC、迁移及显式协商Native维护；128文件改单解析1、No-op写0已验证，默认TS/LSP及完整生命周期仍未完成。
+[ADR0043](../adr/0043-versioned-file-index-maintenance.md)、
+[可执行计划](2026-11-03-versioned-index-maintenance.md)、
+[历史ADR冲突审计](../reports/2026-11-03-index-versioning-adr-conflict-audit.md)。
+只读核对main=`298d65f5d7f796c347fe8be5c739e428066489d8`；当前dirty旧分支不等于它。
+设计交付后用户已授权按计划实施；当前独立worktree实施存储组件，尚未启用新产品格式、部署、提交或合并。
 
-Integrated work: workspace-symbol overlay identity/member publication fence;
-retire-first bounded SDK/configuration proof capsules; explicit configuration
-event authority; qualified source-only repaired-identity recovery; atomic marker
-and deterministic replacement-constructor test fixtures. R-13/R-31/R-26/R-34
-remain mapped to ADR0010/0013/0036 with ADR0025/0038 constraints preserved.
-No ADR approval state changes. Initialization-response timeout remains
-unexplained/non-reproduced; no timeout extension or claimed cause fix.
+这是既有R-13的原生索引写入子目标，关联R-02/R-08/R-20；不建立第二份活动ledger或远端issue，
+不覆盖其他语义/答案缓存TODO、旧实验状态和既有失败。下方旧`Current authorized work`等保留其日期语义。
+当前默认内存/时延政策按0029/0007最新修订：无默认RSS预算，500ms体验目标，不能重用旧硬线。
 
-The authorized same draftPR112 update and fresh complete locked-toolchain CI are
-next. No merge, fifth round, performance/real-SDK/UI/native-network-share or
-endurance graduation. The following group-2 paragraphs are historical checkpoints,
-not present RUNNING or unintegrated status; original measurements remain intact.
+| 项目 | 最新范围及判定 |
+| --- | --- |
+| R-13 / IDX-V1 | 单文件facts版本、发布组日志、同库资格/No-op收据、变更集/受控取消、GC/迁移；**OPEN，IX-00/01/02/03/04/05 IN_PROGRESS** |
+| R-02关联 | 保留0042有界所有权；新任务/历史版本GC需实际验证，不把队列额度变默认RSS驱逐 |
+| R-08/R-20关联 | 0005旧水位兼容、新完整对账收据和初始化/重开；native发布不等于语义READY，未验证 |
+| 保留缺口 | 30K完整引用/重命名、SDK、真实UI/Windows、无关结果缓存优化仍按原状态；本设计不宣称修复 |
+| 失败基线 | mixed-03的77写入代/31790批/456706174应用层行、12.45GiB目录逻辑峰；不是77成功发布/物理写放大比 |
 
-## Historical group 2 checkpoints — 2026-11-01
+2026-11-04 IX-05新增生产者域边界：旧domain初始化只开放维护，失败后修复输入可同会话升级；
+存活旧owner读/精确file/全对账不能反向覆盖后来的producer，创建草稿权限与最终CAS均验证。
+这是显式协商Native的局部实现；schema/profile、父端激活、自动GC/对账及默认LSP仍未闭环。
 
-**Group 2 four-round implementation/review complete; scoped376/376 PASS, fresh full CI pending**, [second-group receipt](../reports/2026-11-01-recursive-ide-review-batch2.md).
-Group 1 CI on `f280c9bb`, run41335246739, is terminal Linux2233/2234 FAIL,
-Windows smoke PASS; original local2134/2222 FAIL and focused263/263 PASS remain.
-SDK-config source-reset witness loss (R-13/R-31, R-26; ADR0025/0036/0038) has
-deterministic baseline/candidate RED and a first guard slice passing six files
-51/51, typecheck/build on Node20.19.5. Round 2 independently confirms a watched
-source-deletion reset reason bypass plus late replacement-load SDK mutation;
-retire-first facts-only proof capsule is now integrated, including a third
-namespace-retirement RED/fix. Pending facts bounded4096; denial survives failed
-replacement. Closing review SDK10/10/config12/12 passes with no new must-fix;
-authoritative frozen cohort88/88 plus typecheck/build pass on Node20; this is
-not an overall SDK/full aggregate GREEN.
-Explicit drain-scoped configuration authority now crosses the bounded wire/event
-paths without granting source-overflow authority: RED3/8→Node20 six-file97/97,
-typecheck and independent new12/12 PASS. Manifest291/unit119/protocol15.
-A separate workspace-symbol overlay publication defect (R-13/R-31, R-34;
-ADR0010) is publicly RED4/9→focusedGREEN30/30: final snapshot identity/membership
-fence, -32801 for obsolete results, cancellation priority preserved. Scripted
-semantic/index providers are not real-compiler/UI qualification. Final combined
-checks remain pending; independent workspace-symbol review passes new9/existing21
-on Node20.19.5 with no must-fix in that scope. Node20.19.5 is installed
-for next gates, not retroactive validation of prior Node24 evidence.
-Second group is at most four rounds or earlier no-new-confirmed-issue stop;
-round3 independent full-diff review found no new confirmed must-fix, with
-Node20 independent21/21/no skips. Early-stop condition reached: no artificial
-round4/new-feature work; full validation and any confirmed gate failures remain. Full pnpm check:fast is RUNNING since19:34UTC on1399 frozen inputs, not passed. At19:39UTC
-one call-hierarchy reopen marker assertion has failed (empty string versus true).
-Round4 confirms async marker creation-before-content on baseline and candidate.
-Atomic pending-file rename correction passes Node20check/build and fivefiles89/89;
-reverting only rename gives0/4RED; independent closing review4/4 passes. A second
-Round4 failure confirms a late-constructor fixture precondition gap: one isolated reproduction never entered the hook, SDK stayedAPI24, healthy in-place update succeeded.
-Isolated constructor full file17/17 and20 late-pair repeats40/40 pass; round1
-counterfactual healthy1pass/late2fail/14filtered, independent3/3 with14filtered.
-Node exits0; repeat shellwrapper1 was a trailing false guard, not test failure.
-Both corrections are reviewed without new must-fix but remain unintegrated while
-the original full run continues; frozen main unchanged. At20:24UTC it has four
-observed failures: the two fixture cases plus unprovable-lookup diagnostic recovery
-and pre-query initialize timeouts. Both new causes remain unconfirmed; static
-triage only, no source changes/reruns until terminal full receipt.
-Four-round limit reached; these are validation corrections, not a fifth round.
-Terminal20:35UTC full receipt:2264tests/2260pass/4fail, zero skip/cancel/todo,
-exit1,3533772.229ms; all1399 frozen inputs match. Verified hierarchy patch and
-final SDK17-case fixture are now integrated, diffcheckPASS. Two remaining
-reference recovery is now a confirmed guard regression (f280PASS/round1FAIL),
-narrowly corrected to permit source-only repaired-identity retirement without
-weakening config/resident validity. Integrated19-case SDK/source coverage, Node20
-five-file91/91 and independent3/3 with42filtered pass. Initialization timeout is
-unexplained/non-reproduced; no timeout change or claimed fix. Final check/build+
-29 complete files terminated376/376PASS, exit0, zero failed/skipped/cancelled/todo,
-577502.642ms; Node20check/buildPASS,1400/1400 final inputsMATCH. Original full
-2260/2264FAIL remains unchanged. Authorized same draftPR112 update and fresh
-complete locked-toolchain CI are next; no merge or fresh full PASS claimed. Prior running/
-unintegrated statements in detailed receipts are historical checkpoints. No merge and no speculative catalog rewrite.
+IX-05本地问题 **IDX-V1-LIFETIME-001**：[并发使用记录阻断合法重建](../reports/2026-11-04-cache-use-record-concurrency.md)。
+两个独立根因已修：时间戳临时名重复/错误清理归属，以及并发替换读到nlink0导致安全检查拒绝；
+4,096次修订后零合法写错误，跨进程/杀持锁者/安全反例及Native恢复已通过；当前212输入候选Core/SQLite241、相关Native125、实验存储74/Native61、严格Clippy/release均通过。
+这是自动维护前置修复，自动GC和默认LSP未因而接通；混版/Windows专项仍未测。
 
-## Historical group 1 review receipt — 2026-11-01
+2026-11-05 IX-05私有草稿：取消后64提交前缀复用62/写66，最终fence拒绝后复用126/写2；
+失败私库Q不外泄、成功立即释放parent、superseded/force/peer边界及重试前GC已有公开回归。
+[新证据](../reports/2026-11-05-private-index-draft-retry-and-reclamation.md)；219输入冻结Rust检查完成：
+Core/SQLite248、相关Native130、实验存储81/Native66，fmt/双配置严格Clippy/release全部通过；
+前述212输入成绩为上一候选。单库不等于字节/metadata有界，活动库自动GC及默认LSP仍未完成。
 
-**Group 1 local implementation/review complete; fresh full CI pending:** [recursive IDE correctness review](../reports/2026-11-01-recursive-ide-review.md)
-on parent `b57ad075`, at most four review/research/correct/review rounds, stopping
-earlier only when a completed round finds no new confirmed issue. Round 1 covers
-plain-text completion insertion (R-26 / ADR0022), call-hierarchy final freshness
-(R-28, R-13/R-31 / ADR0037), cross-file diagnostic invalidation (R-29, R-13/R-31 /
-ADR0010), and Windows UNC URI correctness (R-34 plus affected capability IDs).
-Focused public completion 14/14 and call hierarchy 12/12 pass after preserved
-REDs; scripted semantic fixtures do not establish real-compiler/UI coverage.
-Frozen round 1 diagnostics now pass 12/12 (five new actual-compiler cases);
-partial parallel round 2 now passes focused 15/15 after cross-workspace debounce
-and expected-invalidation logging corrections. Round 3 independent frozen-diff
-review found no additional confirmed must-fix issue within its diff; subsequent
-aggregate failures triggered round 4 sampler portability work (R-02/R-34, ADR0013). Authorized workspace Rust 1.95.0 is installed/hash-verified; Linux-hosted
-UNC helper/public and full crate checks pass, but native Windows is NOT_RUN and
-release library validation passes. Protocol 92/92, final manifest 4/4 and strict
-Clippy pass. Original frozen full check:fast terminated exit 1: 2222 tests,
-2134 pass / 88 fail, zero skips/cancellations/todo, 4306278.564141ms; 935/935 frozen
-inputs match. Failures classify as 86 sampler-related plus navigation and
-oversized-readiness fixture preconditions, one each. All original failures remain.
-All three round 4 patches are integrated: bounded sampler fallback/visibility
-proofs, deterministic Main-first navigation, and anchored oversized-readiness
-fixture. Prior separate checks preserve 46+29+1 sampler, 3/3 navigation baseline/
-candidate and 1/1 readiness baseline/candidate plus candidate full 16/16 receipts.
-Manifest is now 289 (unit 118 / protocol 14 / bundle 149). Integrated revalidation
-of all 19 original failing files plus related changes, 34 complete files,
-passed 263/263, exit 0, zero failed/skipped/cancelled/todo, 341678.5413ms after
-passing typecheck/build. Final frozen inputs all match (FINAL_INPUTS_UNCHANGED=1).
-This does not mean 2222/2222 passed; the original full FAIL remains. Fresh complete verification
-is planned in the draft PR's locked-toolchain CI, not replaced by this subset.
-No aggregate GREEN or resource graduation is claimed.
-Baseline install/check/build passes do not prove these fixes. The initial full-check attempt was
-BLOCKED by missing cargo, not a confirmed product regression. Installation
-resolved that environment blocker; no aggregate full pass is claimed.
+2026-11-05 IX-03/04开始：[父端桥接证据](../reports/2026-11-05-index-node-protocol-bridge.md)。
+旧27项表征前后GREEN，父类1066→460；新合同14项，相关4文件41PASS/tsc GREEN；
+Native补factsDomain真实协议6PASS及fmt/Clippy/release通过。真实framed LSP保留RED：默认仍catalog/start。
+新模块尚未激活，不能以局部校验代替默认新鲜度与增量完整通过；新3入口已纳入测试清单。
 
-Current policy precedence: [ADR0007's 2026-10-28 revision](../adr/0007-semantic-readiness-and-500ms-slo.md)
-sets a 500ms experience target, not a per-request or replacement 550ms/P95 hard
-line. [ADR0029](../adr/0029-opt-in-rss-memory-budget.md) sets the default RSS
-budget to null, retaining explicit positive-budget pressure semantics and normal
-cleanup/fault recovery. Earlier latency thresholds, fixed default budgets,
-counts, failures and stage statuses below are **dated historical receipts**, not
-current-policy overrides. No approval status or product graduation is inferred
-from this review. Full-scan optimization remains unimplemented/unmeasured here.
+2026-11-05默认候选接通：[详细证据](../reports/2026-11-05-default-index-maintenance-and-noop-freshness.md)。
+真实LSP128改单写1、进度128/128及No-op同head引用恢复GREEN；相关17文件109PASS/0skip，tsc/build通过。
+原raw legacy128≠1失败继续保留；原新增Rust回归转实际默认协商，原parser=1/正确结果断言不减。
+当前Native7项及release通过，完整默认Rust另跑；URI明细/全范围读成本/完整metadata及30K等仍未完成。
 
-Queued continuation (user instruction, 2026-11-01 17:07:30 UTC): current rounds
-are **group 1**, at most four rounds. After its current validation and draft PR
-complete and group 1 PR validation reaches a terminal outcome, execute **group 2**, again at most four rounds or stop earlier when a
-completed review finds no new confirmed issue. Group 2 has **not started** and
-will have a separate grouped receipt; current Round 4 is not Round 5. No merge
-into main is authorized by this continuation, and pending current gates remain
-pending. The user authorized independent-branch push and draft PR at 17:05 UTC;
-merging main remains unauthorized.
+2026-11-05 URI/input已接通：[报告及局部问题](../reports/2026-11-05-index-input-delivery-and-directory-lifetime.md)。
+局部写1/同input完整对账写0，重复watch0写；真实LSP创建/移动/删除空目录/恢复/配置场景通过。
+IDX-V1-INPUT-001（pump-finally漏唤醒）、002（缺失父目录/边界路由）、003（已取消失败wait未处理拒绝）、
+004（未accepted提前消耗版本）已修于隔离候选，分别有RED/GREEN；15生命周期+9队列24PASS，路径4PASS。
+上一Rust完整401PASS/0FAIL/1既有ignored（820.11s）；之后Native scope元数据有改，旧结果不覆盖新候选。
+当前全量pnpm继续并有采样权限失败；授权对照26PASS，不预设其它失败原因，不称全量GREEN。
+保存入口/漏watch恢复/未知目录/重连、资源-only调度、持续流订阅与公平性仍未闭环，原规模/耐久/UI要求保留。
 
-## Historical authorized work and progress receipts
+2026-11-05后续局部问题：[保存/兼容/退役](../reports/2026-11-05-index-save-compatibility-and-cache-retirement.md)。
+IDX-V1-INPUT-005（无watch的save缺失）、COMPAT-001（显式refresh被误协商）、GC-003（owner目录/新schema拒绝退役）
+已在独立next副本修订，100/29/34及Native26局部PASS，严格Clippy通过；副本结果不等于集成候选。
+OBS-001为旧trace消费者，真实终态/完整Locations和indexed接受断言保持。Node21 URL模拟限制有Node20同源码27PASS对照。
+冻结全量85973仍运行且已有失败，后续receipt另存；等待终态再按清单集成和完整重验，整体仍IN_PROGRESS。
+资源-only/漏watch/未知目录/重连/持续流、完整metadata/partial/平台/规模及30K耐久等不勾完成。
+
+2026-11-05本片后续：[集成及新补全问题](../reports/2026-11-05-index-save-compatibility-and-cache-retirement.md)。
+原完整Node2228/2365 FAIL、0skip，137项和一次失败fixture干预保留；Core/SQLite253/default release/cache关闭GREEN。
+GC-004实验首轮unsafe-entry24/26，后续5轮26/26仅为未再现，问题OPEN；没有放宽清理安全断言。
+COMPLETION-001：Native optional incomplete污染已选完整编译器回退，公开RED→GREEN及五文件23PASS；实际partial/SDK原因保留。
+23明确文件已集成回隔离分支；Legacy engine697→683仍债。新正常采样权限固定Node20完整检查在跑，不预报全量通过。
+constructor捕获/终检反例仍需分开定位，resource-only及原IX03–08其他范围不勾完成，不合并发布。
+
+2026-11-05后继：[输入订阅/退役所有权](../reports/2026-11-05-index-input-wait-and-retirement-ownership.md)。
+INPUT-006 resource-only不再排源码catalog（公开RED→36PASS）；INPUT-007旧input订阅不等待无关共享ACK（RED→28/相关47PASS）。
+GC-004第11轮捕获正常退出tmp残留；受控公开shutdown证明detach生命周期缺口，runtime有界持有/join修订后28PASS。
+新增代码暂在next副本；双配置Rust检查在跑，旧冻结完整checkfast出现两项constructor-32803，不能用局部通过关闭。
+仍IN_PROGRESS；持续对账公平、漏watch/未知目录/ignore/重连、完整metadata/partial/规模/30K耐久/UI/Windows均保留。
+
+2026-11-05最新：[后继实测/未闭环](../reports/2026-11-05-index-input-wait-and-retirement-ownership.md#后继验证与修订不把中间green当成完整交付)。
+GC-004 owned首片完整失败（force后prune无后继），已补每namespace合并轮转重试；最新Rust全量410PASS/1旧ignored，双配置相关/Clippy/release通过。
+INPUT-008暂时目录/源码不可用后引用重扫一次恢复，四种公开LSP GREEN；OBS-002缓存自干扰有实际5次扫描异常并已隔离fixture。
+INPUT-009 .gitignore/exclude变化送Native、不发SDK/Host mutation，七文件66PASS；watch测试660→493/helper183。
+旧W全检2360/2365 FAIL，其余context5≠6具体disk-type-error步骤及取消/启动竞态未闭环，成功控制不能关闭阴性。
+新代码仍next-only；受管缓存入源码树的持续变化、全对账公平/漏watch/未知目录/重连及原IX06–08完整验证保留。
+
+2026-11-05后继：[目录类型与任务准入](../reports/2026-11-05-index-namespace-lifecycle-and-admission.md)。
+INPUT-011：source.ets目录删除后-32803、.gitignore目录返回旧3引用，正式RED后6场景和相关68PASS；
+类型优先/已知后代局部传播，真实身份/最终fence保持。INPUT-010完全静默新增仍OPEN（命中/绕缓存均失败）；
+目录提示后的完整对账可恢复，不将二者混淆。INPUT-012 global flush阻塞旧完整任务，取消/替换RED后修订；最终8文件105PASS/0skip。
+旧全检2360/2365及后继中断130未冒称通过；context29/token恢复26局部PASS，不代表最终候选全量。
+32+3及后继14明确文件已集成，新冻结完整检查启动；原规模、完整生命周期、2h/UI/Windows未关闭。
+
+2026-11-05 follow-up: INPUT-011 resource-named directory delete6/8RED then23 focusedPASS,
+next-only. ENV-001 frozen full W includes unignored experimental build outputs in
+source archives:3 archive failures and a test-file Node OOM retained. Normalize
+our build location after frozen run; do not weaken collector/V8/source checks.
+Actual298d/current Native shared-cache tests2PASS: old explicitly refuses schema12,
+current Q and exact search stay usable. Full scale/soak not started. See
+[namespace lifecycle report](../reports/2026-11-05-index-namespace-lifecycle-and-admission.md).
+
+INPUT-014 next-only: directory-to-file changed-only source/rule events2RED;
+rule URI preservation plus scoped descendant delta and same-phase path reuse
+now93 relatedPASS/0skip. Realpath3-call assertion, exact references, SDK ownership
+and one Worker retained. Older rule-only/no-semantic-delivery note is refined,
+not a claim that SDK configuration changed. Full candidate remains unqualified.
+
+INPUT-015: resource kind replacement references recovered but index symbol stayed
+stale; formal RED then conditional source-domain/alias handling. Current9files
+105PASS/0skip. Resource-only requires proven namespace exclusion; overlapping or
+unknown layouts retain reconcile cost. ENV-001 unchanged collector24PASS after
+build isolation; ENV-002 old Cargo SQLite code despite matching source, fresh
+default/experimental shutdown2/2 each. Whole2370/2374 FAIL retained; no scale/soak.
+Next assembled gate force-rebuilds owned packages. All final requirements OPEN.
+
+IX-07/08 preparation (2026-11-08): [observation/scale controls](../reports/2026-11-08-index-acceptance-observation-and-scale-controls.md)37PASS; actual release Native handshake/shutdown and2DB integrity PASS. Fixed2048 byte-volume/reference-density follow-up runs only after main scale and30K completion. No scale/soak result claimed. Full checkfast running; UI/Windows still unverified.
+
+IX-07 original455 correctness gate explicitly PASS (2026-11-08): pinned585feb,455 source hashes and clean Git unchanged. Cold3168.922548ms exceeds3s; standing user timing-only waiver recorded, not a performance pass. [Evidence](../reports/2026-11-08-index-acceptance-observation-and-scale-controls.md#original-pinned455-correctness-gate-2026-11-08). Full Node checkfast and scale/soak remain pending.
+
+IX-07 checkpoint (2026-11-08): final complete2393PASS and unchanged source; native/Rust/100K PASS,455 correctnessPASS with3168.92ms timing-only waiver. IDX-V1-OBS-003 rename oracle alias/origin/barrel assumptions disproved by same old/new public responses; strict corrected calibration17opsPASS, serial scale round03 in progress. [Current evidence](../reports/2026-11-08-versioned-index-candidate-acceptance-progress.md). SDK partial and full scale/2h/UI/Windows remain OPEN; no product source changed after full checks.
+
+IDX-V1-SCALE-001 (P1,2026-11-08): true20K dependency closure definition -32803; Native20K ready/integrityPASS. Old/current same failure, actual trace4096 witness facts, minimal public128PASS/4608FAIL. [Root cause and ADR mapping](../reports/2026-11-08-scale-dependency-witness-capacity.md). ADR0036 capacity decision is a design boundary, not a newly violated implementation contract; no threshold change/false success. Next-only regression RED, W final2393 product unchanged. Round03 stopped26 cases (21PASS/4gap/1FAIL); scale/2h remain OPEN.
+
+IDX-V1-SCALE-001 repair checkpoint: [ADR0044](../adr/0044-load-owned-input-proof-lifetime.md) Proposed explicitly revises0036 healthy-fact quota. Complete load-owned state/provenance, no lost-proof bypass. Lifetime12/12 and public26/26 PASS; approved20K ordinary cold/warm and trace cold17 actions eachPASS; trace warm/new-source fullcheck pending. Initial sampler-EPERM failure retained. No scale/2h/UI completion; latency remains multi-second.
+
+IDX-V1-ENV-003: incomplete staging N full check failed from missing CLI/editor/bench files, preserved and stopped; exact five repair inputs + characterized test newline integrated into complete W. New full gate freezes2375 inputs. Actual repaired20K diagnostics4 sessions/68 operations PASS; ordinary edit-first refs~7.9s still slow. Round05 scale/persisted-save/2h queued, not completed. [Evidence](../reports/2026-11-08-scale-dependency-witness-capacity.md).
+
+IDX-V1-OBS-004: prior candidate mirrors omitted stdlib/runtime assets;20K subset-query checks are not complete-package acceptance or strict performance comparison. Full-dist minimum public proof regression remains valid. Seven package tests PASS; candidate79/baseline77 runtime assets now pinned (70 libraries each), round06 queued behind complete W fullcheck. Round05 never started load. [Correction/evidence](../reports/2026-11-08-scale-dependency-witness-capacity.md#idx-v1-obs-004-runtime-mirror-completeness-audit-2026-11-08).
+
+IDX-V1-INIT-001: complete2402/2403 FAIL retained; catalog startup degraded reproduced from real concurrent cold cache namespace creation (Native IO/File exists), public controlled8/8FAIL ->8/8PASS. Minimal idempotent create + no-link/type revalidation, no timeout/budget/schema change. Rust9/public15PASS, Native64 pairs allsuccess; new complete checks pending, exact original failure cause not retrofilled. [Root cause/ADR0028+0043](../reports/2026-11-08-cold-cache-multi-root-initialization.md).
+
+IDX-V1-OBS-005 (test driver only): pre-load generation07 pin/path/restore-write oracle bugs; zero workloads started, receipts preserved. Generation08 path2 + oracle6 + existing control25 PASS; full check unchanged, proper scale/30K2h still waiting. [Details](../reports/2026-11-08-versioned-index-candidate-acceptance-progress.md#idx-v1-obs-005-pinned-driver-and-restored-content-oracle-2026-11-08).
+
+IX-07 fresh combined final candidate GREEN (2026-11-08): complete2406/2406,source2381 unchanged; Rust414/1ignored,experimental28+9,release/fmt/Clippy and455 correctnessPASS (3089.69ms timing-only waiver). Proper79-asset runtime verified, persisted-save calibration128/formal128+2048PASS;20K running. Full semantic scale, original30K2h andUI/Windows not complete. [Receipt/report](../reports/2026-11-08-versioned-index-candidate-acceptance-progress.md#fresh-final-whole-candidate-gate-green-2026-11-08-1010-utc).
+
+IDX-V1-GC-005 P1: round08 20K save1write15.85s, duplicate0write but30s no qualifier; real Native stack GC SQL->writer barrier. Actual bundled VM512/2048 RED549k/8488k ->GREEN28k/116k; minimal same-TX reference-set repair, fresh combined check/release/large retest pending. IDX-V1-OBS-006 audit argv loss separately repaired; old automatic-GC proof invalid, raw evidence preserved. [Report/ADR0043](../reports/2026-11-08-versioned-index-gc-query-cost.md).
+
+IDX-V1-GC-005 focused checkpoint: defaultGC12/experimentalGC12PASS; release6553ab87. Exact failed public20K plus30K, each3saves/3duplicates/restore allPASS with correct symbols, source restoration, normal process closure and integrity.20K save median2355ms,30K3376ms; residual full qualification still scales. Fresh full candidate and complete scale/2h pending; no final/UI completion. [Evidence](../reports/2026-11-08-versioned-index-gc-query-cost.md#final-repair-focusedpublic-checkpoint-2026-11-08).
+
+IDX-V1-OBS-007/008 (drivers):09 source-only copy omitted static30K catalog; old close metadata could hide protective TERM/code0 or cleanup. Caught before09 load; generation10 pins static input and all four session wrappers require normal acknowledged closure/no protections; baseline exception stays strict. Public framed fixture/controller plus controls21Python/32Node/2pathsPASS. Product full unchanged, scale/2h pending. [Report](../reports/2026-11-08-index-acceptance-inputs-and-close-evidence.md).
+
+IX-07 final GC-005 full gate GREEN (2026-11-08 11:43UTC): current2406/2406,source2384 unchanged; Rust416/1ignored,style/release/experimental28+9+12/455correctnessPASS (cold3135.68ms timing-only waiver). Complete runtime79 verified; round10 strict NORMAL-close persisted128 calibration/formalPASS,2048 running. Full semantic matrix/30K2h/density/UI remain incomplete. [Current report](../reports/2026-11-08-versioned-index-candidate-acceptance-progress.md#final-gc-005-candidate-full-gate-green-strict-close-round10-started-2026-11-08-1143-utc).
+
+IX-07 persisted-write four-level strict result: actual128/2048/20K/30K each3save1document/3duplicate0/fullqualification0, restoredinput/symbols/normalclose/integrityPASS. Native cold+updates totalN+4 documents, not full rewrite; save medians416/542/2414/3454ms still scale. Semantic matrix RUNNING; old4096-capacity preflights20K/30K remainFAIL with explicit proof, not successful baselines. [Raw summary/current report](../reports/2026-11-08-versioned-index-candidate-acceptance-progress.md#strict-close-persisted-source-four-level-scale-complete-round10).
+
+IDX-V1-SCALE-002 OPEN/performance boundary: generatedtrue30K firstordinary reopen-definition22.48s,85.61% parentwait whilealreadyactiveBGdiagnose23; residual3.24s internalstagesUNMEASURED. Exactresult/normalclose do not meanacceptableexperience. Matches0027decision2 nonpreemption boundary; notproofoldM003queuedpriority regression/GCwrite/OOM. Keepordinary/trace/Photoscoverageincomplete; no unrelatedcachefix. [Evidence/ADR mapping](../reports/2026-11-08-30k-dependency-definition-tail.md).
+
+Fresh combined gate after INIT-001: new Rust414PASS/1existing ignored, experimental retirement28PASS, experimental namespace9PASS, release/fmt/strictClippyPASS; pinned455 correctness1PASS, cold3089.69ms timing-only user-waived. New Node whole check running, source2381 frozen. Round07 requires six checks + both supplements before full-runtime79-asset scale/persisted-save/30K2h; not yet executed.
+
+### 实施片（IX-00执行中，未勾选完成）
+
+2026-11-05后续：[活动库自动GC](../reports/2026-11-05-automatic-versioned-index-collection.md)已接通协商Native，
+9项机制/启动/忙碌/大文件回归及66-owner扫描进度回归通过；完整Native回归暴露IDX-V1-GC-002：
+删除恢复被过早GC迫使重解析/写1，旧零解析断言保留，隔离同候选再次RED。
+当前224输入未验收；223输入中间检查不是最终通过，不能启用默认LSP。先补正式内容复用租约，
+再跑同候选完整检查；完整元数据/ACK/生命周期及默认LSP仍未完成。
+
+2026-11-05后继：[内容复用租约](../reports/2026-11-05-index-content-reuse-lease.md)已实现，
+原删除恢复0解析/0写断言原样GREEN；4项库/3项新Native及原生命周期/GC组合通过定向命令。
+228输入正完整冻结检查；近期两版本、删除完整确认退役、其他owner/物理替换/fatal边界已有证据。
+这是对前述224输入失败的后继修复，未将中间失败或旧219输入通过改写为新版本全绿。
+
+228输入v1完整Native又暴露GC-003（后台GC误阻塞显式重初始化）；已保留同候选失败及可控RED，
+修复后旧reader恢复/新epoch与GC关闭回归通过。正在跑v2完整冻结，v1不得称全绿；
+删除恢复和原reader断言均保留，未把受控协议重放称为UI/规模/耐久验收。
+
+228输入v2最终本片检查通过：Core/SQLite253（63/190）、相关Native143，实验存储86/Native79，
+fmt/双配置严格Clippy/release通过；[收据及范围](../reports/2026-11-05-index-content-reuse-lease.md)。
+GC-002/003的既有断言原样GREEN，历史失败保留；Node现有adapter27项表征通过、依赖隔离完成，接线尚未实施。
+
+| ID | 可交付机制 / 可观察完成条件 | 状态 | 新RED/GREEN证据 |
+| --- | --- | --- | --- |
+| IX-00 | 固定298d原始128整写反例/历史失败保留；默认协商、保存1写/重复0写GREEN；最终候选Photos连续7265s完成，完整范围缺口及密度/其他补测仍单列 | IN_PROGRESS | [实际耐久与限制](../reports/2026-11-09-photos30k-versioned-index-endurance.md) |
+| IX-01 | file versions/组可见性/资格/owner及GC接通；GC-005 VM及NULL/live-pin边界通过；当前完整Node2412/Rust421通过，保留455时间豁免及旧失败 | IN_PROGRESS | [GC-005及证据](../reports/2026-11-08-versioned-index-gc-query-cost.md) |
+| IX-02 | Native单写/URI合并、长期4parser、合批/reader/取消/单终态已实现；Photos连续7265s、唯一store、首次30000后workspace295次0文档写；取消/失败写量未测 | IN_PROGRESS | [实际耐久与计数边界](../reports/2026-11-09-photos30k-versioned-index-endurance.md) |
+| IX-03 | 默认Node/LSP磁盘save/watch已接通；128/2048及新20K/30K保存/重复/关闭后符号/输入恢复通过；目录生命周期、明确漏watch对账另有回归；无事件自动发现不宣称修复 | IN_PROGRESS | [保存及规模证据](../reports/2026-11-08-versioned-index-gc-query-cost.md) |
+| IX-04 | 同data快照资格/ReferenceIndexFreshness已接通；新token同head资格0facts写及旧0005兼容均有公开回归；完整最终候选/交错长测仍待验收 | IN_PROGRESS | [新鲜度回归](../reports/2026-11-05-default-index-maintenance-and-noop-freshness.md) |
+| IX-05 | OS使用权/owner/pin/自动GC/有限内容复用/退役迁移已接通；ACK/异常关闭、双owner及物理替换有证据；冷namespace并发已修；Windows真机未测 | IN_PROGRESS | [生命周期及并发补证](../reports/2026-11-08-cold-cache-multi-root-initialization.md) |
+| IX-06 | 编辑/目录/配置/取消/关闭复合public LSP已执行；前候选完整2406PASS，新GC候选完整重验中；原30K长序列尚未完成 | IN_PROGRESS | [最终候选进度](../reports/2026-11-08-versioned-index-candidate-acceptance-progress.md) |
+| IX-07 | 前候选完整2406PASS，GC-005新候选focused/public20K+30K PASS；全量检查重跑；完整三轮规模、密度和计划原样Cargo命令收尾待完成 | IN_PROGRESS | [当前检查与规模证据](../reports/2026-11-08-versioned-index-candidate-acceptance-progress.md) |
+| IX-08 | 原失败场景至少2小时单会话30K协议耐久，round09在全量/规模后排队；Mac/Windows真实UI分别记 | NOT_STARTED | NOT_RUN |
+
+每片实施后用parent/final SHA、RED/GREEN命令/退出码、文件/产物身份和证据路径更新本表；
+局部GREEN不能标整体完成。IX-01–05的读写/资格/生命周期闭环前不启用新生产格式。
+对账仍可O(N)读取/核验，机制目标是未变facts不重写，不能称全路径规模无关。
+独立于query的后台索引、完整编译器/overlay/final fence、0031同步清算和0028安全使用权保留。
+455冷目录3秒项沿旧授权跳过；其他原失败包括0042的100K成本不得据此豁免。
+真实UI未执行不能被协议两小时替代；保护停测/OOM/错误结果不可剔除后报全绿。
+
+设计交付证据：`.bench/index-versioned-plan-20261103`，含设计前文件哈希/快照、远端编号依据、
+官方资料入口及文档验证；完整行为证据状态以本节实施片及TDD收据为准；整链路尚未GREEN。历史文档和原始性能证据保留。
+
+
+---
+
+以下为既有按日期记录的实施/实验检查点，其旧默认值、硬性能线及检查数保持历史语义。
 
 Current authorized work (2026-10-19, parent `3add6970`):
 [ADR 0019](../adr/0019-stable-programs-and-request-inputs.md) adopts stable semantic
@@ -2845,3 +2792,364 @@ not reproduced in selected/full30, native output retained, no guard removed or
 root-cause claim. New test-head whole still needed. Full installedSDK source-entry
 18 cells and separate2 phases described above are finite observations, not release
 or default adoption; all otherOP00–06/L08 work and historical failures remain.
+
+2026-11-04 IDX-V1校准记录：空export前缀在旧SQLite返回[]、MemoryStore返回导出项；新格式保留现行SQLite行为并有双oracle表征。该基线差异未修复，不以它追认全query-kind等价。
+
+### 2026-11-08 awake continuation / IDX-V1-ENV-004
+
+Final post-GC whole check remains2406/2406 and Rust416PASS/1existing ignored,2384 frozen inputs unchanged.
+Round10 completed all96 ordinary comparison sessions (66PASS/18functional-gap/12known baseline refusalFAIL).
+Ten profile cells completed before a baseline20K initialization observation overlapped confirmed Clamshell Sleep;
+zero query actions in that interrupted case, NORMAL shutdown/integrity, no evidence of productOOM/deadlock.
+User confirmed awake; exact isolated cold/warm retries bothPASS17 and NORMALclose (initialization27137/24940ms).
+OriginalFAIL retained. [Environment evidence and continuation](../reports/2026-11-08-index-acceptance-sleep-interruption.md).
+Round11 verifies unchanged gate/source/runtime/SDK/driver identity, reuses completed cells, runs remaining20profile
+cells, then originalPhotos30K7200s single-session protocol soak. No claim of completion/UI/Windows yet.
+Generatedtrue20K cold edit-first references median9488ms(max9517,3trials) remains slow; true30K reopen-definition
+median22480ms(max24217,3trials).30K global refusals remainfunctional gaps, never successful fast responses.
+No new product source, build, commit, deployment or published release.
+
+### IDX-V1-SCALE-003 / round11 stopped on a real completion deadline
+
+Actual30K dependency profile-warm first completion LSPid4/Workerid5 failed-32603 after30132ms;
+parentwatchdog execution-deadline30000ms, not external45s cutoff, notOOM or systemSleep.
+Admission/send0.486ms and Workerdispatch0.433ms: distinct from SCALE002 activeBGqueue wait.
+Program/checker returns4/4, sync19/19, phase=request/terminalnone; exact hot substageUNMEASURED.
+NORMALshutdown/no protective termination and integrityPASS; originalFAIL kept. Two bounded same-input ordinary/trace
+controls started, ordinary firstcompletionPASS23948ms sofar; not yet completed or proof of trace-only cause.
+Main24433 and waiter51394 terminatedFAIL; Photos7200s/density notstarted. Only control51588 live.
+[Timeline/source/remaining uncertainty](../reports/2026-11-08-30k-profile-completion-deadline.md).
+
+### SCALE003 paired controls have now terminated (no product change)
+
+Same30K/SDK/runtime/cache/query sequence: ordinary17actions completed with8 known full-reference/rename gaps,
+firstcompletion23948msPASS, NORMALclose/integrity. Trace control failed firstdefinition at~30.13s,
+execution-deadline phase=program (3starts/2returns), whereas originalcompletionfailure was phase=request/allreturns.
+Trace Nodepeak1394MiB, NORMALclose/integrity. Different observed phases cannot be unified without stack evidence;
+a single pair cannot prove tracing is the only cause. Raw `warm-completion-deadline-20261108`.
+Main24433, postflight51394, control51588 are all terminal; no active pressure load. Photos7200s NOT_STARTED.
+Next narrow diagnosis must distinguish mandatory compiler work from optional Program-stats synchronization,
+without threshold changes or speculative product fixes. Final2406/416 remains source-specific, not full acceptance.
+
+### SCALE003 call-stack diagnostic (separate modified bundle, 2026-11-08)
+
+Two exact wrappers instrument only compiler.getProgram and synchronizeHostData in a copied semantic bundle.
+Original79-asset runtime and2384 frozen product sources unchanged. Injection guard tests2PASS; initial incorrect
+absolute/relative runtime-copy input refused before load, then corrected. No product patch/rebuild/threshold change.
+Context7 TypeScript resolve again failed transport; actual installed4.9.5-r10 and its bundled source are authoritative.
+One protected run52680 failed firstdefinition~30015ms/NORMALclose/integrityPASS, not a new formal sample.
+Required getDefinitionAtPosition preflight: getProgram27028ms includes sync27027ms. Later getProgram1.58ms
+from definitionCandidates, residentcapture0.79ms, programStats0.995ms. No extra slow Program build fromstats here.
+Compiler query callback28777.898ms includes groupedcreateProgram26408.986ms; these nested values MUST NOT sum.
+Trace eventdefinitioncomplete at15:00:24.012Z and certification at.013; parentexecutiondeadline at.423 with all
+Program/checker returns. Last statsgetProgram returned23.331Z, so remaining observation/event span~681ms, not27s.
+Do not assign the remaining public-result interval to a specific finalfence/IPC stage without direct measurement.
+`scale003-stack-probe/causal-evidence.json` retains full call stacks/inclusive timings and modified-bundle identity.
+The slow extra-statistics-Program hypothesis is falsified in this sample; required real30K dependency compilation
+is a major measured cost. It does not prove the exact same hot stage in earlier uninstrumented failures.
+
+Independent original Photos30K slice14799 was then started on the UNMODIFIED79-asset runtime, exact preserved
+30060 input identities and full original scenario matrix; it calibrates44targets before its own7200s formal phase.
+SCALE003 staysOPEN, original profile/whole acceptance remainsFAILED/incomplete. This independent slice doesnot
+turn a failed gate green or omit failing Photos scenarios; no realZedUI/Windows claim. Density/finalCargo stillpending.
+
+### IDX-V1-INIT-002 OPEN: originalPhotos cold validation silence (2026-11-08)
+
+Independent Photos14799 terminalFAIL:30000 staged sources, thenexact30s no progress and parentdegraded;
+zero useractions/formalSeconds, originalinput30060 restored, NORMALshutdown. NOT a7200s success.
+NativeRSSpeak81.6MiB/Node740MiB. Privatecandidate1.83GB, manifesthead1/publishedgroup1/sealedversions30000/
+qualification1 but user_version0 and control stilllegacy: private data logically sealed, physicalactivationnotcomplete.
+ActualcodeCatalogMigration.try_activate writesprivatequalification then prepare_catalog validates quick/FK/FTS,
+then setsformat andsourcefences/publishescontrol. State bounds locate failure within pre-format validation, notquerySDK.
+PostflightCLI integrity_check timedout60s; this isUNPROVEN integrity, NOT observed corruption. Other2DB checksPASS.
+Original raw resultpostflightFAIL preserved. Separate readonlystate/schema/count receipts inphotos-soak-20261108-awake.
+Same bundledSQLite3.53.2 onAPFScloned DB:quick_check executes60s thencontrolledVMinterrupt; FK21.29s/0violations;
+FTSintegrity1.34sPASS; fullintegrity60s interrupted. No original DB writes; diagnostic interruptionsnotchecksuccess.
+Currentdefault2MiB pagecache vs legacybulk64MiB is a hypothesis: existingCatalogBuildSession explicitlysets65536KiB;
+newversionedbootstrap hasnoequivalent. Independent diagnostic40164 compares exactsamecopy, no product changes.
+Do notblindlyraise deadlines, skipvalidation, or claimcachecausebeforemeasurements. Context7rusqliteresolvefailed;
+actual0.40.1 hooks/bundled3.53.2 APIsused. Postscan SQLliveness/progressgranularity also requiresdirectevidence.
+Photosrepeat/7200/density/Cargo pending; SCALE003 remainsseparateOPEN; wholecandidateacceptanceNOT_COMPLETE.
+
+### 2026-11-09 INIT002 implementation checkpoint
+
+RealPhotos cold failed after30000staging/30s silence, noactions/formal time. SameSQLite3.53.2 copiedDB
+quick_check42.6s but actualVM callbackmaxgap282ms; cache64 hypothesis notsupported, no cache/timeoutchange.
+Scoped realSQLprogress/cancel+Native relay+strict parent DTO+workspaceaggregation+LSP validationstatus implemented.
+PublicRust firstRED->GREEN, cancellation/retry/realFKcorruption2PASS+existingretry3; Native actualNDJSON RED->GREEN1;
+realframedLSP RED->aggregationgapRED->GREEN2; publicadapter/lifecycle25PASS; focusedstrictClippyPASS.
+Old2406/416 fullgate belongs to preINIT002 source. Fresh integrated full check and original30K/7200s notcomplete.
+[Detailed mechanism, evidence and boundaries](../reports/2026-11-09-cold-photos-sql-validation-liveness.md).
+Temporaryworktree lost654 baselinefiles aroundmidnight; hashverifiedrestorepreservedchanges, causeUNKNOWN.
+No productbudget/V8/timeout/validator/identitypolicy change, no merge/release/deployment. SCALE003 remainsOPEN.
+
+### 2026-11-09 OBS009 fixture isolation repair and fresh full restart
+
+INIT002 firstfull defaultRust419PASS/1existing ignored; strict/release/experimentalretirement/GC/validation/455
+correctnessPASS. Experimentalcoldnamespace failedbeforeproductAPI due sharedtesthelper time-key collision.
+Publicconstructor actual32x32 RED837/1024; formalSQLiteRED765/1024 andNativeRED776/1024. Atomicsequence+mkdir
+fixes bothsamepatternhelpers, no less concurrency/adopt-existing; focusedSQLite15/Native2PASS.
+Only failedfullattempt's13ownedprocesses stopped,0remaining; partialNodecheck isNOT PASS, oldsupplementFAILkept.
+[Cause/repair/raw evidence](../reports/2026-11-09-test-directory-clock-collisions.md). Newcomplete check required.
+No product timeout/cache-size/RSS changes; INIT002 fullchecks/realPhotos7200s/density stillpending; SCALE003 OPEN.
+
+### IDX-V1-OBS-010：关闭后离线完整性观察上限（2026-11-09）
+
+[重开/补证报告](../reports/2026-11-09-photos-cache-reopen-postflight.md)：真实30K保留索引新会话重开6动作正确、正常退出，
+默认检查器60s ETIMEDOUT，原FAILED保留。独立同数据库/同只读SQL82.01s exit0/ok，结构及FK证据补齐；
+中间time-l包装器sysctl权限错误另留非PASS，未当产品崩溃或损坏。源30060、79资产/SDK一致。
+状态：DIAGNOSED_STRUCTURAL_SUPPLEMENTED；不是更改产品超时或默认脚本已通过，不重启原失败控制器覆盖证据。
+同store重开修正18个SHA不同映射，10复用已有sealed、8新写（3239facts），不是全库重写。
+原“能力探测”短进程依据raw schema更正为启动GC：正式主Native1+GC3，重开主Native1+GC1，活动缓存protected/删除0。
+密度对照97/97完成，[三轮普通计时/实际Program范围](../reports/2026-11-09-versioned-index-density-comparison.md)独立记录，
+不替代Photos重开默认检查结果或尚未执行的冷索引前台/当前Native规模复核。
+
+
+## 2026-11-09 IX-03 完成前公开反例复核
+
+INPUT-010 与受管缓存入源码树合同继续 OPEN，没有从既定计划删去。
+[本次根因与原始证据](../reports/2026-11-09-complete-query-namespace-freshness.md)：
+当前冻结运行产物真实 framed-LSP 两条回归 0PASS/2FAIL；缓存命中与关闭驻留、避开缓存的
+原生候选路径均在静默新增后成功返回旧3位置（应5），分别证实不能只清答案缓存。
+新增回归已登记 bundle-e2e，登记检查4PASS；尚未实施本片产品修复。
+此前2412/2412、Rust421PASS/1旧ignored、Photos7265.248s及密度97/97均保留为原产物证据，
+不代表新反例通过。后续实际修复需新检查及受影响规模/耐久复验；ADR0043/0044仍Proposed。
+
+
+## 2026-11-09 IX-03 名称/字节与范围准入实施后继
+
+[完整记录](../reports/2026-11-09-complete-query-namespace-freshness.md#实施后继名称磁盘输入与-native-覆盖范围)。
+INPUT-010候选已补实际名称+项目磁盘字节观测、打开文档缓存准入、现有单写对账恢复；
+静默内容变化对照证明 Native只写1文件/复用2文件。新增Native ignore/语义范围反例已RED→GREEN，
+复用既有v2完整扫描URI+source SHA摘要核对，未知/不同集合放弃裁剪并完整搜索；不新增索引数据库。
+缓存证明的诊断排队回归同样公开RED→GREEN，8项相关通过；没有用局部结果代替整体验收。
+中间39项、随后28项是不同明确快照；合并相关集实测57/57（此前明确构建）；后继恢复前置身份修订5/5与TSC PASS，不能累加冒充最新全量。
+Windows仅路径向量模拟。rename执行中最终namespace fence、受管缓存入源树合同、最新全检与受影响规模/长测继续OPEN。
+此前冻结候选的7265.248s/97项/完整门禁保留，不追认为新候选通过。未提交/部署/合并。
+
+
+后继恢复入口：完整输入捕获被识别为显式用户查询工作，复用共享熔断/修复探测；纯状态不探测、时间单独流逝不重建，
+已知不可用typed -32803/reason。原4受控失败后权威修复→第5主Worker恢复精确位置，峰1/关闭0，收据同上。
+此前已有热缓存与Native资格的故障恢复历史仍需补测。真实中文/emoji/特殊字符文件名Mac同例1/1，非Windows实机。
+
+### 2026-11-09 namespace 后继：重命名执行中变化与快照兼容
+
+- Program 捕获后静默新增 caller 的公开重命名反例 RED→GREEN；旧请求撤销，后继精确 5 项编辑。
+- 只读索引无 owner 不进入永久 dirty；旧式资格仅可发现，不授权裁剪。缓存夹具使用真实 READY 证明。
+- 最新重建六文件串行 52/52 PASS，0 SKIP；TSC/构建通过。证据：`namespace-final-20261109/combined-final-receipt.json`。
+- 最新完整/规模/耐久未完成；受管缓存在源码树内合同及热缓存后熔断历史仍 OPEN；不计作 UI/Windows。
+
+### 2026-11-09 热缓存恢复历史与受管缓存源码排除 RED
+
+热答案命中+Native 已裁剪后耗尽恢复预算，再撤销实际故障和修复未保存输入：定向1PASS/5filtered，
+证据 `namespace-final-20261109/warm-circuit-04`。前两次夹具错误及诊断栈保留，不宣称新产品缺陷。
+原计划受管缓存源码树边界标识 IDX-V1-CACHE-NS-001：实际 Native-owned 叶内 Generated.ets
+被当 caller，预期5实际7，公开 LSP RED。见 `namespace-final-20261109/managed-cache-red.log`。
+正常 Cache/User.ets 必须仍纳入，禁止屏蔽整个配置缓存根；实现/平台/全量/耐久未完成。
+最新产品仍是之前52项组合对应构建，本片仅补测试/夹具参数；不能宣称新增 RED 已修。
+
+完整恢复文件最终执行 `ownership-final-05.log` **6/6 PASS，0 SKIP，28.675s**。
+`warm-recovery-and-managed-cache-red-receipt.json` 绑定当前测试及产物身份；受管缓存公开 RED 仍保留，
+因此不是本轮所有回归通过。源码体积及 `git diff --check` 检查通过（旧 worker-protocol 迁移债不变）。
+
+### 2026-11-09 受管缓存排除：Native 所有权证明第一片
+
+IDX-V1-CACHE-NS-001 原公开 LSP RED 仍保持；Native 实际 CacheLease→CatalogStore→
+initialize/cache/namespace 的证明已实现，绑定持有目录对象而非 cache-use.json 或目录时间。
+目录替换拒绝、旧 owner 不写入替代目录 metadata；legacy/versioned（根可等于源码根）有公开 Native 回归。
+[调用链、证据及尚未接通的边界](../reports/2026-11-09-managed-cache-source-namespace.md)。
+Node/Worker/Native walker/watch 的同源排除、恢复重放与最终整体验收未完成，不把此原语当完整修复。
+ADR0043/0044 状态仍 Proposed；不修改 ADR0039 内容证明决策或 SQLite 发布/最终新鲜度合同。
+
+### 2026-11-09 managed source namespace integration
+
+IDX-V1-CACHE-NS-001 has public semantic 7-to-5 and Native scope 4-to-3 RED/GREEN
+chains. Node live proof admission, root-scoped ordered policy/removal, mutation
+coalescing, Worker data, Store/Native scan fences and watcher filtering are wired.
+Both nested and source-root cache layouts preserve real source siblings, regain
+qualified narrowing and keep the answer cache across private cache notifications.
+Related pinned 153/153, later spelling/policy controls 29/29 plus actual LSP13/13,
+and final layout controls 2/2 (7 filtered) are separately identified in
+[the implementation evidence](../reports/2026-11-09-managed-cache-source-namespace.md).
+Lifecycle replacement, actual Worker replay, overlapping multi-root and final
+full/scale/soak remain unverified. ADR0043/0044 remain Proposed, with no invented
+review or Accepted status; ADR0039 and final freshness/publication rules stand.
+
+
+### 2026-11-09 CACHE-NS original-owner retirement / Worker replay checkpoint
+
+IDX-V1-CACHE-NS-001 actual public directory replacement: source results recover but old Native owner
+writes new metadata RED; first guards then exposed late publication-lock-only RED. Original-owner
+lease admission and immutable live publication-lock identity repair ->2 lifecycle PASS, five serial
+independent replacement repeats exit0. Controlled actual Worker exit17 ->one replacement, same5refs,
+source count3, primary peak1, afterclose0; graceful shutdownComplete precedes replacement exit1.
+Related22 Node/0skip, focused14Rust, SQLite199/0ignored, strictClippy/release PASS; latest native
+be0845065bf75480e91d7ebe57934a742d8fbda070646d0374391ed5a8db5d43. Parent298d65f.
+[Report](../reports/2026-11-09-managed-cache-source-namespace.md), raw receipt
+`.bench/index-versioned-maintenance-20261104/namespace-final-20261109/managed-retirement-current-receipt.json`.
+All40 other Root files hashmatch. Not full current gates, Windows/UI, scale or fresh formal endurance;
+overlapping roots/Native owner-failure and in-flight replacement remain pending. No publish/deploy/merge.
+
+
+### 2026-11-09 CACHE-NS optional Native failure/source-role fix
+
+Parent298d65f; real isolated public LSP+minimal SDK. Controlled Native SIGTERM with unchanged cache
+first returned3refs then wrongly5 including Generated cache callers (native-owner-exit-red-02.log/raw).
+Keep previously attested directory role until workspace close, retaining per-scan physical validation;
+index failure/qualification semantics unchanged. GREEN exact3 and readiness2; after actual directory
+replacement same-session query exact5 real locations and replacement source-only. Final portable
+spawn-observer Mac control1/1PASS/0skip, native identity count1/no restart/LSP exit0. Not Windows/UI.
+Report: [managed-cache source namespace](../reports/2026-11-09-managed-cache-source-namespace.md).
+Evidence `.bench/index-versioned-maintenance-20261104/namespace-final-20261109/native-owner-portable-audit-green/`.
+New complete checks pending; earlier22Node/199SQLite belong to preceding identity. Multi-root overlap,
+current scale and fresh formal endurance remain open. No commit/merge/deploy/cache deletion.
+
+
+### 2026-11-09 CACHE-NS cross-root public RED / complete checkpoint intentionally stopped
+
+IDX-V1-CACHE-NS-001 overlap subcase: two roots/source2each/actual same cache owners; adding generated
+caller in B's real private leaf yields references3->3 with external cache, **3->5 WRONG** when cache
+is inside A. New durable `tests/semantic/managed-cache-multi-root.test.mjs`, fast manifest, Mac1PASS/
+1FAIL. Source exclusion is owner-root-only in adapter, Store view, Worker invalidation and Native
+walker signature; Native post-change indexing is UNMEASURED, so Node-only map repair is insufficient.
+[Report and next execution constraints](../reports/2026-11-09-managed-cache-source-namespace.md);
+raw `.bench/index-versioned-maintenance-20261104/namespace-final-20261109/managed-multi-root-public-red/`.
+ix11 release PASS, full Rust interrupted with all logs; checkfast not reached. Controlled stop only
+own4processes, verified gone,2415frozen inputs unchanged through stop. **STOPPED_NOT_COMPLETE**,
+not a fullgatePASS. Earlier native-failure/Worker-replay controls retain their own identities.
+Next: versioned owner-set propagation and affected-root invalidation in semantic+Native, then new
+full freeze/scale/30K soak. No merge/deploy; ADR0043/0044 Proposed. This is not UI or Windows.
+
+
+### 2026-11-09 CACHE-NS cross-root repair implemented / final gates pending
+
+IDX-V1-CACHE-NS-001 two-root RED3->5 ->final public **4/4PASS/0skip**,10.125s: two root orders,
+inside/external shared pool, exact3refs, real source edit/currentNative2/private symbols empty;
+inside cases peer-directory replacement ->exact5refs/currentNative3/recovered symbol1, shutdown0,
+replacement onlyRecovered.ets. Native public2PASS: forged ID/no input advance, null RED->rejected,
+[]revoke/ordinary point discovery/held old snapshot cancelled without late success. Actual scope
+removal receipt indexed1/written0/factRows0/reused1, not a physical scale measurement.
+Node42/42 current ordering/immutable multi-owner wire/late stale-peer/bootstrap/open-isolation controls.
+Earlier31Node+18Native are distinct prior checkpoints; latest TypeScript/release passed, Clippy passed
+before final null guard. Owner-vs-containing-root registry +existing revision/ACK barriers, Native
+source views and explicit requalification read floor; no SDK reset/wholeparent ignore/deadline/budget
+change. Conservative optional-index unavailability until complete scope qualification is explicit;
+not all partial-index cases, different cache pools, realSDK-in-source-layout, Windows/UI or endurance.
+[Detailed report](../reports/2026-11-09-managed-cache-source-namespace.md). Evidence under
+`.bench/index-versioned-maintenance-20261104/namespace-final-20261109/managed-multi-root-lifetime-final/`
+and `managed-peer-native-evidence-final/`. ADR0043/0044 remainProposed. Fresh full gates/scale/new30K
+soak pending; no merge/publish/deploy/real cache deletion.
+
+
+### 2026-11-09 IX12 后继：引用路由与恢复诊断
+
+- **IDX-V1-REF-ROUTE-001**：确认首次源码观测标脏Native后错误强制global/legacy，
+  实际overlayOnly=false；五项公开分批占用/取消/恢复回归修复后5PASS。
+  保留候选资格及完整源码fence，dirty只影响收窄资格，不强制改变语义策略。
+- **IDX-V1-DIAG-RECOVER-001**：确认旧Worker失败结清Other诊断后，成功重放没有
+  重新调度触发；公开最小RED为恢复完成后无publishDiagnostics。候选成功恢复通知
+  合并新诊断快照，半开等显式成功证明；不重放旧请求、不增加恢复预算。
+- 既有引用缓存测试缺SDK却期待完整缓存资格，公开状态partial/inputIdentity=null；
+  完整SDK对照还证明编辑后需重新建立Program资格。补正正/负前提，不放宽产品检查。
+- IX12完整结果：Rust425PASS/1既有ignored，Node六失败及等待后受控停止；不得标全量通过。
+  后继定向与最终候选身份、失败原始证据见[报告](../reports/2026-11-09-reference-route-and-recovery-diagnostics.md)。
+  新全量、规模与30K正式单会话验收仍待完成；UI/Windows未执行，不合并发布。
+
+
+2026-11-09 后继定向收据：`namespace-final-20261109/route-and-recovery-final-focused-02.log`
+32/32PASS、0skip，72.605s；完整源码/新鲜度、恢复、目录生命周期与清单同候选串行验证。
+缺/有效SDK结果缓存对照2PASS；主工作树其他40文件哈希未变。旧失败不覆盖，新全量/规模/
+30K正式长测仍需执行。详细范围见reference-route-and-recovery-diagnostics报告。
+
+
+### 2026-11-09 IX13停止后的必要正确性修正
+
+完整IX13停止时1693PASS/84FAIL（部分计数），不是完整通过；Photos15/density16未执行。
+IDX-V1-INDEX-ADMISSION-002首次观测误标脏已修正，公开组合22PASS；
+IDX-V1-INPUT-ADMISSION-001 Store成员刷新绕过旧负解析证明已修正，公开组合43PASS。
+owner真实Native资格驱动修正2PASS；anchor/资源清理完整组合仍待完成，其他原失败待重放。
+[根因、代码及原始证据](../reports/2026-11-09-reference-route-and-recovery-diagnostics.md)。
+后继候选仍需新完整检查及对应身份规模/两小时协议验收；ADR0043/0044保持Proposed，
+不改失败断言获得绿色，不把旧长测或Windows/UI未执行当已通过。不提交/发布/合并。
+
+
+2026-11-09后继：IDX-V1-INPUT-ADMISSION-002首份catalog收据缺失已修正，组合35PASS；
+IDX-V1-INPUT-ADMISSION-003失效容量证明未重扫已修正，组合36PASS（含原20K恢复）。
+锚点/清理/SDK/目录组合37PASS；均为小型公开协议/契约回归，不是UI或新两小时验收。
+原84失败的过滤重放52执行15PASS/37FAIL（修正前），完整门禁尚未GREEN；真实别名Native
+28/语义26范围不匹配有manifest证据，不能删校验换命中。未验证token实验已撤出。
+详见当日reference-route-and-recovery-diagnostics报告；全部原失败与插桩限制保留。
+
+
+IDX-V1-INPUT-PROOF-004（2026-11-09）：实际4608份输入事实在SourceResetAdmissions.begin
+触发4096健康capsule总配额，接口回归RED。依ADR0044移除此处配额，保留全事实新鲜度、
+失败明细上限及context/配置/clear释放；末尾输入变更及跨context所有权回归GREEN。
+最终该组46PASS/0skip；收据/容量/Store形状兼容组89PASS/0skip。不是扩大规模/UI认证，
+当前完整门禁和新30K仍未通过；原失败与无效实验均在最新报告关联。
+
+
+### 2026-11-09 输入证明用途与语义交付阶段
+
+- IDX-V1-TEST-QUALIFICATION-001：真实Native匹配/superset配对；正例SDK及显式READY前提，
+  按实际resident作用域注入并另存所有hash成本；8PASS，原1/6/溢出/终态断言保留。
+- IDX-V1-PROOF-PURPOSE-001：legacy已知SDK partial仍为无资格缓存全读源码；内部cache
+  用途省去该可选成本，未知/过期Program仍完整观察，严格协议/公开组合33PASS。
+  当前摘要与历史比较分离先RED后GREEN，后继公开/资格组合39PASS。
+- IDX-V1-PREPARE-REUSE-001：一次RPC重复prepare；仅unchanged且root/revision精确匹配
+  才复用第一次view，仍枚举/终检；40PASS。
+- IDX-V1-DIAG-HANDOFF-001：取消preparing仍等待1200ms准备任务，明确互斥scheduled/
+  preparing/semantic阶段后19PASS，实际Worker终态屏障保留；缓存15.44/15.21/15.01ms。
+- 内部Worker ABI3拒绝旧1/2，不改变Native或公开LSP；最终ABI3组合80PASS/0skip，类型检查exit0。
+
+[根因、原始失败、SDK/参数差异和限制](../reports/2026-11-09-input-proof-purpose-and-diagnostic-handoff.md)。
+各组合有重叠，不相加；不是完整门禁/当前30K/Windows/UI验收，不提交部署或合并。
+
+
+### 当前验收检查点：catalog测试迁移完成，等待新完整门禁
+
+ABI3冻结重放原19项失败均有公开接口GREEN对照；其中旧数值协议改为拒绝完整范围收窄，真实Native资格正向路径独立验证。
+本轮候选仅增加测试迁移/取证；此前产品修复仍须完整门禁和新的规模/30K长测验收。
+13项过滤组合、首次索引完整6项、Native持久恢复/证明完整10项及catalog/语义组5项已有实际证据，组合不可简单累加为全量通过。
+旧IX13失败和Photos15停止状态保留，density16未执行；不部署、不提交、不合并。
+[当前测试合同、原始失败与逐组证据](../reports/2026-11-09-input-proof-purpose-and-diagnostic-handoff.md)。
+
+
+### 2026-11-10 IX14完整失败及后继修复
+
+IX14完整2453项：2448PASS/5FAIL/0skip，冻结输入未变；原19项GREEN没有覆盖这5个新反例。
+稳定问题IDX-V1-IX14-001…005记录于[新门禁根因报告](../reports/2026-11-10-final-gate-regressions-and-input-admission.md)。
+001跨Worker命令解析准入旁路修复及引用恢复反证中，其余4项OPEN；不得启动新的30K负载或标完整通过。
+临时源码缺失已逐hash恢复并迁至`.bench/worktrees/index-versioned-maintenance-20261104`，原因未证实；
+旧路径证据不改写，新候选须重新记录身份。未部署/提交/合并；Windows新SSH复核仍超时。
+
+
+### 2026-11-10 IX14五项后继针对性修复
+
+001保持编辑集拒绝与独立引用恢复各自合同；002/004修正READY夹具前提；005以真实Native资格revision为准；
+003稳定物理catalog扫描来源并保护symlink retarget。针对性GREEN不等于完整门禁；扩大回归进行中。
+原IX14 2448PASS/5FAIL及所有中间失败保留。完整验收/新规模/30K/UI仍未完成，不提交合并。
+详见[当前根因及证据](../reports/2026-11-10-final-gate-regressions-and-input-admission.md)。
+
+
+### IX15采样权限失败（非验收通过）
+
+78项生命周期与34项编辑集/批次控制GREEN。IX15外部采样ps被沙箱拒绝，实际提前停止，
+保持FAIL/不完整；同条件允许真实采样后两项原样GREEN。后继IX16完整重跑，Photos17未运行。
+不以修正权限为由删旧失败，不修改产品采样或正确性规则。
+
+
+### 当前执行链（2026-11-10，非验收完成）
+
+IX16完整检查活跃；Photos18等待门禁。OBS-011先修正缺失审计的合法等待状态，
+scale19在任何负载前封存，scale21/density20经过回归后仅等待，无并行压力。
+完成后的正式顺序及尚缺共享依赖覆盖见[当前证据报告](../reports/2026-11-10-final-gate-regressions-and-input-admission.md)。
+不改变IX-07/08未完成，不将控制器GREEN冒称实测GREEN；SDK/UI/Windows和30K完整引用重命名限制保留。
+
+
+### IX16完整结果与IX17后继
+
+完整2455项：2454PASS/1FAIL/0skip，输入未变；原IX14五项对应全量GREEN。
+新失败为mtime准备断言，已用固定初始化时间和严格相等保持原场景，集成后真实W整文件8PASS。
+原失败/工具副本/自然与固定时间文件系统对照均保留；未放宽产品或性能策略。
+IX17须重新完整检查；此前Photos18/scale21/density20/topology22均实际零压力负载并随门禁失败停止。
+后继23/24/25/26是独立证据目录，不将控制器或原型通过当作新规模或2小时通过。

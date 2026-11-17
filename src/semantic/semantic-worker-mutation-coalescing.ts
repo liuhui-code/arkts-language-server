@@ -51,6 +51,9 @@ export function mergeWorkspaceInvalidations(
     kind: "workspaceFilesChanged",
     rootUri: previous.rootUri,
     rootDirty: previous.rootDirty || next.rootDirty,
+    ...((next.managedSourceNamespaces ?? previous.managedSourceNamespaces) ? {
+      managedSourceNamespaces: next.managedSourceNamespaces ?? previous.managedSourceNamespaces,
+    } : {}),
     ...(previous.configurationChanged === true || next.configurationChanged === true ? { configurationChanged: true } : {}),
     resourceDirty: previous.resourceDirty || next.resourceDirty,
     resourceChanged: previous.resourceChanged || next.resourceChanged,

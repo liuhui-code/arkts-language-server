@@ -1,4 +1,20 @@
 mod catalog;
+mod maintenance;
+mod maintenance_engine;
+mod maintenance_fact_batch;
+mod maintenance_file_engine;
+mod maintenance_file_input;
+mod maintenance_pending;
+mod managed_cache_admission;
+mod protocol;
+mod read_query;
+mod read_runtime;
+mod reader;
+mod reader_worker;
+mod server_loop;
+mod source_scope;
+mod workspace_runtime;
+use server_loop::run;
 mod stdio;
 use stdio::{InputUpdate, spawn_input_reader, write_response};
 mod cache_cli;
@@ -30,84 +46,15 @@ const MAX_EXCLUDED_URI_BYTES: usize = 4_096;
 const MAX_EXCLUDED_URI_TOTAL_BYTES: usize = 64 * 1_024;
 const CATALOG_HEARTBEAT_INTERVAL: Duration = Duration::from_millis(250);
 
-#[derive(Deserialize)]
-struct Request {
-    protocol: u32,
-    id: u64,
-    method: String,
-    #[serde(default)]
-    params: Value,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct InitializeParams {
-    workspace_root: PathBuf,
-    cache_directory: PathBuf,
-}
-
-#[derive(Deserialize)]
-struct ChangedDocument {
-    uri: String,
-    text: String,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct RefreshParams {
-    generation: u64,
-    changed: Vec<ChangedDocument>,
-    #[serde(default)]
-    removed_uris: Vec<String>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct SearchParams {
-    query: String,
-    limit: usize,
-    #[serde(default)]
-    excluded_uris: Vec<String>,
-}
-
-#[derive(Deserialize)]
-struct ProtocolPosition {
-    line: u32,
-    character: u32,
-}
-
-#[derive(Deserialize)]
-struct CatalogStartParams {
-    #[serde(rename = "reason")]
-    _reason: String,
-    #[serde(rename = "force")]
-    force: bool,
-}
-
-#[derive(Deserialize)]
-struct CatalogCancelParams {
-    generation: u64,
-}
-
-struct ProtocolError {
-    code: &'static str,
-    message: String,
-}
-
-impl ProtocolError {
-    fn new(code: &'static str, message: impl Into<String>) -> Self {
-        Self {
-            code,
-            message: message.into(),
-        }
-    }
-}
-
+use protocol::*;
 struct Runtime {
     index: Option<WorkspaceIndex>,
+    maintenance: Option<maintenance::Maintenance>,
+    readers: Option<reader::Readers>,
     workspace_root: Option<PathBuf>,
     database_path: Option<PathBuf>,
     workspace_identity: Option<String>,
+    managed_cache: Option<arkts_index_sqlite::cache_gc::namespace::ManagedCacheNamespace>,
     state: IndexState,
     committed_generation: u64,
     completeness: &'static str,
@@ -129,9 +76,12 @@ impl Default for Runtime {
     fn default() -> Self {
         Self {
             index: None,
+            maintenance: None,
+            readers: None,
             workspace_root: None,
             database_path: None,
             workspace_identity: None,
+            managed_cache: None,
             state: IndexState::Warming,
             committed_generation: 0,
             completeness: "stale",
@@ -147,58 +97,49 @@ impl Default for Runtime {
 }
 
 impl Runtime {
+    fn legacy_read(&mut self, method: &str, params: Value) -> Result<Value, ProtocolError> {
+        managed_cache_admission::protocol(self.managed_cache.as_ref())?;
+        let context = read_query::ReadContext {
+            store: self.index.as_ref().map(WorkspaceIndex::read_store),
+            root: self.workspace_root.as_deref(),
+            identity: self.workspace_identity.as_deref(),
+            completeness: self.completeness,
+            head: self.committed_generation,
+        };
+        let result = context.dispatch(method, params);
+        if method != "class-bindings/resolve" && result.as_ref().is_err_and(|e| e.store_failure) {
+            self.state = IndexState::Degraded;
+            self.completeness = "stale";
+        }
+        result
+    }
     fn dispatch(
         &mut self,
         request: Request,
         catalog_updates: &Sender<CatalogUpdate>,
     ) -> Result<(Value, bool), ProtocolError> {
+        if matches!(
+            request.method.as_str(),
+            "refresh" | "catalog/start" | "maintenance/start" | "maintenance/changes"
+        ) {
+            managed_cache_admission::protocol(self.managed_cache.as_ref())?;
+        }
         match request.method.as_str() {
+            "index/cancel" | "index/reader-status" => self
+                .read_control(&request.method, request.params)
+                .map(|v| (v, false)),
             "health" => Ok((
                 json!({"protocolVersion": PROTOCOL_VERSION, "status": self.status()}),
                 false,
             )),
-            "initialize" => {
-                let params: InitializeParams = parse_params(request.params)?;
-                if self.catalog.is_some() {
+            "initialize" => self.initialize_workspace(parse_params(request.params)?),
+            "refresh" => {
+                if self.maintenance.is_some() {
                     return Err(ProtocolError::new(
-                        "busy",
-                        "initialize cannot replace a workspace while its catalog is active",
+                        "incompatible",
+                        "versioned clients must use maintenance updates",
                     ));
                 }
-                let workspace_root = fs::canonicalize(&params.workspace_root).map_err(|error| {
-                    ProtocolError::new(
-                        "io",
-                        format!("failed to canonicalize workspace root: {error}"),
-                    )
-                })?;
-                let cache = workspace_cache_location(&params.cache_directory, &workspace_root)
-                    .map_err(protocol_store_error)?;
-                let store = CatalogStore::open(&cache.database_path, &cache.workspace_identity)
-                    .map_err(protocol_store_error)?;
-                let index = WorkspaceIndex::with_store(store);
-                let metadata = index.metadata().map_err(protocol_store_error)?;
-                self.committed_generation = metadata.committed_generation;
-                self.state = IndexState::Warming;
-                self.completeness = "stale";
-                self.rejected_count = metadata.rejected_documents.len();
-                self.workspace_root = Some(workspace_root);
-                self.database_path = Some(cache.database_path);
-                self.workspace_identity = Some(cache.workspace_identity.clone());
-                self.phase = "idle";
-                self.building_generation = None;
-                self.next_catalog_generation = self.committed_generation.saturating_add(1);
-                self.progress = CatalogProgress::default();
-                self.message = None;
-                self.index = Some(index);
-                Ok((
-                    json!({
-                        "workspaceIdentity": cache.workspace_identity,
-                        "status": self.status(),
-                    }),
-                    false,
-                ))
-            }
-            "refresh" => {
                 let params: RefreshParams = parse_params(request.params)?;
                 if self.catalog.is_some() {
                     return Err(ProtocolError::new(
@@ -243,116 +184,17 @@ impl Runtime {
                     false,
                 ))
             }
-            "search" => {
-                let params: SearchParams = parse_params(request.params)?;
-                validate_excluded_uris(&params.excluded_uris)?;
-                let search_result = self
-                    .index
-                    .as_ref()
-                    .ok_or_else(not_initialized)?
-                    .search_excluding(&params.query, params.limit, &params.excluded_uris);
-                let result = match search_result {
-                    Ok(result) => result,
-                    Err(error) => {
-                        self.state = IndexState::Degraded;
-                        self.completeness = "stale";
-                        return Err(protocol_store_error(error));
-                    }
-                };
-                let items: Vec<_> = result
-                    .items
-                    .into_iter()
-                    .map(|symbol| {
-                        let mut item = json!({
-                            "name": symbol.name,
-                            "kind": symbol_kind_name(symbol.kind),
-                            "uri": symbol.uri,
-                            "range": {
-                                "start": {
-                                    "line": symbol.range.start.line,
-                                    "character": symbol.range.start.character,
-                                },
-                                "end": {
-                                    "line": symbol.range.end.line,
-                                    "character": symbol.range.end.character,
-                                },
-                            },
-                        });
-                        if let Some(container) = symbol.container {
-                            item["containerName"] = json!(container);
-                        }
-                        item
-                    })
-                    .collect();
-                Ok((
-                    json!({
-                        "items": items,
-                        "servedGeneration": result.served_generation,
-                        "completeness": self.completeness,
-                    }),
-                    false,
-                ))
+            "search" | "exports/search" | "references/candidates" | "class-bindings/resolve" => {
+                self.legacy_read(&request.method, request.params)
+                    .map(|v| (v, false))
             }
-            "exports/search" => {
-                let params: SearchParams = parse_params(request.params)?;
-                let search_result = self
-                    .index
-                    .as_ref()
-                    .ok_or_else(not_initialized)?
-                    .search_exports(&params.query, params.limit);
-                let result = match search_result {
-                    Ok(result) => result,
-                    Err(error) => {
-                        self.state = IndexState::Degraded;
-                        self.completeness = "stale";
-                        return Err(protocol_store_error(error));
-                    }
-                };
-                let items: Vec<_> = result
-                    .items
-                    .into_iter()
-                    .map(|export| {
-                        let mut item = json!({
-                            "exportedName": export.exported_name,
-                            "kind": symbol_kind_name(export.kind),
-                            "uri": export.uri,
-                            "ordinal": export.ordinal,
-                            "range": {
-                                "start": {
-                                    "line": export.range.start.line,
-                                    "character": export.range.start.character,
-                                },
-                                "end": {
-                                    "line": export.range.end.line,
-                                    "character": export.range.end.character,
-                                },
-                            },
-                        });
-                        for (name, value) in [
-                            ("declarationIdentity", export.declaration_identity),
-                            ("importSpecifier", export.import_specifier),
-                            ("moduleId", export.module_id),
-                            ("targetScope", export.target_scope),
-                        ] {
-                            if let Some(value) = value {
-                                item[name] = json!(value);
-                            }
-                        }
-                        item
-                    })
-                    .collect();
-                Ok((
-                    json!({
-                        "items": items,
-                        "servedGeneration": result.served_generation,
-                        "completeness": self.completeness,
-                    }),
-                    false,
-                ))
-            }
-            "references/candidates" => self.reference_candidates(request.params),
-            "class-bindings/resolve" => self.class_binding_discovery(request.params),
             "catalog/start" => {
+                if self.maintenance.is_some() {
+                    return Err(ProtocolError::new(
+                        "incompatible",
+                        "versioned clients must use maintenance/start",
+                    ));
+                }
                 let params: CatalogStartParams = parse_params(request.params)?;
                 if let Some(active) = &self.catalog {
                     return Ok((
@@ -390,6 +232,7 @@ impl Runtime {
                     generation,
                     params.force,
                     catalog_updates.clone(),
+                    self.managed_cache.clone(),
                 );
                 self.catalog = Some(ActiveCatalog {
                     generation,
@@ -423,12 +266,53 @@ impl Runtime {
                     false,
                 ))
             }
+            "cache/namespace" => {
+                if request.params != json!({}) {
+                    return Err(ProtocolError::new(
+                        "invalid_params",
+                        "cache namespace takes no parameters",
+                    ));
+                }
+                let proof = self.managed_cache.as_ref().ok_or_else(|| {
+                    ProtocolError::new("uninitialized", "no opened managed cache namespace")
+                })?;
+                proof
+                    .validate()
+                    .map_err(|message| ProtocolError::new("cache_namespace_changed", message))?;
+                Ok((json!(proof), false))
+            }
             "status" => Ok((self.status(), false)),
             "shutdown" => {
+                if let Some(readers) = self.readers.as_mut() {
+                    readers.close_clients();
+                }
                 if let Some(active) = &self.catalog {
                     active.control.cancel();
                 }
                 Ok((json!({}), true))
+            }
+            method if method.starts_with("maintenance/") => {
+                let result = self
+                    .maintenance
+                    .as_mut()
+                    .ok_or_else(|| {
+                        ProtocolError::new(
+                            "incompatible",
+                            "maintenance capability was not negotiated",
+                        )
+                    })?
+                    .dispatch(method, request.params)?;
+                if matches!(method, "maintenance/changes" | "maintenance/start")
+                    && result["accepted"] == true
+                {
+                    self.state = IndexState::Warming;
+                    self.completeness = "stale";
+                    let input = self.maintenance.as_ref().and_then(|m| m.observed_input());
+                    if let Some(readers) = self.readers.as_mut() {
+                        readers.invalidate(input);
+                    }
+                }
+                Ok((result, false))
             }
             _ => Err(ProtocolError::new(
                 "method_not_found",
@@ -443,97 +327,6 @@ fn main() {
         eprintln!("arkts-index-sidecar: {error}");
         std::process::exit(1);
     }
-}
-
-fn run() -> Result<(), String> {
-    let stdout = Mutex::new(io::stdout());
-    let (input_sender, input_receiver) = mpsc::channel();
-    spawn_input_reader(input_sender)?;
-    let (catalog_sender, catalog_receiver) = mpsc::channel();
-    let mut runtime = Runtime::default();
-    let mut last_catalog_event = Instant::now();
-
-    'server: loop {
-        while let Ok(update) = catalog_receiver.try_recv() {
-            if let Some(event) = runtime.handle_catalog_update(update) {
-                write_response(&stdout, event)?;
-                last_catalog_event = Instant::now();
-            }
-        }
-        if runtime.catalog.is_some() && last_catalog_event.elapsed() >= CATALOG_HEARTBEAT_INTERVAL {
-            write_response(&stdout, runtime.catalog_progress_event())?;
-            last_catalog_event = Instant::now();
-        }
-
-        let input = match input_receiver.recv_timeout(Duration::from_millis(10)) {
-            Ok(input) => input,
-            Err(mpsc::RecvTimeoutError::Timeout) => continue,
-            Err(mpsc::RecvTimeoutError::Disconnected) => break,
-        };
-        let line = match input {
-            InputUpdate::Line(line) => line,
-            InputUpdate::End => break,
-            InputUpdate::Error(message) => return Err(message),
-        };
-        if line.trim().is_empty() {
-            continue;
-        }
-        let request: Request = match serde_json::from_str(&line) {
-            Ok(request) => request,
-            Err(error) => {
-                write_response(
-                    &stdout,
-                    json!({
-                        "protocol": PROTOCOL_VERSION,
-                        "id": null,
-                        "ok": false,
-                        "error": {"code": "invalid_request", "message": error.to_string()},
-                    }),
-                )?;
-                continue;
-            }
-        };
-        let id = request.id;
-        let dispatched = if request.protocol == PROTOCOL_VERSION {
-            runtime.dispatch(request, &catalog_sender)
-        } else {
-            Err(ProtocolError::new(
-                "protocol_mismatch",
-                format!(
-                    "client protocol {} is incompatible with sidecar protocol {PROTOCOL_VERSION}",
-                    request.protocol
-                ),
-            ))
-        };
-        let (response, shutdown) = match dispatched {
-            Ok((result, shutdown)) => (
-                json!({
-                    "protocol": PROTOCOL_VERSION,
-                    "id": id,
-                    "ok": true,
-                    "result": result,
-                }),
-                shutdown,
-            ),
-            Err(error) => (
-                json!({
-                    "protocol": PROTOCOL_VERSION,
-                    "id": id,
-                    "ok": false,
-                    "error": {"code": error.code, "message": error.message},
-                }),
-                false,
-            ),
-        };
-        write_response(&stdout, response)?;
-        if shutdown {
-            break 'server;
-        }
-    }
-    if let Some(active) = &runtime.catalog {
-        active.control.cancel();
-    }
-    Ok(())
 }
 
 fn parse_params<T: for<'de> Deserialize<'de>>(value: Value) -> Result<T, ProtocolError> {
@@ -574,15 +367,25 @@ fn validate_excluded_uris(uris: &[String]) -> Result<(), ProtocolError> {
 fn protocol_store_error(error: StoreError) -> ProtocolError {
     let code = match error.kind() {
         StoreErrorKind::Busy => "busy",
+        StoreErrorKind::Cancelled => "cancelled",
         StoreErrorKind::Corrupt => "corrupt",
         StoreErrorKind::Incompatible => "incompatible",
+        StoreErrorKind::MigrationRequired => "migration_required",
+        StoreErrorKind::ProducerSuperseded => "producer_superseded",
         StoreErrorKind::WorkspaceMismatch => "workspace_mismatch",
         StoreErrorKind::InvalidData => "invalid_data",
         StoreErrorKind::InvalidGeneration => "invalid_generation",
         StoreErrorKind::Io => "io",
         StoreErrorKind::Internal => "internal",
     };
-    ProtocolError::new(code, error.to_string())
+    ProtocolError {
+        code,
+        message: error.to_string(),
+        store_failure: !matches!(
+            error.kind(),
+            StoreErrorKind::MigrationRequired | StoreErrorKind::ProducerSuperseded
+        ),
+    }
 }
 
 fn not_initialized() -> ProtocolError {

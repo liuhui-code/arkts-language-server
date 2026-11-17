@@ -19,7 +19,8 @@ for (const scenario of [
     if (scenario.directory) fs.mkdirSync(path.join(f.workspace, "nested"))
     if (scenario.partial) {
       fs.mkdirSync(path.join(f.workspace, "noise"))
-      for (let i = 0; i < 20_001; i++) fs.writeFileSync(path.join(f.workspace, "noise", `Unused${i}.ts`), "export {}\n")
+      fs.writeFileSync(path.join(f.workspace, "UnsupportedLarge.ts"), " ".repeat(4 * 1024 * 1024 + 1))
+      for (let i = 0; i < 32; i++) fs.writeFileSync(path.join(f.workspace, "noise", `Unused${i}.ts`), "export {}\n")
     }
     const responses = []
     try {

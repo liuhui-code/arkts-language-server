@@ -1,3 +1,4 @@
+import type { ValidationDirectoryProof } from "../../project/request-input-validation.js"
 import type { WorkspaceDocument } from "../sdk/workspace-loader.js"
 import type { SemanticResponseState } from "../protocol.js"
 import type { WorkspaceContentDelta } from "./workspace-content-changes.js"
@@ -18,7 +19,22 @@ export interface ProjectMembershipSnapshot {
 
 export type ProjectFileAdmissionToken = string
 
+/** Actual bounded read plus the physical identity proven around that same descriptor. */
+export interface ProjectSourceSnapshot {
+  readonly content: string
+  readonly identity: { readonly physicalPath: string; readonly stamp: string }
+}
+
 export interface ProjectFileAccessPort {
+  /** Cancellation only; no path normalization, lookup or IO. Optional for legacy adapters. */
+  checkpoint?(): void
+  /** Store-owned live text authority; independent of bounded raw delivery. */
+  overlayFor?(filePath: string): { readonly content: string; readonly documentVersion?: number } | undefined
+  /** Optional native catalog reconciliation; absent ports retain the full scope. */
+  refreshProjectMembership?(rootPath: string): { readonly catalogStamp: WorkspaceCatalogStamp }
+  membershipFor?(rootPath: string): ProjectMembershipSnapshot
+  readSnapshot?(canonicalRootId: string, catalogRevision: number,
+    filePath: string, token: ProjectFileAdmissionToken): ProjectSourceSnapshot | null
   tokenFor(
     canonicalRootId: string,
     catalogRevision: number,
@@ -39,7 +55,15 @@ export interface WorkspaceCatalogStamp {
   readonly revision: number | null
 }
 
+/** Store-owned origin of a view whose paths exclude shadowed overlay aliases. */
+export const WORKSPACE_MEMBERSHIP_ORIGIN = Symbol("workspaceMembershipOrigin")
+export const WORKSPACE_SOURCE_DIRECTORIES = Symbol("workspaceSourceDirectories")
 export interface SemanticWorkspaceView {
+  readonly [WORKSPACE_SOURCE_DIRECTORIES]?: (directoryPath: string) => ValidationDirectoryProof | undefined
+  readonly [WORKSPACE_MEMBERSHIP_ORIGIN]?: {
+    readonly catalog: ProjectMembershipSnapshot
+    readonly view: ProjectMembershipSnapshot
+  }
   readonly [WORKSPACE_CATALOG_STAMP]?: WorkspaceCatalogStamp
   rootPath: string
   /** Resolver generation used to build membership and dependency input projections. */

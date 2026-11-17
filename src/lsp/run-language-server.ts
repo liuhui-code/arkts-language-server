@@ -1,3 +1,5 @@
+import { registerWorkspaceFileInputs } from "./register-workspace-file-inputs.js"
+import { deliverWorkspaceFileInputs } from "./workspace-input-delivery.js"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
 import {
@@ -144,6 +146,8 @@ export function runLanguageServer(services?: LanguageServerServices): void {
     }))
     workspaceFileChanges = new WorkspaceFileChangeCoordinator({
       rootUris, isResourceFile: semantic.isResourceFile?.bind(semantic),
+      isSourceNamespace: semantic.isSourceNamespace?.bind(semantic),
+      isManagedCachePath: semantic.isManagedCachePath?.bind(semantic),
     })
     supportsWatchedFileRegistration = params.capabilities.workspace
       ?.didChangeWatchedFiles?.dynamicRegistration === true
@@ -164,6 +168,7 @@ export function runLanguageServer(services?: LanguageServerServices): void {
         textDocumentSync: {
           openClose: true,
           change: TextDocumentSyncKind.Incremental,
+          save: true,
         },
         completionProvider: { triggerCharacters: ["."], resolveProvider: true },
         definitionProvider: true,
@@ -181,6 +186,8 @@ export function runLanguageServer(services?: LanguageServerServices): void {
         watchers: [
           { globPattern: "**/*.ets" },
           { globPattern: "**/*.ts" },
+          { globPattern: "**/.gitignore" },
+          { globPattern: "**/.git/info/exclude" },
           { globPattern: "**/oh-package.json5" },
           { globPattern: "**/oh-package-lock.json5" },
           { globPattern: "**/build-profile.json5" },
@@ -213,8 +220,8 @@ export function runLanguageServer(services?: LanguageServerServices): void {
     for (const workspace of workspaceRoots) freshness.cancelWorkspace(workspace.id)
     if (projectChanged) semantic.configureProject?.(configured.project)
     if (sdkChanged) semantic.configureSdk?.(configured.sdk)
-    semantic.workspaceFilesChanged?.(workspaceRoots.map(({ rootUri }) => ({
-      rootUri, rootDirty: true, changes: [],
+    deliverWorkspaceFileInputs(semantic, workspaceSymbols, workspaceRoots.map(({ rootUri }) => ({
+      rootUri, rootDirty: true, configurationChanged: true, changes: [],
     })))
     workspaceSymbols?.workspaceFilesChanged(workspaceRoots.map(({ id }) => id))
     for (const workspaceId of new Set([
@@ -228,44 +235,8 @@ export function runLanguageServer(services?: LanguageServerServices): void {
       logger.info("sdk.configuration.changed", { workspaceCount: workspaceRoots.length })
     }
   })
-  connection.onDidChangeWatchedFiles(({ changes }) => {
-    workspaceFileChanges.accept(changes)
-    const batches = workspaceFileChanges.drain()
-    if (batches.length > 0) {
-      for (const batch of batches) {
-        freshness.cancelWorkspace(projects.projectFor(batch.rootUri).id)
-      }
-      semantic.workspaceFilesChanged?.(batches)
-      workspaceSymbols?.workspaceFilesChanged([...new Set(batches.map((batch) => projects.projectFor(batch.rootUri).id))])
-      const resourceWorkspaceIds = new Set(
-        batches
-          .filter((batch) => batch.resourceChanged)
-          .map((batch) => projects.projectFor(batch.rootUri).id),
-      )
-      const dirtyWorkspaceIds = new Set(
-        batches.filter((batch) => batch.rootDirty
-          || batch.changes.some(change => /\.(?:ets|ts)$/i.test(fileURLToPath(change.uri)))).map((batch) => projects.projectFor(batch.rootUri).id),
-      )
-      for (const workspaceId of dirtyWorkspaceIds) diagnostics.refreshWorkspace(workspaceId)
-      if (resourceWorkspaceIds.size > 0) {
-        let scheduledDocuments = 0
-        for (const document of documents.all()) {
-          const workspaceId = projects.projectFor(document.uri).id
-          if (
-            !dirtyWorkspaceIds.has(workspaceId)
-            && document.getText().includes("$r") && resourceWorkspaceIds.has(workspaceId)
-          ) {
-            scheduledDocuments += 1
-            diagnostics.update(document)
-          }
-        }
-        logger.info("diagnostics.resource.refresh.scheduled", {
-          workspaceCount: resourceWorkspaceIds.size,
-          documentCount: scheduledDocuments,
-        })
-      }
-    }
-  })
+  registerWorkspaceFileInputs({ connection, documents, projects, semantic, workspaceSymbols,
+    freshness, diagnostics, logger, coordinator: () => workspaceFileChanges })
   documents.onDidChangeContent(({ document }) => {
     const changed = snapshot(document, projects)
     freshness.cancelDocument(document.uri)

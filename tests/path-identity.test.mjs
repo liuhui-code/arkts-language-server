@@ -92,3 +92,49 @@ test("resolved Windows scopes do not merge differently cased directories without
   assert.equal(api.containsResolvedPath("D:\\Root\\Case", "d:\\Root\\Case\\Member.ts"), true)
   assert.equal(api.containsResolvedPath("D:\\Root\\Case", "d:\\Root\\case\\Member.ts"), false)
 })
+
+
+test("complete-scan input URI codec matches shared Rust vectors on simulated platforms", t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-source-uri-"))
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const outfile = path.join(directory, "source-uri.cjs")
+  buildSync({ entryPoints: ["src/semantic/project-source-namespace.ts"],
+    bundle: true, platform: "node", format: "cjs", outfile })
+  const { indexSourceUri } = createRequire(import.meta.url)(outfile)
+  const vectors = fs.readFileSync(new URL("./fixtures/path-identity-vectors.tsv", import.meta.url), "utf8")
+  for (const row of vectors.trim().split("\n")) {
+    const [platform, filePath, uri] = row.split("\t")
+    assert.equal(indexSourceUri(filePath, platform === "windows" ? "win32" : "darwin"), uri, row)
+  }
+  assert.equal(indexSourceUri(String.raw`\\?\D:\Photos\MixedCase.ts`, "win32"), "file:///d:/Photos/MixedCase.ts")
+  assert.equal(indexSourceUri("/Photos/a'b!%.ets", "darwin"), "file:///Photos/a%27b%21%25.ets")
+})
+
+test("managed cache admission scopes the verified expected leaf, not a different spelling in Native transport", async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-managed-admission-alias-"))
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const workspace = path.join(directory, "workspace")
+  const cache = path.join(workspace, "Cache")
+  fs.mkdirSync(workspace)
+  const identity = pathToFileURL(fs.realpathSync.native(workspace)).href
+  const { createHash } = await import("node:crypto")
+  const key = createHash("sha256").update("arkts-index-cache\0v2\0").update(identity).digest("hex")
+  const leaf = path.join(cache, "workspaces", key)
+  fs.mkdirSync(leaf, { recursive: true })
+  const alias = path.join(directory, "transport-alias")
+  fs.symlinkSync(leaf, alias, process.platform === "win32" ? "junction" : "dir")
+  const outfile = path.join(directory, "admission.cjs")
+  buildSync({ entryPoints: ["src/index/managed-cache-namespace.ts"], bundle: true,
+    platform: "node", target: "node20", format: "cjs", outfile })
+  const { readManagedCacheNamespace } = createRequire(import.meta.url)(outfile)
+  const proof = { directory: alias, workspaceIdentity: identity, objectId: "held-native-object" }
+  let calls = 0
+  const session = { workspaceIdentity: identity, async request(method, params) {
+    assert.equal(method, "cache/namespace"); assert.deepEqual(params, {}); calls++
+    return proof
+  } }
+  const observed = await readManagedCacheNamespace(session, { managedCache: proof },
+    fs.realpathSync.native(workspace), fs.realpathSync.native(cache))
+  assert.equal(observed?.directory, fs.realpathSync.native(leaf))
+  assert.equal(calls, 1, "an equivalent spelling still requires the live Native round trip")
+})

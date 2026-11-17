@@ -102,3 +102,31 @@ Context7查询`/microsoft/typescript`给出官方[补全实现说明](https://gi
 144补全0份-32803；96详情0错误但仅10份实际签名、86份通用回退，SDK缺项定义2次失败、全量范围3次失败，
 秒级自动读取与索引99%写入慢、未观察到shutdown答复等限制详见[最终报告](../reports/2026-10-30-windows-ui-fixes.md)。
 测试及运行产物身份、原失败和豁免均保留。本文状态仍Proposed，不以实现/检查通过伪造Accepted或独立审阅记录。
+
+
+## 2026-11-10 proposed refinement: partial admission is not a query-method root reset
+
+Status remains Proposed; this is an implementation refinement, not an invented independent review.
+The public LSP regression switches unchanged-source definition -> member completion after real capacity-partial
+initialization. Before the fix both answers are correct, but Program1 becomes2 and roots3 become2.
+A strict-preserved30K diagnostic separately observes roots258 ->3 and14892.462ms synchronization.
+This is a remaining owner-input churn mechanism; it is not evidence of universal scale independence.
+
+Ordinary partial completion must retain the configured interactive root profile and its admitted dependency
+closure, while includeWorkspaceFiles remains false. Incomplete membership alone must not silently select
+another root profile. List and detail use the same selection. Explicit current profile remains explicit;
+provider discovery batches still project current/open plus their attested candidate roots, including discovery
+selected after partial admission. Their actual compiler verification and incomplete-coverage semantics stay intact.
+Full references/rename still require their complete scope; SDK/path/config/source and final response fences remain.
+
+This refines the existing scope/validity separation above and respects ADR0019 group ownership and ADR0034/0036
+input authority; it does not claim that provider batches or distinct actual semantic inputs share one Program.
+The minimal slice changes completion planning, not Host freshness/version checks or compiler behavior.
+No timeout, scale, budget or recovery threshold is changed. New tests are public framed-stdio LSP transcripts.
+Further owner churn, first-build dependency cost and full-source reference admission cost remain separate work.
+
+Evidence: [ordinary failure and strict probe](../reports/2026-11-10-30k-ordinary-completion-deadline.md).
+Public regression command: `node --test --test-name-pattern='unchanged partial-project definition and member completion' tests/semantic/partial-completion-admission.test.mjs`.
+Parent298d65f plus frozen IX17 candidate: RED1 failure/2 filtered; rebuilt minimal fix:4/4 targeted tests PASS,
+including existing partial-edit/detail/indexed-autoimport and beyond4096 export recall. Full check for the changed
+candidate and unchanged30K failure replay are pending; prior2455/2455 is historical, not certification of this change.

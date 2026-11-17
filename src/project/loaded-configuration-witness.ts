@@ -1,8 +1,10 @@
 import fs from "node:fs"
 import path from "node:path"
-import { requestConfigurationIdentity, validateRequestInput, type ConfigurationInputIdentity } from "./request-input-validation.js"
+import { configurationSourceIdentity } from "./configuration-source-identity.js"
+import { requestConfigurationIdentity, validateRequestInput, type ConfigurationInputIdentity, type ConfigurationValidationIdentity } from "./request-input-validation.js"
 
-const MAX_WITNESS_PATHS = 4096
+// Failure details are bounded; actual load-owned evidence is required state, not an evictable cache.
+const MAX_NAMESPACE_FAILURE_DETAILS = 4096
 const MAX_MISSING_ANCESTORS = 64
 
 export type ConfigurationFreshnessMode = "validate" | "capture"
@@ -47,7 +49,7 @@ export class LoadedConfigurationWitness {
   private noteFact(records: Map<string, string>, filePath: string, regularSource: boolean): void {
     const key = `${records === this.pathIdentities ? 1 : 0}\0${filePath}`
     if (!this.sourceNamespaceDepth) { this.namespaceFacts.delete(key); this.regularSourceFacts.delete(key) }
-    else if (!records.has(filePath) && this.identities.size + this.pathIdentities.size < MAX_WITNESS_PATHS) {
+    else if (!records.has(filePath)) {
       this.namespaceFacts.add(key)
       if (regularSource) this.regularSourceFacts.add(key)
     }
@@ -77,8 +79,7 @@ export class LoadedConfigurationWitness {
         if (previous !== undefined && previous !== identity) this.rejectLoadedIdentityChange(resolved, witnessPath,
           before.regularSource && after.regularSource)
         else if (previous === undefined) {
-          if (this.identities.size + this.pathIdentities.size >= MAX_WITNESS_PATHS) this.markUnprovable("witness-capacity", resolved)
-          else { this.identities.set(witnessPath, identity); this.revision += 1 }
+          this.identities.set(witnessPath, identity); this.revision += 1
         }
       }
     }
@@ -89,18 +90,27 @@ export class LoadedConfigurationWitness {
     return this.observePathLoad(filePath, load, false)
   }
 
+  /** Resolution metadata only. Actual source/configuration byte loads keep their
+   * original raw guards; unknown paths and links also take the raw fallback. */
+  observeResolutionPath<T>(filePath: string, load: () => T, checkpoint: () => void): T {
+    return this.observePathLoad(filePath, load, false, checkpoint)
+  }
+
   /** A boolean lookup consumes existence, never a directory's children. */
   observePresence(filePath: string, load: () => boolean): boolean {
     return this.observePathLoad(filePath, load, true)
   }
 
-  private observePathLoad<T>(filePath: string, load: () => T, presence: boolean): T {
+  private observePathLoad<T>(filePath: string, load: () => T, presence: boolean, resolutionCheckpoint?: () => void): T {
     const resolved = path.resolve(filePath)
-    const before = lookupIdentity(resolved, true)
+    const identity = () => resolutionCheckpoint
+      ? configurationSourceIdentity(resolved, () => lookupIdentity(resolved, true), resolutionCheckpoint)
+      : lookupIdentity(resolved, true)
+    const before = identity()
     let result: T | undefined
     try { result = load(); return result }
     finally {
-      const after = lookupIdentity(resolved, true)
+      const after = identity()
       if (!before || !after) this.markUnprovable("identity-unavailable", resolved)
       // A false presence probe consumed no transient contents; true still cannot
       // certify an absent path. Content reads retain the full load-window guard.
@@ -123,8 +133,7 @@ export class LoadedConfigurationWitness {
         if (previous !== undefined && previous !== identity) this.rejectLoadedIdentityChange(resolved, witnessPath,
           !directory && before.regularSource && after.regularSource)
         else if (previous === undefined) {
-          if (this.identities.size + this.pathIdentities.size >= MAX_WITNESS_PATHS) this.markUnprovable("witness-capacity", resolved)
-          else { records.set(witnessPath, identity); this.revision += 1 }
+          records.set(witnessPath, identity); this.revision += 1
         }
       }
     }
@@ -133,7 +142,7 @@ export class LoadedConfigurationWitness {
   markUnprovable(reason = "caller-invalidated", sourcePath?: string): void {
     const sourceFailure = this.sourceNamespaceDepth > 0 && sourcePath !== undefined
       && ["loaded-identity-changed", "changed-during-load", "identity-unavailable"].includes(reason)
-      && this.namespaceFailures.size < MAX_WITNESS_PATHS
+      && this.namespaceFailures.size < MAX_NAMESPACE_FAILURE_DETAILS
     if (!sourceFailure) this.sourceResetOnlyFailure = false
     else this.namespaceFailures.add(sourcePath)
     // An unavailable lookup never repairs this resident proof. Only retire-first
@@ -204,8 +213,8 @@ export class LoadedConfigurationWitness {
       return
     }
     if (content === null || before.loadGuard !== after.loadGuard) {
-      // This path already owns a retained fact, so the set shares the existing
-      // witness bound. Only a later authoritative read of this same source can
+      // This path already owns a retained fact, so the set cannot exceed the
+      // actual retained read set. Only a later authoritative read of this same source can
       // recover it; unknown configuration failures remain globally unprovable.
       if (!this.failedSourceReads.has(resolved)) {
         this.failedSourceReads.add(resolved)
@@ -227,7 +236,7 @@ export class LoadedConfigurationWitness {
     if (this.failedSourceReads.delete(resolved)) this.revision += 1
   }
 
-  /** Copy only bounded original facts; the capsule retains no compiler, resolver or witness owner. */
+  /** Copy only original non-source facts; the capsule retains no compiler, resolver or witness owner. */
   captureConfigurationBeforeSourceReset(checkpoint: () => void,
     sourceNamespace: (filePath: string) => boolean): RetainedConfigurationProof {
     checkpoint()
@@ -272,7 +281,8 @@ export class LoadedConfigurationWitness {
       const stale = [...this.namespaceFailures]
       for (const [filePath, identity] of identities) {
         checkpoint()
-        const current = requestConfigurationIdentity(filePath, false, () => lookupIdentity(filePath))
+        const current = requestConfigurationIdentity(filePath, false, identity, () =>
+          configurationSourceIdentity(filePath, () => lookupIdentity(filePath), checkpoint))
         if (current?.identity !== identity) {
           if (!this.canRecoverNamespace(`0\0${filePath}`, current)) return false
           stale.push(filePath)
@@ -280,7 +290,8 @@ export class LoadedConfigurationWitness {
       }
       for (const [filePath, identity] of pathIdentities) {
         checkpoint()
-        const current = requestConfigurationIdentity(filePath, true, () => lookupIdentity(filePath, true))
+        const current = requestConfigurationIdentity(filePath, true, identity, () =>
+          configurationSourceIdentity(filePath, () => lookupIdentity(filePath, true), checkpoint))
         if (current?.identity !== identity) {
           if (!this.canRecoverNamespace(`1\0${filePath}`, current)) return false
           stale.push(filePath)
@@ -306,7 +317,7 @@ export class LoadedConfigurationWitness {
     return mode === "capture" ? current : current() ? current : undefined
   }
 
-  private canRecoverNamespace(key: string, current: ConfigurationInputIdentity | undefined): boolean {
+  private canRecoverNamespace(key: string, current: ConfigurationValidationIdentity | undefined): boolean {
     // An ordinary positive source delta still belongs to snapshot admission,
     // including its real read-window guard. It must not retire the LS before
     // that authoritative read has a chance to reconcile its own retained fact.

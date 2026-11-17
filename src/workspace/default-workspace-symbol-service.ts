@@ -7,6 +7,7 @@ import type {
 import type {
   SemanticDocumentSymbol,
   SemanticEnginePort,
+  SemanticWorkspaceFileChangeBatch,
 } from "../contracts/semantic-engine.js"
 import type {
   WorkspaceIndexCompleteness,
@@ -85,6 +86,15 @@ export class DefaultWorkspaceSymbolService implements WorkspaceSymbolServicePort
         continue
       }
       this.scheduleCatalog(workspace)
+    }
+  }
+
+  observeWorkspaceFiles(batches: readonly SemanticWorkspaceFileChangeBatch[]): void {
+    if (this.disposed) return
+    for (const batch of batches) {
+      for (const workspace of this.workspaces.values()) {
+        if (workspace.rootUri === batch.rootUri) this.dependencies.catalog.observe?.(workspace.id, batch)
+      }
     }
   }
 
@@ -270,6 +280,7 @@ function emptyProgress(phase: WorkspaceIndexProgress["phase"]): WorkspaceIndexPr
 
 function aggregateProgress(statuses: readonly WorkspaceIndexProgress[]): WorkspaceIndexProgress {
   const phase = aggregatePhase(statuses.map((status) => status.phase))
+  const validation = statuses.find(status => status.phase === "indexing" && status.validation)?.validation
   const active = statuses.find(status => status.phase === "indexing" && status.storage)?.storage
   const storage = active && {
     ...active,
@@ -283,6 +294,7 @@ function aggregateProgress(statuses: readonly WorkspaceIndexProgress[]): Workspa
   return {
     phase,
     ...(storage ? { storage } : {}),
+    ...(validation ? { validation } : {}),
     discoveredFiles: sum(statuses, (status) => status.discoveredFiles),
     indexedFiles: sum(statuses, (status) => status.indexedFiles),
     skippedEntries: sum(statuses, (status) => status.skippedEntries),

@@ -44,3 +44,11 @@ export function runQueryLayerFixture(fixture, layer) {
     "--layer", layer, "--manifest", fixture.input, "--out", output], { encoding: "utf8", timeout: 25_000 })
   return { ...result, report: fs.existsSync(output) ? JSON.parse(fs.readFileSync(output, "utf8")) : null }
 }
+
+/** Opening the target follows initial root preparation. Its first semantic query may
+ * establish a new Program proof; a later stable repeat must demonstrate a real hit. */
+export function addStableCacheProbe(fixture) {
+  const index = fixture.suite.scenarios.findIndex(row => row.bucket === "repeated-snapshot")
+  assert.ok(index >= 0, "a stable repeated scenario is required")
+  fixture.suite.scenarios.splice(index + 1, 0, { ...fixture.suite.scenarios[index], id: "qualified-cache-repeat" })
+}

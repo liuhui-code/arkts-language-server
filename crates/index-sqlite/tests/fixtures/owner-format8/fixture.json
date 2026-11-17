@@ -1,0 +1,7 @@
+{
+  "actualFormat": 8,
+  "domain": "owner-format-upgrade-domain",
+  "head": 1,
+  "store": "catalog-db8-18e6c31bbebeb648-0.sqlite3",
+  "workspace": "file:///owner-format-upgrade"
+}

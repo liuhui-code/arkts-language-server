@@ -84,6 +84,11 @@ export class HarmonyProjectModel {
     return this.configurationWitness?.freshness(checkpoint, mode)
   }
 
+  /** Original configuration facts, with independent uncached identity checks. */
+  captureConfigurationProof(checkpoint: () => void) {
+    return this.configurationWitness?.captureConfigurationBeforeSourceReset(checkpoint, () => false)
+  }
+
   scopeFor(sourcePath: string): HarmonyProjectScope {
     return this.resolveSourceScope(sourcePath).scope
   }

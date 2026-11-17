@@ -146,3 +146,9 @@ remains; final29-file combined validation passes376/376, exit0, with Node20
 typecheck/buildPASS and1400/1400 frozen inputs matching. Fresh full PR CI is pending. See the second-group report
 for retained REDs, filtered-selection counts and the separately unexplained
 initialization timeout. This is not new architecture or a changed approval status.
+
+## 2026-11-08 健康证明容量修订（Proposed）
+
+[ADR0044](0044-load-owned-input-proof-lifetime.md)针对实际20K及最小4608源码闭包的失败，
+明确提议修订决定6与capsule的4096条健康事实界限。保留原始事实、全部来源和独立终检，
+失败明细界限与真正无法证明输入的拒绝保持。原决定和历史验证保留；新候选验证尚未完成。

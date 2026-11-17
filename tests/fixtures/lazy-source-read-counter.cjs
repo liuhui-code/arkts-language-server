@@ -21,7 +21,11 @@ if (!isMainThread && process.env.ARKTS_LSP_LOG_DIR) {
   const compile = Module.prototype._compile
   Module.prototype._compile = function(source, file) {
     if (path.basename(file) === "semantic-worker.cjs") {
-      const start = "const sourceContent = this.projectFileAccess ? this.projectFileAccess.read("
+      const starts = ["const sourceContent = this.projectFileAccess ? this.projectFileAccess.read(",
+        "const proved = this.projectFileAccess?.readSnapshot;"]
+      const sites = starts.filter(site => source.split(site).length === 2)
+      if (sites.length !== 1) throw Error("one actual lazy read entry required")
+      const start = sites[0]
       const end = "if (sourceContent === null) {"
       for (const site of [start, end]) if (source.split(site).length !== 2) throw Error("one actual lazy read site required")
       source = source.replace(start, "const __lazyReadStarted = performance.now();\n" + start)

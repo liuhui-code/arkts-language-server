@@ -13,6 +13,7 @@ import { verifierSdkFileExists } from "./verifier-sdk-lookups.js"
 interface ModuleResolutionPort {
   readonly rootPath: string
   readonly sdkRoot: string | null
+  readonly sdkLookup?: (name: string) => string | undefined
   readonly sdk?: import("../sdk/discovery.js").HarmonySdkDiscovery
   readonly packageResolver: LocalPackageResolver
   readonly scripts: ReadonlyMap<string, { readonly overlay: boolean }>
@@ -38,7 +39,8 @@ export function resolveTypeScriptModule(port: ModuleResolutionPort, name: string
         ? ({ resolvedFileName: local.path, extension: moduleExtension(local.path) } as ts.ResolvedModule)
         : undefined
     }
-    const sdkModule = port.sdkRoot ? resolveHarmonySdkModule(port.sdk ?? port.sdkRoot, name, port.configurationWitness) : null
+    const sdkModule = port.sdkRoot ? port.sdkLookup ? port.sdkLookup(name) : port.moduleResolution.sdkCandidate(name, () =>
+      resolveHarmonySdkModule(port.sdk ?? port.sdkRoot!, name, port.configurationWitness) ?? undefined) : undefined
     if (sdkModule) {
       return ({
         resolvedFileName: sdkModule,
@@ -47,7 +49,7 @@ export function resolveTypeScriptModule(port: ModuleResolutionPort, name: string
       } as ts.ResolvedModule)
     }
     return port.moduleResolution.resolve(name, containingFile,
-      witnessedModuleResolutionHost(port.configurationWitness))
+      witnessedModuleResolutionHost(port.configurationWitness), port.configurationWitness !== undefined)
   }
   const base = path.resolve(path.dirname(containingFile), name)
   const resolved = port.moduleResolution.relativeCandidate(base, () => relativeModuleCandidate(base,

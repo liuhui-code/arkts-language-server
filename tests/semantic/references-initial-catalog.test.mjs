@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from "node:url"
 import { LspSession } from "../support/lsp-session.mjs"
 import { projectRoot } from "../support/lsp-process.mjs"
 
-test("first references waits for the initial catalog, then returns exact compiler locations", async t => {
+test("first references waits for a legacy catalog but numeric generations cannot authorize narrowing", async t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-reference-initial-catalog-"))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const workspace = path.join(root, "workspace")
@@ -37,6 +37,7 @@ test("first references waits for the initial catalog, then returns exact compile
       ARKTS_INDEX_TEST_AUDIT: auditPath,
       ARKTS_LSP_LOG_DIR: logs,
       ARKTS_REFERENCES_STRATEGY: "indexed-batched",
+      ARKTS_REFERENCES_RESIDENT_FAST_PATH: "0",
       ARKTS_REFERENCES_INITIAL_CATALOG_WAIT_MS: "30000",
     },
     capabilities: {
@@ -84,8 +85,8 @@ test("first references waits for the initial catalog, then returns exact compile
     "the request must fetch index candidates after the first catalog commits")
   const events = fs.readFileSync(path.join(logs, "server.log"), "utf8")
     .split("\n").filter(Boolean).map(JSON.parse)
-  assert.ok(events.some(entry => entry.event === "references.index.accepted"),
-    "the ready candidate set must be accepted for bounded verification")
+  assert.equal(events.some(entry => entry.event === "references.index.accepted"), false,
+    "legacy numeric readiness is discovery metadata, never a complete source qualification")
 })
 
 test("cancelling references during initial catalog wait returns no partial result", async t => {
@@ -251,11 +252,12 @@ test("first references waits when the workspace index has not opened yet", async
       DEVECO_SDK_HOME: path.join(root, "missing-deveco"),
       ARKTS_INDEX_CACHE_DIR: path.join(root, "cache"),
       ARKTS_INDEX_SIDECAR_PATH: path.join(projectRoot, "tests", "fixtures", "index",
-        "references-initial-catalog-sidecar.mjs"),
+        "native-initial-catalog.mjs"),
       ARKTS_INDEX_TEST_AUDIT: auditPath,
       ARKTS_INDEX_TEST_SCENARIO: "delayed-open",
       ARKTS_LSP_LOG_DIR: logs,
       ARKTS_REFERENCES_STRATEGY: "indexed-batched",
+      ARKTS_REFERENCES_RESIDENT_FAST_PATH: "0",
       ARKTS_REFERENCES_INITIAL_CATALOG_WAIT_MS: "30000",
     },
   })

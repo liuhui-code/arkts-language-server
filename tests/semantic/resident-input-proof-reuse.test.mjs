@@ -134,6 +134,14 @@ test("a complete resident reference transaction hashes each actual input text on
         assert.deepEqual(response.result, expected)
         const operations = fs.readFileSync(output, "utf8").trim().split("\n").map(JSON.parse)
         const current = operations.slice(observed)
+        const allScopes = fs.readFileSync(path.join(fixture.directory, "resident-input-proof-all-scopes.jsonl"), "utf8")
+          .trim().split("\n").map(JSON.parse)
+        assert.ok(current.every(operation => operation.scope === "resident-query"))
+        assert.ok(allScopes.some(operation => operation.scope === "source-namespace"))
+        assert.ok(allScopes.some(operation => operation.scope === "readiness"))
+        t.diagnostic(JSON.stringify({ totalObservedHashes: allScopes.length,
+          byScope: Object.fromEntries([...new Set(allScopes.map(row => row.scope))]
+            .map(scope => [scope, allScopes.filter(row => row.scope === scope).length])) }))
         observed = operations.length
         t.diagnostic(JSON.stringify({ reuse: reuse ?? "default", includeDeclaration,
           hashUpdates: current.length, callers: current.map(operation => operation.caller) }))

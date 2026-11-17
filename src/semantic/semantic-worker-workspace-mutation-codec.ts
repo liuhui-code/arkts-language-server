@@ -1,8 +1,24 @@
-import type { SemanticWorkerWorkspaceFilesChangedMutation, SemanticWorkerWorkspaceFileChange } from "./worker-protocol.js"
+import path from "node:path"
+import type { ManagedSourceDirectory } from "../contracts/managed-source-namespace.js"
+import type { SemanticWorkerWorkspaceFileChange, SEMANTIC_WORKER_PROTOCOL_VERSION } from "./worker-protocol.js"
+
+export interface SemanticWorkerWorkspaceFilesChangedMutation {
+  readonly protocol: typeof SEMANTIC_WORKER_PROTOCOL_VERSION
+  readonly epoch: number
+  readonly revision: number
+  readonly kind: "workspaceFilesChanged"
+  readonly rootUri: string
+  readonly rootDirty: boolean
+  readonly managedSourceNamespaces?: readonly ManagedSourceDirectory[]
+  readonly configurationChanged?: boolean
+  readonly resourceDirty: boolean
+  readonly resourceChanged: boolean
+  readonly changes: readonly SemanticWorkerWorkspaceFileChange[]
+}
 
 /** Workspace invalidation wire validation shares envelope primitives, not mutable protocol state. */
 export interface WorkspaceMutationCodec {
-  SEMANTIC_WORKER_PROTOCOL_VERSION: 2
+  SEMANTIC_WORKER_PROTOCOL_VERSION: typeof import("./worker-protocol.js").SEMANTIC_WORKER_PROTOCOL_VERSION
   MAX_SEMANTIC_WORKER_FILE_CHANGES: number
   MAX_SEMANTIC_WORKER_MESSAGE_BYTES: number
   hasExactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean
@@ -34,6 +50,7 @@ export function decodeWorkspaceFilesChangedMutation(
       "rootUri",
       "rootDirty",
       ...(Object.hasOwn(input, "configurationChanged") ? ["configurationChanged"] : []),
+      ...(Object.hasOwn(input, "managedSourceNamespaces") ? ["managedSourceNamespaces"] : []),
       "resourceDirty",
       "resourceChanged",
       "changes",
@@ -49,6 +66,8 @@ export function decodeWorkspaceFilesChangedMutation(
     || typeof input.resourceChanged !== "boolean"
     || (input.resourceDirty === true && input.resourceChanged !== true)
   ) throw invalidMutation()
+  const managed = Object.hasOwn(input, "managedSourceNamespaces") ? decodeManagedNamespaces(input.managedSourceNamespaces, codec) : undefined
+  if (managed && !input.rootDirty) throw invalidMutation()
   const decodedChanges = decodeWorkspaceFileChanges(input.changes, input.rootUri, codec)
   if (!input.rootDirty && !input.resourceChanged && decodedChanges.value.length === 0) {
     throw invalidMutation()
@@ -60,6 +79,7 @@ export function decodeWorkspaceFilesChangedMutation(
     kind: "workspaceFilesChanged",
     rootUri: input.rootUri,
     rootDirty: input.rootDirty,
+    ...(managed ? { managedSourceNamespaces: managed } : {}),
     ...(Object.hasOwn(input, "configurationChanged") ? { configurationChanged: input.configurationChanged as boolean } : {}),
     resourceDirty: input.resourceDirty,
     resourceChanged: input.resourceChanged,
@@ -73,6 +93,7 @@ export function decodeWorkspaceFilesChangedMutation(
     ["rootUri", messageStringWireBytes(mutation.rootUri)],
     ["rootDirty", booleanWireBytes(mutation.rootDirty)],
     ...(mutation.configurationChanged !== undefined ? [["configurationChanged", booleanWireBytes(mutation.configurationChanged)] as [string, number]] : []),
+    ...(managed ? [["managedSourceNamespaces", Buffer.byteLength(JSON.stringify(managed))] as [string, number]] : []),
     ["resourceDirty", booleanWireBytes(mutation.resourceDirty)],
     ["resourceChanged", booleanWireBytes(mutation.resourceChanged)],
     ["changes", decodedChanges.wireBytes],
@@ -128,3 +149,28 @@ function decodeWorkspaceFileChanges(
   return Object.freeze({ value: Object.freeze(changes), wireBytes })
 }
 
+
+
+function decodeManagedNamespaces(value: unknown, codec: WorkspaceMutationCodec): readonly ManagedSourceDirectory[] {
+  if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype
+    || value.length > codec.MAX_SEMANTIC_WORKER_MESSAGE_BYTES
+    || Reflect.ownKeys(value).length !== value.length + 1) throw codec.invalidMutation()
+  const result: ManagedSourceDirectory[] = [], paths = new Set<string>()
+  let bytes = 2
+  for (let index = 0; index < value.length; index++) {
+    const entry = Object.getOwnPropertyDescriptor(value, String(index))
+    if (!entry?.enumerable || !("value" in entry)) throw codec.invalidMutation()
+    const row = codec.ownDataRecord(entry.value, ["directory", "dev", "ino", "birthtimeNs"])
+    if (!row || !codec.hasExactKeys(row, ["directory", "dev", "ino", "birthtimeNs"])
+      || typeof row.directory !== "string" || !path.isAbsolute(row.directory) || row.directory.includes("\0")
+      || paths.has(row.directory) || Buffer.byteLength(row.directory) > 16 * 1024
+      || ![row.dev, row.ino, row.birthtimeNs].every(value => typeof value === "string" && /^-?\d{1,40}$/.test(value))
+      || BigInt(row.dev as string) < 0n || BigInt(row.ino as string) <= 0n) throw codec.invalidMutation()
+    const directory = Object.freeze({ directory: row.directory, dev: row.dev as string,
+      ino: row.ino as string, birthtimeNs: row.birthtimeNs as string })
+    bytes += Buffer.byteLength(JSON.stringify(directory)) + (index ? 1 : 0)
+    if (bytes > codec.MAX_SEMANTIC_WORKER_MESSAGE_BYTES) throw codec.messageTooLarge()
+    paths.add(directory.directory); result.push(directory)
+  }
+  return Object.freeze(result)
+}

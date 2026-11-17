@@ -5,6 +5,8 @@ import path from "node:path"
 import test from "node:test"
 import { pathToFileURL } from "node:url"
 
+import { writeUnavailableSource } from "../support/partial-source-fixture.mjs"
+
 import { LspProcess, projectRoot } from "../support/lsp-process.mjs"
 
 const fixtureRoot = path.join(projectRoot, "fixtures", "semantic", "references-completeness")
@@ -199,7 +201,7 @@ test("fails references closed when public workspace membership is partial", asyn
     path.join(partialFixtureRoot, "PartialConsumer.ets"),
     consumerPath,
   )
-  await writeFillerSources(workspaceRoot, 20_000)
+  await writeUnavailableSource(workspaceRoot)
 
   const consumerText = fs.readFileSync(consumerPath, "utf8")
   const consumerUri = pathToFileURL(consumerPath).href
@@ -379,25 +381,5 @@ function assertUniqueNonEmptyLocations(locations) {
   assert.equal(new Set(locations.map(locationKey)).size, locations.length)
   for (const { range } of locations) {
     assert.notDeepEqual(range.start, range.end, "reference ranges must be non-empty")
-  }
-}
-
-async function writeFillerSources(workspaceRoot, count) {
-  const filesPerDirectory = 200
-  const directoryCount = Math.ceil(count / filesPerDirectory)
-  const directories = Array.from({ length: directoryCount }, (_, index) => (
-    path.join(workspaceRoot, `fillers-${String(index).padStart(3, "0")}`)
-  ))
-  await Promise.all(directories.map((directory) => fs.promises.mkdir(directory)))
-
-  const batchSize = 500
-  for (let start = 0; start < count; start += batchSize) {
-    const end = Math.min(count, start + batchSize)
-    await Promise.all(Array.from({ length: end - start }, (_, offset) => {
-      const index = start + offset
-      const directory = directories[Math.floor(index / filesPerDirectory)]
-      const fileName = `F${String(index).padStart(5, "0")}.ets`
-      return fs.promises.writeFile(path.join(directory, fileName), "", "utf8")
-    }))
   }
 }

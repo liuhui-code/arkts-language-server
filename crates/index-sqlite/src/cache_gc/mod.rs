@@ -6,6 +6,8 @@ pub(crate) mod files;
 mod identity_snapshot;
 mod inspect;
 pub mod lease;
+pub mod namespace;
+mod owner_snapshot;
 mod retire;
 mod source;
 pub(crate) mod sqlite_guard;

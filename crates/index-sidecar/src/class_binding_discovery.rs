@@ -2,6 +2,7 @@
 
 #[path = "class_binding_sources.rs"]
 mod current_sources;
+pub(crate) use current_sources::{admitted_path, read_source as read_current_source};
 
 use std::collections::BTreeSet;
 
@@ -13,7 +14,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::{
-    ChangedDocument, ProtocolError, ProtocolPosition, Runtime, not_initialized, parse_params,
+    ChangedDocument, ProtocolError, ProtocolPosition, not_initialized, parse_params,
     protocol_store_error, validate_excluded_uris,
 };
 
@@ -69,18 +70,12 @@ impl TryFrom<Value> for SourceAvailability {
     }
 }
 
-impl Runtime {
-    pub(super) fn class_binding_discovery(
-        &mut self,
-        params: Value,
-    ) -> Result<(Value, bool), ProtocolError> {
+impl crate::read_query::ReadContext<'_> {
+    pub(super) fn class_binding_discovery(&self, params: Value) -> Result<Value, ProtocolError> {
         let availability_supplied = params.get("sourceAvailability").is_some();
         let params: DiscoveryParams = parse_params(params)?;
-        let workspace_identity = self
-            .workspace_identity
-            .as_ref()
-            .ok_or_else(not_initialized)?;
-        if &params.workspace_identity != workspace_identity {
+        let workspace_identity = self.identity.ok_or_else(not_initialized)?;
+        if params.workspace_identity != workspace_identity {
             return Err(ProtocolError::new(
                 "workspace_mismatch",
                 "class binding query belongs to a different workspace",
@@ -88,9 +83,7 @@ impl Runtime {
         }
         validate_inputs(&params)?;
         let snapshot = self
-            .index
-            .as_ref()
-            .ok_or_else(not_initialized)?
+            .store()?
             .class_binding_snapshot(&params.document_uris)
             .map_err(protocol_store_error)?;
         let overlay_bytes = params
@@ -111,7 +104,7 @@ impl Runtime {
             .map(|overlay| Document::new(overlay.uri, overlay.text))
             .collect::<Vec<_>>();
         let binding = if self.completeness == "ready"
-            && self.committed_generation == snapshot.served_generation
+            && self.head == snapshot.served_generation
             && snapshot.served_generation == params.expected_generation
         {
             let position = Position::new(
@@ -120,7 +113,7 @@ impl Runtime {
             );
             if availability_supplied {
                 let sources = current_sources::current_sources(
-                    self.workspace_root.as_ref().ok_or_else(not_initialized)?,
+                    self.root.ok_or_else(not_initialized)?,
                     workspace_identity,
                     &params.source_availability,
                     &overlays,
@@ -151,15 +144,12 @@ impl Runtime {
         } else {
             ClassBaseBinding::Unknown
         };
-        Ok((
-            json!({
-                "workspaceIdentity": workspace_identity,
-                "servedGeneration": snapshot.served_generation,
-                "completeness": self.completeness,
-                "binding": binding_value(binding),
-            }),
-            false,
-        ))
+        Ok(json!({
+            "workspaceIdentity": workspace_identity,
+            "servedGeneration": snapshot.served_generation,
+            "completeness": self.completeness,
+            "binding": binding_value(binding),
+        }))
     }
 }
 

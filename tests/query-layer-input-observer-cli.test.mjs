@@ -4,7 +4,7 @@ import fs from "node:fs"
 import path from "node:path"
 import test from "node:test"
 
-import { makeQueryLayerFixture } from "./support/query-layer-fixture.mjs"
+import { addStableCacheProbe, makeQueryLayerFixture } from "./support/query-layer-fixture.mjs"
 import { saveSuite } from "./support/prepared-suite-fixture.mjs"
 import { digestJson } from "../scripts/bench/prepared-suite-input.mjs"
 import { sha256File } from "../scripts/bench/reference-replay-input.mjs"
@@ -471,6 +471,7 @@ test("owner diagnostic observation includes real semantic Worker input attempts 
     fixture.suite.scenarios.push({ id: "edited", targetId: "thing", bucket: "edit-reference",
       edit: { file: "Use.ets", changes, sha256: digestJson(changes),
         oracle: { path: editedOracle, sha256: sha256File(editedOracle), verified: true } } })
+    addStableCacheProbe(fixture)
     saveSuite(fixture)
     assert.deepEqual(fixture.suite.runtime.env, {})
     const result = spawnSync(process.execPath, [runner, "--layer", "owner", "--manifest", fixture.input,
@@ -481,10 +482,8 @@ test("owner diagnostic observation includes real semantic Worker input attempts 
       observations: report.inputOperations?.workerCompilerObjects?.map(record => ({ entryFile: record.entryFile,
         boundary: record.boundary, failure: record.compilerObjects.failure, registries: record.compilerObjects.registries })) })}`)
     assert.ok(report.requests.every(request => request.correctness.equal))
-    assert.equal(report.requests.length, 3)
-    assert.equal(report.requests[0].answerCacheHit, false)
-    assert.equal(report.requests[1].answerCacheHit, true)
-    assert.equal(report.requests[2].answerCacheHit, false)
+    assert.equal(report.requests.length, 4)
+    assert.deepEqual(report.requests.map(row => row.answerCacheHit), [false, false, true, false])
     assert.equal(report.preparation.targetQueries, 0)
     assert.equal(report.inputIdentityUnchanged, true)
     assert.equal(report.releaseEligible, false)

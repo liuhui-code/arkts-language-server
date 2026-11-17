@@ -174,7 +174,8 @@ test(`references cannot publish an old result after READY identity construction 
     assert.equal(witness.pid, session.transport.child.pid); assert.ok(witness.threadId > 0)
     assert.ok(witness.caller.some(line => line.includes("prepareOfficialReadiness")), JSON.stringify(witness))
     assert.equal(witness.originalSize, witness.currentSize)
-    if (response.error) assert.equal(response.error.code, -32803, JSON.stringify(response))
+    // The parent observed the changed namespace during final admission (ADR0005/0006).
+    if (response.error) assert.equal(response.error.code, -32801, JSON.stringify(response))
     else assert.deepEqual(response.result, [...changed.matchAll(/\bTargetTwo\b/g)].map(match => ({
       uri: uri("ZZCaller.ets"), range: { start: positionAt(changed, match.index), end: positionAt(changed, match.index + 9) } })),
     "a pre-certification query result cannot outlive a failed final input proof")

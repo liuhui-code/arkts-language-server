@@ -31,17 +31,23 @@ export function registerReferenceCapability(
           includeDeclaration: params.context.includeDeclaration,
           signal,
         }
-        const cached = await semantic.cachedReferences?.(query)
-        if (cached) return cached
         const resumeDiagnostics = await requests.waitForReferenceDiagnostics(document, suspendDiagnostics)
         try {
           if (signal.aborted) throw new Error("References changed before semantic dispatch")
-          return await semantic.references(query)
+          // Cache certification now performs Worker input checks too. It belongs
+          // to the same foreground/diagnostic boundary as an uncached search.
+          const cached = await semantic.cachedReferences?.(query)
+          return cached ?? await semantic.references(query)
         } finally {
           resumeDiagnostics()
         }
       },
     }).catch(error => {
+      if (error instanceof Error && "code" in error
+        && (error.code === "worker-unavailable" || error.code === "restart-required")) {
+        throw new ResponseError(LSPErrorCodes.RequestFailed, "References are unavailable while semantic recovery is blocked",
+          { reason: error.code })
+      }
       if (error instanceof Error && "code" in error && error.code === "workspace-incomplete") {
         throw new ResponseError(LSPErrorCodes.RequestFailed, "References require a complete workspace snapshot")
       }

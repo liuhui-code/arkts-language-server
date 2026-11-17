@@ -8,11 +8,11 @@ import { pathToFileURL } from "node:url"
 import { LspSession } from "../support/lsp-session.mjs"
 import { projectRoot } from "../support/lsp-process.mjs"
 
-test("references recover indexed batching after a newer catalog generation commits", async (t) => {
+test("legacy catalog progress cannot authorize indexed batching without source qualification", async (t) => {
   await exerciseIndexResync(t, false)
 })
 
-test("experimental L3 uses complete batching while a changed index is stale", async (t) => {
+test("experimental L3 keeps complete batching for a stale unqualified legacy index", async (t) => {
   await exerciseIndexResync(t, true)
 })
 
@@ -117,7 +117,14 @@ async function exerciseIndexResync(t, pressureAdmission) {
   assert.equal(fallback.error, undefined, JSON.stringify(fallback.error))
   assert.deepEqual(sortedLocations(fallback.result), sortedLocations(indexedWithoutDeclaration.result))
   await waitUntil(() => audit(auditPath)
-    .filter(request => request.method === "catalog/start").length === 2)
+    // Watch delivery and the independent disk-content observation are distinct
+    // legacy reconcile inputs; neither invents a complete source qualification.
+    .filter(request => request.method === "catalog/start").length === 3).catch(error => {
+      t.diagnostic(JSON.stringify({ scenario: "legacy-catalog-refresh-count", pressureAdmission,
+        audit: audit(auditPath), events: loggedEvents(logDirectory).filter(row =>
+          /^(references\.index\.|index\.catalog\.|references\.namespace\.)/u.test(row.event)) }))
+      throw error
+    })
   await new Promise(resolve => setTimeout(resolve, 1_100))
 
   const recovered = await references(true)
@@ -126,7 +133,8 @@ async function exerciseIndexResync(t, pressureAdmission) {
   await session.close({ timeoutMs: 5_000 })
 
   const events = loggedEvents(logDirectory)
-  assert.equal(events.filter(({ event }) => event === "references.index.accepted").length, 3)
+  assert.equal(events.filter(({ event }) => event === "references.index.accepted").length, 0,
+    "legacy generation progress must never authorize complete-scope narrowing")
   assert.ok(events.some(({ event, reason }) => (
     event === "references.index.fallback" && reason === "workspace-changed"
   )))
@@ -134,7 +142,8 @@ async function exerciseIndexResync(t, pressureAdmission) {
   assert.equal(audit(auditPath)
     .filter(request => request.method === "references/candidates").length, 3)
   if (pressureAdmission) {
-    assert.ok(events.some(event => event.event === "references.pressure.fallback"))
+    assert.ok(events.some(event => event.event === "semantic.context.evict" && event.reason === "memory-level3"),
+      "explicit pressure must really evict; unqualified candidates can be rejected before the indexed pressure branch")
     assert.ok(events.some(event => event.event === "references.plan.complete"
       && event.candidateMode === "conservative"))
   }

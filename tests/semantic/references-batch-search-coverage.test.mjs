@@ -1,3 +1,4 @@
+import { assertFreshResidentAdmission } from "../support/resident-admission-timeline.mjs"
 import assert from "node:assert/strict"
 import fs from "node:fs"
 import os from "node:os"
@@ -248,19 +249,7 @@ test("an unnotified source edit rejects the old resident text and preserves new 
   const admissions = route.filter(event => /^references\.resident\.(hit|miss)$/u.test(event.event))
   assert.equal(admissions[0]?.traceId, misses[0].traceId, JSON.stringify(observation))
   assert.equal(admissions[0]?.event, "references.resident.miss", "the old proof must be rejected before any reuse")
-  const rejected = route.findIndex(event => event.event === "references.resident.proof.rejected"
-    && event.traceId === misses[0].traceId)
-  assert.ok(rejected >= 0, "the first RPC must expose the old input proof rejection")
-  for (const hit of admissions.filter(event => event.event === "references.resident.hit")) {
-    assert.ok(observation.rpcs.some(rpc => rpc.traceId === hit.traceId), JSON.stringify(observation))
-    const hitIndex = route.indexOf(hit)
-    const prepared = route.findIndex((event, index) => index > rejected && index < hitIndex
-      && event.event === "semantic.prepare.complete")
-    const rebuilt = route.findIndex((event, index) => index > prepared && index < hitIndex
-      && event.event === "semantic.context.cost" && event.reason === "compiler-build")
-    assert.ok(prepared > rejected && rebuilt > prepared,
-      "resident reuse after invalidation requires a fresh prepare and actual compiler build")
-  }
+  assertFreshResidentAdmission(route, admissions, misses[0].traceId, observation)
 })
 
 test("an unprovable loaded lookup exposes its configuration failure without guessing resident input", async (t) => {

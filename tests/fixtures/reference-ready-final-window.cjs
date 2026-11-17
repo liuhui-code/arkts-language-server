@@ -14,12 +14,13 @@ if (!isMainThread && process.env.ARKTS_LSP_LOG_DIR) {
       const result = Reflect.apply(update, this, [data, ...rest])
       if (typeof data === "string" && fs.existsSync(control) && !fs.existsSync(witness)) {
         const change = JSON.parse(fs.readFileSync(control, "utf8"))
-        if (data === change.triggerText) {
+        const caller = new Error().stack.split("\n").slice(2)
+        if (data === change.triggerText && caller.some(line => line.includes("prepareOfficialReadiness"))) {
           const file = path.join(directory, "workspace", "ZZCaller.ets"), stat = fs.statSync(file)
           if (Buffer.byteLength(change.text) !== stat.size) throw Error("equal-width mutation required")
           fs.writeFileSync(file, change.text); fs.utimesSync(file, stat.atime, stat.mtime)
           fs.writeFileSync(witness, JSON.stringify({ pid: process.pid, threadId,
-            caller: new Error().stack.split("\n").slice(2), originalSize: stat.size, currentSize: fs.statSync(file).size }))
+            caller, originalSize: stat.size, currentSize: fs.statSync(file).size }))
         }
       }
       return result

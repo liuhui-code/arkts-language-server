@@ -136,3 +136,33 @@ function buildDriver(t) {
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   return createRequire(import.meta.url)(outfile)
 }
+
+for (const remove of [false, true]) {
+  test(`workspace mutation coalescing ${remove ? "removes" : "preserves"} the latest owned namespace policy`, async t => {
+    const protocol = buildDriver(t)
+    const endpoint = new FakeEndpoint()
+    const supervisor = new protocol.RootSemanticWorkerSupervisor({ rootUri: workspaceUri, epoch: 7,
+      endpoint, waitForDisposeDeadline: () => Promise.resolve() })
+    const first = supervisor.mutate({ kind: "open", uri: mainUri, documentVersion: 1, text: "struct Main {}" })
+    const directory = { directory: path.join(os.tmpdir(), "arkts-supervisor-lanes-workspace/Cache/workspaces", "a".repeat(64)),
+      dev: "1", ino: "2", birthtimeNs: "3" }
+    const base = { kind: "workspaceFilesChanged", rootUri: workspaceUri, rootDirty: true,
+      resourceDirty: false, resourceChanged: false, changes: [] }
+    const added = supervisor.mutate({ ...base, managedSourceNamespaces: [directory] })
+    directory.ino = "9"
+    const changed = supervisor.mutate({ ...base, rootDirty: false, changes: [{ uri: mainUri, kind: "changed" }] })
+    const removed = remove ? supervisor.mutate({ ...base, managedSourceNamespaces: [] }) : undefined
+    assert.equal(endpoint.sent.length, 1, "the first unacknowledged mutation is the ordering barrier")
+    endpoint.message({ protocol: endpoint.sent[0].protocol, epoch: 7, appliedRevision: 1 })
+    await first
+    assert.equal(endpoint.sent.length, 2)
+    const wire = endpoint.sent[1]
+    assert.equal(wire.revision, 2)
+    assert.equal(wire.rootDirty, true)
+    assert.deepEqual(wire.changes, [{ uri: mainUri, kind: "changed" }])
+    assert.deepEqual(wire.managedSourceNamespaces, remove ? [] : [{ ...directory, ino: "2" }])
+    endpoint.message({ protocol: endpoint.sent[1].protocol, epoch: 7, appliedRevision: 2 })
+    await Promise.all([added, changed, removed])
+    await supervisor.dispose()
+  })
+}

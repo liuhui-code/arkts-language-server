@@ -27,6 +27,7 @@ pub struct CatalogProgress {
     pub storage: Option<CatalogBuildProgress>,
     pub stage_started: Option<Instant>,
     pub activity_sequence: u64,
+    pub validation: Option<arkts_index_sqlite::CatalogValidationProgress>,
 }
 
 pub(super) type CatalogFailure = Box<(CatalogProgress, String)>;
@@ -105,6 +106,7 @@ pub fn spawn_catalog(
     generation: u64,
     force: bool,
     updates: Sender<CatalogUpdate>,
+    namespace: Option<arkts_index_sqlite::cache_gc::namespace::ManagedCacheNamespace>,
 ) -> CatalogControl {
     let state = Arc::new(AtomicU8::new(CATALOG_RUNNING));
     let worker_state = Arc::clone(&state);
@@ -113,7 +115,7 @@ pub fn spawn_catalog(
         .spawn(move || {
             let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 scan_workspace(
-                    &workspace_root,
+                    (&workspace_root, namespace.as_ref()),
                     &database_path,
                     &workspace_identity,
                     generation,

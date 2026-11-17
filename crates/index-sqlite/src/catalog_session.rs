@@ -39,7 +39,7 @@ impl CatalogBuildSession {
         let expected = old.metadata()?.committed_generation;
         if generation <= expected {
             drop(guard);
-            catalog_files::retire(old, base.to_owned(), identity.into());
+            catalog_files::retire(old, &control, identity);
             return Err(invalid_generation(generation, expected));
         }
         let stored_fingerprint = if read_fingerprint && expected > 0 {
@@ -216,7 +216,7 @@ impl CatalogBuildSession {
 impl Drop for CatalogBuildSession {
     fn drop(&mut self) {
         if let Some(old) = self.old.take() {
-            catalog_files::retire(old, self.base.clone(), self.identity.clone());
+            catalog_files::retire(old, &self.control, &self.identity);
         }
         if let Ok(_guard) = self.control.exclusive() {
             catalog_files::prune(&self.control);

@@ -7,6 +7,7 @@ import { pathToFileURL } from "node:url"
 
 import { LspProcess, projectRoot } from "./support/lsp-process.mjs"
 import { LspSession } from "./support/lsp-session.mjs"
+import { createTestResourceScope } from "./support/test-resource-scope.mjs"
 import { diagnostic, location, waitForEvent } from "./support/semantic-recycle-lsp.mjs"
 
 const fixtureRoot = path.join(projectRoot, "fixtures", "basic")
@@ -16,7 +17,7 @@ test("production semantics run in one worker and report the bounded resident set
     fs.mkdtempSync(path.join(os.tmpdir(), "arkts-production-worker-")),
     "memory.jsonl",
   )
-  t.after(() => fs.rmSync(path.dirname(metricsPath), { recursive: true, force: true }))
+  const track = createTestResourceScope(t, () => fs.rmSync(path.dirname(metricsPath), { recursive: true, force: true }))
   assert.ok(
     fs.existsSync(path.join(projectRoot, "dist", "semantic-worker.cjs")),
     "pnpm build must emit dist/semantic-worker.cjs",
@@ -26,7 +27,7 @@ test("production semantics run in one worker and report the bounded resident set
     ARKTS_MEMORY_METRICS_FILE: metricsPath,
     ARKTS_BENCHMARK_CONTROL: "1",
   } })
-  t.after(() => server.close())
+  track(() => server.close())
   const rootUri = pathToFileURL(fixtureRoot).href
   const uri = pathToFileURL(path.join(fixtureRoot, "Profile.ets")).href
   const text = [
@@ -113,7 +114,7 @@ test("production semantics run in one worker and report the bounded resident set
 
 test("completion recovers after module visit mutations and L3 pressure", { timeout: 30_000 }, async t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-pressure-recovery-"))
-  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const track = createTestResourceScope(t, () => fs.rmSync(directory, { recursive: true, force: true }))
   const uri = pathToFileURL(path.join(directory, "Entry.ets")).href
   const source = "export class Entry {\n  stableMember: number = 1\n  build() { return this. }\n}\n"
   fs.writeFileSync(path.join(directory, "Entry.ets"), source)
@@ -138,7 +139,7 @@ test("completion recovers after module visit mutations and L3 pressure", { timeo
       ARKTS_LSP_LOG_DIR: path.join(directory, "logs"),
     },
   })
-  t.after(() => session.close().catch(() => {}))
+  track(() => session.close())
   const initialized = await session.request("initialize", {
     processId: process.pid, rootUri: pathToFileURL(directory).href,
     workspaceFolders: [directory, otherRoot].map((root, index) => ({
@@ -235,7 +236,7 @@ for (const [name, trace, cancel, jointPolicy = false] of [
   test(name,
     { timeout: 60_000 }, async t => {
       const directory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-transient-occupancy-"))
-      t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+      const track = createTestResourceScope(t, () => fs.rmSync(directory, { recursive: true, force: true }))
       const workspace = path.join(directory, "workspace")
       const sdk = path.join(directory, "sdk")
       const logs = path.join(directory, "logs")
@@ -270,7 +271,7 @@ for (const [name, trace, cancel, jointPolicy = false] of [
           ARKTS_L01_TRANSIENT_DIAGNOSTICS: jointPolicy ? "1" : "0",
         },
       })
-      t.after(() => session.close().catch(() => {}))
+      track(() => session.close())
       await session.initialize({ timeoutMs: 10_000, initializationOptions: { sdk: { path: sdk } } })
       session.openDocument({ uri, version: 1, text: source })
       assert.deepEqual((await diagnostic(session, uri, 1)).params.diagnostics, [])

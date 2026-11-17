@@ -6,7 +6,7 @@ import type { SemanticManagedContext } from "../../semantic/coordinator/semantic
 import { ReferenceAnchorMemo } from "../../semantic/references/reference-anchor.js"
 import type { TypeScriptLanguageServiceEngine } from "./typescript-language-service.js"
 import { pathToFileURL } from "node:url"
-import type { ReadinessTrace } from "./typescript-semantic-readiness.js"
+import type { ReadinessTrace, ReadinessSourceVisitor } from "./typescript-semantic-readiness.js"
 import type { SemanticReadinessReport } from "../../contracts/semantic-readiness.js"
 import { semanticUnprepared } from "../../contracts/semantic-readiness.js"
 import path from "node:path"
@@ -14,6 +14,7 @@ import type { SemanticCoordinator, SemanticMemoryLevel } from "../../semantic/co
 import { runWithSemanticLease } from "./semantic-query-lease.js"
 import { assertCurrentWorkspaceSources } from "./typescript-workspace-source-fence.js"
 import { SemanticInputUnavailableError } from "./typescript-query-inputs.js"
+import { assertCurrentOperationScope, withOperationScope, fullOperationScope } from "./operation-scope-execution.js"
 
 export interface WorkspaceEngineEntry extends SemanticManagedContext {
   engine: TypeScriptLanguageServiceEngine
@@ -37,6 +38,7 @@ export function queryWorkspaceReadiness(coordinator: SemanticCoordinator<Workspa
     readonly pressure: () => SemanticMemoryLevel
     readonly prepare: () => void
     readonly trace?: ReadinessTrace
+    readonly sourceNamespace?: ReadinessSourceVisitor
   }): SemanticReadinessReport {
   const rootPath = path.resolve(workspace.rootPath)
   const rootUri = pathToFileURL(rootPath).href
@@ -48,12 +50,19 @@ export function queryWorkspaceReadiness(coordinator: SemanticCoordinator<Workspa
     const entry = coordinator.peek(rootPath)
     if (!entry) return semanticUnprepared(rootUri)
     let result: SemanticReadinessReport
+    let sourceVisited = false
+    const sourceNamespace: ReadinessSourceVisitor | undefined = hooks.sourceNamespace && ((digest, report) => {
+      sourceVisited = true
+      return hooks.sourceNamespace!(digest, report)
+    })
     try {
       result = runWithSemanticLease(coordinator, rootPath,
         current => current.engine.withRequestModuleResolution(() =>
-          current.engine.semanticReadiness(workspace, prepared, hooks.trace)), false)
+          current.engine.semanticReadiness(workspace, prepared, hooks.trace, sourceNamespace)), false)
     } catch (error) {
-      if (!(error instanceof SemanticInputUnavailableError)) throw error
+      // Namespace construction and its final fence used to fail outside this
+      // status catch. Keep that refusal terminal; do not turn it into a cache miss.
+      if (sourceVisited || !(error instanceof SemanticInputUnavailableError)) throw error
       entry.engine.invalidateResidentReferences()
       return semanticUnprepared(rootUri, "inputs-changed-during-preparation")
     }
@@ -73,12 +82,24 @@ export function queryWorkspaceReadiness(coordinator: SemanticCoordinator<Workspa
 export function runPreparedSemanticQuery<Result>(entry: WorkspaceEngineEntry,
   workspace: SemanticWorkspaceView, run: (entry: WorkspaceEngineEntry) => Result,
   certifyReadiness: boolean, trace?: ReadinessTrace, checkpoint: () => void = () => {}, access?: ProjectFileAccessPort): Result {
-  return entry.engine.withRequestModuleResolution(() => {
+  const execute = (view: SemanticWorkspaceView): Result => withOperationScope(view, () => {
     const result = run(entry)
-    if (certifyReadiness) certifyPreparedQuery(entry, workspace, trace)
-    assertCurrentWorkspaceSources(workspace, checkpoint, access)
+    if (certifyReadiness) certifyPreparedQuery(entry, view, trace)
+    assertCurrentWorkspaceSources(view, checkpoint, access)
     entry.engine.assertCurrentInputs(checkpoint)
+    assertCurrentOperationScope(view, entry.engine.projectSyntaxProfile().options)
     return result
+  })
+  return entry.engine.withRequestModuleResolution(() => {
+    try { return execute(workspace) }
+    catch (error) {
+      const full = fullOperationScope(workspace, error)
+      if (!full) throw error
+      assertCurrentOperationScope(workspace, entry.engine.projectSyntaxProfile().options)
+      entry.engine.assertCurrentInputs(checkpoint)
+      entry.engine.prepare(full)
+      return execute(full)
+    }
   })
 }
 

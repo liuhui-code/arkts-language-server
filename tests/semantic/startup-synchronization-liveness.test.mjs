@@ -3,6 +3,7 @@ import fs from "node:fs"
 import path from "node:path"
 import os from "node:os"
 import test, { after, before, describe } from "node:test"
+import { writeUnavailableSource } from "../support/partial-source-fixture.mjs"
 import { createReadinessFixture } from "../support/semantic-readiness-lsp.mjs"
 
 test("opening and editing during a finite cold synchronization preserves initialization and its Worker",
@@ -94,6 +95,9 @@ describe("thirty thousand source synchronization", () => {
         NODE_OPTIONS: `--require=${JSON.stringify(path.resolve("tests/fixtures/save-during-synchronization.cjs"))}`,
       })
       fs.renameSync(path.join(preparedDirectory, "noise"), path.join(f.workspace, "noise"))
+      // This scenario intentionally exercises local liveness with incomplete input;
+      // file count alone no longer makes membership partial.
+      await writeUnavailableSource(f.workspace, "noise/Unused0.ts")
       const sourceFiles = fs.readdirSync(path.join(f.workspace, "noise")).length + Object.keys(f.sources).length
       assert.equal(sourceFiles, 30_000)
       t.diagnostic(JSON.stringify({ fixturePreparationMs, sourceFiles,

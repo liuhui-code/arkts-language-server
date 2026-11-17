@@ -46,7 +46,9 @@ import type {
 } from "../workspace/document-store.js"
 import { CooperativeWork } from "./cooperative-work.js"
 import { typescriptProgramStats, typescriptCacheStats, measureOfficialCompilerReadiness } from "./typescript-program-stats.js"
-import { OfficialReadinessState, withLoadedReadinessMembership, type ReadinessTrace } from "./typescript-semantic-readiness.js"
+import { sdkReadinessCoverage } from "./sdk-readiness-coverage.js"
+import { admitCompilerProgramObservation, compilerSyntaxProfile } from "./observe-compiler-program.js"
+import { OfficialReadinessState, withLoadedReadinessMembership, queryOfficialReadiness, type ReadinessTrace, type ReadinessSourceVisitor } from "./typescript-semantic-readiness.js"
 import { TypeScriptContentVersions } from "./typescript-content-versions.js"
 import { applyTypeScriptContentChanges, membershipUpdate, removeTypeScriptProjectInputs, TypeScriptCompilerInputs } from "./typescript-compiler-inputs.js"
 import { createCompilerInputWitness, canRecoverCompilerSourceNamespace, observeAdmittedSourceRead, observePreparedSourceRead } from "./typescript-source-witness-updates.js"
@@ -281,7 +283,7 @@ export class TypeScriptLanguageServiceEngine {
   }
 
   prepare(workspace: SemanticWorkspaceView): SemanticTypeEngineState {
-    this.overlayPaths = workspace.overlayPaths
+    this.overlayPaths = workspace.overlayPaths; this.lazySnapshots.setSourceDirectories(workspace)
     this.projectMembershipRootId = workspace.canonicalRootId ?? path.resolve(workspace.rootPath)
     const protectedPaths = new Set<string>()
     this.removeProjectFiles(workspace.removedPaths)
@@ -307,7 +309,7 @@ export class TypeScriptLanguageServiceEngine {
     this.scriptAdmission.complete(this.scripts.size, this.generation)
     if (this.residentReferencesState) {
       this.residentReferencesState.prepare(withLoadedReadinessMembership(workspace,
-        this.projectMembershipStatus, this.projectMembershipRevision, this.projectMembershipPaths), this.generation, this.scriptFileNames())
+        this.projectMembershipStatus, this.projectMembershipRevision, this.projectMembershipPaths), this.generation, this.hostRoots.metadataNames())
     }
     return {
       status: workspace.state.syntaxReady ? typescriptTypeStatus(workspace.state.path) : "unsupported",
@@ -323,33 +325,26 @@ export class TypeScriptLanguageServiceEngine {
       scriptBytes: this.scriptBytes, maxFiles: MAX_SCRIPTS, maxBytes: MAX_SCRIPT_BYTES, lazySnapshots: this.lazySnapshots.state() })
   }
 
-  measureCompilerReadiness(): ReturnType<typeof measureOfficialCompilerReadiness> {
-    return measureOfficialCompilerReadiness(this.service)
-  }
-
-  hasReadinessRefreshIntent(onlyStale = false): boolean { return this.readiness.refreshRequested && (!onlyStale || this.readiness.preparedGeneration !== this.generation) }
+  measureCompilerReadiness() { return measureOfficialCompilerReadiness(this.service) }
+  hasCompleteSdkCoverage() { return sdkReadinessCoverage(this.sdkSelection, this.sdkAmbientProfile, this.sdkDeclarationPaths) }
+  projectSyntaxProfile(includeNativePackages = false) { return compilerSyntaxProfile(this.options, includeNativePackages ? this.service.getProgram() : undefined, this.rootPath, this.sdkSelection, this.packageResolver, () => this.configurationWitness?.captureConfigurationBeforeSourceReset(() => this.checkpoint?.(), () => false)) }
+  hasReadinessRefreshIntent(onlyStale = false): boolean { return this.readiness.hasRefreshIntent(this.generation, onlyStale) }
   hasPreparedCompilerState(): boolean { return this.readiness.hasPreparedProgram || this.residentReferencesState?.hasObservedProgram === true }
   restoreReadinessRefreshIntent(): void { this.readiness.restoreQueryRefresh() }
 
-  semanticReadiness(workspace: SemanticWorkspaceView, mode: boolean | "query" | "query-prepare", trace?: ReadinessTrace) {
-    return this.readiness.status(this.readinessInput(workspace, trace), mode)
-  }
-
-  private readinessInput(workspace: SemanticWorkspaceView, trace?: ReadinessTrace) {
-    return { workspace: withLoadedReadinessMembership(workspace,
-      this.projectMembershipStatus, this.projectMembershipRevision, this.projectMembershipPaths), generation: this.generation,
-      roots: this.scriptFileNames(), service: this.service, compilerOptions: this.options,
+  semanticReadiness(workspace: SemanticWorkspaceView, mode: boolean | "query" | "query-prepare", trace?: ReadinessTrace, sourceNamespace?: ReadinessSourceVisitor) {
+    return queryOfficialReadiness(this.readiness, { workspace, generation: this.generation,
+      roots: this.hostRoots.metadataNames(), service: this.service, compilerOptions: this.options,
       sdk: this.sdkSelection, sdkRoots: this.sdkDeclarationPaths, sdkAmbientProfile: this.sdkAmbientProfile,
       witness: this.configurationWitness, resolver: this.packageResolver, readSourceFile: this.readSourceFile,
-      cancellation: this.host.getCancellationToken?.(), residentProofOwner: this.residentProofOwner, trace }
+      cancellation: this.host.getCancellationToken?.(), residentProofOwner: this.residentProofOwner, trace },
+      { status: this.projectMembershipStatus, revision: this.projectMembershipRevision, paths: this.projectMembershipPaths }, mode, sourceNamespace)
   }
 
   programFileStats() { return typescriptProgramStats(this.service.getProgram(), this.rootPath, this.sdkRoot, this.sdkSelection.components) }
 
   compilerInputPaths(): ReadonlySet<string> | undefined { return this.compilerInputs.knownPaths() }
-  private readonly observeCompilerProgram = (program: ts.Program | undefined): void => {
-    this.hostRoots.observeProgram(program, this.host.getProjectVersion!())
-  }
+  private readonly observeCompilerProgram = (program: ts.Program | undefined): void => admitCompilerProgramObservation(program, this.hostRoots, this.host.getProjectVersion!())
   private readonly invalidateCompilerOwner = (): void => {
     this.hostRoots.forgetProgram()
     this.invalidateResidentReferences()
@@ -729,7 +724,7 @@ export class TypeScriptLanguageServiceEngine {
       work,
     )
     this.assertCurrentInputs(() => work.boundary())
-    if (requiredWorkspace && !this.residentReferencesState?.admit(requiredWorkspace, this.generation, this.scriptFileNames())) {
+    if (requiredWorkspace && !this.residentReferencesState?.admit(requiredWorkspace, this.generation, this.hostRoots.metadataNames())) {
       throw new SemanticInputUnavailableError()
     }
     return candidates
@@ -1335,7 +1330,7 @@ export class TypeScriptLanguageServiceEngine {
   ): SemanticReferenceQueryResult | undefined {
     if (this.projectMembershipFailure()) return undefined
     return queryAdmittedReferences(this.residentReferencesState, workspace,
-      () => ({ generation: this.generation, roots: this.scriptFileNames() }),
+      () => ({ generation: this.generation, roots: this.hostRoots.metadataNames() }),
       program => this.queryReferences(position, includeDeclaration, true, program), position.path, () => { this.prepare(workspace); this.residentReferencesState?.captureCurrentProgram(this.service) })
   }
 
@@ -1344,7 +1339,7 @@ export class TypeScriptLanguageServiceEngine {
   ): SemanticDefinitionCandidate[] | undefined {
     if (this.projectMembershipFailure()) return undefined
     return queryAdmittedDefinition(this.residentReferencesState, workspace,
-      () => ({ generation: this.generation, roots: this.scriptFileNames() }), () => this.service,
+      () => ({ generation: this.generation, roots: this.hostRoots.metadataNames() }), () => this.service,
       lookup => this.definitionCandidates(position, lookup, new CooperativeWork(this.checkpoint)))
   }
 

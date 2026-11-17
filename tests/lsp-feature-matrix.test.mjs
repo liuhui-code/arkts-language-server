@@ -134,7 +134,9 @@ test("maps the complete public capability contract to executable feature evidenc
     "document-formatting",
   ])
   assert.deepEqual(audit.plannedFeatureIds, [])
-  assert.equal(audit.requiredCapabilityCount, 21)
+  assert.equal(audit.requiredCapabilityCount, 22)
+  assert.ok(CURRENT_LSP_CAPABILITY_CONTRACT.required.some(({ path, expected }) =>
+    path === "textDocumentSync.save" && expected === true))
   assert.equal(audit.absentCapabilityCount, 0)
   assert.deepEqual(audit.artifactCoveredFeatureIds, [
     "document-sync",

@@ -11,6 +11,7 @@ if (!isMainThread && process.env.ARKTS_LSP_LOG_DIR) {
   }
   const armed = path.join(directory, "arm-resident-input-proof")
   const output = path.join(directory, "resident-input-proof.jsonl")
+  const allScopes = path.join(directory, "resident-input-proof-all-scopes.jsonl")
   const mutationWitness = path.join(directory, "resident-input-proof-mutation.json")
   let proofStarted = false
   let mutation
@@ -31,10 +32,16 @@ if (!isMainThread && process.env.ARKTS_LSP_LOG_DIR) {
       const result = Reflect.apply(update, this, [data, ...rest])
       if (args[0] === "sha256" && typeof data === "string"
         && data.startsWith("// op02-pure-input ") && fs.existsSync(armed)) {
-        fs.appendFileSync(output, JSON.stringify({ kind: "hash-update", timestamp: Date.now(), pid: process.pid, threadId,
-          inputBytes: Buffer.byteLength(data, rest[0] ?? "utf8"),
-          caller: new Error().stack.split("\n").slice(2, 7),
-        }) + "\n")
+        const caller = new Error().stack.split("\n").slice(2)
+        const scope = caller.some(line => line.includes("queryAdmittedReferences")) ? "resident-query"
+          : caller.some(line => line.includes("projectSourceNamespace")) ? "source-namespace"
+          : caller.some(line => line.includes("OfficialReadiness")) ? "readiness" : "other"
+        const row = { kind: "hash-update", timestamp: Date.now(), pid: process.pid, threadId, scope,
+          inputBytes: Buffer.byteLength(data, rest[0] ?? "utf8"), caller }
+        fs.appendFileSync(allScopes, JSON.stringify(row) + "\n")
+        // Never let earlier optional readiness/namespace work consume a resident-query fault window.
+        if (scope !== "resident-query") return result
+        fs.appendFileSync(output, JSON.stringify(row) + "\n")
         if (!proofStarted) {
           proofStarted = true
           const controls = JSON.parse(fs.readFileSync(armed, "utf8"))

@@ -1,3 +1,4 @@
+import type { IndexReadProof } from "./index-evidence.js"
 import type {
   DocumentSnapshot,
   DocumentUri,
@@ -11,6 +12,7 @@ export type WorkspaceIndexState = "warming" | "ready" | "degraded"
 export type WorkspaceIndexCompleteness = "ready" | "partial" | "stale"
 
 export interface WorkspaceIndexStatus {
+  indexProof?: IndexReadProof
   state: WorkspaceIndexState
   committedGeneration: number
   /** Catalog already running when the caller observed this status. */
@@ -27,6 +29,7 @@ export interface WorkspaceSymbol {
 }
 
 export interface WorkspaceSymbolSearchResult {
+  indexProof?: IndexReadProof
   items: WorkspaceSymbol[]
   servedGeneration: number
   completeness: WorkspaceIndexCompleteness
@@ -45,6 +48,7 @@ export interface WorkspaceExportCandidate {
 }
 
 export interface WorkspaceExportSearchResult {
+  indexProof?: IndexReadProof
   items: WorkspaceExportCandidate[]
   servedGeneration: number
   completeness: WorkspaceIndexCompleteness
@@ -60,6 +64,7 @@ export interface WorkspaceExportIndexPort {
 }
 
 export interface WorkspaceReferenceCandidateResult {
+  indexProof?: IndexReadProof
   supported: boolean
   complete: boolean
   identityComplete: boolean

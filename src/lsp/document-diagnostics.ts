@@ -19,7 +19,7 @@ interface DiagnosticDependencies {
 interface PendingDiagnostics {
   controller: AbortController
   timer: NodeJS.Timeout
-  started: boolean
+  phase: "scheduled" | "preparing" | "semantic"
   settled: Promise<void>
   settle(): void
 }
@@ -55,7 +55,7 @@ export function createDocumentDiagnostics({
     clearTimeout(task.timer)
     task.controller.abort(new Error("Diagnostics superseded"))
     pending.delete(documentUri)
-    if (!task.started) task.settle()
+    if (task.phase === "scheduled") task.settle()
   }
 
   const update = (document: TextDocument, delay = DIAGNOSTIC_DELAY_MS) => {
@@ -75,7 +75,7 @@ export function createDocumentDiagnostics({
     })
     const timer = setTimeout(async () => {
       const task = pending.get(document.uri)
-      if (task?.controller === controller) task.started = true
+      if (task?.controller === controller) task.phase = "preparing"
       try {
         if (!isCurrentWorkspace()) return
         if (Number.isSafeInteger(TEST_DIAGNOSTIC_DELAY_MS)
@@ -85,6 +85,10 @@ export function createDocumentDiagnostics({
           await new Promise(resolve => setTimeout(resolve, TEST_DIAGNOSTIC_DELAY_MS))
           connection.console.log(`diagnostics test delay settled ${document.uri} ${sequence}`)
         }
+        // Cancellation before semantic handoff owns no Worker scope to drain.
+        if (!task || controller.signal.aborted || !isCurrentWorkspace()
+          || pending.get(document.uri)?.controller !== controller) return
+        task.phase = "semantic"
         const result = await semantic.diagnose({
           document: documentSnapshot,
           signal: controller.signal,
@@ -124,7 +128,7 @@ export function createDocumentDiagnostics({
     pending.set(document.uri, {
       controller,
       timer,
-      started: false,
+      phase: "scheduled",
       settled,
       settle,
     })
@@ -165,6 +169,14 @@ export function createDocumentDiagnostics({
     scheduleRefresh()
   }
 
+  // Retirement invalidates pending work across all logical roots in the physical Worker.
+  // Replay completion only requeues fresh snapshots; normal publication fences still apply.
+  const unsubscribeRecovery = semantic.onDidRecover?.(() => {
+    for (const workspaceId of new Set(documents.all().map(document => snapshot(document).workspaceId))) {
+      refreshWorkspace(workspaceId)
+    }
+  })
+
   const close = (documentUri: string) => {
     cancel(documentUri)
     deferredUris.delete(documentUri)
@@ -178,7 +190,7 @@ export function createDocumentDiagnostics({
     const settling: Promise<void>[] = []
     for (const [documentUri, task] of pending) {
       deferredUris.add(documentUri)
-      settling.push(task.settled)
+      if (task.phase === "semantic") settling.push(task.settled)
       cancel(documentUri)
     }
     quiescence = Promise.all([quiescence, ...settling]).then(() => {})
@@ -206,6 +218,7 @@ export function createDocumentDiagnostics({
     suspend,
     dispose: () => {
       disposed = true
+      unsubscribeRecovery?.()
       deferredUris.clear()
       dirtyWorkspaces.clear()
       workspaceEpochs.clear()

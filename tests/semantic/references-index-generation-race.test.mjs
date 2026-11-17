@@ -87,7 +87,14 @@ test("a newer watched edit cannot recover references from an older committed cat
   const initialWithoutDeclaration = await references(false)
   assert.ok(initialWithoutDeclaration.some(location => location.uri.endsWith("/Use.ets")))
   assert.ok(initialWithDeclaration.some(location => location.uri === targetUri))
-  await waitUntil(() => events(logDirectory).some(event => event.event === "references.index.accepted"))
+  if (nativeSidecar) {
+    await waitUntil(() => events(logDirectory).some(event => event.event === "references.index.accepted"))
+  } else {
+    assert.equal(audits(auditPath, "references/candidates").length, 4,
+      "each unqualified usage lookup must also verify its compiler declaration")
+    assert.equal(events(logDirectory).some(event => event.event === "references.index.accepted"), false,
+      "legacy candidates cannot narrow even before an edit")
+  }
 
   const change = text => {
     fs.writeFileSync(targetPath, text)
@@ -145,9 +152,16 @@ test("a newer watched edit cannot recover references from an older committed cat
   const recovered = await references(false)
   assert.deepEqual(recovered, initialWithoutDeclaration)
   const recoveryEvents = events(logDirectory).slice(beforeRecovery)
-  assert.ok(recoveryEvents.some(event => event.event === "references.index.recovered"
+  if (nativeSidecar) assert.ok(recoveryEvents.some(event => event.event === "references.index.recovered"
     && event.committedGeneration === 3))
-  assert.ok(recoveryEvents.some(event => event.event === "references.index.accepted"))
+  else {
+    t.diagnostic(JSON.stringify({ scenario: "legacy-final-generation-is-not-source-qualification", recoveryEvents }))
+    assert.equal(recoveryEvents.some(event => event.event === "references.index.recovered"
+      && event.committedGeneration <= 2), false,
+    "no earlier generation may recover the second edit")
+  }
+  assert.equal(recoveryEvents.some(event => event.event === "references.index.accepted"), Boolean(nativeSidecar),
+    "a later legacy generation is still not complete source qualification")
   await session.close({ timeoutMs: 5_000 })
 })
 

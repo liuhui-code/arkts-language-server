@@ -6,13 +6,11 @@ import { canonicalTypeEngineOwner } from "./type-context-reset.js"
 import { SemanticInputUnavailableError } from "./typescript-query-inputs.js"
 
 // Successful replacements release their capsule immediately. Failed replacements
-// retain bounded denial evidence, never an old LS/Program, until configuration reload.
-const MAX_PENDING_FACTS = 4096
+// retain complete input evidence, never an old LS/Program, until configuration reload.
 
 export class SourceResetAdmissions {
-  private readonly pending = new Map<string, { root: string; proof: RetainedConfigurationProof; cost: number }>()
+  private readonly pending = new Map<string, { root: string; proof: RetainedConfigurationProof }>()
   private configured = new WeakSet<WorkspaceEngineEntry>()
-  private facts = 0
 
   begin(contextId: string, root: string, previous: WorkspaceEngineEntry | undefined,
     reason: string | undefined, checkpoint: () => void): RetainedConfigurationProof | undefined {
@@ -26,16 +24,15 @@ export class SourceResetAdmissions {
       || reason === "resolution-generation-change" || reason === "unnotified-resolution-change")) {
       const proof = previous.engine.captureConfigurationBeforeSourceReset(checkpoint)
       if (proof) {
-        const cost = Math.max(1, proof.factCount)
-        if (this.facts + cost > MAX_PENDING_FACTS) throw new SemanticInputUnavailableError()
-        retained = { root, proof, cost }
+        retained = { root, proof }
         this.pending.set(contextId, retained)
-        this.facts += cost
       }
     }
     this.assertCurrent(retained?.proof, checkpoint)
     return retained?.proof
   }
+
+  hasPending(contextId: string): boolean { return this.pending.has(contextId) }
 
   assertCurrent(proof: RetainedConfigurationProof | undefined, checkpoint: () => void): void {
     if (proof && !proof.current(checkpoint)) throw new SemanticInputUnavailableError()
@@ -44,7 +41,6 @@ export class SourceResetAdmissions {
   complete(contextId: string, proof: RetainedConfigurationProof | undefined): void {
     const retained = this.pending.get(contextId)
     if (!retained || retained.proof !== proof) return
-    this.facts -= retained.cost
     this.pending.delete(contextId)
   }
 
@@ -59,7 +55,9 @@ export class SourceResetAdmissions {
     }
   }
 
+  allowsConfigurationReload(entry: WorkspaceEngineEntry | undefined): boolean { return entry !== undefined && this.configured.has(entry) }
+
   consumeConfiguration(entry: WorkspaceEngineEntry | undefined): void { if (entry) this.configured.delete(entry) }
 
-  clear(): void { this.pending.clear(); this.facts = 0; this.configured = new WeakSet() }
+  clear(): void { this.pending.clear(); this.configured = new WeakSet() }
 }

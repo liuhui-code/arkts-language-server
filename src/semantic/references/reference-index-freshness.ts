@@ -1,3 +1,4 @@
+import { sameIndexQualification, type IndexQualification } from "../../contracts/index-evidence.js"
 import type {
   WorkspaceIndexStatus,
   WorkspaceReferenceCandidateResult,
@@ -12,6 +13,7 @@ interface DirtyIndexGeneration {
   capture?: Promise<void>
   postEditCatalogGeneration?: number
   postEditCatalogCapture?: Promise<void>
+  postEditQualification?: IndexQualification
 }
 
 export interface ReferenceIndexFreshnessResult {
@@ -33,7 +35,7 @@ export class ReferenceIndexFreshness {
     batch: SemanticWorkspaceFileChangeBatch,
     index?: WorkspaceReferenceIndexPort,
   ): void {
-    if (batch.rootDirty || batch.changes.some(change => {
+    if (batch.rootDirty || batch.catalogRulesChanged || batch.changes.some(change => {
       const changedPath = toFilePath(change.uri)
       return changedPath?.endsWith(".ets") || changedPath?.endsWith(".ts")
     })) this.changed(batch.rootUri, index)
@@ -93,9 +95,10 @@ export class ReferenceIndexFreshness {
     this.#catalogDirtyGenerations.delete(workspaceId)
     if (!pending || this.#dirtyGenerations.get(workspaceId) !== pending.dirty) return
     pending.dirty.postEditCatalogCapture = safeStatus(index, workspaceId).then((status) => {
-      if (this.#dirtyGenerations.get(workspaceId) === pending.dirty
-        && status?.state === "ready"
-        && status.committedGeneration > pending.baselineGeneration) {
+      if (this.#dirtyGenerations.get(workspaceId) !== pending.dirty || status?.state !== "ready") return
+      if (status.indexProof) {
+        if (status.indexProof.qualification) pending.dirty.postEditQualification = status.indexProof.qualification
+      } else if (status.committedGeneration > pending.baselineGeneration) {
         pending.dirty.postEditCatalogGeneration = status.committedGeneration
       }
     })
@@ -118,11 +121,13 @@ export class ReferenceIndexFreshness {
       return { usable: true, recovered: false }
     }
     const baselineGeneration = dirty.baselineGeneration
-    if (status?.state === "ready" && (
-      (baselineGeneration !== undefined && status.committedGeneration > baselineGeneration)
-      || (dirty.postEditCatalogGeneration !== undefined
-        && status.committedGeneration >= dirty.postEditCatalogGeneration)
-    )) {
+    const proof = status?.indexProof
+    const qualifiedCurrentInput = proof ? Boolean(proof.qualification && dirty.postEditQualification
+      && sameIndexQualification(proof.qualification, dirty.postEditQualification)) : (
+      (baselineGeneration !== undefined && status !== undefined && status.committedGeneration > baselineGeneration)
+      || (dirty.postEditCatalogGeneration !== undefined && status !== undefined
+        && status.committedGeneration >= dirty.postEditCatalogGeneration))
+    if (status?.state === "ready" && qualifiedCurrentInput) {
       this.#dirtyGenerations.delete(workspaceId)
       return {
         usable: true,
@@ -157,6 +162,12 @@ export function isReferenceIndexCandidateEligible(
   result: WorkspaceReferenceCandidateResult,
   status: WorkspaceIndexStatus,
 ): boolean {
+  const queryProof = result.indexProof
+  const statusProof = status.indexProof
+  if (queryProof || statusProof) {
+    if (!queryProof?.qualification || !statusProof?.qualification
+      || !sameIndexQualification(queryProof.qualification, statusProof.qualification)) return false
+  }
   return result.supported && result.complete && result.completeness === "ready"
     && Boolean(result.declarationIdentity) && status.state === "ready"
     && result.servedGeneration === status.committedGeneration

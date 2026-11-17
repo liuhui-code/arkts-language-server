@@ -272,3 +272,80 @@ test("raw readiness records and arrays reject extras, holes and accessors withou
   }
   assert.equal(calls, 0)
 })
+
+
+test("fresh source observations validate independent name and optional disk digests", t => {
+  const protocol = buildDriver(t)
+  const names = { sha256: "a".repeat(64), sources: 2 }
+  const disk = { ...names, diskSha256: "b".repeat(64), overlayOnly: false }
+  for (const sourceNamespace of [names, disk, { ...disk, overlayOnly: true }]) {
+    const report = { ...ready(), sourceNamespace }
+    assert.deepEqual(decode(protocol, success(protocol, report)).value.sourceNamespace, sourceNamespace)
+  }
+  let getters = 0
+  const accessor = { sources: 2 }
+  Object.defineProperty(accessor, "sha256", { enumerable: true, get() { getters++; return "a".repeat(64) } })
+  for (const sourceNamespace of [undefined, null, accessor, { ...names, sources: -1 },
+    { ...names, sources: 1.5 }, { ...names, sha256: "wrong" }, { ...names, extra: undefined },
+    { ...names, diskSha256: "b".repeat(64) }, { ...names, overlayOnly: false },
+    { ...disk, diskSha256: undefined }, { ...disk, overlayOnly: 1 }]) {
+    assert.throws(() => decode(protocol, success(protocol, { ...ready(), sourceNamespace })), /Invalid semantic worker response/)
+  }
+  assert.equal(getters, 0)
+})
+
+
+test("complete-query disk capture is an explicit strictly decoded internal readiness flag", t => {
+  const protocol = buildDriver(t)
+  const request = { protocol: protocol.SEMANTIC_WORKER_PROTOCOL_VERSION, epoch: 1, id: 1,
+    requiredRevision: 0, method: "semanticReadiness", uri: rootUri, expectedDocumentVersion: null,
+    args: { prepare: false, captureSourceInputs: true }, cancelCell: protocol.createSemanticWorkerCancellationCell() }
+  assert.deepEqual(protocol.decodeSemanticWorkerRequest(request).args, request.args)
+  assert.throws(() => protocol.decodeSemanticWorkerRequest({ ...request, protocol: 2 }),
+    /Invalid semantic worker request/, "a peer predating conditional source-proof purposes must fail ABI admission")
+  const conditional = { ...request, args: { prepare: false, captureSourceInputs: "cache" } }
+  assert.deepEqual(protocol.decodeSemanticWorkerRequest(conditional).args, conditional.args)
+  for (const captureSourceInputs of [false, undefined, 1, "true", "if-ready", null]) {
+    assert.throws(() => protocol.decodeSemanticWorkerRequest({ ...request, args: { prepare: false, captureSourceInputs } }),
+      /Invalid semantic worker request/)
+  }
+  let getters = 0
+  const args = { prepare: false }
+  Object.defineProperty(args, "captureSourceInputs", { enumerable: true, get() { getters++; return true } })
+  assert.throws(() => protocol.decodeSemanticWorkerRequest({ ...request, args }), /Invalid semantic worker request/)
+  assert.equal(getters, 0)
+})
+
+test("managed source namespace mutations retain immutable bounded proofs and reject hostile shapes", t => {
+  const protocol = buildDriver(t)
+  const directory = { directory: path.join(rootPath, "Cache/workspaces", "a".repeat(64)),
+    dev: "1", ino: "2", birthtimeNs: "3" }
+  const mutation = { protocol: protocol.SEMANTIC_WORKER_PROTOCOL_VERSION, epoch: 1, revision: 1, kind: "workspaceFilesChanged",
+    rootUri, rootDirty: true, resourceDirty: false, resourceChanged: false, changes: [],
+    managedSourceNamespaces: [directory] }
+  const decoded = protocol.decodeSemanticWorkerMutation(mutation)
+  assert.deepEqual(decoded.managedSourceNamespaces, [directory])
+  assert.ok(Object.isFrozen(decoded.managedSourceNamespaces))
+  assert.ok(Object.isFrozen(decoded.managedSourceNamespaces[0]))
+  const peer = { ...directory, directory: directory.directory + "-peer", ino: "3" }
+  assert.deepEqual(protocol.decodeSemanticWorkerMutation({ ...mutation, managedSourceNamespaces: [directory, peer] })
+    .managedSourceNamespaces, [directory, peer], "one source root may contain several separately attested cache owners")
+  assert.deepEqual(protocol.decodeSemanticWorkerMutation({ ...mutation, managedSourceNamespaces: [] })
+    .managedSourceNamespaces, [], "empty is an explicit policy removal, not an omitted field")
+  let calls = 0
+  const accessor = { ...directory }
+  Object.defineProperty(accessor, "directory", { enumerable: true, get() { calls++; return directory.directory } })
+  const arrayAccessor = Array(1)
+  Object.defineProperty(arrayAccessor, "0", { enumerable: true, get() { calls++; return directory } })
+  for (const value of [undefined, null, {}, [directory, directory], Array(1), arrayAccessor,
+    [accessor], [{ ...directory, directory: "relative/Cache" }], [{ ...directory, ino: "0" }],
+    [{ ...directory, dev: "-1" }], [{ ...directory, birthtimeNs: "1".repeat(41) }],
+    [{ ...directory, objectId: "untrusted Native id" }],
+    [{ ...directory, directory: directory.directory + "\0" }],
+  ]) assert.throws(() => protocol.decodeSemanticWorkerMutation({ ...mutation, managedSourceNamespaces: value }))
+  assert.throws(() => protocol.decodeSemanticWorkerMutation({ ...mutation, rootDirty: false,
+    changes: [{ uri: rootUri + "/Main.ets", kind: "changed" }] }), "ownership changes require namespace invalidation")
+  assert.equal(calls, 0)
+  directory.ino = "9"
+  assert.equal(decoded.managedSourceNamespaces[0].ino, "2")
+})

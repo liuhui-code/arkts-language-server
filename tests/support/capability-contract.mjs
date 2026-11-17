@@ -1,5 +1,7 @@
 import { isDeepStrictEqual } from "node:util"
 
+export const DOCUMENT_SYNC_CAPABILITY = Object.freeze({ openClose: true, change: 2, save: true })
+
 export const CURRENT_LSP_CAPABILITY_CONTRACT = Object.freeze({
   allowedTopLevel: Object.freeze([
     "callHierarchyProvider",
@@ -26,6 +28,7 @@ export const CURRENT_LSP_CAPABILITY_CONTRACT = Object.freeze({
     { path: "callHierarchyProvider", expected: true },
     { path: "textDocumentSync.openClose", expected: true },
     { path: "textDocumentSync.change", expected: 2 },
+    { path: "textDocumentSync.save", expected: true },
     { path: "completionProvider.triggerCharacters", expected: ["."] },
     { path: "completionProvider.resolveProvider", expected: true },
     {

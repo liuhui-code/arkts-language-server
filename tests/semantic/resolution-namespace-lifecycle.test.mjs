@@ -66,7 +66,8 @@ for (const membership of ["complete", "partial"]) for (const resident of ["0", "
     if (membership === "partial") {
       const noise = path.join(f.workspace, "noise")
       fs.mkdirSync(noise)
-      for (let i = 0; i < 20_001; i++) fs.writeFileSync(path.join(noise, `Unused${i}.ts`), "export {}\n")
+      fs.writeFileSync(path.join(f.workspace, "UnsupportedLarge.ts"), " ".repeat(4 * 1024 * 1024 + 1))
+      for (let i = 0; i < 32; i++) fs.writeFileSync(path.join(noise, `Unused${i}.ts`), "export {}\n")
     }
     const target = "export class Target { method() { return 1 } }\n"
     const main = 'import { Target } from "./Target"\nconst instance = new Target()\ninstance.method()\n'
@@ -246,7 +247,8 @@ for (const membership of ["complete", "partial"]) for (const mutation of ["save"
     if (membership === "partial") {
       const noise = path.join(f.workspace, "noise")
       fs.mkdirSync(noise)
-      for (let i = 0; i < 20_001; i++) fs.writeFileSync(path.join(noise, `Unused${i}.ts`), "export {}\n")
+      fs.writeFileSync(path.join(f.workspace, "UnsupportedLarge.ts"), " ".repeat(4 * 1024 * 1024 + 1))
+      for (let i = 0; i < 32; i++) fs.writeFileSync(path.join(noise, `Unused${i}.ts`), "export {}\n")
     }
     const targetFile = mutation === "delete" ? "nested/Target.ets" : "Target.ets"
     fs.mkdirSync(path.dirname(path.join(f.workspace, targetFile)), { recursive: true })
