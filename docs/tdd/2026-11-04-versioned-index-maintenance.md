@@ -2461,3 +2461,9 @@ CI-PORT-002规范TMPDIR的Mac原公开用例复现102≠101（1FAIL/16名称过�
 两整个文件规范路径19/19PASS、常规路径19/19PASS，均零跳过；最终Linux CI另验。
 仅测试/文档，未改产品或阈值，原Mac完整门禁在未改写的415工作树继续。
 详细见`2026-11-17-integration-portability-regressions.md`与PR118实际CI记录。
+
+
+CI-EXEC-001 RED：GitHub43995951008最大执行60分钟取消，三项可移植性用例已通过、
+停止前连续通过且无新断言失败，但未完成。Mac完整2560/2560实际72m37.6s。
+最小CI变更仅validate总作业预算60→90，所有canonical release步骤/单用例和产品截止原值保留。
+既有`tests/release-pipeline.test.mjs`用于保护覆盖不删减；最终CI重跑结果另见PR118。

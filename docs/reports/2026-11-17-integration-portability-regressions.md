@@ -47,3 +47,23 @@ fixture根的workspace兄弟目录，再以node_modules入口链接；Windows用
 - 原30K重复定义3.795s/三轮Native核验、SDK24/20partial、完整引用/重命名及UI/耐久缺口继续OPEN。
 
 这修复测试夹具的可移植性，不新增架构决策或修改ADR0044/0045最终证明要求。
+
+
+## CI-EXEC-001：完整门禁超过CI总作业预算
+
+第二轮[43995951008](https://github.com/liuhui-code/arkts-language-server/actions/runs/43995951008)
+在60m15s被GitHub取消，注解明确为`The job has exceeded the maximum execution time of 1h0m0s`。
+原CI-PORT三项在本轮全部通过；停止前仍连续通过Worker恢复与所有AAA–BBB编辑交错等场景，
+没有新的断言失败，但套件没有跑完，因此不计作全量PASS。
+
+独立Mac完整check:fast为72m37.6s、2560/2560PASS、零skip/cancel/todo、2548输入及产物未变。
+Rust440项与单独455夹具PASS，完整安装7/7与固定大项目1/1在非嵌套同73源码也PASS。
+原嵌套工作树额外artifact验收3PASS/4FAIL由Cargo祖先工作区和未生成WASM造成，
+改在/private/tmp同一提交完成所有发布前置与验收，没有修改产品配置来绕过。
+
+最小CI修订：仅把Linux validate作业总执行预算60→90分钟，容纳完整串行套件及Rust/Zed/产物检查；
+Windows原40分钟不变，仍由唯一canonical `pnpm check:release`执行所有原门禁。
+LSP/Worker、原5秒请求、单用例超时、内存/规模/正确性、新鲜度与完整性断言均未修改。
+这是CI资源分配，不是性能验收线或把产品慢响应当成功；90分钟也不构成新的产品SLO。
+实际失败作业即RED；既有release-pipeline完整6/6PASS，保护门禁覆盖与唯一驱动；最终CI重新执行才是GREEN。
+完整证据与最终CI结论见PR118及本地integration-20261117，原60分钟失败记录保留。
