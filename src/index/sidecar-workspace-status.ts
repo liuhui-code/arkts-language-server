@@ -13,4 +13,3 @@ export function mapStatus(value: unknown): WorkspaceIndexStatus {
     ...(typeof status.message === "string" ? { message: status.message } : {}),
   }
 }
-

@@ -49,4 +49,3 @@ function toggleAsciiCase(value: string): string {
     : character.toLowerCase()
   return `${value.slice(0, index)}${toggled}${value.slice(index + 1)}`
 }
-
