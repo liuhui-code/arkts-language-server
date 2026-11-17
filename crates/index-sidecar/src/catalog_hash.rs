@@ -17,7 +17,7 @@ use std::{
     sync::{Arc, atomic::AtomicU8, mpsc::Sender},
 };
 
-pub(super) enum Issue {
+pub(crate) enum Issue {
     IgnoreRules,
     Directory,
     Entry,
@@ -104,6 +104,7 @@ impl Planner {
         generation: u64,
         progress: CatalogProgress,
         rejected: Vec<String>,
+        namespace: Option<&arkts_index_sqlite::cache_gc::namespace::ManagedCacheNamespace>,
     ) -> Result<(), CatalogFailure> {
         self.jobs.sort_unstable_by(|a, b| a.uri.cmp(&b.uri));
         let verified_count = self.jobs.len();
@@ -140,6 +141,15 @@ impl Planner {
                 }
             },
             |storage| {
+                if matches!(
+                    storage.stage,
+                    CatalogStage::Checking | CatalogStage::Publishing
+                ) && let Some(namespace) = namespace
+                    && let Err(error) = namespace.validate()
+                {
+                    activation_error = Some(error);
+                    return false;
+                }
                 let Collected {
                     progress, sources, ..
                 } = &mut *collected.borrow_mut();

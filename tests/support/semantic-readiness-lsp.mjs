@@ -14,7 +14,7 @@ export async function startReadinessFixture(t, env = {}) {
   return initializeReadinessFixture(fixture)
 }
 
-export async function initializeReadinessFixture(fixture) {
+export async function initializeReadinessFixture(fixture, expectedIndexedFiles = 2) {
   const { session, sdk, events, rootUri } = fixture
   await session.initialize({ initializationOptions: { sdk: { path: sdk } }, timeoutMs: 10_000 })
   const create = await session.transport.serverRequest("window/workDoneProgress/create", () => true, 10_000)
@@ -24,15 +24,17 @@ export async function initializeReadinessFixture(fixture) {
   assert.equal(terminal.params.value.kind, "end")
   const candidate = events().find(e => e.event === "index.catalog.terminal")
   assert.equal(candidate?.phase, "ready")
-  assert.equal(candidate.indexedFiles, 2)
+  assert.equal(candidate.indexedFiles, expectedIndexedFiles)
   const prepared = await session.transport.notification("arkts/semanticPreparation",
     message => message.params.rootUri === rootUri && message.params.phase === "complete", 20_000)
   fixture.initialPreparation = prepared.params.report
+  fixture.initialIndexQualification = events().filter(event => event.event === "index.maintenance.phase"
+    && event.outcome === "qualified" && event.currentInput).at(-1)
   return fixture
 }
 
 /** Same production fixture, before its public initialize transcript. */
-export function createReadinessFixture(t, env = {}) {
+export function createReadinessFixture(t, env = {}, runtime = {}) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-semantic-ready-"))
   const workspace = path.join(directory, "workspace")
   const sdk = path.join(directory, "sdk")
@@ -49,11 +51,13 @@ export function createReadinessFixture(t, env = {}) {
   const rootUri = pathToFileURL(workspace).href
   const logFile = path.join(directory, "logs", "server.log")
   const sessionOptions = {
-    command: process.execPath, args: [path.join(projectRoot, "dist/server.cjs"), "--stdio"],
+    command: process.execPath, args: [runtime.serverPath ?? path.join(projectRoot, "dist/server.cjs"), "--stdio"],
     cwd: projectRoot, rootUri, capabilities: { window: { workDoneProgress: true },
       textDocument: { publishDiagnostics: { versionSupport: true } } },
-    env: { ARKTS_INDEX_SIDECAR_PATH: path.join(projectRoot, "target/release/arkts-index-sidecar"),
-      ARKTS_INDEX_CACHE_DIR: path.join(directory, "cache"), ARKTS_LSP_LOG_DIR: path.dirname(logFile),
+    env: { ARKTS_INDEX_SIDECAR_PATH: process.env.ARKTS_TEST_NATIVE_BINARY ?? path.join(projectRoot, "target/release",
+      process.platform === "win32" ? "arkts-index-sidecar.exe" : "arkts-index-sidecar"),
+      ARKTS_INDEX_CACHE_DIR: runtime.indexCacheDirectory?.(workspace) ?? path.join(directory, "cache"),
+      ARKTS_LSP_LOG_DIR: path.dirname(logFile),
       ARKLINE_HARMONY_SDK_PATH: sdk, DEVECO_SDK_HOME: sdk,
       ARKTS_BENCHMARK_CONTROL: "1", ARKTS_L02_SAME_CONTENT_PROMOTION: "1",
       ARKTS_REFERENCES_STRATEGY: "indexed-batched", ARKTS_REFERENCES_SDK_AMBIENT_PROFILE: "full",

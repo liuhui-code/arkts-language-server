@@ -17,7 +17,23 @@ const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 test("classifies every executable test entry exactly once in an explicit layer", () => {
   const audit = validateTestLayerManifest({ root: projectRoot, manifest: TEST_LAYER_MANIFEST })
 
-  assert.equal(audit.entryCount, 303)
+  assert.equal(audit.entryCount, 348)
+  assert.equal(audit.assignments["tests/semantic/initial-scope-retry.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/sdk-module-candidate-reuse.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/native-wire-audit.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/lsp-readiness-native-identity.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/project-membership-read-proof.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/semantic-worker-recovery-events.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/semantic/diagnostics-after-worker-recovery.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/index-versioned-proof.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/index-maintenance-negotiation.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/index-maintenance-lifecycle.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/index-maintenance-inputs.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/workspace-watch-path-lifetime.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/semantic/index-noop-qualification.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/lsp-index-versioned-maintenance.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/references-membership-recovery.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/references-silent-source-lifecycle.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/index-cache-directory.test.mjs"], "unit-contract")
   assert.equal(audit.assignments["tests/lsp-index-storage.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/sampler-shutdown.test.mjs"], "unit-contract")
@@ -354,9 +370,9 @@ test("classifies every executable test entry exactly once in an explicit layer",
     "bundle-e2e",
   )
   assert.deepEqual(audit.layerCounts, {
-    "unit-contract": 123,
+    "unit-contract": 144,
     protocol: 15,
-    "bundle-e2e": 157,
+    "bundle-e2e": 181,
     "artifact-e2e": 4,
     "sealed-artifact-e2e": 1,
     large: 1,

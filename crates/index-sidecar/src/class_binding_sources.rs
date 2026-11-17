@@ -55,7 +55,7 @@ pub(super) fn current_sources(
     documents
 }
 
-fn admitted_path(root: &Path, workspace_identity: &str, uri: &str) -> Option<PathBuf> {
+pub(crate) fn admitted_path(root: &Path, workspace_identity: &str, uri: &str) -> Option<PathBuf> {
     let relative = uri.strip_prefix(workspace_identity)?.strip_prefix('/')?;
     let mut decoded = Vec::new();
     let raw = relative.as_bytes();
@@ -91,7 +91,7 @@ fn admitted_path(root: &Path, workspace_identity: &str, uri: &str) -> Option<Pat
     (path_to_file_uri(&candidate) == uri).then_some(candidate)
 }
 
-fn read_source(file_path: &Path, root: &Path) -> Option<String> {
+pub(crate) fn read_source(file_path: &Path, root: &Path) -> Option<String> {
     let before = fs::symlink_metadata(file_path).ok()?;
     if !before.is_file() || before.len() > MAX_OVERLAY_BYTES as u64 {
         return None;

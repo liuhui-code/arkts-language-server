@@ -9,16 +9,23 @@ import { runWithSemanticLease } from "./semantic-query-lease.js"
 export function prepareInitialSemanticContexts(workspace: SemanticWorkspaceView, groups: SemanticGroups,
   limit: number, coordinator: SemanticCoordinator<WorkspaceEngineEntry>,
   prepare: (workspace: SemanticWorkspaceView, id: string) => void): void {
-  if (!initialPreparationActive()) return
-  const prepareAndSynchronize = (view: SemanticWorkspaceView, id: string) => {
-    prepare(view, id)
-    runWithSemanticLease(coordinator, id, entry => entry.engine.measureCompilerReadiness(), true)
-  }
-  if (workspace.projectMembership?.status !== "complete") {
-    // An empty explicit root set admits SDK/standard-library roots without
-    // treating an arbitrary preparation anchor as part of a future local query.
-    prepareAndSynchronize({ ...workspace, documents: [], semanticRootPaths: [] }, groups.root(workspace))
+  const initial = initialPreparationActive()
+  if (!initial && groups.hasOperationScopes(workspace.canonicalRootId)) return
+  const synchronize = (id: string) => runWithSemanticLease(coordinator, id, entry =>
+      entry.engine.withRequestModuleResolution(() => entry.engine.measureCompilerReadiness()), true)
+  // SDK/standard-library syntax is prepared in its own original root owner.
+  // An already known SDK refusal cannot require a doomed full-project warmup.
+  // The real catalog remains complete; the later report remains honestly partial.
+  const sdkId = groups.root(workspace)
+  if (!initial && coordinator.peek(sdkId)?.engine.hasCompleteSdkCoverage()) return
+  prepare({ ...workspace, documents: [], semanticRootPaths: [] }, sdkId)
+  const completeSdk = runWithSemanticLease(coordinator, sdkId, entry => entry.engine.hasCompleteSdkCoverage(), false)
+  if (workspace.projectMembership?.status !== "complete" || !completeSdk) {
+    synchronize(sdkId)
+    if (workspace.projectMembership?.status === "complete") groups.preparePartialWorkspace(workspace,
+      runWithSemanticLease(coordinator, sdkId, entry => ({ ...entry.engine.projectSyntaxProfile(true),
+        configuration: entry.engine.captureConfigurationBeforeSourceReset() }), false))
     return
   }
-  groups.prepareInitial(workspace, limit, group => prepareAndSynchronize(group.workspace, group.id))
+  if (initial) groups.prepareInitial(workspace, limit, group => { prepare(group.workspace, group.id); synchronize(group.id) })
 }

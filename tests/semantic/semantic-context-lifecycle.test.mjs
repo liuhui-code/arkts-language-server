@@ -169,9 +169,10 @@ test("traced definitions expose compiler SourceFile identity reuse across an ord
     "the edited SourceFile must be observed under a new compiler identity")
 })
 
+// Isolate LS reuse from the separate same-content watch-promotion policy.
 test("compatible disk reuse refreshes compiler types and normal versioned diagnostics", async t => {
-  const reused = await replay(t, { trace: true, sessionReuse: "experimental", typeEdits: true })
-  const baseline = await replay(t, { trace: true, sessionReuse: "off", typeEdits: true })
+  const reused = await replay(t, { trace: true, sessionReuse: "experimental", typeEdits: true, sameContentPromotion: "0" })
+  const baseline = await replay(t, { trace: true, sessionReuse: "off", typeEdits: true, sameContentPromotion: "0" })
   assert.deepEqual(reused.normalizedResults, baseline.normalizedResults)
   for (const run of [reused, baseline]) {
     assert.ok(run.diagnostics.find(message => message.params.version === 3)
@@ -354,7 +355,7 @@ async function replayUnknownDeletion(t, sessionReuse, order) {
 }
 
 async function replay(t, { trace, global = false, referenceTraceProbe = false,
-  sessionReuse = "off", typeEdits = false, diskIterations = 1 }) {
+  sessionReuse = "off", typeEdits = false, diskIterations = 1, sameContentPromotion = "1" }) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-context-lifecycle-"))
   const workspace = path.join(root, "workspace")
   fs.mkdirSync(workspace)
@@ -386,6 +387,7 @@ async function replay(t, { trace, global = false, referenceTraceProbe = false,
       ARKTS_REFERENCES_STRATEGY: referenceTraceProbe ? "legacy" : "indexed-batched",
       ARKTS_REFERENCES_CONTEXT_RETENTION: "dispose", ARKTS_REFERENCES_RESIDENT_FAST_PATH: "0",
       ARKTS_REFERENCES_ANCHOR_REUSE: "0", ARKTS_BENCHMARK_CONTROL: "1",
+      ARKTS_L02_SAME_CONTENT_PROMOTION: sameContentPromotion,
       ARKTS_SEMANTIC_SESSION_REUSE: sessionReuse,
     },
   })

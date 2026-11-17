@@ -99,6 +99,7 @@ export interface SemanticCompletionTraceContext {
 
 export interface SemanticTypeQueryContext {
   state: SemanticTypeEngineState
+  completionRootSnapshot?(prefix: string): { readonly roots: readonly string[]; current(): boolean } | undefined
   complete(
     position: SemanticDocumentPosition,
     traceContext?: SemanticCompletionTraceContext,

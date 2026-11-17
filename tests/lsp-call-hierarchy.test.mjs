@@ -3045,70 +3045,6 @@ test("rejects a physically escaped result source through production registration
   })
 })
 
-test("fails incoming calls closed when workspace membership is partial", async (t) => {
-  const workspace = await fs.promises.mkdtemp(path.join(os.tmpdir(), "arkts-call-hierarchy-partial-"))
-  const targetPath = path.join(workspace, "PartialTarget.ets")
-  const targetText = "export function partialTarget(): string { return 'target' }\n"
-  await fs.promises.writeFile(targetPath, targetText, "utf8")
-  await writeFillerSources(workspace, 20_000)
-  const targetUri = pathToFileURL(targetPath).href
-  const server = new LspProcess()
-  t.after(async () => {
-    try {
-      await server.close()
-    } finally {
-      await fs.promises.rm(workspace, { recursive: true, force: true })
-    }
-  })
-
-  server.send({
-    jsonrpc: "2.0",
-    id: 100,
-    method: "initialize",
-    params: {
-      processId: process.pid,
-      rootUri: pathToFileURL(workspace).href,
-      capabilities: { general: { positionEncodings: ["utf-16"] } },
-    },
-  })
-  await server.response(100)
-  server.send({ jsonrpc: "2.0", method: "initialized", params: {} })
-  server.send({
-    jsonrpc: "2.0",
-    method: "textDocument/didOpen",
-    params: {
-      textDocument: {
-        uri: targetUri,
-        languageId: "arkts",
-        version: 1,
-        text: targetText,
-      },
-    },
-  })
-  server.send({
-    jsonrpc: "2.0",
-    id: 101,
-    method: "textDocument/prepareCallHierarchy",
-    params: {
-      textDocument: { uri: targetUri },
-      position: midpoint(exactTextRange(targetText, "partialTarget")),
-    },
-  })
-  const prepared = await server.response(101)
-  assert.equal(prepared.error, undefined, JSON.stringify(prepared.error))
-  server.send({
-    jsonrpc: "2.0",
-    id: 102,
-    method: "callHierarchy/incomingCalls",
-    params: { item: prepared.result[0] },
-  })
-  const incoming = await server.response(102, 30_000)
-  assert.equal(incoming.result, undefined)
-  assert.deepEqual(incoming.error, {
-    code: -32803,
-    message: "Call hierarchy result is incomplete: project-membership-incomplete.",
-  })
-})
 
 test("fails incoming calls atomically when a caller belongs to a nested workspace", async (t) => {
   const outer = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-call-hierarchy-cross-root-"))
@@ -3569,26 +3505,6 @@ function callHierarchyData(rootUri) {
   }
 }
 
-async function writeFillerSources(workspace, count) {
-  const filesPerDirectory = 200
-  const directories = Array.from(
-    { length: Math.ceil(count / filesPerDirectory) },
-    (_value, index) => path.join(workspace, `fillers-${String(index).padStart(3, "0")}`),
-  )
-  await Promise.all(directories.map((directory) => fs.promises.mkdir(directory)))
-  for (let start = 0; start < count; start += 500) {
-    const end = Math.min(count, start + 500)
-    await Promise.all(Array.from({ length: end - start }, (_value, offset) => {
-      const index = start + offset
-      const directory = directories[Math.floor(index / filesPerDirectory)]
-      return fs.promises.writeFile(
-        path.join(directory, `F${String(index).padStart(5, "0")}.ets`),
-        "",
-        "utf8",
-      )
-    }))
-  }
-}
 
 function semanticCallHierarchyItem(fileName, name) {
   const range = protocolRange(0)

@@ -118,7 +118,7 @@ test("references retain the entry snapshot when the caller mutates its query dur
 })
 
 test("parent references reject an edit to an authoritative nested workspace buffer during candidate selection", async t => {
-  const fixture = await createFixture(t, { nestedUse: true })
+  const fixture = await createFixture(t, { nestedUse: true, readyCache: true })
   const { engine, document, release, audit, logs } = fixture
   const old = engine.references({ document: document("Query.ets"),
     position: { line: 1, character: 18 }, includeDeclaration: true })
@@ -154,7 +154,7 @@ test("parent references reject an edit to an authoritative nested workspace buff
 })
 
 test("a cached parent reference result is invalidated by a nested workspace buffer edit", async t => {
-  const fixture = await createFixture(t, { nestedUse: true })
+  const fixture = await createFixture(t, { nestedUse: true, readyCache: true })
   const { engine, document, release, logs } = fixture
   release()
   const query = { document: document("Target.ets"),
@@ -195,7 +195,7 @@ test("a cached parent reference result is invalidated by a nested workspace buff
 })
 
 test("sibling workspace edits preserve a pending parent reference snapshot and its complete cache", async t => {
-  const fixture = await createFixture(t, { siblingWorkspace: true })
+  const fixture = await createFixture(t, { siblingWorkspace: true, readyCache: true })
   const { engine, document, secondaryDocument, release, audit, logs } = fixture
   const query = { document: document("Query.ets"),
     position: { line: 1, character: 18 }, includeDeclaration: true }
@@ -263,7 +263,7 @@ test("a physical workspace alias edit invalidates a pending parent reference sna
   ]))
 })
 
-test("the configured SDK resolves source proof through the real sidecar and semantic Worker", async t => {
+test("the configured SDK resolves source proof through a framed scripted index and the real semantic Worker", async t => {
   await verifySdkConfigurationSnapshot(t)
 })
 
@@ -320,13 +320,17 @@ async function createFixture(t, options = {}) {
   const logPath = path.join(root, "semantic.log")
   fs.mkdirSync(workspacePath)
   const sdkPath = path.join(root, "sdk")
-  if (options.sdkSourceProof) {
+  if (options.sdkSourceProof || options.readyCache) {
     fs.mkdirSync(path.join(sdkPath, "ets", "api"), { recursive: true })
     fs.mkdirSync(path.join(sdkPath, "toolchains"), { recursive: true })
     fs.writeFileSync(path.join(sdkPath, "ets", "oh-uni-package.json"), JSON.stringify({
       path: "ets", apiVersion: "24", version: "6.1.1.125",
     }))
     fs.writeFileSync(path.join(sdkPath, "ets", "api", "@ohos.example.d.ts"), "export class Thing {}\n")
+    if (options.readyCache) {
+      fs.mkdirSync(path.join(sdkPath, "ets", "component"))
+      fs.writeFileSync(path.join(sdkPath, "ets", "component", "common.d.ts"), "interface FixtureAmbient {}\n")
+    }
   }
   const secondaryPath = options.siblingWorkspace ? path.join(root, "sibling")
     : options.aliasWorkspace ? path.join(root, "workspace-alias") : undefined
@@ -354,10 +358,11 @@ async function createFixture(t, options = {}) {
     ARKTS_INDEX_TEST_RELEASE: releasePath,
     ARKTS_INDEX_TEST_SDK_SOURCE_PROOF: options.sdkSourceProof ? "1" : "0",
     ARKTS_INDEX_TEST_USE_PATH: options.nestedUse ? "nested/Use.ets" : "Use.ets",
-    ARKLINE_HARMONY_SDK_PATH: path.join(root, "missing-sdk"),
+    ARKLINE_HARMONY_SDK_PATH: options.readyCache ? sdkPath : path.join(root, "missing-sdk"),
     DEVECO_SDK_HOME: path.join(root, "missing-deveco"),
     ARKTS_REFERENCES_STRATEGY: "indexed-batched",
     ARKTS_REFERENCES_TRACE: "1",
+    ...(options.readyCache ? { ARKTS_REFERENCES_RESIDENT_FIRST: "0" } : {}),
   }
   const previous = Object.fromEntries(Object.keys(overrides).map(key => [key, process.env[key]]))
   Object.assign(process.env, overrides)
@@ -410,6 +415,10 @@ async function createFixture(t, options = {}) {
   engine.sync(document("Target.ets"))
   engine.sync(document("Query.ets"))
   if (options.nestedUse) engine.sync(document("nested/Use.ets"))
+  if (options.readyCache) {
+    const prepared = await bounded(engine.initializeProject({ rootUri: workspaceUri }), "prepared cache fixture")
+    assert.equal(prepared.semanticState, "ready", "cache reuse tests require a genuine complete semantic proof")
+  }
   const secondaryDocument = (name, version, text) => ({
     uri: pathToFileURL(path.join(secondaryPath, name)).href,
     workspaceId: secondaryUri, version, text,

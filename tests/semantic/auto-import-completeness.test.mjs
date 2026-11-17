@@ -7,6 +7,7 @@ import { pathToFileURL } from "node:url"
 import { LspSession } from "../support/lsp-session.mjs"
 import { projectRoot } from "../support/lsp-process.mjs"
 import { materializeConformanceWorkspace } from "../support/materialize-conformance-workspace.mjs"
+import { conformanceGlobalScripts } from "../support/conformance-global-scripts.mjs"
 import { waitForCatalog } from "../../scripts/bench/reference-replay-evidence.mjs"
 
 test("recalls and semantically validates an auto-import beyond 4096 module exports", { timeout: 60_000 }, async (t) => {
@@ -30,9 +31,11 @@ test("recalls and semantically validates an auto-import beyond 4096 module expor
     "utf8",
   )
   const consumerPath = path.join(sourceDirectory, "Beyond4096Consumer.ets")
-  const source = "const selected = ExactNeedle\n"
+  const source = "const selected = ExactNeedle\nconst globalGuard = Home\n"
   await fs.promises.writeFile(consumerPath, source, "utf8")
   const uri = pathToFileURL(consumerPath).href
+  const globals = conformanceGlobalScripts(materialized.workspaceRoot, consumerPath)
+  assert.equal(globals.length, 6)
   const sidecarAuditPath = path.join(materialized.root, "semantic-over-4096.ndjson")
   const logDirectory = path.join(materialized.root, "semantic-over-4096-logs")
   const session = new LspSession({
@@ -111,7 +114,7 @@ test("recalls and semantically validates an auto-import beyond 4096 module expor
     .map(JSON.parse)
     .filter((entry) => entry.event === "completion.program.complete")
   assert.equal(completionEvents.length, 1)
-  assert.equal(completionEvents[0].programProjectRootFiles, 2)
+  assert.equal(completionEvents[0].programProjectRootFiles, 2 + globals.length)
   assert.equal(completionEvents[0].preResolvedCompletions, 1, JSON.stringify(completionEvents[0]))
   const resolved = await session.request("completionItem/resolve", matches[0])
   assert.equal(
@@ -181,8 +184,7 @@ test("recalls and semantically validates an auto-import beyond 4096 module expor
   ).trim().split("\n").map(JSON.parse)
     .filter((entry) => entry.event === "completion.program.complete")
   assert.equal(staleCompletionEvents.length, 1)
-  assert.equal(staleCompletionEvents[0].programProjectRootFiles, 25)
-  assert.equal(staleCompletionEvents[0].preResolvedCompletions, 0)
+  assert.equal(staleCompletionEvents[0].programProjectRootFiles, 2 + globals.length)
   assert.equal(staleCompletionEvents[0].preResolvedCompletions, 0)
   const staleResolved = await staleSession.request("completionItem/resolve", staleMatches[0])
   assert.equal(staleResolved.error, undefined, JSON.stringify(staleResolved.error))
@@ -193,7 +195,12 @@ test("recalls and semantically validates an auto-import beyond 4096 module expor
   ).trim().split("\n").map(JSON.parse)
     .filter((entry) => entry.event === "completion.resolve.program.complete")
   assert.equal(staleResolveEvents.length, 1)
-  assert.equal(staleResolveEvents[0].programProjectRootFiles, 25)
+  assert.equal(staleResolveEvents[0].programProjectRootFiles, 2 + globals.length)
+  const globalDefinition = await staleSession.request("textDocument/definition", { textDocument: { uri },
+    position: positionAt(source, source.lastIndexOf("Home") + 1) })
+  assert.equal(globalDefinition.error, undefined, JSON.stringify(globalDefinition))
+  assert.equal(globalDefinition.result?.length, 1)
+  assert.equal(globalDefinition.result[0].uri, pathToFileURL(path.join(sourceDirectory, "Home.ets")).href)
 })
 
 function positionAt(source, offset) {

@@ -15,7 +15,7 @@ export function createSemanticEngineResources(logger: StructuredLogger | undefin
   // The token reads the current request's shared cell. Outside request scope,
   // document/config mutations remain authoritative and cannot inherit a cancellation.
   // Compiler synchronization retains its existing in-place commit exception.
-  const documents = new SemanticDocumentStore({ packageResolver,
+  const documents = new SemanticDocumentStore({ packageResolver, managedSourceNamespaces: runtime.managedSourceNamespaces,
     operationControl: { checkpoint: referenceCheckpoint(runtime.hostCancellationToken) ?? (() => {}) } })
   const engines = new SemanticTypeEngineRegistry(packageResolver,
     logger ? (workspaceRoot, sdk) => {
@@ -24,6 +24,9 @@ export function createSemanticEngineResources(logger: StructuredLogger | undefin
         metadataStatus: sdk.identity?.status ?? "unavailable",
         apiVersion: sdk.identity?.apiVersion, componentVersion: sdk.identity?.componentVersion,
         dialectCompatibility: "unverified", declarationSupport: "typescript-compatible-only",
+        targetQualification: sdk.targetQualification?.status, compileApi: sdk.targetQualification?.compileApi,
+        compatibleApi: sdk.targetQualification?.compatibleApi, targetApi: sdk.targetQualification?.targetApi,
+        sdkTargetMessage: sdk.targetQualification?.message,
       })
     } : undefined, documents, {
       ...runtime,
@@ -38,6 +41,7 @@ export function applySemanticWorkspaceChanges(batches: readonly SemanticWorkspac
     for (const batch of batches) {
       const rootPath = toFilePath(batch.rootUri)
       if (!rootPath) continue
+      if (batch.managedSourceNamespaces) documents.setManagedSourceNamespaces(rootPath, batch.managedSourceNamespaces)
       const changes = batch.changes.flatMap((change) => {
         const changedPath = toFilePath(change.uri)
         return changedPath ? [{ path: changedPath, kind: change.kind }] : []
@@ -48,14 +52,13 @@ export function applySemanticWorkspaceChanges(batches: readonly SemanticWorkspac
         engines.invalidateArkUIResources(rootPath)
       }
       if (batch.configurationChanged === true) engines.configurationFilesChanged(rootPath)
-      const sourceChanges = changes.filter(({ path: changedPath }) => (
-        changedPath.endsWith(".ets") || changedPath.endsWith(".ts")
-      ))
-      if (!batch.rootDirty && sourceChanges.length === 0) continue
+      // Non-source entries can replace source-containing directories. The store
+      // derives affected source descendants; regular metadata is not a source.
+      if (!batch.rootDirty && changes.length === 0) continue
       documents.workspaceFilesChanged({
         rootPath,
         rootDirty: batch.rootDirty,
-        changes: sourceChanges,
+        changes,
       })
     }
 }

@@ -16,7 +16,6 @@ test("usage-site anchor keeps transient isolation by default after a definition"
     && sample.transientVerifierCount === 0), "physical SDK cache Worker occupancy must be recorded")
   assert.equal(result.metrics.at(-1).transientVerifierCount, 0)
 })
-
 test("cold usage-site anchor trace separates compiler preparation from definition lookup", async (t) => {
   const { anchor, events } = await replay(t, { warm: false })
   assert.ok(Number.isFinite(anchor.workerStartupMs) && anchor.workerStartupMs >= 0,
@@ -31,7 +30,6 @@ test("cold usage-site anchor trace separates compiler preparation from definitio
   assert.ok(anchor.workerCreateProgramMs > 0)
   assert.ok(anchor.workerGetProgramMs + anchor.workerGetTypeCheckerMs <= anchor.workerProgramReadyMs)
 })
-
 test("cold usage-site anchor keeps exact references without enabling compiler trace by default", async (t) => {
   const { anchor, events } = await replay(t, { warm: false, trace: false })
   for (const field of ["workerStartupMs", "workerGetProgramMs", "workerCreateProgramMs", "workerGetTypeCheckerMs"]) {
@@ -42,7 +40,6 @@ test("cold usage-site anchor keeps exact references without enabling compiler tr
     "references.anchor.resolve.complete"].includes(event.event)))
   assert.ok(!events.some(event => event.event === "references.candidate-phase.complete"))
 })
-
 test("cold anchor trace distinguishes document preparation from isolated semantic resolution", async (t) => {
   const { events } = await replay(t, { warm: false })
   for (const phase of ["document-prepare", "resolve"]) {
@@ -52,7 +49,6 @@ test("cold anchor trace distinguishes document preparation from isolated semanti
     assert.ok(event.traceId, "anchor subphases must correlate with the references request")
   }
 })
-
 test("cold references trace distinguishes candidate RPC and source resolution phases", async (t) => {
   const { events } = await replay(t, { warm: false })
   const selection = events.find(event => event.event === "references.candidate-selection.complete")
@@ -327,12 +323,12 @@ test("opt-in anchor falls back when an open dependency is reopened at the same v
 
 test("opt-in anchor falls back when an unopened dependency changes on disk", async (t) => {
   const result = await replay(t, { reuse: true, editDiskDependency: true })
-  assert.equal(result.anchor.verifierIsolation, "sdk-cache-worker")
+  assert.equal(result.anchor.verifierIsolation, "validated-definition")
 })
 
 test("opt-in references include the moved declaration after an unwatched disk edit", async (t) => {
   const result = await replay(t, { reuse: true, moveDiskDeclaration: true })
-  assert.equal(result.anchor.verifierIsolation, "sdk-cache-worker")
+  assert.equal(result.anchor.verifierIsolation, "validated-definition")
 })
 
 test("cancelling references after anchor reuse returns no partial result and permits exact recovery", async (t) => {
@@ -389,7 +385,7 @@ async function replay(t, { reuse = false, edit = false, warm = true,
       ARKTS_INDEX_CACHE_DIR: path.join(root, "cache"),
       ARKTS_INDEX_SIDECAR_PATH: localExport
         ? path.join(projectRoot, "target", "release", "arkts-index-sidecar")
-        : path.join(projectRoot, "tests", "fixtures", "index", "scripted-catalog-sidecar.mjs"),
+        : path.join(projectRoot, "tests", "fixtures", "index", "native-anchor-discovery.mjs"),
       ARKTS_LSP_LOG_DIR: logDirectory,
       ARKTS_MEMORY_METRICS_FILE: recordMetrics ? path.join(root, "memory.jsonl") : undefined,
       ARKTS_REFERENCES_STRATEGY: "indexed-batched",
@@ -427,6 +423,12 @@ async function replay(t, { reuse = false, edit = false, warm = true,
     text: queryText + "// unsaved comment invalidates the anchor snapshot\n" })
   if (editDependency) session.openDocument({ uri: uri("Barrel.ets"), version: 1,
     text: sources["Barrel.ets"] + "// changed open dependency\n" })
+  if (editDiskDependency || moveDiskDeclaration) {
+    const warmReferences = await session.request("textDocument/references", { textDocument: { uri: queryUri },
+      position, context: { includeDeclaration: false } }, { timeoutMs: 30000 })
+    assert.equal(warmReferences.error, undefined, JSON.stringify(warmReferences))
+    assert.equal(warmReferences.result.length, 6)
+  }
   if (editDiskDependency) fs.writeFileSync(path.join(workspace, "Target.ets"),
     sources["Target.ets"] + "// disk dependency changed before watcher delivery\n")
   if (moveDiskDeclaration) fs.writeFileSync(path.join(workspace, "Target.ets"),

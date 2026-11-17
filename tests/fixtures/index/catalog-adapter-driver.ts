@@ -1,3 +1,4 @@
+import type { SemanticWorkspaceFileChangeBatch } from "../../../src/contracts/semantic-engine.js"
 import { createInterface } from "node:readline"
 
 import type { WorkspaceDescriptor } from "../../../src/contracts/document.js"
@@ -6,15 +7,17 @@ import { SidecarWorkspaceIndex } from "../../../src/index/sidecar-workspace-inde
 
 interface DriverCommand {
   id: number
-  method: "open" | "catalog" | "abort" | "search" | "status" | "close" | "exit"
+  method: "open" | "catalog" | "abort" | "search" | "abortedSearch" | "observe" | "status" | "close" | "exit"
   workspace?: WorkspaceDescriptor
   workspaceId?: string
   cacheDir?: string
   requestKey?: string
+  batch?: SemanticWorkspaceFileChangeBatch
   query?: string
 }
 
 const index = new SidecarWorkspaceIndex({
+  fileMaintenance: true,
   requestTimeoutMs: 8_000,
   initializeTimeoutMs: 15_000,
   catalogCancelTimeoutMs: 250,
@@ -59,11 +62,23 @@ async function dispatch(command: DriverCommand): Promise<void> {
         result = null
         break
       case "search":
-        result = await index.searchSymbols(
-          required(command.workspaceId, "workspaceId"),
-          command.query ?? "",
-          20,
-        )
+        if (command.requestKey) controllers.set(command.requestKey, new AbortController())
+        try {
+          result = await index.searchSymbols(required(command.workspaceId, "workspaceId"),
+            command.query ?? "", 20, command.requestKey ? controllers.get(command.requestKey)?.signal : undefined)
+        } finally {
+          if (command.requestKey) controllers.delete(command.requestKey)
+        }
+        break
+      case "abortedSearch": {
+        const controller = new AbortController()
+        controller.abort()
+        result = await index.searchSymbols(required(command.workspaceId, "workspaceId"), "", 20, controller.signal)
+        break
+      }
+      case "observe":
+        index.observe(required(command.workspaceId, "workspaceId"), required(command.batch, "batch"))
+        result = null
         break
       case "status":
         result = await index.status(required(command.workspaceId, "workspaceId"))

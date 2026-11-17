@@ -1,3 +1,5 @@
+import { WorkerLogDelivery } from "./worker-log-delivery.js"
+import type { ManagedSourceRegistration } from "../contracts/managed-source-namespace.js"
 import { Worker } from "node:worker_threads"
 import { SemanticWorkerRetirement } from "./semantic-worker-retirement.js"
 import { isOwnershipFaultEvent } from "./semantic-worker-fault.js"
@@ -45,9 +47,9 @@ interface RecycleWitness {
 }
 
 export function semanticWorkerData(rootUri: string, environment: NodeJS.ProcessEnv,
-  projectConfiguration: unknown, sdkConfiguration: unknown) {
+  projectConfiguration: unknown, sdkConfiguration: unknown, managedSourceNamespaces: readonly ManagedSourceRegistration[] = []) {
   return {
-    rootUri, projectConfiguration, sdkConfiguration,
+    rootUri, projectConfiguration, sdkConfiguration, managedSourceNamespaces,
     runtimeConfig: semanticRuntimeConfig(environment),
     references: referenceSearchRuntimeConfig(environment),
     interactive: interactiveSemanticRuntimeConfig(environment),
@@ -58,6 +60,7 @@ export function semanticWorkerData(rootUri: string, environment: NodeJS.ProcessE
 
 /** Owns one physical Worker and all root epochs routed through it. */
 export class SemanticWorkerHost {
+  readonly #logs: WorkerLogDelivery
   readonly #options: SemanticWorkerHostOptions
   readonly #supervisors = new Map<string, RootSemanticWorkerSupervisor>()
   readonly #handlers = new Map<number, RootSemanticWorkerEndpointHandlers>()
@@ -70,7 +73,7 @@ export class SemanticWorkerHost {
   #disposed = false
   #disposePromise: Promise<void> | undefined
 
-  constructor(options: SemanticWorkerHostOptions) { this.#options = options }
+  constructor(options: SemanticWorkerHostOptions) { this.#options = options; this.#logs = new WorkerLogDelivery(options.logger) }
 
   get rootUris(): readonly string[] { return [...this.#roots] }
 
@@ -159,6 +162,7 @@ export class SemanticWorkerHost {
   }
 
   replaceWorker(retryRetirement = false): Promise<number> {
+    this.#logs.flush()
     if (!this.#retirement) {
       const worker = this.#worker
       if (!worker) return Promise.resolve(-1)
@@ -197,7 +201,8 @@ export class SemanticWorkerHost {
   dispose(): Promise<void> {
     if (this.#disposePromise) return this.#disposePromise
     this.#disposed = true
-    return this.#disposePromise = this.replaceWorker(true).then(() => { this.#roots.clear() })
+    this.#logs.flush()
+    return this.#disposePromise = this.replaceWorker(true).then(() => { this.#roots.clear() }).finally(() => this.#logs.flush())
   }
 
   #ensureWorker(rootUri: string): Worker {
@@ -222,6 +227,7 @@ export class SemanticWorkerHost {
         return
       }
       if (isOwnershipFaultEvent(message)) {
+        this.#logs.flush()
         this.#options.onFailure(new Error("Semantic Worker compiler cleanup ownership is uncertain"))
         return
       }
@@ -234,18 +240,21 @@ export class SemanticWorkerHost {
       }
       const log = workerLogMessage(message)
       if (log) {
-        this.#options.logger?.[log.level](log.event, log.fields)
+        this.#logs.enqueue(log)
         return
       }
+      this.#logs.flush()
       const epoch = messageEpoch(message)
       if (epoch !== undefined) { this.#watchdog?.settled(message); this.#handlers.get(epoch)?.message(message) }
     })
     worker.on("error", error => {
+      this.#logs.flush()
       if (this.#worker !== worker) return
       this.#options.onFailure(error)
       for (const handlers of this.#handlers.values()) handlers.error(error)
     })
     worker.on("exit", code => {
+      this.#logs.flush()
       if (this.#worker !== worker) return
       if (!this.#disposed) {
         this.#options.onFailure(new Error(`Semantic worker exited ${code}`))

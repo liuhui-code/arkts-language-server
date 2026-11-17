@@ -13,6 +13,7 @@ import { sdkDeclarationInputCheck } from "./sdk-declaration-inputs.js"
 import { ownedDocumentRegistry } from "./owned-document-registry.js"
 import { quarantineCompilerOwner } from "./compiler-resource-lifetime.js"
 import { observeCompilerPhase } from "../../semantic-worker-progress.js"
+import { QueryModuleResolution } from "../../../core/types/typescript-query-module-resolution.js"
 
 /** SDK-only compiler export index. No project sources or additional LanguageService. */
 export function sdkExportIndex(sdk: ProjectSdkSelection, host: ts.LanguageServiceHost, registry: ts.DocumentRegistry) {
@@ -25,6 +26,9 @@ export function sdkExportIndex(sdk: ProjectSdkSelection, host: ts.LanguageServic
     || sdk.targetQualification !== undefined && sdk.targetQualification.status !== "compatible"
   // Disable implicit @types without changing the shared Registry's typeRoots bucket.
   const options = { ...host.getCompilationSettings(), types: [] }
+  const resolutions = new QueryModuleResolution(sdk.path ?? "", options)
+  const resolveSdk = (name: string) => resolutions.sdkCandidate(name,
+    () => resolveHarmonySdkModule(sdk, name, inputs) ?? undefined)
   const settingsKey = registry.getKeyForCompilationSettings(options)
   const checkpoint = () => {
     if (host.getCancellationToken?.().isCancellationRequested()) throw new ts.OperationCanceledException()
@@ -62,7 +66,7 @@ export function sdkExportIndex(sdk: ProjectSdkSelection, host: ts.LanguageServic
         if (entry.isDirectory()) { pending.push(file); continue }
         const specifier = entry.name.replace(/\.d\.(?:ts|ets)$/, "")
         if (!/\.d\.(?:ts|ets)$/.test(entry.name) || !isHarmonySdkModuleSpecifier(specifier, sdk) || modules.has(specifier)) continue
-        const resolved = resolveHarmonySdkModule(sdk, specifier, inputs)
+        const resolved = resolveSdk(specifier)
         if (resolved && admitted(resolved)) modules.set(specifier, resolved)
       }
     }
@@ -71,7 +75,7 @@ export function sdkExportIndex(sdk: ProjectSdkSelection, host: ts.LanguageServic
       ...resources.coreAmbientCandidates].map(file => path.resolve(file)) : [])
     return [...host.getScriptFileNames().filter(file => ambient.has(path.resolve(file))), ...modules.values()]
   }
-  const buildProgram = (): ts.Program | undefined => {
+  const buildProgram = (): ts.Program | undefined => resolutions.query(() => {
     try {
       const compilerHost = ts.createCompilerHost(options)
       const lookup = witnessedModuleResolutionHost(inputs)
@@ -95,7 +99,7 @@ export function sdkExportIndex(sdk: ProjectSdkSelection, host: ts.LanguageServic
         return source
       }
       compilerHost.resolveModuleNames = (names, importer) => names.map(name => {
-        const sdkFile = resolveHarmonySdkModule(sdk, name, inputs)
+        const sdkFile = resolveSdk(name)
         const resolved = sdkFile ? { resolvedFileName: sdkFile,
           extension: sdkFile.endsWith(".ets") ? ts.Extension.Dets : ts.Extension.Dts } : name.startsWith(".")
           ? ts.resolveModuleName(name, importer, options, { ...lookup, fileExists: compilerHost.fileExists,
@@ -116,7 +120,7 @@ export function sdkExportIndex(sdk: ProjectSdkSelection, host: ts.LanguageServic
       unavailable = true
       return undefined
     }
-  }
+  })
   const getProgram = (): ts.Program | undefined => {
     if (unavailable) return undefined
     if (program) return program

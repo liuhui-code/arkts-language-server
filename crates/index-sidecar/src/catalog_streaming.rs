@@ -1,22 +1,27 @@
 use super::{
     CatalogProgress, CatalogUpdate, observer, source::SourceStamp, worker::CatalogFailure,
 };
-use arkts_index_sqlite::{CatalogInput, build_catalog_stream};
+use arkts_index_sqlite::{CatalogInput, CatalogStage, build_catalog_stream};
 use std::{
     cell::RefCell,
     path::{Path, PathBuf},
     sync::{Arc, atomic::AtomicU8, mpsc::Sender},
 };
 
+#[path = "catalog_parse.rs"]
+mod parse;
+#[path = "catalog_parse_pool.rs"]
+pub(crate) mod pool;
 #[path = "catalog_stream_producer.rs"]
 pub(super) mod producer;
 
-pub(super) struct Collected {
-    pub(super) progress: CatalogProgress,
-    pub(super) sources: Vec<SourceStamp>,
-    pub(super) inputs: Option<arkts_index_sqlite::CompleteScanInputs>,
+pub(crate) struct Collected {
+    pub(crate) progress: CatalogProgress,
+    pub(crate) sources: Vec<SourceStamp>,
+    pub(crate) inputs: Option<arkts_index_sqlite::CompleteScanInputs>,
 }
 pub(super) struct ForceBuild<'a> {
+    pub namespace: Option<&'a arkts_index_sqlite::cache_gc::namespace::ManagedCacheNamespace>,
     pub database_path: &'a Path,
     pub workspace_identity: &'a str,
     pub generation: u64,
@@ -28,6 +33,7 @@ pub(super) struct ForceBuild<'a> {
 }
 pub(super) fn build(input: ForceBuild<'_>) -> Result<(), CatalogFailure> {
     let ForceBuild {
+        namespace,
         database_path,
         workspace_identity,
         generation,
@@ -63,12 +69,22 @@ pub(super) fn build(input: ForceBuild<'_>) -> Result<(), CatalogFailure> {
         .into_iter()
         .map(|uri| Ok(CatalogInput::Rejected(uri)))
         .chain(&mut producer);
+    let mut namespace_error = None;
     let outcome = build_catalog_stream(
         database_path,
         workspace_identity,
         generation,
         events,
         |storage| {
+            if matches!(
+                storage.stage,
+                CatalogStage::Checking | CatalogStage::Publishing
+            ) && let Some(namespace) = namespace
+                && let Err(error) = namespace.validate()
+            {
+                namespace_error = Some(error);
+                return false;
+            }
             let Collected {
                 progress, sources, ..
             } = &mut *collected.borrow_mut();
@@ -78,5 +94,11 @@ pub(super) fn build(input: ForceBuild<'_>) -> Result<(), CatalogFailure> {
     // Disconnect every slot before joining, on success, cancellation, SQL error or unwinding.
     // No terminal event is sent while a parser can still own a source/result payload.
     drop(producer);
+    let outcome = namespace_error.map_or(outcome, |message| {
+        Err(arkts_index_core::StoreError::new(
+            arkts_index_core::StoreErrorKind::InvalidData,
+            message,
+        ))
+    });
     observer.finish(outcome, collected.into_inner().progress)
 }

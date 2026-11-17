@@ -82,7 +82,8 @@ if (!isMainThread && process.env.ARKTS_LSP_LOG_DIR) {
       if (resident.split(hook).length !== 2) throw new Error("one actual resident source-read site required")
       resident = resident.replace(hook, "globalThis.__observeResidentSourceRead(filePath);\n" + hook)
       const beforeSites = ["const before = diskIdentity(filePath);",
-        "const before = requestFileIdentity(filePath, () => diskIdentity(filePath));"].filter(site => resident.includes(site))
+        "const before = requestFileIdentity(filePath, () => diskIdentity(filePath));",
+        "const before = observedSourceIdentity(filePath, known?.stamp, this.checkpoint, prepared.directories);"].filter(site => resident.includes(site))
       if (beforeSites.length !== 1) throw new Error("one actual before identity site required")
       for (const [stage, site] of [["before", beforeSites[0]],
         ["after", 'if (diskIdentity(filePath)?.stamp !== before.stamp)']]) {

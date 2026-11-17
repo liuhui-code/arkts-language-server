@@ -28,6 +28,9 @@ test("resident-first references bypass candidate planning and retain the origina
         ARKTS_REFERENCES_RESIDENT_FIRST: residentFirst,
       })
       await warmAndPromote(session, fixture)
+      const proof = await session.request("arkts/semanticReadiness", {
+        rootUri: pathToFileURL(fixture.workspace).href, prepare: false })
+      assert.equal(proof.result?.semanticState, "ready", JSON.stringify(proof))
       const before = readEvents(fixture).length
       await assertReferences(session, fixture, fixture.sources["Use.ets"])
       const events = readEvents(fixture).slice(before)
@@ -326,7 +329,7 @@ function createFixture(t, { aliases = false, nativeStruct = false } = {}) {
   fs.mkdirSync(path.join(sdk, "toolchains"))
   fs.writeFileSync(path.join(sdk, "ets", "component", "common.d.ts"), "interface FixtureAmbient {}\n")
   fs.writeFileSync(path.join(sdk, "ets", "oh-uni-package.json"),
-    JSON.stringify({ apiVersion: "24", version: "test" }))
+    JSON.stringify({ path: "ets", apiVersion: "24", version: "test" }))
   const sources = {
     "Target.ets": "/* 😀 */ export class TargetThing { value = 1 }\n",
     "Warm.ets": "export interface WarmContract { value: number }\n"

@@ -11,10 +11,17 @@ export function diskIdentity(filePath: string): { readonly physicalPath: string;
       const physical = fs.lstatSync(physicalPath)
       if (!physical.isFile() || physical.dev !== stat.dev || physical.ino !== stat.ino) return undefined
     }
+    if (!entry.isSymbolicLink()) return regularSourceIdentity(physicalPath, stat)
     const link = entry.isSymbolicLink() ? [entry.dev, entry.ino, entry.size, entry.mtimeMs, entry.ctimeMs] : []
     return { physicalPath,
       stamp: JSON.stringify([physicalPath, stat.dev, stat.ino, stat.size, stat.mtimeMs, stat.ctimeMs, ...link]) }
   } catch {
     return undefined
   }
+}
+
+/** Identity from a regular file's already validated descriptor read window. */
+export function regularSourceIdentity(physicalPath: string, stat: fs.Stats) {
+  return { physicalPath,
+    stamp: JSON.stringify([physicalPath, stat.dev, stat.ino, stat.size, stat.mtimeMs, stat.ctimeMs]) }
 }

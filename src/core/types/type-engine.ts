@@ -2,6 +2,7 @@ import path from "node:path"
 
 import type { SemanticDefinitionCandidate, SemanticDocumentPosition } from "../protocol.js"
 import { SemanticGroups } from "./semantic-groups.js"
+import { hasOperationScope } from "./operation-scope-execution.js"
 import { prepareInitialSemanticContexts } from "./initial-semantic-contexts.js"
 import { createTypeScriptEngine } from "./type-engine-factory.js"
 import { LocalPackageResolver } from "../sdk/local-package-resolver.js"
@@ -35,7 +36,7 @@ import { isConstructorModuleCurrent } from "../../semantic/references/reference-
 import type { TransientSemanticWorkerObserver } from "../../semantic/transient-worker-lifecycle.js"
 
 import { SourceResetAdmissions } from "./source-reset-admission.js"
-import { prepareContextEntry } from "./prepare-context-entry.js"
+import { admitContextResolution, prepareContextEntry } from "./prepare-context-entry.js"
 
 export type {
   SemanticTypeStatus,
@@ -129,7 +130,7 @@ export class SemanticTypeEngineRegistry {
       ) => void
     } = {},
   ) {
-    this.groups = new SemanticGroups(this.packageResolver)
+    this.groups = new SemanticGroups(this.packageResolver, this.projectFileAccess)
     this.packageResolver.enableConfigurationWitness()
     this.coordinator = new SemanticCoordinator({
       maxResidentContexts: options.maxResidentContexts,
@@ -189,20 +190,19 @@ export class SemanticTypeEngineRegistry {
   hasSemanticGroups(rootPath: string | undefined): boolean {
     return rootPath !== undefined && this.groups.available({ rootPath })
   }
-
+  hasOperationScopes(root: string | undefined): boolean { return root !== undefined && this.groups.hasOperationScopes(canonicalTypeEngineOwner(root)) }
   prepareInteractive(workspace: SemanticWorkspaceView,
     membership: () => NonNullable<SemanticWorkspaceView["projectMembership"]>, interactive = true): SemanticTypeQueryContext {
     const group = this.groups.available(workspace) ? this.groups.select(workspace, membership()) : undefined
     return group && (interactive || this.coordinator.peek(group.id))
-      ? this.prepare(group.workspace, group.id, interactive) : this.prepare(workspace, undefined, interactive)
+      ? this.prepare(group.workspace, group.id, interactive) : this.prepare(group && hasOperationScope(group.workspace) ? group.workspace : workspace, undefined, interactive)
   }
-
   prepareInitialGroups(workspace: SemanticWorkspaceView): void {
     prepareInitialSemanticContexts(workspace, this.groups, this.options.maxResidentContexts ?? Number.POSITIVE_INFINITY,
       this.coordinator, (view, id) => { this.prepare(view, id) })
   }
-
   prepare(workspace: SemanticWorkspaceView, contextId = this.groups.root(workspace), promoteRecency = true): SemanticTypeQueryContext {
+    workspace = this.groups.decorate(workspace)
     const rootPath = contextId
     const prepared = prepareContextEntry(workspace, contextId, promoteRecency, {
       resolver: this.packageResolver, coordinator: this.coordinator, admissions: this.sourceResets, access: this.projectFileAccess,
@@ -224,7 +224,7 @@ export class SemanticTypeEngineRegistry {
     const traced = <Result extends { readonly status: string }>(current: WorkspaceEngineEntry, kind: string, query: () => Result): Result =>
       traceSemanticQuery(kind, query, () => current.engine.programFileStats(), this.options.references?.trace ? this.options.onReferenceTrace : undefined)
     return {
-      state,
+      state, completionRootSnapshot: prefix => this.groups.completionRoots(workspace, prefix),
       complete: (position, traceContext) => withLease((current) => {
         const arkui = sourceContent && scope.status !== "unavailable"
           ? current.arkui.complete(position, sourceContent)
@@ -377,6 +377,7 @@ export class SemanticTypeEngineRegistry {
       if (resident) return Promise.resolve(resident)
     }
     if (this.referenceSearch && indexedRoute
+      && !this.sourceResets.hasPending(path.resolve(workspace.rootPath))
       && retainedReferenceOwnerAllowed(this.options, this.memoryLevel)
       && (!this.coordinator.peek(path.resolve(workspace.rootPath))
         || this.coordinator.peek(path.resolve(workspace.rootPath))?.engine.hasPreparedCompilerState())) {
@@ -427,11 +428,18 @@ export class SemanticTypeEngineRegistry {
     return this.coordinator.stats().residentContextCount
   }
 
-  semanticReadiness(workspace: SemanticWorkspaceView, prepare: boolean | "query") {
+  assertReadinessInputAdmission(workspace: SemanticWorkspaceView): void {
+    admitContextResolution(workspace, path.resolve(workspace.rootPath), {
+      resolver: this.packageResolver, coordinator: this.coordinator, admissions: this.sourceResets,
+      checkpoint: referenceCheckpoint(this.options.hostCancellationToken) ?? (() => {}),
+    })
+  }
+
+  semanticReadiness(workspace: SemanticWorkspaceView, prepare: boolean | "query", sourceNamespace?: Parameters<WorkspaceEngineEntry["engine"]["semanticReadiness"]>[3]) {
     return queryWorkspaceReadiness(this.coordinator, workspace, prepare, {
       refreshPressure: this.options.refreshMemoryPressure, pressure: () => this.memoryLevel,
       prepare: () => { referenceCheckpoint(this.options.hostCancellationToken)?.(); this.prepare(workspace) },
-      trace: this.options.references?.trace ? this.options.onReferenceTrace : undefined,
+      trace: this.options.references?.trace ? this.options.onReferenceTrace : undefined, sourceNamespace,
     })
   }
 
@@ -442,7 +450,7 @@ export class SemanticTypeEngineRegistry {
   needsReadinessRootRefresh(workspace: SemanticWorkspaceView): boolean {
     const entry = this.coordinator.peek(path.resolve(workspace.rootPath))
     return entry?.engine.hasReadinessRefreshIntent() === true && (entry.engine.hasReadinessRefreshIntent(true) || entry.engine.cacheState().projectMembership.status !== "complete"
-      || typeContextResetReason(workspace, entry, this.options.references?.sessionReuse === "experimental") === "content-revision-change")
+      || typeContextResetReason(workspace, entry, this.options.references?.sessionReuse === "experimental") !== undefined || entry.resolutionGeneration !== this.packageResolver.generation)
   }
 
   runtimeStats() { return this.coordinator.stats() }
@@ -466,6 +474,7 @@ export class SemanticTypeEngineRegistry {
   }
 
   dispose(): void {
+    this.groups.clear()
     this.sourceResets.clear()
     this.referenceVerifier.dispose()
     this.coordinator.dispose()

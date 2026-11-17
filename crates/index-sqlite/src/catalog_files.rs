@@ -1,5 +1,6 @@
+#[path = "catalog_retirement.rs"]
+pub(super) mod retirement;
 use crate::{
-    SqliteStore,
     cache_gc::sqlite_guard::SqliteGuard,
     catalog_control::{Control, generation_database, io_error, safe_file},
 };
@@ -42,6 +43,15 @@ fn lease(database: &Path) -> Result<File, StoreError> {
 }
 
 pub(super) fn new_database(base: &Path) -> Result<PathBuf, StoreError> {
+    let path = new_path(base)?;
+    OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(&path)
+        .map_err(io_error)?;
+    Ok(path)
+}
+pub(super) fn new_path(base: &Path) -> Result<PathBuf, StoreError> {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(io_error)?
@@ -51,28 +61,89 @@ pub(super) fn new_database(base: &Path) -> Result<PathBuf, StoreError> {
         "catalog-{:x}-{nonce:x}-{serial:x}.sqlite3",
         std::process::id()
     ));
-    OpenOptions::new()
-        .create_new(true)
-        .write(true)
-        .open(&path)
-        .map_err(io_error)?;
     Ok(path)
 }
 
 /// Closing a legacy WAL can be slow; retirement and pruning stay off the query loop.
-pub(super) fn retire(store: SqliteStore, base: PathBuf, identity: String) {
-    let lease = crate::cache_gc::lease::CacheLease::acquire(&base, &identity);
-    let _ = std::thread::Builder::new()
-        .name("arkts-catalog-retire".into())
-        .spawn(move || {
-            drop(store);
-            if let Ok(lease) = lease
-                && let Ok(control) = Control::open_existing(&base, &identity, lease)
-                && let Ok(_guard) = control.exclusive()
-            {
-                prune(&control);
-            }
+pub(super) fn retire<T: Send + 'static>(store: T, owner: &Control, identity: &str) {
+    let base = owner.base.clone();
+    let identity = identity.to_owned();
+    let lease = owner
+        .managed_namespace()
+        .map_err(|e| e.to_string())
+        .and_then(|namespace| {
+            crate::cache_gc::lease::CacheLease::acquire_expected(
+                &base,
+                &identity,
+                namespace.as_ref(),
+            )
+            .map_err(|e| e.to_string())
         });
+    owner.retire(Box::new(move || {
+        #[cfg(debug_assertions)]
+        debug_retirement_gate();
+        drop(store);
+        match lease {
+            Ok(lease) => Some(RetiredCatalog {
+                base,
+                identity,
+                _lease: lease,
+            }),
+            Err(error) => {
+                eprintln!(
+                    "{{\"event\":\"index.catalog.retirement.lease-failed\",\"error\":{}}}",
+                    serde_json::to_string(&error.to_string()).unwrap()
+                );
+                None
+            }
+        }
+    }));
+}
+
+pub(crate) struct RetiredCatalog {
+    base: PathBuf,
+    identity: String,
+    _lease: Option<crate::cache_gc::lease::CacheLease>,
+}
+impl RetiredCatalog {
+    pub fn same_namespace(&self, other: &Self) -> bool {
+        self.base == other.base && self.identity == other.identity
+    }
+    pub fn try_prune(&self) -> bool {
+        if self
+            ._lease
+            .as_ref()
+            .is_some_and(|lease| lease.namespace().is_err())
+        {
+            return true;
+        }
+        // This request owns the cache lease. Internal Control must not own the
+        // executor or synchronously wait on a producer's publication lock.
+        let control = match Control::open_existing(&self.base, &self.identity, None) {
+            Ok(control) => control,
+            Err(error) => {
+                eprintln!(
+                    "{{\"event\":\"index.catalog.retirement.deferred\",\"error\":{}}}",
+                    serde_json::to_string(&error.to_string()).unwrap()
+                );
+                return true;
+            }
+        };
+        match control.try_exclusive() {
+            Ok(Some(_guard)) => {
+                prune(&control);
+                true
+            }
+            Ok(None) => false,
+            Err(error) => {
+                eprintln!(
+                    "{{\"event\":\"index.catalog.retirement.deferred\",\"error\":{}}}",
+                    serde_json::to_string(&error.to_string()).unwrap()
+                );
+                true
+            }
+        }
+    }
 }
 
 /// Caller holds the exclusive publication lock. Both reader leases and SQLite
@@ -159,4 +230,26 @@ pub(super) fn sync_parent(database: &Path) -> Result<(), StoreError> {
     #[cfg(windows)]
     let _ = database; // SQLite's FULL control transaction uses the Windows VFS sync protocol.
     Ok(())
+}
+
+#[cfg(debug_assertions)]
+fn debug_retirement_gate() {
+    use std::{
+        sync::atomic::AtomicBool,
+        time::{Duration, Instant},
+    };
+    static ENTERED: AtomicBool = AtomicBool::new(false);
+    let Some(path) = std::env::var_os("ARKTS_INDEX_TEST_RETIREMENT_GATE") else {
+        return;
+    };
+    if ENTERED.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    let path = PathBuf::from(path);
+    fs::write(path.with_extension("started"), "retirement owns live store").unwrap();
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while !path.is_file() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    fs::write(path.with_extension("finished"), "retirement gate released").unwrap();
 }

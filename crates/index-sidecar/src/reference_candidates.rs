@@ -1,13 +1,13 @@
 use arkts_index_core::{
-    IndexState, Position, ReferenceBindingKind, ReferenceBindingResolution,
-    ReferenceCandidateQuery, ReferenceSourceResolution,
+    Position, ReferenceBindingKind, ReferenceBindingResolution, ReferenceCandidateQuery,
+    ReferenceSourceResolution,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::{
-    MAX_EXCLUDED_URI_BYTES, MAX_EXCLUDED_URIS, ProtocolError, ProtocolPosition, Runtime,
-    not_initialized, parse_params, protocol_store_error, validate_excluded_uris,
+    MAX_EXCLUDED_URI_BYTES, MAX_EXCLUDED_URIS, ProtocolError, ProtocolPosition, parse_params,
+    protocol_store_error, validate_excluded_uris,
 };
 
 const MAX_REFERENCE_CANDIDATES: usize = 65_536;
@@ -38,11 +38,8 @@ struct ProtocolReferenceSourceResolution {
     external_terminal_identity: Option<String>,
 }
 
-impl Runtime {
-    pub(super) fn reference_candidates(
-        &mut self,
-        params: Value,
-    ) -> Result<(Value, bool), ProtocolError> {
+impl crate::read_query::ReadContext<'_> {
+    pub(super) fn reference_candidates(&self, params: Value) -> Result<Value, ProtocolError> {
         let params: ReferenceCandidatesParams = parse_params(params)?;
         validate_admitted_root_uris(&params.admitted_root_uris)?;
         if params.declaration_uri.is_empty()
@@ -70,30 +67,19 @@ impl Runtime {
                 external_terminal_identity: resolution.external_terminal_identity,
             })
             .collect();
-        let search_result = self
-            .index
-            .as_ref()
-            .ok_or_else(not_initialized)?
-            .search_reference_candidates_with_scope(
-                ReferenceCandidateQuery {
-                    declaration_uri: params.declaration_uri,
-                    declaration_position: Position::new(
-                        params.declaration_position.line,
-                        params.declaration_position.character,
-                    ),
-                    limit: params.limit,
-                },
-                &source_resolutions,
-                &params.admitted_root_uris,
-            );
-        let result = match search_result {
-            Ok(result) => result,
-            Err(error) => {
-                self.state = IndexState::Degraded;
-                self.completeness = "stale";
-                return Err(protocol_store_error(error));
-            }
-        };
+        let search_result = self.store()?.search_reference_candidates(
+            &ReferenceCandidateQuery {
+                declaration_uri: params.declaration_uri,
+                declaration_position: Position::new(
+                    params.declaration_position.line,
+                    params.declaration_position.character,
+                ),
+                limit: params.limit,
+            },
+            &source_resolutions,
+            &params.admitted_root_uris,
+        );
+        let result = search_result.map_err(protocol_store_error)?;
         let bindings: Vec<_> = result
             .bindings
             .into_iter()
@@ -115,24 +101,21 @@ impl Runtime {
                 value
             })
             .collect();
-        Ok((
-            json!({
-                "supported": result.supported,
-                "complete": result.complete && self.completeness == "ready",
-                "identityComplete": result.identity_complete
-                    && self.completeness == "ready",
-                "identityUris": result.identity_uris,
-                "narrowedUris": result.narrowed_uris,
-                "declarationUri": result.declaration_uri,
-                "declarationIdentity": result.declaration_identity,
-                "names": result.names,
-                "uris": result.uris,
-                "bindings": bindings,
-                "servedGeneration": result.served_generation,
-                "completeness": self.completeness,
-            }),
-            false,
-        ))
+        Ok(json!({
+            "supported": result.supported,
+            "complete": result.complete && self.completeness == "ready",
+            "identityComplete": result.identity_complete
+                && self.completeness == "ready",
+            "identityUris": result.identity_uris,
+            "narrowedUris": result.narrowed_uris,
+            "declarationUri": result.declaration_uri,
+            "declarationIdentity": result.declaration_identity,
+            "names": result.names,
+            "uris": result.uris,
+            "bindings": bindings,
+            "servedGeneration": result.served_generation,
+            "completeness": self.completeness,
+        }))
     }
 }
 

@@ -103,3 +103,11 @@ preview前后原文件内容/size/mtime不变；apply不得删除活动30K缓存
 Windows原生23、公开CLI/LSP/隔离6及适用夹具2通过。真实cache仅preview，完整检查后原12301目录无新增/删除或受测stat变化。
 这不改变本ADR的审批状态，不代表真实Zed/30K全量功能或任意网络/离线卷拓扑已通过。
 实施与原始证据：[TDD记录](../tdd/2026-10-29-index-cache-lifecycle.md)、[验证报告](../reports/2026-10-29-index-cache-lifecycle.md)。
+
+## 2026-11-08 冷共享目录并发创建澄清（不改审批状态）
+
+[IDX-V1-INIT-001及RED/GREEN](../reports/2026-11-08-cold-cache-multi-root-initialization.md)：
+共享cache的workspaces/.leases允许合法并发创建；NotFound后create_dir返回AlreadyExists时，
+重新执行原不跟随链接/类型/reparse验证后才能接受，其他错误保持拒绝。
+不改为全局互斥、不无限重试、不省安全检查；这是既有多使用者合同的实现修正，非新架构决策。
+Native/公开LSP有稳定冷反例和修复对照，完整新候选及Windows仍待验证；原2402/2403失败保留。

@@ -1,6 +1,6 @@
 import path from "node:path"
 import type { LocalPackageResolver } from "../sdk/local-package-resolver.js"
-import { resolutionInputWasRebased } from "../../project/resolution-input-admission.js"
+import { noteUnnotifiedSourceNamespace, resolutionInputWasRebased } from "../../project/resolution-input-admission.js"
 
 /** Enumerable symbol survives local projections, but is deliberately absent from JSON/Worker snapshots. */
 export const RESOLUTION_INPUT_GENERATION = Symbol("semantic-resolution-input-generation")
@@ -28,6 +28,8 @@ export class WorkspaceResolutionInputs {
     this.resolver.invalidateNamespaces([...new Set(paths.map(file => path.dirname(path.resolve(file))))])
     this.prepare(rootPath)
   }
+  observedNamespaceChange(): void { noteUnnotifiedSourceNamespace(this.resolver) }
+
   prepare(rootPath: string): ResolutionInputGeneration {
     this.checkpoint()
     const reloaded = this.resolver.refreshInputGeneration(rootPath, this.checkpoint)

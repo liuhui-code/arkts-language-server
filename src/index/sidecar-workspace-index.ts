@@ -1,8 +1,20 @@
+import { mapStatus } from "./sidecar-workspace-status.js"
+import { WorkspaceCacheNamespaces } from "./workspace-cache-namespaces.js"
+import { attestManagedCacheNamespace } from "./managed-cache-namespace.js"
+import type { ManagedSourceDirectory } from "../contracts/managed-source-namespace.js"
+import type { SemanticWorkspaceFileChangeBatch } from "../contracts/semantic-engine.js"
+import { normalizeIndexInputs } from "./maintenance-input-normalization.js"
+import { retainedReadProof } from "./versioned-index-proof.js"
+import { negotiateMaintenance } from "./maintenance-negotiation.js"
+import { VersionedMaintenance } from "./versioned-maintenance.js"
+import { LegacyCatalogs } from "./legacy-catalogs.js"
+import { SidecarSession, type SidecarProtocolEvent } from "./sidecar-session.js"
+export { SidecarRequestError, SidecarTimeoutError } from "./sidecar-session.js"
+export type { SidecarProtocolEvent } from "./sidecar-session.js"
+import { resolveRequestTimeout, resolveInitializeTimeout, resolveTerminationTimeout, resolvePositiveTimeout } from "./sidecar-timeouts.js"
 import { mapSearchResult, mapExportSearchResult } from "./sidecar-symbol-results.js"
-import { mapCatalogStatus, assertMonotonicCatalogProgress, type CatalogProgressMark, type MappedCatalogStatus } from "./catalog-status.js"
-import { SidecarProtocolError, asRecord, isRecord, isIndexState, isCompleteness, isNonNegativeInteger, isNullableGeneration } from "./sidecar-protocol-validation.js"
+import { SidecarProtocolError, asRecord, isCompleteness, isNonNegativeInteger } from "./sidecar-protocol-validation.js"
 export { SidecarProtocolError } from "./sidecar-protocol-validation.js"
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process"
 
 import type {
   DocumentSnapshot,
@@ -38,36 +50,13 @@ import {
   tryWorkspaceIdentityUri,
 } from "./workspace-uri-identity.js"
 
-const PROTOCOL_VERSION = 1
-const DEFAULT_REQUEST_TIMEOUT_MS = 15_000
-const DEFAULT_INITIALIZE_TIMEOUT_MS = 30_000
-const DEFAULT_TERMINATION_TIMEOUT_MS = 1_000
 const DEFAULT_CATALOG_STALL_TIMEOUT_MS = 30_000
 
-interface SidecarResponse {
-  protocol: number
-  id: number
-  ok: boolean
-  result?: unknown
-  error?: { code?: string; message?: string }
-}
-
-interface PendingRequest {
-  resolve(value: unknown): void
-  reject(error: Error): void
-  cleanup(): void
-}
-
-export interface SidecarProtocolEvent {
-  protocol: 1
-  event: "catalog/progress"
-  params: {
-    workspaceIdentity: string
-    status: Record<string, unknown>
-  }
-}
-
 export interface SidecarWorkspaceIndexOptions extends SidecarPathOptions {
+  /** Catalog composition opts in; existing explicit-text refresh clients retain their wire contract. */
+  fileMaintenance?: boolean
+  onManagedCacheNamespace?(rootUri: string, directories: readonly ManagedSourceDirectory[]): Promise<void>
+  onSourceScopeChanged?(rootUri: string): void
   onEvent?(event: SidecarProtocolEvent): void
   requestTimeoutMs?: number
   initializeTimeoutMs?: number
@@ -76,39 +65,21 @@ export interface SidecarWorkspaceIndexOptions extends SidecarPathOptions {
   catalogStallTimeoutMs?: number
 }
 
-interface CatalogRun {
-  resolve(): void
-  reject(error: Error): void
-  report(progress: WorkspaceIndexProgress): void
-  bufferedEvents: SidecarProtocolEvent[]
-  generation?: number
-  abortRequested: boolean
-  cancelStarted: boolean
-  cancelTimer?: ReturnType<typeof setTimeout>
-  stallTimer?: ReturnType<typeof setTimeout>
-  lastProgress?: CatalogProgressMark
-  settled: boolean
-  cleanup(): void
-}
-
 export class SidecarWorkspaceIndex implements WorkspaceIndexPort, WorkspaceCatalogPort,
   WorkspaceExportIndexPort, WorkspaceReferenceIndexPort, ClassBindingDiscoveryPort {
   private readonly sessions = new Map<WorkspaceId, SidecarSession>()
   private readonly openingWorkspaces = new Map<WorkspaceId, Promise<WorkspaceIndexStatus>>()
-  private readonly catalogRuns = new Map<WorkspaceId, CatalogRun>()
   private readonly options: SidecarWorkspaceIndexOptions
-  private readonly catalogCancelTimeoutMs: number
-  private readonly catalogStallTimeoutMs: number
+  private readonly sourceNamespaces: WorkspaceCacheNamespaces
+  private readonly catalogs: LegacyCatalogs
 
   constructor(options: SidecarWorkspaceIndexOptions = {}) {
     this.options = options
-    this.catalogCancelTimeoutMs = resolveRequestTimeout(
-      options.catalogCancelTimeoutMs ?? options.requestTimeoutMs,
-    )
-    this.catalogStallTimeoutMs = resolvePositiveTimeout(
-      options.catalogStallTimeoutMs,
-      DEFAULT_CATALOG_STALL_TIMEOUT_MS,
-      "catalog stall",
+    this.sourceNamespaces = new WorkspaceCacheNamespaces(options.onManagedCacheNamespace, options.onSourceScopeChanged)
+    this.catalogs = new LegacyCatalogs(
+      workspaceId => this.session(workspaceId),
+      resolveRequestTimeout(options.catalogCancelTimeoutMs ?? options.requestTimeoutMs),
+      resolvePositiveTimeout(options.catalogStallTimeoutMs, DEFAULT_CATALOG_STALL_TIMEOUT_MS, "catalog stall"),
     )
   }
 
@@ -134,10 +105,21 @@ export class SidecarWorkspaceIndex implements WorkspaceIndexPort, WorkspaceCatal
     const session = new SidecarSession(
       resolveIndexSidecarPath(this.options),
       (event) => {
-        this.acceptCatalogEvent(workspace.id, event)
+        if (event.event === "catalog/progress") {
+          if (session.versioned) throw new SidecarProtocolError("legacy catalog event in a maintenance session")
+          this.catalogs.acceptEvent(workspace.id, event)
+        } else {
+          if (!session.versioned) throw new SidecarProtocolError("maintenance event before capability acknowledgment")
+          session.versioned.acceptEvent(event)
+        }
         this.options.onEvent?.(event)
       },
-      (error) => this.rejectCatalog(workspace.id, error),
+      (error) => {
+        this.catalogs.reject(workspace.id, error)
+        session.versioned?.reject(error)
+        // Process liveness is not directory role: retain the attested cache identity
+        // until workspace close. Every source scan still revalidates the object.
+      },
       resolveRequestTimeout(this.options.requestTimeoutMs),
       resolveInitializeTimeout(this.options.initializeTimeoutMs),
       resolveTerminationTimeout(this.options.terminationTimeoutMs),
@@ -145,10 +127,7 @@ export class SidecarWorkspaceIndex implements WorkspaceIndexPort, WorkspaceCatal
     session.clientRootUri = workspace.rootUri
     this.sessions.set(workspace.id, session)
     try {
-      const initialized = asRecord(await session.request("initialize", {
-        workspaceRoot,
-        cacheDirectory,
-      }))
+      const { initialized, maintenance } = await negotiateMaintenance(session, { workspaceRoot, cacheDirectory }, this.options.fileMaintenance === true)
       if (typeof initialized.workspaceIdentity !== "string") {
         throw new SidecarProtocolError("index sidecar omitted workspace identity")
       }
@@ -156,6 +135,11 @@ export class SidecarWorkspaceIndex implements WorkspaceIndexPort, WorkspaceCatal
         throw new SidecarProtocolError("index sidecar returned the wrong workspace identity")
       }
       session.workspaceIdentity = initialized.workspaceIdentity
+      if (maintenance) session.versioned = new VersionedMaintenance(session, maintenance,
+        resolveRequestTimeout(this.options.catalogCancelTimeoutMs ?? this.options.requestTimeoutMs),
+        resolvePositiveTimeout(this.options.catalogStallTimeoutMs, DEFAULT_CATALOG_STALL_TIMEOUT_MS, "catalog stall"))
+      await this.sourceNamespaces.add(workspace.id, workspace.rootUri, workspaceRoot, session,
+        await attestManagedCacheNamespace(session, initialized, cacheDirectory))
       const status = mapStatus(initialized.status)
       session.lastStatus = status
       return status
@@ -163,6 +147,7 @@ export class SidecarWorkspaceIndex implements WorkspaceIndexPort, WorkspaceCatal
       if (error instanceof SidecarProtocolError) session.protocolFailure(error)
       this.sessions.delete(workspace.id)
       await session.closeAfterFailure()
+      await this.sourceNamespaces.remove(workspace.id)
       throw error
     }
   }
@@ -325,7 +310,7 @@ export class SidecarWorkspaceIndex implements WorkspaceIndexPort, WorkspaceCatal
     const degraded = session.degradedStatus()
     if (degraded) return degraded
     try {
-      const status = mapStatus(await session.request("status", {}, signal))
+      const status = mapStatus(await session.request(session.versioned ? "index/status" : "status", {}, signal))
       session.lastStatus = status
       return status
     } catch (error) {
@@ -334,49 +319,18 @@ export class SidecarWorkspaceIndex implements WorkspaceIndexPort, WorkspaceCatal
     }
   }
 
-  start(
-    workspace: WorkspaceDescriptor,
-    report: (progress: WorkspaceIndexProgress) => void,
-    signal?: AbortSignal,
-  ): Promise<void> {
-    if (signal?.aborted) return Promise.reject(abortError())
-    const session = this.session(workspace.id)
-    if (this.catalogRuns.has(workspace.id)) {
-      return Promise.reject(new Error(`workspace catalog is already running: ${workspace.id}`))
-    }
+  observe(workspaceId: WorkspaceId, batch: SemanticWorkspaceFileChangeBatch): void {
+    const session = this.sessions.get(workspaceId)
+    if (session?.versioned) session.versioned.observe(normalizeIndexInputs(session, batch))
+  }
 
-    let resolve!: () => void
-    let reject!: (error: Error) => void
-    const promise = new Promise<void>((accept, decline) => {
-      resolve = accept
-      reject = decline
-    })
-    const onAbort = () => {
-      const run = this.catalogRuns.get(workspace.id)
-      if (!run || run.settled) return
-      run.abortRequested = true
-      if (run.generation !== undefined) void this.cancelCatalog(workspace.id, session, run)
+  async start(workspace: WorkspaceDescriptor, report: (progress: WorkspaceIndexProgress) => void, signal?: AbortSignal): Promise<void> {
+    if (this.sourceNamespaces.needsOpeningBarrier(workspace.id)) {
+      await Promise.allSettled([...this.openingWorkspaces.values()])
     }
-    signal?.addEventListener("abort", onAbort, { once: true })
-    let run!: CatalogRun
-    run = {
-      resolve,
-      reject,
-      report,
-      bufferedEvents: [],
-      abortRequested: false,
-      cancelStarted: false,
-      settled: false,
-      cleanup: () => {
-        signal?.removeEventListener("abort", onAbort)
-        if (run.cancelTimer) clearTimeout(run.cancelTimer)
-        if (run.stallTimer) clearTimeout(run.stallTimer)
-      },
-    }
-    this.catalogRuns.set(workspace.id, run)
-    if (signal?.aborted) onAbort()
-    void this.beginCatalog(workspace.id, session, run)
-    return promise
+    const session = this.session(workspace.id)
+    this.sourceNamespaces.catalogStarting(workspace.id)
+    return session.versioned ? session.versioned.start(report, signal) : this.catalogs.start(workspace, report, signal)
   }
 
   async close(workspaceId: WorkspaceId): Promise<void> {
@@ -386,11 +340,14 @@ export class SidecarWorkspaceIndex implements WorkspaceIndexPort, WorkspaceCatal
     }
     const session = this.sessions.get(workspaceId)
     if (!session) return
-    this.rejectCatalog(workspaceId, new Error("workspace index closed during cataloging"))
+    const error = new Error("workspace index closed during cataloging")
+    this.catalogs.reject(workspaceId, error)
+    session.versioned?.reject(error)
     try {
       await session.close()
     } finally {
       this.sessions.delete(workspaceId)
+      await this.sourceNamespaces.remove(workspaceId)
     }
   }
 
@@ -400,474 +357,8 @@ export class SidecarWorkspaceIndex implements WorkspaceIndexPort, WorkspaceCatal
     return session
   }
 
-  private async beginCatalog(
-    workspaceId: WorkspaceId,
-    session: SidecarSession,
-    run: CatalogRun,
-  ): Promise<void> {
-    try {
-      const result = asRecord(await session.request("catalog/start", {
-        reason: "workspace-open",
-        force: false,
-      }))
-      if (typeof result.accepted !== "boolean" || !isNonNegativeInteger(result.generation)) {
-        throw new SidecarProtocolError("index sidecar returned an invalid catalog start result")
-      }
-      run.generation = result.generation
-      this.reportCatalogStatus(workspaceId, session, run, result.status)
-      for (const event of run.bufferedEvents.splice(0)) {
-        if (run.settled) break
-        this.applyCatalogEvent(workspaceId, session, run, event)
-      }
-      if (run.abortRequested && !run.settled) {
-        await this.cancelCatalog(workspaceId, session, run)
-      }
-    } catch (error) {
-      if (error instanceof SidecarProtocolError) session.protocolFailure(error)
-      this.rejectCatalog(workspaceId, asError(error))
-    }
-  }
-
-  private async cancelCatalog(
-    workspaceId: WorkspaceId,
-    session: SidecarSession,
-    run: CatalogRun,
-  ): Promise<void> {
-    if (run.generation === undefined || run.settled || run.cancelStarted) return
-    run.cancelStarted = true
-    try {
-      const result = asRecord(await session.request("catalog/cancel", {
-        generation: run.generation,
-      }))
-      if (typeof result.cancelled !== "boolean" || result.generation !== run.generation) {
-        throw new SidecarProtocolError("index sidecar returned an invalid catalog cancel result")
-      }
-      this.reportCatalogStatus(workspaceId, session, run, result.status)
-      if (!run.settled) {
-        run.cancelTimer = setTimeout(() => {
-          session.failFromHost(
-            new SidecarTimeoutError("catalog/cancel terminal", this.catalogCancelTimeoutMs),
-          )
-        }, this.catalogCancelTimeoutMs)
-      }
-    } catch (error) {
-      if (error instanceof SidecarProtocolError) session.protocolFailure(error)
-      this.rejectCatalog(workspaceId, asError(error))
-    }
-  }
-
-  private acceptCatalogEvent(workspaceId: WorkspaceId, event: SidecarProtocolEvent): void {
-    const run = this.catalogRuns.get(workspaceId)
-    if (!run || run.settled) return
-    const session = this.session(workspaceId)
-    if (event.params.workspaceIdentity !== session.workspaceIdentity) {
-      throw new SidecarProtocolError("index sidecar catalog event used the wrong workspace identity")
-    }
-    if (run.generation === undefined) {
-      run.bufferedEvents.push(event)
-      return
-    }
-    this.applyCatalogEvent(workspaceId, session, run, event)
-  }
-
-  private applyCatalogEvent(
-    workspaceId: WorkspaceId,
-    session: SidecarSession,
-    run: CatalogRun,
-    event: SidecarProtocolEvent,
-  ): void {
-    const mapped = mapCatalogStatus(event.params.status)
-    this.validateCatalogGeneration(run, mapped)
-    this.reportCatalogProgress(workspaceId, session, run, mapped)
-  }
-
-  private reportCatalogStatus(
-    workspaceId: WorkspaceId,
-    session: SidecarSession,
-    run: CatalogRun,
-    value: unknown,
-  ): void {
-    const mapped = mapCatalogStatus(value)
-    this.validateCatalogGeneration(run, mapped)
-    this.reportCatalogProgress(workspaceId, session, run, mapped)
-  }
-
-  private reportCatalogProgress(
-    workspaceId: WorkspaceId,
-    session: SidecarSession,
-    run: CatalogRun,
-    mapped: MappedCatalogStatus,
-  ): void {
-    if (run.settled) return
-    session.lastStatus = mapped.indexStatus
-    run.report(mapped.progress)
-    if (!mapped.terminal) {
-      if (run.cancelStarted && mapped.phase === "cancelling") {
-        if (run.stallTimer) clearTimeout(run.stallTimer)
-        run.stallTimer = undefined
-        return
-      }
-      this.advanceCatalogWatchdog(workspaceId, session, run, mapped.mark)
-      return
-    }
-    run.settled = true
-    run.cleanup()
-    if (this.catalogRuns.get(workspaceId) === run) this.catalogRuns.delete(workspaceId)
-    run.resolve()
-  }
-
-  private validateCatalogGeneration(run: CatalogRun, mapped: MappedCatalogStatus): void {
-    if (run.generation === undefined) {
-      throw new SidecarProtocolError("index sidecar catalog status arrived before generation")
-    }
-    if (!mapped.terminal) {
-      if (mapped.buildingGeneration !== run.generation) {
-        throw new SidecarProtocolError("index sidecar catalog status used the wrong generation")
-      }
-      return
-    }
-    if ((mapped.phase === "ready" || mapped.phase === "partial")
-      && mapped.committedGeneration !== run.generation) {
-      throw new SidecarProtocolError("index sidecar catalog terminal committed the wrong generation")
-    }
-    if (mapped.phase === "cancelled" && !run.cancelStarted) {
-      throw new SidecarProtocolError("index sidecar cancelled a catalog that was not cancelled")
-    }
-  }
-
-  private advanceCatalogWatchdog(
-    workspaceId: WorkspaceId,
-    session: SidecarSession,
-    run: CatalogRun,
-    mark: CatalogProgressMark,
-  ): void {
-    const previous = run.lastProgress
-    if (previous) {
-      assertMonotonicCatalogProgress(previous, mark)
-    }
-    run.lastProgress = mark
-    if (run.stallTimer) clearTimeout(run.stallTimer)
-    run.stallTimer = setTimeout(() => {
-      if (this.catalogRuns.get(workspaceId) !== run || run.settled) return
-      session.failFromHost(
-        new SidecarTimeoutError("catalog progress", this.catalogStallTimeoutMs),
-      )
-    }, this.catalogStallTimeoutMs)
-  }
-
-  private rejectCatalog(workspaceId: WorkspaceId, error: Error): void {
-    const run = this.catalogRuns.get(workspaceId)
-    if (!run || run.settled) return
-    run.settled = true
-    run.cleanup()
-    this.catalogRuns.delete(workspaceId)
-    run.reject(error)
-  }
 }
 
-class SidecarSession {
-  readonly child: ChildProcessWithoutNullStreams
-  lastStatus: WorkspaceIndexStatus = { state: "warming", committedGeneration: 0 }
-  workspaceIdentity = ""
-  clientRootUri = ""
-  private nextRequestId = 1
-  private readonly pending = new Map<number, PendingRequest>()
-  private readonly abandoned = new Map<number, ReturnType<typeof setTimeout>>()
-  private stdoutBuffer = ""
-  private closePromise: Promise<void> | undefined
-  private closed = false
-  private closing = false
-  private failure: Error | undefined
-  private terminationPromise: Promise<void> | undefined
-  private readonly closedPromise: Promise<void>
-  private resolveClosed!: () => void
-
-  constructor(
-    sidecarPath: string,
-    private readonly onEvent?: (event: SidecarProtocolEvent) => void,
-    private readonly onFailure?: (error: Error) => void,
-    private readonly requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
-    private readonly initializeTimeoutMs = DEFAULT_INITIALIZE_TIMEOUT_MS,
-    private readonly terminationTimeoutMs = DEFAULT_TERMINATION_TIMEOUT_MS,
-  ) {
-    this.closedPromise = new Promise((resolve) => { this.resolveClosed = resolve })
-    this.child = spawn(sidecarPath, [], {
-      shell: false,
-      stdio: ["pipe", "pipe", "pipe"],
-      windowsHide: true,
-    })
-    this.child.stdout.setEncoding("utf8")
-    this.child.stdout.on("data", (chunk: string) => this.acceptStdout(chunk))
-    // Always drain stderr to avoid child-process backpressure, but retain none of
-    // its potentially source-bearing content in memory or public error objects.
-    this.child.stderr.resume()
-    this.child.on("error", (error) => this.fail(error, true))
-    this.child.on("close", (code, signal) => {
-      this.closed = true
-      if (!this.closing) {
-        this.fail(new Error(`index sidecar exited (code=${code ?? "null"}, signal=${signal ?? "null"})`))
-      }
-      this.resolveClosed()
-    })
-  }
-
-  request(method: string, params: unknown, signal?: AbortSignal): Promise<unknown> {
-    return this.sendRequest(method, params, signal, false)
-  }
-
-  protocolFailure(error: SidecarProtocolError): void {
-    this.fail(error, true)
-  }
-
-  failFromHost(error: Error): void {
-    this.fail(error, true)
-  }
-
-  private sendRequest(
-    method: string,
-    params: unknown,
-    signal: AbortSignal | undefined,
-    allowClosing: boolean,
-  ): Promise<unknown> {
-    if (this.failure) return Promise.reject(this.failure)
-    if (this.closed || (this.closing && !allowClosing)) {
-      return Promise.reject(new Error("index sidecar session is closed"))
-    }
-    if (signal?.aborted) return Promise.reject(abortError())
-    const timeoutMs = method === "initialize" ? this.initializeTimeoutMs : this.requestTimeoutMs
-    const id = this.nextRequestId++
-    const line = `${JSON.stringify({ protocol: PROTOCOL_VERSION, id, method, params })}\n`
-    return new Promise((resolve, reject) => {
-      let timer: ReturnType<typeof setTimeout> | undefined
-      const onAbort = () => {
-        const pending = this.pending.get(id)
-        if (!pending) return
-        this.pending.delete(id)
-        pending.cleanup()
-        this.abandoned.set(id, setTimeout(() => {
-          if (!this.abandoned.delete(id)) return
-          this.fail(
-            new SidecarTimeoutError(`${method} cancellation drain`, timeoutMs),
-            true,
-          )
-        }, timeoutMs))
-        pending.reject(abortError())
-      }
-      const cleanup = () => {
-        signal?.removeEventListener("abort", onAbort)
-        if (timer) clearTimeout(timer)
-      }
-      this.pending.set(id, { resolve, reject, cleanup })
-      signal?.addEventListener("abort", onAbort, { once: true })
-      timer = setTimeout(() => {
-        if (!this.pending.has(id)) return
-        this.fail(new SidecarTimeoutError(method, timeoutMs), true)
-      }, timeoutMs)
-      this.child.stdin.write(line, (error) => {
-        if (!error) return
-        this.fail(error, true)
-      })
-    })
-  }
-
-  close(): Promise<void> {
-    this.closePromise ??= this.shutdown()
-    return this.closePromise
-  }
-
-  degradedStatus(): WorkspaceIndexStatus | undefined {
-    if (!this.failure) return undefined
-    return {
-      state: "degraded",
-      committedGeneration: this.lastStatus.committedGeneration,
-      message: this.failure.message,
-    }
-  }
-
-  async closeAfterFailure(): Promise<void> {
-    await this.terminate()
-  }
-
-  private async shutdown(): Promise<void> {
-    if (this.closed) return
-    if (this.failure) {
-      await this.terminate()
-      return
-    }
-    this.closing = true
-    try {
-      await this.sendRequest("shutdown", {}, undefined, true)
-    } catch {
-      await this.terminate()
-      return
-    }
-    this.rejectPending(new Error("index sidecar session is closed"))
-    this.clearAbandoned()
-    this.child.stdin.end()
-    if (!await this.waitForClose(this.terminationTimeoutMs)) {
-      await this.terminate()
-    }
-  }
-
-  private acceptStdout(chunk: string): void {
-    this.stdoutBuffer += chunk
-    while (true) {
-      const newline = this.stdoutBuffer.indexOf("\n")
-      if (newline < 0) return
-      const line = this.stdoutBuffer.slice(0, newline)
-      this.stdoutBuffer = this.stdoutBuffer.slice(newline + 1)
-      if (!line.trim()) {
-        this.protocolFailure(new SidecarProtocolError("index sidecar emitted an empty protocol line"))
-      } else {
-        this.acceptLine(line)
-      }
-    }
-  }
-
-  private acceptLine(line: string): void {
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(line) as unknown
-    } catch {
-      this.protocolFailure(new SidecarProtocolError("index sidecar emitted malformed JSON"))
-      return
-    }
-    if (isIdlessEventEnvelope(parsed)) {
-      if (!isProtocolEvent(parsed)) {
-        this.protocolFailure(new SidecarProtocolError("index sidecar emitted an unrecognized sidecar event"))
-        return
-      }
-      try {
-        this.onEvent?.(parsed)
-      } catch (error) {
-        this.protocolFailure(error instanceof SidecarProtocolError
-          ? error
-          : new SidecarProtocolError("index sidecar event handler failed"))
-      }
-      return
-    }
-    if (!isRecord(parsed)
-      || parsed.protocol !== PROTOCOL_VERSION
-      || !Number.isSafeInteger(parsed.id)
-      || typeof parsed.ok !== "boolean") {
-      this.protocolFailure(new SidecarProtocolError("index sidecar emitted an invalid protocol response"))
-      return
-    }
-    const response = parsed as unknown as SidecarResponse
-    const pending = this.pending.get(response.id)
-    if (!pending) {
-      const abandonedTimer = this.abandoned.get(response.id)
-      if (abandonedTimer) {
-        clearTimeout(abandonedTimer)
-        this.abandoned.delete(response.id)
-        return
-      }
-      this.protocolFailure(
-        new SidecarProtocolError(`index sidecar emitted an unknown response id: ${response.id}`),
-      )
-      return
-    }
-    if (response.ok) {
-      if (!("result" in parsed)) {
-        this.protocolFailure(
-          new SidecarProtocolError("index sidecar omitted a successful response result"),
-        )
-        return
-      }
-      this.pending.delete(response.id)
-      pending.cleanup()
-      pending.resolve(response.result)
-    } else {
-      if (!isRecord(response.error)
-        || typeof response.error.code !== "string"
-        || typeof response.error.message !== "string") {
-        this.protocolFailure(new SidecarProtocolError("index sidecar emitted an invalid error response"))
-        return
-      }
-      this.pending.delete(response.id)
-      pending.cleanup()
-      pending.reject(new SidecarRequestError(
-        response.error.code,
-        response.error.message,
-      ))
-    }
-  }
-
-  private fail(error: Error, terminate = false): void {
-    const firstFailure = this.failure === undefined
-    this.failure ??= error
-    if (firstFailure) this.onFailure?.(this.failure)
-    this.rejectPending(this.failure)
-    this.clearAbandoned()
-    if (terminate && !this.closed) {
-      void this.terminate()
-    }
-  }
-
-  private rejectPending(error: Error): void {
-    for (const pending of this.pending.values()) {
-      pending.cleanup()
-      pending.reject(error)
-    }
-    this.pending.clear()
-  }
-
-  private clearAbandoned(): void {
-    for (const timer of this.abandoned.values()) clearTimeout(timer)
-    this.abandoned.clear()
-  }
-
-  private terminate(): Promise<void> {
-    this.terminationPromise ??= this.terminateProcess()
-    return this.terminationPromise
-  }
-
-  private async terminateProcess(): Promise<void> {
-    this.closing = true
-    if (this.closed) return
-    this.child.kill("SIGTERM")
-    if (await this.waitForClose(this.terminationTimeoutMs)) return
-    this.child.kill("SIGKILL")
-    await this.waitForClose(this.terminationTimeoutMs)
-  }
-
-  private waitForClose(timeoutMs: number): Promise<boolean> {
-    if (this.closed) return Promise.resolve(true)
-    return new Promise((resolve) => {
-      const timer = setTimeout(() => resolve(false), timeoutMs)
-      void this.closedPromise.then(() => {
-        clearTimeout(timer)
-        resolve(true)
-      })
-    })
-  }
-}
-
-export class SidecarRequestError extends Error {
-  constructor(readonly code: string, message: string) {
-    super(message)
-    this.name = "SidecarRequestError"
-  }
-}
-
-export class SidecarTimeoutError extends Error {
-  constructor(readonly method: string, readonly timeoutMs: number) {
-    super(`index sidecar ${method} timed out after ${timeoutMs}ms`)
-    this.name = "SidecarTimeoutError"
-  }
-}
-
-function mapStatus(value: unknown): WorkspaceIndexStatus {
-  const status = asRecord(value)
-  if (!isIndexState(status.state) || !isNonNegativeInteger(status.committedGeneration)
-    || (status.buildingGeneration !== undefined && !isNullableGeneration(status.buildingGeneration))) {
-    throw new SidecarProtocolError("index sidecar returned an invalid status")
-  }
-  return { state: status.state, committedGeneration: status.committedGeneration,
-    ...(typeof status.buildingGeneration === "number" ? { buildingGeneration: status.buildingGeneration } : {}),
-    ...(typeof status.message === "string" ? { message: status.message } : {}),
-  }
-}
 
 function mapReferenceCandidateResult(
   value: unknown,
@@ -908,6 +399,7 @@ function mapReferenceCandidateResult(
     throw new SidecarProtocolError("index sidecar returned invalid reference candidates")
   }
   return {
+    ...retainedReadProof(value),
     supported: result.supported,
     complete: result.complete,
     identityComplete: result.identityComplete,
@@ -993,74 +485,8 @@ function unsupportedReferenceCandidates(
   }
 }
 
-function isProtocolEvent(value: unknown): value is SidecarProtocolEvent {
-  if (!(isRecord(value)
-    && value.protocol === PROTOCOL_VERSION
-    && !("id" in value)
-    && value.event === "catalog/progress"
-    && isRecord(value.params)
-    && typeof value.params.workspaceIdentity === "string")) return false
-  try {
-    mapCatalogStatus(value.params.status)
-    return true
-  } catch {
-    return false
-  }
-}
-
-function isIdlessEventEnvelope(value: unknown): value is Record<string, unknown> {
-  return isRecord(value)
-    && value.protocol === PROTOCOL_VERSION
-    && !("id" in value)
-    && "event" in value
-}
-
-function abortError(): Error {
-  return new DOMException("Index request aborted", "AbortError")
-}
-
-function asError(value: unknown): Error {
-  return value instanceof Error ? value : new Error(String(value))
-}
-
 function toClientWorkspaceUri(session: SidecarSession, uri: DocumentUri): DocumentUri {
   const rebased = tryClientWorkspaceUri(session, uri)
   if (rebased !== undefined) return rebased
   throw new SidecarProtocolError(`index sidecar returned a symbol outside workspace root: ${uri}`)
-}
-
-function resolveRequestTimeout(value: number | undefined): number {
-  const timeout = value ?? DEFAULT_REQUEST_TIMEOUT_MS
-  if (!Number.isFinite(timeout) || timeout <= 0) {
-    throw new RangeError("index sidecar request timeout must be a positive number")
-  }
-  return timeout
-}
-
-function resolveInitializeTimeout(value: number | undefined): number {
-  const timeout = value ?? DEFAULT_INITIALIZE_TIMEOUT_MS
-  if (!Number.isFinite(timeout) || timeout <= 0) {
-    throw new RangeError("index sidecar initialize timeout must be a positive number")
-  }
-  return timeout
-}
-
-function resolveTerminationTimeout(value: number | undefined): number {
-  const timeout = value ?? DEFAULT_TERMINATION_TIMEOUT_MS
-  if (!Number.isFinite(timeout) || timeout <= 0) {
-    throw new RangeError("index sidecar termination timeout must be a positive number")
-  }
-  return timeout
-}
-
-function resolvePositiveTimeout(
-  value: number | undefined,
-  fallback: number,
-  label: string,
-): number {
-  const timeout = value ?? fallback
-  if (!Number.isFinite(timeout) || timeout <= 0) {
-    throw new RangeError(`index sidecar ${label} timeout must be a positive number`)
-  }
-  return timeout
 }

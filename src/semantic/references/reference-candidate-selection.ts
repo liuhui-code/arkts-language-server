@@ -40,6 +40,8 @@ export interface ReferenceCandidateSelectionContext {
   readonly projectConfiguration?: unknown
   readonly sdkConfiguration?: unknown
   readonly sourceOverlays?: ReferenceSourceOverlaySnapshot
+  readonly sourceFingerprint?: string
+  readonly requestReconciliation?: () => void
   readonly logger?: StructuredLogger
   readonly assertCurrent: () => void
   readonly define: (
@@ -80,6 +82,13 @@ export async function selectReferenceCandidates(
         admittedRootUris,
         query.signal,
       ))
+    // A qualified Native snapshot can intentionally exclude .gitignored files
+    // or cover a different project scope. It cannot narrow complete semantic
+    // references unless the exact current URI+source-byte set matches.
+    if (direct.indexProof?.qualification && !coversCurrentSources(direct, context)) {
+      context.logger?.info("references.index.fallback", { reason: "semantic-input-scope-mismatch" })
+      return undefined
+    }
     direct = await traceReferenceCandidatePhase(context.logger, traceId,
       "direct-sources", () => resolveCandidateSources(
         context,
@@ -109,6 +118,8 @@ export async function selectReferenceCandidates(
       context.assertCurrent()
       const supportUris = identityReferenceSupportUris(direct, candidateUris)
       const identityComplete = direct.identityComplete && supportUris !== undefined
+      // Legacy metadata can support discovery, never complete-scope narrowing.
+      if (!identityComplete || !coversCurrentSources(direct, context)) return undefined
       context.logger?.info("references.index.accepted", {
         anchorMode: identityComplete
           ? "indexed-declaration-identity"
@@ -124,7 +135,6 @@ export async function selectReferenceCandidates(
             }
           : {}),
       })
-      if (!identityComplete) return undefined
       return {
         uris: candidateUris,
         identityComplete,
@@ -181,6 +191,7 @@ export async function selectReferenceCandidates(
         admittedRootUris,
         query.signal,
       ))
+    if (result.indexProof?.qualification && !coversCurrentSources(result, context)) return undefined
     const status = await traceReferenceCandidatePhase(context.logger, traceId,
       "status", () => context.index!.status(query.document.workspaceId))
     context.assertCurrent()
@@ -208,6 +219,7 @@ export async function selectReferenceCandidates(
     if (seed) context.logger?.info("references.anchor.seed.accepted", { traceId,
       servedGeneration: result.servedGeneration, anchorWorkerStarts: 0,
       anchorProgramBuilds: 0, validation: "pending-final-compiler-batches" })
+    if (!coversCurrentSources(result, context)) return undefined
     context.logger?.info("references.index.accepted", {
       anchorMode: reexportSeed ? "indexed-reexport-seed" : seed ? "indexed-local-export-seed" : identityComplete
         ? "compiler-definition-identity"
@@ -259,4 +271,13 @@ async function resolveCandidateSources(
 function toFilePath(uri: string): string | undefined {
   try { return uri.startsWith("file:") ? fileURLToPath(uri) : undefined }
   catch { return undefined }
+}
+
+
+function coversCurrentSources(result: WorkspaceReferenceCandidateResult, context: ReferenceCandidateSelectionContext): boolean {
+  const fingerprint = result.indexProof?.qualification?.fingerprint
+  const covered = context.sourceFingerprint !== undefined && typeof fingerprint === "string"
+    && /^arkts-complete-scan-v2:[a-f0-9]{64}:([a-f0-9]{64})$/.exec(fingerprint)?.[1] === context.sourceFingerprint
+  if (!covered && result.indexProof?.qualification) context.requestReconciliation?.()
+  return covered
 }

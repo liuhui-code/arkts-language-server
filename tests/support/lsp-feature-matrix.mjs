@@ -1,3 +1,4 @@
+import { documentSyncFeatureEvidence } from "./lsp-document-sync-feature-evidence.mjs"
 import fs from "node:fs"
 import { isDeepStrictEqual } from "node:util"
 import path from "node:path"
@@ -11,42 +12,7 @@ export const CURRENT_LSP_FEATURE_MATRIX = Object.freeze({
   schema: "arkts-language-server.lsp-feature-evidence",
   schemaVersion: 2,
   features: Object.freeze([
-    enabledFeature({
-      id: "document-sync",
-      requiredCapabilities: [
-        capability("positionEncoding", "utf-16"),
-        capability("textDocumentSync.openClose", true),
-        capability("textDocumentSync.change", 2),
-      ],
-      protocol: [evidence(
-        "tests/lsp-session.test.mjs",
-        "sends an applied document edit through didChange before the next request",
-        "document-sync.protocol.did-change-before-request",
-      )],
-      bundle: [
-        evidence(
-          "tests/lsp-document-lifecycle.test.mjs",
-          "advertises open/close incremental document synchronization",
-          "document-sync.bundle.sync-capability",
-        ),
-        evidence(
-          "tests/lsp-document-lifecycle.test.mjs",
-          "applies ranged incremental changes before serving completion",
-          "document-sync.bundle.incremental-change",
-        ),
-        evidence(
-          "tests/lsp-document-lifecycle.test.mjs",
-          "does not serve a stale overlay after the document closes",
-          "document-sync.bundle.close-clears-overlay",
-        ),
-      ],
-      artifact: [evidence(
-        "tests/release/portable-install.acceptance.mjs",
-        "installs one verified artifact without source dependencies or a rebuild",
-        "document-sync.artifact.immutable-incremental-overlay-lifecycle",
-      )],
-      artifactGap: null,
-    }),
+    documentSyncFeatureEvidence({ enabledFeature, capability, evidence }),
     completionFeatures.list,
     enabledFeature({
       id: "definition",

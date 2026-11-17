@@ -1,6 +1,6 @@
 import path from "node:path"
 import { readOwnDataRecord } from "./semantic-worker-record.js"
-import { SEMANTIC_AVAILABLE_CAPABILITIES, SEMANTIC_READY_CAPABILITIES } from "../contracts/semantic-readiness.js"
+import { SEMANTIC_AVAILABLE_CAPABILITIES, SEMANTIC_READY_CAPABILITIES, type SemanticReadinessQuery } from "../contracts/semantic-readiness.js"
 
 /** Validate the raw readiness boundary before generic JSON omission/cloning. */
 export function assertSemanticReadinessResponse(value: unknown, invalid: () => Error,
@@ -11,8 +11,15 @@ export function assertSemanticReadinessResponse(value: unknown, invalid: () => E
   if (!response.ok) return
   const report = readOwnDataRecord(response.value,
     ["rootUri", "semanticState", "semanticGeneration", "readyCapabilities", "unavailableReasons",
-      "unavailableInput", "inputIdentity", "coverage"], ["availableCapabilities", "inputIssues"], 10)
+      "unavailableInput", "inputIdentity", "coverage"], ["availableCapabilities", "inputIssues", "sourceNamespace"], 11)
   if (!report) throw invalid()
+  if (Object.hasOwn(report, "sourceNamespace")) {
+    const namespace = readOwnDataRecord(report.sourceNamespace, ["sha256", "sources"], ["diskSha256", "overlayOnly"], 4)
+    if (!namespace || !hash(namespace.sha256) || !counter(namespace.sources)) throw invalid()
+    if (Object.hasOwn(namespace, "diskSha256") || Object.hasOwn(namespace, "overlayOnly")) {
+      if (!hash(namespace.diskSha256) || typeof namespace.overlayOnly !== "boolean") throw invalid()
+    }
+  }
   if (!expectedRootUri || !isCanonicalUri(expectedRootUri) || report.rootUri !== expectedRootUri) throw invalid()
   if (!["ready", "unprepared", "partial", "degraded"].includes(report.semanticState as string)) throw invalid()
   const capabilities = strings(report.readyCapabilities, SEMANTIC_READY_CAPABILITIES.length, invalid)
@@ -114,4 +121,15 @@ function strings(value: unknown, max: number, invalid: () => Error): readonly st
       return descriptor.value as string
     })
   } catch { throw invalid() }
+}
+
+
+export type SemanticWorkerReadinessArgs = Pick<SemanticReadinessQuery, "prepare" | "captureSourceInputs">
+
+/** The optional input-capture purpose is internal; reject unknown/accessor fields. */
+export function decodeSemanticReadinessArgs(value: unknown, invalid: () => Error): SemanticWorkerReadinessArgs {
+  const args = readOwnDataRecord(value, ["prepare"], ["captureSourceInputs"], 2)
+  if (!args || typeof args.prepare !== "boolean"
+    || (Object.hasOwn(args, "captureSourceInputs") && args.captureSourceInputs !== true && args.captureSourceInputs !== "cache")) throw invalid()
+  return Object.freeze({ prepare: args.prepare, ...(args.captureSourceInputs === true || args.captureSourceInputs === "cache" ? { captureSourceInputs: args.captureSourceInputs } : {}) })
 }

@@ -43,6 +43,9 @@ pub(super) fn metadata_identity(connection: &Connection) -> Result<String, Strin
     let version: i64 = connection
         .pragma_query_value(None, "user_version", |row| row.get(0))
         .map_err(|e| e.to_string())?;
+    if version == 12 || version == 112 {
+        return versioned_identity(connection, version);
+    }
     if !(1..=crate::SCHEMA_VERSION).contains(&version) {
         return Err("unsupported-schema".into());
     }
@@ -180,4 +183,43 @@ fn catalog_database(directory: &Path) -> Result<PathBuf, String> {
         return Err("invalid-catalog-publication".into());
     }
     Ok(directory.join(name))
+}
+
+// Administrative identity inspection recognizes both known physical profiles,
+// without opening a writable producer or treating any future format as current.
+fn versioned_identity(connection: &Connection, schema: i64) -> Result<String, String> {
+    let format: i64 = connection
+        .query_row("SELECT version FROM file_facts_format", [], |r| r.get(0))
+        .map_err(|e| format!("identity-unavailable: {e}"))?;
+    let known = if schema == 112 {
+        [108, 109, 110]
+    } else {
+        [8, 9, 10]
+    };
+    if !known.contains(&format) {
+        return Err("unsupported-file-facts-format".into());
+    }
+    let without_rowid: bool = connection
+        .query_row(
+            "SELECT wr FROM pragma_table_list WHERE schema='main' AND name='v_occurrences'",
+            [],
+            |r| r.get(0),
+        )
+        .map_err(|e| format!("identity-unavailable: {e}"))?;
+    if without_rowid != (schema == 112) {
+        return Err("file-facts-layout-mismatch".into());
+    }
+    crate::catalog_api::versioned_facts::schema::validate_owner_layout(connection, format)
+        .map_err(|error| format!("file-facts-owner-layout-mismatch: {error}"))?;
+    let (workspace, store, domain): (String, String, String) = connection
+        .query_row(
+            "SELECT workspace,store,domain FROM manifest_identity WHERE id=1",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .map_err(|e| format!("identity-unavailable: {e}"))?;
+    if workspace.is_empty() || store.is_empty() || domain.is_empty() {
+        return Err("invalid-manifest-identity".into());
+    }
+    Ok(workspace)
 }

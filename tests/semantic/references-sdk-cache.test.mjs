@@ -37,6 +37,15 @@ test("serial reference jobs reuse SDK syntax across jobs and refresh changed SDK
   const diagnostic = await session.transport.notification("textDocument/publishDiagnostics",
     message => message.params.uri === uri("Use.ets") && message.params.version === 1, 10_000)
   assert.deepEqual(diagnostic.params.diagnostics, [])
+  // Result-cache reuse requires a current complete Program, not just SDK AST retention.
+  const prepareProof = async () => {
+    const proof = await session.request("arkts/semanticReadiness", {
+      rootUri: pathToFileURL(fixture.suite.workspace).href, prepare: true,
+    })
+    assert.equal(proof.error, undefined, JSON.stringify(proof))
+    assert.equal(proof.result?.semanticState, "ready", JSON.stringify(proof))
+  }
+  await prepareProof()
   let firstSearchJobs = 0
   for (const includeDeclaration of [false, true]) {
     const response = await session.request("textDocument/references", { textDocument: { uri: uri("Use.ets") },
@@ -94,8 +103,10 @@ test("serial reference jobs reuse SDK syntax across jobs and refresh changed SDK
 
   const sdkNext = path.join(fixture.directory, "sdk-next")
   fs.cpSync(fixture.suite.sdk, sdkNext, { recursive: true })
+  const metricsBeforeConfiguration = readRows(path.join(fixture.directory, "metrics.jsonl")).length
   session.transport.send({ jsonrpc: "2.0", method: "workspace/didChangeConfiguration",
     params: { settings: { arkts: { sdk: { path: sdkNext } } } } })
+  await prepareProof()
   const configured = await session.request("textDocument/references", { textDocument: { uri: uri("Use.ets") },
     position: positionAt(changed, changed.lastIndexOf("Thing")), context: { includeDeclaration: true } }, { timeoutMs: 20_000 })
   assert.equal(configured.error, undefined, JSON.stringify(configured))
@@ -113,8 +124,15 @@ test("serial reference jobs reuse SDK syntax across jobs and refresh changed SDK
   assert.equal(definition.result[0].uri, pathToFileURL(path.join(sdkNext, "ets", "component", "common.d.ts")).href)
   const metrics = fs.readFileSync(path.join(fixture.directory, "metrics.jsonl"), "utf8").trim().split("\n").map(JSON.parse)
   assert.ok(metrics.some(row => row.referenceSdkCacheWorkerCount === 1))
-  assert.equal(metrics.at(-1).referenceSdkCacheWorkerCount, 0, "SDK configuration replacement releases the old physical cache Worker")
+  assert.ok(metrics.slice(metricsBeforeConfiguration).some(row => row.referenceSdkCacheWorkerCount === 0),
+    "SDK configuration replacement releases the old physical cache Worker before replacement")
+  const nextParses = readParses(fixture).filter(row => row.file === path.join(sdkNext, "ets/component/common.d.ts"))
+  assert.equal(nextParses.length, 1, "the replacement domain parses its own SDK once")
+  assert.notEqual(nextParses[0].threadId, sdkParses[0].threadId)
+  assert.equal(metrics.at(-1).referenceSdkCacheWorkerCount, 1, "new batching may retain only the replacement Worker")
   assert.deepEqual((await session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })
+  assert.equal(readRows(path.join(fixture.directory, "metrics.jsonl")).at(-1).referenceSdkCacheWorkerCount, 0,
+    "shutdown observes actual replacement Worker retirement")
 })
 
 function location(uri, text, start) {

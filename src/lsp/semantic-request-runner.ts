@@ -69,7 +69,7 @@ export class SemanticRequestRunner {
 
   constructor(private readonly dependencies: SemanticRequestRunnerDependencies) {}
 
-  /** Observes the original cache-miss wait inside the complete response interval. */
+  /** Observe the diagnostic boundary before cached-input checks or complete search. */
   waitForReferenceDiagnostics(document: DocumentSnapshot, suspend: () => Promise<() => void>): Promise<() => void> {
     if (process.env.ARKTS_SEMANTIC_QUEUE_TRACE !== "1") return suspend()
     const diagnosticWaitId = this.#nextDiagnosticWaitId++

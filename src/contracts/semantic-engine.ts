@@ -1,3 +1,4 @@
+import type { ManagedSourceDirectory } from "./managed-source-namespace.js"
 import type {
   DocumentSnapshot,
   DocumentUri,
@@ -364,6 +365,10 @@ export interface VersionedSemanticResult<T> {
 }
 
 export interface SemanticWorkspaceFileChangeBatch {
+  managedSourceNamespaces?: readonly ManagedSourceDirectory[]
+  /** Native admission rules changed; not a compiler/SDK configuration mutation. */
+  catalogRulesChanged?: boolean
+  namespaceUncertain?: boolean
   rootUri: DocumentUri
   rootDirty: boolean
   configurationChanged?: boolean
@@ -376,6 +381,8 @@ export interface SemanticWorkspaceFileChangeBatch {
 }
 
 export interface SemanticEnginePort {
+  /** Successful physical replacement and input replay; not proof of semantic readiness. */
+  onDidRecover?(listener: () => void): () => void
   initializeProject?(query: Omit<SemanticReadinessQuery, "prepare">): Promise<SemanticReadinessReport>
   semanticReadiness?(query: SemanticReadinessQuery): Promise<SemanticReadinessReport>
   configureProject?(selection: unknown): void
@@ -383,6 +390,9 @@ export interface SemanticEnginePort {
   applyMemoryPressure?(level: "level2" | "level3"): void
   recycleSemanticWorker?(): Promise<{ recycled: true; oldThreadId: number; newThreadId: number }>
   isResourceFile?(rootUri: string, fileUri: string): boolean
+  isSourceNamespace?(rootUri: string, fileUri: string): boolean
+  isManagedCachePath?(rootUri: string, fileUri: string): boolean
+  setManagedSourceNamespace?(rootUri: string, directories: readonly ManagedSourceDirectory[] | null): Promise<void>
   sync(document: DocumentSnapshot): void
   close(documentUri: DocumentUri): void
   workspaceFilesChanged?(batches: readonly SemanticWorkspaceFileChangeBatch[]): void

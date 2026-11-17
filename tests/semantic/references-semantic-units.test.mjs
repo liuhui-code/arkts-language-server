@@ -59,11 +59,13 @@ test("indexed batching keeps declared project semantic units intact", async (t) 
   ])
   const queryUri = pathToFileURL(path.join(entrySource, "Query.ets")).href
   const position = positionAt(queryText, queryText.lastIndexOf("PublicThing") + 1)
+  const originalBuildProfile = fs.readFileSync(path.join(workspace, "build-profile.json5"), "utf8")
   const conservative = await runSingleReferenceRequest(t, {
     root, workspace, queryUri, queryText, position,
     strategy: "batched",
     batchRoots: "1",
   })
+  let firstQualification
   const result = await runSingleReferenceRequest(t, {
     root, workspace, queryUri, queryText, position,
     strategy: "indexed-batched",
@@ -71,6 +73,10 @@ test("indexed batching keeps declared project semantic units intact", async (t) 
     indexScenario: "semantic-units",
     batchRoots: "1",
     afterFirstRequest: async (session) => {
+      firstQualification = readRows(path.join(root, "logs-indexed-batched", "server.log"))
+        .findLast(row => row.event === "index.maintenance.phase" && row.outcome === "qualified"
+          && row.currentInput && row.scope !== "file")
+      assert.ok(firstQualification, "the initial candidate set requires actual Native qualification")
       await fs.promises.writeFile(path.join(workspace, "build-profile.json5"), JSON.stringify({
         app: { products: [{ name: "default" }] },
         modules: [
@@ -89,19 +95,12 @@ test("indexed batching keeps declared project semantic units intact", async (t) 
       // Repeat immediately: watched-file invalidation must precede the next read without a test barrier.
     },
     afterRepeatedRequest: async (session, initialLocations) => {
-      await waitCatalog(root, "activating", 1, 2)
-      const requests = readRows(path.join(root, "index-audit-indexed-batched.ndjson"))
-        .filter(row => row.method === "references/candidates"
-          && row.params.declarationUri.endsWith("/shared/src/main/ets/Target.ets"))
-      assert.equal(requests.length, 1,
-        "a watched project change must not reuse the previous index generation")
+      // Config-only reconcile can qualify the same data head. It does not prove
+      // that Native's retained 10-file scope equals the active 4-file project.
+      const qualification = await waitQualification(root, firstQualification.inputRevision)
       const events = readRows(path.join(root, "logs-indexed-batched", "server.log"))
-      assert.ok(events.some(event => event.event === "references.index.fallback"
-        && event.reason === "workspace-changed" && event.baselineGeneration === 1
-        && event.committedGeneration === 1))
-      assert.equal(events.some(event => event.event === "references.index.recovered"), false)
-      fs.writeFileSync(path.join(root, "index-audit-indexed-batched.ndjson.release-2"), "release\n")
-      await waitCatalog(root, "ready", 2, null)
+      assert.equal(events.filter(event => event.event === "references.index.accepted").length, 1,
+        "the old active-module qualification cannot authorize the changed project scope")
       const recovered = await session.request("textDocument/references", {
         // Same symbol, distinct cursor: exercise index re-admission rather than the valid fallback result cache.
         textDocument: { uri: queryUri }, position: { ...position, character: position.character + 1 },
@@ -110,6 +109,25 @@ test("indexed batching keeps declared project semantic units intact", async (t) 
       assert.equal(recovered.error, undefined, JSON.stringify(recovered.error))
       const sorted = locations => locations.map(location => JSON.stringify(location)).sort()
       assert.deepEqual(sorted(recovered.result), sorted(initialLocations))
+      const after = readRows(path.join(root, "logs-indexed-batched", "server.log"))
+      assert.equal(after.filter(row => row.event === "references.index.accepted").length, 1)
+      if (!after.some(row => row.event === "references.index.fallback"
+        && row.reason === "semantic-input-scope-mismatch")) {
+        assert.ok(after.some(row => row.event === "references.index.fallback" && row.reason === "workspace-changed"))
+        // Store observes the changed active namespace on the first request; its
+        // independent reconcile must complete before testing fresh scope equality.
+        await waitQualification(root, qualification.inputRevision)
+        const current = await session.request("textDocument/references", {
+          textDocument: { uri: queryUri }, position, context: { includeDeclaration: true },
+        }, { timeoutMs: 30_000 })
+        assert.equal(current.error, undefined, JSON.stringify(current))
+        assert.deepEqual(sorted(current.result), sorted(initialLocations))
+      }
+      const currentEvents = readRows(path.join(root, "logs-indexed-batched", "server.log"))
+      assert.equal(currentEvents.filter(row => row.event === "references.index.accepted").length, 1)
+      assert.ok(currentEvents.some(row => row.event === "references.index.fallback"
+        && row.reason === "semantic-input-scope-mismatch"),
+      JSON.stringify(currentEvents.filter(row => /references.index.|index.maintenance./u.test(row.event))))
     },
   })
 
@@ -141,14 +159,14 @@ test("indexed batching keeps declared project semantic units intact", async (t) 
     request.method === "references/candidates"
     && request.params.declarationUri.endsWith("/shared/src/main/ets/Target.ets")
   ))
-  assert.equal(scopedRequests.length, 2, "only the newly committed generation may restore scoped candidates")
-  assert.deepEqual(scopedRequests[1].params.admittedRootUris.map(uri => (
+  assert.equal(scopedRequests.length, 1, "scope mismatch must stop before another declaration candidate lookup")
+  const afterProjectChange = result.indexRequests.filter(request => request.method === "references/candidates")
+    .findLast(request => request.params.admittedRootUris?.length === 2)
+  assert.deepEqual(afterProjectChange?.params.admittedRootUris.map(uri => (
     new URL(uri).pathname.slice(new URL(uri).pathname.indexOf("/workspace/"))
   )), ["/workspace/entry/src/main", "/workspace/shared/src/main"])
   assert.deepEqual(result.indexEvents.filter(event => event.event === "references.index.accepted")
-    .map(event => event.servedGeneration), [1, 2])
-  assert.ok(result.referenceEvents.some(event => event.event === "references.index.recovered"
-    && event.baselineGeneration === 1 && event.committedGeneration === 2))
+    .map(event => event.servedGeneration), [firstQualification.head])
   assert.ok(result.referenceEvents.some(event => (
     event.event === "references.index.fallback" && event.reason === "workspace-changed"
   )))
@@ -158,6 +176,9 @@ test("indexed batching keeps declared project semantic units intact", async (t) 
     "Barrel.ets", "Query.ets", "Target.ets", "Use.ets",
   ])
 
+  // Independent dependency-underdeclaration control: restore matching Native/
+  // semantic scopes instead of letting the preceding scope mismatch hide it.
+  await fs.promises.writeFile(path.join(workspace, "build-profile.json5"), originalBuildProfile)
   await fs.promises.writeFile(path.join(entryRoot, "oh-package.json5"),
     "{ name: 'entry', dependencies: {} }")
   const underdeclared = await runSingleReferenceRequest(t, {
@@ -195,13 +216,15 @@ function readRows(file) {
   return fs.readFileSync(file, "utf8").split("\n").filter(Boolean).map(JSON.parse)
 }
 
-async function waitCatalog(root, phase, committedGeneration, buildingGeneration) {
+async function waitQualification(root, previousRevision) {
   const deadline = Date.now() + 10_000
-  while (!readRows(path.join(root, "logs-indexed-batched", "server.log")).some(event => (
-    event.event === "index.catalog.phase" && event.phase === phase
-    && event.committedGeneration === committedGeneration && event.buildingGeneration === buildingGeneration
-  ))) {
-    if (Date.now() > deadline) throw Error(`missing ${phase} catalog ${committedGeneration}/${buildingGeneration}`)
+  while (Date.now() <= deadline) {
+    const receipt = readRows(path.join(root, "logs-indexed-batched", "server.log")).findLast(event => (
+      event.event === "index.maintenance.phase" && event.outcome === "qualified" && event.currentInput
+      && event.inputRevision > previousRevision && event.scope !== "file"
+    ))
+    if (receipt) return receipt
     await new Promise(resolve => setTimeout(resolve, 10))
   }
+  throw Error(`missing current Native qualification after ${previousRevision}`)
 }

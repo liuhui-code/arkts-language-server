@@ -1,3 +1,4 @@
+import type { ManagedSourceDirectory } from "../contracts/managed-source-namespace.js"
 import type { SemanticWorkerMethod, SemanticWorkerRequestArgsByMethod, SemanticWorkerExpectedDocumentVersion } from "./worker-protocol.js"
 import type { SemanticWorkerDiskSource } from "./semantic-worker-disk-source.js"
 
@@ -17,6 +18,7 @@ export type RootSemanticWorkerMutationInput =
       readonly kind: "workspaceFilesChanged"
       readonly rootUri: string
       readonly rootDirty: boolean
+      readonly managedSourceNamespaces?: readonly ManagedSourceDirectory[]
       readonly configurationChanged?: boolean
       readonly resourceDirty: boolean
       readonly resourceChanged: boolean

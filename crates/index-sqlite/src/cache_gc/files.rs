@@ -1,4 +1,6 @@
 use serde::{Serialize, de::DeserializeOwned};
+use std::sync::atomic::{AtomicU64, Ordering};
+static NEXT_METADATA_TEMP: AtomicU64 = AtomicU64::new(0);
 
 pub fn present_directory(path: &Path) -> Result<bool, String> {
     match fs::symlink_metadata(path) {
@@ -25,7 +27,13 @@ pub fn directory(path: &Path, create: bool) -> Result<(), String> {
             Ok(())
         }
         Err(e) if create && e.kind() == std::io::ErrorKind::NotFound => {
-            fs::create_dir(path).map_err(|e| e.to_string())?;
+            // A concurrent valid creator is success only after the same no-link/type
+            // validation. Never accept an existing file or redirect as a directory.
+            match fs::create_dir(path) {
+                Ok(()) => (),
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => (),
+                Err(error) => return Err(error.to_string()),
+            }
             directory(path, false)
         }
         Err(e) => Err(e.to_string()),
@@ -90,13 +98,18 @@ pub fn write_json(path: &Path, value: &impl Serialize) -> Result<(), String> {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos();
-    let temporary = path.with_extension(format!("tmp-{}-{nonce}", std::process::id()));
+    let serial = NEXT_METADATA_TEMP
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
+        .map_err(|_| "metadata-temporary-sequence-exhausted".to_owned())?;
+    let temporary = path.with_extension(format!("tmp-{}-{nonce}-{serial}", std::process::id()));
+    // A failed create does not own the path and must never unlink another writer's file.
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temporary)
+        .map_err(|e| e.to_string())?;
+    let owned_object = file_object_id(&file)?;
     let result = (|| {
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&temporary)
-            .map_err(|e| e.to_string())?;
         file.write_all(&bytes).map_err(|e| e.to_string())?;
         file.sync_all().map_err(|e| e.to_string())?;
         drop(file);
@@ -105,8 +118,36 @@ pub fn write_json(path: &Path, value: &impl Serialize) -> Result<(), String> {
         }
         fs::rename(&temporary, path).map_err(|e| e.to_string())
     })();
-    let _ = fs::remove_file(temporary);
+    if result.is_err()
+        && fs::symlink_metadata(&temporary).is_ok_and(|meta| {
+            meta.is_file()
+                && !unsafe_meta(&meta)
+                && object_id(&temporary, &meta).is_ok_and(|id| id == owned_object)
+        })
+    {
+        let _ = fs::remove_file(&temporary);
+    }
     result
+}
+
+/// Pin directory identity across rename/unlink; a numeric inode cannot be reused
+/// while this handle is live. Windows uses the same no-follow directory opening
+/// flags as the existing object-id reader.
+pub fn directory_handle(path: &Path) -> Result<File, String> {
+    directory(path, false)?;
+    #[cfg(unix)]
+    {
+        File::open(path).map_err(|e| e.to_string())
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        OpenOptions::new()
+            .access_mode(0)
+            .custom_flags(0x0220_0000)
+            .open(path)
+            .map_err(|e| e.to_string())
+    }
 }
 
 #[cfg(unix)]
@@ -144,6 +185,13 @@ pub fn snapshot(path: &Path) -> Result<Vec<(String, u64, u128, String)>, String>
         let item = item.map_err(|e| e.to_string())?;
         let meta = fs::symlink_metadata(item.path()).map_err(|e| e.to_string())?;
         let name = item.file_name().to_string_lossy().to_string();
+        if name.strip_suffix(".owners").is_some_and(|database| {
+            database == "symbols-v2.sqlite3"
+                || crate::catalog_control::generation_database(database)
+        }) {
+            super::owner_snapshot::append(&item.path(), &name, &mut result)?;
+            continue;
+        }
         if ![
             "symbols-v2.sqlite3",
             "symbols-v2.sqlite3-wal",

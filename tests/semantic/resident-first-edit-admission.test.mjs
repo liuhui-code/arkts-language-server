@@ -267,7 +267,7 @@ test("overlay synchronization cannot hide an unwatched same-size disk edit behin
   { timeout: 60_000 }, async t => {
     for (const overlaySync of ["0", "1"]) {
       const original = "export const count = 0\n".padEnd(128, " ") + "\n"
-      const fixture = await startOverlayFixture(t, { warm: true, files: { "Hidden.ets": original }, overlaySync })
+      const fixture = await startOverlayFixture(t, { warm: true, files: { "Hidden.ets": original }, overlaySync, diskMtimeSeconds: 1_700_000_000 })
       const { session, uri, use, references, events, known, declaration } = fixture
       const hidden = path.join(fixture.fixture.suite.workspace, "Hidden.ets")
       const stat = fs.statSync(hidden)
@@ -277,7 +277,7 @@ test("overlay synchronization cannot hide an unwatched same-size disk edit behin
       fs.utimesSync(hidden, stat.atimeMs / 1000, stat.mtimeMs / 1000)
       const current = fs.statSync(hidden)
       assert.equal(current.size, stat.size)
-      assert.ok(Math.abs(current.mtimeMs - stat.mtimeMs) < 0.001)
+      assert.equal(current.mtimeMs, stat.mtimeMs, "same-size mutation retains the exact original millisecond timestamp")
       session.changeDocument({ uri: uri("Use.ets"), version: 2,
         text: use + "export const extra = new TargetThing()\n" })
       const changed = [location(uri("Hidden.ets"), 0, 9, 20), location(uri("Hidden.ets"), 1, 26, 37),
@@ -289,6 +289,8 @@ test("overlay synchronization cannot hide an unwatched same-size disk edit behin
         assert.deepEqual(response.result.map(JSON.stringify).sort(), expected.map(JSON.stringify).sort(), overlaySync)
       }
       const actual = events().slice(first)
+      t.diagnostic(JSON.stringify({ scenario: "overlay-and-unwatched-content", overlaySync,
+        events: actual.filter(row => /^(references\.|semantic\.(context|prepare|queue|references|worker))/u.test(row.event)) }))
       assertFreshOwnerRecovery(actual, 4)
       const diagnostic = await session.transport.notification("textDocument/publishDiagnostics",
         message => message.params.uri === uri("Use.ets") && message.params.version === 2, 10_000)
@@ -347,12 +349,18 @@ function assertFreshOwnerRecovery(actual, projectFiles) {
   assert.ok(actual[queryAt].sdkSourceFiles > 0, "the new proof retains loaded SDK coverage")
   assert.ok(!actual.slice(0, queryAt).some(event => event.event === "references.resident.hit"),
     "the disproved old observation cannot produce a hit before current compiler work")
-  assert.ok(!actual.some(event => event.event === "references.batch.start"
-    || event.event === "references.candidate-selection.complete"), "complete owner recovery needs no cold verifier or index")
+  assert.ok(!actual.some(event => event.event === "references.batch.start"),
+    "complete owner recovery must not create cold verifier batches")
+  assert.ok(!actual.some(event => event.event === "references.index.accepted"),
+    "a stale index cannot narrow complete owner recovery")
+  assert.ok(actual.filter(event => event.event === "references.candidate-selection.complete")
+    .every(event => event.outcome === "fallback" && event.candidateFiles === 0))
+  assert.equal(actual.filter(event => event.event === "semantic.worker.started").length, 0,
+    "recovery retains the physical semantic Worker")
   return actual[queryAt]
 }
 
-async function startOverlayFixture(t, { warm = false, benchmark = false, files = {}, overlaySync = "1" } = {}) {
+async function startOverlayFixture(t, { warm = false, benchmark = false, files = {}, overlaySync = "1", diskMtimeSeconds } = {}) {
   const source = "export class TargetThing {}\n"
   const use = 'import { TargetThing } from "./Target"\nexport const thing = new TargetThing()\n'
   const fixture = await makeQueryLayerFixture(t, {
@@ -363,6 +371,9 @@ async function startOverlayFixture(t, { warm = false, benchmark = false, files =
       start: { line, character: line === 0 ? 9 : 25 }, end: { line, character: line === 0 ? 20 : 36 },
     } })) },
   })
+  if (diskMtimeSeconds !== undefined) for (const file of Object.keys(files)) {
+    fs.utimesSync(path.join(fixture.suite.workspace, file), diskMtimeSeconds, diskMtimeSeconds)
+  }
   const api = path.join(fixture.suite.sdk, "ets", "api")
   fs.mkdirSync(api)
   for (let index = 0; index < 100; index++) {

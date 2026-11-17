@@ -6,7 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url"
 
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 
-export async function auditFixture(t, name, { loader = "worker-lifecycle-audit.cjs", env = {} } = {}) {
+export async function auditFixture(t, name, { loader = "worker-lifecycle-audit.cjs", env = {}, fixtureRuntime = {} } = {}) {
   const runtime = process.env.ARKTS_AUDIT_RUNTIME_ROOT ?? repository
   const { createReadinessFixture } = await import(pathToFileURL(path.join(runtime, "tests/support/semantic-readiness-lsp.mjs")))
   const base = process.env.ARKTS_AUDIT_EVIDENCE_DIR
@@ -21,7 +21,7 @@ export async function auditFixture(t, name, { loader = "worker-lifecycle-audit.c
     ARKTS_SEMANTIC_MUTATION_TIMEOUT_MS: "2000", ARKTS_SEMANTIC_CANCEL_GRACE_MS: "100",
     ARKTS_AUDIT_RUNTIME_ROOT: runtime,
     NODE_OPTIONS: "--require=" + JSON.stringify(path.join(repository, "tests/fixtures", loader)), ...env,
-  })
+  }, fixtureRuntime)
   const report = { name, runtime, fixture: f.directory, operations: [], observations: {} }
   const record = f.session.transport.recordTranscript.bind(f.session.transport)
   const responses = new Map()

@@ -35,6 +35,18 @@ export async function startWorkspaceIndex(connection: Connection, workspaceSymbo
       return
     }
     if (status.phase === "indexing") {
+      if (status.validation) {
+        const validation = status.validation
+        const stage = "validation:" + validation.stage
+        const now = Date.now()
+        if (stage !== lastStorageStage || now - lastStorageLog >= 10_000) {
+          logger.info("index.catalog.validation", { ...validation, workspaceCount: workspaceRoots.length })
+          lastStorageLog = now
+          lastStorageStage = stage
+        }
+        progress.report(`Validating index; ${Math.floor(validation.stageElapsedMs / 1000)}s elapsed`)
+        return
+      }
       if (status.storage) {
         const storage = status.storage
         const stage = ["writing", "committing", "checkpointing"].includes(storage.stage) ? "persisting" : storage.stage

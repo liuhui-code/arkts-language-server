@@ -8,7 +8,7 @@ import { pathToFileURL } from "node:url"
 import { capturePreparedIdentity, digestJson } from "../scripts/bench/prepared-suite-input.mjs"
 import { sha256File } from "../scripts/bench/reference-replay-input.mjs"
 import { makeSuite, saveSuite } from "./support/prepared-suite-fixture.mjs"
-import { makeQueryLayerFixture, runQueryLayerFixture } from "./support/query-layer-fixture.mjs"
+import { addStableCacheProbe, makeQueryLayerFixture, runQueryLayerFixture } from "./support/query-layer-fixture.mjs"
 
 const runner = path.resolve("scripts/bench/query-layer-probe.mjs")
 const sidecar = path.resolve("target/release", process.platform === "win32"
@@ -246,6 +246,7 @@ test("owner layer probe keeps the real indexed Worker path, full scope and snaps
     fixture.suite.runtime = { ...fixture.suite.runtime,
       env: { ARKTS_REFERENCES_RESIDENT_FIRST: "0" }, timeoutMs: 10_000 }
     fixture.suite.pins = await capturePreparedIdentity(fixture.suite)
+    addStableCacheProbe(fixture)
     saveSuite(fixture)
     const result = spawnSync(process.execPath, [runner, "--layer", "owner",
       "--manifest", fixture.input, "--out", fixture.output], { encoding: "utf8", timeout: 25_000 })
@@ -258,8 +259,7 @@ test("owner layer probe keeps the real indexed Worker path, full scope and snaps
     assert.equal(report.preparation.targetQueries, 0)
     assert.deepEqual(report.requests[0].locations, locations)
     assert.ok(report.requests.every(request => request.correctness.equal && request.terminalStatus === "complete"))
-    assert.equal(report.requests[0].answerCacheHit, false)
-    assert.equal(report.requests[1].answerCacheHit, true)
+    assert.deepEqual(report.requests.map(row => row.answerCacheHit), [false, false, true])
     assert.ok(report.events.some(event => event.event === "references.index.accepted"))
     assert.equal(report.inputIdentityUnchanged, true)
     assert.equal(report.releaseEligible, false)

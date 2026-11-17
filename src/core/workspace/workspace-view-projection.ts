@@ -1,5 +1,5 @@
 import { RESOLUTION_INPUT_GENERATION, type ResolutionInputGeneration } from "./workspace-resolution-inputs.js"
-import { WORKSPACE_CATALOG_STAMP, type ProjectMembershipSnapshot, type SemanticWorkspaceView } from "./semantic-workspace-view.js"
+import { WORKSPACE_CATALOG_STAMP, WORKSPACE_MEMBERSHIP_ORIGIN, WORKSPACE_SOURCE_DIRECTORIES, type ProjectMembershipSnapshot, type SemanticWorkspaceView } from "./semantic-workspace-view.js"
 import type { WorkspaceContentChanges, WorkspaceContentDelta } from "./workspace-content-changes.js"
 
 /** Materialize one store capture; catalog absence and revision are copied, never loaded or rebased. */
@@ -10,6 +10,8 @@ export function createSemanticWorkspaceView(input: {
   overlayPaths: ReadonlyMap<string, string>
   documents: SemanticWorkspaceView["documents"]
   projectMembership: ProjectMembershipSnapshot | undefined
+  sourceDirectories?: SemanticWorkspaceView[typeof WORKSPACE_SOURCE_DIRECTORIES]
+  catalogMembership?: ProjectMembershipSnapshot
   catalogRevision: number | null
   changes: ReturnType<WorkspaceContentChanges["take"]>
   contentDeltas: readonly WorkspaceContentDelta[]
@@ -25,6 +27,9 @@ export function createSemanticWorkspaceView(input: {
     rootPath: input.rootPath,
     [RESOLUTION_INPUT_GENERATION]: input.resolutionGeneration,
     [WORKSPACE_CATALOG_STAMP]: Object.freeze({ canonicalRootId: input.canonicalRoot, revision: input.catalogRevision }),
+    ...(input.catalogMembership && input.projectMembership && input.catalogMembership !== input.projectMembership
+      ? { [WORKSPACE_MEMBERSHIP_ORIGIN]: Object.freeze({ catalog: input.catalogMembership, view: input.projectMembership }) } : {}),
+    [WORKSPACE_SOURCE_DIRECTORIES]: input.sourceDirectories,
     canonicalRootId: input.canonicalRoot,
     overlayPaths: input.overlayPaths,
     typeEngineResetEpoch: changes.typeEngineResetEpoch,

@@ -1,3 +1,4 @@
+import { DOCUMENT_SYNC_CAPABILITY } from "./support/capability-contract.mjs"
 import assert from "node:assert/strict"
 import { once } from "node:events"
 import fs from "node:fs"
@@ -34,10 +35,7 @@ test("initializes as a standalone ArkTS language server over stdio", async (t) =
 
   const response = await server.response(1)
   assert.equal(response.result.serverInfo.name, "arkts-language-server")
-  assert.deepEqual(response.result.capabilities.textDocumentSync, {
-    openClose: true,
-    change: 2,
-  })
+  assert.deepEqual(response.result.capabilities.textDocumentSync, DOCUMENT_SYNC_CAPABILITY)
 })
 
 test("completes both a field and a method from the opened ArkTS snapshot", async (t) => {

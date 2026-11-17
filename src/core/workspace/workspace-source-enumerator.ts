@@ -24,9 +24,16 @@ type DirectoryObservation = Pick<SourceDirectory, "path" | "physicalPath" | "ide
 /** Retain the actual enumeration identities; overflow falls back to ordinary enumeration. */
 export class WorkspaceNamespaceWitness {
   private readonly directories: DirectoryObservation[] = []
+  private readonly directoryPaths = new Map<string, DirectoryObservation>()
   private bytes = 0
   private provable = true
   constructor(private readonly maxBytes: number) {}
+
+  canProveCompleteScope(): boolean {
+    return this.provable && this.directories.length > 0 && this.directories.every(({ identity }) =>
+      typeof identity.ino === "bigint" && identity.ino > 0n
+      && typeof identity.dev === "bigint" && identity.dev >= 0n)
+  }
 
   observe(directory: DirectoryObservation): void {
     if (!this.provable) return
@@ -34,11 +41,26 @@ export class WorkspaceNamespaceWitness {
     if (this.bytes + bytes > this.maxBytes) {
       this.provable = false
       this.directories.length = 0
+      this.directoryPaths.clear()
       return
     }
-    this.directories.push({ path: directory.path, physicalPath: directory.physicalPath,
-      identity: directory.identity, root: directory.root })
+    const observed = { path: directory.path, physicalPath: directory.physicalPath, identity: directory.identity, root: directory.root }
+    this.directories.push(observed)
+    this.directoryPaths.set(observed.path, observed)
+    this.directoryPaths.set(observed.physicalPath, observed)
     this.bytes += bytes
+  }
+
+  directoryProof(directoryPath: string) {
+    const observed = this.provable ? this.directoryPaths.get(directoryPath) : undefined
+    if (!observed) return undefined
+    return { path: observed.path, physicalPath: observed.physicalPath, current: () => {
+      try {
+        return sameDirectory(observed.identity, directoryIdentity(observed.path, observed.root))
+          && fs.realpathSync.native(observed.path) === observed.physicalPath
+          && sameDirectory(observed.identity, directoryIdentity(observed.path, observed.root))
+      } catch { return false }
+    } }
   }
 
   current(control: SemanticOperationControl): boolean {

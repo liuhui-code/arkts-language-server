@@ -1,3 +1,4 @@
+import { retainedReadProof } from "./versioned-index-proof.js"
 import type { DocumentUri } from "../contracts/document.js"
 import type {
   WorkspaceExportCandidate,
@@ -23,6 +24,7 @@ export function mapSearchResult(
     throw new SidecarProtocolError("index sidecar returned an invalid symbol search result")
   }
   return {
+    ...retainedReadProof(value),
     items: result.items.map((item) => {
       const symbol = mapWorkspaceSymbol(item)
       return { ...symbol, uri: mapUri(symbol.uri) }
@@ -43,6 +45,7 @@ export function mapExportSearchResult(
     throw new SidecarProtocolError("index sidecar returned an invalid export search result")
   }
   return {
+    ...retainedReadProof(value),
     items: result.items.map((item) => {
       const candidate = mapWorkspaceExport(item)
       return { ...candidate, uri: mapUri(candidate.uri) }

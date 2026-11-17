@@ -6,25 +6,31 @@ import type { SemanticCallHierarchySource } from "../contracts/semantic-engine.j
 import type { ProjectResolverPort } from "../contracts/project-resolver.js"
 import type { SemanticTypeEngineRegistry } from "../core/types/type-engine.js"
 import type { SemanticDocumentPosition } from "../core/protocol.js"
-import type { SemanticDocumentStore, SemanticWorkspaceView } from "../core/workspace/document-store.js"
-import { assertCompleteProjectMembership } from "./workspace-membership-admission.js"
+import type { SemanticDocumentStore, SemanticWorkspaceView, ProjectMembershipRefresh } from "../core/workspace/document-store.js"
+import { assertCompleteProjectMembership, prepareCompleteProjectWorkspace } from "./workspace-membership-admission.js"
 import { WORKSPACE_CATALOG_STAMP } from "../core/workspace/semantic-workspace-view.js"
 import { SemanticInputUnavailableError } from "../core/types/typescript-query-inputs.js"
 
-interface ReadinessCatalogPreparation { readonly changed: boolean }
+type ReadinessCatalogPreparation = Pick<ProjectMembershipRefresh, "changed" | "catalogStamp">
 
 /** Metadata reconciliation precedes the first raw snapshot; it creates no compiler owner. */
 export function prepareReadinessCatalog(documents: SemanticDocumentStore, engines: SemanticTypeEngineRegistry,
   rootPath: string, eligible: boolean): ReadinessCatalogPreparation | undefined {
   return eligible && engines.needsReadinessCatalogRefresh(rootPath)
-    ? { changed: documents.refreshProjectMembership(rootPath).changed } : undefined
+    ? documents.refreshProjectMembership(rootPath) : undefined
 }
 
 /** Ordinary queries may refresh an existing explicit session, never create a cold one. */
 export function refreshInteractiveReadiness(documents: SemanticDocumentStore,
   engines: SemanticTypeEngineRegistry, workspace: SemanticWorkspaceView, catalogPreparation?: ReadinessCatalogPreparation): void {
-  if (!engines.needsReadinessRootRefresh(workspace)) return
   const original = workspace[WORKSPACE_CATALOG_STAMP]
+  const admitted = catalogPreparation?.catalogStamp
+  // A second prepare may scan again. It cannot replace the first admission receipt.
+  if (admitted && admitted.revision !== null && (!original
+    || admitted.canonicalRootId !== original.canonicalRootId || admitted.revision !== original.revision)) {
+    throw new SemanticInputUnavailableError()
+  }
+  if (!engines.needsReadinessRootRefresh(workspace)) return
   const captured = original !== undefined && original.revision !== null
   // A live compiler can outlive the bounded catalog cache. With no early change,
   // preserve its conservative existing path rather than creating a permanent denial.
@@ -102,9 +108,9 @@ export function prepareSourceWorkspace(documents: SemanticDocumentStore, source:
   if (source.kind === "open") documents.sync({ path: legacyPosition.path, content: source.document.text,
     documentVersion: source.document.version, workspaceRoot })
   const catalogPreparation = beforeCapture?.(workspaceRoot)
-  const workspace = source.kind === "open" ? documents.prepare(legacyPosition, includeWorkspaceFiles)
+  const capture = () => source.kind === "open" ? documents.prepare(legacyPosition, includeWorkspaceFiles)
     : documents.prepareDiskSnapshot(legacyPosition, source.text, includeWorkspaceFiles)
-  if (includeWorkspaceFiles) assertCompleteProjectMembership(workspace)
+  const workspace = includeWorkspaceFiles ? prepareCompleteProjectWorkspace(documents, capture) : capture()
   return { workspace, position: legacyPosition, catalogPreparation }
 }
 
@@ -116,13 +122,8 @@ export function prepareInteractiveWorkspace(
   projectRootProfile: "closure" | "current",
   additionalSemanticRoots: readonly string[] = [],
 ): SemanticWorkspaceView {
-  let workspace = documents.prepare(position, includeWorkspaceFiles)
-  if (includeWorkspaceFiles && workspace.projectMembership?.status === "partial") {
-    // Retry actual membership, without inventing a configuration/source mutation.
-    // Real changes retain refreshProjectMembership's existing invalidation rules.
-    documents.refreshProjectMembership(workspace.rootPath)
-    workspace = documents.prepare(position, includeWorkspaceFiles)
-  }
+  const capture = () => documents.prepare(position, includeWorkspaceFiles)
+  const workspace = includeWorkspaceFiles ? prepareCompleteProjectWorkspace(documents, capture) : capture()
   return interactiveWorkspace(workspace, position.path, includeWorkspaceFiles,
     projectRootProfile, additionalSemanticRoots)
 }

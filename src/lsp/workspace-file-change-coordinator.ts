@@ -1,8 +1,9 @@
 import fs from "node:fs"
 import path from "node:path"
-import { fileURLToPath } from "node:url"
+import { fileURLToPath, pathToFileURL } from "node:url"
 
 import { isArkUIStringResourceCandidate, isArkUIStringResourcePath } from "../core/arkui/resource-path.js"
+import { relativePathWithinRoot } from "../project/path-identity.js"
 
 const SOURCE_EXTENSIONS = new Set([".ets", ".ts"])
 const MAX_PENDING_PATHS = 1_024
@@ -17,6 +18,8 @@ export interface WorkspaceFileChange {
 }
 
 export interface WorkspaceFileChangeBatch {
+  catalogRulesChanged?: boolean
+  namespaceUncertain?: boolean
   rootUri: string
   rootDirty: boolean
   configurationChanged?: boolean
@@ -34,6 +37,8 @@ export interface WorkspaceFileChangeCoordinatorOptions {
   rootUris: string[]
   maxPendingPaths?: number
   isResourceFile?: (rootUri: string, fileUri: string) => boolean
+  isSourceNamespace?: (rootUri: string, fileUri: string) => boolean
+  isManagedCachePath?: (rootUri: string, fileUri: string) => boolean
 }
 
 interface WorkspaceRoot {
@@ -45,7 +50,7 @@ interface WorkspaceRoot {
 
 interface PendingChange extends WorkspaceFileChange {
   root: WorkspaceRoot
-  domain: WorkspaceFileDomain
+  domain: WorkspaceFileDomain | "catalog-rules"
 }
 
 export class WorkspaceFileChangeCoordinator {
@@ -54,11 +59,17 @@ export class WorkspaceFileChangeCoordinator {
   private readonly pending = new Map<string, PendingChange>()
   private readonly sourceDirtyRoots = new Set<string>()
   private readonly configurationChangedRoots = new Set<string>()
+  private readonly catalogRuleRoots = new Set<string>()
+  private readonly namespaceDirtyRoots = new Set<string>()
   private readonly resourceDirtyRoots = new Set<string>()
+  private readonly isManagedCachePath: WorkspaceFileChangeCoordinatorOptions["isManagedCachePath"]
+  private readonly isSourceNamespace: WorkspaceFileChangeCoordinatorOptions["isSourceNamespace"]
   private readonly isResourceFile: WorkspaceFileChangeCoordinatorOptions["isResourceFile"]
 
-  constructor({ rootUris, maxPendingPaths, isResourceFile }: WorkspaceFileChangeCoordinatorOptions) {
+  constructor({ rootUris, maxPendingPaths, isResourceFile, isSourceNamespace, isManagedCachePath }: WorkspaceFileChangeCoordinatorOptions) {
     this.isResourceFile = isResourceFile
+    this.isSourceNamespace = isSourceNamespace
+    this.isManagedCachePath = isManagedCachePath
     this.roots = rootUris
       .flatMap((uri, order) => {
         const rootPath = filePath(uri)
@@ -84,10 +95,13 @@ export class WorkspaceFileChangeCoordinator {
     for (const root of this.roots) {
       const rootDirty = this.sourceDirtyRoots.has(root.canonicalPath)
       const resourceDirty = this.resourceDirtyRoots.has(root.canonicalPath)
-      if (!rootDirty && !resourceDirty) continue
+      const rulesChanged = this.catalogRuleRoots.has(root.canonicalPath)
+      if (!rootDirty && !resourceDirty && !rulesChanged) continue
       batches.set(root.canonicalPath, {
         rootUri: root.uri,
         rootDirty,
+        ...(rulesChanged ? { catalogRulesChanged: true } : {}),
+        ...(this.namespaceDirtyRoots.has(root.canonicalPath) ? { namespaceUncertain: true } : {}),
         ...(this.configurationChangedRoots.has(root.canonicalPath) ? { configurationChanged: true } : {}),
         ...(resourceDirty ? { resourceDirty: true } : {}),
         ...(resourceDirty ? { resourceChanged: true } : {}),
@@ -95,7 +109,7 @@ export class WorkspaceFileChangeCoordinator {
       })
     }
     for (const change of this.pending.values()) {
-      if (change.domain === "source" && this.sourceDirtyRoots.has(change.root.canonicalPath)) continue
+      if (change.domain !== "arkui-resource" && this.sourceDirtyRoots.has(change.root.canonicalPath)) continue
       if (
         change.domain === "arkui-resource"
         && this.resourceDirtyRoots.has(change.root.canonicalPath)
@@ -118,6 +132,8 @@ export class WorkspaceFileChangeCoordinator {
     this.pending.clear()
     this.sourceDirtyRoots.clear()
     this.configurationChangedRoots.clear()
+    this.catalogRuleRoots.clear()
+    this.namespaceDirtyRoots.clear()
     this.resourceDirtyRoots.clear()
     return result
   }
@@ -126,23 +142,54 @@ export class WorkspaceFileChangeCoordinator {
     const candidatePath = filePath(event.uri)
     const kind = changeKind(event.type)
     if (candidatePath === undefined || kind === undefined) return
+    if (this.roots.some(root => this.isManagedCachePath?.(root.uri, event.uri) === true)) return
+    if (this.acceptNamespaceEvent(candidatePath, kind, false)) return
+    const lexical = path.resolve(candidatePath)
+    const ruleRoot = this.roots.find(root => {
+      const relative = relativePathWithinRoot(root.path, lexical)
+        ?? relativePathWithinRoot(root.canonicalPath, lexical)
+      return relative !== undefined && (path.basename(lexical).toLowerCase() === ".gitignore"
+        || relative.split(path.sep).join("/").toLowerCase() === ".git/info/exclude")
+    })
+    if (ruleRoot) {
+      this.catalogRuleRoots.add(ruleRoot.canonicalPath)
+      // A missing rules path does not prove it used to be a regular file.
+      if (kind === "deleted" && this.acceptNamespaceEvent(candidatePath, kind)) return
+      if (this.sourceDirtyRoots.has(ruleRoot.canonicalPath)) return
+      const key = `${ruleRoot.canonicalPath}\0${lexical}`
+      if (!this.pending.has(key) && this.pending.size >= this.maxPendingPaths) {
+        this.markRootDirty(ruleRoot, "source")
+      } else this.pending.set(key, { root: ruleRoot, domain: "catalog-rules", uri: event.uri, kind })
+      return
+    }
     const domain = workspaceFileDomain(candidatePath)
-    if (!domain) return
+    // A deleted non-source entry has no remaining kind evidence. Resource file
+    // names can also name directories; do not hide namespace changes as UI-only.
+    if (kind === "deleted" && domain !== "source"
+      && this.acceptNamespaceEvent(candidatePath, kind)) return
+    if (!domain) { this.acceptNamespaceEvent(candidatePath, kind, true, true); return }
     const candidateLexicalPath = path.resolve(candidatePath)
-    const candidateCanonicalPath = canonicalPath(candidatePath)
+    const candidateCanonicalPath = physicalPathWithMissingTail(candidatePath)
+    if (candidateCanonicalPath === undefined && !isProjectConfiguration(candidatePath)) {
+      const uncertain = this.roots.find(entry => isInside(entry.path, candidateLexicalPath)
+        || isInside(entry.canonicalPath, candidateLexicalPath))
+      if (uncertain) this.markRootDirty(uncertain, domain)
+      return
+    }
     // Configuration links belong to the workspace path the client watched. Source
     // and resource events still require physical containment in the workspace.
     const root = isProjectConfiguration(candidatePath)
       ? this.roots.find((entry) => isInside(entry.path, candidateLexicalPath))
         ?? this.roots.find((entry) => isInside(entry.canonicalPath,
           path.join(canonicalPath(path.dirname(candidateLexicalPath)), path.basename(candidateLexicalPath))))
-      : this.roots.find((entry) => isInside(entry.canonicalPath, candidateCanonicalPath))
+      : this.roots.find((entry) => isInside(entry.canonicalPath, candidateCanonicalPath!))
     if (!root) return
     if (isProjectConfiguration(candidatePath)) {
       this.configurationChangedRoots.add(root.canonicalPath)
       this.markRootDirty(root, "source")
       return
     }
+    if (domain === "arkui-resource" && this.acceptNamespaceEvent(candidatePath, kind, true, true)) return
     if (this.isDirty(root, domain)) return
     if (domain === "arkui-resource" && !(this.isResourceFile
       ? this.isResourceFile(root.uri, event.uri)
@@ -165,6 +212,39 @@ export class WorkspaceFileChangeCoordinator {
       uri: event.uri,
       kind,
     })
+  }
+
+  /** Opaque directory/removed-entry signals require a census, never guessed file deletion.
+   * Only the root is invalidated; no uncertain URI is admitted as a source fact. */
+  private acceptNamespaceEvent(candidate: string, kind: WorkspaceFileChangeKind, allowMissing = true, allowRegular = false): boolean {
+    let unknown = false
+    const lexical = path.resolve(candidate)
+    const registeredRoot = this.roots.some(entry => relativePathWithinRoot(entry.path, lexical) === ""
+      || relativePathWithinRoot(entry.canonicalPath, lexical) === "")
+    try {
+      const stat = fs.lstatSync(candidate)
+      if (!allowRegular && !stat.isDirectory() && !(registeredRoot && stat.isSymbolicLink() && fs.statSync(candidate).isDirectory())) return false
+    }
+    catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if (code === "ENOENT" && (!allowMissing || kind !== "deleted")) return false
+      unknown = code !== "ENOENT"
+    }
+    const physical = physicalPathWithMissingTail(candidate)
+    const root = this.roots.find(entry => physical !== undefined
+      ? relativePathWithinRoot(entry.canonicalPath, physical) === "" || isInside(entry.canonicalPath, physical)
+      : unknown && (lexical === entry.path || isInside(entry.path, lexical)))
+      ?? (allowRegular ? this.roots.find(entry => isInside(entry.path, lexical)
+        || isInside(entry.canonicalPath, lexical)) : undefined)
+    if (!root) return false
+    if (allowRegular && this.isSourceNamespace) {
+      try { if (this.isSourceNamespace(root.uri, pathToFileURL(candidate).href) === false) return false }
+      catch { /* Unknown input domain remains namespace uncertainty. */ }
+    }
+    this.namespaceDirtyRoots.add(root.canonicalPath)
+    this.markRootDirty(root, "source")
+    this.markRootDirty(root, "arkui-resource")
+    return true
   }
 
   private isDirty(root: WorkspaceRoot, domain: WorkspaceFileDomain): boolean {
@@ -212,21 +292,33 @@ function filePath(uri: string): string | undefined {
 }
 
 function canonicalPath(candidatePath: string): string {
-  const resolved = path.resolve(candidatePath)
-  try {
-    return fs.realpathSync.native(resolved)
-  } catch {
-    try {
-      return path.join(fs.realpathSync.native(path.dirname(resolved)), path.basename(resolved))
-    } catch {
-      return resolved
+  return physicalPathWithMissingTail(candidatePath) ?? path.resolve(candidatePath)
+}
+
+/** Missing path components can be reconstructed through a proven ancestor.
+ * A dangling link, permission/IO error or non-directory is unknown, never proof
+ * that a source disappeared. An existing outside link still resolves outside.
+ */
+function physicalPathWithMissingTail(candidatePath: string): string | undefined {
+  let cursor = path.resolve(candidatePath)
+  const missing: string[] = []
+  for (;;) {
+    try { return path.join(fs.realpathSync.native(cursor), ...missing) }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") return undefined
+      try { fs.lstatSync(cursor); return undefined }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") return undefined }
+      const parent = path.dirname(cursor)
+      if (parent === cursor) return undefined
+      missing.unshift(path.basename(cursor))
+      cursor = parent
     }
   }
 }
 
 function isInside(rootPath: string, candidatePath: string): boolean {
-  const relative = path.relative(rootPath, candidatePath)
-  return relative.length > 0 && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)
+  const relative = relativePathWithinRoot(rootPath, candidatePath)
+  return relative !== undefined && relative.length > 0
 }
 
 function changeKind(type: number): WorkspaceFileChangeKind | undefined {

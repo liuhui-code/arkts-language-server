@@ -230,6 +230,8 @@ test("a directory retarget during enumeration cannot certify an inactive source 
   t.after(() => store.dispose())
   const position = { path: fixture.tabletPath, workspaceRoot: fixture.workspaceRoot, line: 1, column: 1 }
   const baseline = store.prepare(position, true).projectMembership
+  // This regression targets a fresh enumeration, not retained-proof reuse.
+  store.invalidate(fixture.workspaceRoot)
   assert.equal(baseline.status, "complete")
   let retargeted = false
   const open = fs.opendirSync
@@ -248,7 +250,7 @@ test("a directory retarget during enumeration cannot certify an inactive source 
     }
     return handle
   })
-  store.refreshProjectMembership(fixture.workspaceRoot)
+  store.membershipFor(fixture.workspaceRoot)
   const current = store.prepare(position, true).projectMembership
   assert.equal(retargeted, true)
   assert.ok(current.status === "partial" || !current.paths.includes(fixture.mainPath),
@@ -273,6 +275,8 @@ test("a source container retarget after its children close cannot certify the ol
   t.after(() => store.dispose())
   const position = { path: fixture.mainPath, workspaceRoot: fixture.workspaceRoot, line: 1, column: 1 }
   const baseline = store.prepare(position, true).projectMembership
+  // This regression targets a fresh enumeration, not retained-proof reuse.
+  store.invalidate(fixture.workspaceRoot)
   let retargeted = false
   const open = fs.opendirSync
   t.mock.method(fs, "opendirSync", (directory, ...args) => {
@@ -289,10 +293,10 @@ test("a source container retarget after its children close cannot certify the ol
     }
     return handle
   })
-  store.refreshProjectMembership(fixture.workspaceRoot)
+  store.membershipFor(fixture.workspaceRoot)
+  assert.equal(retargeted, true, "the container-close race must execute before restoration")
   fs.unlinkSync(sourceContainer)
   fs.renameSync(originalContainer, sourceContainer)
-  assert.equal(retargeted, true)
   const uncertain = store.prepare(position, true).projectMembership
   assert.equal(uncertain.status, "partial", "final container witnesses must reject a late retarget")
   store.refreshProjectMembership(fixture.workspaceRoot)
@@ -344,6 +348,8 @@ test("replacing a source directory at the same physical path cannot certify an o
   t.after(() => store.dispose())
   const position = { path: fixture.tabletPath, workspaceRoot: fixture.workspaceRoot, line: 1, column: 1 }
   const baseline = store.prepare(position, true).projectMembership
+  // This regression targets a fresh enumeration, not retained-proof reuse.
+  store.invalidate(fixture.workspaceRoot)
   const open = fs.opendirSync
   let replaced = false
   t.mock.method(fs, "opendirSync", (directory, ...args) => {
@@ -363,7 +369,7 @@ test("replacing a source directory at the same physical path cannot certify an o
     }
     return handle
   })
-  store.refreshProjectMembership(fixture.workspaceRoot)
+  store.membershipFor(fixture.workspaceRoot)
   const uncertain = store.prepare(position, true).projectMembership
   assert.equal(replaced, true)
   assert.equal(uncertain.status, "partial", "the old open directory cannot certify a complete new tree")

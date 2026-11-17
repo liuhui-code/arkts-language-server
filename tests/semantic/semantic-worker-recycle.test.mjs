@@ -52,7 +52,7 @@ test(costPolicy ? "cost-aware Worker recycle rejects a stale L3 witness after li
     fs.writeFileSync(path.join(sdk, "ets", "component", "common.d.ts"),
       "interface FixtureAmbient {}\n")
     fs.writeFileSync(path.join(sdk, "ets", "oh-uni-package.json"),
-      JSON.stringify({ apiVersion: "24", version: "test" }))
+      JSON.stringify({ path: "ets", apiVersion: "24", version: "test" }))
 
     const disk = "export class RecycledThing {}\nexport const first = new RecycledThing()\n"
     const overlay = `${disk}export const second = new RecycledThing()\n`
@@ -92,6 +92,8 @@ test(costPolicy ? "cost-aware Worker recycle rejects a stale L3 witness after li
       location(uri, overlay, line, "RecycledThing")))
     const cacheHits = () => fs.readFileSync(path.join(logs, "server.log"), "utf8")
       .split("\n").filter(Boolean).map(JSON.parse).filter(event => event.event === "references.cache.hit").length
+    assert.equal((await session.request("arkts/semanticReadiness", {
+      rootUri: pathToFileURL(workspace).href, prepare: false })).result?.semanticState, "ready")
     const hitsBefore = cacheHits()
 
     const premature = await session.request("arkts/benchmark/recycleSemanticWorker", {})

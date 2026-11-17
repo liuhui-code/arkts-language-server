@@ -5,6 +5,7 @@ import path from "node:path"
 import test from "node:test"
 import { pathToFileURL } from "node:url"
 
+import { createTestResourceScope } from "../support/test-resource-scope.mjs"
 import { LspSession } from "../support/lsp-session.mjs"
 import { projectRoot } from "../support/lsp-process.mjs"
 import { waitForEvent } from "../support/reference-coverage-replay.mjs"
@@ -110,10 +111,12 @@ test("a literal root changed after replanning discards exclusions and restores c
     + "export const changed = new Leaf()\n"
   fs.writeFileSync(path.join(fixture.root, "ZData.ets"), fixture.sources["ZData.ets"])
   const response = await pending
-  assert.equal(response.error, undefined, JSON.stringify(response.error))
-  assert.deepEqual(response.result.map(location => JSON.stringify(location)).sort(), before.results[0])
+  assert.equal(response.error?.code, -32801, JSON.stringify(response))
+  assert.equal(response.result, undefined, "an in-flight changed source cannot publish captured results")
+  const events = readEvents(logs) // Keep the stale request separate from fresh recovery.
+  const current = await session.request("textDocument/references", referenceParams(fixture, false), { timeoutMs: 30_000 })
+  assert.equal(current.error, undefined, JSON.stringify(current))
   await session.close({ timeoutMs: 5_000 })
-  const events = readEvents(logs)
   const fallback = events.find(event => event.event === "references.constructor-roots.fallback")
   assert.equal(fallback?.reason, "source-changed")
   const recovery = events.filter(event => event.event === "references.plan.complete").at(-1)
@@ -124,6 +127,8 @@ test("a literal root changed after replanning discards exclusions and restores c
   assert.ok(!recovered.some(event => event.event === "references.constructor-roots.replanned"
     || event.event === "references.constructor-scope.complete"))
   const fresh = await replay(t, fixture, "legacy", { policies: [false] })
+  assert.deepEqual(current.result.map(JSON.stringify).sort(), fresh.results[0])
+  assert.notDeepEqual(fresh.results[0], before.results[0])
   assert.ok(fresh.results[0].map(JSON.parse).some(location => location.uri === fixture.uri("ZData.ets")
     && location.range.start.line === 1))
 })
@@ -196,13 +201,16 @@ test("a source changed after scope capture cannot publish a constructor exclusio
   fixture.sources["ZEmpty.ets"] = 'import { Child as Leaf } from "./Derived"\nexport const changed = new Leaf()\n'
   fs.writeFileSync(path.join(fixture.root, "ZEmpty.ets"), fixture.sources["ZEmpty.ets"])
   const response = await pending
-  // An unnotified disk edit does not advance DocumentAuthority's revision.
-  // Complete fallback may still answer its captured text, but cannot exclude it.
-  assert.equal(response.error, undefined, JSON.stringify(response.error))
-  assert.deepEqual(response.result.map(location => JSON.stringify(location)).sort(), before.results[0])
+  // The actual source namespace proof detects an unnotified change as well.
+  assert.equal(response.error?.code, -32801, JSON.stringify(response))
+  assert.equal(response.result, undefined)
+  const current = await session.request("textDocument/references", referenceParams(fixture, false), { timeoutMs: 30_000 })
+  assert.equal(current.error, undefined, JSON.stringify(current))
   await session.close({ timeoutMs: 5_000 })
   assertCompleteBatches({ events: readEvents(logs) })
   const fresh = await replay(t, fixture, "legacy")
+  assert.deepEqual(current.result.map(JSON.stringify).sort(), fresh.results[0])
+  assert.notDeepEqual(fresh.results[0], before.results[0])
   assert.ok(fresh.results.every(result => result.map(JSON.parse)
     .some(location => location.uri === fixture.uri("ZEmpty.ets") && location.range.start.line === 1)))
 })
@@ -238,6 +246,14 @@ test("cancelled constructor verification publishes no partial result and complet
   for (const includeDeclaration of [false, true]) {
     const response = await session.request("textDocument/references", referenceParams(fixture, includeDeclaration),
       { timeoutMs: 30_000 })
+    if (response.error && process.env.ARKTS_TEST_EVIDENCE_DIR) {
+      const target = path.join(process.env.ARKTS_TEST_EVIDENCE_DIR, path.basename(fixture.temporary),
+        `${strategy}-${exclusion}-${fixture.run}`)
+      fs.mkdirSync(target, { recursive: true })
+      fs.cpSync(logs, path.join(target, "logs"), { recursive: true })
+      fs.writeFileSync(path.join(target, "pending-messages.json"), JSON.stringify(session.transport.messages, null, 2))
+      await session.transport.writeFailureEvidence(target, { name: "failure" })
+    }
     assert.equal(response.error, undefined, JSON.stringify(response.error))
     results.push(response.result.map(location => JSON.stringify(location)).sort())
   }
@@ -256,8 +272,10 @@ test("constructor exclusion remains exact when phase tracing is disabled", async
 })
 
 function createFixture(t) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-constructor-scope-"))
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-constructor-scope-"))
+  const root = path.join(temporary, "workspace")
+  fs.mkdirSync(root)
+  const track = createTestResourceScope(t, () => fs.rmSync(temporary, { recursive: true, force: true }))
   const sources = {
     "Target.ets": [
       'import "./Consumer"', 'import "./Derived"', 'import "./SameName"',
@@ -270,7 +288,7 @@ function createFixture(t) {
     "ZEmpty.ets": " \t export { } ;\r\n",
   }
   for (const [file, text] of Object.entries(sources)) fs.writeFileSync(path.join(root, file), text)
-  return { root, sources, uri: file => pathToFileURL(path.join(root, file)).href, run: 0 }
+  return { temporary, root, sources, track, uri: file => pathToFileURL(path.join(root, file)).href, run: 0 }
 }
 
 async function replay(t, fixture, strategy, {
@@ -291,9 +309,9 @@ async function replay(t, fixture, strategy, {
 }
 
 async function openFixture(t, fixture, strategy, { exclusion = false, trace = true, delay = 0 } = {}) {
-  const { root, sources, uri } = fixture
+  const { temporary, root, sources, uri } = fixture
   const run = `${strategy}-${exclusion}-${++fixture.run}`
-  const logs = path.join(root, `${run}-logs`)
+  const logs = path.join(temporary, `${run}-logs`)
   const session = new LspSession({
     command: process.execPath, args: [path.join(projectRoot, "dist/server.cjs"), "--stdio"],
     cwd: projectRoot, rootUri: pathToFileURL(root).href,
@@ -301,7 +319,7 @@ async function openFixture(t, fixture, strategy, { exclusion = false, trace = tr
     env: {
       ARKLINE_HARMONY_SDK_PATH: path.join(root, "missing-sdk"),
       DEVECO_SDK_HOME: path.join(root, "missing-deveco"),
-      ARKTS_INDEX_CACHE_DIR: path.join(root, `${run}-cache`),
+      ARKTS_INDEX_CACHE_DIR: path.join(temporary, `${run}-cache`),
       ARKTS_INDEX_SIDECAR_PATH: path.join(projectRoot, "target/release/arkts-index-sidecar"),
       ARKTS_LSP_LOG_DIR: logs, ARKTS_REFERENCES_STRATEGY: strategy,
       ARKTS_REFERENCES_BATCH_ROOTS: "1", ARKTS_REFERENCES_TRACE: trace ? "1" : "0",
@@ -311,7 +329,7 @@ async function openFixture(t, fixture, strategy, { exclusion = false, trace = tr
       ARKTS_REFERENCES_RESIDENT_FAST_PATH: "0", ARKTS_REFERENCES_CONSERVATIVE_SEMANTIC_UNITS: "0",
     },
   })
-  t.after(() => session.close().catch(() => {}))
+  fixture.track(() => session.close())
   await session.initialize({ timeoutMs: 10_000 })
   const create = await session.transport.serverRequest("window/workDoneProgress/create", () => true, 10_000)
   session.transport.send({ jsonrpc: "2.0", id: create.id, result: null })

@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import fs from "node:fs"
 import path from "node:path"
 import test from "node:test"
-import { createReadinessFixture } from "../support/semantic-readiness-lsp.mjs"
+import { createReadinessFixture, initializeReadinessFixture } from "../support/semantic-readiness-lsp.mjs"
 
 test("issued completion details run before queued diagnoses while every current diagnosis still publishes",
   { timeout: 30_000 }, async t => {
@@ -108,3 +108,57 @@ async function until(check) {
     await new Promise(resolve => setTimeout(resolve, 10))
   }
 }
+
+test("cached reference input certification pauses diagnostics before entering the Worker",
+  { timeout: 30_000 }, async t => {
+    const f = createReadinessFixture(t, { ARKTS_MEMORY_BUDGET_MB: undefined, ARKTS_SEMANTIC_QUEUE_TRACE: "1",
+      ARKTS_TEST_DIAGNOSTIC_DELAY_MS: "4000", ARKTS_TEST_WORKER_DIAGNOSE_HOLD_URI_SUFFIX: "/DiagnosticA.ets",
+      ARKTS_TEST_WORKER_DIAGNOSE_HOLD_MS: "1800", ARKTS_TEST_WORKER_DIAGNOSE_HOLD_COOPERATIVE: "1" })
+    const broken = 'const broken: number = "wrong"\n'
+    fs.writeFileSync(path.join(f.workspace, "DiagnosticA.ets"), broken)
+    const responses = []
+    const references = async () => {
+      const response = await f.session.request("textDocument/references", {
+        textDocument: { uri: f.uri("Main.ets") }, position: { line: 1, character: 25 },
+        context: { includeDeclaration: true },
+      }, { timeoutMs: 10_000 })
+      responses.push(response)
+      assert.equal(response.error, undefined, JSON.stringify(response))
+      assert.equal(response.result.length, 3)
+    }
+    try {
+      await initializeReadinessFixture(f, 3)
+      f.session.openDocument({ uri: f.uri("Main.ets"), version: 1, text: f.sources["Main.ets"] })
+      f.session.openDocument({ uri: f.uri("DiagnosticA.ets"), version: 1, text: broken })
+      for (let i = 0; i < 4; i++) await references()
+      assert.ok(f.events().some(e => e.event === "references.cache.hit"), "establish an actual warm answer cache")
+      // No editor/input mutation after warming: the existing delayed diagnosis
+      // becomes active on its own and must not invalidate this cache entry.
+      await until(() => {
+        const events = f.events()
+        return events.filter(e => e.event === "semantic.test.diagnose.hold.start").length
+          > events.filter(e => e.event === "semantic.test.diagnose.hold.end").length
+      })
+      const start = f.events().length
+      await references()
+      const events = f.events().slice(start)
+      const paused = events.findIndex(e => e.event === "references.diagnostics.wait.started")
+      const admitted = events.findIndex(e => e.event === "semantic.queue.enqueued" && e.method === "semanticReadiness")
+      assert.ok(paused >= 0 && admitted > paused,
+        "the current-source cache proof is Worker work and must enter after the diagnostic suspension barrier")
+      const holdEnded = events.findIndex(e => e.event === "semantic.test.diagnose.hold.end")
+      assert.ok(holdEnded >= 0 && holdEnded < admitted, "the interrupted diagnosis must settle before input certification")
+      assert.ok(events.some(e => e.event === "references.cache.hit"), "validate the cached path, not a cache-miss fallback")
+      const published = await f.session.transport.notification("textDocument/publishDiagnostics",
+        m => m.params.uri === f.uri("DiagnosticA.ets") && m.params.version === 1, 10_000)
+      assert.ok(published.params.diagnostics.some(d => d.code === 2322), JSON.stringify(published))
+      assert.equal(f.events().filter(e => e.event === "semantic.worker.started").length, 1)
+    } finally {
+      if (process.env.ARKTS_TEST_NAMESPACE_EVIDENCE_DIR) {
+        const directory = process.env.ARKTS_TEST_NAMESPACE_EVIDENCE_DIR
+        fs.mkdirSync(directory, { recursive: true })
+        fs.writeFileSync(path.join(directory, "cached-diagnostic-barrier-responses.json"), JSON.stringify(responses, null, 2))
+        fs.writeFileSync(path.join(directory, "cached-diagnostic-barrier-events.json"), JSON.stringify(f.events(), null, 2))
+      }
+    }
+  })

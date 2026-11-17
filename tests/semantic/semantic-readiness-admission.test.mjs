@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import fs from "node:fs"
 import path from "node:path"
+import os from "node:os"
 import test from "node:test"
 
 import { startReadinessFixture } from "../support/semantic-readiness-lsp.mjs"
@@ -193,9 +194,14 @@ test(method === "textDocument/references"
   ? "cancelling an entered ordinary reference READY refresh interrupts its compiler input check"
   : "cancelling an entered ordinary definition READY refresh interrupts its compiler input check",
   { timeout: 45_000 }, async t => {
+    const gateDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-readiness-cancel-"))
+    const gate = path.join(gateDirectory, "compiler-token")
     const { session, rootUri, uri, workspace, sources, events } = await startReadinessFixture(t, {
       ARKTS_BENCHMARK_CONTROL: "0", ARKTS_REFERENCES_TRACE: "1", ARKTS_REFERENCES_RESIDENT_FAST_PATH: "1",
+      ARKTS_TEST_READY_CANCEL_GATE: gate,
+      NODE_OPTIONS: "--require=" + JSON.stringify(path.resolve("tests/fixtures/readiness-cancel-token.cjs")),
     })
+    t.after(() => fs.rmSync(gateDirectory, { recursive: true, force: true }))
     const heavyPath = path.join(workspace, "Heavy.ets")
     const heavy = Array.from({ length: 5_000 }, (_, i) =>
       `export function checked${i}(value: number): number { return value + ${i} }`).join("\n")
@@ -208,6 +214,7 @@ test(method === "textDocument/references"
       sources["Unopened.ets"] + "export const recovered = neverQueried\n")
     session.transport.send({ jsonrpc: "2.0", method: "workspace/didChangeWatchedFiles",
       params: { changes: [{ uri: uri("Unopened.ets"), type: 2 }] } })
+    fs.writeFileSync(gate + ".armed", "pause at actual compiler cancellation callback")
     const before = events().length
     const id = session.nextRequestId++
     session.transport.send({ jsonrpc: "2.0", id, method, params: {
@@ -215,17 +222,19 @@ test(method === "textDocument/references"
       context: { includeDeclaration: false },
     } })
     const deadline = Date.now() + 20_000
-    while (!events().slice(before).some(event =>
-      event.event === "semantic.readiness.input-check.start" && event.sourcePath === heavyPath)) {
+    while (!fs.existsSync(gate + ".entered")) {
       const terminal = session.transport.messages.find(message => message.id === id)
       assert.equal(terminal, undefined, `reference refresh ended before Heavy.ets entered: ${JSON.stringify(terminal)}`)
       assert.ok(Date.now() < deadline, "the ordinary reference must enter the real compiler input check")
       await new Promise(resolve => setTimeout(resolve, 5))
     }
+    assert.equal(JSON.parse(fs.readFileSync(gate + ".entered", "utf8")).source, heavyPath)
+    t.diagnostic("CONTROLLED_REAL_COMPILER_TOKEN_CALLBACK; not a natural timing or latency measurement")
     session.transport.send({ jsonrpc: "2.0", method: "$/cancelRequest", params: { id } })
     const cancelled = await session.transport.response(id, 20_000)
     assert.equal(cancelled.error?.code, -32800, JSON.stringify(cancelled))
     assert.equal(cancelled.result, undefined)
+    fs.unlinkSync(gate + ".armed")
     const current = await session.request("arkts/semanticReadiness", { rootUri, prepare: false }, { timeoutMs: 20_000 })
     assert.notEqual(current.result?.semanticState, "ready", JSON.stringify(current))
     assert.equal(current.result.semanticGeneration, null)
@@ -239,6 +248,7 @@ test(method === "textDocument/references"
     assert.notEqual(recovered.result.semanticGeneration, prepared.result.semanticGeneration)
     assert.equal(recovered.result.coverage.projectSources, 3)
     assert.equal(session.documentVersions.size, 0)
+    assert.equal(events().filter(event => event.event === "semantic.worker.started").length, 1)
     assert.deepEqual((await session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })
     assert.ok(!session.transport.messages.some(message => message.id === id), "no duplicate cancelled terminal")
   })

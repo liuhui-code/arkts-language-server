@@ -53,6 +53,9 @@ export function assertOverboundWorkspaceMutationStructure(
     || typeof input.resourceChanged !== "boolean"
     || (input.resourceDirty && !input.resourceChanged)
   ) throw new Error("Invalid semantic worker workspace mutation")
+  if (Object.hasOwn(input, "managedSourceNamespaces")) decodeSemanticWorkerMutation({
+    ...input, protocol: SEMANTIC_WORKER_PROTOCOL_VERSION, epoch: 1, revision: 1, changes: [],
+  })
   const keys = Reflect.ownKeys(input.changes)
   if (
     keys.length !== input.changes.length + 1

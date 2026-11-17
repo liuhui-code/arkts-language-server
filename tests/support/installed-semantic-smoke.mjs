@@ -1,3 +1,4 @@
+import { DOCUMENT_SYNC_CAPABILITY } from "./capability-contract.mjs"
 import assert from "node:assert/strict"
 import fs from "node:fs"
 import path from "node:path"
@@ -390,10 +391,7 @@ export async function assertInstalledSemanticSmoke({
 
   try {
     const initialized = await session.initialize({ timeoutMs })
-    assert.deepEqual(initialized.result.capabilities.textDocumentSync, {
-      openClose: true,
-      change: 2,
-    })
+    assert.deepEqual(initialized.result.capabilities.textDocumentSync, DOCUMENT_SYNC_CAPABILITY)
     assert.equal(initialized.result.capabilities.completionProvider.resolveProvider, true)
     assert.equal(initialized.result.capabilities.hoverProvider, true)
     assert.equal(initialized.result.capabilities.implementationProvider, true)

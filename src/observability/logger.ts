@@ -8,7 +8,13 @@ const MAX_LOG_BYTES = 5 * 1024 * 1024
 
 type LogField = string | number | boolean | null | undefined
 
+export interface StructuredInfoEntry {
+  readonly event: string
+  readonly fields?: Readonly<Record<string, LogField>>
+}
+
 export interface StructuredLogger {
+  infoBatch?(entries: readonly StructuredInfoEntry[]): void
   info(event: string, fields?: Readonly<Record<string, LogField>>): void
   error(event: string, fields?: Readonly<Record<string, LogField>>): void
 }
@@ -47,9 +53,15 @@ class FileStructuredLogger implements StructuredLogger {
     this.write("error", event, fields)
   }
 
+  infoBatch(entries: readonly StructuredInfoEntry[]): void {
+    if (entries.length) this.writeLines(entries.map(({ event, fields }) => `${JSON.stringify(logEntry("info", event, fields ?? {}))}\n`).join(""))
+  }
+
   private write(level: string, event: string, fields: Readonly<Record<string, LogField>>): void {
-    const entry = logEntry(level, event, fields)
-    const line = `${JSON.stringify(entry)}\n`
+    this.writeLines(`${JSON.stringify(logEntry(level, event, fields))}\n`)
+  }
+
+  private writeLines(line: string): void {
     process.stderr.write(line)
     if (!this.fileAvailable) return
     try {

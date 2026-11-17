@@ -7,22 +7,39 @@ import { reconcileResolutionOwner, synchronizeContextDelta, typeContextResetReas
 import type { WorkspaceEngineEntry } from "./type-workspace-entry.js"
 import { SemanticInputUnavailableError } from "./typescript-query-inputs.js"
 
+interface ResolutionAdmissionPort {
+  resolver: LocalPackageResolver
+  coordinator: SemanticCoordinator<WorkspaceEngineEntry>
+  admissions: SourceResetAdmissions
+  checkpoint: () => void
+}
+
+/** Every resolver consumer admits its old input before observing the new domain. */
+export function admitContextResolution(workspace: SemanticWorkspaceView, contextId: string,
+  port: ResolutionAdmissionPort) {
+  return reconcileResolutionOwner(workspace, contextId, port.resolver, port.coordinator, port.checkpoint,
+    (entry, validateNamespace) => {
+      const configured = port.admissions.allowsConfigurationReload(entry)
+      port.admissions.begin(contextId, workspace.canonicalRootId ?? path.resolve(workspace.rootPath),
+        entry, "unnotified-resolution-change", port.checkpoint)
+      if (validateNamespace && entry && !configured) entry.engine.assertCurrentInputs(port.checkpoint)
+    })
+}
+
 /** Retire first, then construct; only immutable configuration evidence spans the replacement. */
-export function prepareContextEntry(workspace: SemanticWorkspaceView, contextId: string, promoteRecency: boolean, port: {
-  resolver: LocalPackageResolver; coordinator: SemanticCoordinator<WorkspaceEngineEntry>
-  admissions: SourceResetAdmissions; access?: ProjectFileAccessPort; reuse: boolean; checkpoint: () => void
-  trace?: (event: string, fields: Readonly<Record<string, string | number | boolean | null | undefined>>) => void
-}) {
-  const previous = reconcileResolutionOwner(workspace, contextId, port.resolver, port.coordinator, port.checkpoint,
-    entry => { port.admissions.begin(contextId, workspace.canonicalRootId ?? path.resolve(workspace.rootPath),
-      entry, "unnotified-resolution-change", port.checkpoint) })
+export function prepareContextEntry(workspace: SemanticWorkspaceView, contextId: string, promoteRecency: boolean,
+  port: ResolutionAdmissionPort & {
+    access?: ProjectFileAccessPort; reuse: boolean
+    trace?: (event: string, fields: Readonly<Record<string, string | number | boolean | null | undefined>>) => void
+  }) {
+  const previous = admitContextResolution(workspace, contextId, port)
   workspace = synchronizeContextDelta(workspace, previous?.appliedContentRevision, port.access, previous?.engine.compilerInputPaths())
   const resolutionChanged = previous !== undefined && previous.resolutionGeneration !== port.resolver.generation
   const resetReason = typeContextResetReason(workspace, previous,
     contextId !== path.resolve(workspace.rootPath) || port.reuse) ?? (resolutionChanged ? "resolution-generation-change" : undefined)
   const proof = port.admissions.begin(contextId, workspace.canonicalRootId ?? path.resolve(workspace.rootPath),
     previous, resetReason, port.checkpoint)
-  const refreshReadiness = resetReason === "content-revision-change" && previous?.engine.hasReadinessRefreshIntent() === true
+  const refreshReadiness = resetReason !== "canonical-owner-change" && previous?.engine.hasReadinessRefreshIntent() === true
   if (resetReason) {
     if (resetReason === "canonical-owner-change") port.resolver.projectFor(workspace.rootPath).invalidate()
     if (!port.coordinator.remove(contextId, resetReason)) throw new SemanticInputUnavailableError()

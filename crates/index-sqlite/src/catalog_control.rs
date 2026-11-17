@@ -11,8 +11,10 @@ use std::{
 
 pub(super) struct Control {
     connection: Connection,
+    publication: File,
     pub base: PathBuf,
     _lease: Option<CacheLease>,
+    retirement: Option<std::sync::Arc<crate::catalog_files::retirement::RetirementRuntime>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -30,12 +32,23 @@ impl Drop for PublicationGuard {
 }
 
 impl Control {
+    pub fn managed_namespace(
+        &self,
+    ) -> Result<Option<crate::cache_gc::namespace::ManagedCacheNamespace>, StoreError> {
+        self._lease
+            .as_ref()
+            .map(CacheLease::namespace)
+            .transpose()
+            .map_err(io_error)
+    }
+
     /// Retirement must never recreate a workspace that has been removed meanwhile.
     pub fn open_existing(
         base: &Path,
         identity: &str,
         lease: Option<CacheLease>,
     ) -> Result<Self, StoreError> {
+        let publication = lock_file(base, false)?;
         let path = base.with_file_name("catalog-state.sqlite3");
         safe_file(&path)?;
         let connection = Connection::open_with_flags(
@@ -58,8 +71,10 @@ impl Control {
         }
         Ok(Self {
             connection,
+            publication,
             base: base.to_owned(),
             _lease: lease,
+            retirement: None,
         })
     }
 
@@ -79,7 +94,10 @@ impl Control {
                 .ok_or_else(|| incompatible("missing cache directory"))?,
         )
         .map_err(io_error)?;
-        let guard = lock(base, true)?;
+        let guard = lock(base, true, true)?;
+        // Keep the object pinned, but open independent descriptions for locks;
+        // cloned descriptors must not share/upgrade one OS lock description.
+        let publication = guard.0.try_clone().map_err(io_error)?;
         let path = base.with_file_name("catalog-state.sqlite3");
         safe_file(&path)?;
         let bootstrap = !path.exists();
@@ -144,18 +162,56 @@ impl Control {
         drop(guard);
         let control = Self {
             connection,
+            publication,
             base: base.to_owned(),
             _lease: lease,
+            retirement: Some(crate::catalog_files::retirement::RetirementRuntime::acquire()?),
         };
         control.active()?;
         Ok((control, initial_store))
     }
 
+    pub fn retire(&self, job: crate::catalog_files::retirement::Job) {
+        self.retirement
+            .as_ref()
+            .expect("only public owners submit retirement")
+            .enqueue(job);
+    }
+    pub fn try_exclusive(&self) -> Result<Option<PublicationGuard>, StoreError> {
+        let file = self.publication_file()?;
+        match file.try_lock() {
+            Ok(()) => Ok(Some(PublicationGuard(file))),
+            Err(std::fs::TryLockError::WouldBlock) => Ok(None),
+            Err(std::fs::TryLockError::Error(error)) => Err(io_error(error)),
+        }
+    }
     pub fn shared(&self) -> Result<PublicationGuard, StoreError> {
-        lock(&self.base, false)
+        self.lock_publication(false)
     }
     pub fn exclusive(&self) -> Result<PublicationGuard, StoreError> {
-        lock(&self.base, true)
+        self.lock_publication(true)
+    }
+
+    fn publication_file(&self) -> Result<File, StoreError> {
+        self.managed_namespace()?;
+        let file = lock_file(&self.base, false)?;
+        if crate::cache_gc::files::file_object_id(&file).map_err(io_error)?
+            != crate::cache_gc::files::file_object_id(&self.publication).map_err(io_error)?
+        {
+            return Err(incompatible("publication lock object changed"));
+        }
+        Ok(file)
+    }
+    fn lock_publication(&self, exclusive: bool) -> Result<PublicationGuard, StoreError> {
+        let file = self.publication_file()?;
+        if exclusive {
+            file.lock()
+        } else {
+            file.lock_shared()
+        }
+        .map_err(io_error)?;
+        self.publication_file()?; // Recheck after waiting; never create a replacement lock.
+        Ok(PublicationGuard(file))
     }
 
     pub fn active(&self) -> Result<Publication, StoreError> {
@@ -223,16 +279,8 @@ impl Control {
     }
 }
 
-fn lock(base: &Path, exclusive: bool) -> Result<PublicationGuard, StoreError> {
-    let path = base.with_file_name("catalog-publication.lock");
-    safe_file(&path)?;
-    let file = fs::OpenOptions::new()
-        .create(true)
-        .truncate(false)
-        .read(true)
-        .write(true)
-        .open(path)
-        .map_err(io_error)?;
+fn lock(base: &Path, exclusive: bool, create: bool) -> Result<PublicationGuard, StoreError> {
+    let file = lock_file(base, create)?;
     if exclusive {
         file.lock()
     } else {
@@ -240,6 +288,17 @@ fn lock(base: &Path, exclusive: bool) -> Result<PublicationGuard, StoreError> {
     }
     .map_err(io_error)?;
     Ok(PublicationGuard(file))
+}
+fn lock_file(base: &Path, create: bool) -> Result<File, StoreError> {
+    let path = base.with_file_name("catalog-publication.lock");
+    safe_file(&path)?;
+    fs::OpenOptions::new()
+        .create(create)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(path)
+        .map_err(io_error)
 }
 
 pub(super) fn generation_database(name: &str) -> bool {

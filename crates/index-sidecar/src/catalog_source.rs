@@ -9,7 +9,7 @@ use std::{
 const READ_CHUNK_BYTES: usize = 64 * 1024;
 
 #[derive(Clone)]
-pub(super) struct SourceStamp {
+pub(crate) struct SourceStamp {
     path: PathBuf,
     length: u64,
     modified: Option<SystemTime>,
@@ -40,7 +40,7 @@ impl SourceStamp {
     }
 }
 
-pub(super) fn all_current(sources: &[SourceStamp]) -> bool {
+pub(crate) fn all_current(sources: &[SourceStamp]) -> bool {
     if sources.len() <= 1 {
         return sources.iter().all(SourceStamp::is_current);
     }
@@ -57,12 +57,12 @@ pub(super) fn all_current(sources: &[SourceStamp]) -> bool {
     })
 }
 
-pub(super) enum SourceRead {
+pub(crate) enum SourceRead {
     Text(String),
     PolicySkipped,
 }
 
-pub(super) fn read_source(path: &Path) -> Result<SourceRead, ()> {
+pub(crate) fn read_source(path: &Path) -> Result<SourceRead, ()> {
     let mut file =
         super::scan_gate::io("source-read", path, || File::open(path)).map_err(|_| ())?;
     let mut bytes = Vec::new();

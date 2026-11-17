@@ -59,7 +59,7 @@ const logger: StructuredLogger = {
 }
 enableSharedSdkRetention()
 const engine = new OhosTypeScriptSemanticEngine(projects, logger, {
-  maxResidentContexts: data.runtimeConfig.maxResidentContexts,
+  maxResidentContexts: data.runtimeConfig.maxResidentContexts, managedSourceNamespaces: data.managedSourceNamespaces,
   hostCancellationToken: cancellation.hostToken,
   references: data.references,
   refreshMemoryPressure: data.references?.l01PressureAdmission ? sampleMemory : undefined,
@@ -220,6 +220,7 @@ function applyMutation(mutation: SemanticWorkerMutation): void {
     engine.workspaceFilesChanged([{
       rootUri: mutation.rootUri,
       rootDirty: mutation.rootDirty,
+      ...(mutation.managedSourceNamespaces ? { managedSourceNamespaces: mutation.managedSourceNamespaces } : {}),
       ...(mutation.configurationChanged === true ? { configurationChanged: true } : {}),
       resourceDirty: mutation.resourceDirty,
       resourceChanged: mutation.resourceChanged,
@@ -263,7 +264,7 @@ async function answerRequest(request: SemanticWorkerRequest): Promise<void> {
   }
   try {
     const value = await cancellation.run(request.cancelCell, () => request.method === "semanticReadiness"
-      ? engine.semanticReadiness({ rootUri, prepare: request.args.prepare, signal: cancellationSignal(request.cancelCell) })
+      ? engine.semanticReadiness({ rootUri, prepare: request.args.prepare, ...(request.args.captureSourceInputs ? { captureSourceInputs: request.args.captureSourceInputs } : {}), signal: cancellationSignal(request.cancelCell) })
         .then(report => report.semanticGeneration ? { ...report,
           semanticGeneration: `${request.epoch}:${request.requiredRevision}:${report.semanticGeneration}:${report.inputIdentity!.sha256}` } : report)
       : invoke(request, document!, rootUri))

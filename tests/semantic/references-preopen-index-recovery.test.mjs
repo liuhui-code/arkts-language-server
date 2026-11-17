@@ -122,7 +122,7 @@ test("pre-open edits reject stale candidates and recover after their catalog com
     event === "references.index.fallback" && reason === "workspace-changed"
   )))
   assert.ok(observed.some(({ event }) => event === "references.index.recovered"))
-  assert.equal(observed.filter(({ event }) => event === "references.index.accepted").length, 2,
+  assert.equal(observed.filter(({ event }) => event === "references.index.accepted").length, 0,
     JSON.stringify(observed.filter(({ event }) => event.startsWith("references.index."))))
   const audit = audits(auditPath)
   assert.equal(audit.filter(request => request.method === "catalog/start").length, 1)

@@ -6,6 +6,7 @@ import type { SemanticWorkerJsonValue, SemanticWorkerMethod, SemanticWorkerReque
 interface PreparationPort {
   assertAvailable(): void
   admitRecovery?(explicit: boolean): Promise<void>
+  generation?(rootUri: string, signal?: AbortSignal): Promise<object>
   hasRoot(rootUri: string): boolean
   readonly queriedRoots: Set<string>
   request(rootUri: string, input: RootSemanticWorkerRequestInput, signal?: AbortSignal): Promise<SemanticWorkerJsonValue>
@@ -14,10 +15,16 @@ interface PreparationPort {
 /** One initialization promise per root, shared by startup and incoming semantic queries. */
 export class WorkerProjectPreparation {
   private readonly initializations = new Map<string, Promise<SemanticReadinessReport>>()
+  private readonly prepared = new Map<string, { readonly generation: WeakRef<object>; readonly configuration: number }>()
   private configuration = 0
   private readonly completedRoots = new Set<string>()
+  private readonly scopeRoots = new Set<string>()
 
   constructor(private readonly port: PreparationPort) {}
+
+  async settled(rootUri: string): Promise<void> {
+    await this.initializations.get(rootUri)?.then(() => {}, () => {})
+  }
 
   get active(): boolean { return this.initializations.size > 0 }
   hasCompleted(rootUri: string): boolean { return this.completedRoots.has(rootUri) }
@@ -25,11 +32,11 @@ export class WorkerProjectPreparation {
 
   async read(query: SemanticReadinessQuery): Promise<SemanticReadinessReport> {
     checkpoint(query.signal)
-    await waitForTask(this.port.admitRecovery?.(query.prepare), query.signal)
+    await waitForTask(this.port.admitRecovery?.(query.prepare || query.captureSourceInputs !== undefined), query.signal)
     this.port.assertAvailable()
-    if (!query.prepare && !this.port.hasRoot(query.rootUri)) return semanticUnprepared(query.rootUri)
+    if (!query.prepare && !query.captureSourceInputs && !this.port.hasRoot(query.rootUri)) return semanticUnprepared(query.rootUri)
     return await this.request("semanticReadiness", query.rootUri, query.rootUri, null,
-      { prepare: query.prepare }, query.signal) as unknown as SemanticReadinessReport
+      { prepare: query.prepare, ...(query.captureSourceInputs ? { captureSourceInputs: query.captureSourceInputs } : {}) }, query.signal) as unknown as SemanticReadinessReport
   }
 
   initialize(query: Omit<SemanticReadinessQuery, "prepare">): Promise<SemanticReadinessReport> {
@@ -47,8 +54,15 @@ export class WorkerProjectPreparation {
       checkpoint(query.signal)
       const configuration = this.configuration
       try {
+        await this.port.admitRecovery?.(true)
+        this.port.assertAvailable()
+        const generation = await this.port.generation?.(query.rootUri, query.signal)
         const report = await this.read({ ...query, prepare: true })
-        if (configuration === this.configuration) return report
+        const current = await this.port.generation?.(query.rootUri, query.signal)
+        if (configuration === this.configuration && generation === current) {
+          if (current) this.prepared.set(query.rootUri, { generation: new WeakRef(current), configuration })
+          return report
+        }
       } catch (error) {
         if ((error as { code?: unknown } | null)?.code !== "content-modified") throw error
       }
@@ -63,13 +77,24 @@ export class WorkerProjectPreparation {
     if (method !== "semanticReadiness") await this.wait(rootUri, signal)
     const value = await this.port.request(rootUri, { method, uri, expectedDocumentVersion, args,
       ...(diskSource ? { diskSource } : {}) } as RootSemanticWorkerRequestInput, signal)
-    if (method === "semanticReadiness" && "prepare" in args && args.prepare === true) this.completedRoots.add(rootUri)
+    if (method === "semanticReadiness" && "prepare" in args && args.prepare === true) {
+      this.completedRoots.add(rootUri)
+      const report = value as unknown as SemanticReadinessReport
+      if (report.semanticState === "partial" && report.unavailableReasons.includes("sdk-inputs-incomplete")) this.scopeRoots.add(rootUri)
+      else this.scopeRoots.delete(rootUri)
+    }
     if (method !== "semanticReadiness" || ("prepare" in args && args.prepare === true)) this.port.queriedRoots.add(rootUri)
     return value
   }
 
-  private wait(rootUri: string, signal?: AbortSignal): Promise<void> {
-    return waitForTask(this.initializations.get(rootUri), signal)
+  private async wait(rootUri: string, signal?: AbortSignal): Promise<void> {
+    await waitForTask(this.initializations.get(rootUri), signal)
+    if (!this.port.generation || !this.scopeRoots.has(rootUri)) return
+    const current = await this.port.generation(rootUri, signal), receipt = this.prepared.get(rootUri)
+    if (receipt?.configuration === this.configuration && receipt.generation.deref() === current) return
+    // A receipt belongs to a real supervisor/configuration, never a thread number.
+    // This shared repair does not restore the one-time pressure exemption.
+    await waitForTask(this.initialize({ rootUri }), signal)
   }
 }
 

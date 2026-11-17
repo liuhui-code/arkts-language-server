@@ -6,8 +6,23 @@ const { isMainThread, threadId } = require("node:worker_threads")
 if (!isMainThread && process.env.ARKTS_LSP_LOG_DIR) {
   const directory = path.dirname(process.env.ARKTS_LSP_LOG_DIR)
   if (!path.basename(directory).startsWith("arkts-semantic-ready-")) throw Error("private fixture required")
-  globalThis.__partialInitialObservation = (kind, value) => fs.appendFileSync(
-    path.join(directory, "partial-initialization.jsonl"), JSON.stringify({ kind, value, threadId }) + "\n")
+  globalThis.__partialInitialObservation = (kind, value, detail = {}) => fs.appendFileSync(
+    path.join(directory, "partial-initialization.jsonl"), JSON.stringify({ kind, value, threadId, ...detail }) + "\n")
+  if (process.env.ARKTS_TEST_WEAK_DIRECTORY_IDS === "1") {
+    for (const method of ["statSync", "lstatSync"]) {
+      const original = fs[method]
+      fs[method] = function(file, ...args) {
+        const stat = Reflect.apply(original, this, [file, ...args])
+        if (typeof file === "string" && args[0]?.bigint && stat?.isDirectory()
+          && (file === path.join(directory, "workspace") || file.startsWith(path.join(directory, "workspace") + path.sep))) {
+          const weak = Object.create(stat)
+          Object.defineProperty(weak, "ino", { value: 0n })
+          return weak
+        }
+        return stat
+      }
+    }
+  }
   const open = fs.openSync
   const openDirectory = fs.opendirSync
   fs.opendirSync = function(file, ...args) {
@@ -29,7 +44,11 @@ if (!isMainThread && process.env.ARKTS_LSP_LOG_DIR) {
   }
   fs.openSync = function(file, ...args) {
     if (typeof file === "string" && /[\\/]workspace[\\/]noise[\\/]Unused\d+\.ts$/.test(file)) {
-      globalThis.__partialInitialObservation("noise-read", file)
+      const caller = process.env.ARKTS_TEST_READ_STACKS === "1"
+        ? new Error().stack.split("\n").slice(2, 14) : []
+      globalThis.__partialInitialObservation("noise-read", file, {
+        scope: caller.some(line => line.includes("assertCurrentWorkspaceSources")) ? "publication-fence"
+          : caller.some(line => line.includes("projectSourceNamespace")) ? "source-namespace" : "other", caller })
     }
     return Reflect.apply(open, this, [file, ...args])
   }

@@ -1,3 +1,5 @@
+use std::sync::atomic::{AtomicU64, Ordering};
+static NEXT_TEST_DIRECTORY: AtomicU64 = AtomicU64::new(0);
 use std::{
     collections::VecDeque,
     fs,
@@ -17,11 +19,20 @@ impl TestDir {
             .duration_since(UNIX_EPOCH)
             .expect("system clock should be after epoch")
             .as_nanos();
-        let path =
-            std::env::temp_dir().join(format!("arkts-sidecar-{name}-{}-{nonce}", process::id()));
-        fs::create_dir_all(&path).expect("test directory should be created");
-        // Native initialize canonicalizes its root before issuing source identities.
-        Self(fs::canonicalize(path).expect("test directory should have a physical identity"))
+        loop {
+            let sequence = NEXT_TEST_DIRECTORY.fetch_add(1, Ordering::Relaxed);
+            let path = std::env::temp_dir().join(format!(
+                "arkts-sidecar-{name}-{}-{nonce}-{sequence}",
+                process::id()
+            ));
+            match fs::create_dir(&path) {
+                Ok(()) => {
+                    return Self(fs::canonicalize(path).expect("test directory physical identity"));
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(error) => panic!("test directory must be newly created: {error}"),
+            }
+        }
     }
 
     pub(crate) fn path(&self) -> &Path {
@@ -116,25 +127,42 @@ impl SidecarProcess {
         }
     }
 
-    pub(crate) fn request(&mut self, request: Value) -> Value {
-        let expected_id = request["id"].clone();
+    pub(crate) fn close_input(&mut self) {
+        drop(self.stdin.take());
+    }
+
+    pub(crate) fn has_exited(&mut self) -> bool {
+        self.child
+            .try_wait()
+            .expect("child exit should be observable")
+            .is_some()
+    }
+
+    pub(crate) fn send(&mut self, request: Value) {
         let stdin = self.stdin.as_mut().expect("sidecar stdin should be open");
         serde_json::to_writer(&mut *stdin, &request).expect("request should serialize");
         stdin.write_all(b"\n").expect("request should be written");
         stdin.flush().expect("request should be flushed");
-
+    }
+    pub(crate) fn response(&mut self) -> Value {
         loop {
             let message = self.read_message();
             if message.get("event").is_some() {
                 self.events.push_back(message);
                 continue;
             }
-            assert_eq!(
-                message["id"], expected_id,
-                "sidecar responses must preserve request ordering in this harness"
-            );
             return message;
         }
+    }
+    pub(crate) fn request(&mut self, request: Value) -> Value {
+        let id = request["id"].clone();
+        self.send(request);
+        let response = self.response();
+        assert_eq!(
+            response["id"], id,
+            "sidecar responses must preserve request ordering in this harness"
+        );
+        response
     }
 
     pub(crate) fn read_event(&mut self) -> Value {
@@ -165,6 +193,9 @@ impl SidecarProcess {
             "params": {}
         }));
         assert_eq!(response["ok"], true);
+        self.finish_shutdown();
+    }
+    pub(crate) fn finish_shutdown(mut self) {
         drop(self.stdin.take());
         let status = self.child.wait().expect("sidecar should exit");
         assert!(status.success(), "sidecar should exit successfully");

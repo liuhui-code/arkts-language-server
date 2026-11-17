@@ -56,6 +56,7 @@ protection checks. Earlier L01/L02 resource-admission verdicts are historical.
 | [0040](0040-client-context-request-backpressure.md) | Proposed; component/release and six 30K protocol rounds verified, deployment/UI pending | Lazily bound automatic context requests; preserve all answers, source/refresh ownership, foreground independence and terminal outcomes |
 | [0041](0041-windows-index-storage-location.md) | Proposed; build/typecheck and targeted83/83 verified; Windows real machine pending | Prefer D-drive index storage on Windows with explicit configuration, visible fallback, workspace isolation and one session-owned root for index/GC |
 | [0042](0042-bounded-catalog-streaming.md) | Proposed; authorized plan, implementation/verification pending | Bounded catalog parse/write ownership; force first, proven hash-first reuse next; preserve full private publication and no default RSS budget |
+| [0043](0043-versioned-file-index-maintenance.md) | **Proposed; implementation and scoped validation executed; full acceptance incomplete** | Immutable per-file facts, staged publication-group manifests, atomic data qualification, compatible freshness receipts and safe version GC; R-13 |
 
 2026-10-27 [三项根因与ADR审计](../reports/2026-10-27-30k-issues-root-causes-and-adrs.md#adr逐项映射与设计缺口)：
 上表0020–0023的“not merged”及检查数是各切片当时的历史收据，不能作为当前版本判定。
@@ -119,3 +120,9 @@ all historical failures and approval states above remain unchanged. Current
 latency interpretation follows ADR0007's 2026-10-28 revision and default RSS
 policy follows ADR0029. The existing [Ledger](../plans/references-feature-ledger.md)
 links the current per-feature status; focused and full verification remain distinct.
+
+- [0044](0044-load-owned-input-proof-lifetime.md) — Proposed: complete load-owned evidence and owner lifecycle, explicitly revising0036 healthy-fact quota.
+
+- [0045](0045-complete-membership-and-source-resource-budgets.md) — Proposed: Complete membership versus source resource budgets; repeated navigation remains OPEN.
+
+- [0046](0046-bounded-worker-observation-delivery.md) — Proposed: Bounded Worker log delivery with lifecycle terminal drains.

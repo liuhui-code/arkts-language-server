@@ -35,7 +35,7 @@ export async function runOwnerLayer(suite: Suite,
   const record: StructuredLogger["info"] = (event, fields) => {
     events.push({ ...fields, event, monotonicMs: performance.now() })
   }
-  const index = new SidecarWorkspaceIndex({ env: environment, sidecarPath: suite.sidecar })
+  const index = new SidecarWorkspaceIndex({ env: environment, sidecarPath: suite.sidecar, fileMaintenance: true })
   const semantic = new SemanticWorkerEngine(new SingleRootProjectResolver(rootUri),
     { info: record, error: record }, { env: environment, exportIndex: index, referenceIndex: index,
       workerPath: path.join(path.dirname(suite.server), "semantic-worker.cjs") })

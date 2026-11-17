@@ -16,6 +16,7 @@ export function createProductionSemanticEngine(
     workerPath?: string
     exportIndex?: WorkspaceExportIndexPort
     referenceIndex?: WorkspaceReferenceIndexPort
+    onUnobservedSourceNamespace?: (rootUri: string, kind: "namespace" | "content") => void
   } = {},
 ): SemanticEnginePort & SemanticBackend {
   return new SemanticWorkerEngine(projects, logger, options)

@@ -8,16 +8,18 @@ import type { SemanticCoordinator } from "../../semantic/coordinator/semantic-co
 import type { WorkspaceEngineEntry } from "./type-workspace-entry.js"
 import { SemanticInputUnavailableError } from "./typescript-query-inputs.js"
 import { RESOLUTION_INPUT_GENERATION } from "../workspace/workspace-resolution-inputs.js"
-import { resolutionInputWasRebased } from "../../project/resolution-input-admission.js"
+import { resolutionInputWasRebased, unnotifiedSourceNamespaceWasObserved } from "../../project/resolution-input-admission.js"
 
 /** Validate load-owned resolution input before choosing the consumer's ordinary reset cause. */
 export function reconcileResolutionOwner(workspace: SemanticWorkspaceView, contextId: string,
   resolver: LocalPackageResolver, coordinator: SemanticCoordinator<WorkspaceEngineEntry>, checkpoint: () => void,
-  beforeSourceRetirement?: (previous: WorkspaceEngineEntry | undefined) => void) {
+  beforeSourceRetirement?: (previous: WorkspaceEngineEntry | undefined, validateNamespace?: boolean) => void) {
   const recoveredUnnotifiedInput = resolver.refreshInputGeneration(workspace.rootPath, checkpoint)
   const inputs = workspace[RESOLUTION_INPUT_GENERATION]
   const previous = coordinator.peek(contextId)
   const ownerChanged = typeContextResetReason(workspace, previous) === "canonical-owner-change"
+  if (!ownerChanged && (unnotifiedSourceNamespaceWasObserved(resolver)
+    || inputs && unnotifiedSourceNamespaceWasObserved(inputs.owner))) beforeSourceRetirement?.(previous, true)
   // Repair belongs to the next input attempt. An unchanged request cannot
   // silently rebase its prepared proof; observed source deltas already open a new input.
   if ((recoveredUnnotifiedInput || inputs?.recoveredUnnotifiedInput || resolutionInputWasRebased(resolver)) && !workspace.resetTypeEngine
@@ -67,7 +69,10 @@ export function typeContextResetReason(
   sessionReuse = false,
 ): string | undefined {
   if (!previous) return undefined
-  if (workspace.resetTypeEngine) return "document-store-reset"
+  // A captured reset can prepare the SDK owner and then the query owner. Each
+  // existing context consumes that epoch once; an unversioned adapter stays conservative.
+  if (workspace.resetTypeEngine && (workspace.typeEngineResetEpoch === undefined
+    || previous.resetEpoch !== workspace.typeEngineResetEpoch)) return "document-store-reset"
   if (previous.ownerId !== (workspace.canonicalRootId ?? path.resolve(workspace.rootPath))) return "canonical-owner-change"
   if (previous.resetEpoch !== (workspace.typeEngineResetEpoch ?? 0)) return "reset-epoch-change"
   if (previous.appliedContentRevision !== (workspace.contentRevision ?? 0)

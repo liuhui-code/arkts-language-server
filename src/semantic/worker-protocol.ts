@@ -1,17 +1,19 @@
-import { decodeWorkspaceFilesChangedMutation } from "./semantic-worker-workspace-mutation-codec.js"
+export type { SemanticWorkerWorkspaceFilesChangedMutation } from "./semantic-worker-workspace-mutation-codec.js"
+import type { SemanticWorkspaceFileChangeBatch } from "../contracts/semantic-engine.js"
+import { decodeWorkspaceFilesChangedMutation, type SemanticWorkerWorkspaceFilesChangedMutation } from "./semantic-worker-workspace-mutation-codec.js"
 import { canonicalWorkerFileUri, workerUriWithinRoot as isUriWithinRoot } from "./semantic-worker-uri.js"
 import { admitsWorkerDiskSource, decodeWorkerDiskSource, type SemanticWorkerDiskSource } from "./semantic-worker-disk-source.js"
 import { readOwnDataRecord } from "./semantic-worker-record.js"
 import { decodeReferencesArgs, type SemanticWorkerReferencesArgs } from "./semantic-worker-reference-args.js"
 export type { SemanticWorkerReferencesArgs } from "./semantic-worker-reference-args.js"
 import { jsonStringWireBytes, stringByteMetrics } from "./semantic-worker-string-bytes.js"
-import { assertSemanticReadinessResponse } from "./semantic-readiness-wire.js"
+import { assertSemanticReadinessResponse, decodeSemanticReadinessArgs, type SemanticWorkerReadinessArgs } from "./semantic-readiness-wire.js"
 import { SEMANTIC_WORKER_ERROR_CODES, SEMANTIC_WORKER_ERROR_MESSAGES,
   type SemanticWorkerError, type SemanticWorkerErrorCode } from "./semantic-worker-error-policy.js"
 export { SEMANTIC_WORKER_ERROR_CODES,
   type SemanticWorkerError, type SemanticWorkerErrorCode } from "./semantic-worker-error-policy.js"
 
-export const SEMANTIC_WORKER_PROTOCOL_VERSION = 2 as const
+export const SEMANTIC_WORKER_PROTOCOL_VERSION = 3 as const
 export const MAX_SEMANTIC_WORKER_TEXT_BYTES = 4 * 1024 * 1024
 export const MAX_SEMANTIC_WORKER_ARGS_BYTES = 256 * 1024
 export const MAX_SEMANTIC_WORKER_MESSAGE_BYTES = 8 * 1024 * 1024
@@ -99,23 +101,8 @@ export interface SemanticWorkerDocumentMutation {
   readonly text?: string
 }
 
-export interface SemanticWorkerWorkspaceFileChange {
-  readonly uri: string
-  readonly kind: "created" | "changed" | "deleted"
-}
+export type SemanticWorkerWorkspaceFileChange = SemanticWorkspaceFileChangeBatch["changes"][number]
 
-export interface SemanticWorkerWorkspaceFilesChangedMutation {
-  readonly protocol: typeof SEMANTIC_WORKER_PROTOCOL_VERSION
-  readonly epoch: number
-  readonly revision: number
-  readonly kind: "workspaceFilesChanged"
-  readonly rootUri: string
-  readonly rootDirty: boolean
-  readonly configurationChanged?: boolean
-  readonly resourceDirty: boolean
-  readonly resourceChanged: boolean
-  readonly changes: readonly SemanticWorkerWorkspaceFileChange[]
-}
 
 export type SemanticWorkerMutation =
   | SemanticWorkerDocumentMutation
@@ -298,7 +285,7 @@ export interface SemanticWorkerRequestArgsByMethod {
   readonly prepareCallHierarchy: SemanticWorkerPositionArgs
   readonly outgoingCalls: SemanticWorkerCallHierarchyFollowupArgs
   readonly incomingCalls: SemanticWorkerCallHierarchyFollowupArgs
-  readonly semanticReadiness: { readonly prepare: boolean }
+  readonly semanticReadiness: SemanticWorkerReadinessArgs
 }
 
 type SemanticWorkerFollowupMethod = "outgoingCalls" | "incomingCalls" | "semanticReadiness"
@@ -468,6 +455,7 @@ export function decodeSemanticWorkerMutation(value: unknown): SemanticWorkerMuta
     "rootUri",
     "rootDirty",
     "configurationChanged",
+    "managedSourceNamespaces",
     "resourceDirty",
     "resourceChanged",
     "changes",
@@ -1055,11 +1043,8 @@ function decodeRequestArgs(
   value: unknown,
 ): SemanticWorkerRequestArgsByMethod[SemanticWorkerMethod] {
   switch (method) {
-    case "semanticReadiness": {
-      const args = ownDataRecord(value, ["prepare"])
-      if (!args || !hasExactKeys(args, ["prepare"]) || typeof args.prepare !== "boolean") throw invalidRequest()
-      return Object.freeze({ prepare: args.prepare })
-    }
+    case "semanticReadiness":
+      return decodeSemanticReadinessArgs(value, invalidRequest)
     case "complete":
       return decodeCompletionArgs(value)
     case "typeDefinitions":

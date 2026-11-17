@@ -230,3 +230,15 @@ cancel or edit after the reused anchor enters a transient batch. Neither old
 request returns partial Locations; same-process recovery proves the complete
 result, including the added unsaved reference. This does not claim real-project
 cancellation latency or change the production scheduler.
+
+
+## 2026-11-09：缓存证明进入Worker后的屏障实施澄清
+
+F6b所述纯结果缓存现在还需要0043/0044的当前输入证明，不能直接绕过Worker拥有的诊断
+作用域。保留“证明当前完整的缓存不等待无关后台准备”目标，并明确交付边界：scheduled/
+preparing尚未调用语义端的任务可以撤销而不等待其准备结束，交付前必须重查取消和版本；
+已调用语义端的诊断仍须按原取消/终态合同结清，前台缓存校验和miss搜索都持有该屏障。
+这不引入第二份重型Program、不允许旧结果，不给请求/恢复预算开例外；不是让后台诊断
+任意阻塞已可校验的缓存。连续流公平性仍须整体耐久验证，局部控制不代替该证明。
+[阶段反例、实际Worker持有对照及当前限制](../reports/2026-11-09-input-proof-purpose-and-diagnostic-handoff.md)。
+历史决策及其证据保留；0043/0044仍Proposed，不把本次实施当成独立审阅记录。

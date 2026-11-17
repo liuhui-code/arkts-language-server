@@ -49,7 +49,7 @@ export async function discoverCompletionCandidates(
   }
 }
 
-function completionPrefixContext(
+export function completionPrefixContext(
   text: string,
   position: { line: number; character: number },
 ): { prefix: string; memberAccess: boolean } {

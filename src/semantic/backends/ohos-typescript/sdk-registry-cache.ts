@@ -13,6 +13,11 @@ interface Pin {
   readonly kind: ts.ScriptKind
   readonly file: ts.SourceFile
 }
+const syntaxReaders = new WeakMap<ts.DocumentRegistry, (file: string, text: string, options: ts.CompilerOptions) => ts.SourceFile | undefined>()
+export function retainedSdkSyntax(registry: ts.DocumentRegistry, file: string, text: string, options: ts.CompilerOptions): ts.SourceFile | undefined {
+  return syntaxReaders.get(registry)?.(file, text, options)
+}
+
 const initializers = new WeakMap<ts.DocumentRegistry, () => void>()
 export function prepareRetainedSdkDocuments(registry: ts.DocumentRegistry): void { initializers.get(registry)?.() }
 
@@ -28,6 +33,11 @@ export function retainSdkDocuments(registry: ts.DocumentRegistry, sdkPath: strin
   const componentRoots = sources.map(component => component.root)
   const pins = new Map<string, Pin>()
   const retained = { ...registry }
+  syntaxReaders.set(retained, (file, text, options) => {
+    const key = registry.getKeyForCompilationSettings(options)
+    for (const pin of pins.values()) if (pin.key === key && pin.file.fileName === file && pin.file.text === text) return pin.file
+    return undefined
+  })
   const acquire = registry.acquireDocumentWithKey.bind(registry)
   const update = registry.updateDocumentWithKey.bind(registry)
   let settingsKey: ts.DocumentRegistryBucketKey | undefined

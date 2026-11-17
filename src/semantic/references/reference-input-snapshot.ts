@@ -32,14 +32,16 @@ export class ReferenceInputState {
     return changedRoots
   }
 
-  capture(rootUri: string, documents: Iterable<DocumentSnapshot>,
-    projectConfiguration: unknown, sdkConfiguration: unknown): ReferenceInputSnapshot {
+  captureRevision(rootUri: string): Pick<ReferenceInputSnapshot, "rootUri" | "rootRevision" | "configurationRevision"> {
     if (!this.#rootRevisions.has(rootUri)) this.#rootRevisions.set(rootUri, 0)
     return Object.freeze({ rootUri, rootRevision: this.#rootRevisions.get(rootUri) ?? 0,
-      configurationRevision: this.#configurationRevision,
-      projectConfiguration, sdkConfiguration,
-      sourceOverlays: captureReferenceSourceOverlays(documents),
-    })
+      configurationRevision: this.#configurationRevision })
+  }
+
+  capture(rootUri: string, documents: Iterable<DocumentSnapshot>,
+    projectConfiguration: unknown, sdkConfiguration: unknown): ReferenceInputSnapshot {
+    return Object.freeze({ ...this.captureRevision(rootUri), projectConfiguration, sdkConfiguration,
+      sourceOverlays: captureReferenceSourceOverlays(documents) })
   }
 
   isCurrent(snapshot: Pick<ReferenceInputSnapshot, "rootUri" | "rootRevision" | "configurationRevision">): boolean {

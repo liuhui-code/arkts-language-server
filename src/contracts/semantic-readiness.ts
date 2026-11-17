@@ -8,6 +8,9 @@ export const SEMANTIC_READY_CAPABILITIES = Object.freeze([
 export interface SemanticReadinessQuery {
   readonly rootUri: string
   readonly prepare: boolean
+  /** Internal purpose: true requires full scope; cache may omit bytes only for proven SDK partial.
+   * The public LSP parser does not expose this option. */
+  readonly captureSourceInputs?: true | "cache"
   readonly signal?: AbortSignal
 }
 
@@ -22,6 +25,8 @@ export type SemanticInputIssue =
 
 export interface SemanticReadinessReport {
   readonly rootUri: string
+  /** Freshly enumerated admitted names, independent of SDK/Program readiness. */
+  readonly sourceNamespace?: { readonly sha256: string; readonly sources: number; readonly diskSha256?: string; readonly overlayOnly?: boolean }
   readonly semanticState: "unprepared" | "ready" | "partial" | "degraded"
   /** Present for usable partial inputs; not a full-reference/rename proof. */
   readonly availableCapabilities?: readonly string[]

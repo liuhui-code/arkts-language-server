@@ -1,4 +1,5 @@
 import fs from "node:fs"
+import { regularSourceIdentity } from "../../project/source-file-identity.js"
 
 import type { ProjectFileAdmissionToken, SemanticOperationControl } from "./document-store.js"
 
@@ -6,7 +7,7 @@ const MAX_DISK_READ_CHUNK_BYTES = 64 * 1024
 export const MAX_DISK_SNAPSHOT_BYTES = 4 * 1024 * 1024
 
 type DiskReadResult =
-  | { status: "loaded"; content: string }
+  | { status: "loaded"; content: string; identity?: ReturnType<typeof regularSourceIdentity> }
   | { status: "unavailable" }
   | { status: "budget-exceeded" }
 
@@ -76,6 +77,8 @@ export function readDiskSource(
     ) return { status: "unavailable" }
     return {
       status: "loaded",
+      ...(expectedPhysicalPath !== undefined && initial.isFile()
+        ? { identity: regularSourceIdentity(expectedPhysicalPath, after) } : {}),
       content: new TextDecoder("utf-8", { fatal: true, ignoreBOM: true })
         .decode(bytes.subarray(0, offset)),
     }

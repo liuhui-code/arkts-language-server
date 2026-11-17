@@ -1,3 +1,5 @@
+use std::sync::atomic::{AtomicU64, Ordering};
+static NEXT_TEST_DIRECTORY: AtomicU64 = AtomicU64::new(0);
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -13,10 +15,18 @@ impl TestDir {
             .duration_since(UNIX_EPOCH)
             .expect("system clock should be after epoch")
             .as_nanos();
-        let path =
-            std::env::temp_dir().join(format!("arkts-index-{name}-{}-{nonce}", process::id()));
-        fs::create_dir_all(&path).expect("test directory should be created");
-        Self(path)
+        loop {
+            let sequence = NEXT_TEST_DIRECTORY.fetch_add(1, Ordering::Relaxed);
+            let path = std::env::temp_dir().join(format!(
+                "arkts-index-{name}-{}-{nonce}-{sequence}",
+                process::id()
+            ));
+            match fs::create_dir(&path) {
+                Ok(()) => return Self(path),
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(error) => panic!("test directory must be newly created: {error}"),
+            }
+        }
     }
 
     pub fn path(&self) -> &Path {

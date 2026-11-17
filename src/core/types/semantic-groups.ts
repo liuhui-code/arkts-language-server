@@ -4,6 +4,10 @@ import type { SemanticWorkspaceView, ProjectMembershipSnapshot } from "../worksp
 import type { HarmonySemanticGraph, HarmonySemanticUnit } from "../../project/harmony-project-model.js"
 import { containsResolvedPath } from "../../project/resolved-path-containment.js"
 import { initialPreparationActive, initialPreparationCheckpoint } from "../../semantic/coordinator/initial-preparation.js"
+import { hasOperationScope } from "./operation-scope-execution.js"
+import type { ProjectFileAccessPort } from "../workspace/document-store.js"
+import { ProjectOperationScopes, type ProjectSyntaxProfile } from "./project-operation-scopes.js"
+import { resolvedPathIdentity } from "../../project/path-identity.js"
 
 interface GroupRoots {
   readonly id: string
@@ -21,16 +25,47 @@ export interface SemanticGroup {
 export class SemanticGroups {
   private readonly owners = new Map<string, string>()
   private readonly scanRoots = new Set<string>()
+  private readonly operationScopes = new Map<string, ProjectOperationScopes>()
+  private readonly pendingScopes = new Map<string, ProjectOperationScopes>()
   private roots = new WeakMap<HarmonySemanticGraph, {
     readonly canonicalRootId: string
     readonly membershipPaths: readonly string[]
     readonly groups: readonly GroupRoots[]
   }>()
-  constructor(private readonly resolver: LocalPackageResolver) {}
+  constructor(private readonly resolver: LocalPackageResolver, private readonly access?: ProjectFileAccessPort) {}
 
   owner(id: string): string { return this.owners.get(id) ?? id }
+  hasOperationScopes(rootId: string): boolean { return this.operationScopes.has(resolvedPathIdentity(rootId)) }
   isScan(id: string): boolean { return this.scanRoots.has(id) }
-  clear(): void { this.owners.clear(); this.scanRoots.clear(); this.roots = new WeakMap() }
+  clear(): void { this.owners.clear(); this.scanRoots.clear(); this.operationScopes.clear(); this.pendingScopes.clear(); this.roots = new WeakMap() }
+
+  preparePartialWorkspace(workspace: SemanticWorkspaceView, profile: ProjectSyntaxProfile): void {
+    if (!this.available(workspace)) return
+    const key = resolvedPathIdentity(workspace.canonicalRootId)
+    const scopes = ProjectOperationScopes.create(workspace, profile, this.access, () => this.resolver.generation,
+      this.pendingScopes.get(key), draft => this.pendingScopes.set(key, draft))
+    if (scopes) { this.operationScopes.set(key, scopes); this.pendingScopes.delete(key) }
+  }
+
+  decorate(workspace: SemanticWorkspaceView): SemanticWorkspaceView {
+    // Legacy/core adapters without a canonical membership receipt retain their
+    // full compiler scope; they cannot authorize a projected operation scope.
+    if (!workspace.canonicalRootId) return workspace
+    const scopes = this.operationScopes.get(resolvedPathIdentity(workspace.canonicalRootId))
+    if (!scopes || !workspace.semanticRootPaths?.length || hasOperationScope(workspace)) return workspace
+    const membership = workspace.projectMembership ?? this.access?.membershipFor?.(workspace.rootPath)
+    if (!membership) return workspace
+    const scope = this.resolver.projectFor(workspace.rootPath).scopeFor(workspace.state.path)
+    const group = this.all({ ...workspace, projectMembership: membership }).find(candidate => candidate.moduleRoot === scope.moduleRoot)
+    return group ? scopes.project({ ...workspace, projectMembership: membership }, group.workspace.semanticRootPaths!, workspace.semanticRootPaths, group.id) : workspace
+  }
+
+  completionRoots(workspace: SemanticWorkspaceView, prefix: string) {
+    if (!workspace.canonicalRootId) return undefined
+    const key = resolvedPathIdentity(workspace.canonicalRootId), owner = this.operationScopes.get(key)
+    const snapshot = owner?.completionRoots(workspace, prefix)
+    return snapshot && { roots: snapshot.roots, current: () => this.operationScopes.get(key) === owner && snapshot.current() }
+  }
 
   root(workspace: SemanticWorkspaceView): string {
     const root = path.resolve(workspace.rootPath)
@@ -46,7 +81,11 @@ export class SemanticGroups {
 
   select(workspace: SemanticWorkspaceView, membership: ProjectMembershipSnapshot): SemanticGroup | undefined {
     const scope = this.resolver.projectFor(workspace.rootPath).scopeFor(workspace.state.path)
-    return this.all({ ...workspace, projectMembership: membership }).find(group => group.moduleRoot === scope.moduleRoot)
+    const group = this.all({ ...workspace, projectMembership: membership }).find(group => group.moduleRoot === scope.moduleRoot)
+    const scopes = this.operationScopes.get(resolvedPathIdentity(workspace.canonicalRootId))
+    if (!group || !scopes) return group
+    return { ...group, workspace: scopes.project(group.workspace, group.workspace.semanticRootPaths!,
+      [workspace.state.path, ...workspace.documents.filter(document => document.overlay).map(document => document.path)], group.id) }
   }
 
   prepareInitial(workspace: SemanticWorkspaceView, limit: number, prepare: (group: SemanticGroup) => void): void {

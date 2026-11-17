@@ -107,9 +107,18 @@ test("native persisted pre-open catalog cannot omit a new reference and later re
     event.phase === "ready" && event.committedGeneration > initialGeneration))
   const readyGeneration = phaseEvents(secondLogs)
     .findLast(event => event.phase === "ready").committedGeneration
-  assert.ok(phaseEvents(secondLogs).some(event => event.phase === "discovering"
-    && event.committedGeneration === initialGeneration),
-  "the second native process must reopen the prior committed generation")
+  const qualified = readEvents(secondLogs).findLast(event => event.event === "index.maintenance.phase"
+    && event.outcome === "qualified" && event.currentInput === true)
+  if (qualified) {
+    assert.equal(qualified.head, readyGeneration)
+    assert.equal(qualified.indexedDocuments, 4)
+    assert.equal(qualified.writtenDocuments, 2, "only changed Use and newly created Added may be written")
+    assert.equal(qualified.reusedDocuments, 2, "Query and Target must reuse the reopened persisted facts")
+  } else {
+    assert.ok(phaseEvents(secondLogs).some(event => event.phase === "discovering"
+      && event.committedGeneration === initialGeneration),
+    "the legacy native process must reopen the prior committed generation")
+  }
 
   // Invalidate the exact-result cache without changing the indexed disk sources.
   second.changeDocument({ uri: queryUri, version: 2, text: `${query}// unsaved comment\n` })
@@ -148,7 +157,10 @@ function createSession(root, workspace, logs) {
 }
 
 function phaseEvents(logs) {
-  return readEvents(logs).filter(event => event.event === "index.catalog.phase")
+  return readEvents(logs).flatMap(event => event.event === "index.catalog.phase" ? [event]
+    : event.event === "index.maintenance.phase" && event.outcome === "qualified"
+      && event.currentInput === true && event.scope !== "file"
+      ? [{ ...event, phase: "ready", committedGeneration: event.head }] : [])
 }
 
 function referenceEvents(logs) {

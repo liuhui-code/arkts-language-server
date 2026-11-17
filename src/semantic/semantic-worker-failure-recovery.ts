@@ -15,6 +15,7 @@ interface RecoveryOptions {
 
 /** The parent owns restart policy; crashed epochs never serve another request. */
 export class SemanticWorkerFailureRecovery {
+  private readonly recoveredListeners = new Set<() => void>()
   private readonly restarts: number[] = []
   private pending: Promise<void> | undefined
   private failure: unknown
@@ -27,6 +28,10 @@ export class SemanticWorkerFailureRecovery {
   private stopping = false
   private readonly abort = new AbortController()
   constructor(private readonly owner: RecoveryOptions) {}
+  onDidRecover(listener: () => void): () => void {
+    this.recoveredListeners.add(listener)
+    return () => { this.recoveredListeners.delete(listener) }
+  }
   fail(error: unknown): void {
     if (!this.failure) this.blockedRevision = this.inputRevision
     this.failure = error instanceof SemanticWorkerSupervisorError ? error
@@ -43,7 +48,9 @@ export class SemanticWorkerFailureRecovery {
   healthy(): void {
     if (this.failure) return
     if (this.inputRevision > this.failedInputRevision) this.automaticRestarts = 0
+    const wasProbing = this.probing
     this.probing = false
+    if (wasProbing) for (const listener of this.recoveredListeners) listener()
   }
   assertHealthy(explicit = true): void {
     if (this.owner.disposed()) throw new Error("Semantic worker is disposed")
@@ -104,13 +111,19 @@ export class SemanticWorkerFailureRecovery {
     const backoffMs = Math.min(1000, 250 * 2 ** Math.max(0, this.automaticRestarts - 1))
     const task = this.owner.recycle.recover(this.owner.options(), restart,
       () => delay(backoffMs, undefined, { signal: this.abort.signal })).catch(error => this.fail(error))
-      .finally(() => { if (this.pending === task) this.pending = undefined })
+      .finally(() => {
+        if (this.pending === task) this.pending = undefined
+        if (restart && !this.probing && !this.failure && !this.stopping && !this.owner.disposed()) {
+          for (const listener of this.recoveredListeners) listener()
+        }
+      })
     this.pending = task
     return task
   }
 
   async settle(): Promise<void> {
     this.stopping = true
+    this.recoveredListeners.clear()
     this.abort.abort()
     await this.owner.recycle.retire(true)
     await this.pending

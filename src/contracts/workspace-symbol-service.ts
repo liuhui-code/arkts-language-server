@@ -1,5 +1,6 @@
 import type { DocumentSnapshot, DocumentUri, WorkspaceDescriptor } from "./document.js"
 import type { WorkspaceSymbolSearchResult } from "./workspace-index.js"
+import type { SemanticWorkspaceFileChangeBatch } from "./semantic-engine.js"
 
 export type WorkspaceIndexPhase =
   | "discovering"
@@ -18,6 +19,13 @@ export interface WorkspaceCatalogStorage {
   checkpointedFrames: number
 }
 
+export interface WorkspaceIndexValidation {
+  stage: "QuickCheck" | "ForeignKeys" | "Fts"
+  vmSteps: number
+  activitySequence: number
+  stageElapsedMs: number
+}
+
 export interface WorkspaceIndexProgress {
   phase: WorkspaceIndexPhase
   discoveredFiles: number
@@ -25,6 +33,7 @@ export interface WorkspaceIndexProgress {
   skippedEntries: number
   totalFiles?: number
   storage?: WorkspaceCatalogStorage
+  validation?: WorkspaceIndexValidation
   /** Actionable index-storage notice; does not change semantic readiness or request results. */
   warning?: string
 }
@@ -38,6 +47,7 @@ export interface WorkspaceSymbolServicePort {
   sync(document: DocumentSnapshot): void
   closeDocument(documentUri: DocumentUri): void
   workspaceFilesChanged(workspaceIds: readonly string[]): void
+  observeWorkspaceFiles?(batches: readonly SemanticWorkspaceFileChangeBatch[]): void
   searchSymbols(
     query: string,
     limit: number,
