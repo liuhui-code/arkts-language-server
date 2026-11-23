@@ -52,7 +52,7 @@ export function fullOperationScope(workspace: SemanticWorkspaceView, error: unkn
 export function assertCurrentOperationScope(workspace: SemanticWorkspaceView, options: ts.CompilerOptions): void {
   const proof = (workspace as ScopedWorkspace)[OPERATION_SCOPE]
   if (proof && (proof.options !== JSON.stringify(options)
-    || !validateRequestInput(proof, 0, 0, () => proof.current()))) throw new SemanticInputUnavailableError()
+    || !validateRequestInput(proof, 0, 0, () => proof.current(), "membership-consumer"))) throw new SemanticInputUnavailableError()
 }
 
 /** Primitive metadata only, detached from the baseline Program/AST lifetime. */

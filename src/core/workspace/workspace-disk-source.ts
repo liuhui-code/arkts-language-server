@@ -7,7 +7,7 @@ const MAX_DISK_READ_CHUNK_BYTES = 64 * 1024
 export const MAX_DISK_SNAPSHOT_BYTES = 4 * 1024 * 1024
 
 type DiskReadResult =
-  | { status: "loaded"; content: string; identity?: ReturnType<typeof regularSourceIdentity> }
+  | { status: "loaded"; content: string; identity?: ReturnType<typeof regularSourceIdentity>; mode?: number }
   | { status: "unavailable" }
   | { status: "budget-exceeded" }
 
@@ -66,6 +66,8 @@ export function readDiskSource(
     operationControl.checkpoint()
     if (
       offset !== before.size
+      || (expectedPhysicalPath !== undefined && initial.isFile()
+        && (before.mode !== after.mode || after.mode !== namedAfter.mode))
       || before.dev !== after.dev
       || before.ino !== after.ino
       || before.size !== after.size
@@ -78,7 +80,7 @@ export function readDiskSource(
     return {
       status: "loaded",
       ...(expectedPhysicalPath !== undefined && initial.isFile()
-        ? { identity: regularSourceIdentity(expectedPhysicalPath, after) } : {}),
+        ? { identity: regularSourceIdentity(expectedPhysicalPath, after), mode: after.mode } : {}),
       content: new TextDecoder("utf-8", { fatal: true, ignoreBOM: true })
         .decode(bytes.subarray(0, offset)),
     }

@@ -36,3 +36,38 @@ test("group root discovery is reused across queries and content revisions, then 
   const moved = groups.select({ ...workspace, canonicalRootId: "/another-physical-root" }, membership)
   assert.notEqual(moved.id, configured.id)
 })
+
+test("group classification preserves the original containment rule for overlaps, cycles, declarations and spelling", t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-group-containment-"))
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const outfile = path.join(directory, "groups.cjs")
+  buildSync({ stdin: { contents: [
+    `export * from ${JSON.stringify(path.resolve("src/core/types/semantic-groups.ts"))}`,
+    `export * from ${JSON.stringify(path.resolve("src/project/resolved-path-containment.ts"))}`,
+  ].join("\n"), resolveDir: process.cwd() }, outfile, bundle: true, platform: "node", format: "cjs" })
+  const { SemanticGroups, containsResolvedPath } = createRequire(import.meta.url)(outfile)
+  const root = path.resolve("containment-workspace"), app = path.join(root, "App")
+  const make = (name, sourceRoots, dependencies = []) => ({ identity: { module: name },
+    moduleRoot: path.join(root, name), sourceRoots, dependencies: dependencies.map(module => ({ module })) })
+  const units = [make("App", [app + path.sep, path.join(app, "sub", "..")], ["Nested"]),
+    make("Nested", [path.join(app, "nested")], ["App"]), make("Other", [path.join(root, "Other")])]
+  const graph = { status: "ready", complete: true, units }
+  const membership = { status: "complete", revision: 1, paths: [path.join(app, "A.ets"),
+    path.join(root, "AppSibling", "Wrong.ets"), path.join(app, "nested", "B.ets"),
+    path.join(root, "app", "DifferentCase.ets"), path.join(root, "Other", "C.ts"),
+    path.join(root, "outside", "Global.d.ts"), path.join(root, "outside", "Global.d.ets"),
+    path.join(root, "outside", "NotGlobal.D.ts")] }
+  const model = { semanticGraph: () => graph }, groups = new SemanticGroups({ projectFor: () => model })
+  const actual = groups.all({ rootPath: root, canonicalRootId: root, projectMembership: membership, documents: [] })
+  for (let index = 0; index < units.length; index++) {
+    const closure = new Set(), queue = [units[index]]
+    for (const unit of queue) if (!closure.has(unit)) {
+      closure.add(unit)
+      for (const dependency of unit.dependencies) queue.push(units.find(candidate => candidate.identity.module === dependency.module))
+    }
+    const roots = [...closure].flatMap(unit => unit.sourceRoots)
+    const expected = membership.paths.filter(file => roots.some(source => containsResolvedPath(source, file))
+      || /\.d\.(?:ets|ts)$/.test(file))
+    assert.deepEqual(actual[index].workspace.semanticRootPaths, expected)
+  }
+})

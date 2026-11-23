@@ -2,6 +2,8 @@ import assert from "node:assert/strict"
 import fs from "node:fs"
 import path from "node:path"
 import test from "node:test"
+import { createHash } from "node:crypto"
+import { pathToFileURL } from "node:url"
 import { createReadinessFixture, initializeReadinessFixture } from "../support/semantic-readiness-lsp.mjs"
 
 test("complete reference admission borrows verified closed-source bytes without reopening every Program file",
@@ -34,7 +36,7 @@ test("complete reference admission borrows verified closed-source bytes without 
 
 test("Native disk qualification never borrows unsaved overlay bytes and recovers after close",
   { timeout: 30_000 }, async t => {
-    const { f, references, observations, expected, warm } = await completeFixture(t)
+    const { f, references, observations, expected, warm } = await completeFixture(t, "reference-disk-fingerprint.cjs")
     const target = f.uri("noise/Unused5.ts")
     f.session.openDocument({ uri: target, version: 1, text: "export class OnlyInUnsavedBuffer {}\n" })
     await warm()
@@ -43,6 +45,13 @@ test("Native disk qualification never borrows unsaved overlay bytes and recovers
     const overlay = observations().slice(before)
     assert.ok(overlay.length > 0)
     assert.ok(overlay.every(row => row.sourceReads === 1), JSON.stringify(overlay))
+    const namespaces = () => fs.readFileSync(path.join(f.directory, "disk-namespace.jsonl"), "utf8")
+      .trim().split("\n").map(JSON.parse).filter(row => row.diskSha256)
+    const diskDigest = diskNamespaceDigest(f.workspace)
+    const overlayDigest = diskNamespaceDigest(f.workspace, new Map([["noise/Unused5.ts", "export class OnlyInUnsavedBuffer {}\n"]]))
+    assert.notEqual(diskDigest, overlayDigest, "the oracle must distinguish disk and overlay bytes")
+    assert.ok(namespaces().length > 0)
+    assert.ok(namespaces().every(row => row.diskSha256 === diskDigest), "every actual admission fingerprint must describe disk, never the unsaved overlay")
     assert.equal(fs.readFileSync(path.join(f.workspace, "noise/Unused5.ts"), "utf8"), "export {}\n")
     f.session.transport.send({ jsonrpc: "2.0", method: "textDocument/didClose", params: { textDocument: { uri: target } } })
     await warm()
@@ -113,3 +122,26 @@ async function completeFixture(t, extraObserver) {
 }
 
 function normalize(values) { return values.map(value => JSON.stringify(value)).sort() }
+
+/** Independent CompleteScanInputs source projection from actual on-disk bytes. */
+function diskNamespaceDigest(root, overlays = new Map()) {
+  const files = []
+  const visit = (directory, prefix = "") => {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const relative = prefix + entry.name, file = path.join(directory, entry.name)
+      if (entry.isDirectory()) visit(file, relative + "/")
+      else if (entry.isFile() && /\.(ets|ts)$/.test(entry.name) && !entry.name.endsWith(".d.ts")) {
+        const uri = pathToFileURL(fs.realpathSync.native(file)).href
+        const content = overlays.has(relative) ? overlays.get(relative) : fs.readFileSync(file, "utf8")
+        files.push({ uri, digest: createHash("sha256").update(content).digest() })
+      }
+    }
+  }
+  visit(root)
+  const hash = createHash("sha256")
+  for (const { uri, digest } of files.sort((a,b) => a.uri < b.uri ? -1 : a.uri > b.uri ? 1 : 0)) {
+    const bytes = Buffer.from(uri), length = Buffer.alloc(8); length.writeBigUInt64LE(BigInt(bytes.length))
+    hash.update(length).update(bytes).update(digest)
+  }
+  return hash.digest("hex")
+}

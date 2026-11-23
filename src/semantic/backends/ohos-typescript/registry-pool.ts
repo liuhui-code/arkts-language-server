@@ -63,10 +63,14 @@ export function officialDocumentRegistryFor(sdk: ProjectSdkSelection,
 
 export function createOfficialSemanticService(host: ts.LanguageServiceHost, sdk: ProjectSdkSelection,
   observe?: (source: ts.SourceFile) => void, invalidate?: () => void,
-  programReturned?: (program: ts.Program | undefined) => void): ts.LanguageService {
+  programReturned?: (program: ts.Program | undefined) => void,
+  mode: ts.LanguageServiceMode.Semantic | ts.LanguageServiceMode.Syntactic = ts.LanguageServiceMode.Semantic): ts.LanguageService {
   const registry = officialDocumentRegistryFor(sdk)
-  return sdkExportLanguageService(host, sdk, registry, enriched =>
-    recoverableLanguageService(enriched, registry, observe, invalidate, programReturned))
+  const create = (enriched: ts.LanguageServiceHost) =>
+    recoverableLanguageService(enriched, registry, observe, invalidate, programReturned, mode)
+  // Syntax owns the same leases/retirement boundary but never an SDK auto-import Program.
+  return mode === ts.LanguageServiceMode.Syntactic ? create(host)
+    : sdkExportLanguageService(host, sdk, registry, create)
 }
 
 /** Recycle the LS at L2: this fork's cleanupSemanticCache drops Program ownership without releasing registry refs. */

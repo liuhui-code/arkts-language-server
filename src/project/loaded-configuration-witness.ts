@@ -1,16 +1,21 @@
+import { lookupIdentity } from "./configuration-lookup-identity.js"
+export { retainedInputFactsCurrent } from "./retained-input-facts.js"
+import type { RetainedInputFact } from "./retained-input-facts.js"
+import type { SourceReadOrigin } from "./source-read-origin.js"
 import fs from "node:fs"
 import path from "node:path"
+import { configurationSourcePlan, type ConfigurationSourcePlan } from "./configuration-source-plan.js"
 import { configurationSourceIdentity } from "./configuration-source-identity.js"
-import { requestConfigurationIdentity, validateRequestInput, type ConfigurationInputIdentity, type ConfigurationValidationIdentity } from "./request-input-validation.js"
+import { requestConfigurationIdentity, validateRequestInput, compareRetainedConfigurationFacts, type ConfigurationInputIdentity, type ConfigurationValidationIdentity } from "./request-input-validation.js"
 
 // Failure details are bounded; actual load-owned evidence is required state, not an evictable cache.
 const MAX_NAMESPACE_FAILURE_DETAILS = 4096
-const MAX_MISSING_ANCESTORS = 64
 
 export type ConfigurationFreshnessMode = "validate" | "capture"
 
 export interface RetainedConfigurationProof {
   readonly factCount: number
+  readonly facts?: readonly RetainedInputFact[]
   current(checkpoint: () => void): boolean
 }
 
@@ -24,6 +29,7 @@ export interface ConfigurationWitnessFailure {
 export class LoadedConfigurationWitness {
   private readonly identities = new Map<string, string>()
   private readonly pathIdentities = new Map<string, string>()
+  private readonly sourcePlans = new Map<string, ConfigurationSourcePlan | undefined>()
   private readonly failedSourceReads = new Set<string>()
   private revision = 0
   private resetEpoch = 0
@@ -82,6 +88,18 @@ export class LoadedConfigurationWitness {
           this.identities.set(witnessPath, identity); this.revision += 1
         }
       }
+    }
+  }
+
+  /** A pure derived value may retain the original guarded byte-read identity.
+   * Never read the current namespace here or replace an existing conflicting fact. */
+  retainSourceRead(origin: SourceReadOrigin): void {
+    const previous = this.pathIdentities.get(origin.file)
+    if (previous !== undefined && previous !== origin.configurationIdentity) {
+      this.markUnprovable("loaded-identity-changed", origin.file)
+    } else if (previous === undefined) {
+      this.pathIdentities.set(origin.file, origin.configurationIdentity)
+      this.revision++
     }
   }
 
@@ -169,6 +187,7 @@ export class LoadedConfigurationWitness {
   }
 
   reset(): void {
+    this.sourcePlans.clear()
     this.identities.clear()
     this.pathIdentities.clear()
     this.failedSourceReads.clear()
@@ -191,6 +210,7 @@ export class LoadedConfigurationWitness {
     })
     for (const facts of [this.identities, this.pathIdentities]) {
       for (const file of facts.keys()) if (affected(file)) {
+        this.sourcePlans.delete(facts.get(file)!)
         facts.delete(file)
         this.namespaceFacts.delete(`${facts === this.pathIdentities ? 1 : 0}\0${file}`)
         this.regularSourceFacts.delete(`${facts === this.pathIdentities ? 1 : 0}\0${file}`)
@@ -229,6 +249,7 @@ export class LoadedConfigurationWitness {
       const key = `${facts === this.pathIdentities ? 1 : 0}\0${resolved}`
       if (this.namespaceFacts.has(key)) this.regularSourceFacts.add(key)
       if (facts.has(resolved) && facts.get(resolved) !== before.identity) {
+        this.sourcePlans.delete(facts.get(resolved)!)
         facts.set(resolved, before.identity)
         this.revision += 1
       }
@@ -243,7 +264,7 @@ export class LoadedConfigurationWitness {
     const epoch = this.resetEpoch, revision = this.revision
     let valid = !(this.unprovable && !this.sourceResetOnlyFailure)
       && [...this.namespaceFailures, ...this.failedSourceReads].every(file => sourceNamespace(file))
-    const facts: { filePath: string; identity: string; directoryOnly: boolean }[] = []
+    const facts: RetainedInputFact[] = []
     for (const [kind, records] of [this.identities, this.pathIdentities].entries()) {
       for (const [filePath, identity] of records) {
         checkpoint()
@@ -253,7 +274,7 @@ export class LoadedConfigurationWitness {
     }
     valid &&= this.resetEpoch === epoch && this.revision === revision
     Object.freeze(facts)
-    return Object.freeze({ factCount: facts.length, current: (boundary: () => void): boolean => {
+    return Object.freeze({ factCount: facts.length, ...(valid && this.ownerCurrent() ? { facts } : {}), current: (boundary: () => void): boolean => {
       boundary()
       if (!valid) return false
       for (const fact of facts) {
@@ -265,7 +286,7 @@ export class LoadedConfigurationWitness {
     } })
   }
 
-  /** Loaded identities stay fixed; query-local sharing ends in an uncached union scan. */
+  /** Loaded facts stay fixed; final observations never inherit query-phase observations. */
   freshness(checkpoint: () => void, mode: ConfigurationFreshnessMode = "validate"): (() => boolean) | undefined {
     if (!this.ownerCurrent() || this.failedSourceReads.size || this.unprovable && !this.namespaceOnlyFailure) return undefined
     const resetEpoch = this.resetEpoch
@@ -276,35 +297,40 @@ export class LoadedConfigurationWitness {
       // Another root may append actual loads without changing existing inputs.
       // Validate ALL current facts, including additions, and fence this scan.
       const revision = this.revision
-      const identities = [...this.identities]
-      const pathIdentities = [...this.pathIdentities]
-      const stale = [...this.namespaceFailures]
-      for (const [filePath, identity] of identities) {
-        checkpoint()
-        const current = requestConfigurationIdentity(filePath, false, identity, () =>
-          configurationSourceIdentity(filePath, () => lookupIdentity(filePath), checkpoint))
-        if (current?.identity !== identity) {
-          if (!this.canRecoverNamespace(`0\0${filePath}`, current)) return false
-          stale.push(filePath)
+      const factsCurrent = compareRetainedConfigurationFacts(this, resetEpoch, revision, () => {
+        const identities = [...this.identities]
+        const pathIdentities = [...this.pathIdentities]
+        const stale = [...this.namespaceFailures]
+        for (const [filePath, identity] of identities) {
+          checkpoint()
+          const current = requestConfigurationIdentity(filePath, false, identity, () =>
+            configurationSourceIdentity(filePath, () => lookupIdentity(filePath), checkpoint, this.sourcePlan(identity)))
+          if (current?.identity !== identity) {
+            if (!this.canRecoverNamespace(`0\0${filePath}`, current)) return false
+            stale.push(filePath)
+          }
         }
-      }
-      for (const [filePath, identity] of pathIdentities) {
-        checkpoint()
-        const current = requestConfigurationIdentity(filePath, true, identity, () =>
-          configurationSourceIdentity(filePath, () => lookupIdentity(filePath, true), checkpoint))
-        if (current?.identity !== identity) {
-          if (!this.canRecoverNamespace(`1\0${filePath}`, current)) return false
-          stale.push(filePath)
+        for (const [filePath, identity] of pathIdentities) {
+          checkpoint()
+          const current = requestConfigurationIdentity(filePath, true, identity, () =>
+            configurationSourceIdentity(filePath, () => lookupIdentity(filePath, true), checkpoint, this.sourcePlan(identity)))
+          if (current?.identity !== identity) {
+            if (!this.canRecoverNamespace(`1\0${filePath}`, current)) return false
+            stale.push(filePath)
+          }
         }
-      }
+        checkpoint()
+        if (stale.length) {
+          // All non-source facts passed. Never turn an unknown SDK/configuration
+          // change into permission to replace its original proof.
+          if (this.ownerCurrent() && this.resetEpoch === resetEpoch && this.revision === revision
+            && !this.failedSourceReads.size && (!this.unprovable || this.namespaceOnlyFailure)) this.onStale?.(stale)
+          return false
+        }
+        return true
+      })
       checkpoint()
-      if (stale.length) {
-        // All non-source facts passed. Never turn an unknown SDK/configuration
-        // change into permission to replace its original proof.
-        if (this.ownerCurrent() && this.resetEpoch === resetEpoch && this.revision === revision
-          && !this.failedSourceReads.size && (!this.unprovable || this.namespaceOnlyFailure)) this.onStale?.(stale)
-        return false
-      }
+      if (!factsCurrent) return false
       return this.ownerCurrent() && !this.unprovable && this.failedSourceReads.size === 0
         && this.resetEpoch === resetEpoch && this.revision === revision
     }
@@ -317,6 +343,13 @@ export class LoadedConfigurationWitness {
     return mode === "capture" ? current : current() ? current : undefined
   }
 
+  /** The keys are existing load-owned facts; reset, retirement and actual reload
+   * release their parsed representations. A cache hit still performs raw IO. */
+  private sourcePlan(identity: string): ConfigurationSourcePlan | undefined {
+    if (!this.sourcePlans.has(identity)) this.sourcePlans.set(identity, configurationSourcePlan(identity))
+    return this.sourcePlans.get(identity)
+  }
+
   private canRecoverNamespace(key: string, current: ConfigurationValidationIdentity | undefined): boolean {
     // An ordinary positive source delta still belongs to snapshot admission,
     // including its real read-window guard. It must not retire the LS before
@@ -325,66 +358,4 @@ export class LoadedConfigurationWitness {
       && !(this.regularSourceFacts.has(key) && current.regularSource)
   }
 
-}
-
-/** Include lexical links and genuine absence, including its existing parent owner. */
-function lookupIdentity(filePath: string, directoryIdentityOnly = false): ConfigurationInputIdentity | undefined {
-  let candidate = filePath
-  const missing: string[] = []
-  for (let depth = 0; depth < MAX_MISSING_ANCESTORS; depth += 1) {
-    try {
-      const lexical = fs.lstatSync(candidate, { throwIfNoEntry: false })
-      if (!lexical) {
-        // Keep the second absence observation; avoid allocating ENOENT errors.
-        if (fs.lstatSync(candidate, { throwIfNoEntry: false })) return undefined
-        const parent = path.dirname(candidate)
-        if (parent === candidate) return undefined
-        missing.push(path.basename(candidate))
-        candidate = parent
-        continue
-      }
-      const physical = fs.realpathSync.native(candidate)
-      const target = fs.statSync(candidate)
-      const link = lexical.isSymbolicLink() ? fs.readlinkSync(candidate) : null
-      const owner = [candidate, missing, physical, link]
-      // Keep full before/after guards, including an absent path's owner:
-      // a missing → present → missing load window is not negative evidence.
-      const loadGuard = JSON.stringify([...owner, stamp(lexical, false), stamp(target, false)])
-      // The first absent ancestor already proves every descendant absent.
-      // Retain that actual lstat evidence once, not a guessed directory listing.
-      // Creation/retargeting of it still invalidates every dependent lookup.
-      const absent = missing.at(-1)
-      const absenceOwner = absent !== undefined && target.isDirectory()
-        ? [candidate, JSON.stringify([candidate, [], physical, link, stamp(lexical, false), stamp(target, false)])] as const
-        : undefined
-      return { loadGuard, absenceOwner, regularSource: absent === undefined && lexical.isFile() && target.isFile(),
-        witnessPath: absent === undefined ? filePath : path.join(candidate, absent),
-        identity: absent === undefined ? directoryIdentityOnly && target.isDirectory()
-          ? JSON.stringify([...owner, stamp(lexical, true), stamp(target, true)]) : loadGuard
-          : JSON.stringify([candidate, [absent], physical, link, stamp(lexical, true), stamp(target, true)]) }
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") return undefined
-      // ENOENT from an existing dangling link is not an absence witness.
-      try {
-        if (fs.lstatSync(candidate, { throwIfNoEntry: false })) return undefined
-      }
-      catch (missingError) {
-        if ((missingError as NodeJS.ErrnoException).code !== "ENOENT") return undefined
-      }
-      const parent = path.dirname(candidate)
-      if (parent === candidate) return undefined
-      missing.push(path.basename(candidate))
-      candidate = parent
-    }
-  }
-  return undefined
-}
-
-function stamp(stat: fs.Stats, missingChild: boolean): readonly unknown[] {
-  const entity = [stat.dev, stat.ino, stat.mode]
-  // Rewalk the observed absent ancestor; unrelated siblings do not change absence.
-  // Directly observed/enumerated directories and all files retain full stamps.
-  return missingChild && stat.isDirectory()
-    ? entity
-    : [...entity, stat.size, stat.mtimeMs, stat.ctimeMs]
 }

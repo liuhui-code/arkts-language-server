@@ -10,7 +10,8 @@ export class ReferenceNamespaceAdmission {
   private readonly reconciled = new Map<string, string>()
   constructor(private readonly readiness: (query: SemanticReadinessQuery) => Promise<SemanticReadinessReport>,
     private readonly changed: (rootUri: string, kind: "namespace" | "content") => void,
-    private readonly reconcile: (rootUri: string, kind: "namespace" | "content") => void = () => {}) {}
+    private readonly reconcile: (rootUri: string, kind: "namespace" | "content") => void = () => {},
+    private readonly indexCurrent?: (rootUri: string, fingerprint: string, signal?: AbortSignal) => Promise<boolean>) {}
 
   async read(query: SemanticReadinessQuery): Promise<SemanticReadinessReport> {
     const report = await this.readiness(query)
@@ -27,6 +28,15 @@ export class ReferenceNamespaceAdmission {
         && previous.disk !== undefined && previous.disk !== namespace.diskSha256)) {
         this.reconciled.delete(query.rootUri)
         this.changed(query.rootUri, namesChanged ? "namespace" : "content")
+        if (!namespace.overlayOnly && namespace.diskSha256 && this.indexCurrent) {
+          const qualified = await this.indexCurrent(query.rootUri, namespace.diskSha256, query.signal)
+          if (query.signal?.aborted) throw query.signal.reason ?? new Error("References admission cancelled")
+          const current = this.observed.get(query.rootUri)
+          if (current?.names !== namespace.sha256 || current.currentDisk !== namespace.diskSha256) {
+            throw new SemanticWorkerSupervisorError("content-modified")
+          }
+          if (qualified) return report
+        }
         this.requestReconciliation(query.rootUri, namesChanged ? "namespace" : "content")
       }
     }

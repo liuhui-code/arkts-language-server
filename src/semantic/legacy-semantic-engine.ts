@@ -1,3 +1,5 @@
+import { DocumentSymbolOperation } from "./document-symbol-operation.js"
+import { referenceCheckpoint } from "./references/reference-context-retention.js"
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
@@ -12,7 +14,6 @@ import { isProjectResourceFile, isProjectSourceNamespace } from "./resource-file
 import type { SemanticReadinessQuery } from "../contracts/semantic-readiness.js"
 import { ProjectReadinessLifecycle } from "./project-readiness.js"
 import { prepareIncomingCallMembership } from "./incoming-call-membership.js"
-import { reusablePreparedCompletion } from "./prepared-completion-inputs.js"
 import type {
   SemanticCallHierarchyItem,
   SemanticCallHierarchyItemQuery,
@@ -60,20 +61,20 @@ import { toFilePath } from "./semantic-worker-file-identity.js"
 import { formatArktsDocument } from "../core/formatting/arkts-document-formatter.js"
 import { FoldingRangeProvider } from "../core/syntax/folding-range-provider.js"
 import type { SemanticTypeEngineRegistry } from "../core/types/type-engine.js"
-import { completionItemDiscoveryProjectRoots, completionResolvePreparation } from "./completion-batch-planning.js"
-import { publicReferenceResult } from "./references/reference-result-mapping.js"
 import type { SemanticDocumentStore, SemanticWorkspaceView } from "../core/workspace/document-store.js"
 import type { LocalPackageResolver } from "../core/sdk/local-package-resolver.js"
 import { createSemanticEngineResources, applySemanticWorkspaceChanges } from "./semantic-engine-resources.js"
 import { runNavigationQuery } from "./navigation-query.js"
-import { runCompletionQuery } from "./completion-operation.js"
+import { runDiagnosticQuery } from "./diagnostic-operation.js"
+import { withSynchronousInputPreparation } from "../project/request-input-validation.js"
+import { runCompletionQuery, runCompletionResolveQuery, type CompletionPorts } from "./completion-operation.js"
 import type { StructuredLogger } from "../observability/logger.js"
 import type { SemanticMemoryLevel } from "./coordinator/semantic-coordinator.js"
 import type { LegacySemanticEngineRuntimeOptions } from "./semantic-engine-runtime-options.js"
-import { prepareReferenceAnchor, prepareReferenceSearchWorkspace, runOwnerReferenceQuery } from "./references/reference-anchor-preparation.js"
+import { prepareReferenceAnchor, runResidentReferenceQuery, runOwnerReferenceQuery } from "./references/reference-anchor-preparation.js"
 import { prepareCallHierarchyContext, prepareInteractiveContext, toLegacyPosition } from "./interactive-workspace.js"
-import { toPublicCompletion, toLegacyCompletion, toPublicCallHierarchyItem,
-  toLegacyCallHierarchyItem, toPublicRange, toLegacyRange, toPublicDocumentSymbol } from "./legacy-result-mappers.js"
+import { toPublicCallHierarchyItem,
+  toLegacyCallHierarchyItem, toPublicRange, toLegacyRange } from "./legacy-result-mappers.js"
 
 export type { LegacySemanticEngineRuntimeOptions } from "./semantic-engine-runtime-options.js"
 
@@ -88,6 +89,7 @@ export class LegacySemanticEngine implements SemanticEnginePort {
   private readonly autoImportBatchRootLimit: number
   private readonly autoImportTrimBetweenBatches: boolean
   private readonly projectPreparation = new ProjectReadinessLifecycle()
+  private readonly documentSymbolOperation: DocumentSymbolOperation
 
   constructor(
     private readonly projects: ProjectResolverPort,
@@ -98,6 +100,7 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     this.packageResolver = resources.packageResolver
     this.documents = resources.documents
     this.engines = resources.engines
+    this.documentSymbolOperation = new DocumentSymbolOperation(referenceCheckpoint(runtime.hostCancellationToken) ?? (() => {}))
     this.interactiveProjectRootProfile = runtime.interactiveProjectRootProfile ?? "closure"
     this.memberCompletionProjectRootProfile = runtime.memberCompletionProjectRootProfile ?? "group"
     this.autoImportProjectRootProfile = runtime.autoImportProjectRootProfile ?? "workspace"
@@ -114,6 +117,7 @@ export class LegacySemanticEngine implements SemanticEnginePort {
 
   applyMemoryPressure(level: SemanticMemoryLevel): void {
     this.engines.applyMemoryPressure(level)
+    if (level === "level2" || level === "level3") this.documentSymbolOperation.dispose()
   }
 
   sync(document: DocumentSnapshot): void {
@@ -131,61 +135,40 @@ export class LegacySemanticEngine implements SemanticEnginePort {
   configureProject(selection: unknown): void {
     this.packageResolver.configureProject(selection)
     this.engines.configureProject(selection)
+    this.documentSymbolOperation.configureProject(selection)
   }
 
   configureSdk(selection: unknown): void {
     this.engines.configureSdk(selection)
+    this.documentSymbolOperation.configureSdk(selection)
   }
 
   isResourceFile = (rootUri: string, fileUri: string): boolean => isProjectResourceFile(this.packageResolver, rootUri, fileUri)
   isSourceNamespace = (rootUri: string, fileUri: string): boolean => isProjectSourceNamespace(this.packageResolver, rootUri, fileUri)
   close(documentUri: string): void {
+    this.documentSymbolOperation.close(documentUri)
     if (documentUri.startsWith("file:")) this.documents.close(fileURLToPath(documentUri),
       fileURLToPath(this.projects.projectFor(documentUri).rootUri))
   }
 
   workspaceFilesChanged(batches: readonly SemanticWorkspaceFileChangeBatch[]): void {
     applySemanticWorkspaceChanges(batches, this.documents, this.engines)
+    for (const batch of batches) if (batch.configurationChanged) {
+      const root = toFilePath(batch.rootUri)
+      if (root) this.documentSymbolOperation.invalidate(root)
+    }
   }
 
   async complete(
     query: SemanticQuery,
   ): Promise<VersionedSemanticResult<SemanticCompletionList>> {
-    return runCompletionQuery(query, {
-      sync: () => this.sync(query.document), checkpoint: () => assertActive(query.signal),
-      operationScoped: () => this.engines.hasOperationScopes(toFilePath(query.document.workspaceId)),
-      hasGroups: () => this.engines.hasSemanticGroups(toFilePath(query.document.workspaceId)),
-      membershipComplete: () => this.documents.membershipFor(toFilePath(query.document.workspaceId)!).status === "complete",
-      runtime: { projectRootProfile: this.interactiveProjectRootProfile, memberCompletionProjectRootProfile: this.memberCompletionProjectRootProfile,
-        autoImportProjectRootProfile: this.autoImportProjectRootProfile, autoImportBatchRootLimit: this.autoImportBatchRootLimit,
-        autoImportTrimBetweenBatches: this.autoImportTrimBetweenBatches },
-      prepare: (...args) => this.prepare(...args),
-    })
+    return runCompletionQuery(query, this.completionPorts(query))
   }
 
   async resolveCompletion(
     query: SemanticCompletionResolveQuery,
   ): Promise<VersionedSemanticResult<SemanticCompletion>> {
-    assertActive(query.signal)
-    this.sync(query.document)
-    const autoImportRoots = completionItemDiscoveryProjectRoots(query.completion, query.document.workspaceId)
-    const reusable = reusablePreparedCompletion(query, this.packageResolver, toFilePath(query.document.workspaceId),
-      autoImportRoots !== undefined, () => assertActive(query.signal))
-    if (reusable) return { documentVersion: query.document.version, value: reusable }
-    const scope = completionResolvePreparation(query, autoImportRoots, {
-      projectRootProfile: this.interactiveProjectRootProfile, memberCompletionProjectRootProfile: this.memberCompletionProjectRootProfile,
-      operationScoped: this.engines.hasOperationScopes(toFilePath(query.document.workspaceId)),
-    }, () => this.engines.hasSemanticGroups(toFilePath(query.document.workspaceId)),
-      () => this.documents.membershipFor(toFilePath(query.document.workspaceId)!).status === "complete")
-    const prepared = this.prepare(query.document, query.position, scope.includeWorkspaceFiles, scope.projectRootProfile, scope.roots)
-    const item = prepared.engine.resolveCompletion(
-      { ...prepared.position, allowSnippets: query.completionOptions?.snippets === true },
-      toLegacyCompletion(query.completion),
-    )
-    return {
-      documentVersion: query.document.version,
-      value: toPublicCompletion(item, query.document.version),
-    }
+    return runCompletionResolveQuery(query, this.completionPorts(query), this.packageResolver)
   }
 
   async define(
@@ -226,12 +209,8 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     this.sync(query.document)
     const workspace = this.projects.projectFor(query.document.uri)
     const position = toLegacyPosition(query.document, query.position, workspace)
-    const prepare = () => prepareReferenceSearchWorkspace(position, this.documents,
-      this.runtime.references?.trace ? this.logger : undefined, query.document)
-    const result = synchronize ? this.engines.retainedReferences(fileURLToPath(workspace.rootUri), prepare, position, query.includeDeclaration)
-      : this.engines.residentReferences(prepare(), position, query.includeDeclaration)
-    return result ? publicReferenceResult(query.document.version, result)
-      : { documentVersion: query.document.version, value: null }
+    return runResidentReferenceQuery(query, position, fileURLToPath(workspace.rootUri),
+      this.documents, this.engines, synchronize, this.runtime.references?.trace ? this.logger : undefined)
   }
 
   async referencesWithCandidates(
@@ -316,44 +295,45 @@ export class LegacySemanticEngine implements SemanticEnginePort {
   ): Promise<VersionedSemanticResult<SemanticDocumentSymbol[]>> {
     assertActive(query.signal)
     this.sync(query.document)
-    const prepared = this.prepare(query.document, { line: 0, character: 0 })
-    return {
-      documentVersion: query.document.version,
-      value: prepared.engine.documentSymbols(prepared.position).map(toPublicDocumentSymbol),
-    }
+    const root = fileURLToPath(this.projects.projectFor(query.document.uri).rootUri)
+    return this.documentSymbolOperation.run(root, query)
   }
 
   async documentHighlights(
     query: SemanticQuery,
   ): Promise<VersionedSemanticResult<SemanticDocumentHighlight[]>> {
-    assertActive(query.signal)
-    this.sync(query.document)
-    const prepared = this.prepare(query.document, query.position)
-    return {
-      documentVersion: query.document.version,
-      value: prepared.engine.documentHighlights(prepared.position).map((highlight) => ({
-        range: toPublicRange(highlight.range),
-        kind: highlight.kind,
-      })),
-    }
+    return withSynchronousInputPreparation(() => {
+      assertActive(query.signal)
+      this.sync(query.document)
+      const prepared = this.prepare(query.document, query.position)
+      return {
+        documentVersion: query.document.version,
+        value: prepared.engine.documentHighlights(prepared.position).map((highlight) => ({
+          range: toPublicRange(highlight.range),
+          kind: highlight.kind,
+        })),
+      }
+    })
   }
 
   async inlayHints(
     query: SemanticInlayHintQuery,
   ): Promise<VersionedSemanticResult<SemanticInlayHint[]>> {
-    assertActive(query.signal)
-    this.sync(query.document)
-    const prepared = this.prepare(query.document, query.range.start)
-    return {
-      documentVersion: query.document.version,
-      value: prepared.engine.inlayHints(prepared.position, toLegacyRange(query.range)).map((hint) => ({
-        ...hint,
-        position: {
-          line: hint.position.line - 1,
-          character: hint.position.column - 1,
-        },
-      })),
-    }
+    return withSynchronousInputPreparation(() => {
+      assertActive(query.signal)
+      this.sync(query.document)
+      const prepared = this.prepare(query.document, query.range.start)
+      return {
+        documentVersion: query.document.version,
+        value: prepared.engine.inlayHints(prepared.position, toLegacyRange(query.range)).map((hint) => ({
+          ...hint,
+          position: {
+            line: hint.position.line - 1,
+            character: hint.position.column - 1,
+          },
+        })),
+      }
+    })
   }
 
   async prepareCallHierarchy(
@@ -460,18 +440,11 @@ export class LegacySemanticEngine implements SemanticEnginePort {
   async diagnose(
     query: SemanticDocumentQuery,
   ): Promise<VersionedSemanticResult<SemanticDiagnostic[]>> {
-    assertActive(query.signal)
-    this.sync(query.document)
-    const prepared = this.prepare(query.document, { line: 0, character: 0 }, false,
-      this.interactiveProjectRootProfile, [], false)
-    const value = prepared.engine.diagnostics(prepared.position).map((diagnostic) => ({
-      range: toPublicRange(diagnostic.range),
-      severity: diagnostic.severity,
-      code: diagnostic.code,
-      message: diagnostic.message,
-      source: "arkts" as const,
-    }))
-    return { documentVersion: query.document.version, value }
+    return runDiagnosticQuery(query, {
+      sync: () => this.sync(query.document),
+      prepare: () => this.prepare(query.document, { line: 0, character: 0 }, false,
+        this.interactiveProjectRootProfile, [], false),
+    })
   }
 
   async codeActions(
@@ -536,36 +509,54 @@ export class LegacySemanticEngine implements SemanticEnginePort {
   async signatureHelp(
     query: SemanticSignatureHelpQuery,
   ): Promise<VersionedSemanticResult<SemanticSignatureHelp | null>> {
-    assertActive(query.signal)
-    this.sync(query.document)
-    const prepared = this.prepare(query.document, query.position)
-    return {
-      documentVersion: query.document.version,
-      value: prepared.engine.signatureHelp(prepared.position, query.triggerReason),
-    }
+    return withSynchronousInputPreparation(() => {
+      assertActive(query.signal)
+      this.sync(query.document)
+      const prepared = this.prepare(query.document, query.position)
+      return {
+        documentVersion: query.document.version,
+        value: prepared.engine.signatureHelp(prepared.position, query.triggerReason),
+      }
+    })
   }
 
   async hover(
     query: SemanticQuery,
   ): Promise<VersionedSemanticResult<SemanticHover | null>> {
-    assertActive(query.signal)
-    this.sync(query.document)
-    const prepared = this.prepare(query.document, query.position)
-    const hover = prepared.engine.hover(prepared.position)
-    return {
-      documentVersion: query.document.version,
-      value: hover
-        ? {
-            signature: hover.signature,
-            documentation: hover.documentation,
-            range: toPublicRange(hover.range),
-          }
-        : null,
-    }
+    return withSynchronousInputPreparation(() => {
+      assertActive(query.signal)
+      this.sync(query.document)
+      const prepared = this.prepare(query.document, query.position)
+      const hover = prepared.engine.hover(prepared.position)
+      return {
+        documentVersion: query.document.version,
+        value: hover
+          ? {
+              signature: hover.signature,
+              documentation: hover.documentation,
+              range: toPublicRange(hover.range),
+            }
+          : null,
+      }
+    })
   }
 
   dispose(): void {
+    this.documentSymbolOperation.dispose()
     this.engines.dispose()
+  }
+
+  private completionPorts(query: Pick<SemanticQuery, "document" | "signal">): CompletionPorts {
+    return {
+      sync: () => this.sync(query.document), checkpoint: () => assertActive(query.signal),
+      operationScoped: () => this.engines.hasOperationScopes(toFilePath(query.document.workspaceId)),
+      hasGroups: () => this.engines.hasSemanticGroups(toFilePath(query.document.workspaceId)),
+      membershipComplete: () => this.documents.membershipFor(toFilePath(query.document.workspaceId)!).status === "complete",
+      runtime: { projectRootProfile: this.interactiveProjectRootProfile, memberCompletionProjectRootProfile: this.memberCompletionProjectRootProfile,
+        autoImportProjectRootProfile: this.autoImportProjectRootProfile, autoImportBatchRootLimit: this.autoImportBatchRootLimit,
+        autoImportTrimBetweenBatches: this.autoImportTrimBetweenBatches },
+      prepare: (...args) => this.prepare(...args),
+    }
   }
 
   private prepare(

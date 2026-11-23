@@ -1,4 +1,5 @@
-import { readProjectMembership, readProjectAdmissionToken } from "./project-membership-access.js"
+import { OverlayDocumentMap } from "./overlay-document-map.js"
+import { readProjectMembership, readProjectAdmissionToken, validateCachedMembershipBeforeCapture, captureProjectIdentityProof, currentMembershipCapacityFailure } from "./project-membership-access.js"
 import { refreshMembershipSnapshot, type ProjectMembershipRefresh } from "./project-membership-refresh.js"
 import { ManagedSourceNamespaces } from "./managed-source-namespaces.js"
 import { readAdmittedProjectSourceSnapshot } from "./admitted-project-source-read.js"
@@ -21,7 +22,7 @@ import { isActiveProjectSource } from "./project-source-eligibility.js"
 import { SOURCE_EXTENSIONS } from "./workspace-source-enumerator.js"
 import { projectMembershipLimit, publishMembershipCatalog, scanProjectMembership, type ProjectFileSetCacheEntry } from "./project-membership-catalog.js"
 import { MAX_DISK_SNAPSHOT_BYTES, readDiskSource as safeRead, sourceStatIdentity } from "./workspace-disk-source.js"
-import { classifyWatchedSourceChanges, refreshClosedSourceMembership } from "./watched-source-notifications.js"
+import { classifyWatchedSourceChanges, refreshClosedSourceMembership, finishWatchedSourceChanges } from "./watched-source-notifications.js"
 import { invalidateClosedDocument } from "./closed-document-invalidation.js"
 import { extractImportSpecifiers } from "./import-specifiers.js"
 import { prepareInitialWorkspace } from "./initial-workspace-preparation.js"
@@ -132,7 +133,7 @@ export type { ProjectMembershipRefresh } from "./project-membership-refresh.js"
 
 export class SemanticDocumentStore implements ProjectFileAccessPort {
   private readonly managedSources: ManagedSourceNamespaces
-  private readonly documents = new Map<string, DocumentRecord>()
+  private readonly documents = new OverlayDocumentMap<DocumentRecord>()
   private readonly dependencyGenerations = new Map<string, number>()
   private readonly dependencyClosures = new Map<string, DependencyClosureCacheEntry>()
   private readonly projectFileSets = new Map<string, ProjectFileSetCacheEntry>()
@@ -300,11 +301,8 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
     this.projectFileSets.delete(canonicalWorkspaceRoot(rootPath))
   }
 
-  overlayFor(filePath: string) {
-    this.operationControl.checkpoint()
-    const document = this.documents.get(path.resolve(filePath))
-    return document?.overlay ? { content: document.content, documentVersion: document.documentVersion } : undefined
-  }
+  overlayFor(filePath: string) { this.operationControl.checkpoint(); return this.documents.overlayFor(filePath) }
+  overlayState() { this.operationControl.checkpoint(); return this.documents.overlayState() }
   checkpoint(): void { this.operationControl.checkpoint() }
 
   tokenFor(canonicalRootId: string, catalogRevision: number, filePath: string): ProjectFileAdmissionToken | undefined {
@@ -412,8 +410,8 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
       canonicalRoot, lexicalRoot, documents: this.documents, knownPaths: paths ?? [],
       operationControl: this.operationControl, maxReadBytes: MAX_CACHED_BYTES,
     })
-    const knownPathsBeforeInvalidation = new Set(sourceChanges.flatMap(({ sourcePath, overlay }) => (
-      !overlay && (this.documents.has(sourcePath) || Boolean(paths?.includes(sourcePath))) ? [sourcePath] : []
+    const knownPathsBeforeInvalidation = new Set(sourceChanges.flatMap(({ sourcePath }) => (
+      (this.documents.has(sourcePath) || Boolean(paths?.includes(sourcePath))) ? [sourcePath] : []
     )))
     const invalidationMatches = this.invalidateDiskDocuments(
       [
@@ -576,13 +574,9 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
       for (const changedPath of changedPaths) this.markWatchedChanged(changedRoot, changedPath)
     }
     for (const resetRoot of resetRoots) this.markTypeEngineReset(resetRoot)
-    const compatibleDiskDelta = rejectedSourceChanges.length === 0 && sourceChanges.length > 0
-      && sourceChanges.every(change => change.kind === "changed" && !change.overlay
-        && change.membershipEligible && knownPathsBeforeInvalidation.has(change.sourcePath))
-    for (const changedRoot of changedRoots) {
-      this.contentChanges.advance(changedRoot, compatibleDiskDelta && changedRoot === canonicalRoot
-        && !resetRoots.has(changedRoot) ? lexicalRoot : undefined)
-    }
+    finishWatchedSourceChanges({ entry, membershipChanged, sourceChanges, rejectedSourceChanges,
+      knownPathsBeforeInvalidation, canonicalRoot, lexicalRoot, changedRoots, resetRoots,
+      control: this.operationControl, changes: this.contentChanges })
     for (const dirtyRoot of dirtyMembershipRoots) this.projectFileSets.delete(dirtyRoot)
     this.resolutionInputs.changedNamespaces(batch.rootPath, sourceChanges)
   }
@@ -750,16 +744,17 @@ export class SemanticDocumentStore implements ProjectFileAccessPort {
 
   /** Reuse the current authoritative catalog without preloading unrelated source text. */
   membershipFor(rootPath: string): ProjectMembershipSnapshot { this.resolutionInputs.prepare(rootPath); return this.projectMembership(rootPath) }
+  validateProjectMembership(rootPath: string) { this.membershipFor(rootPath); return validateCachedMembershipBeforeCapture(rootPath, this.projectFileSets, root => this.membershipOverlays(root), this.operationControl, () => this.refreshProjectMembership(rootPath), () => this.scanProjectMembership(rootPath)) }
+
+  captureSourceIdentityProof(root: string, revision: number) {
+    return captureProjectIdentityProof(root, revision, this.projectFileSets, root => this.membershipOverlays(root), this.operationControl)
+  }
 
   /** No TTL: unchanged observed namespaces prove only the same capacity failure, never complete scope. */
   hasCurrentCapacityFailure(rootPath: string): boolean {
     this.resolutionInputs.prepare(rootPath)
-    const root = canonicalWorkspaceRoot(rootPath), entry = this.projectFileSets.get(root)
-    const proof = entry?.capacityProof
-    if (entry?.status !== "partial" || !proof) return false
-    const overlays = new Set(proof.overlays.length ? this.membershipOverlays(root) : [])
-    return proof.overlays.every(file => overlays.has(file))
-      && proof.directories.current(this.operationControl)
+    const root = canonicalWorkspaceRoot(rootPath)
+    return currentMembershipCapacityFailure(this.projectFileSets.get(root), () => this.membershipOverlays(root), this.operationControl)
   }
 
   /** Selects a store-owned source only to anchor full preparation, never a query target. */

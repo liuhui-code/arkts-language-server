@@ -101,3 +101,19 @@ WUI-003真实定义9221ms中8848.952ms在父队列；3份highlight、1份typeDef
 不是声称有界优先能消除真实编译成本。第一候选真实UI35分17.680秒又发现跨位置读取隐式替换（WUI-006）；
 ADR0032决定C统一独立请求所有权，新公开17项及Windows最终48项通过，正式UI复验另记。
 本补充仍Proposed，不用小夹具、校准或前一候选完整检查追认整体长尾解决。
+
+
+### 2026-11-19 synchronous preparation coverage (Proposed implementation refinement)
+
+Background diagnosis and the actual compiler completion-details branch hand their
+original synchronous preparation proofs to the existing query lease's independent
+final union, like navigation/list completion. Preparation scope never spans await;
+current/final observations are distinct, actual-load guards raw, all owners and
+32MiB metadata fallback retained. Cached-detail namespace admission remains on its
+original early-return path, outside the new compiler-branch scope. No running
+diagnostic preemption, fairness, mutation/global barrier or cancellation deadline
+changes. Fewer repeated proofs reduce service time; priority alone cannot bound
+a long already-running diagnosis. Public RED/GREEN and post-compiler mutation
+refusals plus ordinary Photos evidence: [NAV-PREP-001](../reports/2026-11-19-synchronous-diagnostic-and-details-preparation.md).
+This is not Accepted review or whole/UI/endurance acceptance; prior decisions and
+verification history remain intact.

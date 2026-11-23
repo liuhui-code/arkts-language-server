@@ -2,7 +2,6 @@ import path from "node:path"
 import type { LocalPackageResolver } from "../sdk/local-package-resolver.js"
 import type { SemanticWorkspaceView, ProjectMembershipSnapshot } from "../workspace/document-store.js"
 import type { HarmonySemanticGraph, HarmonySemanticUnit } from "../../project/harmony-project-model.js"
-import { containsResolvedPath } from "../../project/resolved-path-containment.js"
 import { initialPreparationActive, initialPreparationCheckpoint } from "../../semantic/coordinator/initial-preparation.js"
 import { hasOperationScope } from "./operation-scope-execution.js"
 import type { ProjectFileAccessPort } from "../workspace/document-store.js"
@@ -44,7 +43,12 @@ export class SemanticGroups {
     const key = resolvedPathIdentity(workspace.canonicalRootId)
     const scopes = ProjectOperationScopes.create(workspace, profile, this.access, () => this.resolver.generation,
       this.pendingScopes.get(key), draft => this.pendingScopes.set(key, draft))
-    if (scopes) { this.operationScopes.set(key, scopes); this.pendingScopes.delete(key) }
+    if (scopes) {
+      // Pure membership classification is useful even with partial SDK coverage.
+      // This creates no project Program and grants no additional capabilities.
+      this.all(workspace)
+      this.operationScopes.set(key, scopes); this.pendingScopes.delete(key)
+    }
   }
 
   decorate(workspace: SemanticWorkspaceView): SemanticWorkspaceView {
@@ -116,6 +120,19 @@ export class SemanticGroups {
   private discover(workspace: SemanticWorkspaceView, graph: HarmonySemanticGraph): readonly GroupRoots[] {
     const root = path.resolve(workspace.rootPath)
     const membership = workspace.projectMembership!
+    // Lexical classification only. Normalize each captured member/root once;
+    // physical admission and all current/final input proofs remain unchanged.
+    const members = membership.paths.map(file => ({ file, identity: resolvedPathIdentity(file) }))
+    const normalizedRoots = new Map<string, { identity: string; prefix: string }>()
+    const normalizeRoot = (source: string) => {
+      let known = normalizedRoots.get(source)
+      if (!known) {
+        const identity = resolvedPathIdentity(source)
+        known = { identity, prefix: identity.endsWith(path.sep) ? identity : identity + path.sep }
+        normalizedRoots.set(source, known)
+      }
+      return known
+    }
     const key = (unit: HarmonySemanticUnit) => JSON.stringify(unit.identity)
     const units = new Map(graph.units.map(unit => [key(unit), unit]))
     return graph.units.map(unit => {
@@ -129,12 +146,13 @@ export class SemanticGroups {
         }
       }
       visit(unit)
-      const roots = [...closure].flatMap(current => [...current.sourceRoots, ...(current.packageRoots ?? [])])
-      const paths = membership.paths.filter(file => roots.some(source => containsResolvedPath(source, file))
-        || /\.d\.(?:ets|ts)$/.test(file))
+      const roots = [...closure].flatMap(current => [...current.sourceRoots, ...(current.packageRoots ?? [])]).map(normalizeRoot)
+      const paths: string[] = []
+      for (const { file, identity } of members) if (/\.d\.(?:ets|ts)$/.test(file)
+        || roots.some(source => identity === source.identity || identity.startsWith(source.prefix))) paths.push(file)
       const id = JSON.stringify(["module", workspace.canonicalRootId, unit.identity])
       this.owners.set(id, root)
-      return { id, moduleRoot: unit.moduleRoot, paths }
+      return { id, moduleRoot: unit.moduleRoot, paths: Object.freeze(paths) }
     })
   }
 }

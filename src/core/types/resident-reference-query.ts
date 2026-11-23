@@ -1,5 +1,6 @@
 import type { SemanticReferenceQueryResult } from "./type-engine-contract.js"
 import type { SemanticMemoryLevel } from "../../semantic/coordinator/semantic-coordinator.js"
+import { SemanticInputUnavailableError, SemanticResultInvalidatedError } from "./typescript-query-inputs.js"
 
 /** Observe an existing leased attempt; the overlay-sync experiment never creates a context. */
 export function queryResidentReferences(query: () => SemanticReferenceQueryResult | undefined,
@@ -18,4 +19,16 @@ export function queryResidentReferences(query: () => SemanticReferenceQueryResul
   }
   if (logMiss) trace("references.resident.miss", { memoryLevel })
   return undefined
+}
+
+/** Admission misses may fall back; a failed fence after actual computation may not. */
+export function guardResidentReferenceResult<Result extends SemanticReferenceQueryResult | undefined>(
+  scope: (run: () => Result) => Result, query: (started: () => void) => Result,
+): Result {
+  let started = false
+  try { return scope(() => query(() => { started = true })) }
+  catch (error) {
+    if (started && error instanceof SemanticInputUnavailableError) throw new SemanticResultInvalidatedError(error)
+    throw error
+  }
 }

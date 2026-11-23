@@ -1,16 +1,19 @@
 import type { DocumentSnapshot, TextPosition } from "../contracts/document.js"
-import type { SemanticCompletionList, SemanticQuery, VersionedSemanticResult } from "../contracts/semantic-engine.js"
+import type { SemanticCompletion, SemanticCompletionList, SemanticCompletionResolveQuery, SemanticQuery, VersionedSemanticResult } from "../contracts/semantic-engine.js"
 import type { SemanticCompletionItem, SemanticDocumentPosition } from "../core/protocol.js"
 import type { SemanticTypeQueryContext } from "../core/types/type-engine-contract.js"
 import type { InteractiveSemanticRuntimeConfig } from "./interactive-runtime.js"
-import { completionQueryPlan, completionBatchTrace, completionItemIdentity } from "./completion-batch-planning.js"
-import { toPublicCompletion } from "./legacy-result-mappers.js"
+import { completionQueryPlan, completionBatchTrace, completionItemIdentity, completionItemDiscoveryProjectRoots, completionResolvePreparation } from "./completion-batch-planning.js"
+import { toPublicCompletion, toLegacyCompletion } from "./legacy-result-mappers.js"
+import { reusablePreparedCompletion } from "./prepared-completion-inputs.js"
+import { toFilePath } from "./semantic-worker-file-identity.js"
+import type { LocalPackageResolver } from "../core/sdk/local-package-resolver.js"
 import { completionPrefixContext } from "./completion-discovery.js"
 import { SemanticInputUnavailableError } from "../core/types/typescript-query-inputs.js"
 import { withSynchronousInputPreparation } from "../project/request-input-validation.js"
 import { pathToFileURL } from "node:url"
 
-interface CompletionPorts {
+export interface CompletionPorts {
   sync(): void
   checkpoint(): void
   operationScoped(): boolean
@@ -24,6 +27,29 @@ interface CompletionPorts {
 /** Synchronous compiler batches and publication retain their original ordering. */
 export function runCompletionQuery(query: SemanticQuery, ports: CompletionPorts): VersionedSemanticResult<SemanticCompletionList> {
   return withSynchronousInputPreparation(() => complete(query, ports))
+}
+
+/** Cached namespace admission keeps its original early-return boundary. Only
+ * the real compiler branch lends preparation facts to its leased final fence. */
+export function runCompletionResolveQuery(query: SemanticCompletionResolveQuery,
+  ports: CompletionPorts, resolver: LocalPackageResolver): VersionedSemanticResult<SemanticCompletion> {
+  ports.checkpoint()
+  ports.sync()
+  const roots = completionItemDiscoveryProjectRoots(query.completion, query.document.workspaceId)
+  const reusable = reusablePreparedCompletion(query, resolver, toFilePath(query.document.workspaceId),
+    roots !== undefined, ports.checkpoint)
+  if (reusable) return { documentVersion: query.document.version, value: reusable }
+  return withSynchronousInputPreparation(() => {
+    const scope = completionResolvePreparation(query, roots, {
+      projectRootProfile: ports.runtime.projectRootProfile,
+      memberCompletionProjectRootProfile: ports.runtime.memberCompletionProjectRootProfile,
+      operationScoped: ports.operationScoped(),
+    }, ports.hasGroups, ports.membershipComplete)
+    const prepared = ports.prepare(query.document, query.position, scope.includeWorkspaceFiles, scope.projectRootProfile, scope.roots)
+    const item = prepared.engine.resolveCompletion(
+      { ...prepared.position, allowSnippets: query.completionOptions?.snippets === true }, toLegacyCompletion(query.completion))
+    return { documentVersion: query.document.version, value: toPublicCompletion(item, query.document.version) }
+  })
 }
 
 function complete(query: SemanticQuery, ports: CompletionPorts): VersionedSemanticResult<SemanticCompletionList> {

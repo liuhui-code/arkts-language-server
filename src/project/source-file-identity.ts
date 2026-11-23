@@ -21,7 +21,7 @@ export function diskIdentity(filePath: string): { readonly physicalPath: string;
 }
 
 /** Identity from a regular file's already validated descriptor read window. */
-export function regularSourceIdentity(physicalPath: string, stat: fs.Stats) {
+export function regularSourceIdentity(physicalPath: string, stat: Pick<fs.Stats, "dev" | "ino" | "size" | "mtimeMs" | "ctimeMs">) {
   return { physicalPath,
     stamp: JSON.stringify([physicalPath, stat.dev, stat.ino, stat.size, stat.mtimeMs, stat.ctimeMs]) }
 }

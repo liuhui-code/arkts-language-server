@@ -1,3 +1,4 @@
+import { referencePressureAdmission } from "../../semantic/references/reference-pressure-admission.js"
 import path from "node:path"
 
 import type { SemanticDefinitionCandidate, SemanticDocumentPosition } from "../protocol.js"
@@ -11,7 +12,7 @@ import { arbitrateCompletionLists } from "./completion-arbitrator.js"
 import { mergeDefinitions, mergeDiagnostics } from "./type-result-merge.js"
 import { withProjectFileIdentities } from "./type-project-file-identities.js"
 import { retainedReferenceOwnerAllowed, withResidentReferenceContext, queryRetainedReferenceContext, completeReferenceScope } from "./resident-context-lease.js"
-import { queryResidentReferences } from "./resident-reference-query.js"
+import { queryResidentReferences, guardResidentReferenceResult } from "./resident-reference-query.js"
 import { canonicalTypeEngineOwner, typeContextResetReason } from "./type-context-reset.js"
 import { SemanticInputUnavailableError } from "./typescript-query-inputs.js"
 import { traceCompilerQuery, traceImplementationQuery, traceReferenceQuery, traceSemanticQuery } from "./compiler-query-timing.js"
@@ -284,13 +285,13 @@ export class SemanticTypeEngineRegistry {
       implementations: (position) => withLease(current => traceImplementationQuery(
         () => current.engine.implementations(position), () => current.engine.programFileStats(),
         this.options.references?.trace ? this.options.onReferenceTrace : undefined)),
-      references: (position, includeDeclaration, requireResidentProof) => withLease(current => traceReferenceQuery(
+      references: (position, includeDeclaration, requireResidentProof) => guardResidentReferenceResult(run => run(), started => withLease(current => traceReferenceQuery(
         () => {
-          const result = current.engine.references(position, includeDeclaration, true, requireResidentProof)
+          current.engine.assertCurrentInputs(); started(); const result = current.engine.references(position, includeDeclaration, true, requireResidentProof)
           current.engine.assertCurrentInputs()
           return result
         }, () => current.engine.programFileStats(),
-        this.options.references?.trace ? this.options.onReferenceTrace : undefined)),
+        this.options.references?.trace ? this.options.onReferenceTrace : undefined))),
       prepareRename: (position) => withLease(current => traced(current, "prepareRename", () => current.engine.prepareRename(position))),
       usages: (position) => withLease(current => current.engine.usages(position)),
       diagnostics: (position) => withLease((current) => {
@@ -355,7 +356,10 @@ export class SemanticTypeEngineRegistry {
         ?? (retainedReferenceOwnerAllowed(this.options, this.memoryLevel)
           ? this.prepare(view).references({ ...position, expectedReferenceAnchor: undefined }, includeDeclaration, true) : undefined))
   }
-  references(
+  references(...args: Parameters<SemanticTypeEngineRegistry["prepareReferenceQuery"]>): Promise<SemanticReferenceQueryResult> {
+    return this.prepareReferenceQuery(...args)()
+  }
+  prepareReferenceQuery(
     workspace: SemanticWorkspaceView,
     position: SemanticDocumentPosition,
     includeDeclaration: boolean,
@@ -364,7 +368,7 @@ export class SemanticTypeEngineRegistry {
     candidateAnchorPath?: string,
     candidateSupportPaths?: readonly string[],
     forceLegacy = false,
-  ): Promise<SemanticReferenceQueryResult> {
+  ): () => Promise<SemanticReferenceQueryResult> {
     if (this.options.references?.l01PressureAdmission) {
       referenceCheckpoint(this.options.hostCancellationToken)?.()
       this.options.refreshMemoryPressure?.()
@@ -374,7 +378,7 @@ export class SemanticTypeEngineRegistry {
     const pressureFallback = !indexedRoute && pressureAdmission
     if (this.referenceSearch && indexedRoute) {
       const resident = this.residentReferences(workspace, position, includeDeclaration)
-      if (resident) return Promise.resolve(resident)
+      if (resident) return () => Promise.resolve(resident)
     }
     if (this.referenceSearch && indexedRoute
       && !this.sourceResets.hasPending(path.resolve(workspace.rootPath))
@@ -382,22 +386,17 @@ export class SemanticTypeEngineRegistry {
       && (!this.coordinator.peek(path.resolve(workspace.rootPath))
         || this.coordinator.peek(path.resolve(workspace.rootPath))?.engine.hasPreparedCompilerState())) {
       const result = this.prepare(workspace).references({ ...position, expectedReferenceAnchor: undefined }, includeDeclaration, true)
-      if (completeReferenceScope(result, workspace)) return Promise.resolve(result)
+      if (completeReferenceScope(result, workspace)) return () => Promise.resolve(result)
     }
     if (this.referenceSearch && (indexedRoute || pressureFallback)) {
       const isolatedWorkspace = withProjectFileIdentities(workspace, this.projectFileAccess)
-      if (!isolatedWorkspace) return Promise.resolve({ status: "incomplete", reason: "source-unavailable" })
-      const pressureEpoch = this.referencePressureEpoch
-      let verifierStarted = false
-      const admitVerifier = this.options.references?.l01PressureAdmission ? () => {
-        this.options.refreshMemoryPressure?.()
-        if (verifierStarted && (this.memoryLevel === "level3" || this.referencePressureEpoch !== pressureEpoch)) return false
-        verifierStarted = true
-        return true
-      } : undefined
+      if (!isolatedWorkspace) return () => Promise.resolve({ status: "incomplete", reason: "source-unavailable" })
+      const admitVerifier = referencePressureAdmission(this.options.references?.l01PressureAdmission,
+        this.referencePressureEpoch, () => { this.options.refreshMemoryPressure?.()
+          return { level: this.memoryLevel, epoch: this.referencePressureEpoch } })
       const selectedPaths = pressureFallback ? undefined : candidatePaths
       if (pressureFallback) this.referenceTrace("references.pressure.fallback", { memoryLevel: this.memoryLevel })
-      return this.referenceSearch.execute(
+      return this.referenceSearch.prepare(
         isolatedWorkspace,
         pressureFallback ? { ...position, expectedReferenceAnchor: undefined } : position,
         includeDeclaration,
@@ -415,7 +414,8 @@ export class SemanticTypeEngineRegistry {
     const hadGlobalScope = this.coordinator.peek(rootPath)
       ?.engine.cacheState().projectMembership.status === "complete"
     try {
-      return Promise.resolve(this.prepare(workspace).references(position, includeDeclaration))
+      const result = this.prepare(workspace).references(position, includeDeclaration)
+      return () => Promise.resolve(result)
     } finally {
       if (this.options.references?.sessionReuse === "experimental"
         && workspace.projectMembership?.status === "complete" && !hadGlobalScope) {

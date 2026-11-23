@@ -126,3 +126,11 @@ links the current per-feature status; focused and full verification remain disti
 - [0045](0045-complete-membership-and-source-resource-budgets.md) — Proposed: Complete membership versus source resource budgets; repeated navigation remains OPEN.
 
 - [0046](0046-bounded-worker-observation-delivery.md) — Proposed: Bounded Worker log delivery with lifecycle terminal drains.
+
+## 2026-11-22 proposal
+
+| ADR | Status | Scope |
+|---|---|---|
+| [0047](0047-query-qualified-reference-result-cache.md) | Proposed; lexical/workspace/index-qualified implementation validated, independent review pending | Per-query complete-reference receipts decouple result-cache admission from global READY; root invalidation and final disk authority retained |
+
+- [0048](0048-source-digests-with-fresh-membership.md) — Proposed: original guarded source digests, fresh membership/leaf observations and independent final union; performance validation in progress.

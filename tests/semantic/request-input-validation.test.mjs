@@ -125,7 +125,20 @@ test("one edited LSP reference query shares current physical identities beyond 8
       .map(name => JSON.parse(fs.readFileSync(path.join(directory, name), "utf8")))
       .filter(row => Object.keys(row.shared).length > 0)
     assert.equal(observations.length, 1, "metadata is observed in the actual semantic owner")
-    const counts = Object.values(observations[0].shared)
+    const firstObservation = observations[0]
+    // Count original physical observations consumed by this source validator,
+    // including the real completed-Native handoff, not only new read callbacks.
+    const counts = Object.entries(firstObservation.shared).map(([file, raw]) => raw + (firstObservation.borrowed[file] ?? 0))
+    for (const phase of ["references:query", "references:final"]) {
+      for (const table of [firstObservation.phaseRaw, firstObservation.phaseCalls]) {
+        const histogram = table[phase]
+        assert.ok(histogram, "the actual query and final source-consumption phases must both exist")
+        assert.equal(histogram[0] ?? 0, 0, "no Program input can lack an actual physical observation or source-consumption call")
+        assert.equal(Object.values(histogram).reduce((sum, n) => sum + n, 0), fileCount)
+      }
+    }
+    assert.deepEqual(firstObservation.phaseReads["references:final"], { 1: fileCount },
+      "every unchanged source retains its own fresh raw final read, independently of Native receipt reuse")
     const histogram = Object.fromEntries([...new Set(counts)].map(count => [count, counts.filter(value => value === count).length]))
     t.diagnostic(JSON.stringify({ fileCount, inputs: counts.length, sharedReads: counts.reduce((a, b) => a + b, 0),
       actualReads: Object.values(observations[0].actual).reduce((a, b) => a + b, 0), histogram,
@@ -139,8 +152,10 @@ test("one edited LSP reference query shares current physical identities beyond 8
     assert.deepEqual((await query("TargetOne")).result, expected("TargetOne"))
     const repeated = JSON.parse(fs.readFileSync(path.join(directory,
       `input-identity-budget-${observations[0].threadId}.json`), "utf8"))
-    assert.ok(Object.values(repeated.shared).every(count => count === 4),
+    assert.ok(Object.entries(repeated.shared).every(([file, raw]) => raw + (repeated.borrowed[file] ?? 0) === 4),
       "another uncached symbol query starts fresh current and final identity scans")
+    assert.deepEqual(repeated.phaseReads["references:final"], { 2: fileCount },
+      "a second request cannot borrow the previous request's final source observation")
     assert.deepEqual((await session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })
   })
 

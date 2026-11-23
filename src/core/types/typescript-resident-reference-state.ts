@@ -10,9 +10,10 @@ import { diskIdentity } from "../../project/source-file-identity.js"
 import { compilerSourceReadFacts, type CompilerSourceReadFacts, type SourceTextEvidence } from "./compiler-source-snapshots.js"
 import { validateRequestInput } from "../../project/request-input-validation.js"
 
-// Actual read evidence owns this content fact. Neither a disk identity nor a
-// cached digest can admit a Program; the enclosing current/final guards still do.
-const sourceDigests = new WeakMap<SourceTextEvidence, string>()
+// A pure text digest survives replacement of equivalent read-evidence wrappers.
+// Every use still requires this owner's actual read evidence and current/final
+// admission. Weak ownership retains no Program, only one record per live SourceFile.
+const sourceDigests = new WeakMap<ts.SourceFile, { readonly text: string; readonly digest: string }>()
 
 interface ResidentInputs {
   readonly directories: SemanticWorkspaceView[typeof WORKSPACE_SOURCE_DIRECTORIES]
@@ -88,7 +89,7 @@ export class TypeScriptResidentReferenceState {
   }
 
   /** Only an enclosing admitted Program lease may borrow these actual disk bytes.
-   * No text or digest is retained here beyond the existing compiler read facts. */
+   * Read evidence is required before pure digest reuse; a digest proves no freshness. */
   diskSourceDigest(program: ts.Program, filePath: string): string | undefined {
     if (this.observation?.program !== program || this.observation.signature !== this.prepared?.signature) return undefined
     const source = program.getSourceFile(filePath)
@@ -101,11 +102,10 @@ export class TypeScriptResidentReferenceState {
       || !Number.isSafeInteger(identity[2]) || (identity[2] as number) <= 0) return undefined
     // Any open physical alias owns overlay authority; Native needs disk bytes.
     if (this.prepared.aliases.has(identity[0])) return undefined
-    let digest = sourceDigests.get(known)
-    if (digest === undefined) {
-      digest = createHash("sha256").update(known.text).digest("hex")
-      sourceDigests.set(known, digest)
-    }
+    const retained = sourceDigests.get(source)
+    if (retained?.text === known.text) return retained.digest
+    const digest = createHash("sha256").update(known.text).digest("hex")
+    sourceDigests.set(source, { text: known.text, digest })
     return digest
   }
 

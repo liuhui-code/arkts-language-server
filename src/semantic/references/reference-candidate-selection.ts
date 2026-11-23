@@ -1,3 +1,5 @@
+import { captureQualifiedReferenceCacheCoverage, type QualifiedReferenceCacheCoverage } from "./reference-qualified-cache-coverage.js"
+import { matchesReferenceSourceFingerprint } from "./reference-source-fingerprint.js"
 import { fileURLToPath } from "node:url"
 import type { TextPosition } from "../../contracts/document.js"
 import type * as Contract from "../../contracts/semantic-engine.js"
@@ -24,6 +26,7 @@ import { resolveReferenceCandidateSources } from "./reference-source-resolution.
 import type { ReferenceSourceOverlaySnapshot } from "./reference-input-snapshot.js"
 
 export interface ReferenceCandidateSelection {
+  readonly cacheCoverage?: QualifiedReferenceCacheCoverage
   readonly uris: readonly string[]
   readonly identityComplete: boolean
   readonly anchorUri?: string
@@ -136,6 +139,7 @@ export async function selectReferenceCandidates(
           : {}),
       })
       return {
+        cacheCoverage: captureQualifiedReferenceCacheCoverage(direct, candidateUris, identityComplete, context.sourceFingerprint, directAnchor.range.start),
         uris: candidateUris,
         identityComplete,
         anchorPosition: directAnchor.range.start,
@@ -236,6 +240,7 @@ export async function selectReferenceCandidates(
         : {}),
     })
     return {
+      cacheCoverage: captureQualifiedReferenceCacheCoverage(result, candidateUris, identityComplete, context.sourceFingerprint, seed?.range.start),
       uris: candidateUris,
       identityComplete,
       ...(identityComplete && result.declarationUri
@@ -276,8 +281,7 @@ function toFilePath(uri: string): string | undefined {
 
 function coversCurrentSources(result: WorkspaceReferenceCandidateResult, context: ReferenceCandidateSelectionContext): boolean {
   const fingerprint = result.indexProof?.qualification?.fingerprint
-  const covered = context.sourceFingerprint !== undefined && typeof fingerprint === "string"
-    && /^arkts-complete-scan-v2:[a-f0-9]{64}:([a-f0-9]{64})$/.exec(fingerprint)?.[1] === context.sourceFingerprint
+  const covered = matchesReferenceSourceFingerprint(fingerprint, context.sourceFingerprint)
   if (!covered && result.indexProof?.qualification) context.requestReconciliation?.()
   return covered
 }

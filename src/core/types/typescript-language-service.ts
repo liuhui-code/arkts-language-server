@@ -1,3 +1,6 @@
+import { touchReferenceSource } from "./reference-query-source.js"
+import { referenceInputFacts, canProveReferenceEnvironment } from "./reference-input-facts.js"
+import { navigationSymbols, compareDocumentSymbols } from "./typescript-document-symbols.js"
 import { normalizeCompletionEdit } from "./typescript-completion-import.js"
 import { publicSdkSpecifier } from "../sdk/module-resolver.js"
 import { sdkExportCompletionEntries, withSdkExportQuery, assertSdkExportInputs } from "../../semantic/backends/ohos-typescript/sdk-export-language-service.js"
@@ -31,7 +34,6 @@ import type {
   SemanticDocumentHighlightKind,
   SemanticDocumentPosition,
   SemanticDocumentSymbolInfo,
-  SemanticDocumentSymbolKind,
   SemanticHoverInfo,
   SemanticInlayHint,
   SemanticSignatureHelp,
@@ -59,7 +61,7 @@ import { exactSourceRange, queryTypeScriptReferences, semanticLocationKey } from
 import { currentWholeFileCallHierarchyItem, exactCallHierarchySelectionRange, exactSourceBoundaryRange } from "./typescript-call-hierarchy-range.js"
 import { IncompleteImplementationError, queryTypeScriptImplementations } from "./typescript-implementation-query.js"
 import { loadedConfigurationIsCurrent, assertCurrentQueryInputs, projectMembershipFailure, SemanticInputUnavailableError } from "./typescript-query-inputs.js"
-import { queryAdmittedDefinition, queryAdmittedReferences } from "./typescript-resident-reference-query.js"
+import { queryAdmittedDefinition, queryValidatedResidentReferences } from "./typescript-resident-reference-query.js"
 import { normalizedDefinitionSpan } from "./typescript-definition-span.js"
 import { TypeScriptResidentReferenceState, type ResidentReferenceProofFailure } from "./typescript-resident-reference-state.js"
 import { TypeScriptHostRoots } from "./typescript-host-file-names.js"
@@ -1329,9 +1331,9 @@ export class TypeScriptLanguageServiceEngine {
     workspace: SemanticWorkspaceView, position: SemanticDocumentPosition, includeDeclaration: boolean,
   ): SemanticReferenceQueryResult | undefined {
     if (this.projectMembershipFailure()) return undefined
-    return queryAdmittedReferences(this.residentReferencesState, workspace,
+    return queryValidatedResidentReferences(this.residentReferencesState, workspace,
       () => ({ generation: this.generation, roots: this.hostRoots.metadataNames() }),
-      program => this.queryReferences(position, includeDeclaration, true, program), position.path, () => { this.prepare(workspace); this.residentReferencesState?.captureCurrentProgram(this.service) })
+      program => this.queryReferences(position, includeDeclaration, true, program), position.path, () => { this.prepare(workspace); this.residentReferencesState?.captureCurrentProgram(this.service) }, run => this.withRequestModuleResolution(run))
   }
 
   residentDefinition(
@@ -1353,12 +1355,9 @@ export class TypeScriptLanguageServiceEngine {
   ): SemanticReferenceQueryResult {
     return queryTypeScriptReferences({
       rootPath: this.rootPath, service: this.service, checkpoint: this.checkpoint,
+      captureInputs: canProveReferenceEnvironment(this.sdkSelection, this.sdkAmbientProfile) ? program => referenceInputFacts(this.configurationWitness, this.packageResolver, this.rootPath, () => this.checkpoint?.(), program, file => this.scripts.get(file)?.overlay ? this.scripts.get(file)?.sourceContent : undefined) : undefined,
       membershipFailure: () => this.projectMembershipFailure(),
-      querySource: filePath => {
-        const script = this.scripts.get(filePath)
-        if (script) script.lastAccess = ++this.accessClock
-        return script
-      },
+      querySource: filePath => touchReferenceSource(this.scripts.get(filePath), () => ++this.accessClock),
       sourceView: filePath => this.scripts.get(filePath) ?? this.loadLazySnapshot(filePath),
     }, position, includeDeclaration, captureSearchScope, expectedProgram)
   }
@@ -2200,110 +2199,6 @@ function quickInfoDocumentation(info: ts.QuickInfo): string | undefined {
   return [documentation, ...tags].filter((part): part is string => Boolean(part)).join("\n\n") || undefined
 }
 
-interface NavigationTraversalFrame {
-  item?: ts.NavigationTree
-  span?: ts.TextSpan
-  kind?: SemanticDocumentSymbolKind | null
-  childItems: readonly ts.NavigationTree[]
-  nextChildIndex: number
-  symbols: SemanticDocumentSymbolInfo[]
-}
-
-function navigationSymbols(
-  items: readonly ts.NavigationTree[],
-  script: ScriptRecord,
-  work: CooperativeWork,
-): SemanticDocumentSymbolInfo[] {
-  const root: NavigationTraversalFrame = {
-    childItems: items,
-    nextChildIndex: 0,
-    symbols: [],
-  }
-  const stack = [root]
-  while (stack.length > 0) {
-    const frame = stack[stack.length - 1]
-    if (frame.nextChildIndex < frame.childItems.length) {
-      const item = frame.childItems[frame.nextChildIndex]
-      frame.nextChildIndex += 1
-      const span = item.spans[0]
-      work.item()
-      if (!span) continue
-      stack.push({
-        item,
-        span,
-        kind: documentSymbolKind(item, script),
-        childItems: item.childItems ?? [],
-        nextChildIndex: 0,
-        symbols: [],
-      })
-      continue
-    }
-
-    stack.pop()
-    if (!frame.item || !frame.span) return frame.symbols
-    frame.symbols.sort(work.comparator(compareDocumentSymbols))
-    const parent = stack[stack.length - 1]
-    if (!frame.kind) {
-      for (const symbol of frame.symbols) {
-        parent.symbols.push(symbol)
-        work.item()
-      }
-      continue
-    }
-    const nameSpan = frame.item.nameSpan ?? { start: frame.span.start, length: 0 }
-    parent.symbols.push({
-      name: frame.item.text,
-      kind: frame.kind,
-      range: script.virtualDocument.generatedSpanToSourceRange(
-        frame.span.start,
-        frame.span.length,
-      ),
-      selectionRange: script.virtualDocument.generatedSpanToSourceRange(
-        nameSpan.start,
-        nameSpan.length,
-      ),
-      children: frame.symbols.length > 0 ? frame.symbols : undefined,
-    })
-    work.item()
-  }
-  return root.symbols
-}
-
-function documentSymbolKind(
-  item: ts.NavigationTree,
-  script: ScriptRecord,
-): SemanticDocumentSymbolKind | null {
-  switch (item.kind) {
-    case ts.ScriptElementKind.structElement: return "struct"
-    case ts.ScriptElementKind.classElement:
-    case ts.ScriptElementKind.localClassElement:
-      return isArktsStruct(item, script) ? "struct" : "class"
-    case ts.ScriptElementKind.interfaceElement: return "interface"
-    case ts.ScriptElementKind.enumElement: return "enum"
-    case ts.ScriptElementKind.enumMemberElement: return "enumMember"
-    case ts.ScriptElementKind.functionElement:
-    case ts.ScriptElementKind.localFunctionElement:
-      return "function"
-    case ts.ScriptElementKind.memberFunctionElement:
-    case ts.ScriptElementKind.memberGetAccessorElement:
-    case ts.ScriptElementKind.memberSetAccessorElement:
-      return "method"
-    case ts.ScriptElementKind.memberVariableElement:
-    case ts.ScriptElementKind.memberAccessorVariableElement:
-      return "property"
-    case ts.ScriptElementKind.constructorImplementationElement:
-      return item.spans[0]?.length === 0 ? null : "constructor"
-    case ts.ScriptElementKind.moduleElement: return "module"
-    case ts.ScriptElementKind.typeElement: return "type"
-    case ts.ScriptElementKind.constElement:
-    case ts.ScriptElementKind.letElement:
-    case ts.ScriptElementKind.variableElement:
-    case ts.ScriptElementKind.localVariableElement:
-      return "variable"
-    default: return null
-  }
-}
-
 function callHierarchyItemKind(
   item: ts.CallHierarchyItem,
   sourceView: ScriptRecord | LazySnapshotRecord,
@@ -2397,23 +2292,6 @@ function isArktsCallHierarchyStruct(
     selection.startColumn,
   )
   return /\bstruct\s*$/.test(source.slice(rangeStart, selectionStart))
-}
-
-function isArktsStruct(item: ts.NavigationTree, script: ScriptRecord): boolean {
-  const span = item.spans[0]
-  const nameSpan = item.nameSpan
-  if (!span || !nameSpan) return false
-  const sourceStart = script.virtualDocument.toSourceOffset(span.start)
-  const sourceNameStart = script.virtualDocument.toSourceOffset(nameSpan.start)
-  return /\bstruct\s*$/.test(script.sourceContent.slice(sourceStart, sourceNameStart))
-}
-
-function compareDocumentSymbols(
-  left: SemanticDocumentSymbolInfo,
-  right: SemanticDocumentSymbolInfo,
-): number {
-  return left.range.startLine - right.range.startLine
-    || left.range.startColumn - right.range.startColumn
 }
 
 function documentHighlightKind(

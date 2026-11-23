@@ -1,5 +1,5 @@
 import { IncompleteImplementationError } from "../core/types/typescript-implementation-query.js"
-import { SemanticInputUnavailableError } from "../core/types/typescript-query-inputs.js"
+import { SemanticInputUnavailableError, SemanticResultInvalidatedError } from "../core/types/typescript-query-inputs.js"
 import { readSemanticWorkerCancellationState, SemanticWorkerCancelState,
   type SemanticWorkerErrorCode } from "./worker-protocol.js"
 
@@ -9,6 +9,7 @@ export function workerRequestErrorCode(cell: SharedArrayBuffer, error: unknown):
   return state === SemanticWorkerCancelState.clientCancelled ? "client-cancelled"
     : state === SemanticWorkerCancelState.contentModified ? "content-modified"
       : state === SemanticWorkerCancelState.supervisorDisposing ? "worker-unavailable"
-        : error instanceof IncompleteImplementationError || error instanceof SemanticInputUnavailableError
+        : error instanceof SemanticResultInvalidatedError ? "content-modified"
+          : error instanceof IncompleteImplementationError || error instanceof SemanticInputUnavailableError
           ? "workspace-incomplete" : "internal-error"
 }

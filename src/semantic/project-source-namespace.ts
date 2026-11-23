@@ -1,3 +1,6 @@
+import { projectSourceDigest } from "../project/source-content-digests.js"
+import { WORKSPACE_MEMBERSHIP_ORIGIN } from "../core/workspace/semantic-workspace-view.js"
+import { RESOLUTION_INPUT_GENERATION } from "../core/workspace/workspace-resolution-inputs.js"
 import { createHash } from "node:crypto"
 import path from "node:path"
 import type { SemanticReadinessReport } from "../contracts/semantic-readiness.js"
@@ -14,8 +17,16 @@ export function projectSourceNamespace(documents: SemanticDocumentStore, workspa
   captureInputs: boolean, verifiedDiskDigest?: (filePath: string) => string | undefined): NonNullable<SemanticReadinessReport["sourceNamespace"]> {
   const membership = workspace.projectMembership!
   const encoding = sourceNamespaceEncoding(workspace)
-  const names = { sha256: encoding.sha256, sources: membership.paths.length }
+  const owner = workspace[RESOLUTION_INPUT_GENERATION]
+  const resolutionIdentity = owner && owner.generation === owner.owner.generation ? owner.owner.namespaceIdentity : undefined
+  const names = { sha256: encoding.sha256, sources: membership.paths.length,
+    ...(resolutionIdentity === undefined ? {} : { resolutionIdentity }) }
   if (!captureInputs) return names
+  const proof = documents.captureSourceIdentityProof(workspace.rootPath, membership.revision)
+  const strongMembership = proof?.current() === true
+  if (proof && !strongMembership) throw new SemanticInputUnavailableError()
+  const origin = workspace[WORKSPACE_MEMBERSHIP_ORIGIN]
+  const digestMembership = origin?.view === membership ? origin.catalog : membership
   const inputs = createHash("sha256")
   const digests: Array<Buffer | undefined> = []
   let overlayOnly = false
@@ -31,9 +42,11 @@ export function projectSourceNamespace(documents: SemanticDocumentStore, workspa
     const borrowed = !overlay ? verifiedDiskDigest?.(filePath) : undefined
     if (borrowed !== undefined) digests[index] = Buffer.from(borrowed, "hex")
     else {
-      const text = documents.read(workspace.canonicalRootId, membership.revision, filePath, token)
-      if (text === null) throw new SemanticInputUnavailableError()
-      digests[index] = createHash("sha256").update(text).digest()
+      const digest = projectSourceDigest({ membership: digestMembership, strongMembership: strongMembership && !overlay, file: filePath, token,
+        root: workspace.rootPath, canonicalRoot: workspace.canonicalRootId, physicalPath,
+        read: () => documents.readSnapshot(workspace.canonicalRootId, membership.revision, filePath, token) })
+      if (!digest) throw new SemanticInputUnavailableError()
+      digests[index] = digest
     }
   }
   // Exact CompleteScanInputs v2 source digest: sorted canonical Native URIs,
@@ -45,6 +58,7 @@ export function projectSourceNamespace(documents: SemanticDocumentStore, workspa
   documents.refreshProjectMembership(workspace.rootPath)
   const current = documents.membershipFor(workspace.rootPath)
   if (current.status !== "complete" || current.revision !== membership.revision) throw new SemanticInputUnavailableError()
+  if (resolutionIdentity !== undefined && owner!.owner.namespaceIdentity !== resolutionIdentity) throw new SemanticInputUnavailableError()
   return { ...names, diskSha256: inputs.digest("hex"), overlayOnly }
 }
 

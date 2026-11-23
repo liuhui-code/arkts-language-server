@@ -103,10 +103,10 @@ test("repeated imports share the containing-file boundary proof without changing
     await f.session.initialize({ initializationOptions: { sdk: { path: f.sdk } } })
     await f.session.transport.notification("arkts/semanticPreparation", m => m.params.phase === "complete", 15_000)
     const observation = path.join(f.directory, "scope-boundaries.jsonl")
-    const calls = fs.readFileSync(observation, "utf8").trim().split("\n").map(JSON.parse)
-    // One physical containing-file boundary computation for these three edges;
+    const calls = fs.existsSync(observation) ? fs.readFileSync(observation, "utf8").trim().split("\n").map(JSON.parse) : []
+    // The admitted read supplies the physical origin for these three edges;
     // ordinary input and final publication proofs still validate that owner.
-    assert.equal(calls.length, 1)
+    assert.equal(calls.length, 0)
     const definition = await f.session.request("textDocument/typeDefinition", {
       textDocument: { uri: f.uri(`${folder}/Main.ets`) },
       position: positionAt(main, main.indexOf("GlobalThing") + 1) })

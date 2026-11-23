@@ -107,3 +107,27 @@ SCALE004独立20K局部rename trace进一步记录：前后readiness窗口5014/5
 这不是把所有窗口时间归为源码读取，也不是全请求零Program构建证明：collector仅覆盖callback，
 trace-only后置Program统计另有未独占计时开销。当前namespace包装确实前后captureSourceInputs=true，
 优化须定位其内部重复成本与范围，不能直接删最终证明。详见SCALE004原始窗口收据；ADR状态不变。
+
+
+2026-11-20 M4 containing-origin refinement (implementation/evidence, status unchanged):
+bindings retain the descriptor identity that produced the containing import list;
+first post-resolution current() and independent final raw union validate it.
+Qualified regular project reads only; SDK/overlay/unknown origins keep existing
+before/after capture. Candidate/negative/package/physical-target guards and target
+confirmation unchanged. Public64-source RED320lstat ->GREEN64, expanded101/102
+with original20K references5s timeout retained. One ordinary Photos initialization
+101149->84438ms is a single pair amid unassigned run variance, not a guarantee.
+[Factory correction, cost evidence and remaining work](../reports/2026-11-20-binding-containing-origin-and-owned-syntax-factory.md).
+
+### 2026-11-20 validation note: initial-scan registration gap
+
+Four controlled public stdio cases now change/move an actual source after the
+first strong member scan is captured but before publication, while the client's
+watch registration request is unanswered, then accept/reject that registration.
+The existing authority/final proofs reconcile current inputs and return exact new
+locations without Worker replacement. Together with the four earlier post-init
+registration-gap cases these8 controls pass on product7b7b8584. This adds evidence,
+not a new decision or review record: registration ACK still proves no freshness,
+and current/final raw checks are retained. No provider-level overflow, Windows
+remount/junction or continuous-watch guarantee is claimed.
+[Evidence](../reports/2026-11-20-sdk-hook-and-initial-scan-controls.md).

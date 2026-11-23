@@ -45,3 +45,11 @@ export function assertVerifierSdkLookupsCurrent(witness: LoadedConfigurationWitn
   const lease = witness && leases.get(witness)
   if (lease && !valid(lease)) throw new SemanticInputUnavailableError()
 }
+
+/** Retain the job's original shared lookup evidence, including cache-hit negatives. */
+export function captureVerifierSdkInputFacts(witness: LoadedConfigurationWitness | undefined, boundary: () => void) {
+  const lease = witness && leases.get(witness)
+  if (!lease) return []
+  const proof = lease.witness.captureConfigurationBeforeSourceReset(boundary, () => false)
+  return proof.facts && proof.current(boundary) ? proof.facts : undefined
+}

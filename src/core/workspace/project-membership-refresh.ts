@@ -1,3 +1,4 @@
+import { carryMembershipFactChanges } from "./project-membership-fact-delta.js"
 import { canonicalWorkspaceRoot } from "./physical-path-identity.js"
 import type { ProjectFileSetCacheEntry } from "./project-membership-catalog.js"
 import type { WorkspaceContentChanges } from "./workspace-content-changes.js"
@@ -85,6 +86,7 @@ export function refreshMembershipSnapshot(canonicalRoot: string, port: Membershi
   for (const changedRoot of changedRoots) {
     port.changes.advance(changedRoot)
   }
+  carryMembershipFactChanges(previous, current, changedPaths, membershipUnchanged)
   port.publish(current)
   if (!sameNames) port.observedNamespaceChange?.()
   return admissionResult(canonicalRoot, current.revision, !catalogUnchanged || removedPaths.length > 0, removedPaths)

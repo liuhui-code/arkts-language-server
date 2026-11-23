@@ -147,3 +147,289 @@ Final integrated local validation passes 263/263 across 34 complete files,
 including all 19 previously failing files; typecheck/build pass and frozen inputs
 match. Original full 2134/2222 FAIL is preserved; fresh full locked-toolchain CI
 remains pending on the authorized draft PR. No approval status is changed.
+
+### 2026-11-19 C的执行细化：显式最终消费，不是通用有效性复用
+
+原位置清空物理观察、租约内最终核验与每owner原始资格不变。M2只复用同final
+阶段完整保留观察的事实比较，活owner/epoch与取消仍检查。M3仅对有已登记必须
+消费者的Native成员证明省掉额外顶层重复；消费者在原位置执行完整raw观察，
+后置SDK/配置和目录围栏不移动。每个消费者须结清原owner+epoch/revision义务；
+同revision新证明不可代替，未结清拒绝旧请求。无消费者/未知/混合输入保留原序。
+这不是打开整个final阶段的memo，也不跨阶段借观察或移出原租约。
+[顺序、反例与验收边界](../reports/2026-11-19-final-membership-observation-order.md)。
+本ADR维持Proposed及既有审阅历史，142+46项聚焦通过不等于最终完整/UI验收。
+
+
+### 2026-11-19 synchronous preparation coverage (Proposed implementation refinement)
+
+Background diagnosis and the actual compiler completion-details branch hand their
+original synchronous preparation proofs to the existing query lease's independent
+final union, like navigation/list completion. Preparation scope never spans await;
+current/final observations are distinct, actual-load guards raw, all owners and
+32MiB metadata fallback retained. Cached-detail namespace admission remains on its
+original early-return path, outside the new compiler-branch scope. No running
+diagnostic preemption, fairness, mutation/global barrier or cancellation deadline
+changes. Fewer repeated proofs reduce service time; priority alone cannot bound
+a long already-running diagnosis. Public RED/GREEN and post-compiler mutation
+refusals plus ordinary Photos evidence: [NAV-PREP-001](../reports/2026-11-19-synchronous-diagnostic-and-details-preparation.md).
+This is not Accepted review or whole/UI/endurance acceptance; prior decisions and
+verification history remain intact.
+
+
+2026-11-19 NAV-PREP-001 follow-up: hover and signature help also use the existing
+synchronous original-proof handoff; current/final phases, raw load guards, lease
+and cancellation/scheduling contract unchanged. Independent public cost RED4raw
+passes/1600noise lstat ->GREEN2/800; expanded41/41 plus cohesive completion
+extraction32/32. Photos hover median8132.65 ->2862.77ms, signature7375.71 ->2747.43ms;
+remaining hot definition~2.6s unchanged. One serial session/version, not UI/endurance.
+Prior0f wholecheck2681/2682FAIL and frozen selected proof recheck1PASS8not-selected
+remain distinct; historical exact environment mismatch unproven, no validator
+relaxation. New041bd03a complete check pending; all remaining A-plan gates open.
+[Evidence and limits](../reports/2026-11-19-inspection-preparation-and-checkfast-followup.md).
+ADR status/review history unchanged.
+
+
+2026-11-19 NAV-PREP-001 document inspection follow-up: document symbols,
+highlights and inlay hints now hand original synchronous preparation facts to the
+existing query lease; independent final/load guards unchanged. Public cost RED
+4raw member passes ->GREEN2; expanded43/43PASS plus TSC/build. Frozenb02394a2
+complete check and ordinary pair02 pending; initial closed-file calibration was
+a preserved harness failure, not a product latency sample. Actual installed
+compiler navigation-tree probe shows a narrower syntax read set, but source-only
+product routing remains unimplemented and must retain target/config/path proofs.
+[Evidence and boundaries](../reports/2026-11-19-document-inspection-preparation-and-read-set.md).
+No ADR status/review or overall acceptance change.
+
+
+Document inspection ordinary pair03 completed: exact full responses equal across
+all6samples/method; document symbols median7711.64->2656.28ms, highlights7593.24
+->2781.89ms, inlay7548.57->2580.25ms. Native30000READY, SQLite/owned close PASS,
+source hash unchanged; one process/version, protocol only, SDKpartial. Init~71s
+and hot definition~2.6s unchanged. Prior calibration failures preserved separately.
+Watch registration-gap public accept/reject, partial+READY controls and existing
+watch/directory regressions36/36PASS; old silent-source query refused and successor
+fresh in same Worker, not proof of all M5 cases. No new blind reset or watch-only
+freshness shortcut. Current b02394a2 full check still pending; previous full FAIL
+retained. [Watch coverage](../reports/2026-11-19-watch-recovery-entry-audit.md).
+
+
+### 2026-11-19 syntax-only document symbols (Proposed implementation refinement)
+
+Document symbols now consume the open snapshot, physical target/root identity and
+actual parser/SDK configuration in a bounded syntax owner, not semantic project
+membership/Program/readiness. Existing final raw union, shared-cell cancellation,
+parent freshness and semantic state/deltas retained. This is actual dependency
+selection before consumption, not ignoring historic proofs after preparation.
+SDK/target late mutation refuses old results; unrelated source changes do not
+invalidate this syntax result. No new Worker, watch-only contract or READY claim.
+Public final53/53PASS, TSC/build PASS. Photos30K exact16symbols: control median
+2681.03ms ->7.77ms (first candidate37.43ms), allsixfullresponses equal. One process
+per version, protocol only; init~73s and hot definition~2.6s remain. Candidate
+Native/SQLite/close PASS; control SQLite60s FAIL retained, series WITH_FAILURES.
+[Design, failures, lifecycle and limits](../reports/2026-11-19-syntax-symbol-input-ownership.md).
+Full check pending; ADR status and historical review remain unchanged.
+
+
+2026-11-20 M4 containing-origin refinement (implementation/evidence, status unchanged):
+bindings retain the descriptor identity that produced the containing import list;
+first post-resolution current() and independent final raw union validate it.
+Qualified regular project reads only; SDK/overlay/unknown origins keep existing
+before/after capture. Candidate/negative/package/physical-target guards and target
+confirmation unchanged. Public64-source RED320lstat ->GREEN64, expanded101/102
+with original20K references5s timeout retained. One ordinary Photos initialization
+101149->84438ms is a single pair amid unassigned run variance, not a guarantee.
+[Factory correction, cost evidence and remaining work](../reports/2026-11-20-binding-containing-origin-and-owned-syntax-factory.md).
+
+### A-plan refinement: final member metadata is only a first-side observation (2026-11-20)
+
+The final union still clears all query/preparation observations and performs a
+fresh member scan. A successful exact owner/epoch/revision member validator may
+lend its final regular-leaf metadata ONLY as the first side of a later resident
+source validation window. The consumer must independently perform its later raw
+leaf observation and preserve the original physical-directory proof and terminal
+namespace fence. This is not permission for requestFileIdentity or configuration
+validation to consume final metadata as a complete freshness result.
+
+Records collected during a member scan remain provisional until its entire
+namespace/scope validation succeeds. Failure/cancellation cannot activate them;
+weak/missing identity, unknown parent, absent completed owner, budget exhaustion
+or an earlier consumer order keep the original full observation path. Records
+are request-local, charged to the existing phase metadata accounting, and cleared
+on terminal cleanup. No receipt survives into another command or changes expected
+source bytes. The generic takeCompletedRegularSourceObservation remains query-only.
+
+Public references cost RED:64regular source files require128resident-final lstats
+per prepared request; candidate uses64 while returning the same3locations. Actual
+body edits, same-path replacements, changed later metadata and failed/cancelled
+producers are independent rejection controls. This refines observation scheduling,
+not the best-effort disk authority contract, product deadline or capability scope.
+See [implementation evidence](../reports/2026-11-20-resident-final-source-window.md).
+Existing ADR status and review history are unchanged.
+
+### Retained reference lane and failure stage (2026-11-20)
+
+The resident-first/retained-reference Worker lane also contributes preparation
+facts to its actual synchronous query, whose independent final input fence stays
+inside the original resident lease. QueryModuleResolution uses the existing
+request phase; preparation and before/after resident admission do not create
+unrelated observation lifetimes. The async isolated verifier lane is unchanged.
+
+Preserve the distinction between an inadmissible cached Program BEFORE actual
+reference computation (complete fresh fallback remains valid) and input invalidation
+AFTER computation starts (the current request terminates, never silently reanswers
+through fallback). A typed SemanticResultInvalidatedError retains the original
+input failure cause and uses the existing public workspace-incomplete error path.
+A fresh request/configuration may recover; no new Worker/recovery budget, timeout,
+readiness bypass or result-cache contract. Existing pre-query SDK fallback and
+partial-SDK unreconfigured refusal remain regression constraints.
+
+Public cost oracle320->192regular leaf observations, exact3locations; independent
+final member fence retained. This is an implementation refinement of C, not a new
+accepted/reviewed status. [Evidence](../reports/2026-11-20-resident-reference-preparation.md).
+
+The post-computation guard also covers the prepared-context reference callback,
+not just a successful resident-proof hit. A controlled admission miss followed by
+an SDK change at that callback's real final fence reproduced the same-request
+fallback error; the current request now fails, while pre-computation misses retain
+their complete fallback. Stage state is invocation-local; final validation remains
+leased. Final105/105frozen regressions and raw counterexample are in the linked
+2026-11-20 report. This does not certify the original explicit-opt-out20K5s tail.
+
+### 2026-11-20 implementation clarification: deferred reference dispatch
+
+The isolated reference lane separates synchronous input admission from asynchronous
+verifier dispatch. Preparation, candidate identity admission and their original
+final union execute synchronously; only a successful union returns a dispatch
+closure. No verifier promise/job may be created before that boundary succeeds.
+This applies the existing original-input contract, without changing ADR status or
+inventing a review record. Search completion still validates current disk inputs.
+
+A Store-owned strong membership proof may lend its original source identities to
+candidate admission only for the same canonical root and catalog revision. The
+transport identity array is immutable and its association is Worker-local/weak;
+legacy or weak authorities retain raw leaf checks. The association stores a raw
+predicate, never a cross-request validity answer. Outside a preparation phase the
+same predicate rechecks original namespaces and leaves; it cannot refresh/rebase
+onto newer input. Failed post-search freshness is a request failure, not an
+incomplete-candidate signal permitting a same-request search on newer inputs.
+Pre-search admission misses may still select the complete search route.
+
+Source digest memoization is likewise pure derived-data reuse: a weak actual
+SourceFile key and exact source text retain one digest after all existing
+provenance/stamp/alias admission checks. A newly allocated evidence wrapper does
+not require hashing unchanged bytes again. This cache proves neither freshness
+nor completeness and retains no Program owner.
+
+Evidence and limitations: [reference admission and digest reuse](../reports/2026-11-20-reference-entry-handoff-and-digest-reuse.md).
+
+### 2026-11-20 implementation clarification: invalidation terminal classification
+
+A final fence failure after semantic computation remains a stale-result terminal
+(content-modified/-32801),not an admission-incomplete signal (-32803). Worker
+classification preserves the specific SemanticResultInvalidatedError before its
+SemanticInputUnavailableError base class. Client cancellation/disposal precedence
+and pre-computation incomplete-input fallback remain unchanged. This enforces the
+existing original-input contract; ADR status/review history is unchanged.
+[Gate reconciliation and evidence](../reports/2026-11-20-input-validation-gate-reconciliation.md).
+
+
+### 2026-11-20 shared binding composition refinement (implementation evidence)
+
+Shared immutable resolution owners use the existing request-local composition
+receipt, versioned by their binding catalog. Original child witnesses register
+before success; false/throw are not retained. Finalization bypasses the receipt
+and still observes original facts independently. Existing metadata budget/fallback
+and owner lifetime remain. This refines existing same-phase composition, does
+not relax final/load authority or change ADR status/review history.
+[RED/GREEN and limits](../reports/2026-11-20-binding-proof-composition.md).
+
+
+### 2026-11-20 M4 graph delta / cache-retention refinement
+
+Completed private fact passes may hand exact immutable before/after role catalog
+identities and copied known-source deltas to the graph. This receipt attests
+producer lineage, not disk freshness. Required current proof walks may also emit
+stale consumer deltas; final raw validation and original loaded witnesses remain.
+Node reference transitions retain/release binding,source and SDK metadata caches;
+validation does not keep an otherwise unused cache owner alive. Uncommitted
+drafts clear on error/cancel; partially committed graphs stay rebuilding until
+reconciled. These metadata references do not replace Registry AST leases.
+Known project topology changes update reverse edges/effects; unknown lineage,
+membership and external/SDK reachability retain complete fallback. No watch-only
+or cross-request-valid consistency change; no ADR state/review promotion.
+[Implementation, REDs, controls and limits](../reports/2026-11-20-graph-delta-handoff-implementation.md).
+
+
+### 2026-11-20 M4 saved-input producer-lineage refinement
+
+Saving an open source changes two independent inputs: authoritative overlay bytes
+and physical catalog admission. Compiler contentRevision intentionally excludes
+hidden disk writes; it must not be repurposed to prove that the disk catalog is
+unchanged. Source fact selection consumes an exact Store-issued catalog lineage
+plus complete overlay metadata delta,or uses the existing full pass.
+
+Catalog producers record known same-member regular changes and carry complete
+refresh differences. Snapshot publication commits bounded32step/512path metadata
+history; unknown transitions,overflow,name/eligibility uncertainty,reset or gaps
+retain full reconciliation. These are optional delta-cache bounds,not project
+limits. No AST/text/validity bit or unbounded old-snapshot chain is retained.
+
+This refines M4 delta selection,not ADR0019/0044 raw freshness or the existing
+compiler-content version contract. Every original load witness,current/final
+physical proof and old-request refusal remains. An old captured catalog discovered
+stale in ensure is rejected; only a separate fresh capture may recover. No claim
+that public unnotified first-attempt availability improved.
+
+Alternatives rejected: equal compiler version as disk authority; always full
+source facts on every save; expanding compiler versions for hidden disk input;
+merging incomplete histories; trusting watch names without original final proofs.
+This uses existing Store snapshots/watch/refresh ownership rather than a second
+input database. Public RED02 distinguishes overlay-only/disk-only controls from
+save; final frozen-V regression2PASS3FAIL and W19/19targeted PASS are retained.
+30Kordinary/full/Windows qualification is pending. Status/review history above
+is unchanged. [Cause, boundaries and evidence](../reports/2026-11-20-saved-input-fact-delta.md).
+
+
+### 2026-11-20 independent lookup authority and physical open-save renewal
+
+A resolved binding's witness/dependency/lookup collections are closed after its
+resolution. Same-phase composition is versioned by replacement of overlay/script
+authority,not unrelated binding-cache insertions. The graph's broader topology/
+fact revision still changes on every original mutation. Initial interleaved
+imports control preserves first registration and removes98additional
+compositions; both hot requests retain99/99independent final observations.
+No cross-request valid bit or final memoization is introduced.
+
+Physical membership and compiler overlay authority remain separate: a known
+regular open source may renew complete physical evidence while its compiler
+bytes still come from the overlay. Existing renewal checks all original names
+and unaffected tokens,retire the old proof,and retain raw current/final namespace
+and leaf checks. Open-source renewal additionally requires no reset uncertainty;
+unknown/membership/failed-proof cases retain full reconciliation. This refines
+M4 producer coverage; it does not allow a stale request or source origin to rebase.
+
+Alternatives rejected: constant unversioned composition keys,global cache-action
+versions for immutable children,compiler version bumps for hidden disk changes,
+removing final checks or treating watch events as physical freshness. Count
+regressions are not millisecond gains. W30Kstill7.8–8.6s saved first and2.7s hot;
+X25public cases pass but broader/ordinary/full qualification remains pending.
+Original V2737/2738full failure remains. Status/review history above is unchanged.
+[Measured costs, controlled race and proof boundary](../reports/2026-11-20-saved-query-phase-cost-and-open-renewal.md).
+
+
+### 2026-11-20实现记录：不可变组路径派生元数据（不改变决策状态）
+
+NAV-SCOPE-PATH-METADATA-001沿用M1：组发布的绝对paths冻结后，共享词法identity索引与保留重复拼写的条目。
+弱键只拥有纯路径元数据；可变数组/相对路径回原推导。磁盘、符号链接边界、原始输入证据、
+两阶段核验与取消/调度合同不变。不构成跨请求有效证明，也不是watch-only新鲜度。
+公开回归热396成员792次重复规范化→0，77项针对性检查PASS；当前Y全量与30K收益尚待验证。
+详情见[实现与证据](../reports/2026-11-20-hot-query-proof-and-scope-paths.md)。
+
+
+### 2026-11-22 当前完整索引资格与引用入口协调（实施验证中）
+
+引用入口仍观察磁盘并失效语义结果，但不能仅因首次观察新内容就撤销已合格的当前Native输入。
+实时完整指纹、store/domain/head、READY qualification及await前后owner均一致时，省去重复协调；
+不满足仍保守回退，current/final围栏不变。目录生命周期同样要求完整URI+内容指纹。
+[因果证据与公开RED/GREEN](../reports/2026-11-22-reference-qualification-revocation.md)。
+本补充不更改本ADR状态，不将2752前候选门禁算到新父进程，也不宣称UI或耐久完成。

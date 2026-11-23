@@ -1,3 +1,4 @@
+import { REFERENCE_QUERY_CACHE_PREFIX } from "../../contracts/reference-query-proof.js"
 import { createHash } from "node:crypto"
 
 import type {
@@ -7,6 +8,7 @@ import type {
 } from "../../contracts/semantic-engine.js"
 
 interface CacheEntry {
+  readonly identity: symbol
   readonly rootId: string
   readonly bytes: number
   readonly references: readonly SemanticReference[]
@@ -39,13 +41,13 @@ export class ReferenceResultCache {
     return this.getWithProof(query)?.result
   }
 
-  getWithProof(query: SemanticReferencesQuery): { result: SemanticReferencesOutcome; inputProof?: string } | undefined {
+  getWithProof(query: SemanticReferencesQuery): { result: SemanticReferencesOutcome; inputProof?: string; identity: symbol } | undefined {
     const key = this.#key(query)
     const entry = this.#entries.get(key)
     if (!entry) return undefined
     this.#entries.delete(key)
     this.#entries.set(key, entry)
-    return { result: { status: "complete", references: cloneReferences(entry.references) },
+    return { identity: entry.identity, result: { status: "complete", references: cloneReferences(entry.references) },
       ...(entry.inputProof === undefined ? {} : { inputProof: entry.inputProof }) }
   }
 
@@ -57,10 +59,10 @@ export class ReferenceResultCache {
     const bytes = Buffer.byteLength(JSON.stringify(references)) + (inputProof === undefined ? 0 : Buffer.byteLength(inputProof))
     if (bytes > this.maxBytes) return false
     this.#delete(key)
-    this.#entries.set(key, { rootId, bytes, references, ...(inputProof === undefined ? {} : { inputProof }) })
+    this.#entries.set(key, { identity: Symbol(), rootId, bytes, references, ...(inputProof === undefined ? {} : { inputProof }) })
     this.#bytes += bytes
     this.#evict()
-    if (result.otherReferences) this.set({ ...query, includeDeclaration: !query.includeDeclaration },
+    if (result.otherReferences && !inputProof?.startsWith(REFERENCE_QUERY_CACHE_PREFIX)) this.set({ ...query, includeDeclaration: !query.includeDeclaration },
       { status: "complete", references: result.otherReferences }, inputProof)
     return true
   }

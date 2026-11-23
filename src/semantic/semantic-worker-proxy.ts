@@ -1,3 +1,4 @@
+import { createReferenceNamespaceAdmission } from "./references/create-reference-namespace-admission.js"
 import { resolveSemanticWorkerPath } from "./semantic-worker-runtime-path.js"
 import { WorkerManagedSourceNamespaces } from "./worker-managed-source-namespaces.js"
 import type { ManagedSourceDirectory } from "../contracts/managed-source-namespace.js"
@@ -33,7 +34,7 @@ import { workerCallHierarchyRequest } from "./semantic-worker-source-request.js"
 import { WorkerProjectPreparation } from "./worker-project-preparation.js"
 import { ReferenceIndexFreshness } from "./references/reference-index-freshness.js"
 import { ReferenceInputState, type ReferenceInputSnapshot } from "./references/reference-input-snapshot.js"
-import { ReferenceNamespaceAdmission } from "./references/reference-namespace-admission.js"
+import type { ReferenceNamespaceAdmission } from "./references/reference-namespace-admission.js"
 import { ReferenceResultCache } from "./references/reference-result-cache.js"
 import { cachedReferenceResult } from "./references/reference-cache-admission.js"
 import { logReferenceCache } from "./references/reference-cache-telemetry.js"
@@ -94,14 +95,10 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
     this.#environment = options.env ?? process.env
     this.#exportIndex = options.exportIndex
     this.#referenceIndex = options.referenceIndex
-    this.#referenceAdmission = new ReferenceNamespaceAdmission(query => this.semanticReadiness(query), (root, kind) => {
-      this.#referenceResults.invalidateRoot(root)
-      this.#referenceInputs.changed(root)
-    }, (root, kind) => {
-      if (this.#referenceIndex && options.onUnobservedSourceNamespace) {
-        this.#referenceIndexFreshness.changed(root, this.#referenceIndex)
-        options.onUnobservedSourceNamespace?.(root, kind)
-      }
+    this.#referenceAdmission = createReferenceNamespaceAdmission({
+      readiness: query => this.semanticReadiness(query), results: this.#referenceResults,
+      inputs: this.#referenceInputs, freshness: this.#referenceIndexFreshness,
+      index: this.#referenceIndex, reconcile: options.onUnobservedSourceNamespace,
     })
     const workerPath = resolveSemanticWorkerPath(__dirname, options.workerPath)
     this.#host = new SemanticWorkerHost({
@@ -288,9 +285,9 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
   cachedReferences(query: Contract.SemanticReferencesQuery, traceId?: string) {
     if (query.signal?.aborted) return undefined
     if (query.document.source?.kind !== "disk") this.sync(query.document)
-    return cachedReferenceResult(query, this.#referenceResults, input => this.#referenceAdmission.read(input), () =>
+    return cachedReferenceResult(query, this.#referenceResults, input => this.#referenceAdmission.read(input), proof =>
       logReferenceCache(this.#logger, this.#referenceResults, "references.cache.hit",
-        traceId ?? (this.#environment.ARKTS_REFERENCES_TRACE === "1" ? randomUUID() : undefined)))
+        traceId ?? (this.#environment.ARKTS_REFERENCES_TRACE === "1" ? randomUUID() : undefined), undefined, proof))
   }
 
   async references(query: Contract.SemanticReferencesQuery, allowLocalSeed = true): Promise<Contract.VersionedSemanticResult<Contract.SemanticReferencesOutcome>> {

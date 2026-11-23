@@ -8,16 +8,30 @@ import type { SemanticTypeEngineRegistry } from "../core/types/type-engine.js"
 import type { SemanticDocumentPosition } from "../core/protocol.js"
 import type { SemanticDocumentStore, SemanticWorkspaceView, ProjectMembershipRefresh } from "../core/workspace/document-store.js"
 import { assertCompleteProjectMembership, prepareCompleteProjectWorkspace } from "./workspace-membership-admission.js"
-import { WORKSPACE_CATALOG_STAMP } from "../core/workspace/semantic-workspace-view.js"
+import { WORKSPACE_CATALOG_STAMP, WORKSPACE_MEMBERSHIP_PROOF } from "../core/workspace/semantic-workspace-view.js"
 import { SemanticInputUnavailableError } from "../core/types/typescript-query-inputs.js"
 
 type ReadinessCatalogPreparation = Pick<ProjectMembershipRefresh, "changed" | "catalogStamp">
+  & { readonly membershipCurrent?: () => boolean }
 
 /** Metadata reconciliation precedes the first raw snapshot; it creates no compiler owner. */
 export function prepareReadinessCatalog(documents: SemanticDocumentStore, engines: SemanticTypeEngineRegistry,
   rootPath: string, eligible: boolean): ReadinessCatalogPreparation | undefined {
-  return eligible && engines.needsReadinessCatalogRefresh(rootPath)
+  // Whole semantic groups have no projected-scope owner to observe membership.
+  // Capture its original current/final proof before reading the query snapshot;
+  // a discovered change rejects this request, rather than rebasing old inputs.
+  const membership = engines.hasSemanticGroups(rootPath) && !engines.hasOperationScopes(rootPath)
+    ? documents.validateProjectMembership(rootPath) : undefined
+  const refreshed = eligible && engines.needsReadinessCatalogRefresh(rootPath)
     ? documents.refreshProjectMembership(rootPath) : undefined
+  if (!membership && !refreshed) return undefined
+  return { changed: refreshed?.changed ?? false, catalogStamp: refreshed?.catalogStamp ?? membership!.catalogStamp,
+    membershipCurrent: membership?.current }
+}
+
+function withPreparedMembership(workspace: SemanticWorkspaceView,
+  prepared: ReadinessCatalogPreparation | undefined): SemanticWorkspaceView {
+  return prepared?.membershipCurrent ? { ...workspace, [WORKSPACE_MEMBERSHIP_PROOF]: prepared.membershipCurrent } : workspace
 }
 
 /** Ordinary queries may refresh an existing explicit session, never create a cold one. */
@@ -75,8 +89,8 @@ export function prepareInteractiveContext(documents: SemanticDocumentStore, engi
   const catalogPreparation = prepareReadinessCatalog(documents, engines, legacyPosition.workspaceRoot!,
     certifyReadiness && (includeWorkspaceFiles || projectRootProfile === "current"
       || !engines.hasSemanticGroups(legacyPosition.workspaceRoot!)))
-  const prepared = prepareInteractiveWorkspace(documents, legacyPosition,
-    includeWorkspaceFiles, projectRootProfile, additionalSemanticRoots)
+  const prepared = withPreparedMembership(prepareInteractiveWorkspace(documents, legacyPosition,
+    includeWorkspaceFiles, projectRootProfile, additionalSemanticRoots), catalogPreparation)
   if (certifyReadiness && (includeWorkspaceFiles || projectRootProfile === "current"
     || !engines.hasSemanticGroups(prepared.rootPath))) refreshInteractiveReadiness(documents, engines, prepared, catalogPreparation)
   const engine = includeWorkspaceFiles || projectRootProfile === "current" ? engines.prepare(prepared)
@@ -110,7 +124,7 @@ export function prepareSourceWorkspace(documents: SemanticDocumentStore, source:
   const catalogPreparation = beforeCapture?.(workspaceRoot)
   const capture = () => source.kind === "open" ? documents.prepare(legacyPosition, includeWorkspaceFiles)
     : documents.prepareDiskSnapshot(legacyPosition, source.text, includeWorkspaceFiles)
-  const workspace = includeWorkspaceFiles ? prepareCompleteProjectWorkspace(documents, capture) : capture()
+  const workspace = withPreparedMembership(includeWorkspaceFiles ? prepareCompleteProjectWorkspace(documents, capture) : capture(), catalogPreparation)
   return { workspace, position: legacyPosition, catalogPreparation }
 }
 

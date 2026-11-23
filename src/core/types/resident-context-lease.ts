@@ -5,7 +5,7 @@ import type { WorkspaceEngineEntry } from "./type-workspace-entry.js"
 import type { TypeScriptLanguageServiceEngine } from "./typescript-language-service.js"
 import type { SemanticReferenceQueryResult } from "./type-engine-contract.js"
 import { synchronizeContextDelta, typeContextResetReason } from "./type-context-reset.js"
-import { SemanticInputUnavailableError } from "./typescript-query-inputs.js"
+import { SemanticInputUnavailableError, SemanticResultInvalidatedError } from "./typescript-query-inputs.js"
 
 export function retainedReferenceOwnerAllowed(options: {
   readonly references?: { readonly residentFastPath?: boolean; readonly sdkAmbientProfile: string }
@@ -50,8 +50,10 @@ export function queryRetainedReferenceContext(rootPath: string, workspace: () =>
     return completeReferenceScope(result, current) ? result : undefined
   } catch (error) {
     if (!(error instanceof SemanticInputUnavailableError)) throw error
-    // A changed load cannot be repaired by retrying the same witnessed compiler state.
+    // An admission miss can use the complete fallback. Once the actual query
+    // starts, a failed final fence must terminate this request instead.
     entry.engine.invalidateResidentReferences()
+    if (error instanceof SemanticResultInvalidatedError) throw error
     return undefined
   } finally { lease.release() }
 }

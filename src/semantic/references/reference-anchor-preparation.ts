@@ -1,4 +1,4 @@
-import { withRequestInputValidation } from "../../project/request-input-validation.js"
+import { withRequestInputValidation, withSynchronousInputPreparation, withPreparationInputValidation } from "../../project/request-input-validation.js"
 import { SemanticInputUnavailableError } from "../../core/types/typescript-query-inputs.js"
 import { pathToFileURL } from "node:url"
 
@@ -36,6 +36,20 @@ export function prepareReferenceSearchWorkspace(
   return workspace
 }
 
+/** Preparation facts belong to the actual leased resident query. No promise or
+ * asynchronous verifier is started inside this synchronous handoff. */
+export function runResidentReferenceQuery(query: SemanticReferencesQuery,
+  position: SemanticDocumentPosition, rootPath: string, documents: SemanticDocumentStore,
+  engines: SemanticTypeEngineRegistry, synchronize: boolean, trace?: StructuredLogger) {
+  return withSynchronousInputPreparation(() => {
+    const prepare = () => prepareReferenceSearchWorkspace(position, documents, trace, query.document)
+    const result = synchronize ? engines.retainedReferences(rootPath, prepare, position, query.includeDeclaration)
+      : engines.residentReferences(prepare(), position, query.includeDeclaration)
+    return result ? publicReferenceResult(query.document.version, result)
+      : { documentVersion: query.document.version, value: null }
+  })
+}
+
 /** Bridge the current source and candidate transport to the existing reference owner. */
 export async function runOwnerReferenceQuery(query: SemanticReferencesQuery,
   position: SemanticDocumentPosition, documents: SemanticDocumentStore,
@@ -45,18 +59,20 @@ export async function runOwnerReferenceQuery(query: SemanticReferencesQuery,
     const filePath = toFilePath(uri)
     return filePath ? [filePath] : []
   })
-  // The isolated verifier owns the semantic query. Refresh a stale explicit root
-  // session, but do not recertify an unchanged Program just to discard its report.
-  // Preparation keeps its own fresh final union before crossing await.
-  const workspace = withRequestInputValidation(() => {
-    const captured = prepareReferenceSearchWorkspace(position, documents, trace, query.document)
-    if (engines.needsReadinessRootRefresh(captured)) engines.semanticReadiness(captured, "query")
-    return captured
-  }, () => { throw new SemanticInputUnavailableError() })
-  const result = await engines.references(workspace,
-    position, query.includeDeclaration, paths(candidates.candidateUris), candidates.candidateIdentityComplete === true,
-    candidates.candidateAnchorUri ? toFilePath(candidates.candidateAnchorUri) : undefined,
-    paths(candidates.candidateSupportUris), candidates.forceLegacy === true)
+  // No asynchronous verifier may start until the original preparation's final union succeeds.
+  const dispatch = withSynchronousInputPreparation(() => {
+    const workspace = withPreparationInputValidation(() => {
+      const captured = prepareReferenceSearchWorkspace(position, documents, trace, query.document)
+      if (engines.needsReadinessRootRefresh(captured)) engines.semanticReadiness(captured, "query")
+      return captured
+    }, () => { throw new SemanticInputUnavailableError() })
+    return withRequestInputValidation(() => engines.prepareReferenceQuery(workspace,
+      position, query.includeDeclaration, paths(candidates.candidateUris), candidates.candidateIdentityComplete === true,
+      candidates.candidateAnchorUri ? toFilePath(candidates.candidateAnchorUri) : undefined,
+      paths(candidates.candidateSupportUris), candidates.forceLegacy === true),
+    () => { throw new SemanticInputUnavailableError() })
+  })
+  const result = await dispatch()
   return publicReferenceResult(query.document.version, result)
 }
 

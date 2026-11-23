@@ -42,9 +42,9 @@ if (!isMainThread && process.env.ARKTS_LSP_LOG_DIR) {
   const compile = Module.prototype._compile
   Module.prototype._compile = function(sourceText, file) {
     if (path.basename(file) === "semantic-worker.cjs") {
-      const needle = "function createOfficialSemanticService(host, sdk, observe, invalidate, programReturned) {"
-      if (sourceText.split(needle).length !== 2) throw Error("unique SDK replacement constructor hook required")
-      sourceText = sourceText.replace(needle, needle + "globalThis.__sdkResetConstructionFault();")
+      const needle = /function createOfficialSemanticService\([^{}\n]*\) \{/g
+      if ([...sourceText.matchAll(needle)].length !== 1) throw Error("unique SDK replacement constructor hook required")
+      sourceText = sourceText.replace(needle, header => header + "globalThis.__sdkResetConstructionFault();")
     }
     return compile.call(this, sourceText, file)
   }

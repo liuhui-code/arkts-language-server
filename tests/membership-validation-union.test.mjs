@@ -1,34 +1,9 @@
 import assert from "node:assert/strict"
 import fs from "node:fs"
-import os from "node:os"
 import path from "node:path"
 import test from "node:test"
-import { createRequire } from "node:module"
-import { buildSync } from "esbuild"
-import { projectRoot } from "./support/lsp-process.mjs"
+import { membershipValidationFixture as fixture } from "./support/membership-validation-fixture.mjs"
 
-function fixture(t, scopeCurrent = () => true) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-membership-union-"))
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
-  const entry = path.join(root, "entry.ts"), outfile = path.join(root, "entry.cjs")
-  fs.writeFileSync(entry, ["project/request-input-validation", "project/source-file-identity",
-    "project/validated-source-directory", "project/loaded-configuration-witness", "project/configuration-source-identity", "core/workspace/complete-membership-proof",
-    "core/workspace/workspace-source-enumerator", "core/workspace/workspace-disk-source"].map(file =>
-    `export * from ${JSON.stringify(path.join(projectRoot, "src", file + ".ts"))}`).join("\n"))
-  buildSync({ entryPoints: [entry], outfile, bundle: true, platform: "node", format: "cjs", target: "node20" })
-  const api = createRequire(import.meta.url)(outfile), source = path.join(root, "Source.ts")
-  fs.writeFileSync(source, "export const value = 1\n")
-  const timestamp = new Date(Math.floor(Date.now() / 1000) * 1000 - 10_000)
-  fs.utimesSync(source, timestamp, timestamp)
-  const directories = new api.WorkspaceNamespaceWitness(1024 * 1024)
-  directories.observe({ path: root, physicalPath: fs.realpathSync.native(root),
-    identity: fs.lstatSync(root, { bigint: true }), root: false })
-  const token = api.sourceStatIdentity(fs.lstatSync(source))
-  const catalog = { paths: [source], diskIdentities: new Map([[source, token]]),
-    revision: 1, status: "complete", pathBytes: Buffer.byteLength(source) }
-  const proof = api.captureCompleteMembershipProof(catalog, directories, scopeCurrent)
-  return { api, source, catalog, proof, token, timestamp, directories }
-}
 
 test("membership contributes an independent final leaf fence after a later owner changes a previously checked body", t => {
   const { api, source, catalog, proof, token, timestamp, directories } = fixture(t)
@@ -198,10 +173,11 @@ test("known regular source lookups borrow original directories but reobserve lea
       api.withRequestInputValidation(() => {
         assert.equal(witness.freshness(control.checkpoint)?.(), true)
         assert.equal(leafRealpaths, 0, "the original physical directory and exact spelling replace per-leaf realpath")
+        assert.equal(leafStats, 2, "completed native first observation plus independent later configuration leaf")
       }, () => { throw Error("source input became stale") })
     })
     assert.equal(leafRealpaths, 0, "final validation borrows the original directory, never the query validity result")
-    assert.ok(leafStats >= 6, "native plus independent source-leaf checks run again in the final phase")
+    assert.equal(leafStats, 5, "final phase still adds one native and two configuration raw observations")
     assert.equal(witness.freshness(control.checkpoint, "capture")?.(), true)
     assert.equal(leafRealpaths, 1, "the next unscoped observation cannot inherit a request's directory producer")
   } finally {
@@ -451,5 +427,30 @@ for (const field of ["dev", "ino", "mode", "size", "mtimeMs", "ctimeMs"]) {
         assert.equal(calls, 2)
       } finally { fs.lstatSync = lstat }
     }, () => { throw Error("final input unavailable") })
+  })
+}
+
+for (const field of ["dev", "ino", "mode", "size", "mtimeMs", "ctimeMs"]) {
+  test(`source representation raw fallback rejects a ${field} change between raw observations`, t => {
+    const { api, source, catalog, proof } = fixture(t), control = { checkpoint() {} }
+    const witness = new api.LoadedConfigurationWitness()
+    witness.observeSourceNamespace(source, () => fs.readFileSync(source, "utf8"))
+    const original = fs.lstatSync
+    let reads = 0
+    api.withSynchronousInputPreparation(() => {
+      assert.equal(proof.current(catalog, [], control), true)
+      assert.ok(api.takeCompletedRegularSourceObservation(source, fs.realpathSync.native(path.dirname(source))),
+        "consume optional native metadata to retain the full two-raw-observation fallback regression")
+      try {
+        fs.lstatSync = function(file, ...args) {
+          const stat = Reflect.apply(original, this, [file, ...args])
+          if (file !== source || ++reads !== 2) return stat
+          return Object.defineProperty(Object.create(stat), field, { value: stat[field] + 1 })
+        }
+        assert.equal(witness.freshness(control.checkpoint), undefined,
+          "an original parsed receipt cannot hide a changed raw leaf")
+        assert.equal(reads, 2)
+      } finally { fs.lstatSync = original }
+    })
   })
 }
