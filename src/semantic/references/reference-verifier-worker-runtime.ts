@@ -14,9 +14,11 @@ import {
 import type { ReferenceSdkAmbientProfile } from "./reference-runtime.js"
 import { enableVerifierSdkRetention } from "../backends/ohos-typescript/registry-pool.js"
 import { constructorModuleExclusions } from "./reference-constructor-scope.js"
+import type { ReferenceVerifierTicket } from "./reference-verifier-ticket.js"
 
 interface ReferenceVerifierWorkerData {
   readonly persistent?: boolean
+  readonly verifierJob?: ReferenceVerifierTicket
   readonly operation: "references" | "definition"
   readonly workspace: SemanticWorkspaceView
   readonly position: SemanticDocumentPosition
@@ -41,7 +43,7 @@ runJob(workerData as ReferenceVerifierWorkerData)
 
 function runJob(data: ReferenceVerifierWorkerData): void {
   // Trace-only protocol marker after module loading, before semantic preparation.
-  if (data.trace) port!.postMessage({ phase: "runtime-ready" })
+  if (data.trace) port!.postMessage({ phase: "runtime-ready", verifierJob: data.verifierJob })
   applyTestDelay()
   const packageResolver = new LocalPackageResolver()
   packageResolver.enableConfigurationWitness()
@@ -124,7 +126,7 @@ function runJob(data: ReferenceVerifierWorkerData): void {
     // The parent may terminate immediately on receipt. Finish native ownership
     // release before publishing either a result or failure, never after it.
     engine.dispose()
-    port!.postMessage(response)
+    port!.postMessage({ ...response as Record<string, unknown>, verifierJob: data.verifierJob })
   } finally {
     if (!workerData.persistent) port!.close()
   }

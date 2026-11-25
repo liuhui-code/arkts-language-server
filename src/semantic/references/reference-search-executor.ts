@@ -1,5 +1,12 @@
+import { scopedWorkspace } from "./reference-scoped-workspace.js"
+import { probeLexicalReferences } from "./reference-lexical-probe.js"
+import { completedReferenceCoverage } from "./reference-completed-coverage.js"
+import { lexicalReferenceCoverage } from "./lexical-reference-coverage.js"
+import { verificationTraceFields } from "./reference-verification-trace.js"
+import { ReferenceProofConsensus } from "./reference-proof-consensus.js"
 import { createHash } from "node:crypto"
 import path from "node:path"
+import { SemanticInputUnavailableError, SemanticResultInvalidatedError } from "../../core/types/typescript-query-inputs.js"
 
 import type { SemanticDefinitionCandidate, SemanticDocumentPosition } from "../../core/protocol.js"
 import type { SemanticReferenceQueryResult } from "../../core/types/type-engine.js"
@@ -71,10 +78,39 @@ export interface ReferenceSearchExecutorOptions {
 
 export class ReferenceSearchExecutor {
   private nextSession = 1
-
   constructor(private readonly options: ReferenceSearchExecutorOptions) {}
 
-  async execute(
+  async execute(...args: Parameters<ReferenceSearchExecutor["prepare"]>): Promise<SemanticReferenceQueryResult> {
+    return this.prepare(...args)()
+  }
+
+  prepare(
+    workspace: SemanticWorkspaceView,
+    position: SemanticDocumentPosition,
+    includeDeclaration: boolean,
+    candidatePaths?: readonly string[],
+    candidateIdentityComplete = false,
+    candidateAnchorPath?: string,
+    candidateSupportPaths?: readonly string[],
+    semanticGraph?: HarmonySemanticGraph,
+    allowConstructorExclusion = true,
+    maxBatches?: number,
+    admitVerifier?: () => boolean,
+  ): () => Promise<SemanticReferenceQueryResult> {
+    if (candidatePaths && !projectFileIdentitiesCurrent(workspace, this.options.checkpoint)) {
+      this.options.trace?.("references.index.fallback", { reason: "source-snapshot-changed", strategy: "complete-scope" })
+      candidatePaths = undefined
+      candidateIdentityComplete = false
+      candidateAnchorPath = candidateSupportPaths = undefined
+      const { expectedReferenceAnchor: _changedAnchor, ...originalPosition } = position
+      position = originalPosition
+    }
+    return () => this.executeAdmitted(workspace, position, includeDeclaration, candidatePaths,
+      candidateIdentityComplete, candidateAnchorPath, candidateSupportPaths, semanticGraph,
+      allowConstructorExclusion, maxBatches, admitVerifier)
+  }
+
+  private async executeAdmitted(
     workspace: SemanticWorkspaceView,
     position: SemanticDocumentPosition,
     includeDeclaration: boolean,
@@ -88,14 +124,6 @@ export class ReferenceSearchExecutor {
     admitVerifier?: () => boolean,
   ): Promise<SemanticReferenceQueryResult> {
     const sessionStarted = performance.now()
-    if (candidatePaths && !projectFileIdentitiesCurrent(workspace, this.options.checkpoint)) {
-      this.options.trace?.("references.index.fallback", { reason: "source-snapshot-changed", strategy: "complete-scope" })
-      candidatePaths = undefined
-      candidateIdentityComplete = false
-      candidateAnchorPath = candidateSupportPaths = undefined
-      const { expectedReferenceAnchor: _changedAnchor, ...originalPosition } = position
-      position = originalPosition
-    }
     const plan = planConservativeReferenceBatches(
       workspace,
       this.options.batchRootLimit,
@@ -123,6 +151,7 @@ export class ReferenceSearchExecutor {
     const dependencyProfile = identityAnchorPath && validIdentitySupport
       ? this.options.dependencyProfile
       : "closure"
+    const proofs = new ReferenceProofConsensus()
     const referenceSession = this.nextSession++
     const elapsedMs = () => Math.round((performance.now() - sessionStarted) * 100) / 100
     this.options.trace?.("references.plan.complete", {
@@ -146,9 +175,13 @@ export class ReferenceSearchExecutor {
       return rejectBudget(plan.batches.length)
     }
     this.options.disposeResidentContext(rootPath)
+    if (!candidatePaths && (maxBatches === undefined || plan.batches.length < maxBatches)) {
+      const probe = await probeLexicalReferences(workspace, position, includeDeclaration, this.options, admitVerifier)
+      if (probe) return probe
+    }
     const collected: SemanticDefinitionCandidate[] = []
     const otherCollected: SemanticDefinitionCandidate[] = []
-    let otherComplete = true
+    let otherComplete = true, candidateAnchorsVerified = true
     const consumedExclusions = new Map<string, { readonly path: string; readonly token: string }>()
     let batches = plan.batches
     let rootsReplanned = false
@@ -268,6 +301,11 @@ export class ReferenceSearchExecutor {
         return verification.result
       }
       const { result } = verification
+      candidateAnchorsVerified &&= verification.anchorVerified === true
+      if (result.queryProofRefusal) this.options.trace?.("references.proof.refused", {
+        referenceSession, batchIndex: batch.index, reason: result.queryProofRefusal,
+      })
+      proofs.observe(result.queryProof)
       collected.push(...result.references)
       if (result.otherReferences) otherCollected.push(...result.otherReferences)
       else otherComplete = false
@@ -297,6 +335,14 @@ export class ReferenceSearchExecutor {
         durationMs: Math.round((performance.now() - started) * 100) / 100,
       })
       this.options.checkpoint?.()
+      const lexicalProof = proofs.value
+      if (lexicalProof && lexicalReferenceCoverage(lexicalProof, workspace, position, result)) {
+        this.options.trace?.("references.lexical-scope.complete", {
+          referenceSession, batchIndex: batch.index, completedBatches: batch.index + 1,
+          skippedBatches: batches.length - batch.index - 1, membershipFiles: plan.membershipFiles,
+        })
+        break
+      }
       const exclusions = allowConstructorExclusion && result.constructorTarget
         ? result.constructorExcludedSources?.filter(exclusion => {
             this.options.checkpoint?.()
@@ -361,9 +407,10 @@ export class ReferenceSearchExecutor {
       rawLocations: collected.length,
       locations: references.length,
     })
-    return candidatePaths && !projectFileIdentitiesCurrent(workspace, this.options.checkpoint)
-      ? { status: "incomplete", reason: "source-unavailable" } : { status: "complete", references,
-          ...(otherComplete ? { otherReferences: uniqueSortedReferences(otherCollected) } : {}) }
+    if (candidatePaths && !projectFileIdentitiesCurrent(workspace, this.options.checkpoint))
+      throw new SemanticResultInvalidatedError(new SemanticInputUnavailableError())
+    const queryProof = completedReferenceCoverage(proofs.value, workspace, position.path, candidatePaths, candidateIdentityComplete, candidateAnchorsVerified)
+    return { status: "complete", references, ...(queryProof ? { queryProof } : {}), ...(otherComplete ? { otherReferences: uniqueSortedReferences(otherCollected) } : {}) }
   }
 }
 
@@ -382,59 +429,6 @@ function coversWholeSearchScope(
       .every(document => searched.has(path.resolve(document.path)))
 }
 
-/** Observations already captured by the verifier; never queries compiler state. */
-function verificationTraceFields(verification: ReferenceBatchVerification): Record<string, TraceField> {
-  return {
-    preparedProgramSourceFiles: verification.prepared.stats.programSourceFiles,
-    preparedProgramProjectFiles: verification.prepared.stats.programProjectFiles,
-    preparedSdkSourceFiles: verification.prepared.stats.sdkSourceFiles,
-    preparedProjectTextCodeUnits: verification.prepared.stats.projectTextCodeUnits,
-    preparedSdkTextCodeUnits: verification.prepared.stats.sdkTextCodeUnits,
-    preparedOtherSourceFiles: verification.prepared.stats.otherSourceFiles,
-    preparedOtherTextCodeUnits: verification.prepared.stats.otherTextCodeUnits,
-    preparedRss: verification.prepared.memory.rss,
-    preparedHeapUsed: verification.prepared.memory.heapUsed,
-    queryRssDelta: verification.memory.rss - verification.prepared.memory.rss,
-    queryHeapUsedDelta: verification.memory.heapUsed - verification.prepared.memory.heapUsed,
-    workerPrepareHostMs: verification.timings.prepareHostMs,
-    workerStartupMs: verification.timings.workerStartupMs,
-    workerReused: verification.timings.workerReused,
-    workerProgramReadyMs: verification.timings.programReadyMs,
-    workerGetProgramMs: verification.timings.getProgramMs,
-    workerCreateProgramMs: verification.timings.createProgramMs,
-    workerGetTypeCheckerMs: verification.timings.getTypeCheckerMs,
-    workerQueryMs: verification.timings.queryMs,
-    ...verification.stats,
-    rss: verification.memory.rss,
-    heapUsed: verification.memory.heapUsed,
-  }
-}
-
-function scopedWorkspace(
-  workspace: SemanticWorkspaceView,
-  rootPaths: readonly string[],
-  firstBatch: boolean,
-  admittedProjectPaths?: readonly string[],
-): SemanticWorkspaceView {
-  const admitted = new Set(rootPaths.map(filePath => path.resolve(filePath)))
-  const admittedProject = admittedProjectPaths
-    ? new Set(admittedProjectPaths.map(filePath => path.resolve(filePath)))
-    : undefined
-  return {
-    ...workspace,
-    semanticRootPaths: rootPaths,
-    documents: workspace.documents.filter(document => (
-      document.overlay || admitted.has(path.resolve(document.path))
-    )),
-    ...(admittedProject && workspace.projectFileIdentities
-      ? { projectFileIdentities: workspace.projectFileIdentities.filter(([filePath]) => (
-          admittedProject.has(path.resolve(filePath))
-        )) }
-      : {}),
-    changedPaths: firstBatch ? workspace.changedPaths : undefined,
-    removedPaths: firstBatch ? workspace.removedPaths : undefined,
-  }
-}
 
 function uniqueSortedReferences(
   references: readonly SemanticDefinitionCandidate[],

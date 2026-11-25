@@ -13,7 +13,7 @@ interface ReferenceQueryRoute {
   readonly strategy: ReferenceSearchStrategy
   readonly preferResident: boolean
   readonly cache: ReferenceResultCache
-  readonly cacheAdmission?: () => Promise<string | undefined>
+  readonly cacheAdmission?: (result: SemanticReferencesOutcome, selection?: ReferenceCandidateSelection) => Promise<string | undefined>
   assertCurrent(): void
   selectCandidates(): Promise<ReferenceCandidateSelection | undefined>
   forceLegacy(): boolean
@@ -54,18 +54,21 @@ export async function routeReferenceQuery(query: SemanticReferencesQuery, route:
     route.logger?.info("references.anchor.seed.fallback", { traceId: route.traceId, reason: response.value.reason })
     return route.retryWithoutSeed()
   }
-  return publishReferenceResult(query, { documentVersion: response.documentVersion, value: response.value }, route)
+  return publishReferenceResult(query, { documentVersion: response.documentVersion, value: response.value }, route, candidates)
 }
 
 async function publishReferenceResult(query: SemanticReferencesQuery,
-  response: VersionedSemanticResult<SemanticReferencesOutcome>, route: ReferenceQueryRoute) {
+  response: VersionedSemanticResult<SemanticReferencesOutcome>, route: ReferenceQueryRoute, selection?: ReferenceCandidateSelection) {
   if (query.signal?.aborted || response.value.status !== "complete") return response
-  const inputProof = route.cacheAdmission ? await route.cacheAdmission() : undefined
+  const inputProof = route.cacheAdmission ? await route.cacheAdmission(response.value, selection) : undefined
   route.assertCurrent()
+  if (route.cacheAdmission && inputProof === undefined) route.logger?.info("references.cache.ineligible", {
+    traceId: route.traceId, reason: response.value.queryProof ? "input-proof-unavailable" : "query-coverage-unproven",
+  })
   if (!query.signal?.aborted && (!route.cacheAdmission || inputProof !== undefined)
     && route.cache.set(query, response.value, inputProof)) {
     logReferenceCache(route.logger, route.cache, "references.cache.store", route.traceId,
-      response.value.status === "complete" ? response.value.references.length : 0)
+      response.value.status === "complete" ? response.value.references.length : 0, inputProof)
   }
   return response
 }

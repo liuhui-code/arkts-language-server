@@ -1,6 +1,7 @@
 import path from "node:path"
 import { createHash } from "node:crypto"
 import type ts from "typescript"
+import { guardResidentReferenceResult } from "./resident-reference-query.js"
 
 import type { SemanticDefinitionCandidate } from "../protocol.js"
 import type { SemanticWorkspaceView } from "../workspace/document-store.js"
@@ -9,6 +10,18 @@ import type { TypeScriptResidentReferenceState } from "./typescript-resident-ref
 
 const MAX_REUSED_FINGERPRINTS = 512
 const MAX_REUSED_TEXT_CODE_UNITS = 4 * 1024 * 1024
+
+/** Bind the admitted Program's actual query to its leased final input scope. */
+export function queryValidatedResidentReferences(
+  state: TypeScriptResidentReferenceState | undefined, workspace: SemanticWorkspaceView,
+  inputs: () => { readonly generation: number; readonly roots: readonly string[] },
+  query: (program: ts.Program) => SemanticReferenceQueryResult, sourcePath: string,
+  synchronizeOverlay: (() => void) | undefined,
+  scope: (run: () => SemanticReferenceQueryResult | undefined) => SemanticReferenceQueryResult | undefined,
+): SemanticReferenceQueryResult | undefined {
+  return guardResidentReferenceResult(scope, started => queryAdmittedReferences(state, workspace, inputs,
+    program => { started(); return query(program) }, sourcePath, synchronizeOverlay))
+}
 
 /** A single validated anchor must retain its original admitted Program and inputs. */
 export function queryAdmittedDefinition(

@@ -26,7 +26,7 @@ export type SemanticInputIssue =
 export interface SemanticReadinessReport {
   readonly rootUri: string
   /** Freshly enumerated admitted names, independent of SDK/Program readiness. */
-  readonly sourceNamespace?: { readonly sha256: string; readonly sources: number; readonly diskSha256?: string; readonly overlayOnly?: boolean }
+  readonly sourceNamespace?: { readonly sha256: string; readonly sources: number; readonly diskSha256?: string; readonly overlayOnly?: boolean; readonly resolutionIdentity?: string }
   readonly semanticState: "unprepared" | "ready" | "partial" | "degraded"
   /** Present for usable partial inputs; not a full-reference/rename proof. */
   readonly availableCapabilities?: readonly string[]

@@ -1,6 +1,8 @@
+import { workspaceCacheUnitTests } from "./workspace-cache-test-entries.mjs"
+import { queryCacheUnitTests, queryCacheBundleTests } from "./query-cache-test-entries.mjs"
+import { verifierJobBundleTests } from "./verifier-job-test-entries.mjs"
 import fs from "node:fs"
 import path from "node:path"
-
 export const TEST_LAYER_MANIFEST = Object.freeze({
   schema: "arkts-language-server.test-layers",
   schemaVersion: 1,
@@ -10,11 +12,23 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/observed-source-directory.test.mjs",
       "tests/normalized-source-paths.test.mjs",
       "tests/worker-log-delivery.test.mjs",
+      "tests/semantic-worker-request-error.test.mjs",
       "tests/membership-validation-union.test.mjs",
+      "tests/membership-proof-renewal.test.mjs",
       "tests/typescript-host-root-metadata.test.mjs",
       "tests/loaded-configuration-witness-lifetime.test.mjs",
+      "tests/configuration-source-plan.test.mjs",
+      "tests/source-role-pool.test.mjs",
+      "tests/scope-role-delta.test.mjs",
+      "tests/project-membership-fact-delta.test.mjs",
+      "tests/overlay-document-map.test.mjs",
+      "tests/typed-source-observation.test.mjs",
+      "tests/final-source-observation.test.mjs",
+      "tests/configuration-fact-comparison.test.mjs",
+      "tests/membership-final-consumption.test.mjs",
+      "tests/source-read-provenance.test.mjs",
       "tests/source-reset-admission-lifetime.test.mjs",
-      "tests/reference-namespace-admission.test.mjs",
+      ...queryCacheUnitTests,
       "tests/arkts-document-formatter.test.mjs",
       "tests/artifact-manifest.test.mjs",
       "tests/build-test-server.test.mjs",
@@ -77,7 +91,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/semantic-release-pss-statistics-cli.test.mjs",
       "tests/semantic-release-pss-workflow-cli.test.mjs",
       "tests/semantic-release-pss-sampling-cli.test.mjs",
-      "tests/project-file-set-cache.test.mjs",
+      ...workspaceCacheUnitTests,
       "tests/project-resolution-domain-lifetime.test.mjs",
       "tests/prepared-completion-receipts.test.mjs",
       "tests/partial-project-source-delivery.test.mjs",
@@ -227,6 +241,18 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/semantic/startup-synchronization-liveness.test.mjs",
       "tests/semantic/partial-project-initialization.test.mjs",
       "tests/semantic/scope-dependency-lifecycle.test.mjs",
+      "tests/semantic/repeated-navigation-input-formatting.test.mjs",
+      "tests/semantic/navigation-group-membership-reuse.test.mjs",
+      "tests/semantic/navigation-final-member-fence.test.mjs",
+      "tests/semantic/navigation-source-origin.test.mjs",
+      "tests/semantic/resident-final-source-observation.test.mjs",
+      "tests/semantic/resident-reference-preparation.test.mjs",
+      "tests/semantic/resident-source-digest-reuse.test.mjs",
+      "tests/semantic/navigation-dependency-node-retention.test.mjs",
+      "tests/semantic/navigation-saved-input-delta.test.mjs",
+      "tests/semantic/diagnostic-preparation-inputs.test.mjs",
+      "tests/semantic/watch-registration-input-lifetime.test.mjs",
+      "tests/semantic/syntax-document-symbol-inputs.test.mjs",
       "tests/semantic/initial-scope-retry.test.mjs",
       "tests/semantic/reference-disk-byte-evidence.test.mjs",
       "tests/semantic/readiness-trace-delivery.test.mjs",
@@ -300,16 +326,16 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/semantic/cold-cache-multi-root-initialization.test.mjs",
       "tests/semantic/references-candidate-snapshot.test.mjs",
       "tests/semantic/references-direct-proof-trace.test.mjs",
-      "tests/semantic/references-anchor-reuse.test.mjs",
+      ...verifierJobBundleTests,
       "tests/semantic/references-conservative-semantic-units.test.mjs",
-      "tests/semantic/references-compiler-query-trace.test.mjs",
-      "tests/semantic/references-context-retention.test.mjs",
       "tests/semantic/references-coalescing.test.mjs",
       "tests/semantic/references-diagnostic-cache.test.mjs",
       "tests/semantic/references-diagnostic-scheduling.test.mjs",
       "tests/semantic/semantic-queue-trace.test.mjs",
       "tests/semantic/references-depth.test.mjs",
       "tests/semantic/references-index-resync.test.mjs",
+      "tests/semantic/references-current-index-qualification.test.mjs",
+      ...queryCacheBundleTests,
       "tests/semantic/references-index-generation-race.test.mjs",
       "tests/semantic/references-initial-catalog.test.mjs",
       "tests/semantic/references-native-preopen-index-recovery.test.mjs",
@@ -369,7 +395,6 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
     ]),
   ]),
 })
-
 export function validateTestLayerManifest({ root, manifest }) {
   const discovered = discoverTestEntries(root)
   const discoveredSet = new Set(discovered)

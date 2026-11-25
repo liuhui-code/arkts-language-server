@@ -5,11 +5,12 @@ import test from "node:test"
 import { createReadinessFixture } from "../support/semantic-readiness-lsp.mjs"
 import { positionAt } from "../support/resident-interactive-lsp.mjs"
 
-for (const [fillerCount, mutation] of [[0, null], [254, null], [254, "rewrite"], [254, "parent-retarget"]]) {
-test(`closing an unimported declaration updates its retained consumer without rebuilding the group (dependencies=${fillerCount}, mutation=${mutation})`,
+for (const [fillerCount, mutation, diagnosticDelay = 0] of [[0, null], [254, null], [254, "rewrite"], [254, "parent-retarget"], [254, "parent-retarget", 2000]]) {
+test(`closing an unimported declaration updates its retained consumer without rebuilding the group (dependencies=${fillerCount}, mutation=${mutation}, diagnostics=${diagnosticDelay})`,
   { timeout: 30_000 }, async t => {
     const { session, workspace, sdk, rootUri, uri, events, directory } = createReadinessFixture(t, {
       ARKTS_MEMORY_BUDGET_MB: "4096", ARKTS_BENCHMARK_CONTROL: "0",
+      ARKTS_TEST_DIAGNOSTIC_DELAY_MS: String(diagnosticDelay),
       ...(mutation ? { NODE_OPTIONS: `--require=${JSON.stringify(path.resolve("tests/fixtures/changed-input-witness-window.cjs"))}` } : {}) })
     const files = {
       "a/src/main/ets/Query.ets": 'import { LocalA } from "./Local"\nexport const selected = new LocalA()\nexport const result = selected.ambient.diskMember\n',

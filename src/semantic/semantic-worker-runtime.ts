@@ -1,4 +1,5 @@
 import { stopReferenceVerifierWorkers } from "./references/reference-verifier-client.js"
+import { observeReferenceVerifierFault } from "./references/reference-verifier-fault.js"
 import { AsyncLocalStorage } from "node:async_hooks"
 import { parentPort, threadId, workerData } from "node:worker_threads"
 
@@ -39,6 +40,7 @@ type RuntimeWorkerData = ReturnType<typeof semanticWorkerData>
 const port = requireParentPort(parentPort)
 const data = workerData as RuntimeWorkerData
 let quarantined = false
+const stopVerifierFaultObservation = observeReferenceVerifierFault(fault => { quarantined = true; port.postMessage(fault) })
 const stopOwnershipObservation = observeCompilerOwnershipFailure(() => {
   quarantined = true
   port.postMessage(ownershipFaultEvent())
@@ -485,7 +487,7 @@ function dispose(): void {
   if (disposed) return
   disposed = true
   clearInterval(sampleTimer)
-  try { engine.dispose() } finally { stopOwnershipObservation() }
+  try { engine.dispose() } finally { stopOwnershipObservation(); stopVerifierFaultObservation() }
 }
 
 function isMutationLike(value: unknown): boolean {

@@ -1,3 +1,4 @@
+import type { ReferenceQueryProof, ReferenceQueryProofRefusal } from "../../contracts/reference-query-proof.js"
 import type {
   SemanticCallHierarchyItemInfo,
   SemanticCallHierarchyIncomingQueryResult,
@@ -57,6 +58,8 @@ export type SemanticReferenceQueryResult =
       /** Other declaration policy, only when independently mappable and complete. */
       otherReferences?: SemanticDefinitionCandidate[]
       /** Internal, operation-scoped proof from one completed compiler search. */
+      queryProof?: ReferenceQueryProof
+      queryProofRefusal?: ReferenceQueryProofRefusal
       searchedProjectPaths?: readonly string[]
       /** Unique raw compiler constructor definition from that same search. */
       constructorTarget?: { readonly path: string; readonly start: number; readonly length: number }

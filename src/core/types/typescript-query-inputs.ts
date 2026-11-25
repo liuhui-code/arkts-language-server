@@ -3,9 +3,18 @@ import type { LoadedConfigurationWitness } from "../../project/loaded-configurat
 import { CooperativeWork } from "./cooperative-work.js"
 
 export class SemanticInputUnavailableError extends Error {
-  constructor() {
-    super("Semantic query requires current workspace inputs")
+  constructor(options?: ErrorOptions) {
+    super("Semantic query requires current workspace inputs", options)
     this.name = "SemanticInputUnavailableError"
+  }
+}
+
+/** Once semantic computation starts, a failed input fence is a request failure,
+ * not permission to rebuild and answer the same request from a different input. */
+export class SemanticResultInvalidatedError extends SemanticInputUnavailableError {
+  constructor(cause: SemanticInputUnavailableError) {
+    super({ cause })
+    this.name = "SemanticResultInvalidatedError"
   }
 }
 

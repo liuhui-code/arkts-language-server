@@ -5,6 +5,7 @@ import type { ProjectFileAdmissionToken, SemanticOperationControl } from "./docu
 import type { ProjectFileSetCacheEntry } from "./project-membership-catalog.js"
 import { canonicalSourcePath, isInside } from "./physical-path-identity.js"
 import { readDiskSource } from "./workspace-disk-source.js"
+import { retainGuardedProjectSourceDigest } from "../../project/source-content-digests.js"
 
 /** The completed native walk excludes symlink descendants and witnesses every
  * ancestor. Its physical root supplies an EXPECTED path, never a current proof:
@@ -16,7 +17,7 @@ export function readAdmittedProjectSourceSnapshot(input: {
   readonly canonicalRootId: string
   readonly token: ProjectFileAdmissionToken
   readonly operationControl: SemanticOperationControl
-  readonly nativeCatalog?: Pick<ProjectFileSetCacheEntry, "scanRoot" | "status">
+  readonly nativeCatalog?: Pick<ProjectFileSetCacheEntry, "scanRoot" | "status" | "publicSnapshot">
 }): ProjectSourceSnapshot | null {
   const { filePath, canonicalRootId, token, operationControl, nativeCatalog } = input
   try {
@@ -33,6 +34,11 @@ export function readAdmittedProjectSourceSnapshot(input: {
     : canonicalSourcePath(filePath)
   if (!isInside(canonicalRootId, physicalPath)) return null
   const result = readDiskSource(filePath, Number.POSITIVE_INFINITY, operationControl, physicalPath, token)
-  return result.status === "loaded" && result.identity
-    ? { content: result.content, identity: result.identity } : null
+  if (result.status !== "loaded" || !result.identity) return null
+  const snapshot = { content: result.content, identity: result.identity, mode: result.mode }
+  if (origin && nativeCatalog?.publicSnapshot) retainGuardedProjectSourceDigest({
+    membership: nativeCatalog.publicSnapshot, strongMembership: true, file: filePath,
+    root: origin, canonicalRoot: canonicalRootId, physicalPath, token,
+  }, snapshot)
+  return snapshot
 }

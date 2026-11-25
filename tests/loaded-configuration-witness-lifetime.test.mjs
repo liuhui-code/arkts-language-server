@@ -110,3 +110,35 @@ test("genuine lost-proof capacity and unknown failures remain fail closed", t =>
     assert.equal(witness.captureConfigurationBeforeSourceReset(checkpoint, () => true).current(checkpoint), false)
   }
 })
+
+
+test("parsed facts survive hot checks but are released by retirement, reset and authoritative replacement", t => {
+  const f = fixture(t, 1), witness = new LoadedConfigurationWitness(), original = JSON.parse
+  let parses = 0
+  try {
+    JSON.parse = function(...args) {
+      const value = Reflect.apply(original, this, args)
+      if (Array.isArray(value) && value[0] === f.files[0] && value.length === 6) parses++
+      return value
+    }
+    f.load(witness)
+    assert.equal(witness.freshness(checkpoint)?.(), true)
+    const first = parses
+    assert.ok(first > 0)
+    assert.equal(witness.freshness(checkpoint)?.(), true)
+    assert.equal(parses, first, "a hot check must reuse decoding, not cached filesystem validity")
+    assert.equal(witness.retireNamespaces([f.root]), true)
+    f.load(witness)
+    assert.equal(witness.freshness(checkpoint)?.(), true)
+    assert.equal(parses, first + 1, "retirement releases even an unchanged original receipt")
+    witness.reset()
+    f.load(witness)
+    assert.equal(witness.freshness(checkpoint)?.(), true)
+    assert.equal(parses, first + 2, "reset cannot retain parsed facts from the old owner epoch")
+    fs.writeFileSync(f.files[0], "export const replacement = 12345\n")
+    assert.equal(witness.freshness(checkpoint), undefined, "old metadata cannot certify changed input")
+    witness.observeChangedSourceRead(f.files[0], () => fs.readFileSync(f.files[0], "utf8"))
+    assert.equal(witness.freshness(checkpoint)?.(), true)
+    assert.equal(parses, first + 3, "authoritative replacement owns a newly decoded receipt")
+  } finally { JSON.parse = original }
+})

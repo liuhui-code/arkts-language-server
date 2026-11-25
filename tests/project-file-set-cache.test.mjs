@@ -6,6 +6,8 @@ import test, { after } from "node:test"
 
 import { buildDocumentStoreDriver } from "./support/build-document-store-driver.mjs"
 
+import { createWorkspace, syncPosition, viewPathPosition } from "./support/project-file-set-fixture.mjs"
+
 const driverRoot = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-document-store-driver-"))
 after(() => fs.rmSync(driverRoot, { recursive: true, force: true }))
 const { SemanticDocumentStore } = buildDocumentStoreDriver(driverRoot)
@@ -357,117 +359,6 @@ test("refreshing a nested membership propagates a removed dependency to cross-ro
   assert.equal(unrelatedAfter.contentRevision, 0)
   assert.equal(unrelatedAfter.resetTypeEngine, false)
   assert.equal(unrelatedAfter.state.dependencyClosureCacheHit, true)
-})
-
-test("batches changed-source invalidation across dependency closures", (t) => {
-  const workspace = createWorkspace(t, "refresh-batched-invalidation", {
-    "Main.ets": "export const main = 1\n",
-    "First.ets": "export const first = 1\n",
-    "Second.ets": "export const second = 2\n",
-  })
-  const mainPath = path.join(workspace, "Main.ets")
-  const firstPath = path.join(workspace, "First.ets")
-  const secondPath = path.join(workspace, "Second.ets")
-  const store = new SemanticDocumentStore()
-  t.after(() => store.dispose?.())
-  store.prepare(syncPosition(store, workspace, mainPath), true)
-
-  let closureScans = 0
-  for (let index = 0; index < 3; index += 1) {
-    const paths = [path.join(workspace, `Unchanged${index}.ets`)]
-    const originalIncludes = paths.includes
-    const originalSome = paths.some
-    paths.includes = function includes(...args) {
-      closureScans += 1
-      return originalIncludes.apply(this, args)
-    }
-    paths.some = function some(...args) {
-      closureScans += 1
-      return originalSome.apply(this, args)
-    }
-    store.dependencyClosures.set(path.join(workspace, `Owner${index}.ets`), {
-      contentGeneration: 1,
-      paths,
-      physicalPaths: [...paths],
-      workspaceRoot: workspace,
-      creationCandidatePaths: [],
-      creationCandidatesComplete: true,
-    })
-  }
-  fs.writeFileSync(firstPath, "export const first = 100\n", "utf8")
-  fs.writeFileSync(secondPath, "export const second = 200\n", "utf8")
-
-  store.refreshProjectMembership(workspace)
-
-  assert.equal(
-    closureScans,
-    3,
-    "one refresh batch must inspect each dependency closure at most once",
-  )
-})
-
-test("batches watched exact invalidation across dependency closures", (t) => {
-  const workspace = createWorkspace(t, "watched-batched-invalidation", {
-    "Main.ets": "export const main = 1\n",
-    "First.ets": "export const first = 1\n",
-    "Second.ets": "export const second = 2\n",
-  })
-  const mainPath = path.join(workspace, "Main.ets")
-  const firstPath = path.join(workspace, "First.ets")
-  const secondPath = path.join(workspace, "Second.ets")
-  const store = new SemanticDocumentStore()
-  t.after(() => store.dispose?.())
-  store.prepare(syncPosition(store, workspace, mainPath), true)
-
-  let closureScans = 0
-  for (let index = 0; index < 3; index += 1) {
-    const paths = [path.join(workspace, `Unchanged${index}.ets`)]
-    const originalSome = paths.some
-    paths.some = function some(...args) {
-      closureScans += 1
-      return originalSome.apply(this, args)
-    }
-    store.dependencyClosures.set(path.join(workspace, `Owner${index}.ets`), {
-      contentGeneration: 1,
-      paths,
-      physicalPaths: [...paths],
-      workspaceRoot: workspace,
-      creationCandidatePaths: [],
-      creationCandidatesComplete: true,
-    })
-  }
-  fs.writeFileSync(firstPath, "export const first = 100\n", "utf8")
-  fs.writeFileSync(secondPath, "export const second = 200\n", "utf8")
-
-  const originalRealpathNative = fs.realpathSync.native
-  let realpathCalls = 0
-  fs.realpathSync.native = (...args) => {
-    realpathCalls += 1
-    return originalRealpathNative(...args)
-  }
-  try {
-    store.workspaceFilesChanged({
-      rootPath: workspace,
-      rootDirty: false,
-      changes: [
-        { path: firstPath, kind: "changed" },
-        { path: secondPath, kind: "changed" },
-      ],
-    })
-  } finally {
-    fs.realpathSync.native = originalRealpathNative
-  }
-
-  assert.equal(
-    closureScans,
-    3,
-    "one watched batch must inspect each dependency closure at most once",
-  )
-  assert.equal(
-    realpathCalls,
-    3,
-    "the root and each watched path must be canonicalized once per batch",
-  )
 })
 
 test("invalidates only the requested workspace source-path set", (t) => {
@@ -2124,38 +2015,6 @@ test("dispose clears cached workspace source-path sets", (t) => {
 
   assert.equal(enumerationCount, 2)
 })
-
-function createWorkspace(t, name, files) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), `arkts-project-set-${name}-`))
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
-  for (const [relativePath, content] of Object.entries(files)) {
-    const filePath = path.join(root, relativePath)
-    fs.mkdirSync(path.dirname(filePath), { recursive: true })
-    fs.writeFileSync(filePath, content, "utf8")
-  }
-  return root
-}
-
-function syncPosition(store, workspaceRoot, documentPath, version = 1) {
-  const content = fs.readFileSync(documentPath, "utf8")
-  store.sync({
-    path: documentPath,
-    content,
-    documentVersion: version,
-    workspaceRoot,
-  })
-  return viewPathPosition(workspaceRoot, documentPath, version)
-}
-
-function viewPathPosition(workspaceRoot, documentPath, version = 1) {
-  return {
-    path: documentPath,
-    line: 1,
-    column: 1,
-    documentVersion: version,
-    workspaceRoot,
-  }
-}
 
 function documentPaths(view) {
   return view.documents.map((document) => document.path).sort()

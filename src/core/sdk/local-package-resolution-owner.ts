@@ -76,6 +76,12 @@ export class LocalPackageResolutionOwner {
     return () => epoch === this.epoch && resolver() && model()
   }
 
+  captureInputFacts(rootPath: string, checkpoint: () => void) {
+    const resolver = this.configurationWitness?.captureConfigurationBeforeSourceReset(checkpoint, () => false)
+    const model = this.projectModels.get(path.resolve(rootPath))?.captureConfigurationProof(checkpoint)
+    return resolver?.facts && model?.facts ? [...resolver.facts, ...model.facts] : undefined
+  }
+
   configureProject(selection: unknown): void {
     this.projectSelection = selection
     this.projectModels.clear()

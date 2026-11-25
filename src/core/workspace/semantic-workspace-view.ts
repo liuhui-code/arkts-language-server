@@ -18,9 +18,13 @@ export interface ProjectMembershipSnapshot {
 }
 
 export type ProjectFileAdmissionToken = string
+/** Worker-local original membership authority; never a serialized validity bit. */
+export const WORKSPACE_MEMBERSHIP_PROOF = Symbol("workspaceMembershipProof")
 
 /** Actual bounded read plus the physical identity proven around that same descriptor. */
 export interface ProjectSourceSnapshot {
+  /** Descriptor mode from the same guarded read; absent legacy producers cannot lend it. */
+  readonly mode?: number
   readonly content: string
   readonly identity: { readonly physicalPath: string; readonly stamp: string }
 }
@@ -30,8 +34,14 @@ export interface ProjectFileAccessPort {
   checkpoint?(): void
   /** Store-owned live text authority; independent of bounded raw delivery. */
   overlayFor?(filePath: string): { readonly content: string; readonly documentVersion?: number } | undefined
+  /** Store-owned live overlay lifecycle only; no disk/configuration authority. */
+  overlayState?(): { current(): boolean }
   /** Optional native catalog reconciliation; absent ports retain the full scope. */
   refreshProjectMembership?(rootPath: string): { readonly catalogStamp: WorkspaceCatalogStamp }
+  /** Original strong source generation; no refresh or rebasing on later disk inputs. */
+  captureSourceIdentityProof?(rootPath: string, revision: number): {
+    readonly catalogStamp: WorkspaceCatalogStamp; current(): boolean
+  } | undefined
   membershipFor?(rootPath: string): ProjectMembershipSnapshot
   readSnapshot?(canonicalRootId: string, catalogRevision: number,
     filePath: string, token: ProjectFileAdmissionToken): ProjectSourceSnapshot | null
@@ -59,6 +69,7 @@ export interface WorkspaceCatalogStamp {
 export const WORKSPACE_MEMBERSHIP_ORIGIN = Symbol("workspaceMembershipOrigin")
 export const WORKSPACE_SOURCE_DIRECTORIES = Symbol("workspaceSourceDirectories")
 export interface SemanticWorkspaceView {
+  readonly [WORKSPACE_MEMBERSHIP_PROOF]?: () => boolean
   readonly [WORKSPACE_SOURCE_DIRECTORIES]?: (directoryPath: string) => ValidationDirectoryProof | undefined
   readonly [WORKSPACE_MEMBERSHIP_ORIGIN]?: {
     readonly catalog: ProjectMembershipSnapshot

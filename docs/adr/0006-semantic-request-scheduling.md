@@ -242,3 +242,7 @@ preparing尚未调用语义端的任务可以撤销而不等待其准备结束�
 任意阻塞已可校验的缓存。连续流公平性仍须整体耐久验证，局部控制不代替该证明。
 [阶段反例、实际Worker持有对照及当前限制](../reports/2026-11-09-input-proof-purpose-and-diagnostic-handoff.md)。
 历史决策及其证据保留；0043/0044仍Proposed，不把本次实施当成独立审阅记录。
+
+## 2026-11-24 proposed clarification: reusable event boundaries
+
+[ADR0049](0049-verifier-job-context-and-lifetime.md) records the PR119 verifier gap: request-local Promise isolation does not bind callbacks from a Worker created by another request. It proposes explicit per-job context/ticket ownership while retaining this ADR's lanes, mutation ordering and request cancellation. Proposed only; no implementation or new acceptance is implied.

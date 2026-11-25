@@ -3,6 +3,7 @@ import type { ManagedSourceRegistration } from "../contracts/managed-source-name
 import { Worker } from "node:worker_threads"
 import { SemanticWorkerRetirement } from "./semantic-worker-retirement.js"
 import { isOwnershipFaultEvent } from "./semantic-worker-fault.js"
+import { isReferenceVerifierFault } from "./references/reference-verifier-fault.js"
 import { semanticWorkerDeadlines, SemanticWorkerWatchdog } from "./semantic-worker-watchdog.js"
 
 import type { StructuredLogger } from "../observability/logger.js"
@@ -229,6 +230,11 @@ export class SemanticWorkerHost {
       if (isOwnershipFaultEvent(message)) {
         this.#logs.flush()
         this.#options.onFailure(new Error("Semantic Worker compiler cleanup ownership is uncertain"))
+        return
+      }
+      if (isReferenceVerifierFault(message)) {
+        this.#logs.flush()
+        this.#options.onFailure(new Error(`Reference verifier fatal: ${message.reason} generation=${message.generation} job=${message.jobId}`))
         return
       }
       if (this.#watchdog?.execution(message)) return

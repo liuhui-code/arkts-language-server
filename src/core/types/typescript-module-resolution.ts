@@ -18,6 +18,7 @@ interface ModuleResolutionPort {
   readonly packageResolver: LocalPackageResolver
   readonly scripts: ReadonlyMap<string, { readonly overlay: boolean }>
   readonly overlayPaths: ReadonlyMap<string, string> | undefined
+  readonly overlayLookup?: { has(file: string): boolean; path(file: string): string | undefined }
   readonly configurationWitness: LoadedConfigurationWitness | undefined
   readonly moduleResolution: QueryModuleResolution
   readonly checkpoint: (() => void) | undefined
@@ -28,11 +29,13 @@ interface ModuleResolutionPort {
 /** ArkTS package/SDK priority and canonical relative-source ownership. */
 export function resolveTypeScriptModule(port: ModuleResolutionPort, name: string, containingFile: string,
   relativeBoundaryRoot?: string): ts.ResolvedModule | undefined {
+  const hasOverlay = (file: string) => port.overlayLookup ? port.overlayLookup.has(file) : port.scripts.get(file)?.overlay === true
+  const overlayPath = (file: string) => port.overlayLookup ? port.overlayLookup.path(file) : port.overlayPaths?.get(file)
   if (!name.startsWith(".")) {
     const local = port.packageResolver.resolve(port.rootPath, containingFile, name, {
       checkpoint: port.checkpoint,
-      hasOverlay: (filePath) => port.scripts.get(filePath)?.overlay === true,
-      overlayPath: (physicalPath) => port.overlayPaths?.get(physicalPath),
+      hasOverlay,
+      overlayPath,
     })
     if (local !== undefined) {
       return local.path
@@ -61,7 +64,7 @@ export function resolveTypeScriptModule(port: ModuleResolutionPort, name: string
       relativeBoundaryRoot,
       containingFile,
       resolvedPath,
-      (physicalPath) => port.overlayPaths?.get(physicalPath)
+      (physicalPath) => overlayPath(physicalPath)
         ?? (port.scripts.has(resolvedPath) ? resolvedPath : undefined),
       port.relativeResolutionCheckpoint,
     )
@@ -71,7 +74,7 @@ export function resolveTypeScriptModule(port: ModuleResolutionPort, name: string
     const failure = callHierarchyPathFailure(
       relativeBoundaryRoot ?? port.rootPath,
       resolvedPath,
-      port.scripts.get(resolvedPath)?.overlay === true,
+      hasOverlay(resolvedPath),
     ) ?? "source-unavailable"
     if (port.scripts.has(containingFile)) {
       let failures = port.relativeResolutionFailures.get(containingFile)

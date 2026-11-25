@@ -1070,3 +1070,11 @@ its current check. This is not an Accepted/review record or a completed fix.
 新布局尚在隔离目录，未集成到冻结的Mac格式9候选，也未部署；其全目标回归与release
 构建在进行中。Mac同源2462输入的正常权限 `pnpm check:fast` 另行运行，不能用于证明
 格式10已通过最终验收。最终同候选全量、规模与两小时协议验收仍待完成；真实UI未验证。
+
+
+### 2026-11-22 消费端重复协调修正
+
+消费端观察内容/命名空间变化时，可用实时完整当前资格证明索引已包含该输入，避免
+再次推进maintenance输入epoch撤销刚发布的资格。dirty owner、namespace观察及取消必须在await后重验；
+legacy/warming/不完整/不匹配资格不能采用此路。语义结果与输入revision照常失效，
+compiler与最终磁盘围栏不变。详见[实施证据](../reports/2026-11-22-reference-qualification-revocation.md)。

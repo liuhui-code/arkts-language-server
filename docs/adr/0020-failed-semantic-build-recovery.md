@@ -146,3 +146,16 @@ Mac/Windows Photos 受控同步不返回＋真实取消中，旧 Worker exit 后
 仍由显式语义成功证明占有，之前不通知后台；失败重放、停止及关闭不产生成功通知。
 通知不增加Worker创建、恢复预算、超时、输入版本或解除熔断的途径；关闭时解除订阅。
 这是补齐既有恢复可用性合同，不改变第4/5项的单终态与共享预算决定。
+
+
+2026-11-20 implementation correction: Syntactic language services also use the
+existing official factory/recoverable owner. Optional mode defaults to Semantic;
+Syntactic omits SDK auto-import Program enrichment, not lease cleanup, retirement
+or ownership quarantine. Full check caught the bypass (2704/2705PASS,1FAIL);
+architecture assertions unchanged, corrected public factory/close/shutdown and
+ownership suites71/71PASS. New full check still required; status/review history
+unchanged. [Evidence](../reports/2026-11-20-binding-containing-origin-and-owned-syntax-factory.md).
+
+## 2026-11-24 proposed follow-up: nested verifier fault ownership
+
+[ADR0049](0049-verifier-job-context-and-lifetime.md) requires nested verifier fatal/protocol/cleanup faults to enter the existing controlled recovery domain instead of unbounded lazy recreation. The current client does not automatically consume this ADR's parent budget; that bridge remains unimplemented and must be regression-tested. Ordinary queued cancellation or a settled job's outer cancellation must not be promoted to a fatal host failure. Existing deadlines, budget, single terminal and physical exit rules remain authoritative.

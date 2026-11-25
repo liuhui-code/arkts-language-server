@@ -1,3 +1,4 @@
+import type { ReferenceQueryProof } from "./reference-query-proof.js"
 import type { ManagedSourceDirectory } from "./managed-source-namespace.js"
 import type {
   DocumentSnapshot,
@@ -90,7 +91,7 @@ export type SemanticGlobalQueryFailureReason =
   | "source-unmappable"
 
 export type SemanticReferencesOutcome =
-  | { status: "complete"; references: SemanticReference[];
+  | { status: "complete"; references: SemanticReference[]; queryProof?: ReferenceQueryProof;
       /** Internal search reuse metadata; LSP publishes only references. */
       otherReferences?: SemanticReference[] }
   | { status: "incomplete"; reason: SemanticGlobalQueryFailureReason }

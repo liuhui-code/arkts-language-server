@@ -14,8 +14,13 @@ export function assertSemanticReadinessResponse(value: unknown, invalid: () => E
       "unavailableInput", "inputIdentity", "coverage"], ["availableCapabilities", "inputIssues", "sourceNamespace"], 11)
   if (!report) throw invalid()
   if (Object.hasOwn(report, "sourceNamespace")) {
-    const namespace = readOwnDataRecord(report.sourceNamespace, ["sha256", "sources"], ["diskSha256", "overlayOnly"], 4)
+    const namespace = readOwnDataRecord(report.sourceNamespace, ["sha256", "sources"], ["diskSha256", "overlayOnly", "resolutionIdentity"], 5)
     if (!namespace || !hash(namespace.sha256) || !counter(namespace.sources)) throw invalid()
+    if (Object.hasOwn(namespace, "resolutionIdentity")) {
+      const identity = typeof namespace.resolutionIdentity === "string"
+        && /^([a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}):(0|[1-9][0-9]*)$/.exec(namespace.resolutionIdentity)
+      if (!identity || !counter(Number(identity[2]))) throw invalid()
+    }
     if (Object.hasOwn(namespace, "diskSha256") || Object.hasOwn(namespace, "overlayOnly")) {
       if (!hash(namespace.diskSha256) || typeof namespace.overlayOnly !== "boolean") throw invalid()
     }

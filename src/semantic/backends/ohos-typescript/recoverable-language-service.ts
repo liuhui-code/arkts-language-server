@@ -19,12 +19,13 @@ const semanticMethods = new Set<keyof ts.LanguageService>([
 /** Isolate failed compiler synchronization without changing input versions or SDK ownership. */
 export function recoverableLanguageService(host: ts.LanguageServiceHost, shared: ts.DocumentRegistry,
   observe?: (source: ts.SourceFile) => void, invalidate: () => void = () => {},
-  programReturned?: (program: ts.Program | undefined) => void): ts.LanguageService {
+  programReturned?: (program: ts.Program | undefined) => void,
+  mode: ts.LanguageServiceMode.Semantic | ts.LanguageServiceMode.Syntactic = ts.LanguageServiceMode.Semantic): ts.LanguageService {
   const create = () => {
     assertCompilerOwnership()
     const owner = ownedDocumentRegistry(shared)
     const registry = observe ? observedDocumentRegistry(owner.registry, observe) : owner.registry
-    return { service: ts.createLanguageService(host, registry), owner }
+    return { service: ts.createLanguageService(host, registry, mode), owner }
   }
   type Owner = ReturnType<typeof create>
   type State = { kind: "live"; value: Owner } | { kind: "retiring"; value: Owner }

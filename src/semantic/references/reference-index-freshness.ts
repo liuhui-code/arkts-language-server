@@ -1,3 +1,4 @@
+import { matchesReferenceSourceFingerprint } from "./reference-source-fingerprint.js"
 import { sameIndexQualification, type IndexQualification } from "../../contracts/index-evidence.js"
 import type {
   WorkspaceIndexStatus,
@@ -108,6 +109,25 @@ export class ReferenceIndexFreshness {
     this.#acceptedGenerations.set(workspaceId, generation)
   }
 
+  /** Consume this exact adapter's live qualified status, never a remembered
+   * generation. A concurrent dirty owner cannot be settled by an older read. */
+  async confirmsCurrentSources(workspaceId: string, index: WorkspaceReferenceIndexPort,
+    fingerprint: string, signal?: AbortSignal): Promise<boolean> {
+    const dirty = this.#dirtyGenerations.get(workspaceId)
+    const status = await safeStatus(index, workspaceId, signal)
+    if (signal?.aborted || this.#dirtyGenerations.get(workspaceId) !== dirty) return false
+    const proof = status?.indexProof, qualified = proof?.qualification
+    if (status?.state !== "ready" || proof?.format !== "versioned" || !qualified
+      || qualified.scanComplete !== true || qualified.rejected !== 0
+      || status.committedGeneration !== qualified.head
+      || proof.snapshot.workspaceIdentity !== qualified.workspaceIdentity
+      || proof.snapshot.storeId !== qualified.storeId || proof.snapshot.factsDomain !== qualified.factsDomain
+      || proof.snapshot.head !== qualified.head
+      || !matchesReferenceSourceFingerprint(qualified.fingerprint, fingerprint)) return false
+    this.#dirtyGenerations.delete(workspaceId)
+    return true
+  }
+
   async beforeSearch(
     workspaceId: string,
     index: WorkspaceReferenceIndexPort,
@@ -198,9 +218,10 @@ export async function prepareReferenceIndexSearch(
 async function safeStatus(
   index: WorkspaceReferenceIndexPort,
   workspaceId: string,
+  signal?: AbortSignal,
 ): Promise<WorkspaceIndexStatus | undefined> {
   try {
-    return await index.status(workspaceId)
+    return await (signal ? index.status(workspaceId, signal) : index.status(workspaceId))
   } catch {
     return undefined
   }

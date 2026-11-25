@@ -15,6 +15,7 @@ import { runWithSemanticLease } from "./semantic-query-lease.js"
 import { assertCurrentWorkspaceSources } from "./typescript-workspace-source-fence.js"
 import { SemanticInputUnavailableError } from "./typescript-query-inputs.js"
 import { assertCurrentOperationScope, withOperationScope, fullOperationScope } from "./operation-scope-execution.js"
+import { WORKSPACE_MEMBERSHIP_PROOF } from "../workspace/semantic-workspace-view.js"
 
 export interface WorkspaceEngineEntry extends SemanticManagedContext {
   engine: TypeScriptLanguageServiceEngine
@@ -88,6 +89,7 @@ export function runPreparedSemanticQuery<Result>(entry: WorkspaceEngineEntry,
     assertCurrentWorkspaceSources(view, checkpoint, access)
     entry.engine.assertCurrentInputs(checkpoint)
     assertCurrentOperationScope(view, entry.engine.projectSyntaxProfile().options)
+    if (view[WORKSPACE_MEMBERSHIP_PROOF]?.() === false) throw new SemanticInputUnavailableError()
     return result
   })
   return entry.engine.withRequestModuleResolution(() => {

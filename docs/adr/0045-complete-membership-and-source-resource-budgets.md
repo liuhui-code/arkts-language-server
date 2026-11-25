@@ -1132,3 +1132,318 @@ mutation regressions reject. Unit31/31 and expanded67/67PASS; ordinary63 hot med
 3.795s/max4.122s, still severe latency. No validity contract or authority transfer.
 Independent CPU62 and pending64 counters distinguish repeated validation callers
 from proven full scans; no unmeasured scan count or full gate is claimed.
+
+
+### 2026-11-18: reuse the representation of original configuration receipts
+
+A public400-source cyclic-import hot query performs800 full identity JSON encodes,
+zero source-byte rereads and2800 leaf stats. Reuse immutable decoding of the original
+load-owned identity in its LoadedConfigurationWitness, not a cached validity boolean.
+Cached fields are lexical/physical spelling and original numerical stamps only.
+Each request still rechecks the original Native directory namespace and both raw
+configuration leaves; final validation starts its independent observations as before.
+A changed stamp/physical parent returns the freshly formatted observation for the
+existing rejection/recovery path. Links, missing ancestors, weak/non-finite/unsupported
+receipts keep the original raw fallback. Never use current observations to restamp
+an older receipt, fold full paths, or bypass source load guards.
+
+Cache keys are existing original receipt strings. Reset clears all entries;
+namespace retirement removes retired receipts; authoritative source replacement
+removes its prior representation. Retained facts-only reset capsules acquire no
+witness/Program/cache pointer. Storage follows the active read set/owner lifetime,
+with no global historical cache or new pressure budget. The existing32MiB request
+memo budget is a distinct phase-local mechanism and remains unchanged.
+
+PublicRED800encodes→GREEN0; hot decodes0, leaf stats2800unchanged, exact result and
+one Worker. Unit/lifetime53/53 and expanded public57/57PASS, zero skipped/cancelled.
+Actual30K matched main/candidate/main/candidate ordinary sessions are pending;
+no constant-time/500ms/whole-feature/UI claim. Native3passes and all deadlines stay.
+This refines representation under ADR0044 decisions2/4/6; Proposed status and prior
+review history remain unchanged. Scope is NAV-REPEAT-001, not a new freshness contract.
+
+### 2026-11-18 Follow-up: compare raw scalar fields without temporary tuples
+
+The unchanged-source validation still performs the same before/after lstat and
+checkpoints, comparing dev/inode/mode/size/mtime/ctime directly. It materializes
+stamp arrays only to publish a newly observed identity after an actual mismatch
+or an unsupported original representation. Original non-finite equivalence and
+all strong-file/path/directory guards remain unchanged. This does not revise the
+independent query/final ownership decision above or borrow Native validity.
+The public RED observes1612 tuple comparisons; GREEN0 with the same2800 leaf
+checks and exact location. Six separate raw-field drift regressions remain
+fail-closed. First-slice real30K median improves3991.93to3632.70ms, not a resolution
+of the remaining tail. This follow-up requires its own matched ordinary timing.
+Status remains Proposed; implementation authorization is not an independent review.
+
+### 2026-11-19 M1 implementation: reuse lexical and role-derived metadata
+
+Authorized A-plan implementation preserves every physical/load/final fence.
+SemanticGroups.discover normalizes each captured member/root once, retaining
+original spelling/order, dependency closures, overlapping roots and declarations.
+The public three-group transcript changes1200normalizations to400 with the same
+1200leaf observations. This is pure lexical metadata, not Rejected0039 directory trust.
+ProjectOperationScopes keeps an immutable role-catalog snapshot until a role or
+member actually changes. Dirty state is set before fact mutation and survives
+cancellation; changed compiler inputs still advance through existing versions.
+Graph reference equality only skips catalog comparison; currentNodes and final
+input owners still execute. Actual cancellation after a new global fact, before
+catalog publication, recovers its exact location in the same Worker.
+Ordinary M1-a30K has not shown a speedup and retains SQLite60sFAIL; an unchanged
+control later fails180s preparation and30s query deadlines. Neither is OOM evidence.
+Implementation/focused GREEN is not overall performance acceptance. Status remains
+Proposed. See the 2026-11-19 navigation implementation report and raw I receipts.
+
+### 2026-11-19 M1-c: content-addressed pure syntax metadata
+
+Within one immutable ProjectOperationScopes syntax-profile owner, share frozen
+role summaries keyed by authoritative text SHA256 and conservative filename
+suffix mode. No AST, text, resolved binding or input proof is shared. Every
+containing file retains its independent admission, namespace and relative-module
+resolution. Source facts acquire/release summary keys; zero references removes
+the entry, avoiding a historical content cache. Owner retirement follows existing
+owner lifetime, not a new pressure policy. Config/SDK retirement cannot transfer
+this pool to a new profile. Public RED400parses becomes1; independent-directory
+binding/edit/undo and actual cancellation recover exact results. Expanded33/33
+PASS is not large-project speed acceptance; ordinary30K is pending. This refines
+metadata representation under0044/0045, preserves all physical/final fences and
+does not change Proposed status or claim independent ADR review.
+
+### 2026-11-19 M1-d/e: handoff and live-overlay evidence
+
+Partial SDK preparation may construct a pure group catalog after successful scope
+preparation; this creates no project Program and grants no READY capability.
+Report initialization plus first-query latency, not just shifted first-query work.
+A store-owned live-overlay lifecycle receipt can authorize skipping repeated
+overlay lookups only after an entire successful scope-facts pass observed that
+same lifecycle. Capture the receipt in that operation proof. Any overlay record
+replacement, close, rollback or disposal revokes it; disk cache operations alone
+do not. Reopened version numbers cannot resurrect the old receipt. Changed or
+unsupported receipts use the original full overlay comparison. This is not a
+filesystem/current-input proof: all original membership, load/configuration and
+independent final observers remain. Public RED800lookups becomes0 with original
+2800leaf checks; expanded99/99PASS, real30K timing pending. Proposed status and
+prior review history remain unchanged.
+
+### 2026-11-19 M2-a: typed first-phase observations
+
+Refine the 2026-11-18 requirement for two newly issued configuration-validation
+leaf calls: for a known regular source only, its first comparison stamp may be
+the actual successful same-phase Native observation, now including mode plus the
+original five metadata fields. Producer owner/epoch/revision must be registered
+successfully, and its physical parent must match a currently witnessed directory.
+The consumer compares its original load-owned identity, never restamps that fact.
+The later configuration observation stays raw. This explicitly changes only the
+first-phase observation source, not the two-sided comparison or final contract.
+Unknown/weak/incomplete/failed/cancelled/over-budget evidence keeps the original
+two-raw-observation fallback. Byte-load guards never borrow it; finalization clears
+pending observations and executes both raw configuration leaves as before. The
+source metadata remains optional and request-local under the same32MiB accounting
+budget, not a product RSS threshold. Native pending records account for the extra
+mode field. Public RED query800 becomes400 while preparation400 and final1600
+remain. Six-field drift tests separately protect borrowing and full raw fallback;
+late-body/configuration/namespace regressions remain mandatory. This implements
+A-plan M2 without adopting B consistency changes or changing Proposed status.
+
+### 2026-11-19 M2-b / M3: retained comparisons and required final consumption
+
+Final fact comparison may be reused only when every physical observation is
+retained in that same final phase. Owner/epoch/read-set, cancellation and terminal
+directory guards remain live. Unretained/budget/unknown dependencies keep the
+original traversal; no prepared observation or whole-owner validity is borrowed.
+
+For a native membership owner explicitly consumed by a successful operation-scope
+proof, omit only the duplicate top-level final callback. Keep the scope's full
+raw membership observation at its original point before the scope's post-member
+SDK/configuration guards. Every declared consumer must reconsume the exact owner
+and epoch/revision; unmet obligations reject before publication. Replacement
+proofs with equal member revision are not the old authority. Unknown, mixed or
+standalone registrations keep their original final order. Do not defer all native
+observers to the end or enable generic final memoization. Physical load guards,
+final metadata reset, directory end fence and request terminal/lease remain.
+
+This refines the earlier temporary three-pass implementation, not0019's current
+input/final independence decision. Source and SDK/namespace races must retain
+refusal and same-session recovery. Public400-source native final2becomes1; total
+leaf2400becomes2000 with both configuration final observations intact. Expanded
+142/142 plus namespace46/46PASS; real30K M3 timing/full gate/Windows/UI pending.
+Status remains Proposed; implementation authorization is not independent review.
+See the 2026-11-19 final-membership observation-order report for order, alternatives
+and original/proposed counters.
+
+### 2026-11-19 completed role-facts receipt (Proposed implementation refinement)
+
+After actual complete-member and configuration validation, an unchanged successful
+role-facts pass may be reused only with the exact Store-owned immutable catalog
+producer, matching ordered view/aliases/generation and live overlay lifecycle.
+Catalog revisions cover disk identities as well as names, but numeric equality or
+Object.freeze alone is insufficient. Unknown projections retain the original loop.
+Revoke completion before any new facts writes; capture only after successful end
+checks and only for the same producer across the pass. A private WeakSet recognizes
+producer identity without serializable authority or strongly retained history.
+
+This removes repeated token polling/temporary role bookkeeping, not physical source
+validation: dependency proofs, compiler versions, original raw byte guards and
+independent final member/configuration/directory/overlay checks remain. No cached
+valid=true, watcher-only contract or readiness promotion. See the completed-role
+receipt report for producer audit, public RED/GREEN and remaining acceptance.
+
+### 2026-11-19 M4-a implementation refinement (status remains Proposed)
+
+A qualified regular-source read now carries actual descriptor mode alongside the original
+physical identity; the descriptor/read/name window rejects mode disagreement. Legacy
+producers without this field retain the original path. No admission token format changes.
+For project relative-import boundaries, retain only the actual read's metadata (no text/AST),
+validate strong six-field provenance and its original physical-root mapping, then classify
+the lexical/physical roots as a pure function. The derived value does not certify freshness:
+its original full identity is retained in LoadedConfigurationWitness and checked in query/final.
+The existing membership/root/configuration and target/negative resolution witnesses remain.
+Unknown producers, overlays, external SDK sources and weak/mismatched identities use the
+original live path capture. Never reconstruct provenance by statting a cache hit.
+
+Public RED: existing admitted source still realpathed at boundary derivation (1 vs 0).
+GREEN: exact navigation with zero such repeated physical derivations; existing full input
+guards and final race refusals continue. Characterization covers aliases, escapes, overlapping
+SDK/workspace and missing overlay leaves. Controlled descriptor fault is not a Windows incident.
+This is a source-derived boundary optimization, not completion of changed-node graph updates
+or an assertion that initialization improved; paired ordinary timing is still required.
+
+### 2026-11-19 M4-b retained graph owners and distinct versions (Proposed)
+
+Retain an unchanged topology node only while its original boundary/source/lookup
+proofs remain valid and each binding is the exact current cache owner. Mark its
+SDK/boundary dependencies used so normal pruning does not retire live owners.
+Current/final input validation remains independent; this is not a result cache.
+
+Separate metadata input-owner revision from derived topology revision. Advance
+input revision before node replacement/deletion; old proofs may not acquire new
+owners. Compare the complete syntax-role dependency summary (including globals,
+exports and reference kinds), flags and ordered edges to decide topology changes.
+This is not inferred type/API equality: actual compiler/document versions advance
+even when topology remains unchanged. Avoid full graph digest/effects on body-only
+edits. Real topology changes still use the conservative complete effects pass.
+
+Pending topology dirtiness must outlive cancellation/exception and be set before
+mutation. Clear it only after successful effects; rebuilding cannot certify a
+scope. A local per-call dirty variable is rejected: retry can reuse already-new
+nodes and otherwise publish an old mandatory-root selection. The public cancel
+regression retains the same Graph and Worker; a controlled lost-dirty mutant
+returns a wrong empty definition and must fail. Input version, Host version,
+Program/checker observation and Worker generation are distinct concepts.
+
+This implements part of M4 without changing0019/0037 input/final freshness or the
+0043 store. It does not claim complete O(delta) updates or no full proof traversal.
+See the 2026-11-19 dependency-node/topology report for alternatives, rollback,
+normal/fault evidence and remaining acceptance. Status remains Proposed.
+
+### 2026-11-19 M4-c contiguous disk deltas for derived role facts (Proposed)
+
+Reuse the existing bounded contentDeltas with a separate role-facts consumer cursor,
+not current Program-filtered changedPaths. Accept only contiguous root-matching
+monotonic spans over the successful prior receipt, with genuine current Store
+catalog, same complete names, canonical owner/reset epoch, aliases, resolver
+generation and unchanged overlay lifecycle. New/deleted paths, history gaps,
+unknown producers, reset or uncertainty retain the original full facts refresh.
+A disk proof must still establish actual current membership before this decision;
+delta is a dispatch optimization, never proof of unchanged external disk state.
+
+Revoke completed receipt before mutation and recapture only after graph success and
+independent end member proof. Keep compiler/source clocks, original byte guards and
+final publication checks. Do not add another watcher journal or retain old Programs.
+Public RED401 polls→GREEN2 for one saved source, with identical raw proof counts;
+paired elapsed timing and expanded/final acceptance are separate requirements.
+See [implementation evidence](../reports/2026-11-19-saved-role-facts-delta.md).
+This is partial M4, not complete delta graph maintenance. Status remains Proposed.
+
+### 2026-11-19 known-body membership proof generations (Proposed)
+
+Known accepted existing closed-source body changes may construct a distinct member
+proof instead of rediscovering the entire unchanged member namespace. Require
+complete identical paths/token keys and original unchanged tokens outside the
+explicit admitted change set. Partial, missing, removed, alias/uncertain or already
+invalid inputs and legacy producers retain full discovery.
+
+Retire the original proof before handing out its replacement; undo cannot revive
+an old request. Retain original namespace/configuration and unchanged file facts;
+only actual newly admitted changed-source tokens enter the new generation. New
+owner runs all original current/final raw file and namespace fences. A watch event
+is not validity, and renewal must not re-stamp an old load proof or bypass0044.
+A token Map copy is preferred to introducing another persistence framework.
+
+Public RED observes actual generator1; focused GREEN0 with exact changed and
+multi-file undo results. Full/ordinary/endurance acceptance remains independent.
+See [proof renewal evidence](../reports/2026-11-19-membership-proof-renewal.md).
+Status remains Proposed; no new watch-only consistency contract or resource cap.
+
+### 2026-11-19 live overlay role-facts dispatch (Proposed)
+
+Use genuine same-producer frozen overlay observations with private opaque per-path
+versions to locate unsaved changes, removals and same-number reopen. Cache one
+observation for an unchanged lifecycle; retain no source bytes/ASTs or historical
+journal. Cross-producer/cloned/stale observations cannot lend a dispatch delta.
+
+Require the successful original role receipt, exact owned current catalog, complete
+names/root/reset/generation and original physical/configuration checks. Only known
+changed facts update. Alias presentation transitions qualify solely when every
+changed alias is covered by the observed overlay delta and equals original canonical
+root plus its logical root-relative path. Nested/retargeted/unknown mappings retain
+full refresh; preserve filename case and existing Windows volume-letter rules.
+This is derived metadata dispatch, not proof of disk validity or resurrection of an
+old input epoch. All original current/end/load/final guards continue.
+
+Public edit/undo400→1 token polls, close401→2/reopen400→1; unknown frozen producers
+retain full polling, physical noise leaves800 remain. Final expanded117/117PASS;
+full/ordinary/Windows/endurance acceptance remains separate. See
+[overlay dispatch evidence](../reports/2026-11-19-overlay-role-facts-delta.md).
+Module binding alias invalidation and true reverse influence are not declared done.
+Status remains Proposed; no watch-only consistency decision or review fabricated.
+
+### Whole-group freshness coverage (2026-11-19, Proposed implementation refinement)
+
+NAV-FRESH-002 proves that READY whole groups cannot rely on projected operation-scope
+checks that they do not own. Before query snapshot capture, the existing DocumentStore
+must observe its original complete membership proof and contribute it to the existing
+independent final union, including open/disk inputs. Newly discovered changes reject the
+old request; later recovery may reconcile revoked input generations. Keep projected-scope
+admission/recovery unchanged. This implements existing disk-authority constraints rather
+than approving watch-only consistency. No historical ADR status or review is rewritten.
+
+Public82/82 regression is recorded in
+[whole-group evidence](../reports/2026-11-19-full-sdk-membership-proof.md). Previous READY
+scale timings without this proof are not strict-freshness acceptance; re-measure necessary
+proof costs. Full plan, full check and broader cache-lifecycle acceptance remain open.
+
+### Original whole-group proof travels with its consumer (2026-11-19, Proposed refinement)
+
+NAV-FRESH-002 follow-up covers original proof absence after catalog eviction, weak enumeration,
+query methods lacking an outer preparation scope, resolver admission order and known structural
+member updates. Carry the original Worker-local proof capsule on the workspace view into the
+actual leased query and final union; no serialized valid flag or rebasing expected facts.
+Weak/unretainable native enumeration falls back to fresh full authority scans. Reuse immutable
+primitive metadata per admitted generation, never validity. Revocation is entry AND revision;
+an old proof failure cannot poison a newer revision. Reconcile already admitted catalog changes
+before capture; silently changed disk input still rejects the old request. Metadata matching is
+not filesystem validation. Preserve SDK/configuration/source/namespace and single-terminal guards.
+
+M4 binding reuse separately records actual positive/negative overlay reads, rather than clearing
+all entries for a global alias string; publish current metadata before graph reuse. Source names/
+configuration/resolver changes retain conservative invalidation. No new AST/history cache.
+
+These refine existing0019/0037/0044 constraints; no watch-only contract, review or Accepted status
+is fabricated. See [whole-group lifetime](../reports/2026-11-19-whole-group-proof-lifetime.md) and
+[binding dependencies](../reports/2026-11-19-binding-input-dependencies.md). Original0a fullcheck
+FAIL2657/2661 is retained; latest52/52 focused PASS is not final acceptance.
+
+
+### M4 reverse adjacency implementation refinement (2026-11-19, Proposed)
+
+Maintain reverse edges and global/native seed membership with the existing graph
+node commit, rather than reconstructing the index on each topology propagation.
+Normalize/check cancellation before the synchronous index+node commit; preserve
+pending topology on interrupted publication, and all existing current/final input
+proofs. Duplicate importer-target edges are one reachability relation. Remove dead
+outgoing edges/seeds, retain incoming edges while their live importer owns them.
+This trades O(N+E) graph-owned metadata for avoiding repeated adjacency rebuilding;
+actual reachability, catalog traversal and disk-authority checks remain.
+This refines the approved A-plan's derived-state maintenance; it does not accept
+watch-only B, alter historical ADR status, or introduce a second semantic engine.
+Evidence/alternatives/limits: [reverse-edge implementation](../reports/2026-11-19-incremental-reverse-edge-index.md).

@@ -12,11 +12,18 @@ export interface ModuleBoundary {
 
 /** Lexical and physical roots remain separate; unsaved overlays may lack a disk leaf. */
 export function relativeModuleBoundary(containingFile: string, hasScript: boolean,
-  { rootPath, workspacePhysicalRoot, sdkRoot, sdkPhysicalRoot, sdkComponents }: ModuleBoundary): string | undefined {
+  boundary: ModuleBoundary): string | undefined {
   let physicalContainingFile: string
   try {
     physicalContainingFile = hasScript ? prospectiveRealPathSync(containingFile) : fs.realpathSync.native(containingFile)
   } catch { return undefined }
+  return relativeModuleBoundaryFromPhysical(containingFile, physicalContainingFile, boundary)
+}
+
+/** Pure classification only. A caller must own the physical input's read proof;
+ * this function neither refreshes nor certifies that input. */
+export function relativeModuleBoundaryFromPhysical(containingFile: string, physicalContainingFile: string,
+  { rootPath, workspacePhysicalRoot, sdkRoot, sdkPhysicalRoot, sdkComponents }: ModuleBoundary): string | undefined {
   const workspaceOwns = !!workspacePhysicalRoot && isWithinRoot(workspacePhysicalRoot, physicalContainingFile)
   if (isWithinRoot(rootPath, containingFile) && !workspaceOwns) return undefined
   const narrowerWorkspace = (sdkPhysical: string) => workspaceOwns && workspacePhysicalRoot

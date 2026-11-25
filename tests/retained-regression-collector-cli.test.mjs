@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import fs from "node:fs"
+import os from "node:os"
 import path from "node:path"
 import test from "node:test"
 import { pathToFileURL } from "node:url"
@@ -282,3 +283,22 @@ function runCollector(fixture, extraEnv = {}) {
     "--pnpm", fixture.pnpm, "--out", fixture.prefix],
   { encoding: "utf8", env, timeout: 20_000 })
 }
+
+
+test("repository source inventory excludes generated dependency and Cargo directory links", t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "arkts-collector-ignore-"))
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const repo = path.join(directory, "repo")
+  fs.mkdirSync(repo)
+  for (const name of ["dependencies", "build-cache"]) fs.mkdirSync(path.join(directory, name))
+  fs.writeFileSync(path.join(repo, ".gitignore"), fs.readFileSync(path.resolve(".gitignore")))
+  fs.writeFileSync(path.join(repo, "Input.ts"), "export const input = 1\n")
+  fs.symlinkSync(path.join(directory, "dependencies"), path.join(repo, "node_modules"), "junction")
+  fs.symlinkSync(path.join(directory, "build-cache"), path.join(repo, "target"), "junction")
+  const initialized = spawnSync("git", ["init", "-q", repo], { encoding: "utf8" })
+  assert.equal(initialized.status, 0, initialized.stderr)
+  const listed = spawnSync("git", ["ls-files", "-co", "--exclude-standard", "-z"], { cwd: repo, encoding: "utf8" })
+  assert.equal(listed.status, 0, listed.stderr)
+  assert.deepEqual(listed.stdout.split("\0").filter(Boolean).sort(), [".gitignore", "Input.ts"],
+    "reserved generated links must not enter the source byte archive; real untracked source remains included")
+})

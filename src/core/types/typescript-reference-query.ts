@@ -1,3 +1,7 @@
+import type { ReferenceQueryProofRefusal } from "../../contracts/reference-query-proof.js"
+import { fullProgramReferenceProof } from "./full-program-reference-proof.js"
+import type { RetainedInputFact } from "../../project/retained-input-facts.js"
+import { lexicalReferenceProof } from "./lexical-reference-proof.js"
 import path from "node:path"
 import type ts from "typescript"
 
@@ -15,6 +19,7 @@ export interface ReferenceSourceView {
 }
 
 export interface ReferenceQueryPort {
+  readonly captureInputs?: (program: ts.Program) => readonly RetainedInputFact[] | undefined
   readonly rootPath: string
   readonly service: ts.LanguageService
   readonly checkpoint?: () => void
@@ -41,7 +46,7 @@ export function queryTypeScriptReferences(
   const sourceOffset = lineColumnToOffset(script.virtualDocument.sourceContent, position.line, position.column)
   const offset = script.virtualDocument.toGeneratedOffset(sourceOffset)
   work.boundary()
-  const searchedProgram = captureSearchScope ? port.service.getProgram() : undefined
+  const searchedProgram = captureSearchScope || port.captureInputs ? port.service.getProgram() : undefined
   if (expectedProgram && searchedProgram !== expectedProgram) {
     return work.finish({ status: "incomplete", reason: "source-unavailable" })
   }
@@ -127,7 +132,13 @@ export function queryTypeScriptReferences(
     && definition.kind === "constructor"
     ? { path: path.resolve(definition.fileName), start: definition.textSpan.start,
         length: definition.textSpan.length } : undefined
+  let queryProofRefusal: ReferenceQueryProofRefusal | undefined
+  const queryProof = lexicalReferenceProof(searchedProgram, filePath, offset, script.virtualDocument.sourceContent, includeDeclaration, definitions, () => work.item())
+    ?? fullProgramReferenceProof(searchedProgram, searchedProjectPaths ?? completedReferenceSearchPaths(searchedProgram, port.service.getProgram(), definitions.length, returnedSymbols, port.rootPath), filePath, script.virtualDocument.sourceContent,
+      includeDeclaration, definitions, port.captureInputs, () => work.boundary(), reason => { queryProofRefusal = reason })
   return work.finish({ status: "complete", references,
+    ...(queryProof ? { queryProof } : {}),
+    ...(queryProofRefusal ? { queryProofRefusal } : {}),
     ...(otherComplete ? { otherReferences } : {}),
     ...(searchedProjectPaths ? { searchedProjectPaths } : {}),
     ...(constructorTarget ? { constructorTarget } : {}) })

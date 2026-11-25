@@ -2467,3 +2467,23 @@ CI-EXEC-001 RED：GitHub43995951008最大执行60分钟取消，三项可移植�
 停止前连续通过且无新断言失败，但未完成。Mac完整2560/2560实际72m37.6s。
 最小CI变更仅validate总作业预算60→90，所有canonical release步骤/单用例和产品截止原值保留。
 既有`tests/release-pipeline.test.mjs`用于保护覆盖不删减；最终CI重跑结果另见PR118。
+
+
+## 2026-11-18 NAV-REPEAT-001 原身份解析表示复用
+
+父main1e3886d。公开RED：`node --test tests/semantic/repeated-navigation-input-formatting.test.mjs`，
+800身份JSON构造，0源码重读、2800叶子观察；GREEN0构造/0热解析、2800观察不变、精确结果与单Worker。
+单位生命周期53/53、扩大公开57/57零skip/cancel，类型检查/构建通过；初始manifest新增2文件计数失败保留，
+准确增加对应入口和层计数，无测试跳过。Native3轮及所有原freshness/取消/SDK恢复守卫未改。
+四会话main/candidate交替30K普通对照进行中，不以计数减少代替实际耗时收益或UI结论。
+见`2026-11-18-repeated-query-receipt-representation.md`与`.bench/repeated-query-proof-plan-20261117/`。
+
+第二切片：stamp-red公开同查询1612临时数值数组比较→stamp-green0，仍2800原始叶子检查；
+六字段分别漂移回归及原资格/生命周期合计59/59PASS零skip。未改变Native三轮或独立最终校验。
+第一切片普通四会话热中位3991.93→3632.70ms（9.00%），仍OPEN；main-a SQLite60s失败保留。
+独立profile内dispatch为inspector自身开销，不能归因Native。第二切片四会话普通对照进行中。
+
+最终第二组main-c/stamp-a/main-d/stamp-b：16次定义全部精确，Native/SQLite/关闭4/4PASS；
+main热中位3974.69/max4331.03→最终3595.94/max3974.57ms，9.53%改善但仍OPEN。
+最终候选TSC PASS，59单元+57公开+7大证明/SDK回归PASS，零skip/cancel/todo；无新全量check:fast宣称。
+inputs-after确认30K、3955 SDK声明/metadata、冻结源码/产物均无变化。无提交/合并/部署。

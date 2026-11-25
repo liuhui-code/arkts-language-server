@@ -1,6 +1,10 @@
-> **CI-EXEC-001（2026-11-17）**：73第二轮Linux由GitHub60分钟总作业上限取消，三项原失败全部通过，停止前仍连续通过；未跑完不算PASS。Mac同产品源码完整2560/2560PASS（72.6min），安装7/7与455大项目1/1PASS。仅把Linux CI总预算60→90，保留所有门禁、产品及单测试截止/性能断言；最终完整CI以PR118为准。原30K性能/SDK/UI缺口仍OPEN。[证据](../reports/2026-11-17-integration-portability-regressions.md#ci-exec-001完整门禁超过ci总作业预算)。
-
-> **集成收据（2026-11-17）**：[PR118](https://github.com/liuhui-code/arkts-language-server/pull/118)首次Linux2560项2557PASS/3FAIL/零跳过，Windows安装PASS；三项为已复现的跨平台夹具假设（CI-PORT-001/002），不是用旧全绿覆盖。修订保持所有精确结果/完整性/新鲜度断言，最终门禁以PR检查为准。**OBS-PROJECT-COUNT-001 OPEN**：词法root别名可能改变project/other统计分类，总Program数不因此改变。[原因、RED与验证](../reports/2026-11-17-integration-portability-regressions.md)。下方新全量未完成等为各切片当时状态，最终CI在合入PR记录。
+> 2026-11-23 current slice: **NAV-HOT-DIGEST-001 IMPLEMENTED/VALIDATED_WITH_LIMITS**.
+> W7 focused120/full2801 zero skips; production identity145 verified with preserved
+> test-fixture-only all-dist134 warning. Final scale9sessions72exactqueries, actual
+> Photos12+overlay8exactqueries all pass. Cold local refs45s failure→7.97s median;
+> hot1.02s, edit/save/close/reopen4.6–4.8s and init84s still slow.
+> **NAV-REPEAT-001 remains OPEN**; not overall performance/UI/endurance acceptance.
+> [Current report](../reports/2026-11-23-hot-query-acceptance.md). No merge/deploy.
 
 > **NAV-REPEAT-001（2026-11-17，OPEN）**：30K重复跳转8.46秒，取消检查路径耦合、派生影响重复计算及身份格式分配已优化。严格同条件各单会话3重复：旧adad中位8.896s/max9.369→dff5.172/5.804→6d4.223/4.373→c4283.893/4.239→当前b19f3.795/4.122s；仍严重慢。当前67/67扩大回归零跳过，类型检查/构建通过；63四次结果精确、Native/SQLitePASS、单Worker正常关闭。新全量未完成；20K原5s当前b19f单次3/3PASS、大项目4.794s贴近截止；旧adad/6d2PASS1FAIL保留，稳定性仍OPEN。62 CPU证据仍是输入证明热点，64确认同Native owner准备1+终检2轮，89985叶子检查/次，仍需治理。拒绝违反独立校验的实验已回滚。前2550仅旧adad。协议非UI，无合并部署。[根因与实施](../reports/2026-11-17-repeated-definition-checkpoint-cost.md)、[ADR0045](../adr/0045-complete-membership-and-source-resource-budgets.md)。
 
@@ -47,11 +51,28 @@
 
 # References / semantic Feature Ledger
 
+> **当前修复状态（2026-11-12，持续实施）**：SDK重复候选探测122/244→2/4，9文件74PASS；包物理根值加载122→1，6文件57PASS（含替换后拒绝旧结果及同会话恢复）。这两套是相邻候选的定向证据，不相加充当全量。真实Photos16仍FAIL：初始化约89.5s失败换代，后续定义30s产品截止；首个退出原因为未测。独立18是90s外部观察后主动终止，不是OOM复现。当前固定Node20完整check:fast已启动，源码冻结；原2466全量、Photos36两小时296缺口均属历史。全局查询长尾、2万文件初始化和30K完整功能仍需修复。详见[当前报告](../reports/2026-11-11-functional-closure-and-scale-failures.md)。未合并/部署。
+
+
 > 历史检查点 2026-11-09：ABI3冻结2433输入后生产Worker/恢复8PASS，原失败重放33PASS/19FAIL/82过滤，输入未变；完整check:fast尚未GREEN。最终ABI协议/公开缓存80PASS，拆分旧720行测试后相关85PASS；证明/重复组装/诊断阶段另有39/40/19定向PASS（重叠不相加）。Photos15/density16未执行，旧H13不替代当前验收。19项根因仍逐项定位；SDK/完整30K引用重命名、UI/Windows限制保留，455仅冷目录3秒计时豁免。[本轮根因与证据](../reports/2026-11-09-input-proof-purpose-and-diagnostic-handoff.md)。
 
 
 
 ## IDX-V1 Feature Ledger
+
+> LATEST IX20: source68aa4629/2441 inputs unchanged; fresh complete check PASS2463/2463, zero fail/skip/cancel/todo; exact249-input Rust reuse. Current Photos32 completed7200.369s formal protocol load:1074actions/4868requests, normal shutdown/exit0, independent postflightPASS;279formal full-scope refusals retained. Scale33 RUNNING; density34/topology35 wait serially. Owner/header retention, current scale performance and real UI/Windows acceptance remain incomplete. No commit/merge/deploy.
+
+> Closed f33288b9 predecessor aggregation: density72ordinaryPASS/topology108ordinaryPASS with3trial median/max, separate24/36profiles and30720source-byte endpoint audit. Photos27 formal4896requests/1601Native terminals:1045 counted terminals max1document each;556cancelled/failed work counters UNMEASURED. Two file-source fence refusals and four unqualified publications retained, later qualification recorded. [Photos](../reports/2026-11-10-photos30k-root-retention-endurance.md), [density](../reports/2026-11-09-versioned-index-density-comparison.md), [topology](../reports/2026-11-10-versioned-index-topology-comparison.md). Successor IX19 remains failed/intervened and running, not certified by these older results.
+
+> IX19 follow-up: **IDX-V1-TEST-LIFETIME-001 OPEN**. Hardlink resource/source test deleted auditRoot before async session.close; ENOTEMPTY blocked later cleanup and retained a test LSP/Native tree. Exact owned test server was terminated to release the stalled gate; it resumed, but remains failed/intervened. Independent real-process before/after copies prove activeNative1->0 at deletion; original frozen test not yet changed. [Lifecycle evidence](../reports/2026-11-10-audit-writer-teardown-order.md).
+
+> EARLIER successor IX19 checkpoint: SCALE004 measured86.305% in two complete-input captures. Complete native catalog admitted reads now retain both live identity fences but avoid the third initial realpath; injected/partial fallback unchanged.22port/manifest +22publicstdioLSP testsPASS; tsc/buildPASS. Fresh fullcheckRUNNING on2441inputs, source028bd76f; post-fix20K timingNOT_YET_MEASURED. IX18/f33288b9 and Photos27/scale28/density29/topology30 below are PRE-OPTIMIZATION evidence, not successor acceptance. No merge/deploy. [Diagnosis and first fix](../reports/2026-11-10-unrelated-file-query-latency-regression.md).
+
+> PREDECESSOR f33288b9 / IX18: fresh2456/2456PASS,0failed/skipped/cancelled,4141.296s,2439inputs unchanged. Photos27 formal7282.278s/1081actions/4896requests complete with independent auditPASS; all-session1138actions/5011requests and284known gaps. Scale28 terminal128formal runs (96ordinary/32profile) plus calibration; density29 terminal96formal plus calibration; topology30 terminal144formal plus calibration. Endpoint158runtime/3536SDK and logged power auditPASS; bulk resource/payload review remains pending. Prior failed scale24 and all known functional/platform gaps remain.
+
+> SCALE28 checkpoint: all3 ordinary trials96cells complete:66PASS/18functional-gap cells/12retained baseline refusals. Candidate36PASS/12gaps/0newFAIL.1632requests/1440measured operations;96closures/integrity verified. Unrelated and real-dependency three-round medians/maxima available; SCALE004 performance regression OPEN. Independent profiles32cells closed22PASS/6gaps/4FAIL; density29execution96formal+calibration1PASS, topology30terminal144formal+calibration1PASS; endpoint runtime/SDK-power auditPASS, raw-payload/resource review pending. [Current scale evidence](../reports/2026-11-10-versioned-index-scale-comparison.md).
+
+> EARLIER IX18 checkpoint 2026-11-10: full goal remains ACTIVE. The then-current root-profile fix has public4/4GREEN and one ordinary30K replay; fresh IX18 whole gate PASS. Photos27 is complete with audited receipts; scale28 and density29 execution are complete, topology30 execution is complete. Endpoint/runtime/SDK-power auditPASS; resource/payload and latency aggregation remains pending. PriorIX17/Photos23 and failed95 scale24 samples remain historical evidence of their exact runtime. Current rows below supersede stale historical checkpoint wording; no merge/deploy.
 
 2026-11-03原生索引专项最新记录：**DESIGN_READY / Proposed；IX-00/01/02/03/04/05 IN_PROGRESS；默认128/No-op链路局部GREEN、整体未完成**。
 2026-11-04已实施存储、同快照资格/查询、owner/GC、迁移及显式协商Native维护；128文件改单解析1、No-op写0已验证，默认TS/LSP及完整生命周期仍未完成。
@@ -192,6 +213,8 @@ IX-07 final GC-005 full gate GREEN (2026-11-08 11:43UTC): current2406/2406,sourc
 
 IX-07 persisted-write four-level strict result: actual128/2048/20K/30K each3save1document/3duplicate0/fullqualification0, restoredinput/symbols/normalclose/integrityPASS. Native cold+updates totalN+4 documents, not full rewrite; save medians416/542/2414/3454ms still scale. Semantic matrix RUNNING; old4096-capacity preflights20K/30K remainFAIL with explicit proof, not successful baselines. [Raw summary/current report](../reports/2026-11-08-versioned-index-candidate-acceptance-progress.md#strict-close-persisted-source-four-level-scale-complete-round10).
 
+IDX-V1-SCALE-004 OPEN/performance regression: all3ordinary unrelated-file trials48cells closed36PASS/12functional-gap cells. Static targetclosure2 while project128/2048/20K/30K grows;20K candidate cold median local rename10746.63ms vs baseline319.84ms, edit-first refs16465.60 vs5682.81ms.30K refusals are not successful faster work. Ordinary Program counts/exclusive phases UNMEASURED; separate20K profile observes20369Program sources and before/afterreadiness5014/5290ms(87.77%wall), withcallback18.326ms. Parent rename had no namespace wrapper. Investigate candidate-related proof/readiness duplication after current timing matrix, preserve freshness and paused unrelated cache scope. [Three-round results, exact inputs/sequence, TDD CLI/replay](../reports/2026-11-10-unrelated-file-query-latency-regression.md).
+
 IDX-V1-SCALE-002 OPEN/performance boundary: generatedtrue30K firstordinary reopen-definition22.48s,85.61% parentwait whilealreadyactiveBGdiagnose23; residual3.24s internalstagesUNMEASURED. Exactresult/normalclose do not meanacceptableexperience. Matches0027decision2 nonpreemption boundary; notproofoldM003queuedpriority regression/GCwrite/OOM. Keepordinary/trace/Photoscoverageincomplete; no unrelatedcachefix. [Evidence/ADR mapping](../reports/2026-11-08-30k-dependency-definition-tail.md).
 
 Fresh combined gate after INIT-001: new Rust414PASS/1existing ignored, experimental retirement28PASS, experimental namespace9PASS, release/fmt/strictClippyPASS; pinned455 correctness1PASS, cold3089.69ms timing-only user-waived. New Node whole check running, source2381 frozen. Round07 requires six checks + both supplements before full-runtime79-asset scale/persisted-save/30K2h; not yet executed.
@@ -219,15 +242,20 @@ GC-002/003的既有断言原样GREEN，历史失败保留；Node现有adapter27�
 
 | ID | 可交付机制 / 可观察完成条件 | 状态 | 新RED/GREEN证据 |
 | --- | --- | --- | --- |
-| IX-00 | 固定298d原始128整写反例/历史失败保留；默认协商、保存1写/重复0写GREEN；最终候选Photos连续7265s完成，完整范围缺口及密度/其他补测仍单列 | IN_PROGRESS | [实际耐久与限制](../reports/2026-11-09-photos30k-versioned-index-endurance.md) |
-| IX-01 | file versions/组可见性/资格/owner及GC接通；GC-005 VM及NULL/live-pin边界通过；当前完整Node2412/Rust421通过，保留455时间豁免及旧失败 | IN_PROGRESS | [GC-005及证据](../reports/2026-11-08-versioned-index-gc-query-cost.md) |
-| IX-02 | Native单写/URI合并、长期4parser、合批/reader/取消/单终态已实现；Photos连续7265s、唯一store、首次30000后workspace295次0文档写；取消/失败写量未测 | IN_PROGRESS | [实际耐久与计数边界](../reports/2026-11-09-photos30k-versioned-index-endurance.md) |
-| IX-03 | 默认Node/LSP磁盘save/watch已接通；128/2048及新20K/30K保存/重复/关闭后符号/输入恢复通过；目录生命周期、明确漏watch对账另有回归；无事件自动发现不宣称修复 | IN_PROGRESS | [保存及规模证据](../reports/2026-11-08-versioned-index-gc-query-cost.md) |
-| IX-04 | 同data快照资格/ReferenceIndexFreshness已接通；新token同head资格0facts写及旧0005兼容均有公开回归；完整最终候选/交错长测仍待验收 | IN_PROGRESS | [新鲜度回归](../reports/2026-11-05-default-index-maintenance-and-noop-freshness.md) |
-| IX-05 | OS使用权/owner/pin/自动GC/有限内容复用/退役迁移已接通；ACK/异常关闭、双owner及物理替换有证据；冷namespace并发已修；Windows真机未测 | IN_PROGRESS | [生命周期及并发补证](../reports/2026-11-08-cold-cache-multi-root-initialization.md) |
-| IX-06 | 编辑/目录/配置/取消/关闭复合public LSP已执行；前候选完整2406PASS，新GC候选完整重验中；原30K长序列尚未完成 | IN_PROGRESS | [最终候选进度](../reports/2026-11-08-versioned-index-candidate-acceptance-progress.md) |
-| IX-07 | 前候选完整2406PASS，GC-005新候选focused/public20K+30K PASS；全量检查重跑；完整三轮规模、密度和计划原样Cargo命令收尾待完成 | IN_PROGRESS | [当前检查与规模证据](../reports/2026-11-08-versioned-index-candidate-acceptance-progress.md) |
-| IX-08 | 原失败场景至少2小时单会话30K协议耐久，round09在全量/规模后排队；Mac/Windows真实UI分别记 | NOT_STARTED | NOT_RUN |
+| IX-00 | Baseline298d full-write counterexample retained. Scale33 persisted128/2048/20K/30K each3save1document/3duplicate0, one independent session per scale; logical facts, not physical I/O. Qualification still scales. All scale/density/topology controllers terminal and endpoint-audited. | IN_PROGRESS | [Current scale evidence](../reports/2026-11-10-versioned-index-scale-comparison.md) |
+| IX-01 | File versions/group visibility/query qualification implemented. Historical IX20 full2463PASS on2441inputs does not cover new IX21 owner layout9/109. Windows successor Rust423PASS/1existingignored and releasePASS; fresh Mac validation underway. | IN_PROGRESS | [Current successor evidence](../reports/2026-11-11-versioned-index-owner-metadata-retention.md) |
+| IX-02 | Single owner/URI merge/4parser/batched writer/cancellation implemented. Closed Photos32 main Native1603terminals, one storeId;1051post-first measured outcomes sum348documents/max1,551cancelled outcomes have UNMEASURED work counters. | IN_PROGRESS | [Closed Native counters](../reports/2026-11-10-photos30k-final-protocol-endurance.md) |
+| IX-03 | Default save/watch/source admission covered by historical IX20 fullPASS and scale33 one-file/duplicate mechanisms. New IX21 source requires fresh Node/LSP checks; partial full-scope refusals remain, no UI claim. | IN_PROGRESS | [Input admission and history](../reports/2026-11-10-final-gate-regressions-and-input-admission.md) |
+| IX-04 | Snapshot qualification/No-op/session isolation/final fences implemented. Known previous8/108 private migration and same-domain guards pass public regressions including failed activation/retry and old snapshots; current complete acceptance remains open. | IN_PROGRESS | [Lifecycle evidence](../reports/2026-11-11-versioned-index-owner-metadata-retention.md) |
+| IX-05 | GC006 stable lock slots/non-reused logical owners implemented; Windows full Rust423PASS/releasePASS, Mac focused20PASS. Published group/header/owner references and same-head qualifications remain OPEN, not silently expired. New Mac full checks underway;455correctness remains required separately. | IN_PROGRESS | [Owner retention](../reports/2026-11-11-versioned-index-owner-metadata-retention.md) |
+| IX-06 | Historical IX20 full2463PASS retained. New IX21 integrated only after2441input drift audit/backups; Mac focused20PASS actualformat9 and fmt/strictClippyPASS; experimental/fullRust/release/pinned455 checks have separate receipts. New Node/LSP/endurance not yet covered. | IN_PROGRESS | [Current TDD evidence](../tdd/2026-11-04-versioned-index-maintenance.md) |
+| IX-07 | Scale33 ordinary66PASS/18gap/12baselineFAIL, density34 ordinary72PASS, topology35 ordinary108PASS; all closed endpoint auditsPASS. Actual Program snapshots extracted; static2-file closure still Program20369 at20K. Reduced realpaths did not demonstrate end-to-end speedup. | IN_PROGRESS | [Scale and limitations](../reports/2026-11-10-versioned-index-scale-comparison.md) |
+| IX-08 | Frozen IX20 Photos32 formal7200.369s:1074actions/4868requests, postflightPASS/normal close,279formal full-scope refusals. Closed latency/resource/Native aggregation complete; severe tails retained. Windows frozen8 isolated cold index+5definitions verified; real UI and new IX21 endurance NOT_RUN. | IN_PROGRESS | [Closed endurance evidence](../reports/2026-11-10-photos30k-final-protocol-endurance.md) |
+
+IDX-V1-GC-006 remains OPEN. Baseline public RED66owner paths/rows for2live and0facts
+is retained. Stable-slot successor and real8→9/108→109 migration fixes are integrated
+only in the isolated worktree; full candidate/platform/endurance acceptance is not
+closed. Published receipt/header lifetime is separate from bounding lock objects.
 
 每片实施后用parent/final SHA、RED/GREEN命令/退出码、文件/产物身份和证据路径更新本表；
 局部GREEN不能标整体完成。IX-01–05的读写/资格/生命周期闭环前不启用新生产格式。
@@ -3153,3 +3181,465 @@ scale19在任何负载前封存，scale21/density20经过回归后仅等待，�
 原失败/工具副本/自然与固定时间文件系统对照均保留；未放宽产品或性能策略。
 IX17须重新完整检查；此前Photos18/scale21/density20/topology22均实际零压力负载并随门禁失败停止。
 后继23/24/25/26是独立证据目录，不将控制器或原型通过当作新规模或2小时通过。
+
+
+### IX17最终完整代码检查GREEN（2026-11-10）
+
+实际2455/2455、0失败/跳过，3873.436秒，2438输入全程未变。
+Rust249输入/Native未变，明确复用既有检查并保留命令及日志SHA，不称新跑。
+Photos23已实际进入原30K输入准备；正式7200s/当前完整规模/密度/独立拓扑仍未完成。
+IX-07/08继续IN_PROGRESS，不能将代码GREEN当作真实UI或完整功能验收。
+[当前收据及范围](../reports/2026-11-10-final-gate-regressions-and-input-admission.md)。
+
+
+### Photos23正式运行与OBS-012（仍非验收通过）
+
+实际原30K冷索引完整335.341秒；正式单会话UTC20:45:50.221开始，初始化和校准不累计。
+初步局部定义/补全/详情可用；完整引用/重命名错误和定义秒级长尾保留，mixed方法分布不冒充单状态时延。
+OBS-012：取消终态缺写入计数，UNMEASURED不能默认0；已报告正常增量单次最多1文档只是有明确计数的范围。
+Native30000与指标projectFiles（membership/documents统计）不混同实际Program成员。
+[实时快照、完整范围与缺口](../reports/2026-11-10-final-gate-regressions-and-input-admission.md)。
+
+
+### Photos23运行中冻结身份核验（2026-11-10）
+
+UTC21:36:33只读重算IX17的2438输入及4主要产物，与完整检查相符；
+`photos23-midrun-frozen-input-check.json`为端点观察，不代表连续文件监视。
+正式Photos23同会话继续，后继scale24/density25/topology26控制器已通过各自实际会话句柄确认仍活跃等待，
+未启动并行负载。计划顶部已更新IX17最终结果，历史失败记录不删除；IX-07/08仍未完成。
+OBS012通用失败终态确实未转交累计写入统计，写调用错误日志只能覆盖该调用失败，
+不能覆盖后续取消/验证失败的所有路径，真实累计成本仍标未测。源码和快照见
+[报告](../reports/2026-11-10-final-gate-regressions-and-input-admission.md)。
+
+
+### Photos23 final protocol endurance and postflight (2026-11-10)
+
+Actual7264.848s single session,1132 formal composite actions/5140 formal requests; normal shutdown/exit0,
+fixture restored, both DB integrity ok, sampled5owned PIDs CLOSED, no open progress, actual power auditPASS.
+This closes the current protocol-duration/restoration subcheck, NOT IX-08 overall or full feature acceptance:
+formal294 full references/rename failures,141 input-changed responses and145 deliberate cancellations remain separate.
+Definition p95 3878.567ms/max5248.528ms; SDK degraded/actual Program membership distinction retained.
+Final Native1650 terminals include589cancelled,1failed,3published-unqualified; the failed source fence race
+recovered full qualification9.719s later.590 cancelled/failed terminals lack cumulative write counters (OBS012 OPEN).
+Scale24 now actually running persisted-source experiments after exact postflight proof; IX-07 and IX-08 remainIN_PROGRESS.
+UI NOT_RUN; Windows SSH timeout. [Final report and raw paths](../reports/2026-11-10-photos30k-final-protocol-endurance.md).
+
+
+Persisted-source scale24 subcheck completed:128/2048/20K/30K, one measured session each plus calibration,
+3 saves and3 duplicates/session. Each save writes1 document; each duplicate0. Complete-qualification median
+for saves415.050/539.662/2437.236/3546.935ms, not an isolated file-write latency or three independent trials.
+Normal closure, input restoration and DB integrityPASS. Index-only fixture intentionally has no SDK/Program claim;
+SDK-pinned semantic matrix is separate and running. Details in the final Photos protocol report and
+namespace-final-20261109/scale24-persisted-source-summary.json. IX-07 remainsIN_PROGRESS.
+
+
+### Scale24 first ordinary trial completed (still IX-07 IN_PROGRESS)
+
+32 actual cells:22PASS,6WITH_FUNCTIONAL_GAPS,4retained baselineFAIL; calibration separate.
+Second ordinary trial active;3 ordinary trials and separate trace still required. Candidate true-dependency20K
+public exact oracles pass; candidate30K definition/completion have recurring15-18s slow samples in cold/warm
+new processes, and full references/rename remain unavailable. Actual Program membership is not yet measured here.
+No failed/unexecuted sample omitted for successful medians; no per-stage cause or asymptotic claim inferred.
+[First-trial table and evidence](../reports/2026-11-10-versioned-index-scale-comparison.md).
+
+
+Scale24 second ordinary trial completed32 cells:22PASS/6gaps/4oldFAIL; combined64 ordinary cells
+44PASS/12gaps/8FAIL, calibration excluded. Third ordinary active, no final3-trial or trace claim.
+Result SHA/operations/closure/integrity and explicit unexecuted rows retained in
+namespace-final-20261109/scale24-second-ordinary-trial-complete.json; canonical scale report updated.
+
+
+### IDX-V1-SCALE-003 ordinary recurrence / IDX-V1-OBS-013 observer correction (2026-11-10)
+
+Scale24 STOPPED_FOR_DIAGNOSIS at95 sessions:67PASS/17gaps/11FAIL, one current candidate ordinary
+completion execution deadline30132.580ms. Third ordinary trial incomplete; profiles/density/topology NOT_RUN.
+Independent strict-preserved probe observes unchanged-source definition/completion roots258 ->3,
+Program2 ->3 and14892.462ms sync; exclusive cause of ordinary failure remains unproven.
+OBS-013: old diagnostic helper disabled strict directive; old runs retained with explicit limitation.
+Corrected observer RED1/3 -> GREEN3/3; original ordinary candidate failure unaffected.
+IX-07/08 remain IN_PROGRESS. [Evidence and code chain](../reports/2026-11-10-30k-ordinary-completion-deadline.md).
+
+
+SCALE003 minimal planning slice: public LSP RED shows no-edit Program replacement; GREEN4/4 focused
+regressions retains Program and correct member/detail while existing partial discovery and4096+ export recall pass.
+Separate changed runtime frozen; ordinary30K failure-sequence replay active. PriorIX17 checks are historical,
+not current-candidate complete acceptance. ADR0030 refined as Proposed; IX-07/08 remainIN_PROGRESS.
+
+
+SCALE003 changed-candidate ordinary replay completed17 operations,9PASS/8full-scope FUNCTIONAL_GAP,
+normal shutdown/exit0,2 sampled owned PIDs CLOSED, both DB integrityPASS, frozen assets unchanged.
+First/repeat completion2867.645/3162.709ms, reopen3006.169ms. One run does not close SCALE003 or IX-07;
+definition-first18945.496ms and full references/rename limitations remain. Fresh IX18 check:fast RUNNING
+with2439 frozen inputs; previous2455/2455 is OLD_RUNTIME evidence. System awake assertion confirmed read-only.
+[Updated root-retention report](../reports/2026-11-10-30k-ordinary-completion-deadline.md).
+
+
+### IX18 new candidate acceptance chain, verified waiting (2026-11-10)
+
+Fresh full check live and typecheck completed; no terminal full result yet. New isolated controller paths
+Photos27 ->scale28 ->density29 ->topology30 preserve serial gates, fail-stop and exact source/runtime checks.
+Controller characterizations33/19/20/6PASS respectively; not a product-feature test count or new endurance result.
+Unused preparation-only harness copy kept separate and never counted as a session. No old raw result rewritten.
+Actual process handles verified live, all new post-check LSP loads still NOT_STARTED. IX-07/08 remainIN_PROGRESS.
+Receipt: `.bench/index-versioned-maintenance-20261104/namespace-final-20261109/ix18-next-controller-characterization.json`.
+
+
+Current requirements/evidence audit is [persisted separately](../reports/2026-11-10-versioned-index-acceptance-audit.md).
+All referenced reused Rust check-log hashes reverified; new cargo runs are not claimed. OBS012 cancelled work,
+physical I/O and ordinary Program/read/realpath counts retain their explicit measurement gaps.
+New-candidate full/scale/soak/platform requirements remain unclosed; controller passes are not product acceptance.
+
+
+## IX18 current whole candidate gate PASS (2026-11-10)
+
+Fresh full `pnpm check:fast`:2456/2456PASS,0fail/cancelled/skipped/todo,4141.296s wall;
+raw Node test duration4132.627s.2439 source inputs unchanged before/after; no mid-run source edit.
+This includes the new partial definition->member-completion Program-retention regression.
+Receipts: `namespace-final-20261109/ix18-complete-check-receipt.json`, `ix18-pnpm-check-fast.log`,
+`ix18-terminal-summary.json`, and exact4-file `ix18-root-retention-review.patch`.
+Rust is explicitly reused from identical249 inputs/Native5f648342 with check-log hashes revalidated, not a fresh cargo run.
+Photos27 gate has actually released into isolated originalPhotos input preparation. New formal7200s not yet started;
+Photos23 completed endurance remains old-candidate evidence. Scale28/density29/topology30 wait serially.
+Original scale24 failed95 results, full30K references/rename limits, definition tails, partialSDK, OBS012,
+Windows SSH timeout and real UI tool-host failure remain recorded. No full feature/platform/performance acceptance.
+No product threshold change, commit/push/merge/deployment or daily process restart.
+
+
+### Photos27 actual new candidate launch (not formal duration yet)
+
+New79-asset runtime with Worker52b5296 launchedUTC02:11:29.718 after IX18 terminal PASS.
+Original isolated30K input verified, semantic initialization reports membership-incomplete/degraded;
+Native cold indexing/calibration still running, formal7200s not started. Node59809/Native59815 plus audit
+wrapper59814 distinguished; Worker isolate heap is not added to Node RSS. No UI/Windows claim.
+[Current independent round report](../reports/2026-11-10-photos30k-root-retention-endurance.md).
+
+
+### Photos27 formal session actually started
+
+UTC02:18:47.104 (Beijing10:18:47), seed817954798, after44target calibration. Native initial30000/30000,
+skipped0 at02:17:26.220,356.502s from protocol start (semantic initialization overlaps). One semantic
+Worker start observed. Known full references/rename -32803 errors retained in raw responses; missing
+running result.knownGaps is not a zero-error claim. [Current round](../reports/2026-11-10-photos30k-root-retention-endurance.md).
+
+
+### 2026-11-11 IX-05/07/08 evidence checkpoint (not final acceptance)
+
+IDX-V1-GC-006 remains IN_PROGRESS. Stable physical owner slots and monotonic SQL
+incarnations passed the17-case isolated protection suite. Same-domain known-old
+layout detection and private migration fixed actual public REDs. Per-test real
+8→9 and108→109 inputs now pass3 cases per profile, repeated with failed source
+and failed admission followed by successful retry. Both old selected input and
+held old read snapshot remain protected; normal old-format query opens reject.
+Known-format management recognition passed4 Native retirement cases. Strict
+Windows fmt/Clippy passed, but successor workspace/release checks are still live.
+Published group/header replay lifetime remains open; bounded lock paths are not
+all metadata bounded. No frozen full-gate/soak result is relabeled for successor.
+[Owner retention and migration evidence](../reports/2026-11-11-versioned-index-owner-metadata-retention.md).
+
+IX-07 current scale33/density34/topology35 are terminal; endpoint audit verifies
+2441 source inputs,158 runtime assets,135072 fixture source files and3536 SDK
+inputs. Ordinary outcome failures/gaps remain. Actual post-query Program snapshots
+are now extracted: unrelated2-file target closure still has Program497/2417/20369
+at128/2048/20000 inputs, while30000 partial route reports371. Namespace probe
+confirms2 realpaths per source per proof window, but full20K proof remains and
+end-to-end speedup is not demonstrated. Do not claim scale independence.
+[Scale](../reports/2026-11-10-versioned-index-scale-comparison.md),
+[proof-cost](../reports/2026-11-10-unrelated-file-query-latency-regression.md).
+
+IX-08 Windows isolated realPhotos30K cold index and5 definition lifecycle states
+completed with source/SDK/runtime postflight, on frozen format8. No Windows UI or
+new-format9 Photos/long-soak coverage is claimed. Full references/rename, partial
+SDK and severe query tails remain explicit gaps. No merge, publication, daily
+installation, user process restart or actual-cache deletion in this checkpoint.
+
+
+### Windows full native gate and isolated Mac integration (2026-11-11)
+
+The isolated successor completed cargo test --workspace:423PASS,0FAIL,1existing
+ignored pinned455 release-fixture case,0filtered. The ignored case is not waived
+for correctness; it must run separately with its pinned input. Relevant release
+build exited0; Windows Native SHA256 e9b797567c841c981e811cb9190f7f8caf569a733f64547e2e46ebb3fc92b232.
+Full raw log SHA2563d0a7d751f71562f3f7910c747e683484626734a96d2fd11b198a9d7d855b1a2.
+Receipt: owner-retention-control/portable-and-workspace-qualified-summary.json.
+
+After verifying all2441previous W inputs byte-identical,27coherent source/test/
+compatibility-fixture/provenance files were copied into the isolated Mac worktree.
+Previous files are backed up and frozen IX20 test/runtime evidence remains intact.
+The new Mac candidate now requires fresh validation; old2463PASS/Photos32 does not
+validate it. A separate focused Mac check is running. No original-root product
+files, daily runtime or user cache was modified. Published receipt retention is
+still open. No merge, publication or full acceptance claim.
+
+
+### GC006 current checkpoint: immutable identity / releasable resource (2026-11-11)
+
+Format10/110 prototypeB preserves logical `owner` and separates nullable
+`resource_owner`; prototypeA that erased creator identity was rejected by a
+characterization RED. Isolated focused41, compatibility7+7, real previous-writer
+8/9/108/109 controls allPASS (overlapping sets, not unique aggregate). Bounded GC
+preserves exact replay/tombstones; logical receipt growth remains intentional.
+Evidence: owner-retention-control/terminal-owner-split-qualified-summary.json.
+Windows final all-targets/release is RUNNING; Mac format9 same-source complete
+check is separately RUNNING. Neither is final10 acceptance. Final10 integration,
+full gates, scale and >=2h same-candidate protocol acceptance remain IN_PROGRESS.
+No UI, deployment, merge, publication or actual-user-cache cleanup claimed.
+
+
+### 2026-11-11 最终10布局：Windows完整Rust与公开LSP检查
+
+修正夹具缺失后，隔离Windows `cargo test --locked --workspace --all-targets`
+433PASS/0FAIL/1existing455ignored，实验布局25PASS；`cargo build --locked
+--workspace --release` 退出0。276项Rust及外部夹具输入逐项后验无差异。
+Native SHA256 a64504fa9edc2f5340441f73d16d046a8972995cfb5b485303e9affb01ea2832。
+另外公开LSP13PASS；12实际native身份均匹配新构建，12正常exit0。
+仍不是Windows真实UI、Photos混合长测或Mac最终全量验收。
+收据：owner-retention-control/terminal-owner-final-native-qualified-summary.json
+与 terminal-owner-windows-lsp-qualified-summary.json。原始首次缺夹具失败保留。
+
+Mac格式9基线 `pnpm check:fast` 已完成2466PASS/0FAIL/0skip/0cancel，
+3860.864秒，2462输入无变化；不将其归给格式10。随后备份并集成26文件，
+当前格式10工作树2475输入，快照1a45cd7845b48eee826fcdbe28c08036a6b6dad3e58a60c688738e7cae2c54d0。
+Mac新native检查正在运行，最终全量与同候选规模/两小时协议测试仍未完成。
+
+
+### Mac格式10最终native终态与IX22启动（2026-11-11）
+
+`cargo test --locked --workspace --all-targets` 440PASS/0FAIL/1existing455ignored；
+该455用例另外显式运行，正确性1PASS。实验物理布局25PASS，fmt、严格Clippy、
+`cargo build --locked --workspace --release` 均退出0。2475输入每阶段无变化。
+Mac Native SHA256800e66281afb57afe4c129a17923b7778fbd0fbf4cf817d2f591caa4685bc07c。
+证据：owner-retention-control/mac-format10-native-qualified-summary.json。
+
+随后启动最终候选全新IX22 `pnpm check:fast`，旧格式9的2466PASS不替代它。
+Photos36控制器只等待IX22完整成功、Rust输入/检查日志及79项产物精确核对后才启动
+校准与7200秒单会话；当前尚未开始实际负载。控制器失败即停止，不自动换候选重试。
+规模37/密度38/拓扑39驱动回归通过，实际矩阵未开始，按Photos后串行顺序执行。
+
+工作树沿用前次格式9时已存在的4个8/108 fixture WAL/SHM旁文件，已记录在冻结输入
+中；测试只include完整DB字节并物化scratch，不使用旁文件。它们不是产品输入或待提交
+文件，后续整理候选时须排除；当前不在检查运行中删除导致快照漂移。新集成清单已排除
+全部8个归档旁文件，原始证据保留。没有删除用户缓存或日常安装文件。
+
+
+### Final format10 IX22 terminal and live endurance checkpoint (2026-11-11)
+
+Fresh full pnpm check:fast exited0 at2026-11-10T22:59:29.788603Z:2466PASS,
+0fail/skip/cancel/todo,3815.775729s; all2475source inputs unchanged. Strict combined
+gate revalidates exact282-input same-candidate fresh Rust checks reused by this
+Node gate, the actual Native800e binary and79complete runtime assets. Raw gate
+log SHA25653c28f8c42c07d4e055f488120048f65d9624ef3cfa6dc38e02354570df0d86f.
+Receipt: namespace-final-20261109/ix22-terminal-qualified-summary.json.
+This is final10 verification; older9 full PASS is historical only.
+
+Photos36 then copied verified artifacts and original isolated inputs, calibrated,
+and started formal single session2026-11-10T23:06:46.905Z. At00:21:02.560Z it had
+4455.655formal seconds,709formal actions/3192completed formal requests (provisional
+snapshot), no failed actions or protective stop.183full-scope refusals remain
+functional gaps, not successful references/rename. Current sampled peaks include
+Node1164.14MiB/Native245.06MiB/tree1419.50MiB; independent peaks are not additive.
+Do not infer final stability, memory leak absence or full feature completeness.
+Readonly audit waits for true normal close, SQLite integrity, original restoration,
+fixedSDK/actualruntime and logged sleep-free formal window. Scale37/density38/
+topology39 wait for exact predecessor receipts and run serially only after review.
+No matrix load yet, no realUI claim, no publication/merge/deployment.
+
+
+## Functional closure scope update (2026-11-11)
+
+User requires repairing remaining candidate failures/gaps and severe latency.
+IDX-V1-FUNC-001 OPEN: default membership truncation, shared16candidate scale cells
+and Photos296gap records. Exact public30003source regression RED->GREEN; still
+requires real Photos, partial-input/explicit-limit regression, ordinary perf fix
+and full/new-cohort acceptance.16baseline FAIL records are separate old witness
+quota observations; current candidate must still revalidate its earlier fix.
+Do not close these items with known-gap tags.
+[ADR0045](../adr/0045-complete-membership-and-source-resource-budgets.md),
+[closure report](../reports/2026-11-11-functional-closure-and-scale-failures.md).
+
+- **IDX-V1-INIT-001 OPEN**: real Photos30K complete catalog initialization misses90s external observation, no observed OOM. Worker CPU profile localizes initial group Program/module resolution. Configured60reexports repeats negative candidate62times vs1control; initial scope repair under verification. Evidence/report: [functional closure](../reports/2026-11-11-functional-closure-and-scale-failures.md).
+
+- **IDX-V1-INIT-001 remains OPEN** after initial resolution scope and bounded-LRU fixes: ordinary Photos06 misses90s, normal close/no observedOOM. Diagnostic07 first module enters28904root Program and parses24954project+1804SDK before cutoff; not a demonstrated minimal query dependency closure. Root-scope/ambient coverage is the next dependency to prove, not solved by the cache fixes.
+- **Cold snapshot proof sub-slice**: RED92duplicate physical guards on46files; readSnapshot reuses only the actual descriptor-read identity, focused11PASS/25filtered; unfiltered contract pending. No independent final guard removed; full fast/30K acceptance remains open.
+
+- **IDX-V1-SCALE-004 additional RED**: complete unknown-symbol fallback calls projectSourceNamespace -> refreshProjectMembership each time, directory opens2to5across3queries. Preserve final current-input proof; optimize only with actual full namespace+known-file+configuration ownership proof, otherwise old full refresh. Eight-file suite92/97PASS; four observer-start failures separately fixed and rerun4PASS; final1performance assertion stillOPEN, not relabeled.
+
+### 2026-11-12 functional closure current
+
+- IDX-V1-FUNC-001: generated30K exact refs/rename and original17operation replay
+  zero gaps, but actual Photos not yet accepted. Retain original296gap records.
+- IDX-V1-INIT-001 OPEN: current Photos Node20 smoke12 no terminal90s; complete
+ 20004file public completion fixture no preparation terminal20s. Not a UI result
+  or OOM claim. Neither wait increased; ordinary first completion never reached.
+- IDX-V1-SCALE-004 IN_PROGRESS: reusable full-catalog proof rechecks all files
+  and dirs; weak-ID fallback repaired; expanded47PASS. Byte proof/global compiler
+  scope tails remain; one original30K17op replay is not scale independence.
+- OBSERVER: costly read stacks now explicit32file attribution only; raw path/parse
+  counts retained. Rerun6PASS/1sameinitFAIL, no claimed root-cause fix.
+- Full current gate/multi-trial matrices/zero-gap endurance and Windows/UI pending.
+
+### Read-provenance verification update
+
+- Actual guarded cold-source identity -> actual registry SourceFile handoff:
+  public302sources RED46extra readiness reads ->0GREEN; final fences unchanged.
+- New post-read/pre-adoption mutation refuses READY, watched revision recovers exact
+  new definition; focused1PASS/4filtered. Whole selected27tests26PASS/1same20KinitFAIL.
+- Current ordinary30K17op zero-gapPASS, but first refs25.05s/rename15.30s, worse than
+  previous single sample. No latency acceptance or causal speedup claim.
+- Isolated same-current-runtime diagnostic handoff-disabled comparison RUNNING;
+  not a deployed old release, no product source changes while measuring.
+
+### SDK candidate repeated-resolution closure
+
+Public60wrapper probe122/244 -> LS-only62/124stillRED -> full LS+SDK-export
+2/4GREEN; genuine higher-priority absence/change refusal retained. Shared LRU
+contract is1MiB per active compiler owner, cleared on each query/build exit.
+Expanded9whole-file Node20 SDK/auto-import/Kit/runtime/selection suite74PASS/0skip.
+Protected original Photos30K protocol smoke14 RUNNING after terminal suite;
+not UI, no borrowed previous whole gate or endurance.20K initialization/full tails
+still OPEN until measured on this candidate. No merge/publish/deploy.
+
+### 2026-11-12 current package root / actual Photos
+
+Package-root value load122->1, whole-package replacement rejection AND same-session
+exact recovery57PASS/0skip; source8entryLRU/final identity guards retained.
+Photos16FAIL: initialization89486.56ms generic worker-unavailable, one replacement;
+epoch2first definition30139.83ms -32603, product30sdeadline in Program beforechecker.
+Original epoch1exit cause UNMEASURED, cannot inferOOM from4176.97MiB RSS. Diagnostic18
+no rawWorkererror; external90s then intentional shutdown/terminate/exit1, not same
+crash reproduction. Root compiler scope and severe global tails OPEN; exact logs
+in functional-closure-20261111. Current full check:fast and zero-gap endurance pending.
+
+### REF-CACHE-QUAL-001 — 2026-11-22 conditional cache implementation
+
+[ADR0047](../adr/0047-query-qualified-reference-result-cache.md) /
+[report](../reports/2026-11-22-query-qualified-reference-cache.md).
+Candidate `/private/tmp/arkts-query-index-proof-20261122`, uncommitted isolated
+worktree preserving inherited changes. Lexical/workspace/index-qualified proofs
+decouple answer reuse from global READY.202focused/2787actual full checks PASS;
+9generated scale sessions PASS,117queries/63true hits. Actual Photos29995
+initialization96.37s partial; first local references externally stopped45s FAIL,
+no hot/class validation.30K true hits~8.66s remain performance debt.
+UI/Windows/endurance, actual Photos first-answer availability remain OPEN.
+No merge/push/deploy; original guards/freshness/completeness retained.
+
+### NAV-HOT-DIGEST-001 — IN_PROGRESS
+
+[ADR0048](../adr/0048-source-digests-with-fresh-membership.md), [report](../reports/2026-11-22-hot-query-source-digests.md).
+Original hot result hits still reopened all nonborrowed source content.
+Public RED96opens→GREEN0 with fresh physical checks;97focused PASS.
+18same-input paired sessions PASS (144queries/54true hits);30K hot references
+median8522→1695ms, definition715→705ms. Actual full check RUNNING;
+Photos readonly protocol queued; UI/Windows/endurance not claimed.
+Candidate /private/tmp/arkts-hot-query-20261122; root/user work preserved; no merge/deploy.
+
+### NAV-HOT-DIGEST-001 — overlay correction, IN_PROGRESS
+
+First full gate09 failed active-overlay raw-read contract; failure retained.
+Closed-source-only correction preserves original assertion; independent disk
+versus overlay fingerprint oracle added. Green16:6PASS/0skip. Final candidate
+/private/tmp/arkts-hot-query-overlay-oracle-20261123; new18session pairing19 and
+new frozen gates20/21/22 underway. Earlier paired timings are predecessor data.
+
+
+### NAV-HOT-DIGEST-001 — W2 accepted checks / W3 verification, IN_PROGRESS
+
+W2 focused100/full2790 PASS with original overlay assertions unchanged.
+W3 same-phase numeric-observation representation: public RED34→GREEN35;
+paired36 18sessions/144queries/54hits PASS.30K generated hot references W2
+1507.77→W3 857.72ms median (9hot samples each), no definition benefit claim.
+Frozen W3 focused38 100PASS; actual full39 RUNNING, not yet accepted.
+Evidence/report: docs/reports/2026-11-22-hot-query-source-digests.md and
+.bench/hot-query-20261122. Actual Photos first local reference still hits45s
+external protection; real hot definition~2.5s, full all-member proof cost remains.
+UI/Windows/endurance not executed. No merge/deploy. These remain OPEN work.
+
+
+### NAV-HOT-DIGEST-001 — W3 mechanism proved / W4 evaluated, IN_PROGRESS
+
+Diagnostic41/42 confirms30000 fresh completed numeric observations consumed,
+8028fallback reads and7401quota overflows eliminated; original final scans stay.
+W4 immutable proof-validator ownership RED44(210 allocations)→focused54 32PASS.
+Corrected observer preserves original validation-count assertions, baseline51
+calibrated. W4 full56/58 pending and Photos serial ordinary controls59 waiting;
+no performance claim until measured. W3 full37/39 also still running. Exact
+failures/driver errors/old-request restoration controls are retained in report.
+
+
+### NAV-HOT-DIGEST-001 — current W5 / deadline failure preserved, IN_PROGRESS
+
+W5 seeds digests at actual initialization read before snapshot escapes; common
+helper moved to project domain. RED65(96duplicate first reads)/RED67(all16siblings
+reread after one silent edit)→GREEN68 13PASS, focused70 111PASS. Final actual
+full71 RUNNING on frozen source/runtime69; new server/Worker/verifier hashes in
+report. W3 full39 had original20s preparation notification failure (test wall
+30.45s, not a30s notification); old37/56 partial suites stopped, NOT green.
+Post-stop83 clean. Actual cause of deadline failure still needs independent
+comparison; concurrency attribution not proved. Pending serial chain78→79→80→81
+and input postflight82; older wait-only59/73 chains performed0queries and are
+preserved as aborted prerequisites. Actual Photos first refs45s and definition
+~2.5s remain OPEN until measured on W5. No merge/deploy/UI/endurance claim.
+
+
+### NAV-HOT-DIGEST-001 — final W5 full gate PASS / ordinary acceptance pending
+
+Actual final full71 pnpm check:fast2792/2792 PASS,0fail/skip/cancel/todo;
+focused70 111PASS. Frozen source/runtime69 unchanged, Native800e unchanged.
+Archive85 and task-only patch84 preserve code independently from temporary tree.
+Prior original deadline failure remains preserved; quiet78 and same-input
+ordinary79/80/81 continue before performance closure. No UI/Windows/endurance,
+commit, merge or deployment claim.
+
+
+### NAV-HOT-DIGEST-001 — W5 evidence closed; W6 lexical route verification in progress
+
+W5 actual final full2792PASS; scale79/89 retain initialization/hot30K regressions,
+not blanket performance success. Photos80 returned36 exact definitions with
+partial SDK and incomplete Native index. Original refs-first81 failed45s,
+but front admission1329ms improved while1025-root verification remained blocked.
+Diagnostic88 same fullSDK/batch1 returned3 exact local refs8.28s and cached
+~.95s; not product-policy acceptance. W6 keeps default1024 and attempts one
+query root only for syntax-hinted local bindings, accepts actual lexical proof
+only, otherwise discards probe data and conservatively searches. RED90/99,
+GREEN92/94/100 and alias-success-control101 recorded. Final focused/full and
+actual default-policy Photos checks pending. ADR0047 refinement remains
+Proposed; no main merge/deployment. Full report and TDD record linked by date.
+
+
+### NAV-HOT-DIGEST-001 — W7 slice validated, overall latency open
+
+Source1341068inputs unchanged; actual full1362801PASS/0skip. Original all-dist
+fixture drift failure preserved; production identity145/SDKtest12 independently
+verified. Final scale1469PASS72exactqueries27hits, actualProgramP16, latency
+still grows with N. Photos1263PASS12queries9hits firstmedian7968ms/hot1023ms.
+Photos147 one8-query lifecycle PASS,3→4→3 current locations,2hits; edit/save/
+close/reopen first4624–4837ms,6verifier Program constructions recorded.
+SDK Worker reuse is not project Program retention. SDK partial remains truthful.
+Post149 full input SHA unchanged; observed process close/SQLite pass. No UI,
+Windows or formal endurance pass. Archive148/task patch24files max472lines;
+root/user changes preserved. Final report2026-11-23 and ADR0047/48 updated.
+Keep remaining admission/final full-namespace work and transient Program cost
+under NAV-REPEAT-001/performance follow-up. Do not reopen unrelated optimizations
+or declare file-count independence; no threshold or result contract weakened.
+
+
+## 2026-11-25 PR119 integration repair candidate
+
+| ID | Status | Scope and evidence |
+|---|---|---|
+| CI119-CONTEXT-001 | IMPLEMENTED; local final check:fast PASS 2807/2807, platform CI pending | ADR0049 per-job context/ticket/terminal ownership; public outer-cancel and stale-terminal RED→GREEN, bounded exit/spawn/send fault recovery; no UI/deployment claim |
+| CI119-MEMBERSHIP-002 | IMPLEMENTED for controlled Mac repro; Linux recheck pending | Original restored-directory completion still -32803 without prior background diagnosis; namespace proof revocation at watcher boundary; public RED then5/5 GREEN; ADR0044 supplement |
+| CI119-INVENTORY-003 | existing fix retained; local final check:fast PASS 2807/2807 | Required Gitignore link exclusions omitted from c869ade, retained in candidate; exact source-inventory regression stays enabled |
+
+Evidence: [TDD](../tdd/2026-11-24-verifier-job-ownership.md), [root causes](../reports/2026-11-24-pr119-merge-gate-root-causes.md).
+Four incomplete whole-check runs remain interrupted (two include observed failures), never complete PASS. Final5 completed 2807/2807 with exit0 and 2694 frozen inputs unchanged; see TDD and raw result.
+No timeout/RSS/V8/result-correctness relaxations; Windows/UI/30K/global scope and performance limits remain separate.
+
+
+- CI119-DIAGNOSTIC-LATENCY-004 — OPEN performance observation: one original5s diagnostic wait timed out;
+  correct version2 later arrived in controlled runs. Interleaved parent/candidate ~3.68–3.73s matched;
+  final untouched test passed, but cold latency variation remains unclosed. No threshold/assertion change,
+  no stale result observed in those controls, and no CPU/disk attribution inferred. Evidence in PR119 repair TDD.
+- The local repair candidate remains uncommitted/unmerged/undeployed. Linux original failure platform
+  confirmation, Windows/UI,30K full reference/rename and long endurance/performance acceptance remain open.
+- Existing oversized test migration debt: project-file-set-cache.test.mjs reduced2170→2029 lines;
+  batch invalidation characterization and shared fixtures extracted without deleting cases.

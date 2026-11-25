@@ -1,3 +1,5 @@
+import { noteKnownMembershipSources } from "./project-membership-fact-delta.js"
+import type { WorkspaceContentChanges } from "./workspace-content-changes.js"
 import fs from "node:fs"
 import path from "node:path"
 
@@ -149,4 +151,45 @@ export function refreshClosedSourceMembership(entry: ProjectFileSetCacheEntry, s
     entry.pathBytes -= Buffer.byteLength(source)
   }
   return true
+}
+
+/** Finish watched metadata/content publication without conflating overlay authority
+ * with changes to its physical admission token. Uncertain delivery breaks lineage. */
+export function finishWatchedSourceChanges(input: {
+  entry: ProjectFileSetCacheEntry | undefined; membershipChanged: boolean
+  sourceChanges: readonly WatchedSourceChange[]; rejectedSourceChanges: readonly unknown[]
+  knownPathsBeforeInvalidation: ReadonlySet<string>; canonicalRoot: string; lexicalRoot: string
+  changedRoots: ReadonlySet<string>; resetRoots: ReadonlySet<string>
+  control: SemanticOperationControl; changes: WorkspaceContentChanges
+}): void {
+  const { entry, sourceChanges, canonicalRoot } = input
+  const compatible = input.rejectedSourceChanges.length === 0 && sourceChanges.length > 0
+    && sourceChanges.every(change => change.kind === "changed" && change.membershipEligible
+      && input.knownPathsBeforeInvalidation.has(change.sourcePath))
+  const compatibleDiskDelta = compatible && sourceChanges.every(change => !change.overlay
+    && input.knownPathsBeforeInvalidation.has(change.sourcePath))
+  // Physical membership renewal is independent of compiler overlay authority.
+  // Existing closed-source behavior is retained; open-source renewal additionally
+  // requires no alias/reset uncertainty. renew still verifies every original name
+  // and unaffected token, retires the old owner, and keeps raw current/final IO.
+  const renewMetadata = compatibleDiskDelta || compatible && !input.resetRoots.size
+  try {
+    // A source notification is not evidence that its containing namespace stayed
+    // unchanged. Preserve revocation so the next preparation scans BEFORE capture,
+    // rather than requiring an unrelated diagnostic to fail and dirty it first.
+    const proof = entry?.completeProof
+    if (proof && !proof.invalidated) for (const directory of new Set(sourceChanges.map(change => path.dirname(change.sourcePath)))) {
+      input.control.checkpoint()
+      if (!proof.directory(directory)?.current()) { proof.invalidate(); break }
+    }
+    if (entry && input.membershipChanged && renewMetadata && !entry.completeProof?.invalidated) entry.completeProof = entry.completeProof?.renew?.(
+      entry, sourceChanges.map(change => change.sourcePath), input.control)
+    for (const root of input.changedRoots) input.changes.advance(root,
+      compatibleDiskDelta && root === canonicalRoot && !input.resetRoots.has(root) ? input.lexicalRoot : undefined)
+  } catch (error) {
+    if (entry) noteKnownMembershipSources(entry, undefined)
+    throw error
+  }
+  if (entry) noteKnownMembershipSources(entry, compatible && !input.resetRoots.size
+    ? sourceChanges.map(change => change.sourcePath) : undefined)
 }

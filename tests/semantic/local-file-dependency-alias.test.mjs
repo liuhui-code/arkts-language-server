@@ -12,7 +12,8 @@ import { createReadinessFixture } from "../support/semantic-readiness-lsp.mjs"
 test("repeated local package imports reuse original package identity and reject directory replacement",
   { timeout: 30_000 }, async t => {
     const f = createReadinessFixture(t, { ARKTS_BENCHMARK_CONTROL: "0", ARKTS_MEMORY_BUDGET_MB: undefined,
-      NODE_OPTIONS: `--require=${JSON.stringify(path.resolve("tests/fixtures/package-root-read-observation.cjs"))}` })
+      NODE_OPTIONS: `--require=${JSON.stringify(path.resolve("tests/fixtures/package-root-read-observation.cjs"))}` },
+    { serverPath: process.env.ARKTS_TEST_SERVER_PATH })
     await fs.writeFile(path.join(f.workspace, "build-profile.json5"), JSON.stringify({
       app: { products: [{ name: "default" }] }, modules: ["app", "shared"].map(name => ({ name,
         srcPath: `./${name}`, targets: [{ name: "default", applyToProducts: ["default"] }] })) }))
