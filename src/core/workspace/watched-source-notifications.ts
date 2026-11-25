@@ -174,7 +174,15 @@ export function finishWatchedSourceChanges(input: {
   // and unaffected token, retires the old owner, and keeps raw current/final IO.
   const renewMetadata = compatibleDiskDelta || compatible && !input.resetRoots.size
   try {
-    if (entry && input.membershipChanged && renewMetadata) entry.completeProof = entry.completeProof?.renew?.(
+    // A source notification is not evidence that its containing namespace stayed
+    // unchanged. Preserve revocation so the next preparation scans BEFORE capture,
+    // rather than requiring an unrelated diagnostic to fail and dirty it first.
+    const proof = entry?.completeProof
+    if (proof && !proof.invalidated) for (const directory of new Set(sourceChanges.map(change => path.dirname(change.sourcePath)))) {
+      input.control.checkpoint()
+      if (!proof.directory(directory)?.current()) { proof.invalidate(); break }
+    }
+    if (entry && input.membershipChanged && renewMetadata && !entry.completeProof?.invalidated) entry.completeProof = entry.completeProof?.renew?.(
       entry, sourceChanges.map(change => change.sourcePath), input.control)
     for (const root of input.changedRoots) input.changes.advance(root,
       compatibleDiskDelta && root === canonicalRoot && !input.resetRoots.has(root) ? input.lexicalRoot : undefined)

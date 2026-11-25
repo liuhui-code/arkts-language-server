@@ -476,7 +476,7 @@ export class SemanticTypeEngineRegistry {
   dispose(): void {
     this.groups.clear()
     this.sourceResets.clear()
-    this.referenceVerifier.dispose()
+    void this.referenceVerifier.close().catch(() => {}) // The existing async shutdown owns the drain/fault channel.
     this.coordinator.dispose()
   }
   private createContext(rootPath: string): WorkspaceEngineEntry {

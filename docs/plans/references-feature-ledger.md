@@ -3620,3 +3620,26 @@ root/user changes preserved. Final report2026-11-23 and ADR0047/48 updated.
 Keep remaining admission/final full-namespace work and transient Program cost
 under NAV-REPEAT-001/performance follow-up. Do not reopen unrelated optimizations
 or declare file-count independence; no threshold or result contract weakened.
+
+
+## 2026-11-25 PR119 integration repair candidate
+
+| ID | Status | Scope and evidence |
+|---|---|---|
+| CI119-CONTEXT-001 | IMPLEMENTED; local final check:fast PASS 2807/2807, platform CI pending | ADR0049 per-job context/ticket/terminal ownership; public outer-cancel and stale-terminal RED→GREEN, bounded exit/spawn/send fault recovery; no UI/deployment claim |
+| CI119-MEMBERSHIP-002 | IMPLEMENTED for controlled Mac repro; Linux recheck pending | Original restored-directory completion still -32803 without prior background diagnosis; namespace proof revocation at watcher boundary; public RED then5/5 GREEN; ADR0044 supplement |
+| CI119-INVENTORY-003 | existing fix retained; local final check:fast PASS 2807/2807 | Required Gitignore link exclusions omitted from c869ade, retained in candidate; exact source-inventory regression stays enabled |
+
+Evidence: [TDD](../tdd/2026-11-24-verifier-job-ownership.md), [root causes](../reports/2026-11-24-pr119-merge-gate-root-causes.md).
+Four incomplete whole-check runs remain interrupted (two include observed failures), never complete PASS. Final5 completed 2807/2807 with exit0 and 2694 frozen inputs unchanged; see TDD and raw result.
+No timeout/RSS/V8/result-correctness relaxations; Windows/UI/30K/global scope and performance limits remain separate.
+
+
+- CI119-DIAGNOSTIC-LATENCY-004 — OPEN performance observation: one original5s diagnostic wait timed out;
+  correct version2 later arrived in controlled runs. Interleaved parent/candidate ~3.68–3.73s matched;
+  final untouched test passed, but cold latency variation remains unclosed. No threshold/assertion change,
+  no stale result observed in those controls, and no CPU/disk attribution inferred. Evidence in PR119 repair TDD.
+- The local repair candidate remains uncommitted/unmerged/undeployed. Linux original failure platform
+  confirmation, Windows/UI,30K full reference/rename and long endurance/performance acceptance remain open.
+- Existing oversized test migration debt: project-file-set-cache.test.mjs reduced2170→2029 lines;
+  batch invalidation characterization and shared fixtures extracted without deleting cases.

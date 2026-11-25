@@ -3,7 +3,7 @@ import type { SemanticWorkspaceView } from "../../core/workspace/document-store.
 import type { ReferenceBatchVerification } from "./reference-search-executor.js"
 import type { ReferenceSdkAmbientProfile, ReferenceSearchRuntimeConfig } from "./reference-runtime.js"
 import type { TransientSemanticWorkerObserver } from "../transient-worker-lifecycle.js"
-import { ReferenceVerifierClient } from "./reference-verifier-client.js"
+import { ReferenceVerifierClient, type ReferenceVerifierJobOptions } from "./reference-verifier-client.js"
 
 export interface ReferenceAnchorVerification {
   readonly definitions: readonly SemanticDefinitionCandidate[]
@@ -24,6 +24,7 @@ export interface ReferenceBatchWorkerOptions {
   readonly tolerateUnadmittedProjectDependencies?: boolean
   readonly constructorScope?: boolean
   readonly onTransientWorker?: TransientSemanticWorkerObserver
+  readonly onJobState?: ReferenceVerifierJobOptions["onJobState"]
 }
 
 /** Keep the fallback's configuration and cancellation ownership in one adapter. */
@@ -32,10 +33,14 @@ export function referenceWorkerOptions(client: ReferenceVerifierClient,
     readonly references?: Pick<ReferenceSearchRuntimeConfig, "sdkAmbientProfile" | "trace">
     readonly onTransientWorker?: TransientSemanticWorkerObserver
     readonly hostCancellationToken?: { isCancellationRequested(): boolean }
+    readonly onReferenceTrace?: (event: string,
+      fields: Readonly<Record<string, string | number | boolean | null | undefined>>) => void
   }): ReferenceBatchWorkerOptions {
   return { client, projectConfiguration, sdkConfiguration,
     sdkAmbientProfile: options.references?.sdkAmbientProfile,
     trace: options.references?.trace, onTransientWorker: options.onTransientWorker,
+    onJobState: options.references?.trace
+      ? (jobId, phase) => options.onReferenceTrace?.("references.verifier.job", { jobId, phase }) : undefined,
     isCancellationRequested: options.hostCancellationToken
       ? () => options.hostCancellationToken?.isCancellationRequested() === true : undefined }
 }

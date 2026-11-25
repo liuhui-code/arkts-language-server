@@ -131,3 +131,19 @@ not a new decision or review record: registration ACK still proves no freshness,
 and current/final raw checks are retained. No provider-level overflow, Windows
 remount/junction or continuous-watch guarantee is claimed.
 [Evidence](../reports/2026-11-20-sdk-hook-and-initial-scan-controls.md).
+
+## 2026-11-25：通知边界必须传播目录资格撤销
+
+PR119 的 parent-retarget 同型失败已在 Mac 用既有诊断延迟控制复现：原在途补全正确拒绝，
+恢复目录并发送源码 changed 后，首个前台补全仍因旧成员目录证明而 -32803。
+普通对照由后台 diagnose 先发现并撤销旧证明，下一前台才成功；恢复不能依赖这一调度偶然。
+这与 ADR0049 的回调取消上下文串扰是两个缺陷，Linux 原 CI 内部栈仍未捕获。
+
+候选在已交付源码通知的 producer 边界，按通知文件的去重父目录检查原始目录证明。
+若该资格不再成立，只单调撤销该原证明；保留其 invalidated 状态，不能以 renew 失败丢失撤销信号。
+后续准备通过原有扫描在首次输入捕获前重新取证，不在已失败请求中重签或放行旧结果。
+正常 body-only 事件不扫描全部项目/目录，不清空 SDK/AST/结果缓存；原 current/final 检查继续执行。
+这是原证明生命周期合同的修正落实，不新增 validity 缓存或改变磁盘权威。
+
+公开回归新增“后台诊断延迟2000ms”对照，原旧在途 -32803 与精确恢复补全断言不变；
+候选五项5/5 GREEN，整体及 Linux 再验证待完成。见[本轮修复证据](../tdd/2026-11-24-verifier-job-ownership.md)。

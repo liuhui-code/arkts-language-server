@@ -155,3 +155,7 @@ or ownership quarantine. Full check caught the bypass (2704/2705PASS,1FAIL);
 architecture assertions unchanged, corrected public factory/close/shutdown and
 ownership suites71/71PASS. New full check still required; status/review history
 unchanged. [Evidence](../reports/2026-11-20-binding-containing-origin-and-owned-syntax-factory.md).
+
+## 2026-11-24 proposed follow-up: nested verifier fault ownership
+
+[ADR0049](0049-verifier-job-context-and-lifetime.md) requires nested verifier fatal/protocol/cleanup faults to enter the existing controlled recovery domain instead of unbounded lazy recreation. The current client does not automatically consume this ADR's parent budget; that bridge remains unimplemented and must be regression-tested. Ordinary queued cancellation or a settled job's outer cancellation must not be promoted to a fatal host failure. Existing deadlines, budget, single terminal and physical exit rules remain authoritative.

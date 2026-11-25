@@ -9,6 +9,8 @@ import { MAX_DISK_SNAPSHOT_BYTES, sourceStatIdentity } from "./workspace-disk-so
 
 export interface CompleteMembershipProof {
   readonly invalidated: boolean
+  /** Revoke this exact producer generation; only a real scan can replace it. */
+  invalidate(): void
   /** Admitted metadata only, with cancellation; never filesystem freshness. */
   matchesCatalog(current: ProjectFileSetCacheEntry, control: SemanticOperationControl): boolean
   renew?(entry: ProjectFileSetCacheEntry, changedPaths: readonly string[],
@@ -70,7 +72,7 @@ function proofFromEvidence(evidence: MembershipEvidence): CompleteMembershipProo
     return proof && entries ? { physicalPath: proof.physicalPath, names: entries.entries, current: proof.current,
       bytes: 512 + 2 * (proof.path.length + proof.physicalPath.length) + entries.bytes } : undefined
   }
-  return { get invalidated() { return invalidated }, matchesCatalog, directory,
+  return { get invalidated() { return invalidated }, invalidate() { invalidated = true }, matchesCatalog, directory,
     renew(current, changedPaths, control) {
       if (invalidated || current.status !== "complete" || current.paths.length !== paths.length
         || current.diskIdentities.size !== tokens.size || !changedPaths.length) return undefined

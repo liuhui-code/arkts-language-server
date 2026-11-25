@@ -17,7 +17,10 @@ const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 test("classifies every executable test entry exactly once in an explicit layer", () => {
   const audit = validateTestLayerManifest({ root: projectRoot, manifest: TEST_LAYER_MANIFEST })
 
-  assert.equal(audit.entryCount, 380)
+  assert.equal(audit.entryCount, 383)
+  assert.equal(audit.assignments["tests/watched-source-batching.test.mjs"], "unit-contract")
+  assert.equal(audit.assignments["tests/semantic/references-verifier-ownership.test.mjs"], "bundle-e2e")
+  assert.equal(audit.assignments["tests/semantic/references-verifier-faults.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/semantic/references-lexical-probe-lifetime.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/semantic/resident-reference-preparation.test.mjs"], "bundle-e2e")
   assert.equal(audit.assignments["tests/final-source-observation.test.mjs"], "unit-contract")
@@ -378,9 +381,9 @@ test("classifies every executable test entry exactly once in an explicit layer",
     "bundle-e2e",
   )
   assert.deepEqual(audit.layerCounts, {
-    "unit-contract": 158,
+    "unit-contract": 159,
     protocol: 15,
-    "bundle-e2e": 199,
+    "bundle-e2e": 201,
     "artifact-e2e": 4,
     "sealed-artifact-e2e": 1,
     large: 1,

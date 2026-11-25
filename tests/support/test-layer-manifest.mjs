@@ -1,4 +1,6 @@
+import { workspaceCacheUnitTests } from "./workspace-cache-test-entries.mjs"
 import { queryCacheUnitTests, queryCacheBundleTests } from "./query-cache-test-entries.mjs"
+import { verifierJobBundleTests } from "./verifier-job-test-entries.mjs"
 import fs from "node:fs"
 import path from "node:path"
 export const TEST_LAYER_MANIFEST = Object.freeze({
@@ -89,7 +91,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/semantic-release-pss-statistics-cli.test.mjs",
       "tests/semantic-release-pss-workflow-cli.test.mjs",
       "tests/semantic-release-pss-sampling-cli.test.mjs",
-      "tests/project-file-set-cache.test.mjs",
+      ...workspaceCacheUnitTests,
       "tests/project-resolution-domain-lifetime.test.mjs",
       "tests/prepared-completion-receipts.test.mjs",
       "tests/partial-project-source-delivery.test.mjs",
@@ -324,10 +326,8 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/semantic/cold-cache-multi-root-initialization.test.mjs",
       "tests/semantic/references-candidate-snapshot.test.mjs",
       "tests/semantic/references-direct-proof-trace.test.mjs",
-      "tests/semantic/references-anchor-reuse.test.mjs",
+      ...verifierJobBundleTests,
       "tests/semantic/references-conservative-semantic-units.test.mjs",
-      "tests/semantic/references-compiler-query-trace.test.mjs",
-      "tests/semantic/references-context-retention.test.mjs",
       "tests/semantic/references-coalescing.test.mjs",
       "tests/semantic/references-diagnostic-cache.test.mjs",
       "tests/semantic/references-diagnostic-scheduling.test.mjs",

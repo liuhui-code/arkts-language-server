@@ -134,3 +134,9 @@ links the current per-feature status; focused and full verification remain disti
 | [0047](0047-query-qualified-reference-result-cache.md) | Proposed; lexical/workspace/index-qualified implementation validated, independent review pending | Per-query complete-reference receipts decouple result-cache admission from global READY; root invalidation and final disk authority retained |
 
 - [0048](0048-source-digests-with-fresh-membership.md) — Proposed: original guarded source digests, fresh membership/leaf observations and independent final union; performance validation in progress.
+
+## 2026-11-24 verifier ownership proposal
+
+| ADR | Status | Scope |
+|---|---|---|
+| [0049](0049-verifier-job-context-and-lifetime.md) | **Proposed; implemented, local final check:fast 2807/2807, independent review and platform CI pending** | Per-job context and ticket ownership across reused verifier callbacks; explicit terminal/drain/reset/close; reuse existing supervision and recovery, no second manager |

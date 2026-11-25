@@ -32,3 +32,7 @@ Start with a real framed-stdio LSP test that counts genuine compiler parse calls
 Implementation and final evidence: [OP00 SDK cache verification](../tdd/op00-reference-sdk-cache.md). The unchanged 403-file transcript passes its original 20-second deadlines; all 255 SDK files are parsed once across 14 jobs.
 
 Follow-up attribution isolates SDK relative-import path/freshness checks as the largest remaining cost, with repeated standard-library parsing and SDK text reads also observed. Warm SDK binding is already cheap. The 403-file transcript still performs two complete seven-batch searches and exceeds 500 ms; [the measured breakdown](../tdd/op00-reference-sdk-cache-attribution.md) records both the default index-cache permission failure and the writable-cache control, which still falls back to complete search.
+
+## 2026-11-24 proposed clarification: job cancellation and cached Worker ownership
+
+[ADR0049](0049-verifier-job-context-and-lifetime.md) distinguishes cancellation of an unfinished verifier job from cancellation of its outer request after that job has settled. The latter cannot cancel a subsequent job reusing the Worker. It proposes per-job callback context and identity, explicit reset/close and physical exit ownership; the serial SDK cache and complete-input contract remain. This is a Proposed clarification, not an implemented change or a rewrite of historical validation.
