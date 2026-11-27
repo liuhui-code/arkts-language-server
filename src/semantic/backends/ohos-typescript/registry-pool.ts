@@ -73,6 +73,14 @@ export function createOfficialSemanticService(host: ts.LanguageServiceHost, sdk:
     : sdkExportLanguageService(host, sdk, registry, create)
 }
 
+/** A fixed source-only semantic profile has no SDK/export provider inputs.
+ * Its private Registry still uses the same owned leases, synchronization,
+ * quarantine and phase observation as every other official semantic service. */
+export function createOfficialSourceReferenceService(host: ts.LanguageServiceHost): ts.LanguageService {
+  return recoverableLanguageService(host,
+    ts.createDocumentRegistry(ts.sys.useCaseSensitiveFileNames, host.getCurrentDirectory()))
+}
+
 /** Recycle the LS at L2: this fork's cleanupSemanticCache drops Program ownership without releasing registry refs. */
 export function recycleOfficialSemanticService(
   service: ts.LanguageService,

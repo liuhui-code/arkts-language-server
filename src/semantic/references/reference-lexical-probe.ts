@@ -40,7 +40,7 @@ export async function probeLexicalReferences(workspace: SemanticWorkspaceView,
   return proved ? result : undefined
 }
 
-function hasLocalBindingHint(position: SemanticDocumentPosition, text: string, checkpoint?: () => void): boolean {
+export function hasLocalBindingHint(position: SemanticDocumentPosition, text: string, checkpoint?: () => void): boolean {
   const offset = exactSourceOffset(text, position.line, position.column)
   if (offset === undefined) return false
   const source = ts.createSourceFile(position.path, text, ts.ScriptTarget.ES2022, true,

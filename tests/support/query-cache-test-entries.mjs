@@ -5,6 +5,9 @@ export const queryCacheUnitTests = Object.freeze([
   "tests/reference-portable-inputs.test.mjs",
 ])
 export const queryCacheBundleTests = Object.freeze([
+  "tests/semantic/references-source-input-lifetime.test.mjs",
+  "tests/semantic/references-source-input-qualification.test.mjs",
+  "tests/semantic/references-partial-retained-owner.test.mjs",
   "tests/semantic/references-source-digest-lifecycle.test.mjs",
   "tests/semantic/references-source-digest-reuse.test.mjs",
   "tests/semantic/references-query-cache-proof.test.mjs",

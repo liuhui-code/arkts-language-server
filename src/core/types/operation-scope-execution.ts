@@ -16,6 +16,7 @@ export interface OperationScopeProof {
 export type ScopedWorkspace = SemanticWorkspaceView & { readonly [OPERATION_SCOPE]?: OperationScopeProof }
 let active: OperationScopeProof | undefined
 class FullOperationScopeRequired extends Error {}
+export const isFullOperationScopeRequired = (error: unknown): boolean => error instanceof FullOperationScopeRequired
 
 export function hasOperationScope(workspace: SemanticWorkspaceView): boolean {
   return (workspace as ScopedWorkspace)[OPERATION_SCOPE] !== undefined

@@ -14,8 +14,9 @@ if (!isMainThread && process.env.ARKTS_LSP_LOG_DIR) {
   const compile = Module.prototype._compile
   const call = "scriptSnapshot.getChangeRange(entry.sourceFile.scriptSnapshot)"
   const updateCall = /updateLanguageServiceSourceFile\(\s*entry\.sourceFile,/gu
-  let ancestor
-  globalThis.__arktsObserveSnapshotChange = (current, previous) => {
+  const ancestors = new WeakMap()
+  const domainOf = options => options.noResolve === true && options.noLib === true ? "source" : "project"
+  globalThis.__arktsObserveSnapshotChange = (current, previous, options) => {
     const change = current.getChangeRange(previous)
     if (fs.existsSync(armed)) {
       const text = current.getText(0, current.getLength())
@@ -25,19 +26,21 @@ if (!isMainThread && process.env.ARKTS_LSP_LOG_DIR) {
           : old.slice(0, change.span.start)
             + text.slice(change.span.start, change.span.start + change.newLength)
             + old.slice(change.span.start + change.span.length)
-        fs.appendFileSync(output, JSON.stringify({ kind: "compiler-change-range", pid: process.pid,
+        const domain = domainOf(options)
+        fs.appendFileSync(output, JSON.stringify({ kind: "compiler-change-range", domain, pid: process.pid,
           threadId, timestamp: Date.now(), oldLength: old.length, newLength: text.length,
           change: change ?? null, reconstructsCurrentText: reconstructed === null ? null : reconstructed === text,
         }) + "\n")
         if (JSON.parse(fs.readFileSync(armed, "utf8")).probeAncestors === true) {
-          ancestor ??= previous
+          const ancestor = ancestors.get(previous) ?? previous
+          ancestors.set(current, ancestor)
           const range = current.getChangeRange(ancestor)
           const original = ancestor.getText(0, ancestor.getLength())
           const restored = range === undefined ? null
             : original.slice(0, range.span.start)
               + text.slice(range.span.start, range.span.start + range.newLength)
               + original.slice(range.span.start + range.span.length)
-          fs.appendFileSync(output, JSON.stringify({ kind: "snapshot-ancestor-probe", pid: process.pid,
+          fs.appendFileSync(output, JSON.stringify({ kind: "snapshot-ancestor-probe", domain, pid: process.pid,
             threadId, timestamp: Date.now(), oldLength: original.length, newLength: text.length,
             change: range ?? null, reconstructsCurrentText: restored === null ? null : restored === text,
           }) + "\n")
@@ -54,7 +57,7 @@ if (!isMainThread && process.env.ARKTS_LSP_LOG_DIR) {
     const result = nativeUpdate(previous, current, ...args)
     if (observed) {
       const next = new Set(result.statements)
-      fs.appendFileSync(output, JSON.stringify({ kind: "compiler-source-update", pid: process.pid,
+      fs.appendFileSync(output, JSON.stringify({ kind: "compiler-source-update", domain: domainOf(args[3]), pid: process.pid,
         threadId, timestamp: Date.now(), oldLength, newLength: result.text.length,
         change: args[1] ?? null, sourceFileChanged: result !== previous,
         oldStatements: statements.length, newStatements: result.statements.length,
@@ -69,7 +72,7 @@ if (!isMainThread && process.env.ARKTS_LSP_LOG_DIR) {
       if (content.split(call).length !== 2) throw new Error("locked compiler snapshot call unavailable")
       if ([...content.matchAll(updateCall)].length !== 1) throw new Error("locked compiler parser call unavailable")
       content = content.replace(call,
-        "globalThis.__arktsObserveSnapshotChange(scriptSnapshot, entry.sourceFile.scriptSnapshot)")
+        "globalThis.__arktsObserveSnapshotChange(scriptSnapshot, entry.sourceFile.scriptSnapshot, compilationSettings)")
       content = content.replace(updateCall,
         "globalThis.__arktsObserveSnapshotUpdate(updateLanguageServiceSourceFile, entry.sourceFile,")
     }

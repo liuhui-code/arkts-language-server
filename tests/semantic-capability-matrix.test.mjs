@@ -71,6 +71,10 @@ test("keeps unproven rule providers out of the production semantic runtime", () 
   assert.equal((registryPoolSource.match(/createOfficialSemanticService\s*\(/gu) ?? []).length, 2)
   assert.equal((recoverySource.match(languageServiceFactory) ?? []).length, 1)
   assert.equal((semanticSources.match(languageServiceFactory) ?? []).length, 1)
+  const sourceOwner = fs.readFileSync(path.join(projectRoot, "src", "semantic", "references", "source-reference-owner.ts"), "utf8")
+  assert.match(sourceOwner, /createOfficialSourceReferenceService\s*\(/u)
+  assert.doesNotMatch(sourceOwner, /\.create(?:LanguageService|DocumentRegistry)\s*\(/gu)
+  assert.match(registryPoolSource, /function createOfficialSourceReferenceService[^}]*recoverableLanguageService/su)
   // The sole direct Program is the compiler-native SDK-only export index (ADR0038).
   const sdkIndexSource = fs.readFileSync(path.join(projectRoot, "src", "semantic", "backends",
     "ohos-typescript", "sdk-export-index.ts"), "utf8")

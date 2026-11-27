@@ -91,3 +91,15 @@ export function queryAdmittedReferences(
     fingerprints.clear()
   }
 }
+
+/** A query-specific coverage receipt does not claim whole-Program readiness. */
+export function admitReferenceQueryResult(result: SemanticReferenceQueryResult,
+  state: TypeScriptResidentReferenceState | undefined, service: ts.LanguageService,
+  captureScope: boolean, requireProof: boolean,
+  acceptCoverage?: (result: Extract<SemanticReferenceQueryResult, { status: "complete" }>) => boolean,
+): SemanticReferenceQueryResult {
+  if (result.status !== "complete" || acceptCoverage?.(result)) return result
+  const current = state?.captureCurrentProgram(service, captureScope || requireProof)
+  return (requireProof || (captureScope && state)) && !current
+    ? { status: "incomplete", reason: "source-unavailable" } : result
+}

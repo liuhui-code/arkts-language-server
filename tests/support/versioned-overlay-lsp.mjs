@@ -68,7 +68,9 @@ export async function diagnostic(session, uri, version, expectedCodes = []) {
   return message.params.diagnostics
 }
 
-export function readObservations(fixture) {
+export function readObservations(fixture, domain = "project") {
   const file = path.join(fixture.directory, "snapshot-change-observation.jsonl")
-  return fs.existsSync(file) ? fs.readFileSync(file, "utf8").trim().split("\n").map(JSON.parse) : []
+  const rows = fs.existsSync(file) ? fs.readFileSync(file, "utf8").trim().split("\n").map(JSON.parse) : []
+  assert.ok(rows.every(row => row.domain === "project" || row.domain === "source"), "unknown snapshot input domain")
+  return domain === "all" ? rows : rows.filter(row => row.domain === domain)
 }

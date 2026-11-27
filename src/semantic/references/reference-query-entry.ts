@@ -1,3 +1,6 @@
+import { sourceReferenceAdmission } from "./source-reference-admission.js"
+import { hasSourceReferenceCandidate, sourceReferenceAuthority } from "./source-reference-input.js"
+import { hasLexicalReferenceCandidate } from "./reference-lexical-candidate-hint.js"
 import { randomUUID } from "node:crypto"
 import type { DocumentSnapshot } from "../../contracts/document.js"
 import type { SemanticReferencesQuery, SemanticReferencesOutcome, VersionedSemanticResult } from "../../contracts/semantic-engine.js"
@@ -20,11 +23,11 @@ interface ReferenceQueryEntry {
   readonly projectConfiguration: unknown
   readonly sdkConfiguration: unknown
   readonly queriedRoots: ReadonlySet<string>
-  readonly documents: Iterable<DocumentSnapshot>
+  documents(): Iterable<DocumentSnapshot>
   cached(query: SemanticReferencesQuery, traceId?: string): VersionedSemanticResult<SemanticReferencesOutcome> | undefined
     | Promise<VersionedSemanticResult<SemanticReferencesOutcome> | undefined>
   readiness(query: SemanticReadinessQuery): Promise<SemanticReadinessReport>
-  assertCurrent(snapshot: ReferenceInputSnapshot): void
+  assertCurrent(snapshot: Pick<ReferenceInputSnapshot, "rootUri" | "rootRevision" | "configurationRevision">): void
   candidates(query: SemanticReferencesQuery, snapshot: ReferenceInputSnapshot, traceId?: string): Promise<ReferenceCandidateSelection | undefined>
   forceLegacy(rootUri: string): boolean
   dispatch(query: SemanticReferencesQuery, args: SemanticWorkerReferencesArgs): Promise<VersionedSemanticResult<SemanticReferencesOutcome | null>>
@@ -39,12 +42,22 @@ export async function runWorkerReferenceQuery(query: SemanticReferencesQuery, en
   const cached = await entry.cached(query, traceId)
   if (cached) return cached
   const runtime = referenceSearchRuntimeConfig(entry.environment)
+  const sourceCandidate = runtime.strategy === "indexed-batched" && runtime.residentFastPath && hasSourceReferenceCandidate(query)
+  if (sourceCandidate) {
+    logReferenceCache(entry.logger, entry.cache, "references.cache.miss", traceId)
+    const result = await sourceReferenceAdmission(query, { inputs: entry.inputs,
+      assertCurrent: value => entry.assertCurrent(value), dispatch: args => entry.dispatch(query, args),
+      cache: entry.cache, logger: entry.logger, traceId, sourceAllowed: () => sourceReferenceAuthority(query, entry.documents()) })
+    if (result) return result
+  }
   const cacheAdmission = await referenceCacheAdmission(query, entry.readiness, runtime.strategy !== "legacy")
   const snapshot = entry.inputs.capture(query.document.workspaceId,
-    entry.documents, entry.projectConfiguration, entry.sdkConfiguration)
-  logReferenceCache(entry.logger, entry.cache, "references.cache.miss", traceId)
+    entry.documents(), entry.projectConfiguration, entry.sdkConfiguration)
+  if (!sourceCandidate) logReferenceCache(entry.logger, entry.cache, "references.cache.miss", traceId)
   return routeReferenceQuery(query, {
     traceId, logger: entry.logger, cache: entry.cache, cacheAdmission, strategy: runtime.strategy,
+    preferQualified: runtime.strategy === "indexed-batched" && runtime.residentFastPath
+      && hasLexicalReferenceCandidate(query),
     preferResident: entry.queriedRoots.has(query.document.workspaceId) && runtime.residentFastPath
       && (entry.environment.ARKTS_REFERENCES_RESIDENT_FIRST ?? "1") === "1",
     assertCurrent: () => entry.assertCurrent(snapshot),

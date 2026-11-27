@@ -35,9 +35,12 @@ if (directory && path.basename(directory).startsWith("arkts-semantic-ready-")) {
     const compile = Module.prototype._compile
     Module.prototype._compile = function(source, file) {
       if (path.basename(file) === "semantic-worker.cjs") {
-        const signature = "function projectSourceRole(file, text, options) {"
-        if (source.split(signature).length !== 2) throw Error("unique actual project-role boundary required")
-        source = source.replace(signature, signature + "globalThis.__initialScopeCancellation(file);")
+        // The fixed function/arity are authoritative; bundler-local parameter
+        // names may change without changing the production boundary.
+        const signatures = [...source.matchAll(/function projectSourceRole\(([A-Za-z_$][\w$]*), [A-Za-z_$][\w$]*, [A-Za-z_$][\w$]*\) \{/g)]
+        if (signatures.length !== 1) throw Error("unique actual project-role boundary required")
+        const signature = signatures[0][0], fileParameter = signatures[0][1]
+        source = source.replace(signature, signature + "globalThis.__initialScopeCancellation(" + fileParameter + ");")
         source += `\n{const resolve = ScopeModuleBindings.prototype.resolve;ScopeModuleBindings.prototype.resolve = function(...args) {globalThis.__initialBindingCancellation();return Reflect.apply(resolve,this,args)}}\n`
 
       }

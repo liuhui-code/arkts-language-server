@@ -1,4 +1,20 @@
-> 2026-11-23 current slice: **NAV-HOT-DIGEST-001 IMPLEMENTED/VALIDATED_WITH_LIMITS**.
+> 2026-11-27 current slice: **ADR0052 S4 IMPLEMENTED/VALIDATED_WITH_LIMITS**.
+> Final07 typecheck +59/59 targeted PASS, zero skips; earlier expanded160/160 preserved with identity boundaries.
+> Three serial30K source-value definition sessions: first median24.090/max24.199ms,
+> edited7.820/9.558ms, hot5.640/6.859ms; fixed old same-input first1849.421/2648.378,
+> edited867.286/1328.102, hot1800.131/2622.991ms.32 same-input full compiler oracle forms passed.
+> Native membership observers kept on fallback; source task removes59998 unrelated lstatSync calls/request.
+> **NAV-REPEAT-001 stays OPEN** for initialization, ineligible/global/type queries, UI/Windows/endurance.
+> [S4 report](../reports/2026-11-27-local-navigation-input-qualification.md). No S4 full check:fast yet; no merge/deploy.
+>
+> Historical S3: **ADR0051 S3 IMPLEMENTED/VALIDATED_WITH_LIMITS**.
+> Final independent check:fast **2834/2834**, zero failures/skips/cancellations; 1375 frozen inputs unchanged.
+> 30K source-declaration references: edited median11.384ms/max13.022ms; hot median5.126ms/max5.931ms.
+> Photos readonly semantic component edited11.022ms; initialization81.376s remains slow. Not UI/LSP acceptance.
+> **NAV-REPEAT-001 remains OPEN** for initialization, other query profiles and UI/Windows/endurance.
+> [Final S3 report](../reports/2026-11-27-source-reference-input-qualification.md); ADR0051 Proposed, no merge/deploy.
+>
+> Historical 2026-11-23 slice: **NAV-HOT-DIGEST-001 IMPLEMENTED/VALIDATED_WITH_LIMITS**.
 > W7 focused120/full2801 zero skips; production identity145 verified with preserved
 > test-fixture-only all-dist134 warning. Final scale9sessions72exactqueries, actual
 > Photos12+overlay8exactqueries all pass. Cold local refs45s failure→7.97s median;
@@ -3643,3 +3659,176 @@ No timeout/RSS/V8/result-correctness relaxations; Windows/UI/30K/global scope an
   confirmation, Windows/UI,30K full reference/rename and long endurance/performance acceptance remain open.
 - Existing oversized test migration debt: project-file-set-cache.test.mjs reduced2170→2029 lines;
   batch invalidation characterization and shared fixtures extracted without deleting cases.
+
+
+## 2026-11-26 current-main performance diagnosis — existing OPEN items
+
+NAV-REPEAT-001 / NAV-HOT-DIGEST-001 remain OPEN. IDX-V1-INIT-001 performance evidence updated; no reversal of prior functional recovery fixes or fabricated READY.
+[Current diagnosis](../reports/2026-11-26-main-performance-root-causes.md), commit cc92b50.
+Current-source readonly input proof:2048/20K/30K ×3Store,9hot samples each, median67.85/646.48/935.42ms;
+zero source opens but4158/40062/60062lstat (2N+62). No Program/LSP/Native/UI claim.
+Real isolated Photos29995 semantic component: instrumented91.93s/control91.40s, one serial run each;
+facts50.97s (includes role acquire29.50s), graph27.40s, compiler preparation6.38s; exclusive partition in report.
+Both partial truthfully, identical observed source names/content with distinct resolution owners, same compiled payload; clean exit0.
+Hot full-readiness component919.44/896.76ms. Historical W7 edits4.6–4.8s still separate evidence, not current-main LSP measurements.
+Existing digest/role caches are present; missing performance coverage is not proof their code disappeared.1051/1068W7 inputs unchanged;17differ, provenance retained.
+Next measured slices: common input proof traversal/derived work, init facts/graph inner breakdown, then project-verifier lifetime under ADR0016/0049; no promise of unmeasured500ms.
+No product change, merge, deployment or user-process stop. Disk~1.4GiB→353MiB prevented safe new30K index/full-LSP run; external disk consumption unassigned, actual read-only evidence retained.
+
+2026-11-26 edited-reference research supplement: historical overlay147 request3 has diagnostic wait1.145ms,
+Worker queues~0.33ms, before/after root-readiness boundaries~1.027/1.071s, resident program-unobserved,
+29995-member30-batch plan169.16ms but only one-root lexical verifier executed1.514s, getProgram1.083s/query11.49ms.
+Exact timeline + official pinned TS5.9.3/LLVM20.1.8/RA9c74e78 sources recorded in the linked current diagnosis report/evidence.
+ADR0018/19 already supersede0016 per-job project disposal for migrated owners; earlier wording corrected, not a new architecture decision.
+Versioned overlay snapshots already exist behind explicit opt-in; proposing the API alone is not a new fix or evidence of activation.
+Recommendation remains research: finish resident reference coverage/input-observation consumer migration, preserve job lifecycle/final authority.
+No product edits, new benchmark, merge/deploy, or claimed measured speedup in this supplement.
+
+2026-11-26 self-review: previous recommendation is NOT implementation-ready as a whole.
+Blocking: local coverage is not freshness; exact program-unobserved ownership/transition cause not uniquely established;
+root-only reference lookup vs module interactive keys is a code-level routing difference, not yet the sample's proven unique cause.
+Retained mutable compiler state cannot cross async mutation unchecked; stable module owner must not imply30K roots or growing historical roots.
+S0 public partial+edit owner repro→S1 existing owner/LS consumer migration with original fences→S2 proved local route before broad plan→S3 explicit scoped-input proof contract.
+Keep root-wide result invalidation, default flags, negative/path/final guards and shared recovery budget; do not claim epoch/watch-only or retained Worker solves the measured costs.
+Combination TDD matrix and remaining unknowns appended to current main-performance-root-causes report. Self-review only, not independent approval or product implementation.
+
+Second self-review2026-11-26 adds actual current-main component mechanism evidence: real prebuilt LS Program survives,
+but mismatch readiness clears proof and returns partial beforegetProgram/onProgramPrepared; flagfalse vs compatible flagtrue,
+both actual compiler local queries3refs. Synthetic SDK metadata/single in-memory source; NOT Photos/LSP/root-cause unique closure.
+Complete consumer migration required: query-entry/cache-admission/cache-proof/resident coverage/final obligation registration still root-wide.
+Corrected cancellation wording: lease returned only after actual drain, not early cancellation response. Retain isolated heavy fallback and measure foreground tails.
+Global unnotified Noise.ts-new-import counterexample excludes read-set-only guarantees; lexical fast-slice cannot close global30K refs/rename.
+No product changes or new Accepted decision. Precise evidence/second review appended to current diagnosis report.
+
+## 2026-11-26 NAV-HOT-DIGEST-001 / ADR0050 first implementation
+
+User authorized ADR and repair. Isolated `fix/partial-reference-owner-20261126` at cc92b50;
+main daily checkout retained. [ADR0050](../adr/0050-query-qualified-retained-references.md),
+[implementation](../reports/2026-11-26-retained-lexical-reference-implementation.md),
+[TDD](../tdd/2026-11-26-query-qualified-retained-references.md).
+
+Retained projected-group lexical query precedes isolated anchor/planning; global SDK partial does not grant READY.
+Public RED LS3→7, intermediate3→5, final3→4→3 Locations with no new LS/verifier; non-local regression2→1 preparations.
+Focused5/5 and prior characterization38/38 GREEN; complete check/scale still running, no final-pass claim.
+Full namespace/readiness/final fences and root cache invalidation retained; total editing-reference latency remains OPEN.
+No commit/merge/push/deploy; original failures/other TODOs preserved.
+
+final02 follow-up: unsupported shorthand duplicate compiler attempt RED2→1, focused5/5 GREEN.
+Serial synthetic2048/30K comparisons completed, original contended run retained.30K preciseResultsPASS;
+verifier LS8→0, plans4→0,3 actual incremental Programs.Quiet observed edited median6945.98→2293.74ms,
+max10912.14→2445.73; timing variability/ambient effects documented, no full causal speedup claim.
+Hot target remains806.75ms median; full input/final scans and real Photos/Windows/UI remain OPEN.
+Full check restarted on final02; no final-pass claim yet. Main/other working copies unchanged.
+ActualPhotos readonly component qualification:29995 inputs/realSDKpartial, original picker extensionWindow43:9,
+edit+undo exact3→4→3 and LS2 stable; actualProgram482=87project+282SDK+113other, oldProgram on both edits.
+No Native/LSP/Worker queue/UI, concurrent fullcheck; raw3.8s component edits are not ordinary-LSP speed evidence.
+First run AST identity gate was off (0 counters=unmeasured); separate trace-on run is in progress.
+Photos trace-on component nowPASS: exact3→4→3, LS2 stable; both edit/undo actually reuse SDK282/282
+and project86/87 SourceFile identities. `photos-qualification-trace/ast-identity-validation.json` records assertions.
+This proves actual AST reuse in the original symbol path, not all disk checks avoided or end-to-end/UI speed solved.
+
+final02 whole gate discovered 3 real queue regressions (two cold-root 1≠0, prepared SDK-partial 2≠1).
+Original assertions preserved; isolated final03 corrects direct declaration routing and combines owner admission
+into qualifiedOnly(group / retained-first), honoring resident-first policy and original freshness/fallback.
+New warm local counterexampleRED2≠1; 23 focused PASS after fix, original final02 source/results retained.
+Final default/flag0+SDK AST assertions, final03 whole gate and repeated actual Photos verification pending.
+Overall NAV-HOT-DIGEST-001 remains OPEN; no push/merge/deployment.
+
+final03 targeted24/24 and manifest4/4 PASS, zero skip; original cold/warm assertions retained.
+final02 completed2811 tests:2807PASS/4FAIL including3 scheduling regressions and1 new-entry count omission.
+All preserved; final03 independent whole check required, not inherited. Latest Photos03 initialization reached
+unchanged external210s diagnostic guard under competing load; SIGTERM/no query, not provenOOM.
+Serial same-input retry and trace-off baseline/candidate controls pending. Overall performance remainsOPEN.
+
+Final03 serial readonly Photos retryPASS_COMPONENT_ONLY at13:15:21Z–13:17:26Z (125s session):
+init111.81s; first5.017s, edit2.994s, undo3.004s; exact3/4/3, LS2 stable, SDK282/282 and project86/87 ASTreuse.
+Original210s protected failure retained. This is component qualification, not LSP/UI/endurance; performance debt remainsOPEN.
+
+Final03 trace-off serial controls4/4PASS, exact Locations every request; baseline/candidate30K edited med5117.90→2728.82ms,
+max5218.19→2848.91ms; hot med1047.71→943.40/max1065.72→1099.26ms. One session per size/build,
+synthetic partialSDK and unchanged target closure, notPhotos/UI. Compiler counts unmeasured when audit off;
+cache-hit4 each observed by default logs. Full input/initialization/global30K/UI/Windows/endurance remainOPEN.
+
+Final03 whole gate currently has a new30003-source initialization progress/end60s timeout, before any refs/rename call.
+No full-pass claim; retain failure and code identity. Source proof trace/NativeQuickCheck still visible near deadline,
+not evidence ofOOM. Original large testcase is unchanged and resident-fast-path is disabled there.
+Paired same-timeout isolated frozen baseline/candidate control prepared; execute after whole gate to avoid contention.
+
+Final03 independent pnpm check:fast completed2817 tests:2816PASS/1FAIL/0skip; one30003-source initial index-progress60s timeout.
+All prior queue/manifest regressions and new owner testsPASS in full run.1365inputs/79built files unchanged.
+Full gate remainsFAIL; exact unchanged stock testcase baseline/candidate diagnostics run separately, never erase original failure.
+
+After full termination, unchanged stock30003 casePASS on frozen cc92 and final03 serial controls, same60/120s limits.
+Index ready16.906/17.136s; semantic init17.275/17.901s; fullrefs8.174/8.500s, rename7.357/7.334s (trace1,resident-fast-path0).
+Canonical runner on original whole file5/5PASS, zero skip; full gate stays2816PASS/1FAIL and its init-tail causeUNRESOLVED.
+No timing/guard/assertion changes and no all-green/UI claim. S0–S2 owner consumption implemented; S3 input-proof consumer migrationNOTIMPLEMENTED.
+Performance item remainsOPEN, candidate stays uncommitted in isolated final03, main unchanged.
+
+## 2026-11-26 S3 continuation / ADR0051
+
+First-slice completion did not close the performance goal. New isolated reference-inputs worktree inherits final03 unchanged.
+ADR0051 Proposed records source-declaration input domain, actual function/tag alias counterexamples, full fallback and lifecycle.
+Public RED:3 exact requests /96 unrelated sources /2016actual lstat, target0; request-scoped audit excludes diagnostics/init.
+Source/profile consumers in implementation; initial integration returnedstale, retained as failure. No performance-pass claim.
+Original2816/2817 full failure and every prior artifact remain; no merge/deploy or source-namespace guard weakening for global queries.
+
+
+2026-11-27 S3 declaration-source profile implemented, not general/global input-proof completion.
+Public regressions:0 unrelated guards on miss/hit; actual source Program1/SDK0; one source LS, edit/undo oldProgram;
+real cancellation/same-version B/one Worker/one terminal; external call/tag exact5-Location fallback;
+same-byte target replacement rejects A and restores B; explicit budget cache admission retained; CR positions fixed.
+New no-snapshot RED proved empty-Program same-version slow fallback persistence; private domain now reset on missingSource too.
+Final focused24/24PASS zero skip. Input-boundary original44/46 and corrected-driver9/9 retained, not relabeled.
+Paired30K ordinary old/new edited median2979.96/13.59ms, hot1119.19/6.15ms; one session/build, narrow synthetic closure.
+Photos readonly component new first45.09/edit12.07/undo10.31ms exact3/4/3; original source unchanged;
+init83.67s stillopen. Component is not fullLSP/UI. Final post-recovery-fix controls and fullcheck separately pending.
+[Report](../reports/2026-11-27-source-reference-input-qualification.md) / ADR0051 detail bounds, producer counterexamples and evidence.
+Global30K refs/rename, non-declaration performance, initialization, Windows/UI/endurance and prior fullgate timeout remainOPEN.
+No commit/push/merge/deploy; main and original evidence preserved.
+
+
+S3 first full gate FAIL: original unique raw LS factory assertion2≠1; stopped after1369 reportedPASS,
+not a complete gate count. Source/archive/logs retained. Fix reuses existing owned/recoverable official factory
+with a private source Registry and original finite-sync/phase/quarantine lifecycle, no second manager.
+46 focusedPASS incl actual source cancellation and old shared resource/Worker recovery contracts.
+Source-specific cancellation+release-after-effect control now proves lease1→0, SourceOwner.dispose stack,
+exactly1 bounded recovery, Worker peak1 and current unsaved4Locations; earlier wrong-scope/mangled-hook failures retained.
+Original unique construction count stays1, no relaxed assertion. Expanded focus and independent final controls/fullgate pending
+in official-owner-round2. Previous direct-factory performance is historical, not final candidate certification.
+
+S3 final independent gate completed: 2834 PASS/0 FAIL/0 skip/0 cancelled,1375 unchanged inputs;
+UTC2026-11-26 18:28:15.664—19:44:17.525. Final runtime hashes match official ordinary measurements.
+Original30003-member public case PASS40.293s; historical60s init failure remains preserved and unresolved as a tail.
+Final ordinary30K edited median11.384/max13.022ms, hot5.126/5.931ms; old paired final03 edited2979.959/hot1119.191ms.
+Each size/build one serial session; source declaration-name profile only. Photos component edit11.022ms,
+init81.376s, original source unchanged. No UI/Windows/endurance completion claim or global performance closure.
+Evidence: `.bench/reference-input-qualification-20261126/final-gate-round3/final-verification.json` in main workspace.
+Existing source-size debt reduced: typescript-language-service2852→2851, legacy-semantic-engine622→618.
+ADR0051 remains Proposed pending independent review. No commit/push/merge/deploy.
+
+S4 ADR0052 source-bound local value navigation: no extra Worker/manager/cache. Same owned/recoverable
+source LS as0051, compiler proves one direct block-scoped declaration; query meaning is guarded against
+direct/wrapped call/new/tag signatures and unsupported contexts. Parent/Worker mutation and final source
+identity fences stay active. End-of-identifier and ordinary void/value contexts now avoid full fallback.
+Public RED768 unrelated stats, end-cursor RED384; finalGREEN0.32 forms compare same-input full compiler.
+160 expandedPASS before mandatory formatting extraction; final06 typecheck30PASS; final07 typecheck59PASS
+after real physical overlay race correction. Source/inputs/archives in main `.bench/query-proof-cost-20261127`.
+Final07 three30K sessions/24 exact queries allPASS; default-policy override removal smoke8/8PASS.
+Initialization remains176–190s in this round, SDK partial. Fixed-target old Photos hit unchanged external210s
+protection after190s init plus3 correct queries: preserveFAIL, not product timeout/OOM. Final06 component6PASS;
+final07 component6/6PASS: init88.403s, first20.068ms, edit12.007ms, undo8.940ms, repeats4.379–5.147ms.
+Protocol sessions/components are not Zed UI clicks. Final registered1384 inputs/runtime/SDK/target hashes verified.
+Test manifest502→498 via unchanged ordered navigation group;4/4PASS, no runtime artifact changed.
+
+**NAV-SOURCE-AUTHORITY-001 IMPLEMENTED/VALIDATED_WITH_LIMITS**: physical overlay target changes between
+capture and assertion were plainError→-32603 in parent references and Worker definitions. Actual directory
+symlink retarget publicRED in both paths; narrow typed continuity error now yields existing stale terminals,
+next same-version query exact,1 Worker/no rebuild. Mac actual; Windows junction branch not run.
+First refs diagnostic missed hook due inherited disabled fast-path policy; original failed record kept, corrected
+control actuallyRED→GREEN. No broad catch, stale target, relaxed identity or readiness fabrication.
+
+Remaining: global/ineligible definitions and type queries, usage-position/global references/rename,
+whole namespace verification scale cost, initialization/SDK qualification/historical tail and actual UI/Windows/endurance.
+S4 fullcheck:fast not rerun; S3 full2834 cannot certify S4. Required before requesting merge.500ms stays soft.
+Legacy engine618→575 via characterized formatting responsibility extraction;2851-line TypeScript service debt retained.
+ADR0052 Proposed pending independent review; no commit, push, merge, user cache deletion or daily deployment.

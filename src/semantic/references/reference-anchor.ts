@@ -2,6 +2,8 @@ import { createHash } from "node:crypto"
 import path from "node:path"
 
 import type { SemanticDefinitionCandidate, SemanticDocumentPosition } from "../../core/protocol.js"
+import { withProjectFileIdentities } from "../../core/types/type-project-file-identities.js"
+import type { ProjectFileAccessPort } from "../../core/workspace/document-store.js"
 import type { SemanticWorkspaceView } from "../../core/workspace/document-store.js"
 import { resolveReferenceAnchorInWorker, type ReferenceBatchWorkerOptions } from "./reference-batch-worker.js"
 
@@ -114,4 +116,26 @@ export async function resolveIsolatedReferenceAnchor(
     heapUsed: verification.memory.heapUsed,
   })
   return verification.definitions
+}
+
+/** Keep isolated anchor admission, memo and pressure policy in one fallback. */
+export async function resolveReferenceAnchorFallback(workspace: SemanticWorkspaceView,
+  position: SemanticDocumentPosition, options: () => ReferenceBatchWorkerOptions, ports: {
+    fileAccess?: ProjectFileAccessPort
+    trace?: ReferenceAnchorTrace
+    memo(): ReferenceAnchorMemo | undefined
+    pressure?: () => string
+    pressureTrace: ReferenceAnchorTrace
+  }): Promise<readonly SemanticDefinitionCandidate[]> {
+  const isolated = withProjectFileIdentities(workspace, ports.fileAccess)
+  if (!isolated) return []
+  const definitions = ports.memo()?.lookup(workspace, position, ports.trace)
+  if (definitions) return definitions
+  if (ports.pressure?.() === "level3") {
+    ports.pressureTrace("references.pressure.anchor-skipped", {
+      memoryLevel: "level3", reason: "resource-budget-exceeded",
+    })
+    return [] // Preserve the complete-scope verifier fallback.
+  }
+  return resolveIsolatedReferenceAnchor(isolated, position, options(), ports.trace)
 }

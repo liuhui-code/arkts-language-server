@@ -82,7 +82,8 @@ export function queryWorkspaceReadiness(coordinator: SemanticCoordinator<Workspa
 /** Certification remains inside the caller's query lease and response interval. */
 export function runPreparedSemanticQuery<Result>(entry: WorkspaceEngineEntry,
   workspace: SemanticWorkspaceView, run: (entry: WorkspaceEngineEntry) => Result,
-  certifyReadiness: boolean, trace?: ReadinessTrace, checkpoint: () => void = () => {}, access?: ProjectFileAccessPort): Result {
+  certifyReadiness: boolean, trace?: ReadinessTrace, checkpoint: () => void = () => {}, access?: ProjectFileAccessPort,
+  allowFullScopeFallback = true): Result {
   const execute = (view: SemanticWorkspaceView): Result => withOperationScope(view, () => {
     const result = run(entry)
     if (certifyReadiness) certifyPreparedQuery(entry, view, trace)
@@ -96,7 +97,7 @@ export function runPreparedSemanticQuery<Result>(entry: WorkspaceEngineEntry,
     try { return execute(workspace) }
     catch (error) {
       const full = fullOperationScope(workspace, error)
-      if (!full) throw error
+      if (!full || !allowFullScopeFallback) throw error
       assertCurrentOperationScope(workspace, entry.engine.projectSyntaxProfile().options)
       entry.engine.assertCurrentInputs(checkpoint)
       entry.engine.prepare(full)

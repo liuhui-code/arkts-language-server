@@ -9,6 +9,38 @@ import { positionAt } from "../support/resident-interactive-lsp.mjs"
 import { completeLogEvents } from "../support/complete-log-events.mjs"
 import { startFixture, definition, diagnostic, readObservations } from "../support/versioned-overlay-lsp.mjs"
 
+test("snapshot observations separate source and project compiler inputs without losing either domain",
+  { timeout: 30_000 }, async t => {
+    const source = "// op04-snapshot 😀\nexport const value: number = 1\n"
+      + "export function run() { let local = 1; return local }\nexport const selected = value\n"
+    const { fixture, session, uri } = await startFixture(t, source, "1", { probeAncestors: true })
+    const localDefinition = async text => {
+      const reply = await session.request("textDocument/definition", { textDocument: { uri },
+        position: positionAt(text, text.lastIndexOf("local")) })
+      const start = text.indexOf("local")
+      assert.equal(reply.error, undefined, JSON.stringify(reply))
+      assert.deepEqual(reply.result, [{ uri, range: { start: positionAt(text, start), end: positionAt(text, start + 5) } }])
+    }
+    await localDefinition(source)
+    const edited = source.replace("= 1", "= 20")
+    session.changeDocument({ uri, version: 2, text: edited })
+    await definition(session, uri, edited)
+    await localDefinition(edited)
+    await diagnostic(session, uri, 2)
+    const all = readObservations(fixture, "all")
+    assert.deepEqual([...new Set(all.map(row => row.domain))].sort(), ["project", "source"],
+      "the real compiler must expose both owners rather than dropping source observations")
+    const project = readObservations(fixture)
+    assert.deepEqual(project, all.filter(row => row.domain === "project"))
+    assert.ok(project.some(row => row.kind === "compiler-change-range" && row.reconstructsCurrentText === true))
+    assert.equal(project.filter(row => row.kind === "snapshot-ancestor-probe").length, 1)
+    const local = all.filter(row => row.domain === "source")
+    assert.ok(local.some(row => row.kind === "compiler-change-range"))
+    assert.ok(local.every(row => row.change === null), "the fixed source owner makes no delta claim")
+    assert.equal(local.filter(row => row.kind === "snapshot-ancestor-probe").length, 1)
+    assert.deepEqual((await session.close({ timeoutMs: 5_000 })).exit, { code: 0, signal: null })
+  })
+
 test("the unadopted snapshot candidate defaults to full parsing while explicit opt-in remains available",
   { timeout: 30_000 }, async t => {
     const payloads = []

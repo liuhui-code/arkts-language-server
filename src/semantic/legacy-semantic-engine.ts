@@ -1,7 +1,8 @@
+import { trySourceLocalNavigation } from "./source-local-navigation.js"
+import { SourceReferenceOwner } from "./references/source-reference-owner.js"
+import type { SemanticWorkerReferencesArgs } from "./worker-protocol.js"
 import { DocumentSymbolOperation } from "./document-symbol-operation.js"
 import { referenceCheckpoint } from "./references/reference-context-retention.js"
-import fs from "node:fs"
-import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
 import type {
@@ -58,7 +59,7 @@ import type {
   SemanticDocumentSymbolInfo,
 } from "../core/protocol.js"
 import { toFilePath } from "./semantic-worker-file-identity.js"
-import { formatArktsDocument } from "../core/formatting/arkts-document-formatter.js"
+import { runDocumentFormattingQuery } from "./formatting-query.js"
 import { FoldingRangeProvider } from "../core/syntax/folding-range-provider.js"
 import type { SemanticTypeEngineRegistry } from "../core/types/type-engine.js"
 import type { SemanticDocumentStore, SemanticWorkspaceView } from "../core/workspace/document-store.js"
@@ -71,7 +72,7 @@ import { runCompletionQuery, runCompletionResolveQuery, type CompletionPorts } f
 import type { StructuredLogger } from "../observability/logger.js"
 import type { SemanticMemoryLevel } from "./coordinator/semantic-coordinator.js"
 import type { LegacySemanticEngineRuntimeOptions } from "./semantic-engine-runtime-options.js"
-import { prepareReferenceAnchor, runResidentReferenceQuery, runOwnerReferenceQuery } from "./references/reference-anchor-preparation.js"
+import { referenceQueryPosition, prepareReferenceAnchor, runResidentReferenceQuery, runOwnerReferenceQuery } from "./references/reference-anchor-preparation.js"
 import { prepareCallHierarchyContext, prepareInteractiveContext, toLegacyPosition } from "./interactive-workspace.js"
 import { toPublicCallHierarchyItem,
   toLegacyCallHierarchyItem, toPublicRange, toLegacyRange } from "./legacy-result-mappers.js"
@@ -90,6 +91,7 @@ export class LegacySemanticEngine implements SemanticEnginePort {
   private readonly autoImportTrimBetweenBatches: boolean
   private readonly projectPreparation = new ProjectReadinessLifecycle()
   private readonly documentSymbolOperation: DocumentSymbolOperation
+  private readonly sourceReferenceOwner = new SourceReferenceOwner()
 
   constructor(
     private readonly projects: ProjectResolverPort,
@@ -117,6 +119,7 @@ export class LegacySemanticEngine implements SemanticEnginePort {
 
   applyMemoryPressure(level: SemanticMemoryLevel): void {
     this.engines.applyMemoryPressure(level)
+    this.sourceReferenceOwner.applyMemoryPressure(level)
     if (level === "level2" || level === "level3") this.documentSymbolOperation.dispose()
   }
 
@@ -171,16 +174,15 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     return runCompletionResolveQuery(query, this.completionPorts(query), this.packageResolver)
   }
 
-  async define(
-    query: SemanticQuery,
-  ): Promise<VersionedSemanticResult<SemanticDefinition[]>> {
-    return runNavigationQuery("define", query, { sync: () => this.sync(query.document),
-      prepare: scope => this.prepare(query.document, query.position, scope) })
+  async define(query: SemanticQuery): Promise<VersionedSemanticResult<SemanticDefinition[]>> {
+    this.runtime.refreshMemoryPressure?.()
+    return trySourceLocalNavigation(query, this.sourceReferenceOwner, this.runtime.sourceDocuments,
+      referenceCheckpoint(this.runtime.hostCancellationToken) ?? (() => {}), this.logger)
+      ?? runNavigationQuery("define", query, { sync: () => this.sync(query.document),
+        prepare: scope => this.prepare(query.document, query.position, scope) })
   }
 
-  async typeDefinitions(
-    query: SemanticQuery,
-  ): Promise<VersionedSemanticResult<SemanticDefinition[]>> {
+  async typeDefinitions(query: SemanticQuery): Promise<VersionedSemanticResult<SemanticDefinition[]>> {
     return runNavigationQuery("typeDefinitions", query, { sync: () => this.sync(query.document),
       prepare: scope => this.prepare(query.document, query.position, scope) })
   }
@@ -204,13 +206,16 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     return this.referencesWithCandidates(query)
   }
 
-  async residentReferences(query: SemanticReferencesQuery, synchronize = false): Promise<VersionedSemanticResult<SemanticReferencesOutcome | null>> {
+  async residentReferences(query: SemanticReferencesQuery, synchronize = false, qualification?: SemanticWorkerReferencesArgs["qualifiedOnly"]): Promise<VersionedSemanticResult<SemanticReferencesOutcome | null>> {
     assertActive(query.signal)
+    if (qualification === "source") {
+      this.runtime.refreshMemoryPressure?.()
+      return this.sourceReferenceOwner.references(query, referenceCheckpoint(this.runtime.hostCancellationToken) ?? (() => {}), this.runtime.references?.trace ? this.logger : undefined)
+    }
     this.sync(query.document)
-    const workspace = this.projects.projectFor(query.document.uri)
-    const position = toLegacyPosition(query.document, query.position, workspace)
-    return runResidentReferenceQuery(query, position, fileURLToPath(workspace.rootUri),
-      this.documents, this.engines, synchronize, this.runtime.references?.trace ? this.logger : undefined)
+    const { position, rootPath } = referenceQueryPosition(query, this.projects)
+    return runResidentReferenceQuery(query, position, rootPath,
+      this.documents, this.engines, synchronize, this.runtime.references?.trace ? this.logger : undefined, qualification)
   }
 
   async referencesWithCandidates(
@@ -224,8 +229,7 @@ export class LegacySemanticEngine implements SemanticEnginePort {
   ): Promise<VersionedSemanticResult<SemanticReferencesOutcome>> {
     assertActive(query.signal)
     this.sync(query.document)
-    const workspace = this.projects.projectFor(query.document.uri)
-    const position = toLegacyPosition(query.document, query.position, workspace)
+    const { position } = referenceQueryPosition(query, this.projects)
     if (candidateAnchorUri && candidateAnchorPosition) position.expectedReferenceAnchor = {
       path: toFilePath(candidateAnchorUri)!, line: candidateAnchorPosition.line + 1,
       column: candidateAnchorPosition.character + 1,
@@ -240,8 +244,7 @@ export class LegacySemanticEngine implements SemanticEnginePort {
   ): Promise<VersionedSemanticResult<SemanticDefinition[]>> {
     assertActive(query.signal)
     this.sync(query.document)
-    const workspace = this.projects.projectFor(query.document.uri)
-    const position = toLegacyPosition(query.document, query.position, workspace)
+    const { position } = referenceQueryPosition(query, this.projects)
     return prepareReferenceAnchor(
       position, query.document.version, this.documents, this.engines,
       this.runtime.references?.trace ? this.logger : undefined, query.document,
@@ -416,25 +419,8 @@ export class LegacySemanticEngine implements SemanticEnginePort {
     }
   }
 
-  async formatDocument(
-    query: SemanticDocumentFormattingQuery,
-  ): Promise<VersionedSemanticResult<SemanticDocumentTextEdit[]>> {
-    assertActive(query.signal)
-    const source = query.document.text
-    const lineStarts = sourceLineStarts(source)
-    const value = formatArktsDocument(
-      fileURLToPath(query.document.uri),
-      source,
-      query.options,
-    ).map((edit) => ({
-      range: {
-        start: positionAtOffset(lineStarts, edit.start),
-        end: positionAtOffset(lineStarts, edit.start + edit.length),
-      },
-      newText: edit.newText,
-    }))
-    assertActive(query.signal)
-    return { documentVersion: query.document.version, value }
+  async formatDocument(query: SemanticDocumentFormattingQuery): Promise<VersionedSemanticResult<SemanticDocumentTextEdit[]>> {
+    return runDocumentFormattingQuery(query, () => assertActive(query.signal))
   }
 
   async diagnose(
@@ -542,6 +528,7 @@ export class LegacySemanticEngine implements SemanticEnginePort {
   }
 
   dispose(): void {
+    this.sourceReferenceOwner.dispose()
     this.documentSymbolOperation.dispose()
     this.engines.dispose()
   }
@@ -580,40 +567,6 @@ export class LegacySemanticEngine implements SemanticEnginePort {
       includeWorkspaceFiles, this.interactiveProjectRootProfile)
   }
 
-}
-
-function resourceEventPath(candidate: string): string {
-  try { return fs.realpathSync.native(candidate) }
-  catch {
-    try { return path.join(fs.realpathSync.native(path.dirname(candidate)), path.basename(candidate)) }
-    catch { return path.resolve(candidate) }
-  }
-}
-
-function sourceLineStarts(source: string): number[] {
-  const starts = [0]
-  for (let offset = 0; offset < source.length; offset += 1) {
-    const character = source[offset]
-    if (character === "\r" && source[offset + 1] === "\n") offset += 1
-    else if (character !== "\r" && character !== "\n") continue
-    starts.push(offset + 1)
-  }
-  return starts
-}
-
-function positionAtOffset(
-  lineStarts: readonly number[],
-  offset: number,
-): TextPosition {
-  let low = 0
-  let high = lineStarts.length
-  while (low < high) {
-    const middle = low + Math.floor((high - low) / 2)
-    if ((lineStarts[middle] ?? Number.POSITIVE_INFINITY) <= offset) low = middle + 1
-    else high = middle
-  }
-  const line = Math.max(0, low - 1)
-  return { line, character: offset - (lineStarts[line] ?? 0) }
 }
 
 function assertActive(signal?: AbortSignal): void {

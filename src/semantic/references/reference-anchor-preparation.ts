@@ -1,9 +1,12 @@
+import type { ProjectResolverPort } from "../../contracts/project-resolver.js"
+import { hasLocalBindingHint } from "./reference-lexical-probe.js"
+import { toLegacyPosition } from "../interactive-workspace.js"
 import { withRequestInputValidation, withSynchronousInputPreparation, withPreparationInputValidation } from "../../project/request-input-validation.js"
 import { SemanticInputUnavailableError } from "../../core/types/typescript-query-inputs.js"
-import { pathToFileURL } from "node:url"
+import { fileURLToPath, pathToFileURL } from "node:url"
 
 import type { DocumentSnapshot } from "../../contracts/document.js"
-import type { SemanticDefinition, SemanticReferencesQuery, VersionedSemanticResult } from "../../contracts/semantic-engine.js"
+import type { SemanticDefinition, SemanticQuery, SemanticReferencesQuery, VersionedSemanticResult } from "../../contracts/semantic-engine.js"
 import type { SemanticDocumentPosition } from "../../core/protocol.js"
 import type { SemanticTypeEngineRegistry } from "../../core/types/type-engine.js"
 import type { SemanticDocumentStore, SemanticPrepareObserver, SemanticWorkspaceView } from "../../core/workspace/document-store.js"
@@ -40,10 +43,17 @@ export function prepareReferenceSearchWorkspace(
  * asynchronous verifier is started inside this synchronous handoff. */
 export function runResidentReferenceQuery(query: SemanticReferencesQuery,
   position: SemanticDocumentPosition, rootPath: string, documents: SemanticDocumentStore,
-  engines: SemanticTypeEngineRegistry, synchronize: boolean, trace?: StructuredLogger) {
+  engines: SemanticTypeEngineRegistry, synchronize: boolean, trace?: StructuredLogger, qualification?: SemanticWorkerReferencesArgs["qualifiedOnly"]) {
   return withSynchronousInputPreparation(() => {
     const prepare = () => prepareReferenceSearchWorkspace(position, documents, trace, query.document)
-    const result = synchronize ? engines.retainedReferences(rootPath, prepare, position, query.includeDeclaration)
+    // One admission job: honor the existing warm-owner policy before trying a
+    // projected group. A null result must not cause a second retained RPC.
+    let result = qualification === "retained-first"
+      ? engines.retainedReferences(rootPath, prepare, position, query.includeDeclaration) : undefined
+    if (!result && qualification && hasLocalBindingHint(position, query.document.text))
+      result = engines.lexicalReferences(prepare(), position, query.includeDeclaration)
+    if (!qualification) result = synchronize
+      ? engines.retainedReferences(rootPath, prepare, position, query.includeDeclaration)
       : engines.residentReferences(prepare(), position, query.includeDeclaration)
     return result ? publicReferenceResult(query.document.version, result)
       : { documentVersion: query.document.version, value: null }
@@ -108,4 +118,11 @@ export async function prepareReferenceAnchor(
       },
     })),
   }
+}
+
+/** References and anchors share the same workspace/position identity conversion. */
+export function referenceQueryPosition(query: SemanticQuery,
+  projects: ProjectResolverPort) {
+  const workspace = projects.projectFor(query.document.uri)
+  return { position: toLegacyPosition(query.document, query.position, workspace), rootPath: fileURLToPath(workspace.rootUri) }
 }
