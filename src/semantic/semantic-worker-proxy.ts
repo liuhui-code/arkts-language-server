@@ -1,3 +1,4 @@
+import { sourceReferenceAuthority, sourceReferenceBudgetAllows } from "./references/source-reference-input.js"
 import { createReferenceNamespaceAdmission } from "./references/create-reference-namespace-admission.js"
 import { resolveSemanticWorkerPath } from "./semantic-worker-runtime-path.js"
 import { WorkerManagedSourceNamespaces } from "./worker-managed-source-namespaces.js"
@@ -287,7 +288,8 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
     if (query.document.source?.kind !== "disk") this.sync(query.document)
     return cachedReferenceResult(query, this.#referenceResults, input => this.#referenceAdmission.read(input), proof =>
       logReferenceCache(this.#logger, this.#referenceResults, "references.cache.hit",
-        traceId ?? (this.#environment.ARKTS_REFERENCES_TRACE === "1" ? randomUUID() : undefined), undefined, proof))
+        traceId ?? (this.#environment.ARKTS_REFERENCES_TRACE === "1" ? randomUUID() : undefined), undefined, proof),
+      () => { try { this.#assertAvailable(false) } catch { return false }; return !this.#recycle.active && sourceReferenceBudgetAllows(this.#environment) && sourceReferenceAuthority(query, this.#documents.values()) })
   }
 
   async references(query: Contract.SemanticReferencesQuery, allowLocalSeed = true): Promise<Contract.VersionedSemanticResult<Contract.SemanticReferencesOutcome>> {
@@ -297,7 +299,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
       return await runWorkerReferenceQuery(query, {
         environment: this.#environment, logger: this.#logger, cache: this.#referenceResults,
         inputs: this.#referenceInputs, projectConfiguration: this.#projectConfiguration,
-        sdkConfiguration: this.#sdkConfiguration, queriedRoots: this.#queriedRoots, documents: this.#documents.values(),
+        sdkConfiguration: this.#sdkConfiguration, queriedRoots: this.#queriedRoots, documents: () => this.#documents.values(),
         cached: (input, traceId) => this.cachedReferences(input, traceId),
         readiness: input => this.#referenceAdmission.read(input),
         assertCurrent: snapshot => this.#assertReferenceSnapshot(snapshot),
@@ -487,7 +489,7 @@ export class SemanticWorkerEngine implements Contract.SemanticEnginePort, Semant
     if (this.#recycle.active) throw new Error("Semantic Worker recycle is in progress")
   }
 
-  #assertReferenceSnapshot(snapshot: ReferenceInputSnapshot): void {
+  #assertReferenceSnapshot(snapshot: Pick<ReferenceInputSnapshot, "rootUri" | "rootRevision" | "configurationRevision">): void {
     this.#assertAvailable()
     if (!this.#referenceInputs.isCurrent(snapshot)) {
       throw new SemanticWorkerSupervisorError("content-modified")

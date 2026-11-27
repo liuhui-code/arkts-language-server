@@ -85,7 +85,11 @@ if (directory && path.basename(directory).startsWith("arkts-semantic-ready-")) {
         }
         const service = "function createLanguageService(host, documentRegistry = createDocumentRegistry(host.useCaseSensitiveFileNames && host.useCaseSensitiveFileNames(), host.getCurrentDirectory()), syntaxOnlyOrLanguageServiceMode) {"
         replace(service, service + "return globalThis.__unresponsiveTest.service(host,()=>__unresponsiveCreateService(...arguments)); } function __unresponsiveCreateService(host, documentRegistry, syntaxOnlyOrLanguageServiceMode) {")
-        const bind = "function bindSourceFile(file, options) {"
+        // Bundling may rename parameters; the pinned function and arity must
+        // still match exactly once. Do not make an absent hook look GREEN.
+        const binds = [...source.matchAll(/function bindSourceFile\([A-Za-z_$][\w$]*, [A-Za-z_$][\w$]*\) \{/g)]
+        if (binds.length !== 1) throw Error("Unique binary binder hook required")
+        const bind = binds[0][0]
         replace(bind, bind + " globalThis.__unresponsiveTest.block('checker');")
       }
       return compile.call(this, source, file)

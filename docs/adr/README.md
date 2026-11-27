@@ -140,3 +140,16 @@ links the current per-feature status; focused and full verification remain disti
 | ADR | Status | Scope |
 |---|---|---|
 | [0049](0049-verifier-job-context-and-lifetime.md) | **Proposed; implemented, local final check:fast 2807/2807, independent review and platform CI pending** | Per-job context and ticket ownership across reused verifier callbacks; explicit terminal/drain/reset/close; reuse existing supervision and recovery, no second manager |
+
+## 2026-11-26 query-qualified retained references
+
+| ADR | Status | Scope |
+|---|---|---|
+| [0050](0050-query-qualified-retained-references.md) | Proposed; local public TDD and Photos AST reuse verified; final02 gate regressions repaired in final03; final fast2816/2817, one initialization progress timeout, review pending | Consume compiler-proven lexical references in existing retained semantic groups; preserve full freshness fences and isolated complete fallback; no global READY promotion |
+
+## 2026-11-26 scoped reference input migration
+
+| ADR | Status | Scope |
+|---|---|---|
+| [0051](0051-source-bound-lexical-reference-inputs.md) | Proposed; implementation verified, final check:fast 2834/2834 zero skips; independent review pending | Fixed-compiler source-bound declaration profile with target/path before/final proof; old/global namespace contract preserved for unsupported queries |
+| [0052](0052-source-bound-local-value-navigation.md) | Proposed; final59 targeted PASS, three30K sessions and Photos component verified; full gate/UI review pending | Compiler-proven local value definitions share the owned source domain; signature-sensitive and unsupported queries keep full input fences |

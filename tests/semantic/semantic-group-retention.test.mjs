@@ -8,12 +8,15 @@ import { positionAt } from "../support/resident-interactive-lsp.mjs"
 import { applyWorkspaceEdit } from "../support/lsp-edits.mjs"
 import { groupInputWorkspace } from "../fixtures/semantic-group-input-workspace.mjs"
 
-test("an edited SDK-partial prepared Program answers first references before candidate planning in one worker request",
-  { timeout: 30_000 }, async t => {
+for (const [name, source, marker] of [
+  ["an edited SDK-partial prepared Program answers first references before candidate planning in one worker request",
+    "export class Target { value: number = 1; read(): number { return this.value } }\nexport const result = new Target().value\n", "value:"],
+  ["an edited SDK-partial local binding reuses the complete root owner in one worker request",
+    "export function run() { let local = 1; return local + local }\n", "local"],
+]) test(name, { timeout: 30_000 }, async t => {
     const { session, workspace, sdk, rootUri, uri, events } = createReadinessFixture(t, {
       ARKTS_MEMORY_BUDGET_MB: "4096", ARKTS_BENCHMARK_CONTROL: "0",
       ARKTS_REFERENCES_RESIDENT_FAST_PATH: "1" })
-    const source = "export class Target { value: number = 1; read(): number { return this.value } }\nexport const result = new Target().value\n"
     fs.writeFileSync(path.join(workspace, "Target.ets"), source)
     fs.writeFileSync(path.join(workspace, "Broken.ets"), 'import unavailable from "@ohos.missing"\nexport { unavailable }\n')
     await session.initialize({ initializationOptions: { sdk: { path: sdk } }, timeoutMs: 10_000 })
@@ -23,7 +26,7 @@ test("an edited SDK-partial prepared Program answers first references before can
     const progress = await session.transport.serverRequest("window/workDoneProgress/create", () => true, 10_000)
     session.transport.send({ jsonrpc: "2.0", id: progress.id, result: null })
     await session.transport.progress(progress.params.token, message => message.params.value.kind === "end", 10_000)
-    const targetUri = uri("Target.ets"), position = positionAt(source, source.indexOf("value:") + 1)
+    const targetUri = uri("Target.ets"), position = positionAt(source, source.indexOf(marker) + 1)
     session.openDocument({ uri: targetUri, version: 1, text: source })
     const rename = await session.request("textDocument/rename", {
       textDocument: { uri: targetUri }, position, newName: "probe" })

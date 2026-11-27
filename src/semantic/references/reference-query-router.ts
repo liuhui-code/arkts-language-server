@@ -12,6 +12,7 @@ interface ReferenceQueryRoute {
   readonly logger?: StructuredLogger
   readonly strategy: ReferenceSearchStrategy
   readonly preferResident: boolean
+  readonly preferQualified?: boolean
   readonly cache: ReferenceResultCache
   readonly cacheAdmission?: (result: SemanticReferencesOutcome, selection?: ReferenceCandidateSelection) => Promise<string | undefined>
   assertCurrent(): void
@@ -25,7 +26,15 @@ interface ReferenceQueryRoute {
 export async function routeReferenceQuery(query: SemanticReferencesQuery, route: ReferenceQueryRoute) {
   const base = { position: query.position, includeDeclaration: query.includeDeclaration,
     ...(route.traceId ? { traceId: route.traceId } : {}) }
-  if (route.preferResident && route.strategy !== "legacy") {
+  const qualified = route.preferQualified && route.strategy !== "legacy"
+  if (qualified) {
+    route.assertCurrent()
+    const admitted = await route.dispatch({ ...base, qualifiedOnly: route.preferResident ? "retained-first" : "group" })
+    route.assertCurrent()
+    if (admitted.value !== null) return publishReferenceResult(query,
+      { documentVersion: admitted.documentVersion, value: admitted.value }, route)
+  }
+  if (!qualified && route.preferResident && route.strategy !== "legacy") {
     route.assertCurrent()
     const resident = await route.dispatch({ ...base, retainedOnly: true })
     route.assertCurrent()

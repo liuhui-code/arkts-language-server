@@ -5,7 +5,9 @@ export type LineStartIndex = readonly number[]
 export function createLineStartIndex(content: string): LineStartIndex {
   const starts = [0]
   for (let index = 0; index < content.length; index += 1) {
-    if (content.charCodeAt(index) === 10) starts.push(index + 1)
+    if (content[index] === "\r" && content[index + 1] === "\n") index += 1
+    else if (content[index] !== "\r" && content[index] !== "\n") continue
+    starts.push(index + 1)
   }
   return starts
 }
@@ -15,9 +17,10 @@ export function lineColumnToOffset(content: string, line: number, column: number
   let offset = 0
   let currentLine = 1
   while (currentLine < targetLine && offset < content.length) {
-    const newline = content.indexOf("\n", offset)
-    if (newline < 0) return content.length
-    offset = newline + 1
+    while (offset < content.length && content[offset] !== "\r" && content[offset] !== "\n") offset += 1
+    if (offset >= content.length) return content.length
+    if (content[offset] === "\r" && content[offset + 1] === "\n") offset += 1
+    offset += 1
     currentLine += 1
   }
   return Math.min(offset + Math.max(0, column - 1), content.length)

@@ -61,7 +61,7 @@ import { exactSourceRange, queryTypeScriptReferences, semanticLocationKey } from
 import { currentWholeFileCallHierarchyItem, exactCallHierarchySelectionRange, exactSourceBoundaryRange } from "./typescript-call-hierarchy-range.js"
 import { IncompleteImplementationError, queryTypeScriptImplementations } from "./typescript-implementation-query.js"
 import { loadedConfigurationIsCurrent, assertCurrentQueryInputs, projectMembershipFailure, SemanticInputUnavailableError } from "./typescript-query-inputs.js"
-import { queryAdmittedDefinition, queryValidatedResidentReferences } from "./typescript-resident-reference-query.js"
+import { admitReferenceQueryResult, queryAdmittedDefinition, queryValidatedResidentReferences } from "./typescript-resident-reference-query.js"
 import { normalizedDefinitionSpan } from "./typescript-definition-span.js"
 import { TypeScriptResidentReferenceState, type ResidentReferenceProofFailure } from "./typescript-resident-reference-state.js"
 import { TypeScriptHostRoots } from "./typescript-host-file-names.js"
@@ -1320,11 +1320,10 @@ export class TypeScriptLanguageServiceEngine {
     position: SemanticDocumentPosition,
     includeDeclaration: boolean,
     captureSearchScope = false, requireResidentProof = false,
+    acceptQueryCoverage?: (result: Extract<SemanticReferenceQueryResult, { status: "complete" }>) => boolean,
   ): SemanticReferenceQueryResult {
-    const result = this.queryReferences(position, includeDeclaration, captureSearchScope)
-    if (result.status !== "complete") return result
-    const current = this.residentReferencesState?.captureCurrentProgram(this.service, captureSearchScope || requireResidentProof)
-    return (requireResidentProof || (captureSearchScope && this.residentReferencesState)) && !current ? { status: "incomplete", reason: "source-unavailable" } : result
+    return admitReferenceQueryResult(this.queryReferences(position, includeDeclaration, captureSearchScope),
+      this.residentReferencesState, this.service, captureSearchScope, requireResidentProof, acceptQueryCoverage)
   }
 
   residentReferences(

@@ -4,8 +4,10 @@ import type { TypeScriptSdkAmbientProfile } from "../core/types/typescript-langu
 import type { ReferenceSearchRuntimeConfig } from "./references/reference-runtime.js"
 import type { SemanticMemoryLevel } from "./coordinator/semantic-coordinator.js"
 import type { TransientSemanticWorkerObserver } from "./transient-worker-lifecycle.js"
+import type { DocumentSnapshot } from "../contracts/document.js"
 
 export interface LegacySemanticEngineRuntimeOptions {
+  readonly sourceDocuments?: () => Iterable<DocumentSnapshot>
   readonly managedSourceNamespaces?: readonly ManagedSourceRegistration[]
   readonly maxResidentContexts?: number | null
   readonly hostCancellationToken?: HostCancellationToken

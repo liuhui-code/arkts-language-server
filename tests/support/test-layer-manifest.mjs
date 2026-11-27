@@ -1,3 +1,4 @@
+import { navigationInputBundleTests } from "./navigation-input-test-entries.mjs"
 import { workspaceCacheUnitTests } from "./workspace-cache-test-entries.mjs"
 import { queryCacheUnitTests, queryCacheBundleTests } from "./query-cache-test-entries.mjs"
 import { verifierJobBundleTests } from "./verifier-job-test-entries.mjs"
@@ -241,10 +242,7 @@ export const TEST_LAYER_MANIFEST = Object.freeze({
       "tests/semantic/startup-synchronization-liveness.test.mjs",
       "tests/semantic/partial-project-initialization.test.mjs",
       "tests/semantic/scope-dependency-lifecycle.test.mjs",
-      "tests/semantic/repeated-navigation-input-formatting.test.mjs",
-      "tests/semantic/navigation-group-membership-reuse.test.mjs",
-      "tests/semantic/navigation-final-member-fence.test.mjs",
-      "tests/semantic/navigation-source-origin.test.mjs",
+      ...navigationInputBundleTests,
       "tests/semantic/resident-final-source-observation.test.mjs",
       "tests/semantic/resident-reference-preparation.test.mjs",
       "tests/semantic/resident-source-digest-reuse.test.mjs",

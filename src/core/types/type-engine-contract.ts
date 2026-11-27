@@ -115,6 +115,7 @@ export interface SemanticTypeQueryContext {
   references(
     position: SemanticDocumentPosition,
     includeDeclaration: boolean, requireResidentProof?: boolean,
+    acceptQueryCoverage?: (result: Extract<SemanticReferenceQueryResult, { status: "complete" }>) => boolean,
   ): SemanticReferenceQueryResult
   prepareRename(position: SemanticDocumentPosition): SemanticPrepareRenameQueryResult
   rename(position: SemanticDocumentPosition, newName: string): SemanticRenameQueryResult

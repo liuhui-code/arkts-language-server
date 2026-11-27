@@ -1,3 +1,4 @@
+import { exactSourceOffset } from "../../core/types/text-position.js"
 import { SemanticWorkerSupervisorError } from "../semantic-worker-supervisor-errors.js"
 import { readQualifiedReferenceCacheCoverage, type QualifiedReferenceCacheCoverage } from "./reference-qualified-cache-coverage.js"
 import { matchesReferenceSourceFingerprint } from "./reference-source-fingerprint.js"
@@ -36,9 +37,8 @@ function prepareQueryCacheProof(query: SemanticReferencesQuery, result: Semantic
     || proof.includeDeclaration !== query.includeDeclaration
     || proof.sourceSha256 !== createHash("sha256").update(query.document.text).digest("hex")
     || proof.coverage === "lexical-block" && proof.scopeEnd > query.document.text.length) return undefined
-  const lines = query.document.text.split("\n")
-  if (query.position.line >= lines.length || query.position.character > lines[query.position.line].length) return undefined
-  const offset = lines.slice(0, query.position.line).reduce((n, line) => n + line.length + 1, 0) + query.position.character
+  const offset = exactSourceOffset(query.document.text, query.position.line + 1, query.position.character + 1)
+  if (offset === undefined) return undefined
   if (proof.coverage === "lexical-block" && (offset < proof.scopeStart || offset >= proof.scopeEnd)) return undefined
   if (proof.coverage === "full-program" && !referenceInputsCurrent(query, proof.facts)) {
     if (store) throw new SemanticWorkerSupervisorError("content-modified")

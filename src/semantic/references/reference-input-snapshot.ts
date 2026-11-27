@@ -1,9 +1,21 @@
 import fs from "node:fs"
+import { SemanticInputUnavailableError, SemanticResultInvalidatedError } from "../../core/types/typescript-query-inputs.js"
 import path from "node:path"
 import type { DocumentSnapshot } from "../../contracts/document.js"
 import { referenceRootsMayOverlap, toFilePath } from "../semantic-worker-file-identity.js"
 import { captureClassBindingInput, type CapturedClassBindingInput,
   type ClassBindingCaptureInput } from "./class-binding-input-snapshot.js"
+
+/** One continuity failure crosses both parent admission and Worker engines.
+ * Keep their existing stale terminal classifiers, rather than an internal error. */
+class SourceOverlayInputChangedError extends SemanticResultInvalidatedError {
+  readonly code = "content-modified"
+  constructor() {
+    super(new SemanticInputUnavailableError())
+    this.name = "SourceOverlayInputChangedError"
+    this.message = "Reference overlay physical identity changed during source resolution"
+  }
+}
 
 export interface ReferenceInputSnapshot {
   readonly rootUri: string
@@ -87,7 +99,7 @@ export function captureReferenceSourceOverlays(
   const assertIdentity = (filePath: string, physicalPath: string): void => {
     if (physicalOverlayPath(filePath) !== physicalPath) {
       identityChanged = true
-      throw new Error("Reference overlay physical identity changed during source resolution")
+      throw new SourceOverlayInputChangedError()
     }
   }
   return Object.freeze({ complete,
@@ -105,7 +117,7 @@ export function captureReferenceSourceOverlays(
     // Resolver catch blocks must not erase an already observed identity failure.
     assertUnchanged: () => {
       if (identityChanged) {
-        throw new Error("Reference overlay physical identity changed during source resolution")
+        throw new SourceOverlayInputChangedError()
       }
     },
   })

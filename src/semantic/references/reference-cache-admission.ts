@@ -1,3 +1,5 @@
+import { hasSourceReferenceCacheProof, sourceReferenceInputKey, sourceReferenceCheckpoint } from "./source-reference-input.js"
+import { SemanticWorkerSupervisorError } from "../semantic-worker-supervisor-errors.js"
 import type { ReferenceCandidateSelection } from "./reference-candidate-selection.js"
 import type { SemanticReferencesQuery, SemanticReferencesOutcome, VersionedSemanticResult } from "../../contracts/semantic-engine.js"
 import type { SemanticReadinessQuery, SemanticReadinessReport } from "../../contracts/semantic-readiness.js"
@@ -8,9 +10,20 @@ type ReadReadiness = (query: SemanticReadinessQuery) => Promise<SemanticReadines
 
 /** Global and query-local evidence have distinct eligibility, the same disk fence. */
 export function cachedReferenceResult(query: SemanticReferencesQuery, cache: ReferenceResultCache,
-  readReadiness: ReadReadiness, onHit: (inputProof?: string) => void) {
+  readReadiness: ReadReadiness, onHit: (inputProof?: string) => void, canUseSourceCache?: () => boolean) {
   const entry = cache.getWithProof(query)
   if (!entry) return undefined
+  if (hasSourceReferenceCacheProof(entry.inputProof)) {
+    if (!canUseSourceCache?.()) return undefined
+    const before = sourceReferenceInputKey(query)
+    if (!before || !matchesQueryCacheProof(query, entry.inputProof!, before)) return undefined
+    sourceReferenceCheckpoint(query)
+    if (sourceReferenceInputKey(query) !== before) throw new SemanticWorkerSupervisorError("content-modified")
+    if (!canUseSourceCache()) throw new SemanticWorkerSupervisorError("content-modified")
+    if (query.signal?.aborted || cache.getWithProof(query)?.identity !== entry.identity) return undefined
+    onHit(entry.inputProof)
+    return Promise.resolve({ documentVersion: query.document.version, value: entry.result })
+  }
   return readDiskAdmission(query, readReadiness).then(current => {
     const valid = hasQueryCacheProof(entry.inputProof)
       ? matchesQueryCacheProof(query, entry.inputProof!, current.namespace)
