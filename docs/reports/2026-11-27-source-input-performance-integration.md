@@ -54,3 +54,14 @@ SourceOverlay竞态在Mac真实目录链接上受控验证，Windows junction分
 迁移债务：`typescript-language-service.ts`2851行（父2852），
 `legacy-semantic-engine.ts`575行（父622）；所有新增源码/测试/脚本不超过500行。
 主工作区此前两项未提交文档需保留，不能由本次切换/合并覆盖。
+
+## 集成门禁发现的观测域串用
+
+PR121首轮CI `45945005630` 的Node门禁2840通过、2失败、0跳过；Windows安装通过。
+Mac隔离复现同样为10/12，两项均为旧快照观测夹具将固定源owner与项目owner混合，
+并非该两项公开definition/diagnostics结果错误。夹具原始记录现在标注实际编译选项输入域，
+祖先探针沿实际snapshot链维护；项目快照回归只读取项目域，原始源域记录完整保留。
+新增公开双域回归验证两条真实查询及精确目标、各自探针和真实增量/完整解析行为。
+修正后整份快照回归13/13，0跳过；产品源码、产物哈希、原增量及GC断言未改变。
+RED/GREEN、来源和最终门禁归属见[补证](../tdd/2026-11-27-snapshot-observer-input-domains.md)。
+最终候选完整`pnpm check:fast`由新PR CI再次执行，不将旧候选失败或本地13项当作全量通过。
